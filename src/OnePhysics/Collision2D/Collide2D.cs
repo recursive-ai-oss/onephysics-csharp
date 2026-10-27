@@ -142,21 +142,26 @@ public static class Collide2D
     private const uint EdgeFlag = 0x80u;
 
     // Largest over the reference faces of the smallest distance from the face plane to the other core's vertices; ties go to the lowest face index.
-    private static float FindMaxSeparation(in Poly r, in Poly o, int faces, out int edge)
+    // A face that already separates the shapes by more than the radii plus the margin settles the pair: the answer is then +infinity, which the caller reads as "too far apart".
+    // The caller's own test is best - rT > margin and best is at least this face's value, so stopping early cannot change a result.
+    private static float FindMaxSeparation(in Poly r, in Poly o, int faces, float rT, float margin, out int edge)
     {
         float best = -float.MaxValue;
         edge = 0;
+        ReadOnlySpan<Vec2> rv = r.V, rn = r.Nm, ov = o.V;
+        int on = o.N;
         for (int i = 0; i < faces; i++)
         {
-            Vec2 nrm = r.Nm[i];
-            Vec2 v = r.V[i];
+            Vec2 nrm = rn[i];
+            Vec2 v = rv[i];
             float min = float.MaxValue;
-            for (int j = 0; j < o.N; j++)
+            for (int j = 0; j < on; j++)
             {
-                float s = Vec2.Dot(nrm, o.V[j] - v);
+                float s = Vec2.Dot(nrm, ov[j] - v);
                 if (s < min) { min = s; }
             }
 
+            if (min - rT > margin) { return float.PositiveInfinity; }
             if (min > best) { best = min; edge = i; }
         }
 
@@ -179,8 +184,9 @@ public static class Collide2D
 
         float sepA = -float.MaxValue, sepB = -float.MaxValue;
         int edgeA = 0, edgeB = 0;
-        if (pa.N >= 2) { sepA = FindMaxSeparation(in pa, in pb, onlyFace0OfA ? 1 : pa.N, out edgeA); }
-        if (pb.N >= 2) { sepB = FindMaxSeparation(in pb, in pa, pb.N, out edgeB); }
+        if (pa.N >= 2) { sepA = FindMaxSeparation(in pa, in pb, onlyFace0OfA ? 1 : pa.N, rT, margin, out edgeA); }
+        if (float.IsPositiveInfinity(sepA)) { return default; }
+        if (pb.N >= 2) { sepB = FindMaxSeparation(in pb, in pa, pb.N, rT, margin, out edgeB); }
         float best = sepA > sepB ? sepA : sepB;
         if (best - rT > margin) { return default; }
 
