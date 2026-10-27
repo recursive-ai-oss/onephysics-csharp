@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 
 namespace RecursiveAI.OnePhysics.Physics2D;
 
@@ -21,6 +22,9 @@ internal interface ILane<T> where T : struct, ILane<T>
     static abstract T Load(ReadOnlySpan<float> source);
 
     void Store(Span<float> destination);
+
+    /// <summary>Lane i takes the eight floats at <c>source[offsets[i]..]</c>; field k of every lane comes back together as <c>Rk</c> (a transpose: the rows are loaded whole, not float by float).</summary>
+    static abstract Rows8<T> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> offsets);
 
     static abstract T operator +(T a, T b);
 
@@ -49,6 +53,12 @@ internal static class Lane
     public static T And<T>(T a, T b) where T : struct, ILane<T> => T.Select(a, b, T.Zero);
 }
 
+/// <summary>Eight vectors, one per field of a gathered row.</summary>
+internal struct Rows8<T> where T : struct, ILane<T>
+{
+    public T R0, R1, R2, R3, R4, R5, R6, R7;
+}
+
 /// <summary>One lane: the scalar twin of the vector kernels.</summary>
 internal readonly struct Lanes1 : ILane<Lanes1>
 {
@@ -65,6 +75,12 @@ internal readonly struct Lanes1 : ILane<Lanes1>
     public static Lanes1 Load(ReadOnlySpan<float> source) => new(source[0]);
 
     public void Store(Span<float> destination) => destination[0] = _v;
+
+    public static Rows8<Lanes1> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> offsets)
+    {
+        var r = source.Slice(offsets[0], 8);
+        return new Rows8<Lanes1> { R0 = new(r[0]), R1 = new(r[1]), R2 = new(r[2]), R3 = new(r[3]), R4 = new(r[4]), R5 = new(r[5]), R6 = new(r[6]), R7 = new(r[7]) };
+    }
 
     public static Lanes1 operator +(Lanes1 a, Lanes1 b) => new(a._v + b._v);
 
@@ -95,6 +111,16 @@ internal readonly struct Lanes128 : ILane<Lanes128>
 
     public void Store(Span<float> destination) => _v.CopyTo(destination);
 
+    public static Rows8<Lanes128> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> offsets)
+    {
+        var a = source.Slice(offsets[0], 8); var b = source.Slice(offsets[1], 8); var c = source.Slice(offsets[2], 8); var d = source.Slice(offsets[3], 8);
+        return new Rows8<Lanes128>
+        {
+            R0 = new(Vector128.Create(a[0], b[0], c[0], d[0])), R1 = new(Vector128.Create(a[1], b[1], c[1], d[1])), R2 = new(Vector128.Create(a[2], b[2], c[2], d[2])), R3 = new(Vector128.Create(a[3], b[3], c[3], d[3])),
+            R4 = new(Vector128.Create(a[4], b[4], c[4], d[4])), R5 = new(Vector128.Create(a[5], b[5], c[5], d[5])), R6 = new(Vector128.Create(a[6], b[6], c[6], d[6])), R7 = new(Vector128.Create(a[7], b[7], c[7], d[7])),
+        };
+    }
+
     public static Lanes128 operator +(Lanes128 a, Lanes128 b) => new(Vector128.Add(a._v, b._v));
 
     public static Lanes128 operator -(Lanes128 a, Lanes128 b) => new(Vector128.Subtract(a._v, b._v));
@@ -123,6 +149,35 @@ internal readonly struct Lanes256 : ILane<Lanes256>
     public static Lanes256 Load(ReadOnlySpan<float> source) => new(Vector256.Create(source));
 
     public void Store(Span<float> destination) => _v.CopyTo(destination);
+
+    public static Rows8<Lanes256> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> offsets)
+    {
+        var a = source.Slice(offsets[0], 8); var b = source.Slice(offsets[1], 8); var c = source.Slice(offsets[2], 8); var d = source.Slice(offsets[3], 8);
+        var e = source.Slice(offsets[4], 8); var f = source.Slice(offsets[5], 8); var g = source.Slice(offsets[6], 8); var h = source.Slice(offsets[7], 8);
+        if (Avx.IsSupported)
+        {
+            // The usual 8x8 transpose: interleave pairs of rows, then quads, then swap the 128-bit halves. Pure data movement, so the bits are those of the scalar loads below.
+            var r0 = Vector256.Create(a); var r1 = Vector256.Create(b); var r2 = Vector256.Create(c); var r3 = Vector256.Create(d);
+            var r4 = Vector256.Create(e); var r5 = Vector256.Create(f); var r6 = Vector256.Create(g); var r7 = Vector256.Create(h);
+            var t0 = Avx.UnpackLow(r0, r1); var t1 = Avx.UnpackHigh(r0, r1); var t2 = Avx.UnpackLow(r2, r3); var t3 = Avx.UnpackHigh(r2, r3);
+            var t4 = Avx.UnpackLow(r4, r5); var t5 = Avx.UnpackHigh(r4, r5); var t6 = Avx.UnpackLow(r6, r7); var t7 = Avx.UnpackHigh(r6, r7);
+            var u0 = Avx.Shuffle(t0, t2, 0x44); var u1 = Avx.Shuffle(t0, t2, 0xEE); var u2 = Avx.Shuffle(t1, t3, 0x44); var u3 = Avx.Shuffle(t1, t3, 0xEE);
+            var u4 = Avx.Shuffle(t4, t6, 0x44); var u5 = Avx.Shuffle(t4, t6, 0xEE); var u6 = Avx.Shuffle(t5, t7, 0x44); var u7 = Avx.Shuffle(t5, t7, 0xEE);
+            return new Rows8<Lanes256>
+            {
+                R0 = new(Avx.Permute2x128(u0, u4, 0x20)), R1 = new(Avx.Permute2x128(u1, u5, 0x20)), R2 = new(Avx.Permute2x128(u2, u6, 0x20)), R3 = new(Avx.Permute2x128(u3, u7, 0x20)),
+                R4 = new(Avx.Permute2x128(u0, u4, 0x31)), R5 = new(Avx.Permute2x128(u1, u5, 0x31)), R6 = new(Avx.Permute2x128(u2, u6, 0x31)), R7 = new(Avx.Permute2x128(u3, u7, 0x31)),
+            };
+        }
+
+        return new Rows8<Lanes256>
+        {
+            R0 = new(Vector256.Create(a[0], b[0], c[0], d[0], e[0], f[0], g[0], h[0])), R1 = new(Vector256.Create(a[1], b[1], c[1], d[1], e[1], f[1], g[1], h[1])),
+            R2 = new(Vector256.Create(a[2], b[2], c[2], d[2], e[2], f[2], g[2], h[2])), R3 = new(Vector256.Create(a[3], b[3], c[3], d[3], e[3], f[3], g[3], h[3])),
+            R4 = new(Vector256.Create(a[4], b[4], c[4], d[4], e[4], f[4], g[4], h[4])), R5 = new(Vector256.Create(a[5], b[5], c[5], d[5], e[5], f[5], g[5], h[5])),
+            R6 = new(Vector256.Create(a[6], b[6], c[6], d[6], e[6], f[6], g[6], h[6])), R7 = new(Vector256.Create(a[7], b[7], c[7], d[7], e[7], f[7], g[7], h[7])),
+        };
+    }
 
     public static Lanes256 operator +(Lanes256 a, Lanes256 b) => new(Vector256.Add(a._v, b._v));
 

@@ -42,8 +42,17 @@ internal sealed partial class Engine2D : ISnapshotSection
     // Transient per step.
     public double[] StartPos = new double[16];
     public float[] StartRot = new float[16];
-    public float[] Dq = new float[16];            // accumulated rotation over the step as (cos, sin)
-    public float[] Scratch = new float[ContactKernel2D.Stride * 8];
+
+    /// <summary>Solver state per body during a step, <see cref="BS2D.Stride"/> floats at row <c>body + 1</c> (row 0 is a zero row that unused lanes read): velocity and the motion accumulated over the step. Filled from the core at the start of the solve and written back by the finalize stage.</summary>
+    public float[] BodyState = new float[BS2D.Stride * 9];
+
+    /// <summary>Contact constraint data of the step in groups of eight lanes (<see cref="W2D"/>), rebuilt every step.</summary>
+    public float[] Wide = new float[W2D.GroupFloats];
+    public int[] WideIdx = new int[W2D.IdxPerGroup];
+    public int[] WideCons = new int[W2D.Lanes];
+
+    /// <summary>Per constraint: its group times eight plus its lane, for the contacts of the current step.</summary>
+    public int[] SlotOf = new int[8];
 
     // Shapes (index = shape slot).
     public Shape2D[] Geom = new Shape2D[8];
@@ -65,7 +74,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     public int PairHigh;
     public int[] PairFree = new int[8];
     public int PairFreeCount;
-    public readonly Dictionary<long, int> PairMap = new();
+    public readonly PairTable PairMap = new();
 
     /// <summary>Lanes per kernel call: 8, 4 or 1. All give the same bits; the choice exists so tests can prove it.</summary>
     public int KernelWidth = 8;
@@ -91,7 +100,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         Grow(ref LocalCenter, 2 * n); Grow(ref Mass, n); Grow(ref Inertia, n); Grow(ref MaxExtent, n); Grow(ref MinExtent, n);
         Grow(ref LinearDamping, n); Grow(ref AngularDamping, n); Grow(ref GravityScale, n); Grow(ref Force, 2 * n); Grow(ref Torque, n);
         Grow(ref BodyFlags, n); Grow(ref ShapeHead, n); Grow(ref ShapeTail, n); Grow(ref Dp, 2 * n);
-        Grow(ref StartPos, 2 * n); Grow(ref StartRot, 2 * n); Grow(ref Dq, 2 * n);
+        Grow(ref StartPos, 2 * n); Grow(ref StartRot, 2 * n);
     }
 
     public void EnsureShapes(int n)
@@ -354,7 +363,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         }
 
         PairA[p] = a; PairB[p] = b; PairCons[p] = -1; PairLive[p] = true;
-        PairMap.Add(PairKey(a, b), p);
+        PairMap.Set(PairKey(a, b), p);
         return p;
     }
 
@@ -578,7 +587,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         PairMap.Clear();
         for (int p = 0; p < np; p++)
         {
-            if (PairLive[p]) { PairMap[PairKey(PairA[p], PairB[p])] = p; }
+            if (PairLive[p]) { PairMap.Set(PairKey(PairA[p], PairB[p]), p); }
         }
 
         CommitServices(svc, ns);

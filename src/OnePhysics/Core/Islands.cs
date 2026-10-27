@@ -99,17 +99,30 @@ public sealed class IslandSet
         if (a == b) { return a; }
         int lo = Math.Min(a, b), hi = Math.Max(a, b);
         int nl = _count[lo], nh = _count[hi];
-        var merged = new int[Math.Max(4, nl + nh)];
-        var l = _bodies[lo]; var h = _bodies[hi];
-        int i = 0, j = 0, k = 0;
         var isl = bodies.IslandWritable;
-        while (i < nl || j < nh)
+        // Merge the smaller sorted list into the larger one from the back, in place, so a pile that keeps joining one big island allocates nothing.
+        bool intoHi = nh > nl;
+        int[] x = intoHi ? _bodies[hi] : _bodies[lo], y = intoHi ? _bodies[lo] : _bodies[hi];
+        int nx = intoHi ? nh : nl, ny = intoHi ? nl : nh;
+        int total = nx + ny;
+        if (x.Length < total)
         {
-            if (j >= nh || (i < nl && l[i] < h[j])) { merged[k++] = l[i++]; }
-            else { isl[h[j]] = lo; merged[k++] = h[j++]; }
+            var grown = new int[Math.Max(total, x.Length * 2)];
+            Array.Copy(x, grown, nx);
+            x = grown;
         }
 
-        _bodies[lo] = merged; _count[lo] = k;
+        int ix = nx - 1, iy = ny - 1, k = total - 1;
+        while (iy >= 0)
+        {
+            if (ix >= 0 && x[ix] > y[iy]) { x[k--] = x[ix--]; }
+            else { x[k--] = y[iy--]; }
+        }
+
+        // Bodies that came from the other island (or all of them, when the survivor took over the higher island's list) now belong to the survivor.
+        if (intoHi) { for (int t = 0; t < total; t++) { isl[x[t]] = lo; } }
+        else { for (int t = 0; t < ny; t++) { isl[y[t]] = lo; } }
+        _bodies[lo] = x; _count[lo] = total;
         _removed[lo] += _removed[hi];
         _ids.Free(hi);
         _bodies[hi] = null!; _count[hi] = 0; _removed[hi] = 0; _asleep[hi] = false;

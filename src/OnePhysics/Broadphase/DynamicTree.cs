@@ -147,6 +147,9 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     /// <summary>The stored (fat) bounds of a live node. Throws <see cref="ArgumentException"/> for a free or out-of-range index.</summary>
     public TBox GetBounds(int node) => _nodes[CheckNode(node)].Box;
 
+    /// <summary>The stored bounds of a node the caller knows is live (taken from a proxy key that was checked when the proxy was made): no validation, for per-pair inner loops.</summary>
+    internal ref readonly TBox BoundsOfLive(int node) => ref _nodes[node].Box;
+
     /// <summary>The user id stored with a proxy. Throws <see cref="ArgumentException"/> unless <paramref name="proxy"/> is a live proxy.</summary>
     public int GetUserId(int proxy) => _nodes[CheckProxy(proxy)].UserId;
 

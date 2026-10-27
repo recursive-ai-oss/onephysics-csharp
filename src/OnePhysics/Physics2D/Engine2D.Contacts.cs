@@ -15,7 +15,11 @@ internal readonly struct Stages2D : IWorldStages
 
     public void UpdateContacts(WorldCore world) => _e.UpdateContacts(world);
 
-    public void Prepare(WorldCore world, ReadOnlySpan<int> constraints, in StepContext context) => _e.Prepare(constraints, in context);
+    public void BeginSolve(WorldCore world, int batches, in StepContext context) => _e.BeginSolve(batches);
+
+    public void PrepareBatch(WorldCore world, ReadOnlySpan<int> constraints, int batch, in StepContext context) => _e.PrepareBatch(constraints, batch, in context);
+
+    public void Prepare(WorldCore world, ReadOnlySpan<int> constraints, in StepContext context) => _e.PrepareJoints(constraints, in context);
 
     public void IntegrateVelocities(WorldCore world, ReadOnlySpan<int> bodies, in StepContext context) => _e.IntegrateVelocities(bodies, in context);
 
@@ -27,6 +31,7 @@ internal readonly struct Stages2D : IWorldStages
     {
         // Impulses are updated in place in each constraint's payload, so there is nothing to copy back; joints report their reaction and may break, and contacts raise hit events.
         _e.StoreJointResults(constraints, in context);
+        _e.StoreContactResults(constraints);
         _e.EmitHits(world, constraints, eventSlot);
     }
 
@@ -79,13 +84,17 @@ internal sealed partial class Engine2D
         // 0. A changed filter re-evaluates the pair table before anything else (see Refilter).
         Refilter();
 
-        // 1. Broadphase boxes of every body that moved last step. The displacement stretches the box ahead of the motion.
-        foreach (int b in world.AwakeBodies)
+        // 1. Broadphase boxes of every body that moved last step. The displacement stretches the box ahead of the motion. The boxes and the test against the stored boxes run in parallel;
+        //    the tree itself is updated serially, in body order.
+        var awake = world.AwakeBodies;
+        EnsureBoxStorage();
+        world.Executor.For((awake.Length + 63) / 64, new BoxTask(this, world.AwakeArray, awake.Length));
+        foreach (int b in awake)
         {
             if (!bodies.IsLive(b)) { continue; }
             for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
             {
-                Bp.MoveProxy(Proxy[s], TightBox(b, in Geom[s]), Dp[2 * b], Dp[2 * b + 1]);
+                if (_needMove[s] == 0) { continue; }
             }
         }
 
@@ -98,7 +107,6 @@ internal sealed partial class Engine2D
             StartPos[2 * b] = pos[2 * b]; StartPos[2 * b + 1] = pos[2 * b + 1];
             StartRot[2 * b] = rot[2 * b]; StartRot[2 * b + 1] = rot[2 * b + 1];
             Dp[2 * b] = 0f; Dp[2 * b + 1] = 0f;
-            Dq[2 * b] = 1f; Dq[2 * b + 1] = 0f;
         }
 
         // 3. New pairs from the broadphase, in its sorted order.
@@ -133,7 +141,7 @@ internal sealed partial class Engine2D
         int chunks = (_updateCount + 63) / 64;
         world.Executor.For(chunks, new CollideTask(this));
 
-        // 6. Apply serially in ascending pair order: this fixes the order constraints are added, which fixes their colors.
+        // 6. Apply serially in ascending pair order: this fixes the order constraints are added, which fixes their colors. Writing the manifolds into existing constraints happens afterwards, in parallel.
         var cs = world.Constraints;
         for (int i = 0; i < _updateCount; i++)
         {
@@ -182,8 +190,7 @@ internal sealed partial class Engine2D
                     ShapeB = world.HandleOfShape(sb),
                     Flags = ConstraintBits.ReportPersist,
                 };
-                c = world.AddConstraint(desc);
-                PairCons[p] = c;
+                PairCons[p] = world.AddConstraint(desc);
             }
             else
             {
@@ -193,11 +200,11 @@ internal sealed partial class Engine2D
                 if (bodies.IsDynamic(bb) && !bodies.IsAwake(bb)) { world.WakeIsland(bodies.Island[bb]); }
             }
 
-            WriteManifold(world.Constraints, c, sa, sb, in res);
+            res.Status = 3; // a manifold to write into the pair's constraint
         }
 
-        int ch = world.Constraints.HighWater;
-        if (Scratch.Length < ch * ContactKernel2D.Stride) { Scratch = new float[Math.Max(ch, Scratch.Length / ContactKernel2D.Stride * 2) * ContactKernel2D.Stride]; }
+        if (Opt.MaterialMixer != null) { new WriteTask(this).RunAll(); } // a user mixer runs serially, in pair order
+        else { world.Executor.For((_updateCount + 63) / 64, new WriteTask(this)); }
     }
 
     private Shape WrapShape(int slot) => new(World!, Core.HandleOfShape(slot));
@@ -218,31 +225,89 @@ internal sealed partial class Engine2D
 
         public void Run(int task)
         {
-            int lo = task * 64, hi = Math.Min(lo + 64, _e._updateCount);
-            for (int i = lo; i < hi; i++) { _e.Collide(i); }
+            var e = _e;
+            int lo = task * 64, hi = Math.Min(lo + 64, e._updateCount);
+            ReadOnlySpan<double> pos = e.Core.Bodies.Position;
+            ReadOnlySpan<float> rot = e.Core.Bodies.Rotation;
+            ReadOnlySpan<int> owner = e.Core.Shapes.Owner;
+            for (int i = lo; i < hi; i++) { e.Collide(i, pos, rot, owner); }
         }
     }
 
-    private void Collide(int i)
+    private readonly struct BoxTask : IParallelBody
+    {
+        private readonly Engine2D _e; private readonly int[] _list; private readonly int _count;
+
+        public BoxTask(Engine2D e, int[] list, int count) { _e = e; _list = list; _count = count; }
+
+        public void Run(int task)
+        {
+            var e = _e;
+            var bodies = e.Core.Bodies;
+            int lo = task * 64, hi = Math.Min(lo + 64, _count);
+            for (int i = lo; i < hi; i++)
+            {
+                int b = _list[i];
+                if (!bodies.IsLive(b)) { continue; }
+                for (int s = e.ShapeHead[b]; s >= 0; s = e.NextShape[s])
+                {
+                    var box = e.TightBox(b, in e.Geom[s]);
+                    e._boxes[4 * s] = box.MinX; e._boxes[4 * s + 1] = box.MinY; e._boxes[4 * s + 2] = box.MaxX; e._boxes[4 * s + 3] = box.MaxY;
+                    e._needMove[s] = (byte)(Aabb2D.Contains(e.Bp.GetFatBounds(e.Proxy[s]), box) ? 0 : 1);
+                }
+            }
+        }
+    }
+
+    private readonly struct WriteTask : IParallelBody
+    {
+        private readonly Engine2D _e;
+
+        public WriteTask(Engine2D e) => _e = e;
+
+        public void RunAll() { for (int t = 0; t < (_e._updateCount + 63) / 64; t++) { Run(t); } }
+
+        public void Run(int task)
+        {
+            var e = _e;
+            var cs = e.Core.Constraints;
+            int lo = task * 64, hi = Math.Min(lo + 64, e._updateCount);
+            for (int i = lo; i < hi; i++)
+            {
+                ref PairResult res = ref e._results[i];
+                if (res.Status != 3) { continue; }
+                int p = e._updateList[i];
+                e.WriteManifold(cs, e.PairCons[p], e.PairA[p], e.PairB[p], in res);
+            }
+        }
+    }
+
+    private byte[] _needMove = new byte[8];
+    private double[] _boxes = new double[32];
+
+    private void EnsureBoxStorage()
+    {
+        int n = Core.Shapes.HighWater;
+        if (_needMove.Length < n) { _needMove = new byte[Math.Max(n, _needMove.Length * 2)]; _boxes = new double[_needMove.Length * 4]; }
+    }
+
+    private void Collide(int i, ReadOnlySpan<double> pos, ReadOnlySpan<float> rot, ReadOnlySpan<int> owner)
     {
         int p = _updateList[i];
         ref PairResult res = ref _results[i];
         res = default;
         int sa = PairA[p], sb = PairB[p];
-        if (!Aabb2D.Overlaps(Bp.GetFatBounds(Proxy[sa]), Bp.GetFatBounds(Proxy[sb]))) { res.Status = 2; return; }
+        if (!Aabb2D.Overlaps(in Bp.FatBoundsOfLive(Proxy[sa]), in Bp.FatBoundsOfLive(Proxy[sb]))) { res.Status = 2; return; }
         res.Status = 1;
-        var owner = Core.Shapes.Owner;
         int ba = owner[sa], bb = owner[sb];
-        var bodies = Core.Bodies;
-        var pA = bodies.PositionOf(ba); var pB = bodies.PositionOf(bb);
-        var rA = bodies.RotationOf(ba); var rB = bodies.RotationOf(bb);
-        var qA = new Rot2(rA[0], rA[1]); var qB = new Rot2(rB[0], rB[1]);
+        var qA = new Rot2(rot[2 * ba], rot[2 * ba + 1]); var qB = new Rot2(rot[2 * bb], rot[2 * bb + 1]);
         var lcA = new Vec2(LocalCenter[2 * ba], LocalCenter[2 * ba + 1]); var lcB = new Vec2(LocalCenter[2 * bb], LocalCenter[2 * bb + 1]);
+        double pAx = pos[2 * ba], pAy = pos[2 * ba + 1], pBx = pos[2 * bb], pBy = pos[2 * bb + 1];
 
         // Subtract the double positions first; only the (small) difference of the body origins becomes float.
         Vec2 wA = qA.Rotate(lcA), wB = qB.Rotate(lcB);
-        double dx = (pB[0] - (double)wB.X) - (pA[0] - (double)wA.X);
-        double dy = (pB[1] - (double)wB.Y) - (pA[1] - (double)wA.Y);
+        double dx = (pBx - (double)wB.X) - (pAx - (double)wA.X);
+        double dy = (pBy - (double)wB.Y) - (pAy - (double)wA.Y);
         var xf = Transform2.InvMul(new Transform2(default, qA), new Transform2(new Vec2((float)dx, (float)dy), qB));
         var m = Collide2D.Collide(in Geom[sa], in Geom[sb], xf, Constants2D.SpeculativeDistance);
         res.Count = m.PointCount;
@@ -251,7 +316,7 @@ internal sealed partial class Engine2D
         Vec2 n = qA.Rotate(m.Normal);
         res.Nx = n.X; res.Ny = n.Y;
         // Contact arms from each centre of mass; B's arm differs from A's by the centre-of-mass offset.
-        Vec2 comDiff = new((float)(pA[0] - pB[0]), (float)(pA[1] - pB[1]));
+        Vec2 comDiff = new((float)(pAx - pBx), (float)(pAy - pBy));
         for (int k = 0; k < m.PointCount; k++)
         {
             var mp = m[k];

@@ -28,8 +28,44 @@ internal sealed partial class Engine2D
 
     // ------------------------------------------------------------------ prepare
 
-    /// <summary>Once per step: effective masses, adjusted separations, relative velocities for restitution and soft coefficients, from the manifolds stored in the payloads.</summary>
-    public void Prepare(ReadOnlySpan<int> constraints, in StepContext ctx)
+    /// <summary>Once per step before anything is prepared: sizes the per-step solver storage and copies every live body's velocity into <see cref="BodyState"/> with zero accumulated motion.</summary>
+    public void BeginSolve(int batches)
+    {
+        var core = Core;
+        var bodies = core.Bodies;
+        int nb = bodies.HighWater;
+        if (BodyState.Length < (nb + 1) * BS2D.Stride) { BodyState = new float[Math.Max(nb + 1, BodyState.Length / BS2D.Stride * 2) * BS2D.Stride]; }
+        if (Wide.Length < batches * W2D.GroupFloats)
+        {
+            int cap = Math.Max(batches, Wide.Length / W2D.GroupFloats * 2);
+            Wide = new float[cap * W2D.GroupFloats]; WideIdx = new int[cap * W2D.IdxPerGroup]; WideCons = new int[cap * W2D.Lanes];
+        }
+
+        int nc = core.Constraints.HighWater;
+        if (SlotOf.Length < nc) { SlotOf = new int[Math.Max(nc, SlotOf.Length * 2)]; }
+        ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
+        var st = BodyState.AsSpan();
+        for (int b = 0; b < nb; b++)
+        {
+            if (!bodies.IsLive(b)) { continue; }
+            int o = (b + 1) * BS2D.Stride;
+            st[o + BS2D.Vx] = lin[2 * b]; st[o + BS2D.Vy] = lin[2 * b + 1]; st[o + BS2D.W] = ang[b];
+            st[o + BS2D.Dpx] = 0f; st[o + BS2D.Dpy] = 0f; st[o + BS2D.DqC] = 1f; st[o + BS2D.DqS] = 0f;
+        }
+    }
+
+    /// <summary>Prepares the joints among a chunk of constraints (contacts are prepared per batch by <see cref="PrepareBatch"/>).</summary>
+    public void PrepareJoints(ReadOnlySpan<int> constraints, in StepContext ctx)
+    {
+        var cs = Core.Constraints;
+        foreach (int c in constraints)
+        {
+            if (cs.KindOf(c) == ConstraintKind.Joint) { PrepareJoint(c, in ctx); }
+        }
+    }
+
+    /// <summary>Once per step: effective masses, adjusted separations, relative velocities for restitution and soft coefficients of the contacts of one batch, from the manifolds stored in the payloads, into one wide group.</summary>
+    public void PrepareBatch(ReadOnlySpan<int> constraints, int group, in StepContext ctx)
     {
         var core = Core;
         var cs = core.Constraints;
@@ -37,31 +73,42 @@ internal sealed partial class Engine2D
         ReadOnlySpan<int> bodyA = cs.BodyA, bodyB = cs.BodyB;
         ReadOnlySpan<float> invMass = bodies.InverseMass, invI = bodies.InverseInertia;
         ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
+        ReadOnlySpan<byte> type = bodies.Type;
         float hertz = Opt.ContactHertz;
         float cap = 0.25f * ctx.InverseSubstepDt;
         if (hertz > cap) { hertz = cap; }
         MakeSoft(hertz, Opt.ContactDampingRatio, ctx.SubstepDt, out float dynBias, out float dynMass, out float dynImpulse);
         MakeSoft(2f * hertz, Opt.ContactDampingRatio, ctx.SubstepDt, out float stBias, out float stMass, out float stImpulse);
 
+        var w = Wide.AsSpan(group * W2D.GroupFloats, W2D.GroupFloats);
+        var idx = WideIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup);
+        var ids = WideCons.AsSpan(group * W2D.Lanes, W2D.Lanes);
+        for (int l = 0; l < W2D.Lanes; l++) { idx[l] = 0; idx[8 + l] = 0; idx[16 + l] = -1; idx[24 + l] = -1; ids[l] = -1; }
+        int lane = 0;
         foreach (int c in constraints)
         {
-            if (cs.KindOf(c) == ConstraintKind.Joint) { PrepareJoint(c, in ctx); continue; }
+            if (cs.KindOf(c) == ConstraintKind.Joint) { continue; }
             var pl = cs.Payload(c);
             int a = bodyA[c], b = bodyB[c];
+            ids[lane] = c;
+            SlotOf[c] = group * W2D.Lanes + lane;
+            idx[lane] = (a + 1) * BS2D.Stride; idx[8 + lane] = (b + 1) * BS2D.Stride;
+            idx[16 + lane] = type[a] == (byte)BodyType.Dynamic ? (a + 1) * BS2D.Stride : -1;
+            idx[24 + lane] = type[b] == (byte)BodyType.Dynamic ? (b + 1) * BS2D.Stride : -1;
             float mA = invMass[a], iA = invI[a], mB = invMass[b], iB = invI[b];
             float nx = pl[ManifoldLayout.Normal], ny = pl[ManifoldLayout.Normal + 1];
             float tx = ny, ty = -nx;
-            var s = Scratch.AsSpan(c * ContactKernel2D.Stride, ContactKernel2D.Stride);
-            s.Clear();
-            s[Row2D.NormalX] = nx; s[Row2D.NormalY] = ny;
-            s[Row2D.Friction] = pl[ManifoldLayout.Friction];
-            s[Row2D.Restitution] = pl[ManifoldLayout.Restitution];
-            s[Row2D.Rolling] = pl[ManifoldLayout.RollingResistance];
+            w[W2D.NormalX * 8 + lane] = nx; w[W2D.NormalY * 8 + lane] = ny;
+            w[W2D.Friction * 8 + lane] = pl[ManifoldLayout.Friction];
+            w[W2D.Restitution * 8 + lane] = pl[ManifoldLayout.Restitution];
+            w[W2D.Rolling * 8 + lane] = pl[ManifoldLayout.RollingResistance];
             float k = iA + iB;
-            s[Row2D.RollingMass] = k > 0f ? 1f / k : 0f;
-            s[Row2D.InvMassA] = mA; s[Row2D.InvInertiaA] = iA; s[Row2D.InvMassB] = mB; s[Row2D.InvInertiaB] = iB;
-            if (mA == 0f || mB == 0f) { s[Row2D.BiasRate] = stBias; s[Row2D.MassScale] = stMass; s[Row2D.ImpulseScale] = stImpulse; }
-            else { s[Row2D.BiasRate] = dynBias; s[Row2D.MassScale] = dynMass; s[Row2D.ImpulseScale] = dynImpulse; }
+            w[W2D.RollingMass * 8 + lane] = k > 0f ? 1f / k : 0f;
+            w[W2D.InvMassA * 8 + lane] = mA; w[W2D.InvInertiaA * 8 + lane] = iA; w[W2D.InvMassB * 8 + lane] = mB; w[W2D.InvInertiaB * 8 + lane] = iB;
+            if (mA == 0f || mB == 0f) { w[W2D.BiasRate * 8 + lane] = stBias; w[W2D.MassScale * 8 + lane] = stMass; w[W2D.ImpulseScale * 8 + lane] = stImpulse; }
+            else { w[W2D.BiasRate * 8 + lane] = dynBias; w[W2D.MassScale * 8 + lane] = dynMass; w[W2D.ImpulseScale * 8 + lane] = dynImpulse; }
+            w[W2D.Roll * 8 + lane] = pl[ManifoldLayout.RollingImpulse];
+            w[(W2D.Impulse0 + 2) * 8 + lane] = 0f; w[(W2D.Impulse1 + 2) * 8 + lane] = 0f; // the largest normal impulse of the step starts at zero
 
             float vAx = lin[2 * a], vAy = lin[2 * a + 1], wA = ang[a], vBx = lin[2 * b], vBy = lin[2 * b + 1], wB = ang[b];
             int count = cs.PointCount[c];
@@ -70,20 +117,62 @@ internal sealed partial class Engine2D
                 float rAx = pl[ManifoldLayout.AnchorA(i)], rAy = pl[ManifoldLayout.AnchorA(i) + 1];
                 float rBx = pl[ManifoldLayout.AnchorB(i)], rBy = pl[ManifoldLayout.AnchorB(i) + 1];
                 float sep = pl[ManifoldLayout.Separation(i)];
-                int o = Row2D.Point0 + i * Row2D.PointStride;
-                s[o + Row2D.AnchorAX] = rAx; s[o + Row2D.AnchorAY] = rAy; s[o + Row2D.AnchorBX] = rBx; s[o + Row2D.AnchorBY] = rBy;
-                s[o + Row2D.AdjustedSeparation] = sep - ((rBx - rAx) * nx + (rBy - rAy) * ny);
+                int o = W2D.Point0 + i * W2D.PointStride;
+                w[(o + W2D.AnchorAX) * 8 + lane] = rAx; w[(o + W2D.AnchorAY) * 8 + lane] = rAy; w[(o + W2D.AnchorBX) * 8 + lane] = rBx; w[(o + W2D.AnchorBY) * 8 + lane] = rBy;
+                w[(o + W2D.AdjustedSeparation) * 8 + lane] = sep - ((rBx - rAx) * nx + (rBy - rAy) * ny);
                 float rnA = rAx * ny - rAy * nx, rnB = rBx * ny - rBy * nx;
                 float kn = mA + mB + iA * rnA * rnA + iB * rnB * rnB;
-                s[o + Row2D.NormalMass] = kn > 0f ? 1f / kn : 0f;
+                w[(o + W2D.NormalMass) * 8 + lane] = kn > 0f ? 1f / kn : 0f;
                 float rtA = rAx * ty - rAy * tx, rtB = rBx * ty - rBy * tx;
                 float kt = mA + mB + iA * rtA * rtA + iB * rtB * rtB;
-                s[o + Row2D.TangentMass] = kt > 0f ? 1f / kt : 0f;
+                w[(o + W2D.TangentMass) * 8 + lane] = kt > 0f ? 1f / kt : 0f;
                 float dvx = (vBx - wB * rBy) - (vAx - wA * rAy);
                 float dvy = (vBy + wB * rBx) - (vAy + wA * rAx);
-                s[o + Row2D.RelativeVelocity] = dvx * nx + dvy * ny;
-                pl[ManifoldLayout.MaxNormalImpulse(i)] = 0f;
+                w[(o + W2D.RelativeVelocity) * 8 + lane] = dvx * nx + dvy * ny;
+                int ib = i == 0 ? W2D.Impulse0 : W2D.Impulse1;
+                w[ib * 8 + lane] = pl[ManifoldLayout.NormalImpulse(i)];
+                w[(ib + 1) * 8 + lane] = pl[ManifoldLayout.Tangent1Impulse(i)];
             }
+
+            // A manifold with one point leaves the second point's fields zero.
+            for (int i = count; i < 2; i++)
+            {
+                int o = W2D.Point0 + i * W2D.PointStride;
+                for (int f = 0; f < W2D.PointStride; f++) { w[(o + f) * 8 + lane] = 0f; }
+                int ib = i == 0 ? W2D.Impulse0 : W2D.Impulse1;
+                w[ib * 8 + lane] = 0f; w[(ib + 1) * 8 + lane] = 0f; w[(ib + 2) * 8 + lane] = 0f;
+            }
+
+            lane++;
+        }
+
+        // Unused lanes of a short group read as zeros.
+        for (int l = lane; l < W2D.Lanes; l++)
+        {
+            for (int f = 0; f < W2D.Fields; f++) { w[f * 8 + l] = 0f; }
+        }
+    }
+
+    /// <summary>After the last substep: copies the solved impulses of the contacts among a chunk of constraints back into their payloads for the next step's warm start.</summary>
+    public void StoreContactResults(ReadOnlySpan<int> constraints)
+    {
+        var cs = Core.Constraints;
+        ReadOnlySpan<float> wide = Wide;
+        Span<float> payload = cs.PayloadAll;
+        int pf = cs.PayloadFloats;
+        foreach (int c in constraints)
+        {
+            if (cs.KindOf(c) == ConstraintKind.Joint) { continue; }
+            int slot = SlotOf[c];
+            int wb = (slot >> 3) * W2D.GroupFloats + (slot & 7);
+            int pb = c * pf;
+            payload[pb + ManifoldLayout.RollingImpulse] = wide[wb + W2D.Roll * 8];
+            payload[pb + ManifoldLayout.NormalImpulse(0)] = wide[wb + W2D.Impulse0 * 8];
+            payload[pb + ManifoldLayout.Tangent1Impulse(0)] = wide[wb + (W2D.Impulse0 + 1) * 8];
+            payload[pb + ManifoldLayout.MaxNormalImpulse(0)] = wide[wb + (W2D.Impulse0 + 2) * 8];
+            payload[pb + ManifoldLayout.NormalImpulse(1)] = wide[wb + W2D.Impulse1 * 8];
+            payload[pb + ManifoldLayout.Tangent1Impulse(1)] = wide[wb + (W2D.Impulse1 + 1) * 8];
+            payload[pb + ManifoldLayout.MaxNormalImpulse(1)] = wide[wb + (W2D.Impulse1 + 2) * 8];
         }
     }
 
@@ -103,19 +192,27 @@ internal sealed partial class Engine2D
             return;
         }
 
-        if (overflow || KernelWidth == 1)
+        if (overflow)
         {
             // The overflow set may share bodies inside a group, so it is solved one constraint at a time, in list order.
-            for (int i = 0; i < constraints.Length; i++) { ContactKernel2D.Run<Lanes1>(this, constraints.Slice(i, 1), phase, in kp); }
+            for (int i = 0; i < constraints.Length; i++) { RunLane(constraints[i], phase, in kp); }
         }
-        else if (KernelWidth == 4)
-        {
-            for (int i = 0; i < constraints.Length; i += 4) { ContactKernel2D.Run<Lanes128>(this, constraints.Slice(i, Math.Min(4, constraints.Length - i)), phase, in kp); }
-        }
-        else
-        {
-            ContactKernel2D.Run<Lanes256>(this, constraints, phase, in kp);
-        }
+        else { RunContacts(SlotOf[constraints[0]] >> 3, constraints.Length, phase, in kp); }
+    }
+
+    /// <summary>Runs one contact alone (its lane of its group) through the one-lane kernel.</summary>
+    private void RunLane(int c, SolvePhase phase, in KernelParams kp)
+    {
+        int slot = SlotOf[c];
+        ContactKernel2D.Run<Lanes1>(this, slot >> 3, slot & 7, 1, phase, in kp);
+    }
+
+    /// <summary>Runs the first <paramref name="n"/> lanes of a group at the configured kernel width.</summary>
+    private void RunContacts(int group, int n, SolvePhase phase, in KernelParams kp)
+    {
+        if (KernelWidth == 1) { ContactKernel2D.Run<Lanes1>(this, group, 0, n, phase, in kp); }
+        else if (KernelWidth == 4) { ContactKernel2D.Run<Lanes128>(this, group, 0, n, phase, in kp); }
+        else { ContactKernel2D.Run<Lanes256>(this, group, 0, n, phase, in kp); }
     }
 
     // ------------------------------------------------------------------ integration
@@ -134,7 +231,7 @@ internal sealed partial class Engine2D
     public void IntegrateVelocities(ReadOnlySpan<int> list, in StepContext ctx)
     {
         var bodies = Core.Bodies;
-        Span<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
+        Span<float> st = BodyState;
         ReadOnlySpan<float> invMass = bodies.InverseMass, invI = bodies.InverseInertia;
         ReadOnlySpan<byte> type = bodies.Type;
         float h = ctx.SubstepDt;
@@ -144,10 +241,11 @@ internal sealed partial class Engine2D
         foreach (int b in list)
         {
             if (type[b] != (byte)BodyType.Dynamic) { continue; }
+            int o = (b + 1) * BS2D.Stride;
             float gs = GravityScale[b];
-            float vx = lin[2 * b] + h * (gs * g.X + invMass[b] * Force[2 * b]);
-            float vy = lin[2 * b + 1] + h * (gs * g.Y + invMass[b] * Force[2 * b + 1]);
-            float w = ang[b] + h * (invI[b] * Torque[b]);
+            float vx = st[o + BS2D.Vx] + h * (gs * g.X + invMass[b] * Force[2 * b]);
+            float vy = st[o + BS2D.Vy] + h * (gs * g.Y + invMass[b] * Force[2 * b + 1]);
+            float w = st[o + BS2D.W] + h * (invI[b] * Torque[b]);
             float dl = 1f / (1f + h * LinearDamping[b]);
             float da = 1f / (1f + h * AngularDamping[b]);
             vx *= dl; vy *= dl; w *= da;
@@ -160,27 +258,28 @@ internal sealed partial class Engine2D
 
             if (w > maxSpin) { w = maxSpin; }
             else if (w < -maxSpin) { w = -maxSpin; }
-            lin[2 * b] = vx; lin[2 * b + 1] = vy; ang[b] = w;
+            st[o + BS2D.Vx] = vx; st[o + BS2D.Vy] = vy; st[o + BS2D.W] = w;
         }
     }
 
     public void IntegratePositions(ReadOnlySpan<int> list, in StepContext ctx)
     {
         var bodies = Core.Bodies;
-        ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
+        Span<float> st = BodyState;
         Span<double> pos = bodies.Position;
         Span<float> rot = bodies.Rotation;
         float h = ctx.SubstepDt;
         foreach (int b in list)
         {
-            float dx = h * lin[2 * b], dy = h * lin[2 * b + 1];
-            Dp[2 * b] += dx; Dp[2 * b + 1] += dy;
+            int o = (b + 1) * BS2D.Stride;
+            float dx = h * st[o + BS2D.Vx], dy = h * st[o + BS2D.Vy];
+            st[o + BS2D.Dpx] += dx; st[o + BS2D.Dpy] += dy;
             pos[2 * b] += (double)dx; pos[2 * b + 1] += (double)dy;
-            float w = ang[b];
+            float w = st[o + BS2D.W];
             if (w != 0f)
             {
                 float a = h * w;
-                IntegrateRotation(ref Dq[2 * b], ref Dq[2 * b + 1], a);
+                IntegrateRotation(ref st[o + BS2D.DqC], ref st[o + BS2D.DqS], a);
                 IntegrateRotation(ref rot[2 * b], ref rot[2 * b + 1], a);
             }
         }
@@ -191,9 +290,13 @@ internal sealed partial class Engine2D
     public void FinalizeBodies(ReadOnlySpan<int> list, in StepContext ctx)
     {
         var bodies = Core.Bodies;
+        Span<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
         foreach (int b in list)
         {
+            int o = (b + 1) * BS2D.Stride;
+            Dp[2 * b] = BodyState[o + BS2D.Dpx]; Dp[2 * b + 1] = BodyState[o + BS2D.Dpy];
             if (bodies.TypeOf(b) != BodyType.Dynamic) { continue; }
+            lin[2 * b] = BodyState[o + BS2D.Vx]; lin[2 * b + 1] = BodyState[o + BS2D.Vy]; ang[b] = BodyState[o + BS2D.W];
             Force[2 * b] = 0f; Force[2 * b + 1] = 0f; Torque[b] = 0f;
             if (Opt.ContinuousEnabled) { Continuous(b); }
         }
