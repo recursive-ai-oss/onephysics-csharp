@@ -51,9 +51,11 @@ internal sealed partial class Engine2D
         if (SlotOf.Length < nc) { SlotOf = new int[Math.Max(nc, SlotOf.Length * 2)]; JSlotOf = new int[SlotOf.Length]; }
         ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
         var st = BodyState.AsSpan();
+        _movingKinematic = false;
         for (int b = 0; b < nb; b++)
         {
             if (!bodies.IsLive(b)) { continue; }
+            if (bodies.TypeOf(b) == BodyType.Kinematic && IsActive(bodies, b)) { _movingKinematic = true; }
             int o = (b + 1) * BS2D.Stride;
             st[o + BS2D.Vx] = lin[2 * b]; st[o + BS2D.Vy] = lin[2 * b + 1]; st[o + BS2D.W] = ang[b];
             st[o + BS2D.Dpx] = 0f; st[o + BS2D.Dpy] = 0f; st[o + BS2D.DqC] = 1f; st[o + BS2D.DqS] = 0f;
@@ -491,12 +493,14 @@ internal sealed partial class Engine2D
 
     // ------------------------------------------------------------------ sleeping
 
+    private bool _movingKinematic; // set once per step in BeginSolve: whether any kinematic body moves, so BodyMotion can skip looking at contact partners when none does
+
     public float BodyMotion(int b)
     {
         var bodies = Core.Bodies;
         // A body touching a moving kinematic body is not at rest.
         var cs = Core.Constraints;
-        for (int e = bodies.FirstEdge(b); e >= 0; e = cs.NextEdge(e))
+        for (int e = _movingKinematic ? bodies.FirstEdge(b) : -1; e >= 0; e = cs.NextEdge(e))
         {
             int c = e >> 1;
             int other = (e & 1) == 0 ? cs.BodyB[c] : cs.BodyA[c];

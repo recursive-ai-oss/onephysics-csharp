@@ -228,6 +228,8 @@ internal sealed partial class Engine2D : ISnapshotSection
         if (FindOutOfBounds(false, out var h, out string message)) { throw new BodyOutOfBoundsException(h, message); }
     }
 
+    private const double SafeBound = 524288.0;
+
     /// <summary>Finds the first body (lowest slot) whose bounds, as the broadphase would store them, are not valid.</summary>
     public bool FindOutOfBounds(bool includeStatic, out BodyHandle handle, out string message)
     {
@@ -236,6 +238,16 @@ internal sealed partial class Engine2D : ISnapshotSection
         for (int b = 0; b < nb; b++)
         {
             if (!bodies.IsLive(b) || (!includeStatic && bodies.TypeOf(b) == BodyType.Static)) { continue; }
+
+            // A dynamic body well inside the range whose shapes and motion are small cannot have an invalid box: its fat box reaches at most 5 * 2^19 < the limit of 2^22.
+            // (Extents are measured from the centre of mass and include the radius; the box is stretched by at most twice the last displacement and widened by the margin.)
+            // Anything not obviously inside, NaN included, takes the exact test below.
+            if (bodies.TypeOf(b) == BodyType.Dynamic)
+            {
+                var p = bodies.PositionOf(b);
+                if (Math.Abs(p[0]) < SafeBound && Math.Abs(p[1]) < SafeBound && MaxExtent[b] < SafeBound && Math.Abs(Dp[2 * b]) < SafeBound && Math.Abs(Dp[2 * b + 1]) < SafeBound && Opt.BroadphaseMargin < SafeBound) { continue; }
+            }
+
             for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
             {
                 var box = TightBox(b, in Geom[s]);
