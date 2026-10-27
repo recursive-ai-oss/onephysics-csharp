@@ -45,6 +45,7 @@ internal sealed partial class Engine2D
 
         foreach (int c in constraints)
         {
+            if (cs.KindOf(c) == ConstraintKind.Joint) { PrepareJoint(c, in ctx); continue; }
             var pl = cs.Payload(c);
             int a = bodyA[c], b = bodyB[c];
             float mA = invMass[a], iA = invI[a], mB = invMass[b], iB = invI[b];
@@ -92,7 +93,17 @@ internal sealed partial class Engine2D
     {
         var kp = new KernelParams(ctx.InverseSubstepDt, Opt.PushOutVelocity, Opt.ContactSlop, Opt.RestitutionThreshold);
         if (constraints.Length == 0) { return; }
-        if (Core.Constraints.Color[constraints[0]] == ConstraintStore.Overflow || KernelWidth == 1)
+        var cons = Core.Constraints;
+        bool overflow = cons.Color[constraints[0]] == ConstraintStore.Overflow;
+        int joints = 0;
+        for (int i = 0; i < constraints.Length; i++) { if (cons.KindOf(constraints[i]) == ConstraintKind.Joint) { joints++; } }
+        if (joints > 0)
+        {
+            SolveMixed(constraints, joints, overflow, phase, ctx, in kp);
+            return;
+        }
+
+        if (overflow || KernelWidth == 1)
         {
             // The overflow set may share bodies inside a group, so it is solved one constraint at a time, in list order.
             for (int i = 0; i < constraints.Length; i++) { ContactKernel2D.Run<Lanes1>(this, constraints.Slice(i, 1), phase, in kp); }

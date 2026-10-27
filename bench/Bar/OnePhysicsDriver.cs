@@ -8,7 +8,7 @@ using P2 = RecursiveAI.OnePhysics.Physics2D;
 
 namespace Bar;
 
-/// <summary>Runs a scene through this library's 2D world, following the same driver protocol as the reference drivers. Joints are not supported yet and are skipped (reported on stderr). Queries run through the world's query API, single-threaded, like the reference drivers.</summary>
+/// <summary>Runs a scene through this library's 2D world, following the same driver protocol as the reference drivers. Revolute joints are built from the scene; other joint types are skipped (reported on stderr). Queries run through the world's query API, single-threaded, like the reference drivers.</summary>
 static class OnePhysicsDriver
 {
     public static int Run(Opts o)
@@ -20,7 +20,6 @@ static class OnePhysicsDriver
 
         var (world, bodies, opt) = SceneBuilder2D.Build(s, threads, out var characters);
         var vy = new float[characters.Count];
-        if (s.Joints.Count > 0) Console.Error.WriteLine($"onephysics: {s.Joints.Count} joints skipped (not supported yet)");
         int n = bodies.Length;
         var d = new double[n * 7];
         void Snap()

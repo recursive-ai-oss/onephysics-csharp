@@ -30,6 +30,9 @@ internal sealed partial class Engine2D
     public const int LayerCount = 32;
     private const uint Services = 2;
 
+    /// <summary>Section version 3: a flag byte, the joint block, then the service block when the flag is set. Written only when the world has joints.</summary>
+    private const uint Extended = 3;
+
     public const byte FlagSensor = 1;
 
     // Per shape (index = shape slot).
@@ -79,7 +82,8 @@ internal sealed partial class Engine2D
     /// <summary>The whole rule: <see cref="CanCollide"/> plus the pair predicate and the struct contact filter (both serial).</summary>
     private bool PairAllowed(int a, int b)
     {
-        if (Core.Shapes.Owner[a] == Core.Shapes.Owner[b] || !CanCollide(a, b)) { return false; }
+        var owner = Core.Shapes.Owner;
+        if (owner[a] == owner[b] || !CanCollide(a, b) || JointsPreventCollision(owner[a], owner[b])) { return false; }
         var predicate = Opt.PairFilter;
         if (predicate != null && !predicate(WrapShape(a), WrapShape(b))) { return false; }
         var filter = ContactFilter;
@@ -151,6 +155,15 @@ internal sealed partial class Engine2D
         public bool Dirty;
         public byte[] Flags = Array.Empty<byte>();
         public byte[] Layers = Array.Empty<byte>();
+
+        public bool IsDefault()
+        {
+            if (Dirty || Hit != 1f) { return false; }
+            foreach (uint row in Matrix) { if (row != uint.MaxValue) { return false; } }
+            foreach (byte f in Flags) { if (f != 0) { return false; } }
+            foreach (byte l in Layers) { if (l != 0) { return false; } }
+            return true;
+        }
     }
 
     private static ServiceBlock ReadServices(StateReader r, int shapeCount, bool[] live)

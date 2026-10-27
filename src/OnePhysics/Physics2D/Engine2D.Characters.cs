@@ -6,8 +6,9 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 
 internal sealed partial class Engine2D
 {
-    /// <summary>Section version written when the world has characters: the services block, then the character block.</summary>
-    private const uint WithCharacters = 3;
+    /// <summary>Section version written when the world has characters: a presence-flags word, then the flagged blocks (joints, services, characters) in that order.</summary>
+    private const uint WithCharacters = 4;
+    private const uint BlockJoints = 1, BlockServices = 2, BlockCharacters = 4;
 
     /// <summary>Slots of the characters (handles with generations, lowest free slot first).</summary>
     public HandleTable CharHandles = new();
@@ -20,8 +21,6 @@ internal sealed partial class Engine2D
     public int[] CharGroundBody = new int[8];    // body slot, -1 none
     public int[] CharGroundGen = new int[8];
     public float[] CharVx = new float[8], CharVy = new float[8];
-
-    private uint SectionVersion() => CharHandles.HighWater > 0 ? WithCharacters : (HasServiceState() ? Services : Version);
 
     private void EnsureCharacters(int n)
     {

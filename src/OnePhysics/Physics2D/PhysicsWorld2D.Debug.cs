@@ -11,7 +11,7 @@ public sealed partial class PhysicsWorld2D
     /// <summary>
     /// Fills <paramref name="geometry"/> with plain data for drawing the world, choosing what to emit with <paramref name="flags"/>; the buffer is cleared first and keeps its capacity.
     /// Nothing is called back and no simulation state changes. Positions are in world coordinates relative to <see cref="Origin"/>. Order: shapes, boxes by shape slot; contacts by constraint index; bodies by body slot.
-    /// Contact points are those of the last step (sleeping contacts keep theirs). <see cref="DebugContent.Joints"/> is accepted and emits nothing until joints exist.
+    /// Contact points are those of the last step (sleeping contacts keep theirs). <see cref="DebugContent.Joints"/> lists each joint (by constraint slot) with both anchors, and the world axis of prismatic and wheel joints.
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="geometry"/> is null.</exception>
     public void GetDebugGeometry(DebugContent flags, DebugGeometry geometry)
@@ -80,7 +80,7 @@ public sealed partial class PhysicsWorld2D
             }
         }
 
-        // DebugContent.Joints: the 2D world has no joints yet; the list stays empty.
+        if ((flags & DebugContent.Joints) != 0) { _engine.AddDebugJoints(geometry); }
     }
 
     private void AddDebugShape(DebugGeometry g, int b, int s, BodyHandle bh, ShapeHandle sh)

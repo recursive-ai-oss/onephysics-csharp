@@ -6,7 +6,7 @@ using P2 = RecursiveAI.OnePhysics.Physics2D;
 
 namespace Bar;
 
-/// <summary>Builds a 2D world from a scene definition. Shared by the bar runner and the hash-matrix scenarios. Joints are not supported yet and are skipped.</summary>
+/// <summary>Builds a 2D world from a scene definition. Shared by the bar runner and the hash-matrix scenarios. Revolute joints (the only 2D kind the scene format has) are created; a joint between two non-dynamic bodies is dropped.</summary>
 public static class SceneBuilder2D
 {
     public static (PhysicsWorld2D World, Body[] Bodies, WorldOptions2D Options) Build(Scene s, int threads) => Build(s, threads, out _);
@@ -46,6 +46,21 @@ public static class SceneBuilder2D
             };
             bodies[i] = world.CreateBody(in bd);
             foreach (var sh in ob.Shapes) CreateShape(world, bodies[i], sh, s);
+        }
+        foreach (var j in s.Joints)
+        {
+            var ba = s.Bodies[j.A]; var bb = s.Bodies[j.B];
+            if (ba.Type != "dynamic" && bb.Type != "dynamic") continue; // the scene format drops a joint between two non-dynamic bodies
+            if (j.Kind != "revolute") throw new InvalidDataException("unsupported 2D joint kind " + j.Kind);
+            var jd = new RevoluteJointDef
+            {
+                BodyA = bodies[j.A], BodyB = bodies[j.B],
+                LocalAnchorA = new Vector2F((float)j.Ax, (float)j.Ay), LocalAnchorB = new Vector2F((float)j.Bx, (float)j.By),
+                ReferenceAngle = (float)(bb.Angle - ba.Angle),
+                EnableLimit = j.HasLimit, LowerAngle = (float)j.Lower, UpperAngle = (float)j.Upper,
+                EnableMotor = j.HasMotor, MotorSpeed = (float)j.MotorSpeed, MaxMotorTorque = (float)j.MaxTorque,
+            };
+            world.CreateJoint(in jd);
         }
         for (int i = 0; i < bodies.Length; i++) if (s.Bodies[i].Asleep) bodies[i].Sleep();
 
