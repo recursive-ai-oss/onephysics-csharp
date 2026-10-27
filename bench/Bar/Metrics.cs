@@ -325,6 +325,7 @@ public static class Metrics
                     if (minY[j] > maxY[i] || maxY[j] < minY[i]) continue;
                     var pj = parts[j];
                     if (pi.Body == pj.Body) continue;
+                    if (s.Bodies[pi.Body].Script != null && s.Bodies[pj.Body].Script != null) continue; // scripted characters are on a layer that ignores itself
                     bool dj = s.Bodies[pj.Body].Type == "dynamic";
                     if (!di && !dj) continue;
                     if (jointed.Contains(((long)Math.Min(pi.Body, pj.Body) << 32) | (uint)Math.Max(pi.Body, pj.Body))) continue;
