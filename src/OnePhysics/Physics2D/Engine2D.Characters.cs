@@ -34,9 +34,27 @@ internal sealed partial class Engine2D
         EnsureCharacters(c + 1);
         CharBody[c] = body.Index; CharBodyGen[c] = body.Generation;
         CharDef[c] = def;
+        IndexCharacterBody(body.Index, c);
         CharGrounded[c] = false; CharNx[c] = 0f; CharNy[c] = 0f; CharGroundBody[c] = -1; CharGroundGen[c] = 0; CharVx[c] = 0f; CharVy[c] = 0f;
         return c;
     }
+
+    /// <summary>Body slots that carry a character (derived from the registry, not saved): -1 or beyond the array when none.</summary>
+    private int[] _charOfBody = Array.Empty<int>();
+
+    private void IndexCharacterBody(int body, int character)
+    {
+        if (body >= _charOfBody.Length)
+        {
+            int old = _charOfBody.Length;
+            Array.Resize(ref _charOfBody, Math.Max(body + 1, old * 2));
+            for (int i = old; i < _charOfBody.Length; i++) { _charOfBody[i] = -1; }
+        }
+
+        _charOfBody[body] = character;
+    }
+
+    private bool IsCharacterBody(int body) => body < _charOfBody.Length && _charOfBody[body] >= 0;
 
     /// <summary>The character slot whose body is the given body slot, or -1.</summary>
     public int CharacterOfBody(int body)
@@ -54,7 +72,22 @@ internal sealed partial class Engine2D
     public void DropCharacterOfBody(int body)
     {
         int c = CharacterOfBody(body);
-        if (c >= 0) { CharHandles.Free(c); }
+        if (c >= 0) { CharHandles.Free(c); _charOfBody[body] = -1; }
+    }
+
+    /// <summary>Emits one entry per live character, by slot: capsule centre, ground flag, ground normal and ground body.</summary>
+    public void AddDebugCharacters(Debug.DebugGeometry g)
+    {
+        var bodies = Core.Bodies;
+        for (int c = 0; c < CharHandles.HighWater; c++)
+        {
+            if (!CharHandles.IsLive(c)) { continue; }
+            int b = CharBody[c];
+            var p = bodies.PositionOf(b);
+            bool gr = CharGrounded[c];
+            var ground = gr && CharGroundBody[c] >= 0 && bodies.Handles.IsAlive(CharGroundBody[c], CharGroundGen[c]) ? Core.HandleOfBody(CharGroundBody[c]) : default;
+            g.Add(new Debug.DebugCharacter(Core.HandleOfBody(b), new Vector3D(p[0], p[1], 0.0), CharDef[c].Radius, CharDef[c].Height, gr, gr ? new Vector3D(CharNx[c], CharNy[c], 0.0) : default, ground));
+        }
     }
 
     // ------------------------------------------------------------------ snapshot block
@@ -118,16 +151,19 @@ internal sealed partial class Engine2D
         if (b == null)
         {
             CharHandles = new HandleTable();
+            Array.Fill(_charOfBody, -1);
             return;
         }
 
         CharHandles = b.Handles;
+        Array.Fill(_charOfBody, -1);
         int n = Math.Max(b.Handles.HighWater, 1);
         CharBody = new int[n]; CharBodyGen = new int[n]; CharDef = new CharacterDef[n]; CharGrounded = new bool[n];
         CharNx = new float[n]; CharNy = new float[n]; CharGroundBody = new int[n]; CharGroundGen = new int[n]; CharVx = new float[n]; CharVy = new float[n];
         for (int c = 0; c < b.Handles.HighWater; c++)
         {
             CharBody[c] = b.Body[c]; CharBodyGen[c] = b.BodyGen[c]; CharDef[c] = b.Def[c]; CharGrounded[c] = b.Grounded[c];
+            if (b.Handles.IsLive(c)) { IndexCharacterBody(b.Body[c], c); }
             CharNx[c] = b.Nx[c]; CharNy[c] = b.Ny[c]; CharGroundBody[c] = b.GroundBody[c]; CharGroundGen[c] = b.GroundGen[c]; CharVx[c] = b.Vx[c]; CharVy[c] = b.Vy[c];
         }
     }

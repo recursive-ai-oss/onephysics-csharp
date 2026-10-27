@@ -97,14 +97,16 @@ internal sealed partial class Engine2D
             if (m.PointCount > 1 && m.Point1.Separation < sep) { sep = m.Point1.Separation; pt = m.Point1.Point; }
             Vec2 n = bq.Rotate(m.Normal);
             Vec2 wp = bq.Rotate(pt);
-            bool walkable = n.Y >= c.CosSlope;
+            // Another character is an obstacle, never ground, and is never pushed out of: two characters that overlap (spawned so, or squeezed by a platform) stay put instead of shoving each other away.
+            bool other = IsCharacterBody(b);
+            bool walkable = n.Y >= c.CosSlope && !other;
             int k = _mvPlaneCount++;
             _mvPlanes[k] = new CollisionPlane2D
             {
                 Normal = new Vector2F(n.X, n.Y),
                 Separation = walkable ? sep : sep - c.Skin,
                 // Overlaps are undone gradually (at most half a radius per move), so a character spawned inside geometry or pushed by a moving obstacle is never thrown across a thin wall.
-                PushLimit = bodies.TypeOf(b) == BodyType.Dynamic ? 0f : c.MaxPush,
+                PushLimit = other || bodies.TypeOf(b) == BodyType.Dynamic ? 0f : c.MaxPush,
             };
             _mvMeta[k] = new PlaneMeta { Slot = s, Px = ox + (double)wp.X, Py = oy + (double)wp.Y };
         }
@@ -215,7 +217,7 @@ internal sealed partial class Engine2D
         if (!(progress > progressNow + 1e-3f)) { _mvHitCount = hits; return false; }
         // The slide may have ridden up a rounded edge; the drop must still end no higher than the step offset above where we started and no lower than where we started.
         float drop = (float)(py - y0) + 2e-3f;
-        if (!MvCast(px, py, 0f, -drop, c, out float fd, out Vec2 n, out _, out _, out _) || n.Y < c.CosSlope) { _mvHitCount = hits; return false; }
+        if (!MvCast(px, py, 0f, -drop, c, out float fd, out Vec2 n, out int dropSlot, out _, out _) || n.Y < c.CosSlope || IsCharacterBody(Core.Shapes.Owner[dropSlot])) { _mvHitCount = hits; return false; }
         double landed = py - (double)(fd * drop);
         if (landed - y0 > (double)c.Step + 1e-3) { _mvHitCount = hits; return false; }
         nx = px; ny = landed;
@@ -265,7 +267,7 @@ internal sealed partial class Engine2D
         bool resting = false;
         for (int i = 0; i < _mvPlaneCount; i++)
         {
-            if (_mvPlanes[i].Normal.Y >= c.CosSlope && _mvPlanes[i].Separation + r.X * _mvPlanes[i].Normal.X + r.Y * _mvPlanes[i].Normal.Y <= 1e-3f)
+            if (_mvPlanes[i].Normal.Y >= c.CosSlope && !IsCharacterBody(Core.Shapes.Owner[_mvMeta[i].Slot]) && _mvPlanes[i].Separation + r.X * _mvPlanes[i].Normal.X + r.Y * _mvPlanes[i].Normal.Y <= 1e-3f)
             {
                 resting = true;
                 // Pressing into the ground counts as a hit with it.
@@ -368,7 +370,7 @@ internal sealed partial class Engine2D
             {
                 float ny = _mvPlanes[i].Normal.Y;
                 float sep = _mvPlanes[i].Separation + settle.X * _mvPlanes[i].Normal.X + settle.Y * ny;
-                if (ny < c.CosSlope || sep > 2f * c.Skin) { continue; }
+                if (ny < c.CosSlope || sep > 2f * c.Skin || IsCharacterBody(Core.Shapes.Owner[_mvMeta[i].Slot])) { continue; }
                 if (!grounded || ny > best) { best = ny; grounded = true; gnx = _mvPlanes[i].Normal.X; gny = ny; gslot = _mvMeta[i].Slot; }
             }
         }
