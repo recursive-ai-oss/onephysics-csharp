@@ -42,7 +42,11 @@ internal static class SmokeProgram
         ulong j1 = World2DJoints(1, false), j3 = World2DJoints(3, false), jr = World2DJoints(1, true);
         bool jSame = j1 == j3 && j1 == jr;
         Console.WriteLine((jSame ? "OK joints2d " : "FAIL joints2d ") + j1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
-        return ok && same && bpSame && w2Same && jSame ? 0 : 1;
+        // 2D bullets and characters: same state on one and three threads and after a restore; the bullet must stop at the wall and the walkers must stand on the floor.
+        ulong c1 = World2DCharacters(1, false), c3 = World2DCharacters(3, false), cr = World2DCharacters(1, true);
+        bool cSame = c1 == c3 && c1 == cr;
+        Console.WriteLine((cSame ? "OK characters2d " : "FAIL characters2d ") + c1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        return ok && same && bpSame && w2Same && jSame && cSame ? 0 : 1;
     }
 
     private static ulong World2DJoints(int threads, bool restoreHalfway)
@@ -107,5 +111,43 @@ internal static class SmokeProgram
         }
 
         return w.ComputeHash();
+    }
+
+    private static ulong World2DCharacters(int threads, bool restoreHalfway)
+    {
+        var w = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new RecursiveAI.OnePhysics.Physics2D.WorldOptions2D { ThreadCount = threads, WorldId = 5 });
+        w.AddBox(new RecursiveAI.OneMath.Vector2F(40f, 1f), new RecursiveAI.OneMath.Vector2D(0, -0.5), type: BodyType.Static);
+        w.AddBox(new RecursiveAI.OneMath.Vector2F(1f, 0.5f), new RecursiveAI.OneMath.Vector2D(3, 0.25), type: BodyType.Static);
+        w.AddBox(new RecursiveAI.OneMath.Vector2F(0.05f, 6f), new RecursiveAI.OneMath.Vector2D(12, 3), density: 5f);
+        var bullet = w.CreateBody(new RecursiveAI.OnePhysics.Physics2D.BodyDef { Type = BodyType.Dynamic, Position = new RecursiveAI.OneMath.Vector2D(6, 3), IsBullet = true, GravityScale = 0f });
+        w.CreateCircle(bullet, 0.1f);
+        bullet.LinearVelocity = new RecursiveAI.OneMath.Vector2F(300f, 0f);
+        for (int i = 0; i < 4; i++)
+        {
+            var def = RecursiveAI.OnePhysics.Physics2D.Character.Humanoid;
+            def.PushStrength = i * 0.3f;
+            w.AddCharacter(new RecursiveAI.OneMath.Vector2D(-6 + i * 1.5, 1.5), def);
+        }
+
+        for (int i = 0; i < 180; i++)
+        {
+            if (restoreHalfway && i == 90)
+            {
+                byte[] snap = w.Snapshot();
+                w = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new RecursiveAI.OnePhysics.Physics2D.WorldOptions2D { WorldId = 5 });
+                w.Restore(snap);
+            }
+
+            foreach (var c in w.GetCharacters())
+            {
+                c.Move(new RecursiveAI.OneMath.Vector2F(2f / 60f, (c.IsGrounded ? -0.5f : -4f) / 60f), 1f / 60f);
+            }
+
+            w.Step(1f / 60f);
+        }
+
+        var chars = w.GetCharacters();
+        bool stand = chars.Length == 4 && chars[0].IsGrounded && chars[0].Position.X > -3;
+        return w.ComputeHash() ^ (stand ? 0UL : 0xBEEFUL);
     }
 }

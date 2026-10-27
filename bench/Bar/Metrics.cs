@@ -209,6 +209,23 @@ public static class Metrics
             }
             r["jitter"] = j;
         }
+        if (want.Contains("charJitter") && frames.Count >= 3)
+        {
+            // Characters standing still (or riding constant-velocity ground) should not change velocity: the largest change between consecutive dumps over the last four intervals.
+            double worst = 0;
+            for (int k = frames.Count - 4; k + 1 < frames.Count; k++)
+            {
+                if (k < 0) continue;
+                for (int i = 0; i < n; i++)
+                {
+                    if (s.Bodies[i].Script == null) continue;
+                    double dvx = frames[k + 1].D[i * 7 + 3] - frames[k].D[i * 7 + 3], dvy = frames[k + 1].D[i * 7 + 4] - frames[k].D[i * 7 + 4];
+                    worst = Math.Max(worst, Math.Sqrt(dvx * dvx + dvy * dvy));
+                }
+            }
+
+            r["charJitter"] = worst;
+        }
         if (want.Contains("asleepBeforeWake") && s.Events.Count > 0)
         {
             var f = frames.FirstOrDefault(x => x.Step == s.Events[0].Step);
@@ -308,6 +325,7 @@ public static class Metrics
                     if (minY[j] > maxY[i] || maxY[j] < minY[i]) continue;
                     var pj = parts[j];
                     if (pi.Body == pj.Body) continue;
+                    if (s.Bodies[pi.Body].Script != null && s.Bodies[pj.Body].Script != null) continue; // scripted characters are on a layer that ignores itself
                     bool dj = s.Bodies[pj.Body].Type == "dynamic";
                     if (!di && !dj) continue;
                     if (jointed.Contains(((long)Math.Min(pi.Body, pj.Body) << 32) | (uint)Math.Max(pi.Body, pj.Body))) continue;

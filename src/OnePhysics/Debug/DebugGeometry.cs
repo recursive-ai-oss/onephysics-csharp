@@ -29,8 +29,11 @@ public enum DebugContent
     /// <summary>One entry per joint (<see cref="DebugGeometry.Joints"/>); one per live joint, in constraint-slot order.</summary>
     Joints = 32,
 
+    /// <summary>One entry per character with its capsule, ground state and ground normal (<see cref="DebugGeometry.Characters"/>); worlds without characters emit none.</summary>
+    Characters = 64,
+
     /// <summary>Everything.</summary>
-    All = 63,
+    All = 127,
 }
 
 /// <summary>The kind of a <see cref="DebugShape"/>. The same enum serves 2D and 3D worlds; a 2D world emits the first five.</summary>
@@ -215,6 +218,37 @@ public readonly struct DebugJoint
     public Vector3D Axis { get; }
 }
 
+/// <summary>A character as plain data: its capsule (vertical axis, centred on <see cref="Center"/>) and what it stands on.</summary>
+public readonly struct DebugCharacter
+{
+    /// <summary>Creates an entry.</summary>
+    public DebugCharacter(BodyHandle body, Vector3D center, float radius, float height, bool isGrounded, Vector3D groundNormal, BodyHandle groundBody)
+    {
+        Body = body; Center = center; Radius = radius; Height = height; IsGrounded = isGrounded; GroundNormal = groundNormal; GroundBody = groundBody;
+    }
+
+    /// <summary>The character's (kinematic) body.</summary>
+    public BodyHandle Body { get; }
+
+    /// <summary>The centre of the capsule in world coordinates.</summary>
+    public Vector3D Center { get; }
+
+    /// <summary>Capsule radius.</summary>
+    public float Radius { get; }
+
+    /// <summary>Total capsule height, end to end.</summary>
+    public float Height { get; }
+
+    /// <summary>True when the character stood on walkable ground after its last move.</summary>
+    public bool IsGrounded { get; }
+
+    /// <summary>The unit normal of the ground it stands on; zero when not grounded.</summary>
+    public Vector3D GroundNormal { get; }
+
+    /// <summary>The body it stands on; the default handle when not grounded.</summary>
+    public BodyHandle GroundBody { get; }
+}
+
 /// <summary>
 /// Plain data a host draws: nothing here calls back. Create one buffer and pass it to <c>GetDebugGeometry</c> every frame; its lists keep their capacity, so after the first few frames filling it allocates nothing.
 /// The same types serve 2D and 3D worlds (a 2D world leaves z at 0). Entries come in a fixed order: shapes, boxes and broadphase boxes by shape slot, contacts by constraint index, bodies by body slot.
@@ -228,7 +262,8 @@ public sealed class DebugGeometry
     private DebugContact[] _contacts = new DebugContact[16];
     private DebugBody[] _bodies = new DebugBody[16];
     private DebugJoint[] _joints = new DebugJoint[4];
-    private int _nShapes, _nPoints, _nBounds, _nFat, _nContacts, _nBodies, _nJoints;
+    private DebugCharacter[] _characters = new DebugCharacter[4];
+    private int _nShapes, _nPoints, _nBounds, _nFat, _nContacts, _nBodies, _nJoints, _nCharacters;
 
     /// <summary>The shapes in world space.</summary>
     public ReadOnlySpan<DebugShape> Shapes => _shapes.AsSpan(0, _nShapes);
@@ -251,8 +286,11 @@ public sealed class DebugGeometry
     /// <summary>Joints.</summary>
     public ReadOnlySpan<DebugJoint> Joints => _joints.AsSpan(0, _nJoints);
 
+    /// <summary>Characters, by character slot.</summary>
+    public ReadOnlySpan<DebugCharacter> Characters => _characters.AsSpan(0, _nCharacters);
+
     /// <summary>Empties every list (capacity is kept).</summary>
-    public void Clear() => _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = 0;
+    public void Clear() => _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = 0;
 
     private static void Push<T>(ref T[] a, ref int n, in T v)
     {
@@ -277,6 +315,9 @@ public sealed class DebugGeometry
 
     /// <summary>Appends a body entry.</summary>
     public void Add(in DebugBody b) => Push(ref _bodies, ref _nBodies, in b);
+
+    /// <summary>Appends a character entry.</summary>
+    public void Add(in DebugCharacter c) => Push(ref _characters, ref _nCharacters, in c);
 
     /// <summary>Appends a joint entry.</summary>
     public void Add(in DebugJoint j) => Push(ref _joints, ref _nJoints, in j);

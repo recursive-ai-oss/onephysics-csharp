@@ -230,8 +230,67 @@ public static class Gen
         return s;
     }
 
+    // Terrain for the characters scene as (x, y) corner points: flats, 17-degree ramps, a plateau, a stair of twenty 0.2 m steps and a long gentle descent.
+    static List<(double x, double y)> CharacterTerrain()
+    {
+        var p = new List<(double x, double y)> { (-100, 0), (-60, 0), (-45, 4.5), (-30, 4.5), (-15, 0) };
+        p.Add((0, 0));
+        for (int k = 0; k < 20; k++) { if (k > 0) p.Add((0.6 * k, 0.2 * k)); p.Add((0.6 * k, 0.2 * (k + 1))); }
+        p.Add((12, 4)); p.Add((40, 4)); p.Add((70, 0)); p.Add((100, 0));
+        return p;
+    }
+
+    // Height of the terrain's upper surface at x (the first step's tread for a riser).
+    static double TerrainHeight(List<(double x, double y)> t, double x)
+    {
+        double best = double.MinValue;
+        for (int i = 0; i + 1 < t.Count; i++)
+        {
+            var (ax, ay) = t[i]; var (bx, by) = t[i + 1];
+            if (ax == bx || x < Math.Min(ax, bx) || x > Math.Max(ax, bx)) continue;
+            best = Math.Max(best, ay + (by - ay) * (x - ax) / (bx - ax));
+        }
+        return best;
+    }
+
+    static Scene Characters()
+    {
+        var s = Base("characters", 600, "maxPenetration", "maxSpeed", "nan", "escapes", "tunnelled", "charJitter");
+        s.DumpEvery = 30;
+        s.Params["engines"] = ["onephysics"]; // only a character-aware driver; the references have no character mover
+        var terrain = CharacterTerrain();
+        var g = Add(s, "static", 0, 0);
+        var pts = new List<double>(); foreach (var (x, y) in terrain) { pts.Add(x); pts.Add(y); }
+        Shape(g, "chain", 0, 0, pts.ToArray());
+        Shape(g, "segment", 0, 0, -100, 0, -100, 30);
+        Shape(g, "segment", 0, 0, 100, 0, 100, 30);
+        // Moving platforms: kinematic boxes sliding at 1.5 m/s above the two flat stretches at the ends, three on top of each other at each end.
+        double[] px = [-90, -90, -90, 92, 92, 92], py = [3, 6.5, 10, 3, 6.5, 10], pv = [1.5, 1.5, 1.5, -1.5, -1.5, -1.5];
+        // Crates to push on the flat stretch between the ramps and the stairs.
+        for (int i = 0; i < 40; i++) Box(Add(s, "dynamic", -14 + (i % 14) * 1.05, 0.5 + (i / 14) * 1.05), 0.5, 0.5);
+        for (int i = 0; i < px.Length; i++)
+        {
+            var pl = Add(s, "kinematic", px[i], py[i], 0, pv[i], 0); Box(pl, 4, 0.25);
+        }
+        // 240 characters on the ground (0.65 m apart, skipping the crates and the stairs), 60 on the platforms; all 1.8 m capsules of radius 0.3, the default humanoid.
+        double gx = -96;
+        for (int i = 0; i < 300; i++)
+        {
+            double x, y;
+            if (i < 240) { while (gx > -16 && gx < 13) gx += 0.65; x = gx; gx += 0.65; y = TerrainHeight(terrain, x) + 0.95; }
+            else { int k = (i - 240) / 10, j = (i - 240) % 10; x = px[k] - 3.15 + j * 0.7; y = py[k] + 0.25 + 0.95; }
+            var b = Add(s, "dynamic", x, y);
+            Shape(b, "capsule", 1, 0.3, 0, -0.6, 0, 0.6);
+            b.Script = new CharacterScript { Speed = i < 240 ? 1.0 + 0.5 * (i % 4) : 0.5, Period = 60 + 30 * (i % 5), Jump = i % 3 == 0 ? 150 : 0, Stop = 420, Push = i % 2 == 0 ? 0.5 : 0 };
+        }
+
+        s.Params["container"] = ["-105", "-10", "105", "40"];
+        s.Params["floor"] = ["-5"];
+        return s;
+    }
+
     public static List<Scene> All() =>
-        [Pyramid(20), Pyramid(100), LargePile(), Tumbler(), JointGrid(), Chain(), SleepWake(), MixedTerrain(), Bullets(), Queries(), ..Gen3.All()];
+        [Pyramid(20), Pyramid(100), LargePile(), Tumbler(), JointGrid(), Chain(), SleepWake(), MixedTerrain(), Bullets(), Queries(), Characters(), ..Gen3.All()];
 
     /// <summary>Writes every scene into <paramref name="dir"/> and a SHA256SUMS manifest beside them.</summary>
     public static void WriteAll(string dir)

@@ -83,6 +83,12 @@ public interface IWorldStages
     /// Called over chunks of awake bodies (ascending), possibly concurrently, so it may only write the bodies it is handed. The default does nothing.
     /// </summary>
     void FinalizeBodies(WorldCore world, ReadOnlySpan<int> bodies, in StepContext context) { }
+
+    /// <summary>
+    /// Once, serially, after every <see cref="FinalizeBodies"/> call of the step has finished and before <see cref="StoreResults"/>: work that reads the final pose of other bodies, such as bullets
+    /// sweeping against bodies that moved this step. It may use <see cref="WorldCore.Executor"/> for its own parallel work. The default does nothing.
+    /// </summary>
+    void AfterFinalize(WorldCore world, in StepContext context) { }
 }
 
 /// <summary>
@@ -550,6 +556,7 @@ public sealed class WorldCore
 
         SolveAll(stages, SolvePhase.Restitution, ctx);
         Executor.For(bodyChunks, new FinalizeTask<TStages>(this, stages, _awake, _awakeCount, ctx));
+        stages.AfterFinalize(this, ctx);
         Executor.For(storeChunks, new StoreTask<TStages>(this, stages, list, active, ctx));
 
         ProcessBreaks();

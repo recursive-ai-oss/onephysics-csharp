@@ -25,6 +25,7 @@ One record per line, tokens separated by spaces or tabs, `#` starts a comment. N
 | `shape` | kind material density radius params… | see below; attaches to the last body; density in kg/m² |
 | `joint` | revolute a b ax ay bx by [limit lo hi] [motor speed maxTorque] | body indices; anchors are body-local points; the joint angle is `angleB − angleA` measured from the initial pose, so limits and motors assume equal initial angles; bodies joined by a joint do not collide; a joint between two non-dynamic bodies is dropped |
 | `query` | ray ox oy dx dy len / overlap cx cy r / cast cx cy r tx ty | closest ray hit with unit direction d and length len; circle overlap (counts shapes); circle sweep by translation t (closest hit) |
+| `character` | speed period jump stop push | marks the last `body` (a single capsule) as a scripted character: walks at `speed` m/s along x, reverses every `period` steps, jumps every `jump` steps (0 = never), stops walking and jumping at step `stop`, `push` is the push strength (0 = never pushes). Engines without a character mover (the references) see a plain dynamic capsule; only the `onephysics` engine runs the script (a scene may set `param engines onephysics`, and the runner skips the others) |
 | `event` | step wake_all | before that step every dynamic body is woken |
 
 Shape kinds (2D, local to the body; `radius` is the skin radius):
@@ -70,6 +71,7 @@ Characters, vehicles and soft bodies get their own records when their stages arr
 | `sleep-wake` | 2 | 3002 | 360 | 3000 boxes created asleep in 60 stacks, all woken at step 120, a heavy ball arrives near step 150 | maxPenetration, finalPenetration, maxSpeed, nan, escapes, asleepBeforeWake, awakeFinal |
 | `mixed-terrain` | 2 | 1501 | 600 | 1500 mixed shapes on a 300-segment hilly polyline | maxPenetration, finalPenetration, maxSpeed, nan, escapes, tunnelled |
 | `bullets` | 2 | 202 | 180 | 200 small bullets at 150 m/s against a 0.2 m wall (2.5 m per step) | tunnelled, maxSpeed, nan |
+| `characters` | 2 | 347 | 600 | 300 capsule characters on mixed terrain (240 on the ground, 60 on 6 kinematic platforms) walking, jumping and pushing 40 crates; characters share a layer that ignores itself | charJitter, escapes, tunnelled, maxPenetration, maxSpeed, nan |
 | `queries` | 2 | 4001 | 300 + queries | the large pile settled for 300 steps, then 4000 rays, 4000 circle overlaps, 4000 circle sweeps, 10 repetitions | maxSpeed, nan, escapes; throughput |
 
 3D scenes (dimension 3; generator `bench/Bar/Gen3.cs`, same seeded rules). Gravity is (0, −10, 0); every box, sphere, capsule and hull has density 1 unless noted; friction 0.6, restitution 0.
@@ -91,6 +93,8 @@ Characters, vehicles, ragdolls with joint limits, and soft bodies are defined wh
 
 Every driver writes the same binary file in stability mode. Little-endian. Header: the ASCII bytes `OPDUMP01`, `u32` body count, `u32` 0. Then frames: `u32` step number (0 = initial state), `u32` 0, and `7 × n` doubles per frame in scene body order: x, y, angle (body origin, radians), vx, vy (centre-of-mass velocity as the engine reports it), w, awake (1 or 0). In 3D the header word is 3 and a frame is `14 × n` doubles: x, y, z, qx, qy, qz, qw (body origin, unit quaternion), vx, vy, vz, wx, wy, wz (centre-of-mass velocity as the engine reports it), awake.
 
+The `characters` scene has no reference rows. Proposed thresholds for this library's engine: `nan` = `escapes` = `tunnelled` = 0, `maxSpeed` ≤ 20, `maxPenetration` ≤ 0.25 (overlap between two scripted characters is not counted), `charJitter` ≤ 0.01. Measured at 1 thread: 0, 0, 0, 14.3, 0.15, 0.
+
 ## Metrics
 
 Computed by `bar metrics SCENE DUMP` from the dump and the scene alone, so every engine is judged by the same code. Shape penetration is measured geometrically from poses: for two convex cores (point, segment, triangle, polygon or point cloud) the signed distance between them is taken from the Minkowski difference (in 3D by GJK, with EPA for overlaps, in the bench tool itself; cores that only touch count as zero depth), and the skin radii are subtracted; skin radii are ignored in mass computation. Pairs on the same body, pairs of non-dynamic bodies and jointed pairs are skipped.
@@ -106,6 +110,7 @@ Computed by `bar metrics SCENE DUMP` from the dump and the scene alone, so every
 | `escapes` | most dynamic bodies outside `param container x0 y0 x1 y1` (grown by 0.5 m) in any frame |
 | `tunnelled` | most dynamic bodies past `param wall x` (+ 0.1 m) or below `param floor y` in any frame |
 | `collapse` | `topDrop` and `topLateral`: the drop in height and the sideways drift of `param top <body>` at the final frame |
+| `charJitter` | characters scene: largest change of a character's velocity between consecutive dumps over the last four dump intervals (characters stop at their `stop` step, so a character standing still gives 0), m/s |
 | `jointError` | largest distance between the two world positions of any joint's anchors, metres |
 | `asleepBeforeWake` | dynamic bodies asleep in the frame at the first `event` step (scenes create them asleep) |
 | `awakeFinal` | dynamic bodies awake in the final frame |
