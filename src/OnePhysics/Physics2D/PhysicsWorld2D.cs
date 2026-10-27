@@ -129,6 +129,7 @@ public sealed partial class PhysicsWorld2D
         }
 
         foreach (int k in dead) { _handlers.Remove(k); }
+        if (_controllerHandlers.Count > 0) { DropDeadControllerHandlers(); }
     }
 
     /// <summary>
@@ -286,6 +287,7 @@ public sealed partial class PhysicsWorld2D
     {
         _engine.DestroyBody(h);
         _handlers.Remove(h.Index);
+        if (_controllerHandlers.Count > 0) { DropDeadControllerHandlers(); }
     }
 
     internal void DestroyShape(ShapeHandle h) => _engine.DestroyShape(h);

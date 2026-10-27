@@ -151,6 +151,7 @@ internal sealed partial class Engine2D : ISnapshotSection
             Bp.DestroyProxy(Proxy[s]);
         }
 
+        DropCharacterOfBody(b);
         Core.DestroyBody(handle);
         ShapeHead[b] = -1; ShapeTail[b] = -1;
         Mass[b] = 0f; Inertia[b] = 0f;
@@ -402,8 +403,8 @@ internal sealed partial class Engine2D : ISnapshotSection
 
     public void Write(StateWriter w)
     {
-        bool services = HasServiceState();
-        w.WriteUInt32(services ? Services : Version);
+        uint sectionVersion = SectionVersion();
+        w.WriteUInt32(sectionVersion);
         w.WriteSingle(Opt.ContactHertz); w.WriteSingle(Opt.ContactDampingRatio); w.WriteSingle(Opt.PushOutVelocity); w.WriteSingle(Opt.RestitutionThreshold);
         w.WriteSingle(Opt.MaxLinearSpeed); w.WriteSingle(Opt.MaxRotationPerSubstep); w.WriteBool(Opt.ContinuousEnabled); w.WriteSingle(Opt.ContactSlop);
         int nb = Core.Bodies.HighWater;
@@ -439,7 +440,8 @@ internal sealed partial class Engine2D : ISnapshotSection
 
         w.WriteInt32(PairFreeCount);
         w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
-        if (services) { WriteServices(w, ns); }
+        if (sectionVersion >= Services) { WriteServices(w, ns); }
+        if (sectionVersion == WithCharacters) { WriteCharacters(w); }
     }
 
     private static void WriteShape(StateWriter w, in Shape2D g)
@@ -479,7 +481,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     public void Read(StateReader r)
     {
         uint v = r.ReadUInt32();
-        if (v != Version && v != Services) { throw r.Error("unsupported 2D engine section version " + v.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+        if (v != Version && v != Services && v != WithCharacters) { throw r.Error("unsupported 2D engine section version " + v.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
         float hertz = r.ReadSingle(), zeta = r.ReadSingle(), push = r.ReadSingle(), thr = r.ReadSingle(), maxSpeed = r.ReadSingle(), maxRot = r.ReadSingle();
         bool continuous = r.ReadBool();
         float slop = r.ReadSingle();
@@ -536,7 +538,8 @@ internal sealed partial class Engine2D : ISnapshotSection
             if (free[i] < 0 || free[i] >= np || pl[free[i]]) { throw r.Error("invalid free pair"); }
         }
 
-        ServiceBlock? svc = v == Services ? ReadServices(r, ns, live) : null;
+        ServiceBlock? svc = v >= Services ? ReadServices(r, ns, live) : null;
+        CharacterBlock? chars = v == WithCharacters ? ReadCharacters(r, nb) : null;
 
         // Commit.
         Opt.ContactHertz = hertz; Opt.ContactDampingRatio = zeta; Opt.PushOutVelocity = push; Opt.RestitutionThreshold = thr;
@@ -554,6 +557,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         }
 
         CommitServices(svc, ns);
+        CommitCharacters(chars);
     }
 
     /// <summary>Checks the section against the core after a restore; false when the two disagree (a damaged snapshot that parsed).</summary>
@@ -562,6 +566,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         var bodies = Core.Bodies;
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || Geom.Length < shapes.HighWater) { return false; }
+        if (!CharactersConsistent()) { return false; }
         var cons = Core.Constraints;
         for (int s = 0; s < shapes.HighWater; s++)
         {
