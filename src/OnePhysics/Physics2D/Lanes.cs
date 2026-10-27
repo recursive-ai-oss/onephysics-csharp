@@ -23,6 +23,12 @@ internal interface ILane<T> where T : struct, ILane<T>
 
     void Store(Span<float> destination);
 
+    /// <summary>Loads <see cref="Count"/> floats starting at <paramref name="offset"/> with no bounds check (see <see cref="Mem"/>).</summary>
+    static abstract T LoadAt(ReadOnlySpan<float> source, int offset);
+
+    /// <summary>Stores <see cref="Count"/> floats starting at <paramref name="offset"/> with no bounds check (see <see cref="Mem"/>).</summary>
+    void StoreAt(Span<float> destination, int offset);
+
     /// <summary>Lane i takes the eight floats at <c>source[offsets[i]..]</c>; field k of every lane comes back together as <c>Rk</c> (a transpose: the rows are loaded whole, not float by float).</summary>
     static abstract Rows8<T> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> offsets);
 
@@ -85,6 +91,18 @@ internal readonly struct Lanes1 : ILane<Lanes1>
 
     public void Store(Span<float> destination) => destination[0] = _v;
 
+    public static Lanes1 LoadAt(ReadOnlySpan<float> source, int offset)
+    {
+        Mem.Range(source, offset, 1);
+        return new(Mem.At(source, offset));
+    }
+
+    public void StoreAt(Span<float> destination, int offset)
+    {
+        Mem.Range(destination, offset, 1);
+        Mem.At(destination, offset) = _v;
+    }
+
     public static Rows8<Lanes1> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> offsets)
     {
         var r = source.Slice(offsets[0], 8);
@@ -123,6 +141,18 @@ internal readonly struct Lanes128 : ILane<Lanes128>
     public static Lanes128 Load(ReadOnlySpan<float> source) => new(Vector128.Create(source));
 
     public void Store(Span<float> destination) => _v.CopyTo(destination);
+
+    public static Lanes128 LoadAt(ReadOnlySpan<float> source, int offset)
+    {
+        Mem.Range(source, offset, 4);
+        return new(Vector128.LoadUnsafe(in Mem.At(source, offset)));
+    }
+
+    public void StoreAt(Span<float> destination, int offset)
+    {
+        Mem.Range(destination, offset, 4);
+        _v.StoreUnsafe(ref Mem.At(destination, offset));
+    }
 
     public static Rows8<Lanes128> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> offsets)
     {
@@ -167,15 +197,30 @@ internal readonly struct Lanes256 : ILane<Lanes256>
 
     public void Store(Span<float> destination) => _v.CopyTo(destination);
 
+    public static Lanes256 LoadAt(ReadOnlySpan<float> source, int offset)
+    {
+        Mem.Range(source, offset, 8);
+        return new(Vector256.LoadUnsafe(in Mem.At(source, offset)));
+    }
+
+    public void StoreAt(Span<float> destination, int offset)
+    {
+        Mem.Range(destination, offset, 8);
+        _v.StoreUnsafe(ref Mem.At(destination, offset));
+    }
+
     public static Rows8<Lanes256> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> offsets)
     {
-        var a = source.Slice(offsets[0], 8); var b = source.Slice(offsets[1], 8); var c = source.Slice(offsets[2], 8); var d = source.Slice(offsets[3], 8);
-        var e = source.Slice(offsets[4], 8); var f = source.Slice(offsets[5], 8); var g = source.Slice(offsets[6], 8); var h = source.Slice(offsets[7], 8);
         if (Avx.IsSupported)
         {
             // The usual 8x8 transpose: interleave pairs of rows, then quads, then swap the 128-bit halves. Pure data movement, so the bits are those of the scalar loads below.
-            var r0 = Vector256.Create(a); var r1 = Vector256.Create(b); var r2 = Vector256.Create(c); var r3 = Vector256.Create(d);
-            var r4 = Vector256.Create(e); var r5 = Vector256.Create(f); var r6 = Vector256.Create(g); var r7 = Vector256.Create(h);
+            // The offsets name whole body rows that the preparation wrote, so each row is in range.
+            Mem.Range(source, offsets[0], 8); Mem.Range(source, offsets[1], 8); Mem.Range(source, offsets[2], 8); Mem.Range(source, offsets[3], 8);
+            Mem.Range(source, offsets[4], 8); Mem.Range(source, offsets[5], 8); Mem.Range(source, offsets[6], 8); Mem.Range(source, offsets[7], 8);
+            var r0 = Vector256.LoadUnsafe(in Mem.At(source, offsets[0])); var r1 = Vector256.LoadUnsafe(in Mem.At(source, offsets[1]));
+            var r2 = Vector256.LoadUnsafe(in Mem.At(source, offsets[2])); var r3 = Vector256.LoadUnsafe(in Mem.At(source, offsets[3]));
+            var r4 = Vector256.LoadUnsafe(in Mem.At(source, offsets[4])); var r5 = Vector256.LoadUnsafe(in Mem.At(source, offsets[5]));
+            var r6 = Vector256.LoadUnsafe(in Mem.At(source, offsets[6])); var r7 = Vector256.LoadUnsafe(in Mem.At(source, offsets[7]));
             var t0 = Avx.UnpackLow(r0, r1); var t1 = Avx.UnpackHigh(r0, r1); var t2 = Avx.UnpackLow(r2, r3); var t3 = Avx.UnpackHigh(r2, r3);
             var t4 = Avx.UnpackLow(r4, r5); var t5 = Avx.UnpackHigh(r4, r5); var t6 = Avx.UnpackLow(r6, r7); var t7 = Avx.UnpackHigh(r6, r7);
             var u0 = Avx.Shuffle(t0, t2, 0x44); var u1 = Avx.Shuffle(t0, t2, 0xEE); var u2 = Avx.Shuffle(t1, t3, 0x44); var u3 = Avx.Shuffle(t1, t3, 0xEE);
@@ -187,6 +232,8 @@ internal readonly struct Lanes256 : ILane<Lanes256>
             };
         }
 
+        var a = source.Slice(offsets[0], 8); var b = source.Slice(offsets[1], 8); var c = source.Slice(offsets[2], 8); var d = source.Slice(offsets[3], 8);
+        var e = source.Slice(offsets[4], 8); var f = source.Slice(offsets[5], 8); var g = source.Slice(offsets[6], 8); var h = source.Slice(offsets[7], 8);
         return new Rows8<Lanes256>
         {
             R0 = new(Vector256.Create(a[0], b[0], c[0], d[0], e[0], f[0], g[0], h[0])), R1 = new(Vector256.Create(a[1], b[1], c[1], d[1], e[1], f[1], g[1], h[1])),

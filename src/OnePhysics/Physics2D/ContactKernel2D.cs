@@ -68,7 +68,7 @@ internal static class ContactKernel2D
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static T W<T>(ReadOnlySpan<float> wide, int f, int lane0) where T : struct, ILane<T> => T.Load(wide.Slice(f * 8 + lane0, T.Count));
+    private static T W<T>(ReadOnlySpan<float> wide, int f, int lane0) where T : struct, ILane<T> => T.LoadAt(wide, f * 8 + lane0);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static T Clamp<T>(T x, T lo, T hi) where T : struct, ILane<T> => Lane.Max(lo, Lane.Min(hi, x));
@@ -273,27 +273,37 @@ internal static class ContactKernel2D
             }
 
             T vAx = v.Ax, vAy = v.Ay, wA = v.Wa, vBx = v.Bx, vBy = v.By, wB = v.Wb;
-            vAx.Store(os.Slice(0 * width, width)); vAy.Store(os.Slice(1 * width, width)); wA.Store(os.Slice(2 * width, width));
-            vBx.Store(os.Slice(3 * width, width)); vBy.Store(os.Slice(4 * width, width)); wB.Store(os.Slice(5 * width, width));
+            vAx.StoreAt(os, 0 * width); vAy.StoreAt(os, 1 * width); wA.StoreAt(os, 2 * width);
+            vBx.StoreAt(os, 3 * width); vBy.StoreAt(os, 4 * width); wB.StoreAt(os, 5 * width);
             for (int l = 0; l < width; l++)
             {
+                // Scatter offsets are body rows the preparation wrote (a body index plus one, times the row stride), or -1 for a body that keeps its velocity.
                 int oa = idx[16 + l0 + l];
-                if (oa >= 0) { state[oa + BS2D.Vx] = os[l]; state[oa + BS2D.Vy] = os[width + l]; state[oa + BS2D.W] = os[2 * width + l]; }
+                if (oa >= 0)
+                {
+                    Mem.Range(state, oa, BS2D.W + 1);
+                    Mem.At(state, oa + BS2D.Vx) = os[l]; Mem.At(state, oa + BS2D.Vy) = os[width + l]; Mem.At(state, oa + BS2D.W) = os[2 * width + l];
+                }
+
                 int ob = idx[24 + l0 + l];
-                if (ob >= 0) { state[ob + BS2D.Vx] = os[3 * width + l]; state[ob + BS2D.Vy] = os[4 * width + l]; state[ob + BS2D.W] = os[5 * width + l]; }
+                if (ob >= 0)
+                {
+                    Mem.Range(state, ob, BS2D.W + 1);
+                    Mem.At(state, ob + BS2D.Vx) = os[3 * width + l]; Mem.At(state, ob + BS2D.Vy) = os[4 * width + l]; Mem.At(state, ob + BS2D.W) = os[5 * width + l];
+                }
             }
 
             if (phase == SolvePhase.Restitution)
             {
                 // Restitution leaves the friction and rolling impulses alone.
-                p0.NImp.Store(wide.Slice(W2D.Impulse0 * 8 + l0, width)); p0.MaxN.Store(wide.Slice((W2D.Impulse0 + 2) * 8 + l0, width));
-                p1.NImp.Store(wide.Slice(W2D.Impulse1 * 8 + l0, width)); p1.MaxN.Store(wide.Slice((W2D.Impulse1 + 2) * 8 + l0, width));
+                p0.NImp.StoreAt(wide, W2D.Impulse0 * 8 + l0); p0.MaxN.StoreAt(wide, (W2D.Impulse0 + 2) * 8 + l0);
+                p1.NImp.StoreAt(wide, W2D.Impulse1 * 8 + l0); p1.MaxN.StoreAt(wide, (W2D.Impulse1 + 2) * 8 + l0);
             }
             else if (phase != SolvePhase.WarmStart)
             {
-                rollImp.Store(wide.Slice(W2D.Roll * 8 + l0, width));
-                p0.NImp.Store(wide.Slice(W2D.Impulse0 * 8 + l0, width)); p0.TImp.Store(wide.Slice((W2D.Impulse0 + 1) * 8 + l0, width)); p0.MaxN.Store(wide.Slice((W2D.Impulse0 + 2) * 8 + l0, width));
-                p1.NImp.Store(wide.Slice(W2D.Impulse1 * 8 + l0, width)); p1.TImp.Store(wide.Slice((W2D.Impulse1 + 1) * 8 + l0, width)); p1.MaxN.Store(wide.Slice((W2D.Impulse1 + 2) * 8 + l0, width));
+                rollImp.StoreAt(wide, W2D.Roll * 8 + l0);
+                p0.NImp.StoreAt(wide, W2D.Impulse0 * 8 + l0); p0.TImp.StoreAt(wide, (W2D.Impulse0 + 1) * 8 + l0); p0.MaxN.StoreAt(wide, (W2D.Impulse0 + 2) * 8 + l0);
+                p1.NImp.StoreAt(wide, W2D.Impulse1 * 8 + l0); p1.TImp.StoreAt(wide, (W2D.Impulse1 + 1) * 8 + l0); p1.MaxN.StoreAt(wide, (W2D.Impulse1 + 2) * 8 + l0);
             }
         }
     }
