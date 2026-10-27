@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The width-independent batching experiment: a prototype contact solver run at several SIMD widths. It uses
+    Vector512 and Vector<T>, which the package itself does not use, so it lives outside src/.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>BatchingExperiment</AssemblyName>
+    <RootNamespace>RecursiveAI.OnePhysics.Experiments.Batching</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The hash-matrix runner. Scenarios live under Scenarios/ and register themselves; the same project is
+    built as a normal console app, published with NativeAOT (-p:PublishAot=true) and built for
+    browser-wasm (-r browser-wasm) by tools/hash-matrix.sh.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>RecursiveAI.OnePhysics.HashMatrix</RootNamespace>
+    <AssemblyName>HashMatrix</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <WasmNativeStrip>false</WasmNativeStrip>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OnePhysics/OnePhysics.csproj" />
+    <!-- The batching experiment's simulation code (not its command-line program) is hashed here. -->
+    <Compile Include="../../experiments/batching/Sim/*.cs" LinkBase="Batching" />
+  </ItemGroup>
+
+</Project>

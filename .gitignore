@@ -16,6 +16,8 @@
 !/fuzz
 !/bench
 !/tools
+!/experiments
+!/docs
 
 # Build output never belongs in the tree, wherever it appears.
 bin/

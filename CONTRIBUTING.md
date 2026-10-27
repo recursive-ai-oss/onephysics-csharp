@@ -19,6 +19,7 @@ tools/check.sh              # scans, builds the solution, runs tests and the fuz
 tools/check.sh Checked      # the same with bounds-checked internal accessors
 tools/smoke-aot.sh          # NativeAOT publish (zero trim/AOT warnings) and run
 tools/smoke-wasm.sh         # browser-wasm publish and run under Node
+tools/hash-matrix.sh        # runs every hash-matrix scenario in every column and compares the manifests (see docs/hash-matrix.md)
 ```
 
 Build output goes to `$ONEPHYSICS_ARTIFACTS` (default `~/.cache/onephysics-artifacts`), never into the checkout.
