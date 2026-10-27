@@ -32,7 +32,7 @@ public sealed class PhysicsWorld3D
     {
         var o = (options ?? new WorldOptions3D()).Clone();
         o.Validate();
-        _core = new WorldCore(o.ToCore());
+        _core = new WorldCore(o.ToCore()) { SymmetricSweep = true }; // alternating sweep order keeps one-iteration friction from drifting tall stacks sideways
         o.WorldId = _core.Id;
         var bp = new Broadphase3D(new BroadphaseOptions { Margin = o.BroadphaseMargin });
         _engine = new Engine3D(_core, bp, o) { World = this };

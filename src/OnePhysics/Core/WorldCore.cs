@@ -541,6 +541,7 @@ public sealed class WorldCore
         int bodyChunks = (_awakeCount + ChunkSize - 1) / ChunkSize;
         for (int s = 0; s < _options.Substeps; s++)
         {
+            _flipSweep = (s & 1) == 1;
             Executor.For(bodyChunks, new BodyTask<TStages>(this, stages, _awake, _awakeCount, ctx, true));
             SolveAll(stages, SolvePhase.WarmStart, ctx);
             for (int i = 0; i < _options.VelocityIterations; i++) { SolveAll(stages, SolvePhase.Solve, ctx); }
@@ -574,23 +575,35 @@ public sealed class WorldCore
         _awakeCount = k;
     }
 
+    /// <summary>When set, the relax pass sweeps the colors in the opposite order (and the serial overflow last), so the sequential bias of one sweep is cancelled by the next.</summary>
+    public bool SymmetricSweep { get; set; }
+    private bool _flipSweep;
+
     private void SolveAll<TStages>(TStages stages, SolvePhase phase, in StepContext ctx) where TStages : IWorldStages
     {
         var list = _coloring.ListArray;
         int os = _coloring.OverflowStart;
         int on = _coloring.Overflow.Length;
-        for (int lo = 0; lo < on; lo += ConstraintColoring.Lanes)
+        bool reverse = SymmetricSweep && phase != SolvePhase.WarmStart && ((phase == SolvePhase.Relax) != _flipSweep);
+        if (!reverse) { SolveOverflow(stages, list, os, on, phase, in ctx); }
+        for (int k = 0; k < ConstraintColoring.ColorCount; k++)
         {
-            stages.SolveBatch(this, list.AsSpan(os + lo, Math.Min(ConstraintColoring.Lanes, on - lo)), phase, in ctx);
-        }
-
-        for (int color = 0; color < ConstraintColoring.ColorCount; color++)
-        {
+            int color = reverse ? ConstraintColoring.ColorCount - 1 - k : k;
             int n = _coloring.Color(color).Length;
             if (n == 0) { continue; }
             int batches = (n + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
             int tasks = (batches + ConstraintColoring.BatchesPerTask - 1) / ConstraintColoring.BatchesPerTask;
             Executor.For(tasks, new SolveTask<TStages>(this, stages, list, _coloring.ColorStart(color), n, phase, ctx));
+        }
+
+        if (reverse) { SolveOverflow(stages, list, os, on, phase, in ctx); }
+    }
+
+    private void SolveOverflow<TStages>(TStages stages, int[] list, int os, int on, SolvePhase phase, in StepContext ctx) where TStages : IWorldStages
+    {
+        for (int lo = 0; lo < on; lo += ConstraintColoring.Lanes)
+        {
+            stages.SolveBatch(this, list.AsSpan(os + lo, Math.Min(ConstraintColoring.Lanes, on - lo)), phase, in ctx);
         }
     }
 
