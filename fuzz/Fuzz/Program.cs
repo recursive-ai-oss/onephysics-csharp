@@ -18,6 +18,7 @@ internal static class Program
         ["convex"] = ConvexTarget,
         ["polygon2d"] = Fuzz2D.PolygonTarget,
         ["manifold2d"] = Fuzz2D.ManifoldTarget,
+        ["broadphase"] = BroadphaseTarget.Run,
     };
 
     private static int Main(string[] args)

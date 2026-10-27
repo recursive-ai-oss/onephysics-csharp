@@ -1,0 +1,51 @@
+# Broadphase
+
+Normative description of `src/OnePhysics/Broadphase/`: the dynamic AABB trees, the move buffer, pair finding, queries and the snapshot section. A port must reproduce the same bits from this text.
+
+All arithmetic on bounds is IEEE double with `+ − × ÷` only (no square roots, no transcendental functions, no fused operations).
+
+## Bounds are double
+
+Boxes are stored in world space as doubles (`Aabb2D`: min x, min y, max x, max y; `Aabb3D`: three mins then three maxes). Body positions are double and exact within ±2^21; a float32 box at that range has a 0.25 unit spacing, far too coarse for contacts, and rounding it outward would add slack that varies with position. Double boxes cost 32 bytes (2D) or 48 bytes (3D) per node and need no rounding rules. Every bound must be finite, `min ≤ max`, and at most `BoxLimits.MaxCoordinate = 2^22` in magnitude (positions ±2^21 plus a shape's extent plus margin); anything else raises `ArgumentOutOfRangeException` naming the value and the limit. The limit applies to the fat box, so a tight box within a margin of 2^22 is also refused.
+
+The surface area heuristic measure (`Area`) is the perimeter `2 (dx + dy)` in 2D and the surface area `2 (dx dy + dy dz + dz dx)` in 3D, evaluated left to right as written.
+
+## Dynamic tree
+
+A binary tree in a node array; leaves are proxies, internal nodes hold the union of their children. A node has: box, parent, child 1, child 2, height (0 leaf, > 0 internal, −1 free), user id, flags (bit 0 "moved"). A proxy id is its node index.
+
+**Allocation.** Free nodes form a stack (the parent field links them); a new node takes the most recently freed one, else the next never-used index. Freed nodes are zeroed with height −1.
+
+**Insert** (Catto, GDC 2019): descend from the root keeping `inherited` (sum over ancestors of `area(union(box, ancestor)) − area(ancestor)`), and a best candidate (lowest `area(union(box, node)) + inherited`; strict improvement, so earlier wins ties). At an internal node stop if `area(box) + inherited ≥ best cost`; otherwise move to the child with the lower estimate (`area(union(box, child)) + inherited` for a leaf, `area(union(box, child)) − area(child) + inherited` for an internal node; child 2 only if strictly lower). The chosen sibling and the new leaf get a new parent (child 1 = sibling, child 2 = leaf). Then for every ancestor from the new parent upward: refit (box = union of children, height = 1 + max), rotate, refit.
+
+**Rotation** (Bittner et al.; Catto 2019) at node A with children B and C and height ≥ 2: the candidate swaps, in this order, are (1) C with B's child 1, (2) C with B's child 2, (3) B with C's child 1, (4) B with C's child 2. A candidate's gain is the area of the demoted node (B or C) before the swap minus the area of the union of its two new children. The candidate with the largest gain wins, only if the gain is above 0; earlier candidates win ties. The demoted node is refit.
+
+**Remove** detaches the leaf; its sibling takes the parent's place, the parent node is freed, and the ancestors are refit (no rotation). **Move** is remove, store the new box, insert, with the same node index.
+
+**Rebuild** (binned SAH): gather the leaves in ascending node index; free every internal node and put all free nodes on the free stack so the lowest index pops first; then build top-down with an explicit stack (no recursion), child 1's range before child 2's. A range of one is a leaf; a range of two splits in the middle. Otherwise use box centres `(min + max) / 2`; for each axis with a positive centre spread, bin centres into 16 bins `b = clamp(int(16 · (c − cmin) / spread), 0, 15)`, and cost each split between bins as `area(left) · count(left) + area(right) · count(right)`; the lowest cost wins, ties to the lower axis then lower bin, and only splits with both sides non-empty count. With no valid split (all centres equal) the range splits at the median position. Partition is in place with two pointers (`≤ split bin` to the left). The result depends only on the set of leaves, their boxes and their indices, not on history. Boxes and heights are fitted bottom-up at the end.
+
+**Queries.** All use an explicit stack (128 entries on the stack, then the heap), so depth is unbounded by recursion.
+* Overlap: depth first, child 1 before child 2, box test `a.min ≤ b.max and b.min ≤ a.max` per axis (touching counts).
+* Ray and box sweep: slab test per axis. For direction component `d` with `1/d` finite and `d ≠ 0`, the interval is `[(lo − o)/d, (hi − o)/d]` computed as multiplication by the precomputed `1/d`; otherwise the ray is parallel and needs `lo ≤ o ≤ hi`. The ray hits when the clipped `[t0, t1]`, starting from `[0, maxFraction]`, is non-empty. A box sweep (`BoxCast2D/3D`) is the ray from the start box's centre `(min + (max − min)/2)` against every tree box grown by the start box's half extents `(max − min)/2`. Traversal pops a node, retests it against the current max fraction, reports a leaf, or tests both children and pushes the farther one first (the nearer entry fraction pops first; equal goes to child 1). Callback result: negative ignores the proxy, 0 stops everything, a value below the current max fraction clips the ray to it, anything else continues.
+
+## Broadphase
+
+Three trees indexed by body type: 0 static, 1 kinematic, 2 dynamic. A proxy key is `(node << 2) | tree`. Keys carry no generation: the owner of the shape handles drops a key when the shape is destroyed.
+
+**Fat boxes.** `Create` stores `tight` grown by the margin on every side (`Margin` for kinematic and dynamic, `StaticMargin` for static; defaults 0.1 and 0). `Move(key, tight, displacement)` does nothing and returns false when the stored box contains `tight`; otherwise the new stored box is `tight` grown by the margin, then for each axis with `d = displacement · DisplacementMultiplier`: `max += d` if `d ≥ 0` else `min += d` (static proxies use multiplier 0). The tree reinserts the proxy and puts it in the move buffer. Default multiplier 2.
+
+**Move buffer.** The moved flag is bit 0 of the leaf's flags. `Create`, a `Move` that changed the tree, `Touch` and `TouchAll` set it and append the key to the buffer once. Entries of destroyed proxies stay until the next update; at an update (or when the buffer exceeds twice the proxy count) entries are filtered to live flagged proxies, sorted ascending and made unique.
+
+**Pairs.** `UpdatePairs(filter, executor)`: take the sorted unique moved keys; split them into chunks of 64 (independent of the thread count); for every moved proxy query its stored box in the target trees (a dynamic proxy: static, kinematic, dynamic; a static or kinematic proxy: dynamic only). Skip itself; skip an overlapping proxy that is also moved when the query key is larger (so a pair of two moved proxies is found once); skip if `filter.ShouldCollide(userQuery, userOther)` is false. Orientation: the proxy with the smaller `(user id, key)` is A. Chunk results are concatenated in chunk order and then sorted by `(UserA, UserB, ProxyA, ProxyB)`; the order is total, so the sort is unambiguous. Finally the moved flags are cleared and the buffer emptied. The caller keeps the set of pairs it already tracks (for example in the contact table) and treats the output as candidate pairs involving at least one moved proxy; `FindAllPairs` reports every overlap. The filter is a struct generic and must be pure (the search may run on `TaskExecutor` threads).
+
+Thread count changes only who runs a chunk; each chunk writes only its own buffer.
+
+## Snapshot
+
+The broadphase is an `ISnapshotSection`, and the exact tree structure is saved rather than rebuilt: rebuilding would change the node indices and therefore the proxy keys, the later insert paths and the pair orientation ties. Layout (little-endian, via `StateWriter`): version (int, 1); margin, static margin, displacement multiplier (doubles); for each of the three trees: slot count `n`, root, free-stack head (ints), then per slot in index order: height, parent, child 1, child 2, user id, flags (ints) and, unless the slot is free (height −1), the box bounds (doubles in the order above); then the move buffer count and its keys in buffer order. Capacity is not written. Restore reads into fresh trees, validates every invariant (links, parent pointers, heights, containment, reachability exactly once, free list is exactly the free slots, every box finite, ordered and within the limit, move keys within slot ranges) and only then replaces the state; on failure `SnapshotFormatException` is thrown and nothing changes. Options in the snapshot must equal the broadphase's options. Pending pairs are not saved (they are output of the last update).
+
+Restoring and continuing gives the same trees, keys, pairs and bytes as the original; the tests check this, and the world hash (a `StateWriter` in hash mode) covers the whole tree.
+
+## Cost
+
+Per proxy a node is 32 + 24 bytes (2D) or 48 + 24 bytes (3D) plus the tree's internal nodes. `Hash` mode of the writer visits every slot, so hashing every step costs O(proxies).
