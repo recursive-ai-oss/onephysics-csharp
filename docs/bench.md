@@ -57,3 +57,32 @@ Known gaps: Rapier3D reports no bodies asleep at creation, as in 2D. Engines tha
 None of their sources or headers are read; drivers are written from the published documentation and compile against the released libraries.
 
 The `onephysics` engine slot is reserved in the runner (`--engines onephysics`) and runs nothing yet.
+
+## 3D stability thresholds (proposed)
+
+Measured at one thread, 2026-10-27, on an x64 machine (Ryzen 9 7950X3D, 32 logical cores, shared, load 17–29) and an Apple M2; the two agree except where noted. Each threshold is the worst value among the engines that are stable on the scene, plus margin. Always: `nan` = 0; `escapes` = `tunnelled` = 0 unless stated.
+
+| scene | maxSpeed | maxPenetration | finalPenetration | other |
+|---|---|---|---|---|
+| pyramid-3d-10 | ≤ 0.1 | ≤ 0.01 | ≤ 0.01 | topDrop ≤ 0.06, topLateral ≤ 0.05, restKE ≤ 0.01 |
+| pyramid-3d-30 | ≤ 1 | ≤ 0.05 | ≤ 0.04 | topDrop ≤ 0.1, topLateral ≤ 0.25, restKE ≤ 0.01, jitter ≤ 0.05 |
+| large-pile-3d | ≤ 15 | ≤ 0.5 | ≤ 0.25 | restKE ≤ 0.005, jitter ≤ 0.25 |
+| joint-chains-3d | ≤ 45 | | | jointError ≤ 1.0 |
+| joint-grid-3d | ≤ 5 | | | jointError ≤ 0.1 |
+| ragdoll-pile-3d | ≤ 30 | ≤ 0.4 | ≤ 0.2 | jointError ≤ 0.3, restKE ≤ 0.5 |
+| mesh-terrain-3d, heightfield-terrain-3d | ≤ 15 | ≤ 0.15 | ≤ 0.1 | tunnelled = 0 |
+| sleep-wake-3d | ≤ 45 | ≤ 1.5 | ≤ 1.0 | escapes ≤ 10 (the ball scatters bodies off the slab), asleepBeforeWake = 1440 |
+| queries-3d | ≤ 25 | | | throughput row only |
+
+Evidence (maxPenetration / finalPenetration / other, x64 run; the stable engines set the threshold):
+
+- **pyramid-3d-10:** all five stable, worst 0.0018 / 0.0018, topDrop ≤ 0.0036.
+- **pyramid-3d-30:** Box3D, Jolt and Rapier3D stable (≤ 0.0063, topLateral ≤ 0.065, maxSpeed ≤ 0.13). Bepu (0.45, topLateral 0.89) and Jitter2 on x64 (0.50; 0.008 on the Mac, so its result varies between machines) are not, at their defaults.
+- **large-pile-3d:** all stable; worst 0.226 / 0.128, maxSpeed 10, jitter ≤ 0.036.
+- **joint-chains-3d** (500:1 end mass): Box3D 0.24 m and Rapier3D 0.61 m are stable; Jolt 19.5 m, Bepu 33 m and Jitter2 16 m stretch at their default iteration counts. Checked that the Jolt driver is correct: with the end mass lowered to 10:1 and 1:1 the same driver gives 0.09 m and 0.13 m (Box3D 0.05 / 0.03, Rapier3D 0.16 / 0.07, Bepu 0.36 / 0.19, Jitter2 0.10 / 0.13). It is the solver at 10 velocity iterations, not the constraint set-up.
+- **joint-grid-3d:** Bepu, Box3D, Jolt and Rapier3D stable (jointError ≤ 0.03, maxSpeed ≤ 1.5); Jitter2 at its default single substep blows up (1323 bodies escape), and is stable with 4 or 8 substeps (jointError 0.09 / 0.06).
+- **ragdoll-pile-3d:** all stable; worst jointError 0.16, 0.27 / 0.08, maxSpeed 17.4, restKE 0.24.
+- **terrain (mesh and height field):** Bepu, Jolt, Rapier3D and Box3D (mesh) stable, worst 0.057 / 0.056, maxSpeed 10. Jitter2 lets 3 bodies through (0.32). Box3D's height field reaches 0.41 / 0.39 where its mesh gives 0.034 / 0.021, although probes of the created height field match the scene's heights and cell split to 0.02 m: reported as a Box3D height-field finding (alpha release), not a threshold input.
+- **sleep-wake-3d:** all engines but Rapier3D create the bodies asleep (Rapier3D reports none asleep, as in 2D). The ball crushes the stacks (0.33–1.28 deep) and scatters 0–7 bodies off the slab, so the thresholds are loose; enlarging the metric's container does not remove the scatter.
+- **queries-3d** (Apple M2, 1 thread, queries per second ray / overlap / cast; hits ray / overlap / cast): Jolt 2.2 M / 0.19 M / 0.78 M, 2941 / 34028 / 2256; Box3D 1.7 M / 0.25 M / 1.3 M, 2939 / 35159 / 2265; Rapier3D 3.4 M / 0.47 M / 0.42 M, 2941 / 34982 / 2263. Hit counts agree within 3.3%.
+
