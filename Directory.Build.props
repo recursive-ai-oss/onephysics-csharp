@@ -1,0 +1,56 @@
+<Project>
+
+  <PropertyGroup>
+    <!-- The package id derives from this single property pair. -->
+    <PackagePrefix>RecursiveAI</PackagePrefix>
+    <PackageBaseName>$(PackagePrefix).OnePhysics</PackageBaseName>
+    <Version>0.1.0-dev</Version>
+    <Authors>Recursive AI, LLC</Authors>
+    <Company>Recursive AI, LLC</Company>
+    <Copyright>Copyright (c) Recursive AI, LLC</Copyright>
+    <PackageLicenseExpression>MIT OR Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/recursive-ai-oss/onephysics-csharp</RepositoryUrl>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(ContinuousIntegrationBuild)' == ''">true</ContinuousIntegrationBuild>
+    <Configurations>Debug;Release;Checked</Configurations>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Floating-point results must never depend on the JIT's choices. -->
+    <TieredPGO>false</TieredPGO>
+  </PropertyGroup>
+
+  <!-- Build output never lands in the checkout: set ONEPHYSICS_ARTIFACTS to choose where it goes. -->
+  <PropertyGroup>
+    <OnePhysicsHome Condition="'$(HOME)' != ''">$(HOME)</OnePhysicsHome>
+    <OnePhysicsHome Condition="'$(OnePhysicsHome)' == ''">$(USERPROFILE)</OnePhysicsHome>
+    <ArtifactsPath Condition="'$(ONEPHYSICS_ARTIFACTS)' != ''">$(ONEPHYSICS_ARTIFACTS)</ArtifactsPath>
+    <ArtifactsPath Condition="'$(ONEPHYSICS_ARTIFACTS)' == ''">$(OnePhysicsHome)/.cache/onephysics-artifacts</ArtifactsPath>
+  </PropertyGroup>
+
+  <!-- onemath comes from nuget.org once published; until then tools/localfeed.sh copies it into the ignored .localfeed/ directory. -->
+  <PropertyGroup Condition="Exists('$(MSBuildThisFileDirectory).localfeed')">
+    <RestoreAdditionalProjectSources>$(MSBuildThisFileDirectory).localfeed</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+
+  <!-- Checked: Release optimisations plus bounds-checked internal accessors (CHECKED). -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Checked'">
+    <Optimize>true</Optimize>
+    <DebugType>portable</DebugType>
+    <DefineConstants>$(DefineConstants);CHECKED</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+</Project>

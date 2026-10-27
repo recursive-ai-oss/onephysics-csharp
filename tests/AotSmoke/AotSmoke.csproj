@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Publishes with NativeAOT; the build must produce zero trim or AOT warnings. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>AotSmoke</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <PublishAot>true</PublishAot>
+    <IsAotCompatible>true</IsAotCompatible>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../Common/SmokeProgram.cs" LinkBase="Common" />
+    <ProjectReference Include="../../src/OnePhysics/OnePhysics.csproj" />
+  </ItemGroup>
+
+</Project>

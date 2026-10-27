@@ -1,0 +1,73 @@
+name: ci
+
+# RecursiveAI.OneMath is restored from nuget.org once it is published there. Until then restore fails on
+# GitHub-hosted runners; builds work wherever tools/localfeed.sh has put the package into .localfeed/.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-x64:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet workload install wasm-tools
+      - run: tools/check.sh
+      - run: tools/check.sh Checked
+      - run: tools/smoke-aot.sh
+
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet workload install wasm-tools
+      - run: tools/check.sh
+      - run: tools/smoke-aot.sh
+
+  osx-arm64:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet workload install wasm-tools
+      - run: tools/check.sh
+      - run: tools/smoke-aot.sh
+
+  win-x64:
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet workload install wasm-tools
+      - run: tools/check.sh
+      - run: tools/smoke-aot.sh
+
+  browser-wasm:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: dotnet workload install wasm-tools
+      - run: tools/smoke-wasm.sh

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Runs the smoke program on browser WebAssembly under Node (see main.mjs). It will also host the cross-platform hash rows. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>WasmSmoke</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <WasmNativeStrip>false</WasmNativeStrip>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../Common/SmokeProgram.cs" LinkBase="Common" />
+    <ProjectReference Include="../../src/OnePhysics/OnePhysics.csproj" />
+  </ItemGroup>
+
+</Project>

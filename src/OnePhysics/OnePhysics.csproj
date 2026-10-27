@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>$(PackageBaseName)</AssemblyName>
+    <RootNamespace>RecursiveAI.OnePhysics</RootNamespace>
+    <PackageId>$(PackageBaseName)</PackageId>
+    <Description>Deterministic 2D and 3D rigid-body physics for .NET with identical results on every platform.</Description>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RecursiveAI.OneMath" Version="0.1.0-preview.2" />
+  </ItemGroup>
+
+</Project>
