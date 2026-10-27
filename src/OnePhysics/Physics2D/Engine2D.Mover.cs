@@ -8,7 +8,6 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 
 internal sealed partial class Engine2D
 {
-    private const float MoverMaxPushOut = 100f;
     private const double MoverBoundary = 2097152.0; // 2^21
     private const float MoverMinMove = 1e-6f;
     private const int MoverSlideIterations = 5;
@@ -22,7 +21,7 @@ internal sealed partial class Engine2D
     private struct MoverCtx
     {
         public Shape2D Capsule;
-        public float Radius, HalfLength, CosSlope, Step, Skin, Range;
+        public float Radius, HalfLength, CosSlope, Step, Skin, Range, MaxPush;
         public uint Mask;
         public int IgnoreBody;
     }
@@ -104,7 +103,8 @@ internal sealed partial class Engine2D
             {
                 Normal = new Vector2F(n.X, n.Y),
                 Separation = walkable ? sep : sep - c.Skin,
-                PushLimit = bodies.TypeOf(b) == BodyType.Dynamic ? 0f : MoverMaxPushOut,
+                // Overlaps are undone gradually (at most half a radius per move), so a character spawned inside geometry or pushed by a moving obstacle is never thrown across a thin wall.
+                PushLimit = bodies.TypeOf(b) == BodyType.Dynamic ? 0f : c.MaxPush,
             };
             _mvMeta[k] = new PlaneMeta { Slot = s, Px = ox + (double)wp.X, Py = oy + (double)wp.Y };
         }
@@ -327,7 +327,7 @@ internal sealed partial class Engine2D
         var c = new MoverCtx
         {
             Capsule = Shape2D.CreateCapsule(new Vec2(0f, -halfLength), new Vec2(0f, halfLength), def.Radius),
-            Radius = def.Radius, HalfLength = halfLength, CosSlope = (float)cosDeg, Step = def.StepOffset, Skin = def.Skin, Range = 2f * def.Skin,
+            Radius = def.Radius, HalfLength = halfLength, CosSlope = (float)cosDeg, Step = def.StepOffset, Skin = def.Skin, Range = 2f * def.Skin, MaxPush = 0.5f * def.Radius,
             Mask = def.LayerMask, IgnoreBody = ignoreBody,
         };
 

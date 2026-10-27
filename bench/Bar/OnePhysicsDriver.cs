@@ -18,7 +18,8 @@ static class OnePhysicsDriver
         string result = o.Get("result", ""), dumpPath = o.Get("dump", "");
         int threads = int.Parse(o.Get("threads", "1"), CultureInfo.InvariantCulture);
 
-        var (world, bodies, opt) = SceneBuilder2D.Build(s, threads);
+        var (world, bodies, opt) = SceneBuilder2D.Build(s, threads, out var characters);
+        var vy = new float[characters.Count];
         if (s.Joints.Count > 0) Console.Error.WriteLine($"onephysics: {s.Joints.Count} joints skipped (not supported yet)");
         int n = bodies.Length;
         var d = new double[n * 7];
@@ -47,6 +48,7 @@ static class OnePhysicsDriver
         {
             foreach (var e in s.Events) if (e.Step == step) for (int i = 0; i < n; i++) if (s.Bodies[i].Type == "dynamic") bodies[i].Wake();
             long t0 = Stopwatch.GetTimestamp();
+            MoveCharacters(characters, vy, step, dt, (float)-s.Gy);
             world.Step(dt);
             stepNs[step] = (Stopwatch.GetTimestamp() - t0) * nsPerTick;
             if (dump != null && ((step + 1) % s.DumpEvery == 0 || step + 1 == s.Steps)) Frame(step + 1);
@@ -60,6 +62,24 @@ static class OnePhysicsDriver
         sb.Append(CultureInfo.InvariantCulture, $"hash={world.ComputeHash():x16}\n");
         File.WriteAllText(result, sb.ToString());
         return 0;
+    }
+
+    // Scripted input of the characters: walk at the script's speed, reversing every period steps, jump every so many steps, stand still from the stop step; gravity is integrated into a vertical
+    // speed that is held at a small downward value while grounded, so the mover keeps contact with ramps and stairs.
+    static void MoveCharacters(List<(Character Character, CharacterScript Script, int Body)> characters, float[] vy, int step, float dt, float gravity)
+    {
+        for (int i = 0; i < characters.Count; i++)
+        {
+            var (ch, sc, _) = characters[i];
+            bool active = step < sc.Stop;
+            float walk = active ? (float)sc.Speed * (((step / sc.Period) & 1) == 0 ? 1f : -1f) : 0f;
+            if (ch.IsGrounded && vy[i] <= 0f)
+            {
+                vy[i] = active && sc.Jump > 0 && step > 0 && (step + i) % sc.Jump == 0 ? 5f : -1f;
+            }
+            else { vy[i] -= gravity * dt; }
+            ch.Move(new Vector2F(walk * dt, vy[i] * dt), dt);
+        }
     }
 
     // The same protocol as the reference drivers: closest ray hits, circle overlaps (shapes counted), circle sweeps (closest hit); the first repetition is untimed when there are several.

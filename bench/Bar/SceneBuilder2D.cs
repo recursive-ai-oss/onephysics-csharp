@@ -9,16 +9,32 @@ namespace Bar;
 /// <summary>Builds a 2D world from a scene definition. Shared by the bar runner and the hash-matrix scenarios. Joints are not supported yet and are skipped.</summary>
 public static class SceneBuilder2D
 {
-    public static (PhysicsWorld2D World, Body[] Bodies, WorldOptions2D Options) Build(Scene s, int threads)
+    public static (PhysicsWorld2D World, Body[] Bodies, WorldOptions2D Options) Build(Scene s, int threads) => Build(s, threads, out _);
+
+    /// <summary>Builds the scene; bodies with a <c>character</c> script become characters (their bodies are in the array), returned with their scripts in body order.</summary>
+    public static (PhysicsWorld2D World, Body[] Bodies, WorldOptions2D Options) Build(Scene s, int threads, out List<(Character Character, CharacterScript Script, int Body)> characters)
     {
         var opt = new WorldOptions2D { Gravity = new Vector2F((float)s.Gx, (float)s.Gy), ThreadCount = threads };
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
         var world = new PhysicsWorld2D(opt);
 
+        world.SetLayerCollision(1, 1, false); // characters pass through each other (layer 1); the world and the crates are layer 0
         var bodies = new Body[s.Bodies.Count];
+        characters = new List<(Character, CharacterScript, int)>();
         for (int i = 0; i < bodies.Length; i++)
         {
             var ob = s.Bodies[i];
+            if (ob.Char != null)
+            {
+                var cap = ob.Shapes[0].P;
+                float radius = (float)ob.Shapes[0].Radius;
+                var cdef = new CharacterDef { Radius = radius, Height = (float)(cap[3] - cap[1]) + 2f * radius, PushStrength = (float)ob.Char.Push, Layer = 1, LayerMask = ~(1u << 1) };
+                var ch = world.AddCharacter(new Vector2D(ob.X, ob.Y), cdef);
+                bodies[i] = ch.Body;
+                characters.Add((ch, ob.Char, i));
+                continue;
+            }
+
             var bd = new P2.BodyDef
             {
                 Type = ob.Type == "static" ? BodyType.Static : ob.Type == "kinematic" ? BodyType.Kinematic : BodyType.Dynamic,
