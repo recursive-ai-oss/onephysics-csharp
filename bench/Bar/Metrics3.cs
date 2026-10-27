@@ -181,13 +181,27 @@ public static class Metrics3
             pts.Add(w);
         }
         if (pts.Count < 4) return double.NaN;
+        var cen = 0.25 * (pts[0] + pts[1] + pts[2] + pts[3]);
+        {
+            // The origin must lie inside the starting tetrahedron. When the cores only touch, the origin is on the boundary of the
+            // Minkowski difference and the tetrahedron can miss it; the depth is then zero.
+            int[][] tf = [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]];
+            foreach (var t in tf)
+            {
+                var n = (pts[t[1]] - pts[t[0]]).Cross(pts[t[2]] - pts[t[0]]); double l = Math.Sqrt(n.Len2); if (l < 1e-18) continue;
+                n = (1 / l) * n; if (n.Dot(cen - pts[t[0]]) > 0) n = -n;
+                if (n.Dot(-pts[t[0]]) > 1e-9) return 0;
+            }
+        }
         var faces = new List<Face>();
         void AddFace(int a, int b, int c)
         {
             var n = (pts[b] - pts[a]).Cross(pts[c] - pts[a]); double l = Math.Sqrt(n.Len2);
             if (l < 1e-18) return;
-            n = (1 / l) * n; double d = n.Dot(pts[a]);
-            if (d < 0) { n = -n; d = -d; (b, c) = (c, b); }
+            n = (1 / l) * n;
+            // Outward is away from a point inside the polytope; orienting by the sign of the distance would flip faces through the origin when the cores touch.
+            if (n.Dot(pts[a] - cen) < 0) { n = -n; (b, c) = (c, b); }
+            double d = n.Dot(pts[a]);
             faces.Add(new Face { A = a, B = b, C = c, N = n, D = d });
         }
         AddFace(0, 1, 2); AddFace(0, 1, 3); AddFace(0, 2, 3); AddFace(1, 2, 3);
@@ -227,6 +241,8 @@ public static class Metrics3
         Check("corner apart", CoreDistance(Box(0, 0, 0, 0.5), Box(2, 2, 2, 0.5)), Math.Sqrt(3));
         Check("point in box", CoreDistance([new V(0.2, 0, 0)], Box(0, 0, 0, 0.5)), -0.3);
         Check("segment beside box", CoreDistance([new V(-2, 1, 0), new V(2, 1, 0)], Box(0, 0, 0, 0.5)), 0.5);
+        Check("boxes touching", CoreDistance(Box(0, 0, 0, 0.5), Box(1, 0, 0, 0.5)), 0);
+        Check("box resting on a large box", CoreDistance(Box(0, 0.5, 0, 0.5), [new V(-20, -2, -20), new V(20, -2, -20), new V(-20, 0, -20), new V(20, 0, -20), new V(-20, -2, 20), new V(20, -2, 20), new V(-20, 0, 20), new V(20, 0, 20)]), 0);
         Check("points", CoreDistance([new V(0, 0, 0)], [new V(2, 3, 6)]), 7);
         Check("triangle vs box", CoreDistance([new V(-2, 0.3, -2), new V(2, 0.3, -2), new V(0, 0.3, 3)], Box(0, 0, 0, 0.5)), -0.2);
         return bad;

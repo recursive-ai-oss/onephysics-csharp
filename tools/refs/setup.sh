@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Fetches, verifies and builds the 2D reference drivers under a state directory (default ~/onephysics).
-# Usage: tools/refs/setup.sh [STATE_DIR] [box2d|rapier|all]
+# Fetches, verifies and builds the reference drivers under a state directory (default ~/onephysics).
+# Usage: tools/refs/setup.sh [STATE_DIR] [box2d|rapier|rapier3d|jolt|box3d|all|all3d]
 # Needs a C compiler and, for Rapier, cargo. CMake is downloaded (pinned) into STATE_DIR/tools when missing.
 # Nothing it fetches or builds is ever read; drivers only link against the installed libraries.
 set -euo pipefail
@@ -41,6 +41,19 @@ build_box2d() {
   echo "built $state/bin/box2d-driver (Box2D $BOX2D_VERSION)"
 }
 
+build_box3d() {
+  local root="$state/refs/box3d-$BOX3D_VERSION"
+  fetch "$BOX3D_URL" "$BOX3D_SHA" "$state/dl/box3d-$BOX3D_VERSION.tar.gz"
+  if [ ! -d "$root/src" ]; then mkdir -p "$root/src"; tar -xzf "$state/dl/box3d-$BOX3D_VERSION.tar.gz" -C "$root/src" --strip-components=1; fi
+  cmake -S "$root/src" -B "$root/build" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+    -DBOX3D_SAMPLES=OFF -DBOX3D_UNIT_TESTS=OFF -DBOX3D_DOCS=OFF -DCMAKE_INSTALL_PREFIX="$root/install" >"$root/configure.log" 2>&1 || { tail -30 "$root/configure.log"; exit 1; }
+  cmake --build "$root/build" --config Release -j 4 >"$root/build.log" 2>&1 || { grep -E 'error|Error' "$root/build.log" | head -30; exit 1; }
+  cmake --install "$root/build" --config Release >"$root/install.log" 2>&1
+  local lib; lib="$(find "$root/install" -name 'libbox3d*.a' | head -1)"
+  cc -O2 -std=gnu11 -DDRIVER_VERSION="\"$BOX3D_VERSION\"" -I"$root/install/include" "$repo/bench/drivers/box3d/driver.c" "$lib" -lm -lpthread -o "$state/bin/box3d-driver"
+  echo "built $state/bin/box3d-driver (Box3D $BOX3D_VERSION)"
+}
+
 build_jolt() {
   local root="$state/refs/jolt-$JOLT_VERSION"
   fetch "$JOLT_URL" "$JOLT_SHA" "$state/dl/jolt-$JOLT_VERSION.tar.gz"
@@ -74,7 +87,8 @@ case "$what" in
   rapier) build_rapier 2 ;;
   rapier3d) build_rapier 3 ;;
   jolt) build_jolt ;;
+  box3d) build_box3d ;;
   all) build_box2d; build_rapier 2 ;;
-  all3d) build_jolt; build_rapier 3 ;;
+  all3d) build_jolt; build_box3d; build_rapier 3 ;;
   *) echo "unknown target $what" >&2; exit 2 ;;
 esac

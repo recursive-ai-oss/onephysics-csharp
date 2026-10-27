@@ -50,7 +50,7 @@ static class BepuDriver
         }
     }
 
-    sealed class BepuSim : ISim3
+    internal sealed class BepuSim : ISim3
     {
         public string Name => "bepu";
         public string Version => "2.5.0-beta.33";
@@ -138,7 +138,7 @@ static class BepuDriver
                 {
                     var tris = TerrainTriangles(sh);
                     pool.Take<Triangle>(tris.Count, out var buf);
-                    for (int i = 0; i < tris.Count; i++) buf[i] = new Triangle(tris[i].Item1, tris[i].Item2, tris[i].Item3);
+                    for (int i = 0; i < tris.Count; i++) buf[i] = new Triangle(tris[i].Item1, tris[i].Item3, tris[i].Item2); // the engine's mesh triangles are one-sided; this winding faces up for the scenes
                     var x = new Mesh(buf, Vector3.One, pool); return (sim.Shapes.Add(x), Vector3.Zero, default);
                 }
                 default: throw new InvalidDataException("unknown shape " + sh.Kind);
