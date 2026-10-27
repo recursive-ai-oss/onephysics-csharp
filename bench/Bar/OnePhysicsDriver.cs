@@ -8,7 +8,7 @@ using P2 = RecursiveAI.OnePhysics.Physics2D;
 
 namespace Bar;
 
-/// <summary>Runs a scene through this library's 2D world, following the same driver protocol as the reference drivers. Joints and queries are not supported yet and are skipped (reported on stderr).</summary>
+/// <summary>Runs a scene through this library's 2D world, following the same driver protocol as the reference drivers. Joints are not supported yet and are skipped (reported on stderr). Queries run through the world's query API, single-threaded, like the reference drivers.</summary>
 static class OnePhysicsDriver
 {
     public static int Run(Opts o)
@@ -56,8 +56,48 @@ static class OnePhysicsDriver
         var sb = new StringBuilder();
         sb.Append(CultureInfo.InvariantCulture, $"engine=onephysics\nversion=0.1.0-dev\nconfig=threads={threads}, substeps={opt.Substeps}, default options\nscene={s.Name}\nthreads={threads}\nsteps={s.Steps}\nwarmup={s.Warmup}\nbodies={n}\n");
         sb.Append("step_ns=").Append(string.Join(',', stepNs.Select(v => v.ToString("F0", CultureInfo.InvariantCulture)))).Append('\n');
+        if (s.Queries.Count > 0) Queries(world, s, sb);
         sb.Append(CultureInfo.InvariantCulture, $"hash={world.ComputeHash():x16}\n");
         File.WriteAllText(result, sb.ToString());
         return 0;
+    }
+
+    // The same protocol as the reference drivers: closest ray hits, circle overlaps (shapes counted), circle sweeps (closest hit); the first repetition is untimed when there are several.
+    static void Queries(PhysicsWorld2D world, Scene s, StringBuilder sb)
+    {
+        var ns = new double[3]; var count = new int[3]; var hits = new long[3];
+        double nsPerTick = 1e9 / Stopwatch.Frequency;
+        var buffer = new QueryHit2D[256];
+        string[] names = ["ray", "overlap", "cast"];
+        for (int rep = 0; rep < s.QueryReps; rep++)
+        {
+            bool measure = s.QueryReps == 1 || rep > 0;
+            for (int kind = 0; kind < 3; kind++)
+            {
+                long h = 0; int c = 0; long t0 = Stopwatch.GetTimestamp();
+                foreach (var q in s.Queries)
+                {
+                    if (q.Kind != names[kind]) continue;
+                    c++;
+                    var P = q.P;
+                    if (kind == 0)
+                    {
+                        if (world.Raycast(new Vector2D(P[0], P[1]), new Vector2F((float)P[2], (float)P[3]), out _, (float)P[4])) h++;
+                    }
+                    else if (kind == 1)
+                    {
+                        h += world.OverlapCircleAll(new Vector2D(P[0], P[1]), (float)P[2], buffer);
+                    }
+                    else
+                    {
+                        float tx = (float)P[3], ty = (float)P[4];
+                        float len = float.Sqrt(tx * tx + ty * ty);
+                        if (world.CircleCast(new Vector2D(P[0], P[1]), (float)P[2], new Vector2F(tx, ty), out _, len)) h++;
+                    }
+                }
+                if (measure) { ns[kind] += (Stopwatch.GetTimestamp() - t0) * nsPerTick; count[kind] += c; hits[kind] = h; }
+            }
+        }
+        for (int k = 0; k < 3; k++) sb.Append(CultureInfo.InvariantCulture, $"query_{names[k]}_ns={ns[k]:F0}\nquery_{names[k]}_count={count[k]}\nquery_{names[k]}_hits={hits[k]}\n");
     }
 }

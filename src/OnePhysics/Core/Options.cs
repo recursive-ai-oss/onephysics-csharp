@@ -160,11 +160,14 @@ public enum EventMask : ushort
     /// <summary>A body woke.</summary>
     Wake = 1 << 7,
 
-    /// <summary>Everything except per-step persist events.</summary>
+    /// <summary>A contact approached faster than the engine's hit-speed threshold. Not part of <see cref="Default"/>.</summary>
+    ContactHit = 1 << 8,
+
+    /// <summary>Everything except per-step persist events and hit events.</summary>
     Default = 0xFF & ~ContactPersist,
 
     /// <summary>Every kind.</summary>
-    All = 0xFF,
+    All = 0x1FF,
 }
 
 /// <summary>Options of a <see cref="WorldCore"/>. All values are inputs to the simulation except <see cref="ThreadCount"/> and <see cref="WorldId"/>, which never change a result and are not saved in snapshots.</summary>
@@ -243,7 +246,7 @@ public sealed class WorldOptions
         o.Substeps = r.ReadInt32(); o.VelocityIterations = r.ReadInt32(); o.RelaxIterations = r.ReadInt32();
         o.SleepEnabled = r.ReadBool(); o.TimeToSleep = r.ReadSingle(); o.SleepThreshold = r.ReadSingle();
         uint ev = r.ReadUInt32();
-        if ((ev & ~0xFFu) != 0) { throw r.Error("unknown event mask bits " + ev.ToString(CultureInfo.InvariantCulture)); }
+        if ((ev & ~0x1FFu) != 0) { throw r.Error("unknown event mask bits " + ev.ToString(CultureInfo.InvariantCulture)); }
         o.Events = (EventMask)ev;
         try
         {

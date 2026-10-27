@@ -22,6 +22,7 @@ internal static class Program
         ["manifold3d"] = Fuzz3D.ManifoldTarget,
         ["world2d-snapshot"] = Fuzz2DWorld.SnapshotTarget,
         ["world2d-defs"] = Fuzz2DWorld.DefsTarget,
+        ["world2d-services"] = Fuzz2DServices.Run,
         ["compound3d"] = FuzzCompound3D.Run,
     };
 

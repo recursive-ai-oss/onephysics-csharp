@@ -204,7 +204,7 @@ internal sealed partial class Engine2D
             var e = E;
             var core = e.Core;
             int other = userId;
-            if (!e.CanCollide(Shape, other)) { return true; }
+            if (e.IsSensor(Shape) || e.IsSensor(other) || !e.CanCollide(Shape, other)) { return true; }
             int sb = core.Shapes.Owner[other];
             var bodies = core.Bodies;
             var p = bodies.PositionOf(sb);

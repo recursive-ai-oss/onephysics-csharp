@@ -9,7 +9,7 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// A handle to a body: the world, a slot and a generation. It is a small struct that allocates nothing, is cheap to copy and compare, and fails with a
 /// <see cref="StaleHandleException"/> naming the body once the body is destroyed (a later body reusing the slot has a different generation). The default value is the null handle: <see cref="IsValid"/> is false and using it throws.
 /// </summary>
-public readonly struct Body : IEquatable<Body>
+public readonly partial struct Body : IEquatable<Body>
 {
     private readonly PhysicsWorld2D? _world;
     private readonly BodyHandle _handle;
@@ -292,7 +292,7 @@ public readonly struct Body : IEquatable<Body>
 }
 
 /// <summary>A handle to a shape, with the same stale-handle behavior as <see cref="Body"/>.</summary>
-public readonly struct Shape : IEquatable<Shape>
+public readonly partial struct Shape : IEquatable<Shape>
 {
     private readonly PhysicsWorld2D? _world;
     private readonly ShapeHandle _handle;

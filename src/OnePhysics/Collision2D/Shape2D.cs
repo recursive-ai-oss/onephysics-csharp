@@ -137,8 +137,9 @@ public struct Shape2D
 
     internal static void CheckPoint(Vec2 p, string what)
     {
-        CheckCoordinate(p.X, what + ".X");
-        CheckCoordinate(p.Y, what + ".Y");
+        // The message strings are built only when a coordinate is bad, so valid shapes cost no allocation (queries build shapes on the fly).
+        if (!(p.X <= Constants2D.MaxShapeCoordinate && p.X >= -Constants2D.MaxShapeCoordinate)) { CheckCoordinate(p.X, what + ".X"); }
+        if (!(p.Y <= Constants2D.MaxShapeCoordinate && p.Y >= -Constants2D.MaxShapeCoordinate)) { CheckCoordinate(p.Y, what + ".Y"); }
     }
 
     internal static void CheckRadius(float r)
