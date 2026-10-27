@@ -13,6 +13,8 @@
 
   <ItemGroup>
     <Compile Include="../Common/SmokeProgram.cs" LinkBase="Common" />
+    <Compile Include="../OnePhysics.Tests/Collision3D/Collision3DHash.cs" LinkBase="Common" />
+    <Compile Include="../OnePhysics.Tests/Collision3D/TestRng.cs" LinkBase="Common" />
     <ProjectReference Include="../../src/OnePhysics/OnePhysics.csproj" />
   </ItemGroup>
 
