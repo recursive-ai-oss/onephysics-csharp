@@ -66,7 +66,8 @@ internal sealed partial class Engine2D
         var cs = Core.Constraints;
         foreach (int c in constraints)
         {
-            if (cs.KindOf(c) == ConstraintKind.Joint) { PrepareJoint(c, in ctx); }
+            // A plain revolute joint that the wide kernel will solve is prepared straight into its group by PrepareBatch.
+            if (cs.KindOf(c) == ConstraintKind.Joint && !IsPlainRevolute(c, cs)) { PrepareJoint(c, in ctx); }
         }
     }
 
@@ -99,14 +100,21 @@ internal sealed partial class Engine2D
             for (int l = 0; l < W2D.Lanes; l++) { jidx[l] = 0; jidx[8 + l] = 0; jidx[16 + l] = -1; jidx[24 + l] = -1; }
         }
 
+        float jointRigidBias = 0f, jointRigidMass = 1f, jointRigidImpulse = 0f;
+        if (jidx.Length != 0) { MakeSoft(Opt.JointHertz > cap ? cap : Opt.JointHertz, Opt.JointDampingRatio, ctx.SubstepDt, out jointRigidBias, out jointRigidMass, out jointRigidImpulse); }
         bool anyJoint = false;
         foreach (int c in constraints)
         {
             if (cs.KindOf(c) == ConstraintKind.Joint)
             {
                 anyJoint = true;
-                if (jidx.Length != 0 && IsPlainRevolute(c, cs)) { PrepareWideJoint(c, cs, jw, jidx, jlane++, group); }
-                else { JSlotOf[c] = -1; }
+                if (IsPlainRevolute(c, cs))
+                {
+                    if (jidx.Length != 0) { PrepareWideJoint(c, cs, jw, jidx, jlane++, group, in ctx, jointRigidBias, jointRigidMass, jointRigidImpulse); continue; }
+                    PrepareJoint(c, in ctx); // no wide group to put it in (cannot happen while joints exist): solve it scalar
+                }
+
+                JSlotOf[c] = -1;
                 continue;
             }
 
@@ -192,20 +200,27 @@ internal sealed partial class Engine2D
         return p[JPay.Spring] == 0f && p[JPay.Motor] == 0f && p[JPay.Lower] == 0f && p[JPay.Upper] == 0f;
     }
 
-    private void PrepareWideJoint(int c, ConstraintStore cs, Span<float> w, Span<int> idx, int lane, int group)
+    // The scalar PrepareJoint for a plain revolute joint, written straight into the wide group: same operations in the same order, without the scratch row.
+    private void PrepareWideJoint(int c, ConstraintStore cs, Span<float> w, Span<int> idx, int lane, int group, in StepContext ctx, float jBias, float jMass, float jImp)
     {
         var bodies = Core.Bodies;
-        var s = JScratch.AsSpan(c * JRow.Stride, JRow.Stride);
+        ref JointData2D j = ref Joints[c];
         var p = cs.Payload(c);
         int a = cs.BodyA[c], b = cs.BodyB[c];
         JSlotOf[c] = group * J2D.Lanes + lane;
         idx[lane] = (a + 1) * BS2D.Stride; idx[8 + lane] = (b + 1) * BS2D.Stride;
         idx[16 + lane] = bodies.TypeOf(a) == BodyType.Dynamic ? (a + 1) * BS2D.Stride : -1;
         idx[24 + lane] = bodies.TypeOf(b) == BodyType.Dynamic ? (b + 1) * BS2D.Stride : -1;
-        w[J2D.MA * 8 + lane] = s[JRow.MA]; w[J2D.IA * 8 + lane] = s[JRow.IA]; w[J2D.MB * 8 + lane] = s[JRow.MB]; w[J2D.IB * 8 + lane] = s[JRow.IB];
-        w[J2D.RAx * 8 + lane] = s[JRow.RAx]; w[J2D.RAy * 8 + lane] = s[JRow.RAy]; w[J2D.RBx * 8 + lane] = s[JRow.RBx]; w[J2D.RBy * 8 + lane] = s[JRow.RBy];
-        w[J2D.Dx * 8 + lane] = s[JRow.Dx]; w[J2D.Dy * 8 + lane] = s[JRow.Dy];
-        w[J2D.Rigid * 8 + lane] = s[JRow.JMass] * s[JRow.JBias]; w[J2D.Mass * 8 + lane] = s[JRow.JMass]; w[J2D.Impulse * 8 + lane] = s[JRow.JImp];
+        var pA = bodies.PositionOf(a); var pB = bodies.PositionOf(b);
+        var qA = bodies.RotationOf(a); var qB = bodies.RotationOf(b);
+        float qAc = qA[0], qAs = qA[1], qBc = qB[0], qBs = qB[1];
+        float xa = j.LAx - LocalCenter[2 * a], ya = j.LAy - LocalCenter[2 * a + 1];
+        float xb = j.LBx - LocalCenter[2 * b], yb = j.LBy - LocalCenter[2 * b + 1];
+        w[J2D.MA * 8 + lane] = bodies.InverseMass[a]; w[J2D.IA * 8 + lane] = bodies.InverseInertia[a]; w[J2D.MB * 8 + lane] = bodies.InverseMass[b]; w[J2D.IB * 8 + lane] = bodies.InverseInertia[b];
+        w[J2D.RAx * 8 + lane] = qAc * xa - qAs * ya; w[J2D.RAy * 8 + lane] = qAs * xa + qAc * ya;
+        w[J2D.RBx * 8 + lane] = qBc * xb - qBs * yb; w[J2D.RBy * 8 + lane] = qBs * xb + qBc * yb;
+        w[J2D.Dx * 8 + lane] = (float)(pB[0] - pA[0]); w[J2D.Dy * 8 + lane] = (float)(pB[1] - pA[1]);
+        w[J2D.Rigid * 8 + lane] = jMass * jBias; w[J2D.Mass * 8 + lane] = jMass; w[J2D.Impulse * 8 + lane] = jImp;
         w[J2D.P0 * 8 + lane] = p[JPay.P0]; w[J2D.P1 * 8 + lane] = p[JPay.P1];
     }
 
