@@ -463,6 +463,7 @@ internal sealed partial class Engine3D
         public RigidTransformF ShapePose; // its frame at the start: world rotation, translation relative to the start centre of mass (float)
         public double Cx, Cy, Cz;         // start centre of mass
         public Vector3F Motion;           // centre of mass motion over the step, world axes
+        public float DepthTolerance;      // hits that would end the step shallower than this are left to the contact solver
         public float Best;                // smallest fraction so far
         public bool Hit;
 
@@ -485,23 +486,28 @@ internal sealed partial class Engine3D
                 (float)((Cz + (double)ShapePose.Translation.Z) - (p[2] + (double)pose.Translation.Z)));
             var rel = new RigidTransformF(inv * ShapePose.Rotation, inv.Rotate(off));
             var motion = inv.Rotate(Motion);
-            float t;
+            // The hit only matters if the body would end the step well inside the surface: shallower overlaps are the contact solver's job, and clamping them would pin a body that is resting on,
+            // or rolling over, a surface (its centre of mass moves along the surface while the shape, held at its start orientation, brushes it).
+            float t, approach;
             if (other.IsConvex)
             {
                 if (!Gjk3D.ShapeCast(other.Convex, Shape, rel, -motion, out var hit) || hit.StartsOverlapping) { return true; }
-                t = hit.Fraction;
+                t = hit.Fraction; approach = -Vector3F.Dot(motion, hit.Normal);
             }
             else if (other.Compound != null)
             {
                 if (!other.Compound.ShapeCast(Shape, rel, motion, out var hit) || hit.StartsOverlapping) { return true; }
-                t = hit.Fraction;
+                t = hit.Fraction; approach = Vector3F.Dot(motion, hit.Normal);
             }
             else
             {
                 if (!other.Soup!.ShapeCast(Shape, rel, motion, out var hit) || hit.StartsOverlapping) { return true; }
-                t = hit.Fraction;
+                t = hit.Fraction; approach = -Vector3F.Dot(motion, hit.Normal);
             }
 
+            if ((1f - t) * approach < DepthTolerance) { return true; }
+            // A surface already within speculative range has a contact of its own; clamping against it would only pin the body at a place where no contact exists yet.
+            if (t * float.Sqrt(Motion.X * Motion.X + Motion.Y * Motion.Y + Motion.Z * Motion.Z) < 2f * e.Opt.SpeculativeDistance) { return true; }
             if (t > 0f && t < Best) { Best = t; Hit = true; }
             return true;
         }
@@ -545,7 +551,7 @@ internal sealed partial class Engine3D
 
             if (g.IsConvex)
             {
-                var q = new ToiQuery { E = this, MoverShape = s, Shape = g.Convex, ShapePose = startPose, Cx = cx, Cy = cy, Cz = cz, Motion = m, Best = best };
+                var q = new ToiQuery { E = this, MoverShape = s, Shape = g.Convex, ShapePose = startPose, Cx = cx, Cy = cy, Cz = cz, Motion = m, Best = best, DepthTolerance = 0.25f * MinExtent[b] };
                 Bp.QueryAabb(in box, ref q, BodyTypeMask.Static);
                 if (q.Hit && q.Best < best) { best = q.Best; }
             }
@@ -557,7 +563,7 @@ internal sealed partial class Engine3D
                     if (!comp.IsLive(j)) { continue; }
                     var child = comp.GetChild(j);
                     var childPose = new RigidTransformF(startPose.Rotation * child.Local.Rotation, startPose.Rotation.Rotate(child.Local.Translation) + startPose.Translation);
-                    var q = new ToiQuery { E = this, MoverShape = s, Shape = child.Shape, ShapePose = childPose, Cx = cx, Cy = cy, Cz = cz, Motion = m, Best = best };
+                    var q = new ToiQuery { E = this, MoverShape = s, Shape = child.Shape, ShapePose = childPose, Cx = cx, Cy = cy, Cz = cz, Motion = m, Best = best, DepthTolerance = 0.25f * MinExtent[b] };
                     Bp.QueryAabb(in box, ref q, BodyTypeMask.Static);
                     if (q.Hit && q.Best < best) { best = q.Best; }
                 }
