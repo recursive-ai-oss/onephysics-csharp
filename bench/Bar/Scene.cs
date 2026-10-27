@@ -22,7 +22,7 @@ public sealed class CharacterScript
 
 public sealed class BodyDef
 {
-    public CharacterScript? Char;   // set on a body (a capsule) that a character-aware driver moves as a character; other drivers see a plain dynamic capsule
+    public CharacterScript? Script;   // set on a body (a capsule) that a character-aware driver moves as a character; other drivers see a plain dynamic capsule
     public string Type = "dynamic"; // static, kinematic, dynamic
     public double X, Y, Angle, Vx, Vy, W;   // 2D: W is the angular velocity
     public double Z, Qx, Qy, Qz, Qw = 1, Vz, Wx, Wy; // 3D: orientation quaternion; W is the z component of the angular velocity
@@ -117,7 +117,7 @@ public sealed class Scene
                     break;
                 case "character":
                     if (cur == null) throw new InvalidDataException("character before body");
-                    cur.Char = new CharacterScript { Speed = D(t[1]), Period = I(t[2]), Jump = I(t[3]), Stop = I(t[4]), Push = D(t[5]) };
+                    cur.Script = new CharacterScript { Speed = D(t[1]), Period = I(t[2]), Jump = I(t[3]), Stop = I(t[4]), Push = D(t[5]) };
                     break;
                 case "joint":
                     var j = new JointDef { Kind = t[1], A = I(t[2]), B = I(t[3]), Ax = D(t[4]), Ay = D(t[5]), Bx = D(t[6]), By = D(t[7]) };
@@ -171,7 +171,7 @@ public sealed class Scene
                 foreach (var v in sh.P) sb.Append(' ').Append(F(v));
                 sb.Append('\n');
             }
-            if (b.Char != null) sb.Append("character ").Append(F(b.Char.Speed)).Append(' ').Append(b.Char.Period).Append(' ').Append(b.Char.Jump).Append(' ').Append(b.Char.Stop).Append(' ').Append(F(b.Char.Push)).Append('\n');
+            if (b.Script != null) sb.Append("character ").Append(F(b.Script.Speed)).Append(' ').Append(b.Script.Period).Append(' ').Append(b.Script.Jump).Append(' ').Append(b.Script.Stop).Append(' ').Append(F(b.Script.Push)).Append('\n');
         }
         foreach (var j in Joints)
         {

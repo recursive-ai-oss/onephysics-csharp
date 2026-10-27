@@ -281,7 +281,7 @@ public static class Gen
             else { int k = (i - 240) / 10, j = (i - 240) % 10; x = px[k] - 3.15 + j * 0.7; y = py[k] + 0.25 + 0.95; }
             var b = Add(s, "dynamic", x, y);
             Shape(b, "capsule", 1, 0.3, 0, -0.6, 0, 0.6);
-            b.Char = new CharacterScript { Speed = i < 240 ? 1.0 + 0.5 * (i % 4) : 0.5, Period = 60 + 30 * (i % 5), Jump = i % 3 == 0 ? 150 : 0, Stop = 420, Push = i % 2 == 0 ? 0.5 : 0 };
+            b.Script = new CharacterScript { Speed = i < 240 ? 1.0 + 0.5 * (i % 4) : 0.5, Period = 60 + 30 * (i % 5), Jump = i % 3 == 0 ? 150 : 0, Stop = 420, Push = i % 2 == 0 ? 0.5 : 0 };
         }
 
         s.Params["container"] = ["-105", "-10", "105", "40"];

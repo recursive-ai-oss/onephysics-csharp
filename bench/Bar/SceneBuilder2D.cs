@@ -18,20 +18,20 @@ public static class SceneBuilder2D
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
         var world = new PhysicsWorld2D(opt);
 
-        world.SetLayerCollision(1, 1, false); // characters pass through each other (layer 1); the world and the crates are layer 0
+        if (s.Bodies.Exists(b => b.Script != null)) world.SetLayerCollision(1, 1, false); // characters pass through each other (layer 1); the world and the crates are layer 0
         var bodies = new Body[s.Bodies.Count];
         characters = new List<(Character, CharacterScript, int)>();
         for (int i = 0; i < bodies.Length; i++)
         {
             var ob = s.Bodies[i];
-            if (ob.Char != null)
+            if (ob.Script != null)
             {
                 var cap = ob.Shapes[0].P;
                 float radius = (float)ob.Shapes[0].Radius;
-                var cdef = new CharacterDef { Radius = radius, Height = (float)(cap[3] - cap[1]) + 2f * radius, PushStrength = (float)ob.Char.Push, Layer = 1, LayerMask = ~(1u << 1) };
+                var cdef = new CharacterDef { Radius = radius, Height = (float)(cap[3] - cap[1]) + 2f * radius, PushStrength = (float)ob.Script.Push, Layer = 1, LayerMask = ~(1u << 1) };
                 var ch = world.AddCharacter(new Vector2D(ob.X, ob.Y), cdef);
                 bodies[i] = ch.Body;
-                characters.Add((ch, ob.Char, i));
+                characters.Add((ch, ob.Script, i));
                 continue;
             }
 

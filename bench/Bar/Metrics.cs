@@ -218,7 +218,7 @@ public static class Metrics
                 if (k < 0) continue;
                 for (int i = 0; i < n; i++)
                 {
-                    if (s.Bodies[i].Char == null) continue;
+                    if (s.Bodies[i].Script == null) continue;
                     double dvx = frames[k + 1].D[i * 7 + 3] - frames[k].D[i * 7 + 3], dvy = frames[k + 1].D[i * 7 + 4] - frames[k].D[i * 7 + 4];
                     worst = Math.Max(worst, Math.Sqrt(dvx * dvx + dvy * dvy));
                 }
