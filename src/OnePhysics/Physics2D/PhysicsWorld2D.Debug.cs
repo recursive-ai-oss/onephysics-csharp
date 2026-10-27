@@ -81,6 +81,7 @@ public sealed partial class PhysicsWorld2D
         }
 
         if ((flags & DebugContent.Joints) != 0) { _engine.AddDebugJoints(geometry); }
+        if ((flags & DebugContent.Characters) != 0) { _engine.AddDebugCharacters(geometry); }
     }
 
     private void AddDebugShape(DebugGeometry g, int b, int s, BodyHandle bh, ShapeHandle sh)

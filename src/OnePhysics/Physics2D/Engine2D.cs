@@ -165,6 +165,7 @@ internal sealed partial class Engine2D : ISnapshotSection
             Bp.DestroyProxy(Proxy[s]);
         }
 
+        DropCharacterOfBody(b);
         Core.DestroyBody(handle);
         ShapeHead[b] = -1; ShapeTail[b] = -1;
         Mass[b] = 0f; Inertia[b] = 0f;
@@ -419,7 +420,8 @@ internal sealed partial class Engine2D : ISnapshotSection
     {
         bool services = HasServiceState();
         bool joints = LiveJointCount() > 0;
-        w.WriteUInt32(joints ? Extended : services ? Services : Version);
+        bool chars = CharHandles.Count > 0;
+        w.WriteUInt32(chars ? WithCharacters : joints ? Extended : services ? Services : Version);
         w.WriteSingle(Opt.ContactHertz); w.WriteSingle(Opt.ContactDampingRatio); w.WriteSingle(Opt.PushOutVelocity); w.WriteSingle(Opt.RestitutionThreshold);
         w.WriteSingle(Opt.MaxLinearSpeed); w.WriteSingle(Opt.MaxRotationPerSubstep); w.WriteBool(Opt.ContinuousEnabled); w.WriteSingle(Opt.ContactSlop);
         int nb = Core.Bodies.HighWater;
@@ -455,7 +457,15 @@ internal sealed partial class Engine2D : ISnapshotSection
 
         w.WriteInt32(PairFreeCount);
         w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
-        if (joints)
+        if (chars)
+        {
+            // Version 4: a presence-flags word, then the flagged blocks in a fixed order.
+            w.WriteUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u) | BlockCharacters);
+            if (joints) { WriteJoints(w); }
+            if (services) { WriteServices(w, ns); }
+            WriteCharacters(w);
+        }
+        else if (joints)
         {
             w.WriteBool(services);
             WriteJoints(w);
@@ -501,7 +511,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     public void Read(StateReader r)
     {
         uint v = r.ReadUInt32();
-        if (v != Version && v != Services && v != Extended) { throw r.Error("unsupported 2D engine section version " + v.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+        if (v != Version && v != Services && v != Extended && v != WithCharacters) { throw r.Error("unsupported 2D engine section version " + v.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
         float hertz = r.ReadSingle(), zeta = r.ReadSingle(), push = r.ReadSingle(), thr = r.ReadSingle(), maxSpeed = r.ReadSingle(), maxRot = r.ReadSingle();
         bool continuous = r.ReadBool();
         float slop = r.ReadSingle();
@@ -560,19 +570,35 @@ internal sealed partial class Engine2D : ISnapshotSection
 
         JointData2D[] joints = new JointData2D[16];
         ServiceBlock? svc = null;
-        if (v == Extended)
+        CharacterBlock? chars = null;
+        bool jointsRead = false;
+        if (v == Extended || v == WithCharacters)
         {
-            bool hasServices = r.ReadBool();
-            ReadJoints(r, out joints);
+            bool hasJoints = true, hasServices, hasChars = false;
+            if (v == Extended) { hasServices = r.ReadBool(); }
+            else
+            {
+                uint flags = r.ReadUInt32();
+                if ((flags & ~(BlockJoints | BlockServices | BlockCharacters)) != 0 || (flags & BlockCharacters) == 0) { throw r.Error("invalid 2D section block flags " + flags.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+                hasJoints = (flags & BlockJoints) != 0; hasServices = (flags & BlockServices) != 0; hasChars = true;
+            }
+
+            if (hasJoints) { ReadJoints(r, out joints); jointsRead = true; }
             if (hasServices)
             {
                 svc = ReadServices(r, ns, live);
                 if (svc.IsDefault()) { throw r.Error("2D service block holds only default state; the snapshot would not re-serialize to the same bytes"); }
             }
 
+            if (hasChars)
+            {
+                chars = ReadCharacters(r, nb);
+                if (chars.Handles.Count == 0) { throw r.Error("2D section version 4 holds no characters"); }
+            }
+
             int liveJoints = 0;
             for (int c = 0; c < joints.Length; c++) { if (joints[c].Type != 0) { liveJoints++; } }
-            if (liveJoints == 0) { throw r.Error("2D section version 3 holds no joints"); }
+            if (hasJoints && liveJoints == 0) { throw r.Error("2D section holds a joints block with no joints"); }
         }
         else if (v == Services) { svc = ReadServices(r, ns, live); }
 
@@ -585,7 +611,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         Geom = geom; Proxy = proxy; Friction = fr; Restitution = re; Rolling = ro; Density = de; Category = cat; Mask = mask; Group = grp; NextShape = next;
         EnsureShapes(Math.Max(ns, 1));
         PairA = pa; PairB = pb; PairCons = pc; PairLive = pl; PairHigh = np; PairFree = free; PairFreeCount = nf;
-        if (v == Extended) { Opt.JointHertz = _pendingJointHertz; Opt.JointDampingRatio = _pendingJointDamping; }
+        if (jointsRead) { Opt.JointHertz = _pendingJointHertz; Opt.JointDampingRatio = _pendingJointDamping; }
         Joints = joints;
         JointForce = new float[joints.Length]; JointTorque = new float[joints.Length];
         _needBind = true;
@@ -596,6 +622,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         }
 
         CommitServices(svc, ns);
+        CommitCharacters(chars);
     }
 
     /// <summary>Checks the section against the core after a restore; false when the two disagree (a damaged snapshot that parsed).</summary>
@@ -604,6 +631,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         var bodies = Core.Bodies;
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || Geom.Length < shapes.HighWater) { return false; }
+        if (!CharactersConsistent()) { return false; }
         var cons = Core.Constraints;
         if (!JointsConsistentWithCore()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)

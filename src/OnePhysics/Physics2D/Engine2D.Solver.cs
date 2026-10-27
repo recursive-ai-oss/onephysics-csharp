@@ -365,7 +365,8 @@ internal sealed partial class Engine2D
             if (bodies.TypeOf(b) != BodyType.Dynamic) { continue; }
             lin[2 * b] = BodyState[o + BS2D.Vx]; lin[2 * b + 1] = BodyState[o + BS2D.Vy]; ang[b] = BodyState[o + BS2D.W];
             Force[2 * b] = 0f; Force[2 * b + 1] = 0f; Torque[b] = 0f;
-            if (Opt.ContinuousEnabled) { Continuous(b); }
+            // Bullets are swept after every body has finished (RunBullets), against static and moving shapes alike.
+            if (Opt.ContinuousEnabled && !IsBullet(b)) { Continuous(b); }
         }
     }
 

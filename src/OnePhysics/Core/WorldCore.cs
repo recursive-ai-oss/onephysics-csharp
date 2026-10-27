@@ -95,6 +95,12 @@ public interface IWorldStages
     /// so an implementation writes only data owned by its batch. The default does nothing.
     /// </summary>
     void PrepareBatch(WorldCore world, ReadOnlySpan<int> constraints, int batch, in StepContext context) { }
+
+    /// <summary>
+    /// Once, serially, after every <see cref="FinalizeBodies"/> call of the step has finished and before <see cref="StoreResults"/>: work that reads the final pose of other bodies, such as bullets
+    /// sweeping against bodies that moved this step. It may use <see cref="WorldCore.Executor"/> for its own parallel work. The default does nothing.
+    /// </summary>
+    void AfterFinalize(WorldCore world, in StepContext context) { }
 }
 
 /// <summary>
@@ -565,6 +571,7 @@ public sealed class WorldCore
 
         SolveAll(stages, SolvePhase.Restitution, ctx);
         Executor.For(bodyChunks, new FinalizeTask<TStages>(this, stages, _awake, _awakeCount, ctx));
+        stages.AfterFinalize(this, ctx);
         Executor.For(storeChunks, new StoreTask<TStages>(this, stages, list, active, ctx));
 
         ProcessBreaks();
