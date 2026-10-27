@@ -120,7 +120,7 @@ Saved island state is the id table, each island's sleep flag and removal count, 
 
 ## Events
 
-Kinds in sort order: ContactBegin 0, ContactPersist 1, ContactEnd 2, SensorEnter 3, SensorExit 4, JointBreak 5, Sleep 6, Wake 7. `WorldOptions.Events` masks kinds (default: all but ContactPersist).
+Kinds in sort order: ContactBegin 0, ContactPersist 1, ContactEnd 2, SensorEnter 3, SensorExit 4, JointBreak 5, Sleep 6, Wake 7, ContactHit 8 (opt-in; `Value` is the approach speed). `WorldOptions.Events` masks kinds (default: all but ContactPersist and ContactHit); a snapshot accepts mask bits up to 0x1FF.
 
 * Adding a contact or sensor queues Begin/Enter; removing queues End/Exit; neither is queued for joints (a break queues JointBreak with the break value); sleeping and waking queue one event per body; ContactPersist is queued at the end of a step for awake contacts flagged ReportPersist.
 * Events are collected into per-slot buffers (serial code uses slot 0, parallel stage code its own chunk slot) and delivered by sorting with `PhysicsEvent.Compare`: kind, then body A, body B, shape A, shape B, sub-shape A, sub-shape B, joint (slot indices), then the same handles' generations, then the value's bits. The comparison is total over every field, so delivery order is independent of slots and threads.
