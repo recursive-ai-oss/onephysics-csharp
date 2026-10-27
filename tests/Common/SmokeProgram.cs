@@ -33,6 +33,36 @@ internal static class SmokeProgram
         ulong bp = BroadphaseHash.Compute();
         bool bpSame = bp == BroadphaseHash.Expected;
         Console.WriteLine((bpSame ? "OK broadphase " : "FAIL broadphase ") + bp.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
-        return ok && same && bpSame ? 0 : 1;
+
+        // The 2D world: one and three threads, and a restore halfway, must all end in the same state.
+        ulong w1 = World2D(1, false), w3 = World2D(3, false), wr = World2D(1, true);
+        bool w2Same = w1 == w3 && w1 == wr;
+        Console.WriteLine((w2Same ? "OK world2d " : "FAIL world2d ") + w1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        return ok && same && bpSame && w2Same ? 0 : 1;
+    }
+
+    private static ulong World2D(int threads, bool restoreHalfway)
+    {
+        var w = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new RecursiveAI.OnePhysics.Physics2D.WorldOptions2D { ThreadCount = threads, WorldId = 3 });
+        w.AddBox(new RecursiveAI.OneMath.Vector2F(40f, 1f), new RecursiveAI.OneMath.Vector2D(0, -0.5), type: BodyType.Static);
+        for (int i = 0; i < 30; i++)
+        {
+            var at = new RecursiveAI.OneMath.Vector2D(-4 + (i % 6) * 1.3, 1 + (i / 6) * 1.2);
+            if (i % 2 == 0) { w.AddBox(new RecursiveAI.OneMath.Vector2F(1f, 1f), at, 0.1f * i); } else { w.AddCircle(0.45f, at); }
+        }
+
+        for (int i = 0; i < 120; i++)
+        {
+            if (restoreHalfway && i == 60)
+            {
+                byte[] snap = w.Snapshot();
+                w = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new RecursiveAI.OnePhysics.Physics2D.WorldOptions2D { WorldId = 3 });
+                w.Restore(snap);
+            }
+
+            w.Step(1f / 60f);
+        }
+
+        return w.ComputeHash();
     }
 }

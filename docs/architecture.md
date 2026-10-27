@@ -98,12 +98,12 @@ A **batch** is `ConstraintColoring.Lanes` (8) consecutive constraints of one col
 3. rebuild the awake list (new constraints may have woken islands); build the active lists;
 4. `Prepare` over chunks of the active list;
 5. for each of `Substeps`: `IntegrateVelocities` over chunks of awake bodies; solve phase `WarmStart`; `VelocityIterations` × phase `Solve`; `IntegratePositions`; `RelaxIterations` × phase `Relax`. A solve phase runs the overflow set serially in batches, then colors 0…23 in order, each color's tasks in parallel;
-6. phase `Restitution` once;
+6. phase `Restitution` once, then `FinalizeBodies` over chunks of awake bodies (default no-op: forces, continuous collision);
 7. `StoreResults` over chunks (may flag joint breaks); breaks are processed serially in ascending constraint index (joint removed, break event queued);
 8. sleeping (below);
 9. persist events; deliver events (sorted); step counter +1.
 
-Dimension-specific work is behind `IWorldStages` (`UpdateContacts`, `Prepare`, `IntegrateVelocities`, `SolveBatch`, `IntegratePositions`, `StoreResults`, `BodyMotion`). Contract: everything except `UpdateContacts` and `BodyMotion` may run concurrently on disjoint data; solvers write only the dynamic bodies of their batch and treat static and kinematic bodies as read-only; mutable stage state lives in reference-type fields written serially.
+Dimension-specific work is behind `IWorldStages` (`UpdateContacts`, `Prepare`, `IntegrateVelocities`, `SolveBatch`, `IntegratePositions`, `FinalizeBodies`, `StoreResults`, `BodyMotion`). `WorldCore.Sleep(body)` puts an island to sleep immediately. Contract: everything except `UpdateContacts` and `BodyMotion` may run concurrently on disjoint data; solvers write only the dynamic bodies of their batch and treat static and kinematic bodies as read-only; mutable stage state lives in reference-type fields written serially.
 
 ## Islands and sleeping
 

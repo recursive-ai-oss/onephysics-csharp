@@ -56,7 +56,7 @@ Known gaps: Rapier3D reports no bodies asleep at creation, as in 2D. Engines tha
 
 None of their sources or headers are read; drivers are written from the published documentation and compile against the released libraries.
 
-The `onephysics` engine slot is reserved in the runner (`--engines onephysics`) and runs nothing yet.
+The `onephysics` engine runs this library's 2D world in a child process (`bar onephysics-driver`, built by `SceneBuilder2D`) with the same protocol as the others: `--engines onephysics`, threads 1/8/all, per-step dumps in stability mode. Joints and queries are skipped (scenes `joint-grid` and `chain` build without their joints; `queries` runs only its settling steps). `chain` shapes become one two-sided segment per link, as in the other drivers. Defaults: 4 substeps, one solve and one relax iteration per substep.
 
 ## 3D stability thresholds (proposed)
 

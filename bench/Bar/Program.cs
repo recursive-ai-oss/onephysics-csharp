@@ -26,6 +26,7 @@ public static class Program
             case "box2dnet-driver": return Box2DNetDriver.Run(opts);
             case "bepu-driver": return BepuDriver.Run(opts);
             case "jitter2-driver": return Jitter2Driver.Run(opts);
+            case "onephysics-driver": return OnePhysicsDriver.Run(opts);
             default: return Usage();
         }
     }
@@ -35,7 +36,7 @@ public static class Program
         Console.Error.WriteLine("""
             usage: bar gen [--out DIR]
                    bar metrics SCENE DUMP
-                   bar run --mode timing|stability [--scenes a,b|all] [--engines box2d,rapier2d,box2dnet,jolt,box3d,rapier3d,bepu,jitter2] [--threads 1,8,all]
+                   bar run --mode timing|stability [--scenes a,b|all] [--engines box2d,rapier2d,box2dnet,jolt,box3d,rapier3d,bepu,jitter2,onephysics] [--threads 1,8,all]
                            [--scene-dir DIR] [--state DIR] [--out DIR] [--repeat N] [--job-id ID] [--lock-held]
                    bar summarize RESULT_DIR
             """);
@@ -115,7 +116,6 @@ static class Runner
             foreach (var eng in engines)
                 foreach (var th in threadList)
                 {
-                    if (eng == "onephysics") { Console.WriteLine("onephysics: slot reserved, nothing to run yet"); continue; }
                     if (Engines3D.Contains(eng) != (scene.Dim == 3)) continue;
                     if (eng == "box2dnet" && th != 1) continue; // no documented multithreading
                     if (!timing && th != threadList[0]) continue;
@@ -154,7 +154,7 @@ static class Runner
             case "jolt": exe = Path.Combine(state, "bin", "jolt-driver"); break;
             case "box3d": exe = Path.Combine(state, "bin", "box3d-driver"); break;
             case "rapier3d": exe = Path.Combine(state, "bin", "rapier3d-driver"); break;
-            case "box2dnet": case "bepu": case "jitter2": exe = Environment.ProcessPath!; args.Add(Assembly.GetEntryAssembly()!.Location); args.Add(eng + "-driver"); break;
+            case "box2dnet": case "bepu": case "jitter2": case "onephysics": exe = Environment.ProcessPath!; args.Add(Assembly.GetEntryAssembly()!.Location); args.Add(eng + "-driver"); break;
             default: throw new ArgumentException("unknown engine " + eng);
         }
         args.AddRange(["--scene", scene, "--threads", threads.ToString(CultureInfo.InvariantCulture), "--mode", timing ? "timing" : "stability", "--result", result]);

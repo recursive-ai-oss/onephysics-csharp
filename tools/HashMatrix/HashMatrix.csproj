@@ -11,14 +11,19 @@
     <AssemblyName>HashMatrix</AssemblyName>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- CA1051: the linked scene definitions in bench/Bar are plain data classes with public fields; the runner is a tool, not part of the package. -->
+    <NoWarn>$(NoWarn);CS1591;CA1051</NoWarn>
     <WasmNativeStrip>false</WasmNativeStrip>
+    <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../src/OnePhysics/OnePhysics.csproj" />
     <!-- The batching experiment's simulation code (not its command-line program) is hashed here. -->
     <Compile Include="../../experiments/batching/Sim/*.cs" LinkBase="Batching" />
+    <!-- Existing determinism checks and the shared scene definitions, linked from where they live. -->
+    <Compile Include="../../tests/OnePhysics.Tests/Collision3D/Collision3DHash.cs;../../tests/OnePhysics.Tests/Collision3D/TestRng.cs;../../tests/OnePhysics.Tests/Broadphase/BroadphaseHash.cs" LinkBase="Checks" />
+    <Compile Include="../../bench/Bar/Scene.cs;../../bench/Bar/Gen.cs;../../bench/Bar/SceneBuilder2D.cs" LinkBase="Scenes" />
   </ItemGroup>
 
 </Project>

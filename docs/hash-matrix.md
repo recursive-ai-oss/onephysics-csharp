@@ -76,3 +76,7 @@ Scenarios under `batching/` must also agree *within* one manifest across their l
 family): the script reports a disagreement even when all columns agree with each other.
 
 Output goes to `$ONEPHYSICS_ARTIFACTS` (build output) and the `-o` directory (manifests).
+
+## Registered scenarios
+
+`batching/*` (kernel widths), `core/golden` and `core/smoke` (the reference particle engine; final world hash of the golden scene 11996105962752397070), `collision/hash2d`, `collision/hash3d`, `broadphase/hash` (one value each), and `world2d/pyramid-20`, `world2d/large-pile` (first 300 steps), `world2d/restore-and-shift` (a rotating-box scene with a snapshot, restore and origin shift): world hash after every step.
