@@ -234,6 +234,9 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
         return tree.GetBounds(node);
     }
 
+    /// <summary>The fat bounds of a proxy the caller knows is live, without the liveness check (for per-pair inner loops; a stale key reads some other node or throws an index error).</summary>
+    internal ref readonly TBox FatBoundsOfLive(int key) => ref _trees[key & 3].BoundsOfLive(key >> 2);
+
     /// <summary>The user id stored with a live proxy.</summary>
     public int GetUserId(int key)
     {

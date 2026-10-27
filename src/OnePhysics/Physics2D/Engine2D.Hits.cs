@@ -24,7 +24,8 @@ internal sealed partial class Engine2D
             for (int i = 0; i < count; i++)
             {
                 if (!(pl[ManifoldLayout.MaxNormalImpulse(i)] > 0f)) { continue; }
-                float approach = 0f - Scratch[c * ContactKernel2D.Stride + Row2D.Point0 + i * Row2D.PointStride + Row2D.RelativeVelocity];
+                int slot = SlotOf[c];
+                float approach = 0f - Wide[(slot >> 3) * W2D.GroupFloats + (W2D.Point0 + i * W2D.PointStride + W2D.RelativeVelocity) * 8 + (slot & 7)];
                 if (approach > best) { best = approach; }
             }
 

@@ -50,29 +50,29 @@ internal sealed partial class Engine2D
 
     private void LoadJoint(int a, int b, ReadOnlySpan<float> s, out JS j)
     {
-        var bodies = Core.Bodies;
-        ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
+        ReadOnlySpan<float> st = BodyState;
+        int oa = (a + 1) * BS2D.Stride, ob = (b + 1) * BS2D.Stride;
         j = default;
-        j.VAx = lin[2 * a]; j.VAy = lin[2 * a + 1]; j.WA = ang[a];
-        j.VBx = lin[2 * b]; j.VBy = lin[2 * b + 1]; j.WB = ang[b];
+        j.VAx = st[oa + BS2D.Vx]; j.VAy = st[oa + BS2D.Vy]; j.WA = st[oa + BS2D.W];
+        j.VBx = st[ob + BS2D.Vx]; j.VBy = st[ob + BS2D.Vy]; j.WB = st[ob + BS2D.W];
         j.MA = s[JRow.MA]; j.IA = s[JRow.IA]; j.MB = s[JRow.MB]; j.IB = s[JRow.IB];
-        float dAc = Dq[2 * a], dAs = Dq[2 * a + 1], dBc = Dq[2 * b], dBs = Dq[2 * b + 1];
+        float dAc = st[oa + BS2D.DqC], dAs = st[oa + BS2D.DqS], dBc = st[ob + BS2D.DqC], dBs = st[ob + BS2D.DqS];
         j.DAc = dAc; j.DAs = dAs; j.DBc = dBc; j.DBs = dBs;
         float rx = s[JRow.RAx], ry = s[JRow.RAy];
         j.RAx = dAc * rx - dAs * ry; j.RAy = dAs * rx + dAc * ry;
         rx = s[JRow.RBx]; ry = s[JRow.RBy];
         j.RBx = dBc * rx - dBs * ry; j.RBy = dBs * rx + dBc * ry;
-        j.Dx = s[JRow.Dx] + (Dp[2 * b] - Dp[2 * a]);
-        j.Dy = s[JRow.Dy] + (Dp[2 * b + 1] - Dp[2 * a + 1]);
+        j.Dx = s[JRow.Dx] + (st[ob + BS2D.Dpx] - st[oa + BS2D.Dpx]);
+        j.Dy = s[JRow.Dy] + (st[ob + BS2D.Dpy] - st[oa + BS2D.Dpy]);
     }
 
     private void StoreJoint(int a, int b, in JS j)
     {
-        var bodies = Core.Bodies;
-        Span<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
-        ReadOnlySpan<byte> type = bodies.Type;
-        if (type[a] == (byte)BodyType.Dynamic) { lin[2 * a] = j.VAx; lin[2 * a + 1] = j.VAy; ang[a] = j.WA; }
-        if (type[b] == (byte)BodyType.Dynamic) { lin[2 * b] = j.VBx; lin[2 * b + 1] = j.VBy; ang[b] = j.WB; }
+        Span<float> st = BodyState;
+        ReadOnlySpan<byte> type = Core.Bodies.Type;
+        int oa = (a + 1) * BS2D.Stride, ob = (b + 1) * BS2D.Stride;
+        if (type[a] == (byte)BodyType.Dynamic) { st[oa + BS2D.Vx] = j.VAx; st[oa + BS2D.Vy] = j.VAy; st[oa + BS2D.W] = j.WA; }
+        if (type[b] == (byte)BodyType.Dynamic) { st[ob + BS2D.Vx] = j.VBx; st[ob + BS2D.Vy] = j.VBy; st[ob + BS2D.W] = j.WB; }
     }
 
     /// <summary>Relative rotation of B in A's frame now (reference removed), as (cos, sin): ΔqB · conj(ΔqA) · q0.</summary>
@@ -480,7 +480,7 @@ internal sealed partial class Engine2D
         }
 
         if (!useBias) { return; } // a spring acts once per substep, in the biased pass
-        float cx = Dp[2 * b] + j.RBx - s[JRow.TgtX], cy = Dp[2 * b + 1] + j.RBy - s[JRow.TgtY];
+        float cx = BodyState[(b + 1) * BS2D.Stride + BS2D.Dpx] + j.RBx - s[JRow.TgtX], cy = BodyState[(b + 1) * BS2D.Stride + BS2D.Dpy] + j.RBy - s[JRow.TgtY];
         j.RelativePointVelocity(out float dvx, out float dvy);
         float k11 = j.MB + j.IB * j.RBy * j.RBy;
         float k12 = -j.IB * j.RBx * j.RBy;

@@ -85,6 +85,18 @@ public interface IWorldStages
     void FinalizeBodies(WorldCore world, ReadOnlySpan<int> bodies, in StepContext context) { }
 
     /// <summary>
+    /// Once per step after the constraints are colored and before anything is prepared: <paramref name="batches"/> is the number of batches the solver will see (the overflow set cut into groups of <see cref="ConstraintColoring.Lanes"/>,
+    /// then each color cut into groups of that size). The default does nothing.
+    /// </summary>
+    void BeginSolve(WorldCore world, int batches, in StepContext context) { }
+
+    /// <summary>
+    /// Prepares one batch (after every chunk has been prepared with <see cref="Prepare"/>), cut exactly as <see cref="SolveBatch"/> will see it; <paramref name="batch"/> numbers the batches of the step from zero in solve order. Batches of one color may be prepared concurrently,
+    /// so an implementation writes only data owned by its batch. The default does nothing.
+    /// </summary>
+    void PrepareBatch(WorldCore world, ReadOnlySpan<int> constraints, int batch, in StepContext context) { }
+
+    /// <summary>
     /// Once, serially, after every <see cref="FinalizeBodies"/> call of the step has finished and before <see cref="StoreResults"/>: work that reads the final pose of other bodies, such as bullets
     /// sweeping against bodies that moved this step. It may use <see cref="WorldCore.Executor"/> for its own parallel work. The default does nothing.
     /// </summary>
@@ -180,6 +192,9 @@ public sealed class WorldCore
 
     /// <summary>The awake bodies ascending: awake dynamic bodies and all kinematic bodies. During <see cref="IWorldStages.UpdateContacts"/> the list is as of the start of the step; afterwards it includes bodies the new constraints woke.</summary>
     public ReadOnlySpan<int> AwakeBodies => _awake.AsSpan(0, _awakeCount);
+
+    /// <summary>The array behind <see cref="AwakeBodies"/>, for parallel tasks (which cannot hold a span).</summary>
+    internal int[] AwakeArray => _awake;
 
     /// <summary>Registers extra state saved, restored and hashed after the core's own. Sections are written in registration order and must be registered identically in a world that restores the snapshot.</summary>
     public void AddSection(ISnapshotSection section)
@@ -530,10 +545,9 @@ public sealed class WorldCore
         if (!(dt > 0f) || !float.IsFinite(dt)) { throw new ArgumentOutOfRangeException(nameof(dt), dt, "dt must be finite and positive."); }
         _options.Validate();
         _events.ClearDelivered();
-        BuildAwakeBodies(); // as of the start of the step, for the contact stage
+        BuildAwakeBodies();
         stages.UpdateContacts(this);
-
-        BuildAwakeBodies(); // again: adding contacts may have woken islands
+        BuildAwakeBodies();
         _coloring.EnsureBodies(_bodies.HighWater);
         _coloring.BuildActive(_bodies, _constraints);
         var ctx = new StepContext(dt, _options.Substeps);
@@ -543,6 +557,7 @@ public sealed class WorldCore
         var list = _coloring.ListArray;
 
         Executor.For(storeChunks, new PrepareTask<TStages>(this, stages, list, 0, active, ctx));
+        PrepareBatches(stages, ctx);
 
         int bodyChunks = (_awakeCount + ChunkSize - 1) / ChunkSize;
         for (int s = 0; s < _options.Substeps; s++)
@@ -579,6 +594,47 @@ public sealed class WorldCore
         }
 
         _awakeCount = k;
+    }
+
+    private void PrepareBatches<TStages>(TStages stages, in StepContext ctx) where TStages : IWorldStages
+    {
+        var list = _coloring.ListArray;
+        int os = _coloring.OverflowStart;
+        int on = _coloring.Overflow.Length;
+        int batches = (on + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
+        for (int color = 0; color < ConstraintColoring.ColorCount; color++) { batches += (_coloring.Color(color).Length + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes; }
+        stages.BeginSolve(this, batches, in ctx);
+        int batch = 0;
+        for (int lo = 0; lo < on; lo += ConstraintColoring.Lanes)
+        {
+            stages.PrepareBatch(this, list.AsSpan(os + lo, Math.Min(ConstraintColoring.Lanes, on - lo)), batch++, in ctx);
+        }
+
+        for (int color = 0; color < ConstraintColoring.ColorCount; color++)
+        {
+            int n = _coloring.Color(color).Length;
+            if (n == 0) { continue; }
+            int count = (n + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
+            int tasks = (count + ConstraintColoring.BatchesPerTask - 1) / ConstraintColoring.BatchesPerTask;
+            Executor.For(tasks, new PrepareBatchTask<TStages>(this, stages, list, _coloring.ColorStart(color), n, batch, ctx));
+            batch += count;
+        }
+    }
+
+    private readonly struct PrepareBatchTask<TStages> : IParallelBody where TStages : IWorldStages
+    {
+        private readonly WorldCore _w; private readonly TStages _s; private readonly int[] _list; private readonly int _start, _count, _firstBatch; private readonly StepContext _ctx;
+        public PrepareBatchTask(WorldCore w, TStages s, int[] list, int start, int count, int firstBatch, StepContext ctx) { _w = w; _s = s; _list = list; _start = start; _count = count; _firstBatch = firstBatch; _ctx = ctx; }
+        public void Run(int task)
+        {
+            int first = task * ConstraintColoring.BatchesPerTask;
+            for (int bt = first; bt < first + ConstraintColoring.BatchesPerTask; bt++)
+            {
+                int lo = bt * ConstraintColoring.Lanes;
+                if (lo >= _count) { break; }
+                _s.PrepareBatch(_w, _list.AsSpan(_start + lo, Math.Min(ConstraintColoring.Lanes, _count - lo)), _firstBatch + bt, in _ctx);
+            }
+        }
     }
 
     private void SolveAll<TStages>(TStages stages, SolvePhase phase, in StepContext ctx) where TStages : IWorldStages

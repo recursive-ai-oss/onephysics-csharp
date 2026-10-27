@@ -258,7 +258,7 @@ internal sealed partial class Engine2D
             foreach (int c in constraints)
             {
                 if (cs.KindOf(c) == ConstraintKind.Joint) { SolveJoint(c, phase, in ctx); }
-                else { ContactKernel2D.Run<Lanes1>(this, new ReadOnlySpan<int>(in c), phase, in kp); }
+                else { RunLane(c, phase, in kp); }
             }
 
             return;
@@ -266,27 +266,27 @@ internal sealed partial class Engine2D
 
         BatchBuffer buffer = default;
         Span<int> contacts = buffer;
-        int n = 0;
+        int n = 0, wideJoints = 0, wideGroup = 0;
         foreach (int c in constraints)
         {
-            if (cs.KindOf(c) == ConstraintKind.Joint) { SolveJoint(c, phase, in ctx); }
+            if (cs.KindOf(c) == ConstraintKind.Joint)
+            {
+                int js = JSlotOf[c];
+                if (js >= 0) { wideGroup = js >> 3; wideJoints++; }
+                else { SolveJoint(c, phase, in ctx); }
+            }
             else { contacts[n++] = c; }
         }
 
+        if (wideJoints > 0)
+        {
+            if (KernelWidth == 1) { JointKernel2D.Run<Lanes1>(this, wideGroup, 0, wideJoints, phase); }
+            else if (KernelWidth == 4) { JointKernel2D.Run<Lanes128>(this, wideGroup, 0, wideJoints, phase); }
+            else { JointKernel2D.Run<Lanes256>(this, wideGroup, 0, wideJoints, phase); }
+        }
+
         if (n == 0) { return; }
-        var list = contacts.Slice(0, n);
-        if (KernelWidth == 1)
-        {
-            for (int i = 0; i < n; i++) { ContactKernel2D.Run<Lanes1>(this, list.Slice(i, 1), phase, in kp); }
-        }
-        else if (KernelWidth == 4)
-        {
-            for (int i = 0; i < n; i += 4) { ContactKernel2D.Run<Lanes128>(this, list.Slice(i, Math.Min(4, n - i)), phase, in kp); }
-        }
-        else
-        {
-            ContactKernel2D.Run<Lanes256>(this, list, phase, in kp);
-        }
+        RunContacts(SlotOf[contacts[0]] >> 3, n, phase, in kp);
     }
 
     // ------------------------------------------------------------------ prepare
