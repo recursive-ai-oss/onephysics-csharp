@@ -95,6 +95,7 @@ internal sealed partial class Engine2D
             for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
             {
                 if (_needMove[s] == 0) { continue; }
+                Bp.MoveProxy(Proxy[s], new Aabb2D(_boxes[4 * s], _boxes[4 * s + 1], _boxes[4 * s + 2], _boxes[4 * s + 3]), Dp[2 * b], Dp[2 * b + 1]);
             }
         }
 
