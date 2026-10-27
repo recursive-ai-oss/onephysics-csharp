@@ -19,6 +19,11 @@ internal static class SmokeProgram
         ulong h = a.World.ComputeHash();
         bool ok = h == b.World.ComputeHash() && h == c.World.ComputeHash();
         Console.WriteLine(ok ? "OK " + h.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) : "FAIL");
-        return ok ? 0 : 1;
+
+        // Convex collision results must be bit-identical on every platform: hash a fixed set of queries.
+        ulong hash = Collision3DHash.Compute();
+        bool same = hash == Collision3DHash.Expected;
+        Console.WriteLine((same ? "OK collision3d " : "FAIL collision3d ") + hash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        return ok && same ? 0 : 1;
     }
 }
