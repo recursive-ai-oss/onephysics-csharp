@@ -24,6 +24,7 @@ public static class Program
             case "run": return Runner.Run(opts);
             case "summarize": Runner.Summarize(opts.Pos(0)); return 0;
             case "box2dnet-driver": return Box2DNetDriver.Run(opts);
+            case "onephysics-driver": return OnePhysicsDriver.Run(opts);
             default: return Usage();
         }
     }
@@ -33,7 +34,7 @@ public static class Program
         Console.Error.WriteLine("""
             usage: bar gen [--out DIR]
                    bar metrics SCENE DUMP
-                   bar run --mode timing|stability [--scenes a,b|all] [--engines box2d,rapier2d,box2dnet] [--threads 1,8,all]
+                   bar run --mode timing|stability [--scenes a,b|all] [--engines box2d,rapier2d,box2dnet,onephysics] [--threads 1,8,all]
                            [--scene-dir DIR] [--state DIR] [--out DIR] [--repeat N] [--job-id ID] [--lock-held]
                    bar summarize RESULT_DIR
             """);
@@ -112,7 +113,6 @@ static class Runner
             foreach (var eng in engines)
                 foreach (var th in threadList)
                 {
-                    if (eng == "onephysics") { Console.WriteLine("onephysics: slot reserved, nothing to run yet"); continue; }
                     if (eng == "box2dnet" && th != 1) continue; // no documented multithreading
                     if (!timing && th != threadList[0]) continue;
                     Row? best = null; string? bestDump = null;
@@ -148,6 +148,7 @@ static class Runner
             case "box2d": exe = Path.Combine(state, "bin", "box2d-driver"); break;
             case "rapier2d": exe = Path.Combine(state, "bin", "rapier-driver"); break;
             case "box2dnet": exe = Environment.ProcessPath!; args.Add(Assembly.GetEntryAssembly()!.Location); args.Add("box2dnet-driver"); break;
+            case "onephysics": exe = Environment.ProcessPath!; args.Add(Assembly.GetEntryAssembly()!.Location); args.Add("onephysics-driver"); break;
             default: throw new ArgumentException("unknown engine " + eng);
         }
         args.AddRange(["--scene", scene, "--threads", threads.ToString(CultureInfo.InvariantCulture), "--mode", timing ? "timing" : "stability", "--result", result]);

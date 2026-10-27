@@ -77,6 +77,12 @@ public interface IWorldStages
 
     /// <summary>How much a body moves, in the units of <see cref="WorldOptions.SleepThreshold"/> (typically a speed). Called serially for each awake dynamic body in ascending order.</summary>
     float BodyMotion(WorldCore world, int body);
+
+    /// <summary>
+    /// After the restitution pass and before <see cref="StoreResults"/>: per-body work that needs the final pose of the step, such as continuous collision against static geometry or clearing applied forces.
+    /// Called over chunks of awake bodies (ascending), possibly concurrently, so it may only write the bodies it is handed. The default does nothing.
+    /// </summary>
+    void FinalizeBodies(WorldCore world, ReadOnlySpan<int> bodies, in StepContext context) { }
 }
 
 /// <summary>
@@ -364,6 +370,13 @@ public sealed class WorldCore
         if (_bodies.IsDynamic(b)) { WakeIsland(_bodies.Island[b]); }
     }
 
+    /// <summary>Puts the island of a dynamic body to sleep now (a no-op for static and kinematic bodies and for islands already asleep): velocities are zeroed and one sleep event per body is queued.  The island wakes again as soon as anything touches it.</summary>
+    public void Sleep(BodyHandle handle)
+    {
+        int b = Resolve(handle);
+        if (_bodies.IsDynamic(b) && !_islands.IsAsleep(_bodies.Island[b])) { SleepIsland(_bodies.Island[b]); }
+    }
+
     /// <summary>Wakes an island: its bodies become awake with sleep timers reset, and one wake event per body is queued.</summary>
     public void WakeIsland(int island)
     {
@@ -536,6 +549,7 @@ public sealed class WorldCore
         }
 
         SolveAll(stages, SolvePhase.Restitution, ctx);
+        Executor.For(bodyChunks, new FinalizeTask<TStages>(this, stages, _awake, _awakeCount, ctx));
         Executor.For(storeChunks, new StoreTask<TStages>(this, stages, list, active, ctx));
 
         ProcessBreaks();
@@ -600,6 +614,17 @@ public sealed class WorldCore
             int lo = task * ChunkSize;
             var span = _list.AsSpan(lo, Math.Min(ChunkSize, _count - lo));
             if (_velocities) { _s.IntegrateVelocities(_w, span, in _ctx); } else { _s.IntegratePositions(_w, span, in _ctx); }
+        }
+    }
+
+    private readonly struct FinalizeTask<TStages> : IParallelBody where TStages : IWorldStages
+    {
+        private readonly WorldCore _w; private readonly TStages _s; private readonly int[] _list; private readonly int _count; private readonly StepContext _ctx;
+        public FinalizeTask(WorldCore w, TStages s, int[] list, int count, StepContext ctx) { _w = w; _s = s; _list = list; _count = count; _ctx = ctx; }
+        public void Run(int task)
+        {
+            int lo = task * ChunkSize;
+            _s.FinalizeBodies(_w, _list.AsSpan(lo, Math.Min(ChunkSize, _count - lo)), in _ctx);
         }
     }
 
