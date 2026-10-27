@@ -24,6 +24,11 @@ internal static class SmokeProgram
         ulong hash = Collision3DHash.Compute();
         bool same = hash == Collision3DHash.Expected;
         Console.WriteLine((same ? "OK collision3d " : "FAIL collision3d ") + hash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
-        return ok && same ? 0 : 1;
+
+        // The broadphase's pairs, queries and snapshot must be bit-identical on every platform and thread count.
+        ulong bp = BroadphaseHash.Compute();
+        bool bpSame = bp == BroadphaseHash.Expected;
+        Console.WriteLine((bpSame ? "OK broadphase " : "FAIL broadphase ") + bp.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        return ok && same && bpSame ? 0 : 1;
     }
 }

@@ -16,6 +16,7 @@ internal static class Program
         ["snapshot-raw"] = SnapshotRawTarget,
         ["hull"] = HullTarget,
         ["convex"] = ConvexTarget,
+        ["broadphase"] = BroadphaseTarget.Run,
     };
 
     private static int Main(string[] args)
