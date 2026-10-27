@@ -18,7 +18,9 @@ export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 export ONEPHYSICS_ARTIFACTS="${ONEPHYSICS_ARTIFACTS:-$state/artifacts}"
 
 mkdir -p "$state"
-"$repo/tools/refs/setup.sh" "$state" all >"$state/setup.log" 2>&1 || { tail -30 "$state/setup.log"; exit 1; } # incremental: only changed drivers rebuild
+for target in all all3d; do # incremental: only changed drivers rebuild
+  "$repo/tools/refs/setup.sh" "$state" "$target" >"$state/setup-$target.log" 2>&1 || { tail -30 "$state/setup-$target.log"; exit 1; }
+done
 dotnet build "$repo/bench/Bar/Bar.csproj" -c Release -v quiet -clp:NoSummary
 bar="$ONEPHYSICS_ARTIFACTS/bin/Bar/release/Bar.dll"
 
@@ -34,7 +36,7 @@ case "$mode" in
     exec nice -n 10 dotnet "$bar" run --mode stability --scene-dir "$scenes" --state "$state" "$@" ;;
   timing)
     set -o noclobber
-    echo "onephysics timing sweep $(date -Is) expected 1h" > "$lock" || { echo "bench lock is held: $(cat "$lock")" >&2; exit 3; }
+    echo "onephysics timing sweep $(date +%Y-%m-%dT%H:%M:%S%z) expected 1h" > "$lock" || { echo "bench lock is held: $(cat "$lock")" >&2; exit 3; }
     trap 'rm -f "$lock"' EXIT
     set +o noclobber
     dotnet "$bar" run --mode timing --lock-held --scene-dir "$scenes" --state "$state" "$@" ;;

@@ -7,7 +7,7 @@ namespace Bar;
 public static class Gen
 {
     // xorshift64* with a fixed seed; doubles come from the top 53 bits.
-    sealed class Rng
+    internal sealed class Rng
     {
         ulong s;
         public Rng(ulong seed) { s = seed == 0 ? 0x9E3779B97F4A7C15UL : seed; }
@@ -21,7 +21,7 @@ public static class Gen
 
     static double[] Scale(double[] p, double k) => p.Select(v => v * k).ToArray();
 
-    static Scene Base(string name, int steps, params string[] metrics)
+    internal static Scene Base(string name, int steps, params string[] metrics)
     {
         var s = new Scene { Name = name, Steps = steps };
         s.Metrics.AddRange(metrics);
@@ -29,13 +29,13 @@ public static class Gen
         return s;
     }
 
-    static BodyDef Add(Scene s, string type, double x, double y, double angle = 0, double vx = 0, double vy = 0, double w = 0)
+    internal static BodyDef Add(Scene s, string type, double x, double y, double angle = 0, double vx = 0, double vy = 0, double w = 0)
     {
         var b = new BodyDef { Type = type, X = x, Y = y, Angle = angle, Vx = vx, Vy = vy, W = w };
         s.Bodies.Add(b); return b;
     }
 
-    static void Shape(BodyDef b, string kind, double density, double radius, params double[] p) =>
+    internal static void Shape(BodyDef b, string kind, double density, double radius, params double[] p) =>
         b.Shapes.Add(new ShapeDef { Kind = kind, Material = 0, Density = density, Radius = radius, P = p });
 
     static void Box(BodyDef b, double hx, double hy, double cx = 0, double cy = 0, double angle = 0, double density = 1) =>
@@ -231,7 +231,7 @@ public static class Gen
     }
 
     public static List<Scene> All() =>
-        [Pyramid(20), Pyramid(100), LargePile(), Tumbler(), JointGrid(), Chain(), SleepWake(), MixedTerrain(), Bullets(), Queries()];
+        [Pyramid(20), Pyramid(100), LargePile(), Tumbler(), JointGrid(), Chain(), SleepWake(), MixedTerrain(), Bullets(), Queries(), ..Gen3.All()];
 
     /// <summary>Writes every scene into <paramref name="dir"/> and a SHA256SUMS manifest beside them.</summary>
     public static void WriteAll(string dir)

@@ -1,15 +1,15 @@
 # Bench harness
 
-Normative method for the reference runs. Everything lives under `bench/Bar` (runner, scene generator, metrics, the Box2D.NET driver), `bench/drivers/{box2d,rapier}` (native drivers) and `tools/refs`, `tools/bench` (scripts).
+Normative method for the reference runs. Everything lives under `bench/Bar` (runner, scene generators, metrics, the in-process Box2D.NET, Bepu and Jitter2 drivers), `bench/drivers/{box2d,rapier,jolt,box3d,rapier3d}` (native drivers) and `tools/refs`, `tools/bench` (scripts).
 
 ## One command
 
 ```
-tools/bench/run.sh stability [--scenes a,b|all] [--engines box2d,rapier2d,box2dnet] [--out DIR]
+tools/bench/run.sh stability [--scenes a,b|all] [--engines box2d,rapier2d,box2dnet,jolt,box3d,rapier3d,bepu,jitter2] [--out DIR]
 tools/bench/run.sh timing    [--scenes ...] [--engines ...] [--threads 1,8,all] [--repeat N] [--out DIR]
 ```
 
-Both build the runner, set up the reference drivers when missing (`tools/refs/setup.sh STATE [box2d|rapier|all]`: fetch by pinned URL and sha256, build unattended, install under `STATE`, default `~/onephysics`), regenerate and verify the scenes, and run scene × engine × thread count. `timing` takes the shared benchmark lock itself (atomically, released on exit) and records the lock as held; `stability` refuses to run while the lock exists and runs under `nice`. `BAR_JOB_ID` is recorded in `meta.txt`.
+Both build the runner, set up the reference drivers when missing (`tools/refs/setup.sh STATE [box2d|rapier|rapier3d|jolt|box3d|all|all3d]`: fetch by pinned URL and sha256, build unattended, install under `STATE`, default `~/onephysics`), regenerate and verify the scenes, and run scene × engine × thread count. A scene runs on the engines of its dimension (2D scenes: Box2D, Rapier2D, Box2D.NET; 3D scenes: Jolt, Box3D, Rapier3D, Bepu, Jitter2). `timing` takes the shared benchmark lock itself (atomically, released on exit) and records the lock as held; `stability` refuses to run while the lock exists and runs under `nice`. `BAR_JOB_ID` is recorded in `meta.txt`.
 
 Output directory: `meta.txt` (machine, CPU model, logical cores, OS, runtime, job id, system load before, after each run and after), `timing.csv`, `metrics.csv` (stability mode), `summary.md`, and `raw/` (per-run result files, dumps, `time` output).
 
@@ -30,7 +30,59 @@ Output directory: `meta.txt` (machine, CPU model, logical cores, OS, runtime, jo
 | Box2D v3 | 3.2.0 (tag archive, sha256 in `tools/refs/pins.env`) | MIT | CMake static build, C driver written from the public documentation |
 | Rapier2D | 0.36.1 (`=` pin in `bench/drivers/rapier/Cargo.toml`, `Cargo.lock` committed) | Apache-2.0 | Rust driver, `parallel` feature |
 | Box2D.NET | 3.1.654 (NuGet, `Bar.csproj`) | MIT | in-process driver `bar box2dnet-driver` |
+| Jolt | 5.6.0 (tag archive, sha256 in `tools/refs/pins.env`) | MIT | CMake static build (`Distribution`, every library option at its default: cross-platform determinism off, single precision, no double-precision positions), C++ driver |
+| Box3D | 0.1.0 (tag archive, sha256 in `pins.env`; alpha) | MIT | CMake static build, C driver |
+| Rapier3D | 0.36.1 (`=` pin in `bench/drivers/rapier3d/Cargo.toml`, `Cargo.lock` committed) | Apache-2.0 | Rust driver, `parallel` feature |
+| BepuPhysics | 2.5.0-beta.33 (NuGet, `Bar.csproj`) | Apache-2.0 | in-process driver `bar bepu-driver` |
+| Jitter2 | 2.13.0 (NuGet, `Bar.csproj`) | MIT | in-process driver `bar jitter2-driver` |
+
+### 3D reference configurations
+
+Each engine runs its documented defaults; a driver only supplies what a scene needs (shapes, joints, sleep state, thread count). Step time is the engine's step call only.
+
+| engine | step | solver | threads | joints | other |
+|---|---|---|---|---|---|
+| Jolt | one collision step per `Update` | library defaults (10 velocity, 2 position iterations) | `JobSystemThreadPool` with N−1 workers plus the caller | point constraint in body-centre space; a group filter keeps joined pairs from colliding | static bodies in the non-moving layer, the rest in the moving layer; sleeping on; mesh and height-field shapes native; bullets use linear-cast motion quality; temp allocator 512 MB |
+| Box3D | 4 sub-steps (the documented recommendation) | library defaults | `workerCount` = N with the built-in task system | spherical joint, frames measured from body origins, no collision between joined bodies | sleeping on; mesh edges identified (the documented way to avoid snagging); mesh winding and the height field's row order, winding and origin are confirmed by probing the created shape with rays and its bounds |
+| Rapier3D | integration parameters at their defaults, dt from the scene | library defaults | `parallel` feature, a rayon pool of exactly N threads | spherical joint, no collision between joined bodies | CCD enabled on bullets; sleeping on |
+| Bepu | `SolveDescription(8, 1)` (8 velocity iterations, 1 substep, the library default) | contact spring 30 Hz, damping 1, friction 0.6, recovery velocity 2 m/s (set by the driver, as the contact callback must) | `ThreadDispatcher(N)` | ball-socket with a 30 Hz spring; joined pairs are filtered out in the narrow-phase callbacks | static shapes are `Statics`; terrain is a triangle mesh (no height-field shape); mesh triangles are one-sided so the winding is reversed; sleeping on |
+| Jitter2 | defaults (6 solver and 4 relaxation iterations, 1 substep, regular solve mode) | defaults | thread pool resized to N (caller included), `Step(dt, multiThread: N > 1)` | ball-socket from a world anchor; a broad-phase filter drops joined pairs | static bodies; terrain as one triangle shape per mesh triangle; hulls as point clouds; sleeping on |
+
+Densities: Jolt and Box3D take the density per shape, Rapier per collider; Bepu takes a mass computed from the shape volume; Jitter2 shapes assume density 1, so the body mass is set from the volume afterwards.
+
+Queries (`queries-3d`): Jolt, Box3D and Rapier3D run ray, sphere overlap and sphere cast through their documented world queries. Bepu and Jitter2 are not driven for queries: neither documents a whole-world sphere-overlap query with comparable counts, so their rows report step time and stability only.
+
+Known gaps: Rapier3D reports no bodies asleep at creation, as in 2D. Engines that report velocity at the centre of mass differ from the origin velocity only for bodies whose centre of mass is offset from their origin (the offset capsules and hulls of `large-pile-3d`); that does not matter at the thresholds' precision.
 
 None of their sources or headers are read; drivers are written from the published documentation and compile against the released libraries.
 
 The `onephysics` engine slot is reserved in the runner (`--engines onephysics`) and runs nothing yet.
+
+## 3D stability thresholds (proposed)
+
+Measured at one thread, 2026-10-27, on an x64 machine (Ryzen 9 7950X3D, 32 logical cores, shared, load 17–29) and an Apple M2; the two agree except where noted. Each threshold is the worst value among the engines that are stable on the scene, plus margin. Always: `nan` = 0; `escapes` = `tunnelled` = 0 unless stated.
+
+| scene | maxSpeed | maxPenetration | finalPenetration | other |
+|---|---|---|---|---|
+| pyramid-3d-10 | ≤ 0.1 | ≤ 0.01 | ≤ 0.01 | topDrop ≤ 0.06, topLateral ≤ 0.05, restKE ≤ 0.01 |
+| pyramid-3d-30 | ≤ 1 | ≤ 0.05 | ≤ 0.04 | topDrop ≤ 0.1, topLateral ≤ 0.25, restKE ≤ 0.01, jitter ≤ 0.05 |
+| large-pile-3d | ≤ 15 | ≤ 0.5 | ≤ 0.25 | restKE ≤ 0.005, jitter ≤ 0.25 |
+| joint-chains-3d | ≤ 45 | | | jointError ≤ 1.0 |
+| joint-grid-3d | ≤ 5 | | | jointError ≤ 0.1 |
+| ragdoll-pile-3d | ≤ 30 | ≤ 0.4 | ≤ 0.2 | jointError ≤ 0.3, restKE ≤ 0.5 |
+| mesh-terrain-3d, heightfield-terrain-3d | ≤ 15 | ≤ 0.15 | ≤ 0.1 | tunnelled = 0 |
+| sleep-wake-3d | ≤ 45 | ≤ 1.5 | ≤ 1.0 | escapes ≤ 10 (the ball scatters bodies off the slab), asleepBeforeWake = 1440 |
+| queries-3d | ≤ 25 | | | throughput row only |
+
+Evidence (maxPenetration / finalPenetration / other, x64 run; the stable engines set the threshold):
+
+- **pyramid-3d-10:** all five stable, worst 0.0018 / 0.0018, topDrop ≤ 0.0036.
+- **pyramid-3d-30:** Box3D, Jolt and Rapier3D stable (≤ 0.0063, topLateral ≤ 0.065, maxSpeed ≤ 0.13). Bepu (0.45, topLateral 0.89) and Jitter2 on x64 (0.50; 0.008 on the Mac, so its result varies between machines) are not, at their defaults.
+- **large-pile-3d:** all stable; worst 0.226 / 0.128, maxSpeed 10, jitter ≤ 0.036.
+- **joint-chains-3d** (500:1 end mass): Box3D 0.24 m and Rapier3D 0.61 m are stable; Jolt 19.5 m, Bepu 33 m and Jitter2 16 m stretch at their default iteration counts. Checked that the Jolt driver is correct: with the end mass lowered to 10:1 and 1:1 the same driver gives 0.09 m and 0.13 m (Box3D 0.05 / 0.03, Rapier3D 0.16 / 0.07, Bepu 0.36 / 0.19, Jitter2 0.10 / 0.13). It is the solver at 10 velocity iterations, not the constraint set-up.
+- **joint-grid-3d:** Bepu, Box3D, Jolt and Rapier3D stable (jointError ≤ 0.03, maxSpeed ≤ 1.5); Jitter2 at its default single substep blows up (1323 bodies escape), and is stable with 4 or 8 substeps (jointError 0.09 / 0.06).
+- **ragdoll-pile-3d:** all stable; worst jointError 0.16, 0.27 / 0.08, maxSpeed 17.4, restKE 0.24.
+- **terrain (mesh and height field):** Bepu, Jolt, Rapier3D and Box3D (mesh) stable, worst 0.057 / 0.056, maxSpeed 10. Jitter2 lets 3 bodies through (0.32). Box3D's height field reaches 0.41 / 0.39 where its mesh gives 0.034 / 0.021, although probes of the created height field match the scene's heights and cell split to 0.02 m: reported as a Box3D height-field finding (alpha release), not a threshold input.
+- **sleep-wake-3d:** all engines but Rapier3D create the bodies asleep (Rapier3D reports none asleep, as in 2D). The ball crushes the stacks (0.33–1.28 deep) and scatters 0–7 bodies off the slab, so the thresholds are loose; enlarging the metric's container does not remove the scatter.
+- **queries-3d** (Apple M2, 1 thread, queries per second ray / overlap / cast; hits ray / overlap / cast): Jolt 2.2 M / 0.19 M / 0.78 M, 2941 / 34028 / 2256; Box3D 1.7 M / 0.25 M / 1.3 M, 2939 / 35159 / 2265; Rapier3D 3.4 M / 0.47 M / 0.42 M, 2941 / 34982 / 2263. Hit counts agree within 3.3%.
+
