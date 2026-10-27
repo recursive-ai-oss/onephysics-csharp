@@ -170,6 +170,7 @@ public static class Metrics
 
     public static SortedDictionary<string, double> Compute(Scene s, string dumpPath)
     {
+        if (s.Dim == 3) return Metrics3.Compute(s, dumpPath);
         var (n, frames) = ReadDump(dumpPath);
         if (n != s.Bodies.Count) throw new InvalidDataException($"dump has {n} bodies, scene has {s.Bodies.Count}");
         var r = new SortedDictionary<string, double>(StringComparer.Ordinal);
