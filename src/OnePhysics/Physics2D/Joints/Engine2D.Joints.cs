@@ -190,9 +190,6 @@ internal sealed partial class Engine2D
 
     // ------------------------------------------------------------------ snapshot
 
-    /// <summary>Section version 2 carries the joint records; a world with no joints still writes version 1, so its snapshot and hash are what they were before joints existed.</summary>
-    private uint SectionVersion() => LiveJointCount() > 0 ? 2u : 1u;
-
     private void WriteJoints(StateWriter w)
     {
         var cs = Core.Constraints;

@@ -37,17 +37,13 @@ public sealed partial class PhysicsWorld2D
         if (set.Break == null) { _jointHandlers.Remove(h.Index); }
     }
 
-    private void DispatchJointEvents()
+    /// <summary>Called from the one delivery loop, so a break handler runs at the event's place in the sorted order, between the contact and sleep events around it.</summary>
+    private void FireJointBreak(in PhysicsEvent e)
     {
-        if (_jointHandlers.Count == 0) { return; }
-        foreach (var e in _core.Events.Delivered)
-        {
-            if (e.Kind != EventKind.JointBreak) { continue; }
-            if (!_jointHandlers.TryGetValue(e.Joint.Index, out var h) || h.Generation != e.Joint.Generation) { continue; }
-            var action = h.Break;
-            _jointHandlers.Remove(e.Joint.Index);
-            action?.Invoke(new JointBreak(new Joint(this, e.Joint), new Body(this, e.BodyA), new Body(this, e.BodyB), e.Value));
-        }
+        if (!_jointHandlers.TryGetValue(e.Joint.Index, out var h) || h.Generation != e.Joint.Generation) { return; }
+        var action = h.Break;
+        _jointHandlers.Remove(e.Joint.Index);
+        action?.Invoke(new JointBreak(new Joint(this, e.Joint), new Body(this, e.BodyA), new Body(this, e.BodyB), e.Value));
     }
 
     internal void DestroyJoint(JointHandle h)

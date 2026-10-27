@@ -25,8 +25,9 @@ internal readonly struct Stages2D : IWorldStages
 
     public void StoreResults(WorldCore world, ReadOnlySpan<int> constraints, int eventSlot, in StepContext context)
     {
-        // Contact impulses are updated in place in each constraint's payload, so there is nothing to copy back; joints report their reaction and may break.
+        // Impulses are updated in place in each constraint's payload, so there is nothing to copy back; joints report their reaction and may break, and contacts raise hit events.
         _e.StoreJointResults(constraints, in context);
+        _e.EmitHits(world, constraints, eventSlot);
     }
 
     public float BodyMotion(WorldCore world, int body) => _e.BodyMotion(body);
@@ -75,6 +76,9 @@ internal sealed partial class Engine2D
         ReconcileJoints();
         SizeJointStorage();
 
+        // 0. A changed filter re-evaluates the pair table before anything else (see Refilter).
+        Refilter();
+
         // 1. Broadphase boxes of every body that moved last step. The displacement stretches the box ahead of the motion.
         foreach (int b in world.AwakeBodies)
         {
@@ -99,14 +103,18 @@ internal sealed partial class Engine2D
 
         // 3. New pairs from the broadphase, in its sorted order.
         var found = Bp.UpdatePairs(new PairFilter(this), world.Executor);
-        var pairFilter = Opt.PairFilter;
+        bool anyFresh = false;
         for (int i = 0; i < found.Length; i++)
         {
             int a = found[i].UserA, b = found[i].UserB;
             if (a > b) { (a, b) = (b, a); }
             if (PairMap.ContainsKey(PairKey(a, b))) { continue; }
-            if (pairFilter != null && !pairFilter(WrapShape(a), WrapShape(b))) { continue; }
-            AllocatePair(a, b);
+            if (!PairAllowed(a, b)) { continue; }
+            int np = AllocatePair(a, b);
+            if (_fresh.Length < PairHigh) { Array.Resize(ref _fresh, Math.Max(PairHigh, _fresh.Length * 2)); }
+            // A pair with a sensor is evaluated once when found even if both bodies are asleep, so a sleeping body inside a sensor still gets its enter event.
+            _fresh[np] = IsSensor(a) || IsSensor(b);
+            anyFresh |= _fresh[np];
         }
 
         // 4. Pairs that need a fresh manifold: at least one body awake (or a kinematic body in motion).
@@ -116,8 +124,10 @@ internal sealed partial class Engine2D
         for (int p = 0; p < PairHigh; p++)
         {
             if (!PairLive[p]) { continue; }
-            if (IsActive(bodies, owner[PairA[p]]) || IsActive(bodies, owner[PairB[p]])) { _updateList[_updateCount++] = p; }
+            if (IsActive(bodies, owner[PairA[p]]) || IsActive(bodies, owner[PairB[p]]) || (anyFresh && _fresh[p])) { _updateList[_updateCount++] = p; }
         }
+
+        if (anyFresh) { Array.Clear(_fresh, 0, Math.Min(PairHigh, _fresh.Length)); }
 
         // 5. Manifolds, in parallel; each task writes only its own results.
         int chunks = (_updateCount + 63) / 64;
@@ -144,6 +154,23 @@ internal sealed partial class Engine2D
 
             int sa = PairA[p], sb = PairB[p];
             int c = PairCons[p];
+            if (IsSensor(sa) || IsSensor(sb))
+            {
+                // A sensor overlap is a constraint that is never solved: it exists while the shapes overlap (separation at most 0) and gives enter and exit events.
+                bool overlap = res.Sep0 <= 0f || (res.Count > 1 && res.Sep1 <= 0f);
+                if (overlap && c < 0)
+                {
+                    PairCons[p] = world.AddConstraint(new ConstraintDesc { Kind = ConstraintKind.Sensor, BodyA = world.HandleOfBody(owner[sa]), BodyB = world.HandleOfBody(owner[sb]), ShapeA = world.HandleOfShape(sa), ShapeB = world.HandleOfShape(sb) });
+                }
+                else if (!overlap && c >= 0)
+                {
+                    world.RemoveConstraint(c);
+                    PairCons[p] = -1;
+                }
+
+                continue;
+            }
+
             if (c < 0)
             {
                 var desc = new ConstraintDesc

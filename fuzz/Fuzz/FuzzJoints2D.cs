@@ -203,10 +203,19 @@ internal static class FuzzJoints2D
         catch (Exception e) when (Allowed(e)) { s_editsRefused++; }
     }
 
-    private static byte[] Base()
+    private static byte[]? s_baseServices;
+
+    /// <summary>A jointed world snapshot, with or without services state (a layer rule and a sensor), so both encodings of the joint section version are mutated.</summary>
+    private static byte[] Base(bool services)
     {
-        if (s_base != null) { return s_base; }
+        if (services ? s_baseServices != null : s_base != null) { return services ? s_baseServices! : s_base!; }
         var w = Scene(4, out var b);
+        if (services)
+        {
+            w.IgnoreLayerCollision(2, 5);
+            var sensor = w.CreateBody(BodyType.Static, new Vector2D(0, 2));
+            w.CreateBox(sensor, 1f, 1f, default, 0f, 0f, new ShapeDef { IsSensor = true, Layer = 2 });
+        }
         w.AddHinge(b[0], b[2], new Vector2D(-4, 3)).SetLimits(-0.5f, 0.5f);
         w.AddSlider(b[1], b[3], new Vector2D(-2, 3.2), new Vector2F(1, 0));
         w.AddFixed(b[2], b[4], new Vector2D(0, 3.4));
@@ -218,12 +227,14 @@ internal static class FuzzJoints2D
         mouse.Target = new Vector2D(3, 7);
         w.AddRelative(b[3], b[4], 50f, 50f).SetOffset(new Vector2F(1f, 0f), 0.1f);
         for (int i = 0; i < 20; i++) { w.Step(1f / 60f); }
-        return s_base = w.Snapshot();
+        var snap = w.Snapshot();
+        if (services) { s_baseServices = snap; } else { s_base = snap; }
+        return snap;
     }
 
     public static void SnapshotTarget(byte[] data)
     {
-        var bytes = (byte[])Base().Clone();
+        var bytes = (byte[])Base(data.Length > 0 && (data[0] & 0x10) != 0).Clone();
         int mutations = data.Length > 0 ? 1 + data[0] % 5 : 0;
         for (int i = 1, m = 0; i + 2 < data.Length && m < mutations; i += 3, m++)
         {

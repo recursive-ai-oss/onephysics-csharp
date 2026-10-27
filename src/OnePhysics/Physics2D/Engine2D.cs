@@ -98,6 +98,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     {
         Grow(ref Geom, n); Grow(ref Proxy, n); Grow(ref Friction, n); Grow(ref Restitution, n); Grow(ref Rolling, n); Grow(ref Density, n);
         Grow(ref Category, n); Grow(ref Mask, n); Grow(ref Group, n); Grow(ref NextShape, n);
+        EnsureServiceShapes(n);
     }
 
     // ------------------------------------------------------------------ bodies
@@ -163,6 +164,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         Nonnegative(def.Density, "Density");
         Nonnegative(def.Friction, "Friction");
         Nonnegative(def.RollingResistance, "RollingResistance");
+        CheckLayer(def.Layer, "Layer");
         if (!(def.Restitution >= 0f && def.Restitution <= 1f)) { throw new ArgumentOutOfRangeException(nameof(def), def.Restitution, "Restitution must be within 0..1."); }
         int b = Core.Resolve(body);
         var type = Core.Bodies.TypeOf(b);
@@ -174,6 +176,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         Geom[s] = geometry;
         Friction[s] = def.Friction; Restitution[s] = def.Restitution; Rolling[s] = def.RollingResistance; Density[s] = def.Density;
         Category[s] = def.CategoryBits; Mask[s] = def.MaskBits; Group[s] = def.GroupIndex;
+        ShapeFlags[s] = def.IsSensor ? FlagSensor : (byte)0; ShapeLayer[s] = (byte)def.Layer;
         NextShape[s] = -1;
         if (ShapeTail[b] >= 0) { NextShape[ShapeTail[b]] = s; } else { ShapeHead[b] = s; }
         ShapeTail[b] = s;
@@ -255,7 +258,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         double m = 0, cx = 0, cy = 0;
         for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
         {
-            if (!(Density[s] > 0f)) { continue; }
+            if (!(Density[s] > 0f) || IsSensor(s)) { continue; }
             var md = Geom[s].ComputeMass();
             double dm = (double)Density[s] * md.Area;
             m += dm; cx += dm * md.CentroidX; cy += dm * md.CentroidY;
@@ -269,7 +272,7 @@ internal sealed partial class Engine2D : ISnapshotSection
             newX = (float)(cx / m); newY = (float)(cy / m);
             for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
             {
-                if (!(Density[s] > 0f)) { continue; }
+                if (!(Density[s] > 0f) || IsSensor(s)) { continue; }
                 inertia += (double)Density[s] * Geom[s].ComputeMass().InertiaAbout(newX, newY);
             }
         }
@@ -380,13 +383,6 @@ internal sealed partial class Engine2D : ISnapshotSection
         return PairMap.TryGetValue(PairKey(shapeA, shapeB), out int p) ? PairCons[p] : -1;
     }
 
-    /// <summary>Category, mask and group rule (Catto's filter model): same non-zero group decides; otherwise both masks must include the other's category.</summary>
-    public bool CanCollide(int sa, int sb)
-    {
-        if (Group[sa] == Group[sb] && Group[sa] != 0) { return Group[sa] > 0; }
-        return (Mask[sa] & Category[sb]) != 0 && (Category[sa] & Mask[sb]) != 0;
-    }
-
     // ------------------------------------------------------------------ origin shifting
 
     /// <summary>After the core shifted the origin: rebuild every proxy, since the broadphase keeps boxes in origin-relative coordinates. Shapes are visited in ascending slot order.</summary>
@@ -407,8 +403,9 @@ internal sealed partial class Engine2D : ISnapshotSection
 
     public void Write(StateWriter w)
     {
-        uint version = SectionVersion();
-        w.WriteUInt32(version);
+        bool services = HasServiceState();
+        bool joints = LiveJointCount() > 0;
+        w.WriteUInt32(joints ? Extended : services ? Services : Version);
         w.WriteSingle(Opt.ContactHertz); w.WriteSingle(Opt.ContactDampingRatio); w.WriteSingle(Opt.PushOutVelocity); w.WriteSingle(Opt.RestitutionThreshold);
         w.WriteSingle(Opt.MaxLinearSpeed); w.WriteSingle(Opt.MaxRotationPerSubstep); w.WriteBool(Opt.ContinuousEnabled); w.WriteSingle(Opt.ContactSlop);
         int nb = Core.Bodies.HighWater;
@@ -444,7 +441,13 @@ internal sealed partial class Engine2D : ISnapshotSection
 
         w.WriteInt32(PairFreeCount);
         w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
-        if (version == 2u) { WriteJoints(w); }
+        if (joints)
+        {
+            w.WriteBool(services);
+            WriteJoints(w);
+            if (services) { WriteServices(w, ns); }
+        }
+        else if (services) { WriteServices(w, ns); }
     }
 
     private static void WriteShape(StateWriter w, in Shape2D g)
@@ -484,7 +487,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     public void Read(StateReader r)
     {
         uint v = r.ReadUInt32();
-        if (v != Version && v != 2u) { throw r.Error("unsupported 2D engine section version " + v.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+        if (v != Version && v != Services && v != Extended) { throw r.Error("unsupported 2D engine section version " + v.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
         float hertz = r.ReadSingle(), zeta = r.ReadSingle(), push = r.ReadSingle(), thr = r.ReadSingle(), maxSpeed = r.ReadSingle(), maxRot = r.ReadSingle();
         bool continuous = r.ReadBool();
         float slop = r.ReadSingle();
@@ -542,7 +545,22 @@ internal sealed partial class Engine2D : ISnapshotSection
         }
 
         JointData2D[] joints = new JointData2D[16];
-        if (v == 2u) { ReadJoints(r, out joints); }
+        ServiceBlock? svc = null;
+        if (v == Extended)
+        {
+            bool hasServices = r.ReadBool();
+            ReadJoints(r, out joints);
+            if (hasServices)
+            {
+                svc = ReadServices(r, ns, live);
+                if (svc.IsDefault()) { throw r.Error("2D service block holds only default state; the snapshot would not re-serialize to the same bytes"); }
+            }
+
+            int liveJoints = 0;
+            for (int c = 0; c < joints.Length; c++) { if (joints[c].Type != 0) { liveJoints++; } }
+            if (liveJoints == 0) { throw r.Error("2D section version 3 holds no joints"); }
+        }
+        else if (v == Services) { svc = ReadServices(r, ns, live); }
 
         // Commit.
         Opt.ContactHertz = hertz; Opt.ContactDampingRatio = zeta; Opt.PushOutVelocity = push; Opt.RestitutionThreshold = thr;
@@ -553,7 +571,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         Geom = geom; Proxy = proxy; Friction = fr; Restitution = re; Rolling = ro; Density = de; Category = cat; Mask = mask; Group = grp; NextShape = next;
         EnsureShapes(Math.Max(ns, 1));
         PairA = pa; PairB = pb; PairCons = pc; PairLive = pl; PairHigh = np; PairFree = free; PairFreeCount = nf;
-        if (v == 2u) { Opt.JointHertz = _pendingJointHertz; Opt.JointDampingRatio = _pendingJointDamping; }
+        if (v == Extended) { Opt.JointHertz = _pendingJointHertz; Opt.JointDampingRatio = _pendingJointDamping; }
         Joints = joints;
         JointForce = new float[joints.Length]; JointTorque = new float[joints.Length];
         _needBind = true;
@@ -562,6 +580,8 @@ internal sealed partial class Engine2D : ISnapshotSection
         {
             if (PairLive[p]) { PairMap[PairKey(PairA[p], PairB[p])] = p; }
         }
+
+        CommitServices(svc, ns);
     }
 
     /// <summary>Checks the section against the core after a restore; false when the two disagree (a damaged snapshot that parsed).</summary>

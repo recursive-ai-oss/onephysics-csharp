@@ -29,6 +29,9 @@ public enum EventKind : byte
 
     /// <summary>A body woke up.</summary>
     Wake = 7,
+
+    /// <summary>A contact's approach speed at the start of the step was above the world's hit threshold; <see cref="PhysicsEvent.Value"/> is the approach speed. Opt-in through <see cref="EventMask.ContactHit"/>.</summary>
+    ContactHit = 8,
 }
 
 /// <summary>An event. Contact and sensor events carry both bodies and shapes and the sub-shape ids; joint events carry the joint and its bodies; sleep and wake carry body A only.</summary>
@@ -107,7 +110,7 @@ public readonly struct PhysicsEvent
     internal static PhysicsEvent Read(StateReader r)
     {
         byte k = r.ReadByte();
-        if (k > (byte)EventKind.Wake) { throw r.Error("invalid event kind"); }
+        if (k > (byte)EventKind.ContactHit) { throw r.Error("invalid event kind"); }
         var a = new BodyHandle(r.ReadInt32(), r.ReadInt32(), r.ReadInt32());
         var b = new BodyHandle(r.ReadInt32(), r.ReadInt32(), r.ReadInt32());
         var sa = new ShapeHandle(r.ReadInt32(), r.ReadInt32(), r.ReadInt32());

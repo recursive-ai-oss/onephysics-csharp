@@ -12,6 +12,9 @@ internal static class Program
 {
     private static readonly Dictionary<string, Action<byte[]>> Targets = new(StringComparer.Ordinal)
     {
+        ["mesh"] = FuzzMesh.MeshTarget,
+        ["heightfield"] = FuzzMesh.HeightFieldTarget,
+        ["meshquery"] = FuzzMesh.QueryTarget,
         ["snapshot"] = SnapshotTarget,
         ["snapshot-raw"] = SnapshotRawTarget,
         ["hull"] = HullTarget,
@@ -22,6 +25,7 @@ internal static class Program
         ["manifold3d"] = Fuzz3D.ManifoldTarget,
         ["world2d-snapshot"] = Fuzz2DWorld.SnapshotTarget,
         ["world2d-defs"] = Fuzz2DWorld.DefsTarget,
+        ["world2d-services"] = Fuzz2DServices.Run,
         ["compound3d"] = FuzzCompound3D.Run,
         ["world2d-joints"] = FuzzJoints2D.Run,
         ["world2d-joint-snapshot"] = FuzzJoints2D.SnapshotTarget,
