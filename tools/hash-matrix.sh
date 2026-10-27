@@ -46,9 +46,22 @@ CORES="${HASHMATRIX_THREADS_ALL:-$( (nproc 2>/dev/null || sysctl -n hw.ncpu) )}"
 ALL=(jit threads8 threads-all scalar noavx512 noavx2 tc0 aot wasm wasm-aot)
 if [[ $# -eq 0 ]]; then set -- "${ALL[@]}"; fi
 
+# Runs a dotnet build or publish quietly. When it fails, prints everything it said (errors included) to stderr and stops the script with a non-zero status.
+quiet_dotnet() {
+  local log
+  log="$(mktemp "${TMPDIR:-/tmp}/hash-matrix-build.XXXXXX")"
+  if ! dotnet "$@" > "$log" 2>&1; then
+    echo "hash-matrix: 'dotnet $1' failed:" >&2
+    cat "$log" >&2
+    rm -f "$log"
+    exit 1
+  fi
+  rm -f "$log"
+}
+
 build_jit() {
   [[ -n "${JIT_BUILT:-}" ]] && return 0
-  dotnet build "$ROOT/tools/HashMatrix" -c Release -v quiet -clp:NoSummary >/dev/null
+  quiet_dotnet build "$ROOT/tools/HashMatrix" -c Release -v quiet -clp:NoSummary
   JIT_BUILT=1
 }
 jit_dll() { echo "$ART/bin/HashMatrix/release/HashMatrix.dll"; }
@@ -63,14 +76,14 @@ split_output() { # $1 = column, stdin = runner output
 }
 
 publish_aot() {
-  dotnet publish "$ROOT/tools/HashMatrix" -c Release -r "$RID" -p:PublishAot=true -o "$ART/hm-aot" -v quiet -clp:NoSummary >/dev/null
+  quiet_dotnet publish "$ROOT/tools/HashMatrix" -c Release -r "$RID" -p:PublishAot=true -o "$ART/hm-aot" -v quiet -clp:NoSummary
 }
 
 publish_wasm() { # $1 = out dir name, rest = extra msbuild args
   local dest="$1"; shift
   # Start from a clean tree so an interpreted build never reuses ahead-of-time output or the other way round.
   rm -rf "$ART/bin/HashMatrix/release_browser-wasm" "$ART/obj/HashMatrix/release_browser-wasm" "$ART/$dest-publish"
-  dotnet publish "$ROOT/tools/HashMatrix" -c Release -r browser-wasm -o "$ART/$dest-publish" "$@" -v quiet -clp:NoSummary >/dev/null
+  quiet_dotnet publish "$ROOT/tools/HashMatrix" -c Release -r browser-wasm -o "$ART/$dest-publish" "$@" -v quiet -clp:NoSummary
   rm -rf "$ART/$dest"
   cp -r "$ART/bin/HashMatrix/release_browser-wasm/AppBundle" "$ART/$dest"
   cp "$ROOT/tests/WasmSmoke/main.mjs" "$ART/$dest/main.mjs"

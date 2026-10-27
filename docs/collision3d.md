@@ -125,3 +125,53 @@ More than four points are reduced as in Gregorius, GDC 2015: the deepest point (
 ### Measured accuracy
 
 Over 10^5 random separated pairs (all shape kinds, rounded and sharp, speculative distance 0.05, distance 1e-3 to 0.05) the smallest manifold separation differs from `Gjk3D.Distance` by at most 4.8e-4 (shapes of size about 1); the test limit is 2e-3. Against a brute-force separating axis test in double on overlapping hull pairs, the manifold normal agrees (cosine above 0.999) wherever the best axis leads by more than the bias above, and the manifold is never deeper than the brute-force depth by more than that bias.
+
+## Decorators and compounds
+
+Raw-tier types in `RecursiveAI.OnePhysics.Collision3D`: `ScaledShape3D`, `PlacedShape3D`, `ShapeBounds3D`, `Compound3D`, `MutableCompound3D` (both derive from `CompoundShape3D`), `CompoundPairs3D`, the compound methods of `ManifoldGenerator3D`, and `ShapeCompositionException` (with `ShapeCompositionError`). Arithmetic is float32 as above; the tree's boxes are double (widened exactly from float32).
+
+### Scaled shapes
+
+`ScaledShape3D.Create(shape, scale)` returns an ordinary `ConvexShape3D`, so every query, the mass properties and the manifold generator (analytic routes, feature ids) treat it as the equivalent unscaled shape. Scale components must be finite and above 0 (`InvalidScale` otherwise; a mirror is expressed in a child's rotation instead). What each kind accepts (`GetScaleSupport`):
+
+| Shape | Scale accepted | Result |
+|---|---|---|
+| sphere, capsule, tapered capsule | equal on all axes | every dimension times the scale |
+| box, hull, convex radius 0 | any positive scale per axis | box: outer half extents times scale; hull: vertices times scale, rebuilt with `ConvexHull3D.Build` |
+| cylinder, convex radius 0 | X equal to Z, Y free | radius times X, half height times Y |
+| box, cylinder, hull with convex radius above 0 | equal on all axes | outer size and radius times the scale (a box or cylinder keeps its outer size, as when built) |
+
+Unequal scale where the table says equal is `UnsupportedScale` (a sphere would become an ellipsoid; a convex radius is a sphere offset). A result a factory rejects (a dimension underflowing to 0 or above 2^21, a scaled hull that fails to build) is `ShapeBuildFailed`, with the factory's error as the inner exception. A scale of exactly (1, 1, 1) returns the shape unchanged. A box's rounded radius is `radius * scale` clamped to its smallest outer half extent.
+
+### Placed shapes and bounds
+
+`PlacedShape3D` is a shape with a local transform (rotation and translation) in its holder's frame, validated on creation: rotation squared length within 1% of 1 (stored normalised), translation components finite and at most `MaxLocalOffset = 2^20`. A default value is invalid and its methods throw `InvalidOperationException`. Its pair queries (`Distance`, `Collide`, `ShapeCast`, `RayCast`) and `ManifoldGenerator3D.Collide(PlacedShape3D, PlacedShape3D, ...)` take the pose of the other *holder* in this holder (`otherInThis`), run the plain routine on `bInA = localA^-1 * otherInThis * localB` (onemath's rigid transform product and inverse, in that order) and map normals by `localA.Rotation` and points by `localA` into the holder's frame. Separations and feature ids are those of the shapes, so a placed shape has the ids it would have unplaced. Mass properties: volume unchanged, centre `local.TransformPoint(centre)`, tensor `InertiaF.Rotate(tensor, local.Rotation)`.
+
+`ShapeBounds3D.Compute(shape, pose)` takes six support points, along `±` row `i` of the pose's rotation matrix for axis `i` (world coordinate `i` of `R s + t` is `row_i · s + t_i`), then grows each side by `2^-16 (|lo| + |hi| + (hi - lo))` per axis, which covers float32 rounding in the transform and the few-1e-6 tolerance of the GJK casts, so a shape never leaves its box.
+
+### Compounds
+
+A compound has up to `MaxChildren = 2^16` child slots. Each child is a `CompoundChild3D`: a placed shape (not the point shape) and an `int` material id (any value). The child **id** is its slot: the position for `Compound3D`; for `MutableCompound3D` the lowest free slot (a min-heap of freed slots), with a per-slot generation starting at 1 and increasing on removal. A `CompoundChildHandle3D` is (slot, generation). Child bounds are `ShapeBounds3D.Compute(child.Shape, child.Local)` and must lie within ±2^22 (`BoundsTooLarge`). All bounds and results use child ids.
+
+**Tree.** Children are inserted in ascending slot into a `DynamicTree<Aabb3D>` (see `broadphase.md`), tight boxes (no margin), user id = slot. `Compound3D.Create` then calls `Rebuild` (binned surface-area heuristic, deterministic from the leaves' boxes and node indices). `MutableCompound3D` edits with `CreateProxy`, `DestroyProxy` and `MoveProxy` (insertion with rotations), `Optimize()` rebuilds. The tree therefore depends on the input (static) or on the whole edit sequence (mutable), nothing else. `WriteBvh` writes the tree (`DynamicTree.Write`), then the slot count and for every slot: alive (u8), generation (i32); for live slots also material (i32), local rotation x y z w and translation x y z (f32), padded bounds min x y z, max x y z (f32). Little-endian; `StateWriter` conventions.
+
+**Query results do not depend on the tree.** Every query tests the children's own stored bounds through the tree (a leaf's box is the child's box), visits every child whose bounds it reaches, and applies a rule that does not depend on visiting order, so a mutable compound answers exactly as a static one with the same children (the single exception is `RayCastAny`, documented to return whichever hit the traversal meets first).
+
+- **Overlap** (`OverlapBounds`): child ids whose bounds overlap or touch a box (comparisons on float32 values widened to double), ascending.
+- **Ray cast** (`RayCast`): each reached child is cast with `Gjk3D.RayCast(child.Shape, child.Local, origin, direction, maxFraction)`, always with the caller's `maxFraction`; the closest fraction wins, equal fractions go to the lowest id. The result carries the child id, its material, the point, the outward normal (compound frame), and `StartsInside`. A fraction-0 hit clips the traversal to the smallest positive double rather than 0, so other children at fraction 0 are still compared. The ray's start and end (`origin + maxFraction * direction`) must be within ±2^22: GJK's tolerances scale with the largest coordinate it sees, so a far-away ray would make everything look hit (`InvalidQuery`).
+- **Shape cast** (`ShapeCast`): the swept shape's padded bounds at the start are swept along the motion (`BoxCast3D`, a ray from the box centre against tree boxes grown by the box's half extents, as in `broadphase.md`); each reached child gets `Gjk3D.ShapeCast(shape, child.Shape, shapeInCompound^-1 * child.Local, shapeInCompound.Rotation^-1 * motion)`; closest fraction, lowest id on ties. The normal points from the cast shape to the child; points are mapped by `shapeInCompound`. Start and end positions within ±2^22.
+- **Mass properties** (`GetMassProperties`): each live child's properties moved into the compound frame, combined in ascending id by `InertiaF.Combine` (sum of masses, mass-weighted centre, parallel-axis shift of each tensor). Overlapping children count twice. An empty compound throws `EmptyCompound`.
+
+**Errors** (`ShapeCompositionException`, derives from `ArgumentException`, message names the input, e.g. `children[3]`): `InvalidScale`, `UnsupportedScale`, `InvalidTransform` (NaN, infinite, non-unit rotation, translation beyond limit), `InvalidShape`, `EmptyCompound`, `TooManyChildren`, `BoundsTooLarge`, `UnknownChild` (stale, foreign or default handle, dead id), `ShapeBuildFailed`, `InvalidQuery` (NaN or infinite query values, inverted box, `maxFraction` not positive, range). A failed edit changes nothing.
+
+### Child pairs and manifolds
+
+`CompoundPairs3D.FindChildren(compound, shape, shapeInCompound, margin, results)`: ids of children whose bounds meet the shape's padded bounds under the pose, grown by `margin` on every side in double; ascending. `FindPairs(a, b, bInA, margin, results)`: for every child `j` of B (ascending) the box of `bInA * child_j.Local` grown by `margin` is queried in A's tree; pairs `(i, j)` sorted by `i`, then `j`. `GetQueryBox` exposes the box. The test is on bounds only; a pair may not touch.
+
+`ManifoldGenerator3D.CollideCompoundConvex`, `CollideConvexCompound` and `CollideCompoundCompound` enumerate with `margin = speculativeDistance` and build one manifold per pair with the placed-shape routine (`bInA` composed as above), dropping empty ones, in enumeration order. Manifolds are in A's frame (the compound's frame when A is a compound).
+
+**Id layout.** A manifold point keeps its 32-bit feature id (`featureA << 16 | featureB`, as in "Feature ids" above), which are the child shapes' own features. Each child pair is its own contact, keyed like any contact by shape A, shape B and the pair `(SubShapeA, SubShapeB)`: the sub-shape ids are the child ids, and 0 for a shape that is not a compound. The shared core already stores both sub-shape ids per constraint (and carries them in events and the event order) and one `uint` feature id per point, so nothing changes in the 3D contact payload: warm starting matches points by feature id within the constraint for the child pair. For a host that wants one key per point across child pairs, `ChildContact3D.GetPointKey(i) = (SubShapeA << 48) | (SubShapeB << 32) | featureId`, which is lossless because child ids are below 2^16.
+
+### Checks
+
+`tests/OnePhysics.Tests/Collision3D/CompoundTests.cs` (known answers, hostile input) and `CompoundBruteTests.cs` (10^5 each against iterating every child: ray, shape cast, bounds overlap, child pairs; 2·10^4 compound pairs with all-pairs manifolds; 2000 random edit sequences compared with a static compound rebuilt from the surviving children); fuzz target `compound3d`; hash-matrix scenario `collision3d/compound` (tree bytes after every edit, queries, pairs and manifolds).
