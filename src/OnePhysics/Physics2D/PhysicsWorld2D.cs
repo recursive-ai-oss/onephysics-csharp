@@ -12,7 +12,7 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// if <see cref="WorldOptions2D.ThreadCount"/> is above 1, with identical results). Create one with <c>new PhysicsWorld2D()</c>, add bodies with <c>AddBox</c> and friends or with
 /// <see cref="CreateBody(in BodyDef)"/> and the <c>Create*</c> shape methods, and call <see cref="Step"/> with a fixed time step.
 /// </summary>
-public sealed class PhysicsWorld2D
+public sealed partial class PhysicsWorld2D
 {
     private readonly Engine2D _engine;
     private readonly WorldCore _core;
@@ -75,6 +75,7 @@ public sealed class PhysicsWorld2D
         SyncCoreOptions();
         _core.Step(new Stages2D(_engine), dt);
         if (_handlers.Count > 0) { DispatchEvents(); }
+        DispatchJointEvents();
     }
 
     private void SyncCoreOptions()

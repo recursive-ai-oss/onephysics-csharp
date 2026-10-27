@@ -25,7 +25,8 @@ internal readonly struct Stages2D : IWorldStages
 
     public void StoreResults(WorldCore world, ReadOnlySpan<int> constraints, int eventSlot, in StepContext context)
     {
-        // Impulses are updated in place in each constraint's payload, so there is nothing to copy back.
+        // Contact impulses are updated in place in each constraint's payload, so there is nothing to copy back; joints report their reaction and may break.
+        _e.StoreJointResults(constraints, in context);
     }
 
     public float BodyMotion(WorldCore world, int body) => _e.BodyMotion(body);
@@ -46,7 +47,7 @@ internal sealed partial class Engine2D
         public bool ShouldCollide(int shapeA, int shapeB)
         {
             var owner = _e.Core.Shapes.Owner;
-            return owner[shapeA] != owner[shapeB] && _e.CanCollide(shapeA, shapeB);
+            return owner[shapeA] != owner[shapeB] && _e.CanCollide(shapeA, shapeB) && !_e.JointsPreventCollision(owner[shapeA], owner[shapeB]);
         }
     }
 
@@ -71,6 +72,7 @@ internal sealed partial class Engine2D
         var bodies = world.Bodies;
         int nb = bodies.HighWater;
         EnsureBodies(nb);
+        ReconcileJoints();
 
         // 1. Broadphase boxes of every body that moved last step. The displacement stretches the box ahead of the motion.
         foreach (int b in world.AwakeBodies)

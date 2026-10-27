@@ -406,7 +406,8 @@ internal sealed partial class Engine2D : ISnapshotSection
 
     public void Write(StateWriter w)
     {
-        w.WriteUInt32(Version);
+        uint version = SectionVersion();
+        w.WriteUInt32(version);
         w.WriteSingle(Opt.ContactHertz); w.WriteSingle(Opt.ContactDampingRatio); w.WriteSingle(Opt.PushOutVelocity); w.WriteSingle(Opt.RestitutionThreshold);
         w.WriteSingle(Opt.MaxLinearSpeed); w.WriteSingle(Opt.MaxRotationPerSubstep); w.WriteBool(Opt.ContinuousEnabled); w.WriteSingle(Opt.ContactSlop);
         int nb = Core.Bodies.HighWater;
@@ -442,6 +443,7 @@ internal sealed partial class Engine2D : ISnapshotSection
 
         w.WriteInt32(PairFreeCount);
         w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
+        if (version == 2u) { WriteJoints(w); }
     }
 
     private static void WriteShape(StateWriter w, in Shape2D g)
@@ -481,7 +483,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     public void Read(StateReader r)
     {
         uint v = r.ReadUInt32();
-        if (v != Version) { throw r.Error("unsupported 2D engine section version " + v.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+        if (v != Version && v != 2u) { throw r.Error("unsupported 2D engine section version " + v.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
         float hertz = r.ReadSingle(), zeta = r.ReadSingle(), push = r.ReadSingle(), thr = r.ReadSingle(), maxSpeed = r.ReadSingle(), maxRot = r.ReadSingle();
         bool continuous = r.ReadBool();
         float slop = r.ReadSingle();
@@ -538,6 +540,9 @@ internal sealed partial class Engine2D : ISnapshotSection
             if (free[i] < 0 || free[i] >= np || pl[free[i]]) { throw r.Error("invalid free pair"); }
         }
 
+        JointData2D[] joints = new JointData2D[16];
+        if (v == 2u) { ReadJoints(r, out joints); }
+
         // Commit.
         Opt.ContactHertz = hertz; Opt.ContactDampingRatio = zeta; Opt.PushOutVelocity = push; Opt.RestitutionThreshold = thr;
         Opt.MaxLinearSpeed = maxSpeed; Opt.MaxRotationPerSubstep = maxRot; Opt.ContinuousEnabled = continuous; Opt.ContactSlop = slop;
@@ -547,6 +552,10 @@ internal sealed partial class Engine2D : ISnapshotSection
         Geom = geom; Proxy = proxy; Friction = fr; Restitution = re; Rolling = ro; Density = de; Category = cat; Mask = mask; Group = grp; NextShape = next;
         EnsureShapes(Math.Max(ns, 1));
         PairA = pa; PairB = pb; PairCons = pc; PairLive = pl; PairHigh = np; PairFree = free; PairFreeCount = nf;
+        if (v == 2u) { Opt.JointHertz = _pendingJointHertz; Opt.JointDampingRatio = _pendingJointDamping; }
+        Joints = joints;
+        JointForce = new float[joints.Length]; JointTorque = new float[joints.Length];
+        _needBind = true;
         PairMap.Clear();
         for (int p = 0; p < np; p++)
         {
@@ -561,6 +570,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || Geom.Length < shapes.HighWater) { return false; }
         var cons = Core.Constraints;
+        if (!JointsConsistentWithCore()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)
         {
             if (!shapes.Handles.IsLive(s)) { continue; }

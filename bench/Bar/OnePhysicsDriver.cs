@@ -8,7 +8,7 @@ using P2 = RecursiveAI.OnePhysics.Physics2D;
 
 namespace Bar;
 
-/// <summary>Runs a scene through this library's 2D world, following the same driver protocol as the reference drivers. Joints and queries are not supported yet and are skipped (reported on stderr).</summary>
+/// <summary>Runs a scene through this library's 2D world, following the same driver protocol as the reference drivers. Queries are not supported yet.</summary>
 static class OnePhysicsDriver
 {
     public static int Run(Opts o)
@@ -19,7 +19,6 @@ static class OnePhysicsDriver
         int threads = int.Parse(o.Get("threads", "1"), CultureInfo.InvariantCulture);
 
         var (world, bodies, opt) = SceneBuilder2D.Build(s, threads);
-        if (s.Joints.Count > 0) Console.Error.WriteLine($"onephysics: {s.Joints.Count} joints skipped (not supported yet)");
         int n = bodies.Length;
         var d = new double[n * 7];
         void Snap()
