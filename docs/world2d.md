@@ -194,3 +194,13 @@ Joints block (section version 3, see "Section versions" above; after the flag by
 ## Core additions this relies on
 
 `IWorldStages.FinalizeBodies` (default no-op, called over chunks of awake bodies after the restitution pass and before `StoreResults`) and `WorldCore.Sleep(BodyHandle)`. Neither changes snapshot format version 1. `IWorldStages.AfterFinalize` (default no-op) runs once, serially, after `FinalizeBodies` and before `StoreResults`; bullets use it.
+
+## Performance
+
+None of this changes a result: the world hashes of every 2D scene equal those of the previous solver, and each lane of a wide kernel computes what its scalar twin computes.
+
+- **Solver layout.** Per step the contacts of each batch are copied into groups of eight lanes (36 fields of eight floats), and body velocity and the motion accumulated in the step live in 8-float rows indexed by body (row 0 is all zeros and is what unused lanes read). A kernel gathers the rows of its lanes with a transpose, does the soft-step arithmetic in the scalar twin's order, and scatters velocities only to dynamic bodies. Group size is fixed at eight lanes whatever the kernel width, so batches and colors never depend on the width. Impulses are copied back into the payloads after the last substep.
+- **Joints.** Revolute joints with no spring, motor or limit and no stored limit impulse use a wide kernel over the same groups (anchors, masses and soft coefficients come from the scalar preparation); every other joint, and every joint in the overflow set, stays scalar. Joints have no restitution pass.
+- **Pair finding.** Tight boxes and the test against the stored fat box run in parallel; the tree update and the pair merge run serially in body order, and pairs are sorted, so tree shape never reaches a result. The pair table is open addressing with no allocation. A pair whose boxes are further apart than the speculative distance plus 0.005 skips the narrowphase. Manifold writes run in parallel unless a material mixer is set.
+- **Threads.** One shared pool of worker threads spins briefly, then sleeps; a call falls back to running inline when the pool is busy or on the browser. Work is split by index and combined in index order.
+- **Where the time goes** (large-pile, one thread, ms per step, base to now): narrowphase 3.6 to 2.0 of the contact update, warm start 1.16 to 0.36, solve 1.69 to 0.54, relax 1.70 to 0.54, restitution 0.32 to 0.10; joint-grid: collide 1.3 to 0.25, joint passes about 2 to 0.8 each. The remaining cost is the polygon narrowphase (about 140 ns per real pair), proxy moves (several hundred reinserts per step) and the serial parts of pair update and islands.
