@@ -17,6 +17,7 @@
 !/bench
 !/tools
 !/scenes
+!/experiments
 !/docs
 
 # Build output never belongs in the tree, wherever it appears.

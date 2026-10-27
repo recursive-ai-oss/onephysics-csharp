@@ -52,4 +52,5 @@ gen="$(mktemp -d)"
 dotnet run -c "$config" --no-build --project bench/Bar -- gen --out "$gen"
 cmp "$gen/SHA256SUMS" scenes/SHA256SUMS || { echo "generated scenes differ from scenes/SHA256SUMS"; exit 1; }
 rm -rf "$gen"
+dotnet run -c "$config" --no-build --project experiments/batching -- check --small --steps 60
 echo "check passed ($config)"
