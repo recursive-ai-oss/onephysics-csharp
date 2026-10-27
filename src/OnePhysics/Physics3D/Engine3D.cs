@@ -591,7 +591,7 @@ internal sealed partial class Engine3D : ISnapshotSection
             throw r.Error("invalid 3D engine tunables");
         }
 
-        int nb = r.ReadCount(3 * 4 + 4 + 24 + 4 * 6 + 12 + 12 + 1 + 8 + 12 + 12, "3D bodies");
+        int nb = r.ReadCount(105, "3D bodies") /* bytes written per body: 12+4+24+4+4+4+4+4+12+12+1+4+4+12 */;
         if (nb > 1 << 22) { throw r.Error("too many 3D bodies"); }
         var lc = new float[3 * nb]; var mass = new float[nb]; var inertia = new float[6 * nb]; var maxE = new float[nb]; var minE = new float[nb];
         var ld = new float[nb]; var ad = new float[nb]; var gs = new float[nb]; var force = new float[3 * nb]; var torque = new float[3 * nb];
@@ -742,6 +742,10 @@ internal sealed partial class Engine3D : ISnapshotSection
         for (int b = 0; b < bodies.HighWater; b++)
         {
             if (!bodies.IsLive(b)) { continue; }
+            // A body's rotation is a unit quaternion (the integrator keeps it so); anything else would break the narrowphase's input contract.
+            var q = bodies.RotationOf(b);
+            float ql = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+            if (!(ql >= 0.99f && ql <= 1.01f)) { return false; }
             int count = 0;
             for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
             {

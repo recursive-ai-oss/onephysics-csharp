@@ -415,7 +415,8 @@ internal sealed partial class Engine3D
         float hh = 0.5f * h;
         float nx = qx + hh * dx, ny = qy + hh * dy, nz = qz + hh * dz, nw = qw + hh * dw;
         float mag = float.Sqrt(nx * nx + ny * ny + nz * nz + nw * nw);
-        float inv = mag > 0f ? 1f / mag : 0f;
+        if (!(mag > 0f) || !float.IsFinite(mag)) { return; } // a runaway state (damaged or extreme input) keeps the last valid orientation instead of becoming a zero quaternion
+        float inv = 1f / mag;
         q[o] = nx * inv; q[o + 1] = ny * inv; q[o + 2] = nz * inv; q[o + 3] = nw * inv;
     }
 
