@@ -512,6 +512,44 @@ public class JointTests
     }
 
     [Fact]
+    public void ASnapshotRightAfterABreakReplaysIdentically()
+    {
+        // Two overlapping boxes joined by a weak weld: when it breaks they must start colliding, whether or not the world was snapshotted and restored in between.
+        PhysicsWorld2D Make()
+        {
+            var w = NewWorld(false, 1, 17);
+            var a = w.AddBox(new Vector2F(1f, 1f), new Vector2D(0, 0));
+            var b = w.AddBox(new Vector2F(1f, 1f), new Vector2D(0.6, 0));
+            var j = w.AddFixed(a, b, new Vector2D(0.3, 0));
+            j.BreakForce = 1f;
+            b.ApplyImpulse(new Vector2F(0f, 5f));
+            return w;
+        }
+
+        var w1 = Make();
+        int stepOfBreak = -1;
+        for (int i = 0; i < 5 && stepOfBreak < 0; i++)
+        {
+            w1.Step(Dt);
+            foreach (var e in w1.Events) { if (e.Kind == EventKind.JointBreak) { stepOfBreak = i; } }
+        }
+
+        Assert.True(stepOfBreak >= 0);
+        var snap = w1.Snapshot();
+        var w2 = Make();
+        w2.Restore(snap);
+        int begins = 0;
+        for (int i = 0; i < 30; i++)
+        {
+            w1.Step(Dt); w2.Step(Dt);
+            Assert.Equal(w1.ComputeHash(), w2.ComputeHash());
+            foreach (var e in w1.Events) { if (e.Kind == EventKind.ContactBegin) { begins++; } }
+        }
+
+        Assert.True(begins > 0, "the freed boxes should find each other");
+    }
+
+    [Fact]
     public void ARestoredSnapshotWithoutJointsStaysVersionOne()
     {
         var w = World2DTests.BuildScene(1, 5);

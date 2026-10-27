@@ -36,6 +36,7 @@ internal sealed partial class Engine2D
     public float[] JointForce = new float[16];     // reaction force and torque of the last step the joint was solved, N and N m; not state
     public float[] JointTorque = new float[16];
     private int _noCollideJoints;
+    private int _trackedJoints;
     private bool _needBind;
 
     /// <summary>True when any joint exists or ever existed in this section's data; decides the snapshot section version.</summary>
@@ -73,6 +74,7 @@ internal sealed partial class Engine2D
         d.BodyA = a; d.BodyB = b; d.GenA = ha.Generation; d.GenB = hb.Generation;
         d.Gen = Core.Constraints.Handles.GenerationOf(c);
         Joints[c] = d;
+        _trackedJoints++;
         if (!d.Collide)
         {
             _noCollideJoints++;
@@ -102,6 +104,7 @@ internal sealed partial class Engine2D
     {
         ref JointData2D j = ref Joints[c];
         j.Gen = 0;
+        _trackedJoints--;
         if (j.Collide) { return; }
         _noCollideJoints--;
         var h = Core.Bodies.Handles;
@@ -114,10 +117,14 @@ internal sealed partial class Engine2D
         for (int s = ShapeHead[b]; s >= 0; s = NextShape[s]) { Bp.Touch(Proxy[s]); }
     }
 
-    /// <summary>Start of every step: notices joints the core removed since the last step, and sizes the per-step joint storage.</summary>
-    private void ReconcileJoints()
+    /// <summary>
+    /// Notices joints the core removed (a break, a destroyed body or joint) and lets the bodies of a joint that kept them from colliding find each other again. It runs as soon as such a removal can have happened
+    /// (the end of a step, destroying a joint or a body), so a snapshot never holds a removal whose effect is still pending; it runs at the start of a step too, for removals made through the raw tier.
+    /// </summary>
+    internal void ReconcileJoints()
     {
         EnsureBound();
+        if (_trackedJoints == 0) { return; }
         var cs = Core.Constraints;
         int n = Math.Min(cs.HighWater, Joints.Length);
         for (int c = 0; c < n; c++)
@@ -127,7 +134,12 @@ internal sealed partial class Engine2D
             if (cs.IsLive(c) && cs.KindOf(c) == ConstraintKind.Joint && cs.Handles.GenerationOf(c) == g) { continue; }
             JointGone(c);
         }
+    }
 
+    /// <summary>Sizes the per-step joint storage; called by the contact stage.</summary>
+    private void SizeJointStorage()
+    {
+        var cs = Core.Constraints;
         int ch = cs.HighWater;
         if (JScratch.Length < ch * JRow.Stride) { JScratch = new float[Math.Max(ch, JScratch.Length / JRow.Stride * 2) * JRow.Stride]; }
         EnsureJointSlots(ch);
@@ -143,6 +155,7 @@ internal sealed partial class Engine2D
         var cs = Core.Constraints;
         var bodies = Core.Bodies;
         _noCollideJoints = 0;
+        _trackedJoints = 0;
         EnsureJointSlots(cs.HighWater);
         for (int c = 0; c < cs.HighWater; c++)
         {
@@ -151,6 +164,7 @@ internal sealed partial class Engine2D
             j.BodyA = cs.BodyA[c]; j.BodyB = cs.BodyB[c];
             j.GenA = bodies.Handles.GenerationOf(j.BodyA); j.GenB = bodies.Handles.GenerationOf(j.BodyB);
             j.Gen = cs.Handles.GenerationOf(c);
+            _trackedJoints++;
             if (!j.Collide) { _noCollideJoints++; }
         }
     }
@@ -220,7 +234,7 @@ internal sealed partial class Engine2D
         for (int c = 0; c < cs.HighWater; c++)
         {
             bool isJoint = cs.IsLive(c) && cs.KindOf(c) == ConstraintKind.Joint;
-            bool has = c < Joints.Length && Joints[c].Type != 0 && Joints[c].Gen != 0;
+            bool has = c < Joints.Length && Joints[c].Type != 0;
             if (isJoint != has) { return false; }
         }
 
@@ -291,12 +305,19 @@ internal sealed partial class Engine2D
     {
         if (!(hertz > 0f)) { stiffness = 0f; massScale = 1f; impulseScale = 0f; return; }
         double wh = 2.0 * Math.PI * hertz * h;
+        if (wh > Math.PI) { wh = Math.PI; } // a spring faster than the substep rate means nothing: stay at half a turn per substep
         double zh = zeta * wh;
         double det = Math64.Exp(-2.0 * zh);
         double decay = Math64.Exp(-zh);
-        double trace = zeta < 1f
-            ? 2.0 * decay * Math64.Cos(wh * Math.Sqrt(1.0 - (double)zeta * zeta))
-            : 2.0 * decay * Math64.Cosh(wh * Math.Sqrt((double)zeta * zeta - 1.0));
+        double trace;
+        if (zeta < 1f) { trace = 2.0 * decay * Math64.Cos(wh * Math.Sqrt(1.0 - (double)zeta * zeta)); }
+        else
+        {
+            // 2 e^(-zh) cosh(x) with x = wh sqrt(zeta^2 - 1) <= zh, written as two decaying exponentials so a huge damping ratio cannot overflow.
+            double x = wh * Math.Sqrt((double)zeta * zeta - 1.0);
+            trace = Math64.Exp(x - zh) + Math64.Exp(-x - zh);
+        }
+
         double ms = 1.0 - det;
         massScale = (float)ms;
         impulseScale = (float)det;

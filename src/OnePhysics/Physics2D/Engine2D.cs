@@ -153,6 +153,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         Core.DestroyBody(handle);
         ShapeHead[b] = -1; ShapeTail[b] = -1;
         Mass[b] = 0f; Inertia[b] = 0f;
+        ReconcileJoints();
     }
 
     // ------------------------------------------------------------------ shapes

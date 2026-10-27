@@ -54,6 +54,7 @@ public sealed partial class PhysicsWorld2D
     {
         _core.DestroyJoint(h);
         _jointHandlers.Remove(h.Index);
+        _engine.ReconcileJoints();
     }
 
     /// <summary>The joint for a raw handle (from an event or the raw tier).</summary>

@@ -75,6 +75,7 @@ public sealed partial class PhysicsWorld2D
         SyncCoreOptions();
         _core.Step(new Stages2D(_engine), dt);
         if (_handlers.Count > 0) { DispatchEvents(); }
+        _engine.ReconcileJoints();
         DispatchJointEvents();
     }
 

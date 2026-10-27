@@ -73,6 +73,7 @@ internal sealed partial class Engine2D
         int nb = bodies.HighWater;
         EnsureBodies(nb);
         ReconcileJoints();
+        SizeJointStorage();
 
         // 1. Broadphase boxes of every body that moved last step. The displacement stretches the box ahead of the motion.
         foreach (int b in world.AwakeBodies)
