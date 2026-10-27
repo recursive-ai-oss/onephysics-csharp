@@ -12,6 +12,8 @@ internal static class Program
     {
         ["snapshot"] = SnapshotTarget,
         ["snapshot-raw"] = SnapshotRawTarget,
+        ["polygon2d"] = Fuzz2D.PolygonTarget,
+        ["manifold2d"] = Fuzz2D.ManifoldTarget,
     };
 
     private static int Main(string[] args)
