@@ -39,6 +39,7 @@ internal static class JointKernel2D
     /// <summary>Solves lanes <paramref name="lane0"/>.. <paramref name="lane0"/>+<paramref name="lanes"/>-1 of one group.</summary>
     public static void Run<T>(Engine2D e, int group, int lane0, int lanes, SolvePhase phase) where T : struct, ILane<T>
     {
+        if (phase == SolvePhase.Restitution) { return; } // joints have no restitution pass
         int width = T.Count;
         var wide = e.JWide.AsSpan(group * J2D.GroupFloats, J2D.GroupFloats);
         var idx = e.JIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup);

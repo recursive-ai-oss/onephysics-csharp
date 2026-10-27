@@ -181,11 +181,10 @@ internal sealed partial class Engine2D
     }
 
     /// <summary>A revolute joint with no spring, motor or limit, whose stored spring, motor and limit impulses are all zero: the wide kernel handles exactly this.</summary>
-    internal static bool WideRevoluteJoints { get; set; }
+    internal static bool WideRevoluteJoints { get; set; } = true;
 
     private bool IsPlainRevolute(int c, ConstraintStore cs)
     {
-        // Off until the wide kernel is shown to give the scalar solver's bits (its world hash differed in the first trial).
         if (!WideRevoluteJoints) { return false; }
         ref JointData2D d = ref Joints[c];
         if (d.Type != (byte)JointType2D.Revolute || (cs.Color[c] == ConstraintStore.Overflow) || d.Motor || d.Limit || (d.Spring && d.Hertz > 0f)) { return false; }
