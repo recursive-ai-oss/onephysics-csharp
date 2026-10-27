@@ -54,6 +54,10 @@ public readonly struct ConvexShape3D
     /// <summary>The radius the core is inflated by, 0 for a sharp shape. For a sphere or capsule it is the whole radius; for a tapered capsule it is 0 because the support mapping carries both radii.</summary>
     public float ConvexRadius => _radius;
 
+    // The shape's core dimensions as the factories store them: box half extents of the core; capsule (0, half height, 0); tapered capsule (top radius, bottom radius, half height);
+    // cylinder (core radius, core half height, 0).
+    internal Vector3F CoreSize => _size;
+
     /// <summary>The hull of a <see cref="ConvexShapeKind3D.Hull"/> shape, otherwise null.</summary>
     public ConvexHull3D? Hull => _hull;
 

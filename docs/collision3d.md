@@ -79,3 +79,49 @@ Tolerance `eps`: the option, or `3 * 2^-23 * (extent x + extent y + extent z)`, 
 ## Determinism check
 
 `tests/OnePhysics.Tests/Collision3D/Collision3DHash.cs` builds 24 hulls and runs 600 random shape pairs (all kinds, convex radii, transforms) through `Distance`, `Collide`, `ShapeCast`, `RayCast` and `GetMassProperties`, folding every output float's bits into an FNV-1a (64-bit) hash, seeded with SplitMix64 streams. The unit tests, the NativeAOT smoke app and the WASM smoke app check it against one constant.
+
+## Contact manifolds (`ManifoldGenerator3D`)
+
+`Collide(a, b, bInA, speculativeDistance = 0.02)` returns a `Manifold3D`: a unit normal from A to B and at most four points, all in A's frame. A point has a position midway between the two surfaces, a separation (surface distance along the normal; negative when overlapping) and a 32-bit feature id. Points with separation above `speculativeDistance` are dropped; an empty manifold means "too far apart". The four-point limit and the normal, separation and position fields fit the shared core's 3D contact layout (`DimensionLayout.Spatial`) unchanged. Input checks: the rotation's squared length within 1% of 1, each translation component at most 2^22 in magnitude (else `ArgumentOutOfRangeException`).
+
+Arithmetic as above (float32, `+ - * /` and sqrt, fixed summation order). Dot and cross products are the plain left-to-right forms.
+
+### Routing
+
+| Pair | Method |
+|---|---|
+| sphere or capsule against sphere or capsule | analytic segment–segment: closest points of the core segments (a sphere is a zero-length segment), radii added back; parallel segments (cross product squared at most 1e-8 of the product of squared lengths) that overlap give the two ends of the overlap |
+| sphere against box or hull | analytic: for a centre outside the core polyhedron, the nearest point over all faces (face interior if the projection is inside the face's sides, else its edges); inside, the face plane with the largest signed distance |
+| box or hull against box or hull | separating axis test (below), then clipping |
+| everything else (cylinder, tapered capsule, capsule against box or hull, sphere against cylinder or tapered capsule) | `Epa3D.Collide` (GJK, then EPA when the cores overlap) gives the normal; the supporting features of both shapes are clipped |
+
+A box is a hull with the topology of a cube (the hull built from the corners (±1, ±1, ±1)) and vertices scaled by the core half extents; its feature indices are that hull's.
+
+### Separating axis test
+
+Both cores are placed in A's frame. Face queries (Gregorius, GDC 2013): for each face of P, the gap `min over Q's vertices of n·v − offset`, maximum over faces (lowest face wins ties), for P = A and P = B. Edge query: for each pair of undirected edges, the pair is tested only if the arcs of their face normals intersect on the Gauss map (B's normals negated): C and D on opposite sides of the plane of A and B, A and B on opposite sides of the plane of C and D, and the two crossing points (each a positive mix of one arc's ends) pointing the same way. A surviving pair with `|eA × eB|² > 1e-10 |eA|² |eB|²` gives the axis `eA × eB` normalised and oriented away from A's vertex mean, with gap `axis · (originB − originA)`; the largest gap wins (lowest A edge, then B edge, on ties).
+
+Choice, with `tol = 5e-4 (extentA + extentB)` where extent is the largest distance of a vertex from the vertex mean: B's face replaces A's when `gapB > gapA + 0.005 |gapA| + 0.2 tol` (frame-to-frame coherence: A is the reference unless B is clearly better); an edge pair replaces the face when `gapE > gapFace + 0.02 |gapFace| + tol`. If the best gap exceeds `radiusA + radiusB + speculativeDistance` the manifold is empty.
+
+When the best gap is positive (separated cores) the axis may under-estimate the true distance near vertex–vertex and vertex–edge closest pairs. Then GJK is consulted; the generic route below is used instead if its distance exceeds the axis gap (minus the radii) by more than `2e-4 (extentA + extentB + centre distance)`, or its normal differs from the axis by more than `cos = 0.9995`.
+
+### Features and clipping
+
+A contact feature is a point, a segment or a convex polygon of *surface* points (core points moved out along the normal by the convex radius; a tapered capsule uses each sphere's own radius). Winding does not matter: side planes are oriented towards the polygon's centroid.
+
+- SAT face contact: the reference face of P, and the incident face of Q with the smallest normal·reference normal (lowest index on ties). Edge contact: the two edges.
+- Generic route, for the outward direction u of a shape: sphere, a point; capsule-like shapes, the segment through the two end points if their offsets along u differ by at most `thick`, else the nearer end; hull or box, the best-aligned face if all its vertices are within `thick` of the support plane, else the flattest edge at the support vertex if its other end is within `thick`, else the support vertex; cylinder, the twelve-sided cap polygon (samples every 30° from +X towards +Z) if the rim's spread `2 r sin(angle)` is within `thick`, else the side line along the axis if its ends are within `thick`, else the rim point. `thick = speculativeDistance + 1e-4 (extentA + extentB)`.
+- Polygon against anything: Sutherland–Hodgman clipping of the incident feature against the sides of the reference polygon (a segment is clipped by parameter, a lone point kept only if inside); the larger polygon is the reference when both are polygons (A when within 5%). Separation is measured along the contact normal to the reference polygon's plane (Newell normal; if that plane is more than 60° from the contact normal, the plane perpendicular to the contact normal is used). Points beyond `speculativeDistance` are dropped. Segments and points without a polygon are matched in the view along the normal; segments within 1% sin² of parallel there contribute the two ends of their overlap, otherwise their crossing point.
+- Whenever the GJK/EPA contact is known (generic route, separated SAT) and the clipped points are all farther than it by more than `2e-4 (extentA + extentB)`, the contact's own point joins the set (id `0xC001C001`).
+
+### Reduction
+
+More than four points are reduced as in Gregorius, GDC 2015: the deepest point (lowest index on ties); the point farthest from it; the point giving the largest triangle area about the normal; the point lying farthest outside that triangle's edges (none if all are inside). The survivors are sorted by id (insertion sort, ties keep selection order), so a point keeps its slot while its feature pair persists.
+
+### Feature ids
+
+`id = featureA << 16 | featureB`. A feature code is 16 bits: kind in the top two (0 face, 1 edge, 2 vertex, 3 derived) and an index in the low 14 (larger indices wrap). Indices: hull or box face, vertex, and edge (half-edge index / 2); sphere: vertex 0; capsule and tapered capsule: vertices 0 (+Y end) and 1 (−Y end), edge 0; cylinder: cap polygon corners `cap * 16 + k` (cap 0 is +Y), the side line vertices 32 (+Y) and 33, edge 32, the rim point `34 + cap`. A point of a clipped polygon pairs the reference face with the incident corner it came from, or the reference edge that cut with the incident edge that was cut (an edge created by an earlier cut carries a derived code of the reference edge). Segment contacts pair vertex or edge codes by where the closest point or overlap end lies (end → vertex, interior → edge).
+
+### Measured accuracy
+
+Over 10^5 random separated pairs (all shape kinds, rounded and sharp, speculative distance 0.05, distance 1e-3 to 0.05) the smallest manifold separation differs from `Gjk3D.Distance` by at most 4.8e-4 (shapes of size about 1); the test limit is 2e-3. Against a brute-force separating axis test in double on overlapping hull pairs, the manifold normal agrees (cosine above 0.999) wherever the best axis leads by more than the bias above, and the manifold is never deeper than the brute-force depth by more than that bias.
