@@ -20,6 +20,7 @@ internal static class Program
         ["manifold2d"] = Fuzz2D.ManifoldTarget,
         ["broadphase"] = BroadphaseTarget.Run,
         ["manifold3d"] = Fuzz3D.ManifoldTarget,
+        ["compound3d"] = FuzzCompound3D.Run,
     };
 
     private static int Main(string[] args)
