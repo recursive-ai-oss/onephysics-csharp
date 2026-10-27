@@ -45,14 +45,14 @@ Same records. Arities change: positions and anchors take x y z; `body` takes `x 
 | scene | dim | bodies | steps | what it stresses | metrics |
 |---|---|---|---|---|---|
 | `pyramid-20`, `pyramid-100` | 2 | 211 / 5051 | 600 | box stacking, sleeping | maxPenetration, finalPenetration, collapse, maxSpeed, nan, restKE, jitter, escapes |
-| `large-pile` | 2 | 4004 | 600 | ~4000 mixed circles, capsules, boxes, pentagons and rounded hexagons dropped into a container | maxPenetration, finalPenetration, maxSpeed, nan, escapes, restKE, jitter |
+| `large-pile` | 2 | 4001 | 600 | ~4000 mixed circles, capsules, boxes, pentagons and rounded hexagons dropped into a container | maxPenetration, finalPenetration, maxSpeed, nan, escapes, restKE, jitter |
 | `tumbler` | 2 | 2001 | 600 | a kinematic rotating box (0.5 rad/s) with 2000 boxes and circles | maxPenetration, finalPenetration, maxSpeed, nan, escapes |
-| `joint-grid` | 2 | 10000 | 600 | 100×100 revolute grid hung from a static top row, 19700 joints | jointError, maxSpeed, nan, escapes |
+| `joint-grid` | 2 | 10000 | 600 | 100×100 revolute grid hung from a static top row, 19701 joints | jointError, maxSpeed, nan, escapes |
 | `chain` | 2 | 102 | 600 | 100-link revolute chain with a 125:1 mass ratio at the free end | jointError, maxSpeed, nan |
 | `sleep-wake` | 2 | 3002 | 360 | 3000 boxes created asleep in 60 stacks, all woken at step 120, a heavy ball arrives near step 150 | maxPenetration, finalPenetration, maxSpeed, nan, escapes, asleepBeforeWake, awakeFinal |
 | `mixed-terrain` | 2 | 1501 | 600 | 1500 mixed shapes on a 300-segment hilly polyline | maxPenetration, finalPenetration, maxSpeed, nan, escapes, tunnelled |
 | `bullets` | 2 | 202 | 180 | 200 small bullets at 150 m/s against a 0.2 m wall (2.5 m per step) | tunnelled, maxSpeed, nan |
-| `queries` | 2 | 4004 | 300 + queries | the large pile settled for 300 steps, then 4000 rays, 4000 circle overlaps, 4000 circle sweeps, 10 repetitions | maxSpeed, nan, escapes; throughput |
+| `queries` | 2 | 4001 | 300 + queries | the large pile settled for 300 steps, then 4000 rays, 4000 circle overlaps, 4000 circle sweeps, 10 repetitions | maxSpeed, nan, escapes; throughput |
 
 3D set (definitions for the follow-on harness): `pyramid` (3D box pyramid, base 10 and 40), `large-pile` (≈4000 boxes, spheres, capsules and hulls into a container), `joint-chains` (long hinge/point chains and a hinge grid), `ragdoll-pile` (hundreds of 15-body ragdolls dropped together), `mesh-terrain` and `heightfield-terrain` (bodies on generated terrain, seeded noise), `sleep-wake`, `characters` (hundreds of capsule characters following a scripted input path over steps and slopes), `queries` (ray, sphere overlap and sphere cast over the settled pile).
 
