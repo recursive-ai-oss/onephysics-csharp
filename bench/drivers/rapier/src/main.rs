@@ -111,6 +111,8 @@ fn main() {
         for sh in &b.shapes { for c in colliders(sh, &s) { world.insert_collider(c, Some(h)); } }
         handles.push(h);
     }
+    // Bodies created asleep are put to sleep explicitly once everything is inserted.
+    for (b, h) in s.bodies.iter().zip(&handles) { if b.asleep { world.bodies[*h].sleep(); } }
     for j in &s.joints {
         if s.bodies[j.a].kind != 2 && s.bodies[j.b].kind != 2 { continue; } // not simulated by any engine
         let mut jb = RevoluteJointBuilder::new()
