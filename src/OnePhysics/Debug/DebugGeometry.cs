@@ -26,7 +26,7 @@ public enum DebugContent
     /// <summary>One entry per body with its centre of mass, type, sleep state and island (<see cref="DebugGeometry.Bodies"/>).</summary>
     Bodies = 16,
 
-    /// <summary>One entry per joint (<see cref="DebugGeometry.Joints"/>); empty until the world has joints.</summary>
+    /// <summary>One entry per joint (<see cref="DebugGeometry.Joints"/>); one per live joint, in constraint-slot order.</summary>
     Joints = 32,
 
     /// <summary>Everything.</summary>
@@ -189,6 +189,13 @@ public readonly struct DebugJoint
         Joint = joint; BodyA = bodyA; BodyB = bodyB; AnchorA = anchorA; AnchorB = anchorB;
     }
 
+    /// <summary>Creates an entry with a joint axis.</summary>
+    public DebugJoint(JointHandle joint, BodyHandle bodyA, BodyHandle bodyB, Vector3D anchorA, Vector3D anchorB, Vector3D axis)
+        : this(joint, bodyA, bodyB, anchorA, anchorB)
+    {
+        Axis = axis;
+    }
+
     /// <summary>The joint.</summary>
     public JointHandle Joint { get; }
 
@@ -203,6 +210,9 @@ public readonly struct DebugJoint
 
     /// <summary>The anchor on B in world coordinates.</summary>
     public Vector3D AnchorB { get; }
+
+    /// <summary>The joint's sliding axis as a world-space unit vector (prismatic and wheel joints); zero for joints without one.</summary>
+    public Vector3D Axis { get; }
 }
 
 /// <summary>

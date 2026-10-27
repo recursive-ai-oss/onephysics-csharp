@@ -27,6 +27,8 @@ internal static class Program
         ["world2d-defs"] = Fuzz2DWorld.DefsTarget,
         ["world2d-services"] = Fuzz2DServices.Run,
         ["compound3d"] = FuzzCompound3D.Run,
+        ["world2d-joints"] = FuzzJoints2D.Run,
+        ["world2d-joint-snapshot"] = FuzzJoints2D.SnapshotTarget,
     };
 
     private static int Main(string[] args)

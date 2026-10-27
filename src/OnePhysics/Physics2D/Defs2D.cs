@@ -109,6 +109,12 @@ public sealed class WorldOptions2D
     /// <summary>Penetration in metres that the soft contact tolerates before it starts pushing out. Default 0: any penetration is pushed out. A positive slop lets contacts rest quietly but every layer of a stack then sinks by about that much.</summary>
     public float ContactSlop { get; set; }
 
+    /// <summary>Natural frequency in Hz of the soft rigid rows of joints (position error correction), capped at a quarter of the substep rate. Default 60.</summary>
+    public float JointHertz { get; set; } = 60f;
+
+    /// <summary>Damping ratio of the soft rigid rows of joints. Default 2.</summary>
+    public float JointDampingRatio { get; set; } = 2f;
+
     /// <summary>Approach speed below which restitution is ignored, metres per second. Default 1.</summary>
     public float RestitutionThreshold { get; set; } = 1f;
 
@@ -145,6 +151,8 @@ public sealed class WorldOptions2D
         Positive(ContactSlop, nameof(ContactSlop), true);
         Positive(HitSpeedThreshold, nameof(HitSpeedThreshold), true);
         Positive(RestitutionThreshold, nameof(RestitutionThreshold), true);
+        Positive(JointHertz, nameof(JointHertz), true);
+        Positive(JointDampingRatio, nameof(JointDampingRatio), true);
         Positive(MaxLinearSpeed, nameof(MaxLinearSpeed), false);
         Positive(MaxRotationPerSubstep, nameof(MaxRotationPerSubstep), false);
         if (!(BroadphaseMargin >= 0.0 && BroadphaseMargin <= 100.0)) { throw new ArgumentOutOfRangeException(nameof(BroadphaseMargin), BroadphaseMargin, "BroadphaseMargin must be within 0..100."); }

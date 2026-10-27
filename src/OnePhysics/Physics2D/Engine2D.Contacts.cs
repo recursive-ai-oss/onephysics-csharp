@@ -25,7 +25,8 @@ internal readonly struct Stages2D : IWorldStages
 
     public void StoreResults(WorldCore world, ReadOnlySpan<int> constraints, int eventSlot, in StepContext context)
     {
-        // Impulses are updated in place in each constraint's payload, so there is nothing to copy back; only hit events are raised.
+        // Impulses are updated in place in each constraint's payload, so there is nothing to copy back; joints report their reaction and may break, and contacts raise hit events.
+        _e.StoreJointResults(constraints, in context);
         _e.EmitHits(world, constraints, eventSlot);
     }
 
@@ -47,7 +48,7 @@ internal sealed partial class Engine2D
         public bool ShouldCollide(int shapeA, int shapeB)
         {
             var owner = _e.Core.Shapes.Owner;
-            return owner[shapeA] != owner[shapeB] && _e.CanCollide(shapeA, shapeB);
+            return owner[shapeA] != owner[shapeB] && _e.CanCollide(shapeA, shapeB) && !_e.JointsPreventCollision(owner[shapeA], owner[shapeB]);
         }
     }
 
@@ -72,6 +73,8 @@ internal sealed partial class Engine2D
         var bodies = world.Bodies;
         int nb = bodies.HighWater;
         EnsureBodies(nb);
+        ReconcileJoints();
+        SizeJointStorage();
 
         // 0. A changed filter re-evaluates the pair table before anything else (see Refilter).
         Refilter();

@@ -154,6 +154,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         Core.DestroyBody(handle);
         ShapeHead[b] = -1; ShapeTail[b] = -1;
         Mass[b] = 0f; Inertia[b] = 0f;
+        ReconcileJoints();
     }
 
     // ------------------------------------------------------------------ shapes
@@ -403,7 +404,8 @@ internal sealed partial class Engine2D : ISnapshotSection
     public void Write(StateWriter w)
     {
         bool services = HasServiceState();
-        w.WriteUInt32(services ? Services : Version);
+        bool joints = LiveJointCount() > 0;
+        w.WriteUInt32(joints ? Extended : services ? Services : Version);
         w.WriteSingle(Opt.ContactHertz); w.WriteSingle(Opt.ContactDampingRatio); w.WriteSingle(Opt.PushOutVelocity); w.WriteSingle(Opt.RestitutionThreshold);
         w.WriteSingle(Opt.MaxLinearSpeed); w.WriteSingle(Opt.MaxRotationPerSubstep); w.WriteBool(Opt.ContinuousEnabled); w.WriteSingle(Opt.ContactSlop);
         int nb = Core.Bodies.HighWater;
@@ -439,7 +441,13 @@ internal sealed partial class Engine2D : ISnapshotSection
 
         w.WriteInt32(PairFreeCount);
         w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
-        if (services) { WriteServices(w, ns); }
+        if (joints)
+        {
+            w.WriteBool(services);
+            WriteJoints(w);
+            if (services) { WriteServices(w, ns); }
+        }
+        else if (services) { WriteServices(w, ns); }
     }
 
     private static void WriteShape(StateWriter w, in Shape2D g)
@@ -479,7 +487,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     public void Read(StateReader r)
     {
         uint v = r.ReadUInt32();
-        if (v != Version && v != Services) { throw r.Error("unsupported 2D engine section version " + v.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+        if (v != Version && v != Services && v != Extended) { throw r.Error("unsupported 2D engine section version " + v.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
         float hertz = r.ReadSingle(), zeta = r.ReadSingle(), push = r.ReadSingle(), thr = r.ReadSingle(), maxSpeed = r.ReadSingle(), maxRot = r.ReadSingle();
         bool continuous = r.ReadBool();
         float slop = r.ReadSingle();
@@ -536,7 +544,23 @@ internal sealed partial class Engine2D : ISnapshotSection
             if (free[i] < 0 || free[i] >= np || pl[free[i]]) { throw r.Error("invalid free pair"); }
         }
 
-        ServiceBlock? svc = v == Services ? ReadServices(r, ns, live) : null;
+        JointData2D[] joints = new JointData2D[16];
+        ServiceBlock? svc = null;
+        if (v == Extended)
+        {
+            bool hasServices = r.ReadBool();
+            ReadJoints(r, out joints);
+            if (hasServices)
+            {
+                svc = ReadServices(r, ns, live);
+                if (svc.IsDefault()) { throw r.Error("2D service block holds only default state; the snapshot would not re-serialize to the same bytes"); }
+            }
+
+            int liveJoints = 0;
+            for (int c = 0; c < joints.Length; c++) { if (joints[c].Type != 0) { liveJoints++; } }
+            if (liveJoints == 0) { throw r.Error("2D section version 3 holds no joints"); }
+        }
+        else if (v == Services) { svc = ReadServices(r, ns, live); }
 
         // Commit.
         Opt.ContactHertz = hertz; Opt.ContactDampingRatio = zeta; Opt.PushOutVelocity = push; Opt.RestitutionThreshold = thr;
@@ -547,6 +571,10 @@ internal sealed partial class Engine2D : ISnapshotSection
         Geom = geom; Proxy = proxy; Friction = fr; Restitution = re; Rolling = ro; Density = de; Category = cat; Mask = mask; Group = grp; NextShape = next;
         EnsureShapes(Math.Max(ns, 1));
         PairA = pa; PairB = pb; PairCons = pc; PairLive = pl; PairHigh = np; PairFree = free; PairFreeCount = nf;
+        if (v == Extended) { Opt.JointHertz = _pendingJointHertz; Opt.JointDampingRatio = _pendingJointDamping; }
+        Joints = joints;
+        JointForce = new float[joints.Length]; JointTorque = new float[joints.Length];
+        _needBind = true;
         PairMap.Clear();
         for (int p = 0; p < np; p++)
         {
@@ -563,6 +591,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || Geom.Length < shapes.HighWater) { return false; }
         var cons = Core.Constraints;
+        if (!JointsConsistentWithCore()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)
         {
             if (!shapes.Handles.IsLive(s)) { continue; }

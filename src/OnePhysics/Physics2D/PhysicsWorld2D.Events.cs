@@ -77,6 +77,9 @@ public sealed partial class PhysicsWorld2D
                     FireTrigger(e, e.BodyA, e.BodyB, e.ShapeA, e.ShapeB);
                     FireTrigger(e, e.BodyB, e.BodyA, e.ShapeB, e.ShapeA);
                     break;
+                case EventKind.JointBreak:
+                    FireJointBreak(e);
+                    break;
                 case EventKind.Sleep:
                 case EventKind.Wake:
                     if (_handlers.TryGetValue(e.BodyA.Index, out var h) && h.Generation == e.BodyA.Generation)
