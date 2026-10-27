@@ -563,6 +563,7 @@ public sealed class WorldCore
 
         // All substeps run as one staged call: the stage boundaries (integrate, then each color of each pass) are crossed by polling inside the executor instead of one fork and join per stage.
         _stageCount = 0;
+        _stageMostTasks = 0;
         for (int s = 0; s < _options.Substeps; s++)
         {
             AddStage(StageIntegrateVelocities, 0, bodyChunks);
@@ -573,7 +574,7 @@ public sealed class WorldCore
         }
 
         AddSolvePass(SolvePhase.Restitution);
-        Executor.ForStages(_stageCount, new SolveProgram<TStages>(this, stages, list, ctx));
+        Executor.ForStages(_stageCount, new SolveProgram<TStages>(this, stages, list, ctx), _stageMostTasks);
         Executor.For(bodyChunks, new FinalizeTask<TStages>(this, stages, _awake, _awakeCount, ctx));
         stages.AfterFinalize(this, ctx);
         Executor.For(storeChunks, new StoreTask<TStages>(this, stages, list, active, ctx));
@@ -646,6 +647,7 @@ public sealed class WorldCore
     private int[] _stageArg = new int[64];
     private int[] _stageTasks = new int[64];
     private int _stageCount;
+    private int _stageMostTasks;
 
     private void AddStage(int kind, int arg, int tasks)
     {
@@ -655,6 +657,7 @@ public sealed class WorldCore
         }
 
         _stageKind[_stageCount] = kind; _stageArg[_stageCount] = arg; _stageTasks[_stageCount] = tasks;
+        if (tasks > _stageMostTasks) { _stageMostTasks = tasks; }
         _stageCount++;
     }
 

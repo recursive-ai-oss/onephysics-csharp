@@ -40,6 +40,9 @@ public sealed class TaskExecutor
         ThreadCount = threadCount;
     }
 
+    // A staged call needs at least this many tasks in some stage before waking the workers pays for itself.
+    private const int MinParallelTasks = 4;
+
     /// <summary>Maximum number of threads working at once.</summary>
     public int ThreadCount { get; }
 
@@ -56,10 +59,13 @@ public sealed class TaskExecutor
     /// Runs <paramref name="stageCount"/> stages in order, the tasks of each stage in parallel, and returns when the last one is done. The threads stay inside the call from the first stage to the last and
     /// pass the stage boundaries by polling shared counters, which costs far less than one <see cref="For{TBody}"/> call per stage when stages are short. The result must not depend on which thread runs which task.
     /// </summary>
-    public void ForStages<TBody>(int stageCount, TBody body) where TBody : IStagedBody
+    /// <param name="stageCount">Number of stages.</param>
+    /// <param name="body">The stages.</param>
+    /// <param name="mostTasks">An upper bound on the task count of any one stage; when it is below four there is too little to share and the call stays on the calling thread.</param>
+    public void ForStages<TBody>(int stageCount, TBody body, int mostTasks = int.MaxValue) where TBody : IStagedBody
     {
         if (stageCount <= 0) { return; }
-        if (ThreadCount == 1 || !WorkerPool.TryRunStages(ThreadCount - 1, stageCount, in body))
+        if (ThreadCount == 1 || mostTasks < MinParallelTasks || !WorkerPool.TryRunStages(ThreadCount - 1, stageCount, in body))
         {
             for (int s = 0; s < stageCount; s++)
             {
