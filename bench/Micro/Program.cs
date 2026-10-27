@@ -1,20 +1,30 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
-using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.Core.Reference;
 
 namespace RecursiveAI.OnePhysics.Bench;
 
 internal static class Program
 {
-    private static void Main(string[] args) => BenchmarkSwitcher.FromAssembly(typeof(GravityBench).Assembly).Run(args);
+    private static int Main(string[] args)
+    {
+        if (args.Length > 0 && args[0] == "--position-cost") { return PositionCost.Run(args); }
+        BenchmarkSwitcher.FromAssembly(typeof(StepBench).Assembly).Run(args);
+        return 0;
+    }
 }
 
 [MemoryDiagnoser]
-public class GravityBench
+public class StepBench
 {
-    private readonly Vector3F _v = new(3f, 4f, 12f);
+    private ParticleScene _scene = null!;
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        _scene = ParticleScene.CreatePile(2000, 1);
+    }
 
     [Benchmark]
-    public float Strength() => Gravity.Strength(_v);
+    public void Step() => _scene.Step(1f / 60f);
 }

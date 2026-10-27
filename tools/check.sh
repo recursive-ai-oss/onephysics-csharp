@@ -46,7 +46,7 @@ if [ "$fail" -ne 0 ]; then exit 1; fi
 
 dotnet build OnePhysics.slnx -c "$config" -v quiet -clp:NoSummary
 dotnet test --solution OnePhysics.slnx -c "$config" --no-build
-dotnet run -c "$config" --no-build --project fuzz/Fuzz -- gravity --random 1 10000
+dotnet run -c "$config" --no-build --project fuzz/Fuzz -- snapshot --random 1 10000
 dotnet run -c "$config" --no-build --project bench/Bar -- selftest
 gen="$(mktemp -d)"
 dotnet run -c "$config" --no-build --project bench/Bar -- gen --out "$gen"
