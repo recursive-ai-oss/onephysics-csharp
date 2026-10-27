@@ -41,8 +41,14 @@ internal sealed partial class Engine2D
             Wide = new float[cap * W2D.GroupFloats]; WideIdx = new int[cap * W2D.IdxPerGroup]; WideCons = new int[cap * W2D.Lanes];
         }
 
+        if (JWide.Length < batches * J2D.GroupFloats && LiveJointCount() > 0)
+        {
+            int cap = Math.Max(batches, JWide.Length / J2D.GroupFloats * 2);
+            JWide = new float[cap * J2D.GroupFloats]; JIdx = new int[cap * W2D.IdxPerGroup];
+        }
+
         int nc = core.Constraints.HighWater;
-        if (SlotOf.Length < nc) { SlotOf = new int[Math.Max(nc, SlotOf.Length * 2)]; }
+        if (SlotOf.Length < nc) { SlotOf = new int[Math.Max(nc, SlotOf.Length * 2)]; JSlotOf = new int[SlotOf.Length]; }
         ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
         var st = BodyState.AsSpan();
         for (int b = 0; b < nb; b++)
@@ -85,9 +91,25 @@ internal sealed partial class Engine2D
         var ids = WideCons.AsSpan(group * W2D.Lanes, W2D.Lanes);
         for (int l = 0; l < W2D.Lanes; l++) { idx[l] = 0; idx[8 + l] = 0; idx[16 + l] = -1; idx[24 + l] = -1; ids[l] = -1; }
         int lane = 0;
+        int jlane = 0;
+        var jw = JWide.Length >= (group + 1) * J2D.GroupFloats ? JWide.AsSpan(group * J2D.GroupFloats, J2D.GroupFloats) : default;
+        var jidx = JIdx.Length >= (group + 1) * W2D.IdxPerGroup ? JIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup) : default;
+        if (jidx.Length != 0)
+        {
+            for (int l = 0; l < W2D.Lanes; l++) { jidx[l] = 0; jidx[8 + l] = 0; jidx[16 + l] = -1; jidx[24 + l] = -1; }
+        }
+
+        bool anyJoint = false;
         foreach (int c in constraints)
         {
-            if (cs.KindOf(c) == ConstraintKind.Joint) { continue; }
+            if (cs.KindOf(c) == ConstraintKind.Joint)
+            {
+                anyJoint = true;
+                if (jidx.Length != 0 && IsPlainRevolute(c, cs)) { PrepareWideJoint(c, cs, jw, jidx, jlane++, group); }
+                else { JSlotOf[c] = -1; }
+                continue;
+            }
+
             var pl = cs.Payload(c);
             int a = bodyA[c], b = bodyB[c];
             ids[lane] = c;
@@ -146,11 +168,46 @@ internal sealed partial class Engine2D
             lane++;
         }
 
+        if (anyJoint && jlane > 0 && jlane < J2D.Lanes)
+        {
+            for (int l = jlane; l < J2D.Lanes; l++) { for (int f = 0; f < J2D.Fields; f++) { jw[f * 8 + l] = 0f; } }
+        }
+
         // Unused lanes of a short group read as zeros.
         for (int l = lane; l < W2D.Lanes; l++)
         {
             for (int f = 0; f < W2D.Fields; f++) { w[f * 8 + l] = 0f; }
         }
+    }
+
+    /// <summary>A revolute joint with no spring, motor or limit, whose stored spring, motor and limit impulses are all zero: the wide kernel handles exactly this.</summary>
+    internal static bool WideRevoluteJoints { get; set; }
+
+    private bool IsPlainRevolute(int c, ConstraintStore cs)
+    {
+        // Off until the wide kernel is shown to give the scalar solver's bits (its world hash differed in the first trial).
+        if (!WideRevoluteJoints) { return false; }
+        ref JointData2D d = ref Joints[c];
+        if (d.Type != (byte)JointType2D.Revolute || (cs.Color[c] == ConstraintStore.Overflow) || d.Motor || d.Limit || (d.Spring && d.Hertz > 0f)) { return false; }
+        var p = cs.Payload(c);
+        return p[JPay.Spring] == 0f && p[JPay.Motor] == 0f && p[JPay.Lower] == 0f && p[JPay.Upper] == 0f;
+    }
+
+    private void PrepareWideJoint(int c, ConstraintStore cs, Span<float> w, Span<int> idx, int lane, int group)
+    {
+        var bodies = Core.Bodies;
+        var s = JScratch.AsSpan(c * JRow.Stride, JRow.Stride);
+        var p = cs.Payload(c);
+        int a = cs.BodyA[c], b = cs.BodyB[c];
+        JSlotOf[c] = group * J2D.Lanes + lane;
+        idx[lane] = (a + 1) * BS2D.Stride; idx[8 + lane] = (b + 1) * BS2D.Stride;
+        idx[16 + lane] = bodies.TypeOf(a) == BodyType.Dynamic ? (a + 1) * BS2D.Stride : -1;
+        idx[24 + lane] = bodies.TypeOf(b) == BodyType.Dynamic ? (b + 1) * BS2D.Stride : -1;
+        w[J2D.MA * 8 + lane] = s[JRow.MA]; w[J2D.IA * 8 + lane] = s[JRow.IA]; w[J2D.MB * 8 + lane] = s[JRow.MB]; w[J2D.IB * 8 + lane] = s[JRow.IB];
+        w[J2D.RAx * 8 + lane] = s[JRow.RAx]; w[J2D.RAy * 8 + lane] = s[JRow.RAy]; w[J2D.RBx * 8 + lane] = s[JRow.RBx]; w[J2D.RBy * 8 + lane] = s[JRow.RBy];
+        w[J2D.Dx * 8 + lane] = s[JRow.Dx]; w[J2D.Dy * 8 + lane] = s[JRow.Dy];
+        w[J2D.Rigid * 8 + lane] = s[JRow.JMass] * s[JRow.JBias]; w[J2D.Mass * 8 + lane] = s[JRow.JMass]; w[J2D.Impulse * 8 + lane] = s[JRow.JImp];
+        w[J2D.P0 * 8 + lane] = p[JPay.P0]; w[J2D.P1 * 8 + lane] = p[JPay.P1];
     }
 
     /// <summary>After the last substep: copies the solved impulses of the contacts among a chunk of constraints back into their payloads for the next step's warm start.</summary>
@@ -162,7 +219,18 @@ internal sealed partial class Engine2D
         int pf = cs.PayloadFloats;
         foreach (int c in constraints)
         {
-            if (cs.KindOf(c) == ConstraintKind.Joint) { continue; }
+            if (cs.KindOf(c) == ConstraintKind.Joint)
+            {
+                int js = JSlotOf[c];
+                if (js >= 0)
+                {
+                    int jb = (js >> 3) * J2D.GroupFloats + (js & 7);
+                    payload[c * pf + JPay.P0] = JWide[jb + J2D.P0 * 8]; payload[c * pf + JPay.P1] = JWide[jb + J2D.P1 * 8];
+                }
+
+                continue;
+            }
+
             int slot = SlotOf[c];
             int wb = (slot >> 3) * W2D.GroupFloats + (slot & 7);
             int pb = c * pf;

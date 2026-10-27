@@ -30,8 +30,8 @@ internal readonly struct Stages2D : IWorldStages
     public void StoreResults(WorldCore world, ReadOnlySpan<int> constraints, int eventSlot, in StepContext context)
     {
         // Impulses are updated in place in each constraint's payload, so there is nothing to copy back; joints report their reaction and may break, and contacts raise hit events.
+        _e.StoreContactResults(constraints); // first: it also copies the wide joint impulses back into the payloads the joint results read
         _e.StoreJointResults(constraints, in context);
-        _e.StoreContactResults(constraints);
         _e.EmitHits(world, constraints, eventSlot);
     }
 
@@ -88,6 +88,7 @@ internal sealed partial class Engine2D
         //    the tree itself is updated serially, in body order.
         var awake = world.AwakeBodies;
         EnsureBoxStorage();
+        _stamp++;
         world.Executor.For((awake.Length + 63) / 64, new BoxTask(this, world.AwakeArray, awake.Length));
         foreach (int b in awake)
         {
@@ -254,6 +255,7 @@ internal sealed partial class Engine2D
                 {
                     var box = e.TightBox(b, in e.Geom[s]);
                     e._boxes[4 * s] = box.MinX; e._boxes[4 * s + 1] = box.MinY; e._boxes[4 * s + 2] = box.MaxX; e._boxes[4 * s + 3] = box.MaxY;
+                    e._boxStamp[s] = e._stamp;
                     e._needMove[s] = (byte)(Aabb2D.Contains(e.Bp.GetFatBounds(e.Proxy[s]), box) ? 0 : 1);
                 }
             }
@@ -284,12 +286,14 @@ internal sealed partial class Engine2D
     }
 
     private byte[] _needMove = new byte[8];
+    private int[] _boxStamp = new int[8];
+    private int _stamp;
     private double[] _boxes = new double[32];
 
     private void EnsureBoxStorage()
     {
         int n = Core.Shapes.HighWater;
-        if (_needMove.Length < n) { _needMove = new byte[Math.Max(n, _needMove.Length * 2)]; _boxes = new double[_needMove.Length * 4]; }
+        if (_needMove.Length < n) { _needMove = new byte[Math.Max(n, _needMove.Length * 2)]; _boxes = new double[_needMove.Length * 4]; _boxStamp = new int[_needMove.Length]; }
     }
 
     private void Collide(int i, ReadOnlySpan<double> pos, ReadOnlySpan<float> rot, ReadOnlySpan<int> owner)
@@ -298,8 +302,21 @@ internal sealed partial class Engine2D
         ref PairResult res = ref _results[i];
         res = default;
         int sa = PairA[p], sb = PairB[p];
-        if (!Aabb2D.Overlaps(in Bp.FatBoundsOfLive(Proxy[sa]), in Bp.FatBoundsOfLive(Proxy[sb]))) { res.Status = 2; return; }
+        ref readonly Aabb2D fatA = ref Bp.FatBoundsOfLive(Proxy[sa]);
+        ref readonly Aabb2D fatB = ref Bp.FatBoundsOfLive(Proxy[sb]);
+        if (!Aabb2D.Overlaps(in fatA, in fatB)) { res.Status = 2; return; }
         res.Status = 1;
+
+        // Shapes whose bounds (this step's tight box for a body that moved, the stored box for one that did not) are farther apart than the speculative distance cannot touch: no manifold,
+        // without running the narrowphase. The extra margin keeps the shortcut clear of rounding at the threshold.
+        const double Gap = Constants2D.SpeculativeDistance + 0.005;
+        double ax0, ay0, ax1, ay1, bx0, by0, bx1, by1;
+        if (_boxStamp[sa] == _stamp) { ax0 = _boxes[4 * sa]; ay0 = _boxes[4 * sa + 1]; ax1 = _boxes[4 * sa + 2]; ay1 = _boxes[4 * sa + 3]; }
+        else { ax0 = fatA.MinX; ay0 = fatA.MinY; ax1 = fatA.MaxX; ay1 = fatA.MaxY; }
+        if (_boxStamp[sb] == _stamp) { bx0 = _boxes[4 * sb]; by0 = _boxes[4 * sb + 1]; bx1 = _boxes[4 * sb + 2]; by1 = _boxes[4 * sb + 3]; }
+        else { bx0 = fatB.MinX; by0 = fatB.MinY; bx1 = fatB.MaxX; by1 = fatB.MaxY; }
+        if (ax0 - Gap > bx1 || bx0 - Gap > ax1 || ay0 - Gap > by1 || by0 - Gap > ay1) { return; }
+
         int ba = owner[sa], bb = owner[sb];
         var qA = new Rot2(rot[2 * ba], rot[2 * ba + 1]); var qB = new Rot2(rot[2 * bb], rot[2 * bb + 1]);
         var lcA = new Vec2(LocalCenter[2 * ba], LocalCenter[2 * ba + 1]); var lcB = new Vec2(LocalCenter[2 * bb], LocalCenter[2 * bb + 1]);

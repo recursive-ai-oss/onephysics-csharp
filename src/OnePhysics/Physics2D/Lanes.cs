@@ -32,6 +32,11 @@ internal interface ILane<T> where T : struct, ILane<T>
 
     static abstract T operator *(T a, T b);
 
+    static abstract T operator /(T a, T b);
+
+    /// <summary>Flips the sign bit of every lane, exactly like the scalar unary minus (so zero keeps its sign rule).</summary>
+    static abstract T Negate(T a);
+
     static abstract T GreaterThan(T a, T b);
 
     static abstract T Select(T mask, T whenSet, T whenClear);
@@ -47,6 +52,10 @@ internal static class Lane
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static T Neg<T>(T a) where T : struct, ILane<T> => T.Zero - a;
+
+    /// <summary>The mask of lanes where either mask is set.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static T Or<T>(T a, T b) where T : struct, ILane<T> => T.Select(a, a, b);
 
     /// <summary>The mask of lanes where both masks are set.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -88,6 +97,10 @@ internal readonly struct Lanes1 : ILane<Lanes1>
 
     public static Lanes1 operator *(Lanes1 a, Lanes1 b) => new(a._v * b._v);
 
+    public static Lanes1 operator /(Lanes1 a, Lanes1 b) => new(a._v / b._v);
+
+    public static Lanes1 Negate(Lanes1 a) => new(-a._v);
+
     public static Lanes1 GreaterThan(Lanes1 a, Lanes1 b) => new(BitConverter.Int32BitsToSingle(a._v > b._v ? -1 : 0));
 
     public static Lanes1 Select(Lanes1 mask, Lanes1 whenSet, Lanes1 whenClear) =>
@@ -126,6 +139,10 @@ internal readonly struct Lanes128 : ILane<Lanes128>
     public static Lanes128 operator -(Lanes128 a, Lanes128 b) => new(Vector128.Subtract(a._v, b._v));
 
     public static Lanes128 operator *(Lanes128 a, Lanes128 b) => new(Vector128.Multiply(a._v, b._v));
+
+    public static Lanes128 operator /(Lanes128 a, Lanes128 b) => new(Vector128.Divide(a._v, b._v));
+
+    public static Lanes128 Negate(Lanes128 a) => new(Vector128.Xor(a._v, Vector128.Create(-0f)));
 
     public static Lanes128 GreaterThan(Lanes128 a, Lanes128 b) => new(Vector128.GreaterThan(a._v, b._v));
 
@@ -184,6 +201,10 @@ internal readonly struct Lanes256 : ILane<Lanes256>
     public static Lanes256 operator -(Lanes256 a, Lanes256 b) => new(Vector256.Subtract(a._v, b._v));
 
     public static Lanes256 operator *(Lanes256 a, Lanes256 b) => new(Vector256.Multiply(a._v, b._v));
+
+    public static Lanes256 operator /(Lanes256 a, Lanes256 b) => new(Vector256.Divide(a._v, b._v));
+
+    public static Lanes256 Negate(Lanes256 a) => new(Vector256.Xor(a._v, Vector256.Create(-0f)));
 
     public static Lanes256 GreaterThan(Lanes256 a, Lanes256 b) => new(Vector256.GreaterThan(a._v, b._v));
 

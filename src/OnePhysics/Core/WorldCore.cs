@@ -91,7 +91,7 @@ public interface IWorldStages
     void BeginSolve(WorldCore world, int batches, in StepContext context) { }
 
     /// <summary>
-    /// Prepares one batch, cut exactly as <see cref="SolveBatch"/> will see it; <paramref name="batch"/> numbers the batches of the step from zero in solve order. Batches of one color may be prepared concurrently,
+    /// Prepares one batch (after every chunk has been prepared with <see cref="Prepare"/>), cut exactly as <see cref="SolveBatch"/> will see it; <paramref name="batch"/> numbers the batches of the step from zero in solve order. Batches of one color may be prepared concurrently,
     /// so an implementation writes only data owned by its batch. The default does nothing.
     /// </summary>
     void PrepareBatch(WorldCore world, ReadOnlySpan<int> constraints, int batch, in StepContext context) { }
@@ -550,8 +550,8 @@ public sealed class WorldCore
         _events.EnsureSlots(1 + storeChunks);
         var list = _coloring.ListArray;
 
-        PrepareBatches(stages, ctx);
         Executor.For(storeChunks, new PrepareTask<TStages>(this, stages, list, 0, active, ctx));
+        PrepareBatches(stages, ctx);
 
         int bodyChunks = (_awakeCount + ChunkSize - 1) / ChunkSize;
         for (int s = 0; s < _options.Substeps; s++)
