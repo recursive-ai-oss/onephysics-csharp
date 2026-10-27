@@ -17,6 +17,7 @@
     <Project Path="fuzz/Fuzz/Fuzz.csproj" />
   </Folder>
   <Folder Name="/bench/">
+    <Project Path="bench/Bar/Bar.csproj" />
     <Project Path="bench/Micro/Micro.csproj" />
   </Folder>
 </Solution>
