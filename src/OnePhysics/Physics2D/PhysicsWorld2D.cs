@@ -67,9 +67,11 @@ public sealed class PhysicsWorld2D
     /// collision callbacks registered on bodies run in event order (kind, then the bodies' slots) and <see cref="Events"/> holds the same list for polling.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="dt"/> is not finite and positive, or an option is out of range.</exception>
+    /// <exception cref="BodyOutOfBoundsException">A moving body's bounds are beyond ±2^22 or not finite; nothing was changed.</exception>
     public void Step(float dt)
     {
         _engine.Opt.Validate();
+        _engine.CheckBounds();
         SyncCoreOptions();
         _core.Step(new Stages2D(_engine), dt);
         if (_handlers.Count > 0) { DispatchEvents(); }
@@ -164,13 +166,23 @@ public sealed class PhysicsWorld2D
         ArgumentNullException.ThrowIfNull(snapshot);
         byte[] backup = _core.Snapshot();
         _core.Restore(snapshot);
-        if (!_engine.IsConsistentWithCore())
+        string? problem = null;
+        if (!_engine.IsConsistentWithCore()) { problem = "the snapshot's 2D engine state does not match its bodies and shapes"; }
+        else
         {
-            _core.Restore(backup);
-            throw new SnapshotFormatException("the snapshot's 2D engine state does not match its bodies and shapes", 0);
+            LoadOptionsFromCore();
+            try { _engine.Opt.Validate(); }
+            catch (ArgumentOutOfRangeException e) { problem = "the snapshot holds an option out of range: " + e.Message; }
+            if (problem == null && _engine.FindOutOfBounds(true, out _, out string bounds)) { problem = "the snapshot places a body out of range: " + bounds; }
         }
 
-        LoadOptionsFromCore();
+        if (problem != null)
+        {
+            _core.Restore(backup);
+            LoadOptionsFromCore();
+            throw new SnapshotFormatException(problem, 0);
+        }
+
         var dead = new List<int>();
         foreach (var kv in _handlers)
         {
@@ -191,6 +203,14 @@ public sealed class PhysicsWorld2D
     }
 
     // ------------------------------------------------------------------ middle tier: bodies and shapes
+
+    /// <summary>The <see cref="Body"/> for a raw handle (from an event, an exception or the raw tier).</summary>
+    /// <exception cref="InvalidHandleException">The handle is null, belongs to another world or refers to a destroyed body.</exception>
+    public Body GetBody(BodyHandle handle)
+    {
+        _core.Resolve(handle);
+        return new Body(this, handle);
+    }
 
     /// <summary>Creates a body from a definition.</summary>
     /// <exception cref="ArgumentOutOfRangeException">A value is not finite or the position is beyond +-2^21 from the origin (the message names it).</exception>
@@ -223,7 +243,7 @@ public sealed class PhysicsWorld2D
     /// <summary>Adds a box of the given half extents, optionally offset and rotated within the body's frame and rounded by <paramref name="radius"/>.</summary>
     public Shape CreateBox(Body body, float halfWidth, float halfHeight, Vector2F center = default, float angle = 0f, float radius = 0f, ShapeDef? def = null)
     {
-        Trig2D.SinCos(angle, out double s, out double c);
+        var (s, c) = RecursiveAI.OneMath.Math64.SinCos(angle);
         return AddShape(body, Shape2D.CreateBox(halfWidth, halfHeight, new Vec2(center.X, center.Y), new Rot2((float)c, (float)s), radius), def);
     }
 

@@ -97,8 +97,8 @@ public sealed class WorldOptions2D
     /// <summary>Which events the world records. Default: everything but per-step contact persist events (needed for <c>OnCollisionStay</c>).</summary>
     public EventMask Events { get; set; } = EventMask.Default;
 
-    /// <summary>Natural frequency of soft contacts in Hz, capped at a quarter of the substep rate. Default 30.</summary>
-    public float ContactHertz { get; set; } = 30f;
+    /// <summary>Natural frequency of soft contacts in Hz, capped at a quarter of the substep rate. Default 36.</summary>
+    public float ContactHertz { get; set; } = 36f;
 
     /// <summary>Damping ratio of soft contacts. Default 10 (heavily overdamped).</summary>
     public float ContactDampingRatio { get; set; } = 10f;
@@ -296,4 +296,17 @@ public readonly struct Collision
 
     /// <summary>False for exit callbacks and for contacts that began and ended inside one step.</summary>
     public bool HasPoint { get; }
+}
+
+/// <summary>
+/// A moving body's bounds left the range the broadphase supports (±2^22 from the world origin), or its position became not finite. <see cref="PhysicsWorld2D.Step"/> raises it before it changes
+/// anything, so the world is intact: the host moves the body back, destroys it or shifts the origin, then steps again. Until then every step raises it again.
+/// </summary>
+public sealed class BodyOutOfBoundsException : PhysicsException
+{
+    /// <summary>The offending body.</summary>
+    public BodyHandle Body { get; }
+
+    /// <summary>Creates the exception for <paramref name="body"/>; the message gives its position.</summary>
+    public BodyOutOfBoundsException(BodyHandle body, string message) : base(message) { Body = body; }
 }

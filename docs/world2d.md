@@ -7,7 +7,7 @@ Normative, language-neutral description of `src/OnePhysics/Physics2D/`: what a 2
 * A body's **core position is its centre of mass**; the body origin is `com − R·lc` where `lc` is the local centre (float, stored per body). Shapes keep their authored coordinates in the origin frame. `Body.Position` is the origin.
 * Mass data per shape and unit density comes from `collision2d.md`. For a dynamic body: `m = Σ density·area`, `lc = Σ density·area·centroid / m` (double, rounded to float), inertia about the centre of mass `I = Σ density·InertiaAbout(lc)`. Shapes with density 0 add no mass. No mass at all gives mass 1, inertia 1, `lc = 0`. `FixedRotation` gives inverse inertia 0. Adding or removing a shape recomputes this and moves the centre-of-mass position by `R·(lc_new − lc_old)` so the origin stays put.
 * `maxExtent` = largest distance from `lc` to any core vertex plus the radius; `minExtent` = smallest of: radius (circle, capsule, segment), smallest `n·(v − centroid)` over polygon edges plus radius.
-* Rotation is stored as (cos, sin). Angles in definitions are converted by an arithmetic-only sine/cosine (Taylor series after reduction to a quarter turn, double precision, rounded to float); `Body.Angle` uses an arithmetic-only arctangent. Both are temporary stand-ins for the onemath functions.
+* Rotation is stored as (cos, sin). Angles in definitions are converted with onemath's correctly rounded `SinCos` (double, rounded to float); `Body.Angle` uses its `Atan2`.
 * Bodies created with `StartAsleep` are put to sleep when created.
 
 ## Pair table
@@ -56,7 +56,7 @@ For each awake dynamic body at the end of the step: movement `m = |com_end − c
 
 ## Defaults
 
-Substeps 4, solve iterations 1, relax iterations 1, contact hertz 30, damping ratio 10, push-out 3 m/s, restitution threshold 1 m/s, contact slop 0, max speed 400 m/s, max rotation per substep π/4, sleep: 0.5 s below 0.05 m/s, broadphase margin 0.1. Default gravity (0, −9.81).
+Substeps 4, solve iterations 1, relax iterations 1, contact hertz 36 (0.15 of the substep rate; the sleep-wake final penetration is chaotic, 0.10 to 0.22 across settings from 30 to 42, and 35 to 38 all measure under 0.15 while the pyramids sink less than at 30), damping ratio 10, push-out 3 m/s, restitution threshold 1 m/s, contact slop 0, max speed 400 m/s, max rotation per substep π/4, sleep: 0.5 s below 0.05 m/s, broadphase margin 0.1. Default gravity (0, −9.81).
 
 ## Events and callbacks
 
@@ -65,6 +65,10 @@ Events are the core's; contact begin/end carry the shape handles, in the core's 
 ## Snapshot section
 
 Section id `0x32445747`, after the broadphase section. Version (u32 = 1); tunables (ContactHertz, ContactDampingRatio, PushOutVelocity, RestitutionThreshold, MaxLinearSpeed, MaxRotationPerSubstep as f32, ContinuousEnabled as u8, ContactSlop f32); body count n, then arrays for all n slots: local centre (2n f32), mass, inertia, max extent, min extent, linear damping, angular damping, gravity scale (n f32 each), force (2n f32), torque (n f32), flags (n u8), shape head, shape tail (n i32), last-step displacement (2n f32); shape count, per slot a live byte and for live slots the shape (kind u8, count i32, radius f32, flags u8, centroid, ghost 1, ghost 2, then 8 vertices and 8 normals as f32 pairs), proxy key i32, friction, restitution, rolling, density (f32), category, mask (u32), group, next shape (i32); pair slot count, per slot a live byte and for live slots shape A, shape B, constraint (i32); free pair count and the free stack (i32). The world options a snapshot restores are the core's plus these tunables; `BroadphaseMargin`, thread count and world id are construction-time. Delegates (material mixer, pair predicate, collision handlers) are never saved.
+
+## Bodies leaving the supported range
+
+Before any change, `Step` checks every non-static body's shape boxes, stretched the way the broadphase would store them (margin plus twice the last step's displacement). A box that is not finite or reaches beyond 2^22 in either axis raises `BodyOutOfBoundsException` (a `PhysicsException`) naming the body handle and its position, lowest body slot first. Nothing has been changed when it is raised, so the world hash is the same before and after, and every later `Step` raises it again until the host moves the body back, destroys it (`PhysicsWorld2D.GetBody(handle).Destroy()`) or shifts the origin. `Restore` applies the same test to every body (static included) and to the restored tunables, and rejects the snapshot with `SnapshotFormatException`, leaving the world unchanged. A snapshot may declare at most 2^22 bodies and 2^22 shapes, and the body count must fit in the bytes that remain.
 
 ## Origin shifting
 

@@ -68,7 +68,7 @@ public readonly struct Body : IEquatable<Body>
     public Rot2 Rotation { get { var (w, b) = Resolve(); var r = w.Core.Bodies.RotationOf(b); return new Rot2(r[0], r[1]); } }
 
     /// <summary>The rotation angle in radians within (-pi, pi].</summary>
-    public float Angle { get { var r = Rotation; return (float)Trig2D.Atan2(r.S, r.C); } }
+    public float Angle { get { var r = Rotation; return (float)RecursiveAI.OneMath.Math64.Atan2(r.S, r.C); } }
 
     /// <summary>Velocity of the centre of mass, metres per second. Setting it wakes the body; static bodies refuse (<see cref="InvalidOperationException"/>).</summary>
     public Vector2F LinearVelocity
@@ -132,7 +132,7 @@ public readonly struct Body : IEquatable<Body>
         if (!float.IsFinite(angle)) { throw new ArgumentOutOfRangeException(nameof(angle), angle, "Angle must be finite."); }
         var e = w.Engine;
         var bodies = w.Core.Bodies;
-        Trig2D.SinCos(angle, out double s, out double c);
+        var (s, c) = RecursiveAI.OneMath.Math64.SinCos(angle);
         var r = bodies.RotationOf(b);
         r[0] = (float)c; r[1] = (float)s;
         float lx = e.LocalCenter[2 * b], ly = e.LocalCenter[2 * b + 1];

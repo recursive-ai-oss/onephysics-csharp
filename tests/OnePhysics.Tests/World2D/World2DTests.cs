@@ -180,6 +180,31 @@ public class World2DTests
     }
 
     [Fact]
+    public void ABodyLeavingTheSupportedRangeIsReportedBeforeAStepChangesAnything()
+    {
+        var w = NewWorld();
+        var other = w.AddCircle(1f, at: new Vector2D(0, 5));
+        var runaway = w.AddBox(new Vector2F(1, 1), at: new Vector2D(2000000, 0), type: BodyType.Kinematic);
+        runaway.LinearVelocity = new Vector2F(1e7f, 0);
+        BodyOutOfBoundsException? caught = null;
+        ulong before = 0;
+        for (int i = 0; i < 100 && caught == null; i++)
+        {
+            before = w.ComputeHash();
+            try { w.Step(Dt); } catch (BodyOutOfBoundsException e) { caught = e; }
+        }
+
+        Assert.NotNull(caught);
+        Assert.Equal(runaway.RawHandle, caught!.Body);
+        Assert.Equal(before, w.ComputeHash());
+        Assert.Throws<BodyOutOfBoundsException>(() => w.Step(Dt));
+        w.GetBody(caught.Body).Destroy();
+        Assert.False(runaway.IsValid);
+        w.Step(Dt);
+        Assert.True(other.IsValid);
+    }
+
+    [Fact]
     public void AFastBodyDoesNotTunnelThroughAThinWall()
     {
         var w = NewWorld();

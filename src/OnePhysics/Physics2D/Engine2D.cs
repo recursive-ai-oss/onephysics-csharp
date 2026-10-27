@@ -110,7 +110,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         Nonnegative(d.LinearDamping, "LinearDamping");
         Nonnegative(d.AngularDamping, "AngularDamping");
         if (!float.IsFinite(d.GravityScale)) { throw new ArgumentOutOfRangeException(nameof(d), d.GravityScale, "GravityScale must be finite."); }
-        Trig2D.SinCos(d.Angle, out double s, out double c);
+        var (s, c) = RecursiveAI.OneMath.Math64.SinCos(d.Angle);
         var flags = BodyBits.None;
         if (d.IsBullet) { flags |= BodyBits.Bullet; }
         if (!d.AllowSleep) { flags |= BodyBits.NoSleep; }
@@ -199,6 +199,42 @@ internal sealed partial class Engine2D : ISnapshotSection
 
         Core.DestroyShape(handle);
         if (Core.Bodies.TypeOf(b) == BodyType.Dynamic) { UpdateMass(b); }
+    }
+
+    private readonly double[] _dp2 = new double[2];
+
+    /// <summary>Fails before a step when a moving body's bounds are outside what the broadphase accepts, so a step never stops half way. Lowest slot first.</summary>
+    public void CheckBounds()
+    {
+        if (FindOutOfBounds(false, out var h, out string message)) { throw new BodyOutOfBoundsException(h, message); }
+    }
+
+    /// <summary>Finds the first body (lowest slot) whose bounds, as the broadphase would store them, are not valid.</summary>
+    public bool FindOutOfBounds(bool includeStatic, out BodyHandle handle, out string message)
+    {
+        var bodies = Core.Bodies;
+        int nb = bodies.HighWater;
+        for (int b = 0; b < nb; b++)
+        {
+            if (!bodies.IsLive(b) || (!includeStatic && bodies.TypeOf(b) == BodyType.Static)) { continue; }
+            for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
+            {
+                var box = TightBox(b, in Geom[s]);
+                // The box the broadphase would store: margin plus the last step's displacement stretched by its default multiplier (2).
+                _dp2[0] = Dp[2 * b]; _dp2[1] = Dp[2 * b + 1];
+                var fat = box.Fatten(Opt.BroadphaseMargin, _dp2, 2.0);
+                if (box.IsValid(out string reason) && fat.IsValid(out reason)) { continue; }
+                handle = Core.HandleOfBody(b);
+                var pos = bodies.PositionOf(b);
+                var ci = System.Globalization.CultureInfo.InvariantCulture;
+                message = "Body " + handle + " at (" + pos[0].ToString("R", ci) + ", " + pos[1].ToString("R", ci) + ") has left the supported range: " + reason + " Move it back, destroy it, or call ShiftOrigin.";
+                return true;
+            }
+        }
+
+        handle = default;
+        message = "";
+        return false;
     }
 
     /// <summary>The body's shape bounds in world space, tight (no margin).</summary>
@@ -451,8 +487,8 @@ internal sealed partial class Engine2D : ISnapshotSection
         float slop = r.ReadSingle();
         if (!float.IsFinite(hertz + zeta + push + thr + maxSpeed + maxRot + slop) || slop < 0f || hertz < 0f || zeta < 0f || push < 0f || thr < 0f || !(maxSpeed > 0f) || !(maxRot > 0f)) { throw r.Error("invalid 2D engine tunables"); }
 
-        int nb = r.ReadCount(0, "2D bodies");
-        if (nb > 1 << 24) { throw r.Error("too many 2D bodies"); }
+        int nb = r.ReadCount(65, "2D bodies"); // 65 bytes of per-body arrays follow
+        if (nb > 1 << 22) { throw r.Error("too many 2D bodies"); }
         var lc = new float[2 * nb]; var mass = new float[nb]; var inertia = new float[nb]; var maxE = new float[nb]; var minE = new float[nb];
         var ld = new float[nb]; var ad = new float[nb]; var gs = new float[nb]; var force = new float[2 * nb]; var torque = new float[nb];
         var bf = new byte[nb]; var head = new int[nb]; var tail = new int[nb]; var dp = new float[2 * nb];
@@ -464,7 +500,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         r.ReadSingles(dp, true, "displacements");
 
         int ns = r.ReadCount(1, "2D shapes");
-        if (ns > 1 << 24) { throw r.Error("too many 2D shapes"); }
+        if (ns > 1 << 22) { throw r.Error("too many 2D shapes"); }
         var geom = new Shape2D[ns]; var proxy = new int[ns]; var fr = new float[ns]; var re = new float[ns]; var ro = new float[ns]; var de = new float[ns];
         var cat = new uint[ns]; var mask = new uint[ns]; var grp = new int[ns]; var next = new int[ns]; var live = new bool[ns];
         for (int s = 0; s < ns; s++)

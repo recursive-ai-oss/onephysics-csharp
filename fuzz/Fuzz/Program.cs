@@ -19,6 +19,8 @@ internal static class Program
         ["polygon2d"] = Fuzz2D.PolygonTarget,
         ["manifold2d"] = Fuzz2D.ManifoldTarget,
         ["broadphase"] = BroadphaseTarget.Run,
+        ["world2d-snapshot"] = Fuzz2DWorld.SnapshotTarget,
+        ["world2d-defs"] = Fuzz2DWorld.DefsTarget,
     };
 
     private static int Main(string[] args)
