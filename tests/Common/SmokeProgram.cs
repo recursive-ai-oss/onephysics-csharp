@@ -1,18 +1,29 @@
 using System;
-using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics.Core.Reference;
 
-// Shared by the NativeAOT and browser-WASM smoke apps: calls the package and checks the answer.
+// Shared by the NativeAOT and browser-WASM smoke apps: steps a small deterministic scene on one and on several threads,
+// snapshots and restores it, and checks that every path gives the same world hash.
 internal static class SmokeProgram
 {
     private static int Main()
     {
-        float strength = Gravity.Strength(new Vector3F(3f, 4f, 0f));
+        const float dt = 1f / 60f;
+        var a = ParticleScene.CreatePile(200, 42, threadCount: 1, worldId: 1);
+        var b = ParticleScene.CreatePile(200, 42, threadCount: 4, worldId: 1);
+        for (int i = 0; i < 60; i++) { a.Step(dt); b.Step(dt); }
+        byte[] snap = a.World.Snapshot();
+        var c = new ParticleScene(new WorldOptions { WorldId = 1 });
+        c.World.Restore(snap);
+        for (int i = 0; i < 60; i++) { a.Step(dt); b.Step(dt); c.Step(dt); }
+        ulong h = a.World.ComputeHash();
+        bool ok = h == b.World.ComputeHash() && h == c.World.ComputeHash();
+        Console.WriteLine(ok ? "OK " + h.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) : "FAIL");
+
         // Convex collision results must be bit-identical on every platform: hash a fixed set of queries.
         ulong hash = Collision3DHash.Compute();
         bool same = hash == Collision3DHash.Expected;
-        Console.WriteLine(strength == 5f ? "OK 5" : "FAIL " + strength);
         Console.WriteLine((same ? "OK collision3d " : "FAIL collision3d ") + hash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
-        return strength == 5f && same ? 0 : 1;
+        return ok && same ? 0 : 1;
     }
 }

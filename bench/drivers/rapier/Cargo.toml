@@ -1,0 +1,16 @@
+[package]
+name = "rapier-driver"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Runs engine-neutral scene files through Rapier's documented API.
+# `parallel` is the documented way to multithread the whole step; the thread count is set by running the step inside a rayon pool.
+[dependencies]
+rapier2d = { version = "=0.36.1", features = ["parallel"] }
+rayon = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

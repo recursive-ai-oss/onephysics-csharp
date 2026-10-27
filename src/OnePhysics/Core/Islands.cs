@@ -1,0 +1,235 @@
+using System;
+using System.Collections.Generic;
+
+namespace RecursiveAI.OnePhysics.Core;
+
+/// <summary>
+/// Persistent simulation islands: sets of dynamic bodies connected through contacts and joints, which sleep and wake together.
+/// Islands only merge when a constraint is added between two of them and only split when a sleeping candidate with removed constraints is checked
+/// (Catto, "Simulation Islands", Box2D v3 blog): removing a constraint merely counts, and the possibly disconnected island is split by a depth-first search
+/// only when it is about to fall asleep, at most once per step.
+/// </summary>
+/// <remarks>
+/// Determinism: a merge keeps the lower island id and merges the two ascending body lists; a split labels components by their lowest body index, the first keeps the island id
+/// and the rest take the lowest free ids in that order. Each island's body list is always ascending. The saved state is only the island table (id liveness, sleep flag, removal count) and each body's island id;
+/// the lists are rebuilt in ascending body order on restore, so they never depend on history.
+/// </remarks>
+public sealed class IslandSet
+{
+    private HandleTable _ids = new();
+    private int[][] _bodies = new int[16][];
+    private int[] _count = new int[16];
+    private bool[] _asleep = new bool[16];
+    private int[] _removed = new int[16];
+    private bool[] _scratchVisited = new bool[64];
+    private readonly List<int> _stack = new();
+    private readonly List<int> _component = new();
+
+    /// <summary>Number of live islands.</summary>
+    public int Count => _ids.Count;
+
+    /// <summary>One more than the highest island id ever used.</summary>
+    public int HighWater => _ids.HighWater;
+
+    /// <summary>True when the id is a live island.</summary>
+    public bool IsLive(int island) => _ids.IsLive(island);
+
+    /// <summary>True when the island is asleep.</summary>
+    public bool IsAsleep(int island) => _asleep[island];
+
+    /// <summary>Constraints removed from the island since it was last split or created.</summary>
+    public int RemovedConstraints(int island) => _removed[island];
+
+    /// <summary>The island's bodies, ascending.</summary>
+    public ReadOnlySpan<int> Bodies(int island) => _bodies[island].AsSpan(0, _count[island]);
+
+    internal void SetAsleep(int island, bool asleep) => _asleep[island] = asleep;
+
+    private int NewId()
+    {
+        int id = _ids.Allocate();
+        if (id >= _bodies.Length)
+        {
+            int cap = _bodies.Length * 2;
+            Array.Resize(ref _bodies, cap); Array.Resize(ref _count, cap); Array.Resize(ref _asleep, cap); Array.Resize(ref _removed, cap);
+        }
+
+        _bodies[id] = new int[4]; _count[id] = 0; _asleep[id] = false; _removed[id] = 0;
+        return id;
+    }
+
+    /// <summary>Creates an awake island holding one body and records it in the body store.</summary>
+    internal int CreateFor(BodyStore bodies, int body)
+    {
+        int id = NewId();
+        _bodies[id][0] = body; _count[id] = 1;
+        bodies.IslandWritable[body] = id;
+        return id;
+    }
+
+    /// <summary>Removes a body from its island; an empty island is freed.</summary>
+    internal void RemoveBody(BodyStore bodies, int body)
+    {
+        int id = bodies.Island[body];
+        if (id < 0) { return; }
+        var list = _bodies[id];
+        int n = _count[id];
+        int at = Array.BinarySearch(list, 0, n, body);
+        Array.Copy(list, at + 1, list, at, n - at - 1);
+        _count[id] = n - 1;
+        bodies.IslandWritable[body] = -1;
+        if (n == 1)
+        {
+            _ids.Free(id);
+            _bodies[id] = null!;
+            _asleep[id] = false; _removed[id] = 0; _count[id] = 0;
+        }
+        else
+        {
+            _removed[id]++;
+        }
+    }
+
+    /// <summary>Counts a removed constraint against an island.</summary>
+    internal void NoteRemoval(int island) => _removed[island]++;
+
+    /// <summary>Merges two distinct awake islands; the lower id survives. Returns the survivor.</summary>
+    internal int Merge(BodyStore bodies, int a, int b)
+    {
+        if (a == b) { return a; }
+        int lo = Math.Min(a, b), hi = Math.Max(a, b);
+        int nl = _count[lo], nh = _count[hi];
+        var merged = new int[Math.Max(4, nl + nh)];
+        var l = _bodies[lo]; var h = _bodies[hi];
+        int i = 0, j = 0, k = 0;
+        var isl = bodies.IslandWritable;
+        while (i < nl || j < nh)
+        {
+            if (j >= nh || (i < nl && l[i] < h[j])) { merged[k++] = l[i++]; }
+            else { isl[h[j]] = lo; merged[k++] = h[j++]; }
+        }
+
+        _bodies[lo] = merged; _count[lo] = k;
+        _removed[lo] += _removed[hi];
+        _ids.Free(hi);
+        _bodies[hi] = null!; _count[hi] = 0; _removed[hi] = 0; _asleep[hi] = false;
+        return lo;
+    }
+
+    /// <summary>
+    /// Splits an island into its connected components over the constraints that link two dynamic bodies. Returns the number of islands the body set now forms.
+    /// </summary>
+    internal int Split(BodyStore bodies, ConstraintStore cons, int island)
+    {
+        var list = _bodies[island];
+        int n = _count[island];
+        if (_scratchVisited.Length < bodies.HighWater) { _scratchVisited = new bool[Math.Max(bodies.HighWater, _scratchVisited.Length * 2)]; }
+        var seen = _scratchVisited;
+        var isl = bodies.IslandWritable;
+        bool asleep = _asleep[island];
+        int components = 0;
+        // Components are discovered from the lowest unvisited body, so the first one holds the island's lowest body and keeps the id.
+        var snapshot = new int[n];
+        Array.Copy(list, snapshot, n);
+        for (int s = 0; s < n; s++)
+        {
+            int seed = snapshot[s];
+            if (seen[seed]) { continue; }
+            _component.Clear();
+            _stack.Clear();
+            _stack.Add(seed);
+            seen[seed] = true;
+            while (_stack.Count > 0)
+            {
+                int body = _stack[_stack.Count - 1];
+                _stack.RemoveAt(_stack.Count - 1);
+                _component.Add(body);
+                for (int e = bodies.FirstEdge(body); e >= 0; e = cons.NextEdge(e))
+                {
+                    int c = e >> 1;
+                    if (cons.Kind[c] == (byte)ConstraintKind.Sensor) { continue; }
+                    int other = (e & 1) == 0 ? cons.BodyB[c] : cons.BodyA[c];
+                    if (!bodies.IsDynamic(other) || seen[other]) { continue; }
+                    seen[other] = true;
+                    _stack.Add(other);
+                }
+            }
+
+            _component.Sort();
+            int id = components == 0 ? island : NewId();
+            components++;
+            var arr = _component.ToArray();
+            _bodies[id] = arr; _count[id] = arr.Length; _removed[id] = 0; _asleep[id] = asleep;
+            foreach (int body in arr) { isl[body] = id; }
+        }
+
+        for (int s = 0; s < n; s++) { seen[snapshot[s]] = false; }
+        return components;
+    }
+
+    internal void Write(StateWriter w)
+    {
+        _ids.Write(w);
+        for (int i = 0; i < _ids.HighWater; i++)
+        {
+            w.WriteBool(_asleep[i]);
+            w.WriteInt32(_removed[i]);
+        }
+    }
+
+    /// <summary>Reads the island table and rebuilds the lists from the bodies' island ids; validates that islands are non-empty and consistent with body sleep state and with the constraints.</summary>
+    internal static IslandSet Read(StateReader r, BodyStore bodies, ConstraintStore cons)
+    {
+        var s = new IslandSet { _ids = HandleTable.Read(r, "island") };
+        int n = s._ids.HighWater;
+        if ((long)n * 5 > r.Remaining) { throw r.Error("island columns are longer than the remaining bytes"); }
+        int cap = Math.Max(16, n);
+        s._bodies = new int[cap][]; s._count = new int[cap]; s._asleep = new bool[cap]; s._removed = new int[cap];
+        for (int i = 0; i < n; i++)
+        {
+            s._asleep[i] = r.ReadBool();
+            s._removed[i] = r.ReadInt32();
+            if (s._removed[i] < 0) { throw r.Error("negative island removal count"); }
+            if (!s._ids.IsLive(i) && (s._asleep[i] || s._removed[i] != 0)) { throw r.Error("dead island slot is not zeroed"); }
+        }
+
+        var counts = new int[n];
+        var islandOf = bodies.Island;
+        for (int b = 0; b < bodies.HighWater; b++)
+        {
+            if (!bodies.IsLive(b)) { continue; }
+            int id = islandOf[b];
+            if (bodies.TypeOf(b) != BodyType.Dynamic) { continue; }
+            if (id < 0 || id >= n || !s._ids.IsLive(id)) { throw r.Error("dynamic body " + b.ToString(System.Globalization.CultureInfo.InvariantCulture) + " has an invalid island"); }
+            if (bodies.IsAwake(b) == s._asleep[id]) { throw r.Error("body sleep state disagrees with its island"); }
+            counts[id]++;
+        }
+
+        for (int i = 0; i < n; i++)
+        {
+            if (s._ids.IsLive(i))
+            {
+                if (counts[i] == 0) { throw r.Error("empty island"); }
+                s._bodies[i] = new int[Math.Max(4, counts[i])];
+            }
+        }
+
+        for (int b = 0; b < bodies.HighWater; b++)
+        {
+            if (bodies.IsLive(b) && bodies.TypeOf(b) == BodyType.Dynamic)
+            {
+                int id = islandOf[b];
+                s._bodies[id][s._count[id]++] = b;
+            }
+        }
+
+        for (int c = 0; c < cons.HighWater; c++)
+        {
+            if (!cons.IsLive(c) || cons.Kind[c] == (byte)ConstraintKind.Sensor) { continue; }
+            int a = cons.BodyA[c], b = cons.BodyB[c];
+            if (bodies.IsDynamic(a) && bodies.IsDynamic(b) && islandOf[a] != islandOf[b]) { throw r.Error("constraint joins bodies of different islands"); }
+        }
+
+        return s;
+    }
+}

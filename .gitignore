@@ -16,6 +16,7 @@
 !/fuzz
 !/bench
 !/tools
+!/scenes
 !/docs
 
 # Build output never belongs in the tree, wherever it appears.
@@ -23,3 +24,6 @@ bin/
 obj/
 TestResults/
 *.nupkg
+
+# Generated scenes are rebuilt by `bar gen`; scenes/SHA256SUMS pins their bytes.
+/scenes/generated/

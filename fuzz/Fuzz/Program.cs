@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.Collision3D;
+using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics.Core.Reference;
 
 // Usage: Fuzz <target> <file>...   runs the target once per file (a crash or an unexpected exception is a finding)
 //        Fuzz <target> --random <seed> <count> [bytes]   runs it over a seeded pseudo-random byte stream (default 64 bytes per input)
@@ -11,7 +12,8 @@ internal static class Program
 {
     private static readonly Dictionary<string, Action<byte[]>> Targets = new(StringComparer.Ordinal)
     {
-        ["gravity"] = GravityTarget,
+        ["snapshot"] = SnapshotTarget,
+        ["snapshot-raw"] = SnapshotRawTarget,
         ["hull"] = HullTarget,
         ["convex"] = ConvexTarget,
     };
@@ -35,7 +37,7 @@ internal static class Program
                 target(buffer);
             }
 
-            Console.WriteLine("ran " + count);
+            Console.WriteLine("ran " + count + " (restored and stepped: " + s_accepted + ")");
             return 0;
         }
 
@@ -255,19 +257,52 @@ internal static class Program
         }
     }
 
-    // Any three floats must give a strength that is NaN or non-negative, and never throw.
-    private static void GravityTarget(byte[] data)
+    private static byte[]? s_base;
+    private static int s_accepted;
+
+    private static byte[] Base()
     {
-        if (data.Length < 12)
+        if (s_base == null)
         {
-            return;
+            var scene = ParticleScene.CreatePile(24, 5, worldId: 1);
+            scene.ReportPersist = true;
+            for (int i = 0; i < 20; i++) { scene.Step(1f / 60f); }
+            scene.World.DestroyBody(scene.World.HandleOfBody(2));
+            s_base = scene.World.Snapshot();
         }
 
-        var v = new Vector3F(BitConverter.ToSingle(data, 0), BitConverter.ToSingle(data, 4), BitConverter.ToSingle(data, 8));
-        float s = Gravity.Strength(v);
-        if (s < 0f)
+        return s_base;
+    }
+
+    // Bytes of any shape go straight to Restore: the only allowed outcome besides success is a SnapshotFormatException.
+    private static void SnapshotRawTarget(byte[] data)
+    {
+        var w = new WorldCore(new WorldOptions { WorldId = 1 });
+        try { w.Restore(data); }
+        catch (SnapshotFormatException) { }
+    }
+
+    // The input drives mutations of a valid snapshot (pairs of position and xor value, plus truncation), so the fuzzer gets past the header.
+    // A snapshot that restores must be a usable world that steps without error and snapshots to the same bytes it was restored from.
+    private static void SnapshotTarget(byte[] data)
+    {
+        var bytes = (byte[])Base().Clone();
+        int mutations = data.Length > 0 ? 1 + data[0] % 3 : 0;
+        for (int i = 1, m = 0; i + 2 < data.Length && m < mutations; i += 3, m++)
         {
-            throw new InvalidOperationException("negative strength");
+            int at = ((data[i] << 8) | data[i + 1]) % bytes.Length;
+            bytes[at] ^= data[i + 2];
         }
+
+        if (data.Length > 0 && (data[0] & 0x0F) == 0x0F) { Array.Resize(ref bytes, (data[^1] * bytes.Length) / 256); }
+
+        var scene = new ParticleScene(new WorldOptions { WorldId = 1 });
+        try { scene.World.Restore(bytes); }
+        catch (SnapshotFormatException) { return; }
+        s_accepted++;
+        byte[] again = scene.World.Snapshot();
+        if (!again.AsSpan().SequenceEqual(bytes)) { throw new InvalidOperationException("accepted snapshot does not re-serialize to the same bytes"); }
+        scene.Step(1f / 60f);
+        scene.Step(1f / 60f);
     }
 }
