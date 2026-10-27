@@ -82,7 +82,7 @@ static class Runner
         bool timing = mode == "timing";
         string sceneDir = o.Get("scene-dir", "scenes/generated");
         string state = o.Get("state", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "onephysics"));
-        string outDir = o.Get("out", Path.Combine(state, "u1", "results", DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)));
+        string outDir = o.Get("out", Path.Combine(state, "bench", "results", DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)));
         int repeat = int.Parse(o.Get("repeat", "1"), CultureInfo.InvariantCulture);
         string jobId = o.Get("job-id", Environment.GetEnvironmentVariable("BAR_JOB_ID") ?? "");
         var engines = o.Get("engines", "box2d,rapier2d,box2dnet").Split(',');
