@@ -295,7 +295,7 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
         if (TBox.Contains(tree.GetBounds(node), tight)) { return false; }
         int t = key & 3;
         TBox fat = tight.Fatten(MarginOf(t), displacement, t == 0 ? 0.0 : _options.DisplacementMultiplier);
-        tree.MoveProxy(node, fat);
+        tree.EnlargeProxy(node, fat);
         MarkMoved(tree, node, key);
         return true;
     }
@@ -362,6 +362,8 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
             if (((int)trees & (1 << t)) != 0) { _trees[t].Rebuild(); }
         }
     }
+
+    private static int RebuildThreshold(DynamicTree<TBox> tree) => 8 + (tree.ProxyCount >> 3);
 
     // ---- pairs ----------------------------------------------------------------------------------------------------
 
@@ -445,6 +447,13 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
     /// <param name="executor">Runs the search; null runs it on the calling thread.</param>
     public ReadOnlySpan<ProxyPair> UpdatePairs<TFilter>(TFilter filter, TaskExecutor? executor = null) where TFilter : IPairFilter
     {
+        // Moves enlarge the ancestors of a proxy instead of reinserting it; when enough of a tree has been touched its top is rebuilt, which restores query speed without changing any pair.
+        for (int t = 0; t < 3; t++)
+        {
+            var tree = _trees[t];
+            if (tree.EnlargedCount > RebuildThreshold(tree)) { tree.RebuildEnlarged(); }
+        }
+
         CollectMoved();
         int chunks = (_movedCount + ChunkSize - 1) / ChunkSize;
         while (_chunks.Count < chunks) { _chunks.Add(new PairChunk()); }
