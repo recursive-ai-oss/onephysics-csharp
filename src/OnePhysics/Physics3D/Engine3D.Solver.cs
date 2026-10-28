@@ -3,21 +3,9 @@ using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics.Broadphase;
 using RecursiveAI.OnePhysics.Collision3D;
 using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics.Physics2D;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
-
-/// <summary>Layout of the per-constraint scratch rows filled by Prepare and read by the solver.</summary>
-internal static class Stride3D
-{
-    public const int Constraint = 72;
-
-    // Header.
-    public const int N = 0, T1 = 3, T2 = 6, Friction = 9, Restitution = 10, Rolling = 11, InvMassA = 12, InvMassB = 13, BiasRate = 14, MassScale = 15, ImpulseScale = 16, RollMass = 17;
-
-    // Points.
-    public const int Point0 = 24, PointStride = 12;
-    public const int ArmA = 0, ArmB = 3, AdjustedSeparation = 6, NormalMass = 7, Tangent1Mass = 8, Tangent2Mass = 9, RelativeVelocity = 10;
-}
 
 internal sealed partial class Engine3D
 {
@@ -98,8 +86,32 @@ internal sealed partial class Engine3D
 
     // ------------------------------------------------------------------ prepare
 
-    /// <summary>Once per step: effective masses, adjusted separations, relative velocities for restitution and soft coefficients, from the manifolds stored in the payloads.</summary>
-    public void Prepare(ReadOnlySpan<int> constraints, in StepContext ctx)
+    private float _dynBias, _dynMass, _dynImpulse, _stBias, _stMass, _stImpulse;
+
+    /// <summary>Once per step before anything is prepared: sizes the wide groups (one per batch) and the constraint-to-lane map, and computes the soft-constraint coefficients.</summary>
+    public void BeginSolve(int batches, in StepContext ctx)
+    {
+        if (Wide.Length < batches * W3D.GroupFloats)
+        {
+            int cap = Math.Max(batches, Wide.Length / W3D.GroupFloats * 2);
+            Wide = new float[cap * W3D.GroupFloats]; WideIdx = new int[cap * W3D.IdxPerGroup];
+        }
+
+        int nc = Core.Constraints.HighWater;
+        if (SlotOf.Length < nc) { SlotOf = new int[Math.Max(nc, SlotOf.Length * 2)]; }
+        Array.Fill(SlotOf, -1, 0, nc);
+        float hertz = Opt.ContactHertz;
+        float cap2 = 0.25f * ctx.InverseSubstepDt;
+        if (hertz > cap2) { hertz = cap2; }
+        MakeSoft(hertz, Opt.ContactDampingRatio, ctx.SubstepDt, out _dynBias, out _dynMass, out _dynImpulse);
+        MakeSoft(2f * hertz, Opt.ContactDampingRatio, ctx.SubstepDt, out _stBias, out _stMass, out _stImpulse);
+    }
+
+    /// <summary>
+    /// Once per step: effective masses, adjusted separations, relative velocities for restitution and soft coefficients of the contacts of one batch, from the manifolds stored in the payloads, into one wide group.
+    /// The group also holds the impulses while the step runs; <see cref="StoreResults"/> writes them back to the payloads.
+    /// </summary>
+    public void PrepareBatch(ReadOnlySpan<int> constraints, int group, in StepContext ctx)
     {
         var core = Core;
         var cs = core.Constraints;
@@ -107,30 +119,35 @@ internal sealed partial class Engine3D
         ReadOnlySpan<int> bodyA = cs.BodyA, bodyB = cs.BodyB;
         ReadOnlySpan<float> invMass = bodies.InverseMass;
         ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
-        float hertz = Opt.ContactHertz;
-        float cap = 0.25f * ctx.InverseSubstepDt;
-        if (hertz > cap) { hertz = cap; }
-        MakeSoft(hertz, Opt.ContactDampingRatio, ctx.SubstepDt, out float dynBias, out float dynMass, out float dynImpulse);
-        MakeSoft(2f * hertz, Opt.ContactDampingRatio, ctx.SubstepDt, out float stBias, out float stMass, out float stImpulse);
-
+        var w = Wide.AsSpan(group * W3D.GroupFloats, W3D.GroupFloats);
+        w.Slice(0, W3D.StageOffset).Clear();
+        var idx = WideIdx.AsSpan(group * W3D.IdxPerGroup, W3D.IdxPerGroup);
+        for (int l = 0; l < W3D.Lanes; l++) { idx[l] = 0; idx[8 + l] = 0; idx[16 + l] = -1; idx[24 + l] = -1; }
+        float allOnes = BitConverter.Int32BitsToSingle(-1);
+        int lane = 0;
+        Span<float> rm = stackalloc float[6];
         foreach (int c in constraints)
         {
+            if (cs.KindOf(c) == ConstraintKind.Joint) { continue; }
             var pl = cs.Payload(c);
             int a = bodyA[c], b = bodyB[c];
+            SlotOf[c] = group * W3D.Lanes + lane;
             float mA = invMass[a], mB = invMass[b];
+            idx[lane] = a; idx[8 + lane] = b;
+            idx[16 + lane] = mA > 0f ? a : -1; idx[24 + lane] = mB > 0f ? b : -1;
             ReadOnlySpan<float> iA = WInvI.AsSpan(6 * a, 6), iB = WInvI.AsSpan(6 * b, 6);
             var n = V(pl, ManifoldLayout.Normal);
             Tangents(n, out var t1, out var t2);
-            var s = Scratch.AsSpan(c * Stride3D.Constraint, Stride3D.Constraint);
-            s.Clear();
-            Put(s, Stride3D.N, n); Put(s, Stride3D.T1, t1); Put(s, Stride3D.T2, t2);
-            s[Stride3D.Friction] = pl[ManifoldLayout.Friction];
-            s[Stride3D.Restitution] = pl[ManifoldLayout.Restitution];
-            s[Stride3D.Rolling] = pl[ManifoldLayout.RollingResistance];
-            s[Stride3D.InvMassA] = mA; s[Stride3D.InvMassB] = mB;
-            if (mA == 0f || mB == 0f) { s[Stride3D.BiasRate] = stBias; s[Stride3D.MassScale] = stMass; s[Stride3D.ImpulseScale] = stImpulse; }
-            else { s[Stride3D.BiasRate] = dynBias; s[Stride3D.MassScale] = dynMass; s[Stride3D.ImpulseScale] = dynImpulse; }
-            if (s[Stride3D.Rolling] > 0f) { RollingMass(iA, iB, s.Slice(Stride3D.RollMass, 6)); }
+            Put3(w, W3D.N, lane, n); Put3(w, W3D.T1, lane, t1); Put3(w, W3D.T2, lane, t2);
+            w[W3D.Friction * 8 + lane] = pl[ManifoldLayout.Friction];
+            w[W3D.Restitution * 8 + lane] = pl[ManifoldLayout.Restitution];
+            float rolling = pl[ManifoldLayout.RollingResistance];
+            w[W3D.Rolling * 8 + lane] = rolling;
+            w[W3D.InvMassA * 8 + lane] = mA; w[W3D.InvMassB * 8 + lane] = mB;
+            if (mA == 0f || mB == 0f) { w[W3D.BiasRate * 8 + lane] = _stBias; w[W3D.MassScale * 8 + lane] = _stMass; w[W3D.ImpulseScale * 8 + lane] = _stImpulse; }
+            else { w[W3D.BiasRate * 8 + lane] = _dynBias; w[W3D.MassScale * 8 + lane] = _dynMass; w[W3D.ImpulseScale * 8 + lane] = _dynImpulse; }
+            if (rolling > 0f) { RollingMass(iA, iB, rm); for (int k = 0; k < 6; k++) { w[(W3D.RollMass + k) * 8 + lane] = rm[k]; } }
+            Put3(w, W3D.RollImpulse, lane, V(pl, ManifoldLayout.RollingImpulse));
 
             Vector3F vA = V(lin, 3 * a), wA = V(ang, 3 * a), vB = V(lin, 3 * b), wB = V(ang, 3 * b);
             int count = cs.PointCount[c];
@@ -139,16 +156,48 @@ internal sealed partial class Engine3D
                 var rA = V(pl, ManifoldLayout.AnchorA(i));
                 var rB = V(pl, ManifoldLayout.AnchorB(i));
                 float sep = pl[ManifoldLayout.Separation(i)];
-                int o = Stride3D.Point0 + i * Stride3D.PointStride;
-                Put(s, o + Stride3D.ArmA, rA); Put(s, o + Stride3D.ArmB, rB);
-                s[o + Stride3D.AdjustedSeparation] = sep - Vector3F.Dot(rB - rA, n);
-                s[o + Stride3D.NormalMass] = EffectiveMass(mA, mB, iA, iB, rA, rB, n);
-                s[o + Stride3D.Tangent1Mass] = EffectiveMass(mA, mB, iA, iB, rA, rB, t1);
-                s[o + Stride3D.Tangent2Mass] = EffectiveMass(mA, mB, iA, iB, rA, rB, t2);
+                int f = W3D.Point0 + i * W3D.PointStride;
+                Put3(w, f + W3D.ArmA, lane, rA); Put3(w, f + W3D.ArmB, lane, rB);
+                w[(f + W3D.AdjustedSeparation) * 8 + lane] = sep - Vector3F.Dot(rB - rA, n);
+                w[(f + W3D.NormalMass) * 8 + lane] = EffectiveMass(mA, mB, iA, iB, rA, rB, n);
+                w[(f + W3D.Tangent1Mass) * 8 + lane] = EffectiveMass(mA, mB, iA, iB, rA, rB, t1);
+                w[(f + W3D.Tangent2Mass) * 8 + lane] = EffectiveMass(mA, mB, iA, iB, rA, rB, t2);
                 var dv = (vB + Vector3F.Cross(wB, rB)) - (vA + Vector3F.Cross(wA, rA));
-                s[o + Stride3D.RelativeVelocity] = Vector3F.Dot(dv, n);
-                pl[ManifoldLayout.MaxNormalImpulse(i)] = 0f;
+                w[(f + W3D.RelativeVelocity) * 8 + lane] = Vector3F.Dot(dv, n);
+                w[(f + W3D.NormalImpulse) * 8 + lane] = pl[ManifoldLayout.NormalImpulse(i)];
+                w[(f + W3D.Tangent1Impulse) * 8 + lane] = pl[ManifoldLayout.Tangent1Impulse(i)];
+                w[(f + W3D.Tangent2Impulse) * 8 + lane] = pl[ManifoldLayout.Tangent2Impulse(i)];
+                w[(f + W3D.Mask) * 8 + lane] = allOnes;
             }
+
+            lane++;
+        }
+    }
+
+    private static void Put3(Span<float> w, int field, int lane, Vector3F v) { w[field * 8 + lane] = v.X; w[(field + 1) * 8 + lane] = v.Y; w[(field + 2) * 8 + lane] = v.Z; }
+
+    /// <summary>After the last substep: the accumulated impulses go back to the payloads, where the next step's warm start and the events read them.</summary>
+    public void StoreResults(ReadOnlySpan<int> constraints)
+    {
+        var cs = Core.Constraints;
+        foreach (int c in constraints)
+        {
+            int slot = SlotOf[c];
+            if (slot < 0) { continue; }
+            var w = Wide.AsSpan((slot >> 3) * W3D.GroupFloats, W3D.GroupFloats);
+            int lane = slot & 7;
+            var pl = cs.Payload(c);
+            int count = cs.PointCount[c];
+            for (int i = 0; i < count; i++)
+            {
+                int f = W3D.Point0 + i * W3D.PointStride;
+                pl[ManifoldLayout.NormalImpulse(i)] = w[(f + W3D.NormalImpulse) * 8 + lane];
+                pl[ManifoldLayout.Tangent1Impulse(i)] = w[(f + W3D.Tangent1Impulse) * 8 + lane];
+                pl[ManifoldLayout.Tangent2Impulse(i)] = w[(f + W3D.Tangent2Impulse) * 8 + lane];
+                pl[ManifoldLayout.MaxNormalImpulse(i)] = w[(f + W3D.MaxNormalImpulse) * 8 + lane];
+            }
+
+            for (int k = 0; k < 3; k++) { pl[ManifoldLayout.RollingImpulse + k] = w[(W3D.RollImpulse + k) * 8 + lane]; }
         }
     }
 
@@ -182,154 +231,32 @@ internal sealed partial class Engine3D
     }
 
     /// <summary>
-    /// Solves contacts one at a time (scalar). A colored batch has no body in common between constraints, and the overflow set is solved in list order, so the order inside a batch cannot matter.
-    /// Each constraint does the same operations in the same order as any other width of the 2D kernel's scalar twin would.
+    /// Solves one batch of contacts through the wide kernel. A colored batch has no dynamic body in common between constraints, so its lanes are independent; the overflow set may share bodies inside a batch,
+    /// so it runs one lane at a time in list order. Every width gives the same bits.
     /// </summary>
     public void SolveBatch(ReadOnlySpan<int> constraints, SolvePhase phase, in StepContext ctx)
     {
         if (constraints.Length == 0) { return; }
-        var cs = Core.Constraints;
-        var bodies = Core.Bodies;
-        ReadOnlySpan<int> bodyA = cs.BodyA, bodyB = cs.BodyB;
-        ReadOnlySpan<byte> pointCount = cs.PointCount;
-        Span<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
-        Span<float> payload = cs.PayloadAll;
-        int pf = cs.PayloadFloats;
-        float invH = ctx.InverseSubstepDt, slop = Opt.ContactSlop, negPush = -Opt.PushOutVelocity, threshold = Opt.RestitutionThreshold;
-        bool useBias = phase == SolvePhase.Solve;
-
-        foreach (int c in constraints)
+        var kp = new KernelParams(ctx.InverseSubstepDt, Opt.PushOutVelocity, Opt.ContactSlop, Opt.RestitutionThreshold);
+        var cons = Core.Constraints;
+        if (cons.Color[constraints[0]] == ConstraintStore.Overflow)
         {
-            int a = bodyA[c], b = bodyB[c];
-            var s = Scratch.AsSpan(c * Stride3D.Constraint, Stride3D.Constraint);
-            var pl = payload.Slice(c * pf, pf);
-            var n = V(s, Stride3D.N); var t1 = V(s, Stride3D.T1); var t2 = V(s, Stride3D.T2);
-            float mA = s[Stride3D.InvMassA], mB = s[Stride3D.InvMassB];
-            ReadOnlySpan<float> iA = WInvI.AsSpan(6 * a, 6), iB = WInvI.AsSpan(6 * b, 6);
-            Vector3F vA = V(lin, 3 * a), wA = V(ang, 3 * a), vB = V(lin, 3 * b), wB = V(ang, 3 * b);
-            int count = pointCount[c];
-
-            if (phase == SolvePhase.WarmStart)
+            for (int i = 0; i < constraints.Length; i++)
             {
-                for (int i = 0; i < count; i++)
-                {
-                    int o = Stride3D.Point0 + i * Stride3D.PointStride;
-                    var rA = V(s, o + Stride3D.ArmA); var rB = V(s, o + Stride3D.ArmB);
-                    var p = n * pl[ManifoldLayout.NormalImpulse(i)] + t1 * pl[ManifoldLayout.Tangent1Impulse(i)] + t2 * pl[ManifoldLayout.Tangent2Impulse(i)];
-                    vA -= p * mA; wA -= Apply(iA, Vector3F.Cross(rA, p));
-                    vB += p * mB; wB += Apply(iB, Vector3F.Cross(rB, p));
-                }
-
-                var roll = V(pl, ManifoldLayout.RollingImpulse);
-                wA -= Apply(iA, roll); wB += Apply(iB, roll);
-            }
-            else if (phase == SolvePhase.Restitution)
-            {
-                float e = s[Stride3D.Restitution];
-                if (e == 0f) { continue; }
-                for (int i = 0; i < count; i++)
-                {
-                    int o = Stride3D.Point0 + i * Stride3D.PointStride;
-                    float relVel = s[o + Stride3D.RelativeVelocity];
-                    if (!(relVel <= -threshold) || !(pl[ManifoldLayout.MaxNormalImpulse(i)] > 0f)) { continue; }
-                    var rA = V(s, o + Stride3D.ArmA); var rB = V(s, o + Stride3D.ArmB);
-                    var dv = (vB + Vector3F.Cross(wB, rB)) - (vA + Vector3F.Cross(wA, rA));
-                    float vn = Vector3F.Dot(dv, n);
-                    float lambda = -s[o + Stride3D.NormalMass] * (vn + e * relVel);
-                    float old = pl[ManifoldLayout.NormalImpulse(i)];
-                    float nw = old + lambda; if (!(nw > 0f)) { nw = 0f; }
-                    lambda = nw - old;
-                    pl[ManifoldLayout.NormalImpulse(i)] = nw;
-                    if (nw > pl[ManifoldLayout.MaxNormalImpulse(i)]) { pl[ManifoldLayout.MaxNormalImpulse(i)] = nw; }
-                    var p = n * lambda;
-                    vA -= p * mA; wA -= Apply(iA, Vector3F.Cross(rA, p));
-                    vB += p * mB; wB += Apply(iB, Vector3F.Cross(rB, p));
-                }
-            }
-            else
-            {
-                float biasRate = s[Stride3D.BiasRate], massScale = s[Stride3D.MassScale], impulseScale = s[Stride3D.ImpulseScale];
-                float friction = s[Stride3D.Friction], rolling = s[Stride3D.Rolling];
-                Vector3F dpA = V(Dp, 3 * a), dpB = V(Dp, 3 * b);
-                int qa = 4 * a, qb = 4 * b;
-
-                // Rolling resistance first, then friction, then non-penetration last: the last constraint solved wins the argument, and keeping bodies apart matters most.
-                if (rolling > 0f)
-                {
-                    float total = 0f;
-                    for (int i = 0; i < count; i++) { total += pl[ManifoldLayout.NormalImpulse(i)]; }
-                    float maxRoll = rolling * total;
-                    var dw = wB - wA;
-                    dw -= n * Vector3F.Dot(dw, n);
-                    var rm = s.Slice(Stride3D.RollMass, 6);
-                    var lam = -Apply(rm, dw);
-                    lam -= n * Vector3F.Dot(lam, n);
-                    var oldR = V(pl, ManifoldLayout.RollingImpulse);
-                    var newR = oldR + lam;
-                    float len2 = Vector3F.Dot(newR, newR);
-                    if (len2 > maxRoll * maxRoll) { newR = newR * (maxRoll / float.Sqrt(len2)); }
-                    lam = newR - oldR;
-                    Put(pl, ManifoldLayout.RollingImpulse, newR);
-                    wA -= Apply(iA, lam); wB += Apply(iB, lam);
-                }
-
-                for (int i = 0; i < count; i++)
-                {
-                    int o = Stride3D.Point0 + i * Stride3D.PointStride;
-                    var rA = V(s, o + Stride3D.ArmA); var rB = V(s, o + Stride3D.ArmB);
-                    var dv = (vB + Vector3F.Cross(wB, rB)) - (vA + Vector3F.Cross(wA, rA));
-                    float l1 = pl[ManifoldLayout.Tangent1Impulse(i)], l2 = pl[ManifoldLayout.Tangent2Impulse(i)];
-                    float n1 = l1 - s[o + Stride3D.Tangent1Mass] * Vector3F.Dot(dv, t1);
-                    float n2 = l2 - s[o + Stride3D.Tangent2Mass] * Vector3F.Dot(dv, t2);
-                    float maxF = friction * pl[ManifoldLayout.NormalImpulse(i)];
-                    float m2 = n1 * n1 + n2 * n2;
-                    if (m2 > maxF * maxF)
-                    {
-                        float k = maxF / float.Sqrt(m2);
-                        n1 *= k; n2 *= k;
-                    }
-
-                    pl[ManifoldLayout.Tangent1Impulse(i)] = n1; pl[ManifoldLayout.Tangent2Impulse(i)] = n2;
-                    var p = t1 * (n1 - l1) + t2 * (n2 - l2);
-                    vA -= p * mA; wA -= Apply(iA, Vector3F.Cross(rA, p));
-                    vB += p * mB; wB += Apply(iB, Vector3F.Cross(rB, p));
-                }
-
-                for (int i = 0; i < count; i++)
-                {
-                    int o = Stride3D.Point0 + i * Stride3D.PointStride;
-                    var rA = V(s, o + Stride3D.ArmA); var rB = V(s, o + Stride3D.ArmB);
-                    // Current separation: the anchors move with their bodies' accumulated translation and rotation.
-                    var sepVec = (dpB - dpA) + (Rotate(Dq[qb], Dq[qb + 1], Dq[qb + 2], Dq[qb + 3], rB) - Rotate(Dq[qa], Dq[qa + 1], Dq[qa + 2], Dq[qa + 3], rA));
-                    float sep = Vector3F.Dot(sepVec, n) + s[o + Stride3D.AdjustedSeparation];
-                    float bias, ms, isc;
-                    if (sep > 0f) { bias = sep * invH; ms = 1f; isc = 0f; }
-                    else if (useBias)
-                    {
-                        float x = sep + slop; if (x > 0f) { x = 0f; }
-                        bias = biasRate * x; if (bias < negPush) { bias = negPush; }
-                        ms = massScale; isc = impulseScale;
-                    }
-                    else { bias = 0f; ms = 1f; isc = 0f; }
-
-                    var dv = (vB + Vector3F.Cross(wB, rB)) - (vA + Vector3F.Cross(wA, rA));
-                    float vn = Vector3F.Dot(dv, n);
-                    float old = pl[ManifoldLayout.NormalImpulse(i)];
-                    float lambda = -s[o + Stride3D.NormalMass] * ms * (vn + bias) - isc * old;
-                    float nw = old + lambda; if (!(nw > 0f)) { nw = 0f; }
-                    lambda = nw - old;
-                    pl[ManifoldLayout.NormalImpulse(i)] = nw;
-                    if (nw > pl[ManifoldLayout.MaxNormalImpulse(i)]) { pl[ManifoldLayout.MaxNormalImpulse(i)] = nw; }
-                    var p = n * lambda;
-                    vA -= p * mA; wA -= Apply(iA, Vector3F.Cross(rA, p));
-                    vB += p * mB; wB += Apply(iB, Vector3F.Cross(rB, p));
-                }
+                int slot = SlotOf[constraints[i]];
+                if (slot >= 0) { ContactKernel3D.Run<Lanes1>(this, slot >> 3, slot & 7, 1, phase, in kp); }
             }
 
-            // Only dynamic bodies are written (a static or kinematic body has zero inverse mass).
-            if (mA > 0f) { Put(lin, 3 * a, vA); Put(ang, 3 * a, wA); }
-            if (mB > 0f) { Put(lin, 3 * b, vB); Put(ang, 3 * b, wB); }
+            return;
         }
+
+        int first = SlotOf[constraints[0]];
+        if (first < 0) { return; }
+        int group = first >> 3;
+        int count = constraints.Length;
+        if (KernelWidth == 1) { ContactKernel3D.Run<Lanes1>(this, group, 0, count, phase, in kp); }
+        else if (KernelWidth == 4) { ContactKernel3D.Run<Lanes128>(this, group, 0, count, phase, in kp); }
+        else { ContactKernel3D.Run<Lanes256>(this, group, 0, count, phase, in kp); }
     }
 
     // ------------------------------------------------------------------ integration
