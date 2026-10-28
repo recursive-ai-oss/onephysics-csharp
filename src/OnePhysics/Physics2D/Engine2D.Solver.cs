@@ -38,7 +38,7 @@ internal sealed partial class Engine2D
         if (Wide.Length < batches * W2D.GroupFloats)
         {
             int cap = Math.Max(batches, Wide.Length / W2D.GroupFloats * 2);
-            Wide = new float[cap * W2D.GroupFloats]; WideIdx = new int[cap * W2D.IdxPerGroup]; WideCons = new int[cap * W2D.Lanes];
+            Wide = new float[cap * W2D.GroupFloats]; WideIdx = new int[cap * W2D.IdxPerGroup]; WideCons = new int[cap * W2D.Lanes]; GroupRestitution = new byte[cap]; GroupRolling = new byte[cap];
         }
 
         if (JWide.Length < batches * J2D.GroupFloats && LiveJointCount() > 0)
@@ -95,6 +95,7 @@ internal sealed partial class Engine2D
         for (int l = 0; l < W2D.Lanes; l++) { idx[l] = 0; idx[8 + l] = 0; idx[16 + l] = -1; idx[24 + l] = -1; ids[l] = -1; }
         int lane = 0;
         int jlane = 0;
+        byte anyRestitution = 0, anyRolling = 0;
         var jw = JWide.Length >= (group + 1) * J2D.GroupFloats ? JWide.AsSpan(group * J2D.GroupFloats, J2D.GroupFloats) : default;
         var jidx = JIdx.Length >= (group + 1) * W2D.IdxPerGroup ? JIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup) : default;
         if (jidx.Length != 0)
@@ -133,14 +134,18 @@ internal sealed partial class Engine2D
             float tx = ny, ty = -nx;
             Mem.At(w, W2D.NormalX * 8 + lane) = nx; Mem.At(w, W2D.NormalY * 8 + lane) = ny;
             Mem.At(w, W2D.Friction * 8 + lane) = Mem.At(pl, ManifoldLayout.Friction);
-            Mem.At(w, W2D.Restitution * 8 + lane) = Mem.At(pl, ManifoldLayout.Restitution);
+            float restitution = Mem.At(pl, ManifoldLayout.Restitution);
+            Mem.At(w, W2D.Restitution * 8 + lane) = restitution;
+            if (restitution > 0f) { anyRestitution = 1; }
             Mem.At(w, W2D.Rolling * 8 + lane) = Mem.At(pl, ManifoldLayout.RollingResistance);
             float k = iA + iB;
             Mem.At(w, W2D.RollingMass * 8 + lane) = k > 0f ? 1f / k : 0f;
             Mem.At(w, W2D.InvMassA * 8 + lane) = mA; Mem.At(w, W2D.InvInertiaA * 8 + lane) = iA; Mem.At(w, W2D.InvMassB * 8 + lane) = mB; Mem.At(w, W2D.InvInertiaB * 8 + lane) = iB;
             if (mA == 0f || mB == 0f) { Mem.At(w, W2D.BiasRate * 8 + lane) = stBias; Mem.At(w, W2D.MassScale * 8 + lane) = stMass; Mem.At(w, W2D.ImpulseScale * 8 + lane) = stImpulse; }
             else { Mem.At(w, W2D.BiasRate * 8 + lane) = dynBias; Mem.At(w, W2D.MassScale * 8 + lane) = dynMass; Mem.At(w, W2D.ImpulseScale * 8 + lane) = dynImpulse; }
-            Mem.At(w, W2D.Roll * 8 + lane) = Mem.At(pl, ManifoldLayout.RollingImpulse);
+            float rollImpulse = Mem.At(pl, ManifoldLayout.RollingImpulse);
+            Mem.At(w, W2D.Roll * 8 + lane) = rollImpulse;
+            if (Mem.At(pl, ManifoldLayout.RollingResistance) > 0f || rollImpulse != 0f) { anyRolling = 1; }
             Mem.At(w, (W2D.Impulse0 + 2) * 8 + lane) = 0f; Mem.At(w, (W2D.Impulse1 + 2) * 8 + lane) = 0f; // the largest normal impulse of the step starts at zero
 
             float vAx = lin[2 * a], vAy = lin[2 * a + 1], wA = ang[a], vBx = lin[2 * b], vBy = lin[2 * b + 1], wB = ang[b];
@@ -183,6 +188,9 @@ internal sealed partial class Engine2D
         {
             for (int l = jlane; l < J2D.Lanes; l++) { for (int f = 0; f < J2D.Fields; f++) { jw[f * 8 + l] = 0f; } }
         }
+
+        GroupRestitution[group] = anyRestitution;
+        GroupRolling[group] = anyRolling;
 
         // Remembered on the batch's first constraint so the solve passes can pick the wide path without looking at every constraint: contacts only, not the overflow set.
         if (constraints.Length > 0)
@@ -275,6 +283,8 @@ internal sealed partial class Engine2D
         var kp = new KernelParams(ctx.InverseSubstepDt, Opt.PushOutVelocity, Opt.ContactSlop, Opt.RestitutionThreshold);
         if (constraints.Length == 0) { return; }
         int simple = BatchSimple[constraints[0]];
+        // The restitution pass applies an impulse only where a contact has positive restitution; a group of contacts with none leaves every velocity and impulse as it is.
+        if (simple == 1 && phase == SolvePhase.Restitution && GroupRestitution[SlotOf[constraints[0]] >> 3] == 0) { return; }
         if (simple == 1) { RunContacts(SlotOf[constraints[0]] >> 3, constraints.Length, phase, in kp); return; }
         if (simple == 2)
         {
