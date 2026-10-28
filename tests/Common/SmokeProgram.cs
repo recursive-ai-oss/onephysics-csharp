@@ -1,6 +1,8 @@
 using System;
 using RecursiveAI.OnePhysics.Core;
 using RecursiveAI.OnePhysics.Core.Reference;
+using V3F = RecursiveAI.OneMath.Vector3F;
+using V3D = RecursiveAI.OneMath.Vector3D;
 
 // Shared by the NativeAOT and browser-WASM smoke apps: steps a small deterministic scene on one and on several threads,
 // snapshots and restores it, and checks that every path gives the same world hash.
@@ -51,7 +53,11 @@ internal static class SmokeProgram
         ulong v1 = World3D(1, false), v3 = World3D(3, false), vr = World3D(1, true);
         bool w3Same = v1 == v3 && v1 == vr;
         Console.WriteLine((w3Same ? "OK world3d " : "FAIL world3d ") + v1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
-        return ok && same && bpSame && w2Same && jSame && cSame && w3Same ? 0 : 1;
+        // 3D joints (one of every kind): same state on one and three threads and after a restore, and the hinge's limit must hold.
+        ulong k1 = World3DJoints(1, false), k3 = World3DJoints(3, false), kr = World3DJoints(1, true);
+        bool kSame = k1 == k3 && k1 == kr;
+        Console.WriteLine((kSame ? "OK joints3d " : "FAIL joints3d ") + k1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        return ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame ? 0 : 1;
     }
 
     private static ulong World2DJoints(int threads, bool restoreHalfway)
@@ -186,5 +192,47 @@ internal static class SmokeProgram
         }
 
         return w.ComputeHash();
+    }
+
+    private static ulong World3DJoints(int threads, bool restoreHalfway)
+    {
+        var w = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new RecursiveAI.OnePhysics.Physics3D.WorldOptions3D { ThreadCount = threads, WorldId = 4 });
+        w.AddBox(new V3F(100f, 1f, 100f), new V3D(0, -0.5, 0), type: BodyType.Static);
+        var top = w.AddBox(new V3F(0.2f, 0.2f, 0.2f), new V3D(0, 6, 0), type: BodyType.Static);
+        RecursiveAI.OnePhysics.Physics3D.Body Box(double x, double y, double z) => w.AddBox(new V3F(0.4f, 0.4f, 0.4f), new V3D(x, y, z));
+        var b1 = Box(1, 6, 0); var b2 = Box(2, 6, 0); var b3 = Box(3, 6, 0); var b4 = Box(4, 6, 0); var b5 = Box(5, 6, 0); var b6 = Box(6, 6, 0); var b7 = Box(7, 6, 0); var b8 = Box(8, 6, 0);
+        w.AddHinge(top, b1, new V3D(0.5, 6, 0), new V3F(0, 0, 1)).SetLimits(-1f, 1f);
+        w.AddCharacterJoint(b1, b2, new V3D(1.5, 6, 0), new V3F(1, 0, 0));
+        w.AddCone(b2, b3, new V3D(2.5, 6, 0), new V3F(1, 0, 0), 0.6f);
+        var six = w.AddConfigurable(b3, b4, new V3D(3.5, 6, 0));
+        six.SetAxisMode(RecursiveAI.OnePhysics.Physics3D.JointAxes.AngularZ, RecursiveAI.OnePhysics.Physics3D.JointAxisMode.Free);
+        w.AddSlider(b4, b5, new V3D(4.5, 6, 0), new V3F(1, 0, 0)).SpringEnabled = true;
+        w.AddSpring(b5, b6, new V3D(5, 6, 0), new V3D(6, 6, 0), 3f, 0.3f);
+        w.AddDistance(b6, b7, new V3D(6.2, 6, 0), new V3D(6.8, 6, 0));
+        w.AddFixed(b7, b8, new V3D(7.5, 6, 0));
+        var p = w.AddSphere(0.3f, new V3D(-3, 4, 0));
+        var q = w.AddSphere(0.3f, new V3D(-4, 4, 0));
+        w.AddGear(p, q, new V3F(0, 0, 1), new V3F(0, 0, 1), 1.5f);
+        p.AngularVelocity = new V3F(0, 0, 2);
+        var track = w.AddBox(new V3F(0.2f, 0.2f, 0.2f), new V3D(-8, 3, 0), type: BodyType.Static);
+        var cart = w.AddBox(new V3F(0.3f, 0.3f, 0.3f), new V3D(-8, 3, 0));
+        w.AddPath(track, cart, [new V3D(-8, 3, 0), new V3D(-7, 3, 1), new V3D(-6, 3.5, 2), new V3D(-5, 3, 3)]).MotorEnabled = true;
+        var l = w.AddBox(new V3F(0.4f, 0.4f, 0.4f), new V3D(-1, 5, 3));
+        var r = w.AddBox(new V3F(0.4f, 0.4f, 0.4f), new V3D(1, 4, 3), density: 3f);
+        w.AddPulley(l, r, l.Position, r.Position, new V3D(-1, 8, 3), new V3D(1, 8, 3));
+
+        for (int i = 0; i < 120; i++)
+        {
+            if (restoreHalfway && i == 60)
+            {
+                byte[] snap = w.Snapshot();
+                w = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new RecursiveAI.OnePhysics.Physics3D.WorldOptions3D { WorldId = 4 });
+                w.Restore(snap);
+            }
+
+            w.Step(1f / 60f);
+        }
+
+        return w.ComputeHash() ^ (w.JointCount == 12 ? 0UL : 0xBEEFUL);
     }
 }
