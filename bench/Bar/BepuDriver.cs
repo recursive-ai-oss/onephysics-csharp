@@ -67,7 +67,7 @@ static class BepuDriver
         {
             scene = s;
             dispatcher = threads > 1 ? new ThreadDispatcher(threads) : null;
-            sim = Simulation.Create(pool, new NarrowPhaseCallbacks(), new PoseIntegratorCallbacks { Gravity = new Vector3((float)s.Gx, (float)s.Gy, (float)s.Gz) }, new SolveDescription(8, 1));
+            sim = Simulation.Create(pool, new NarrowPhaseCallbacks(), new PoseIntegratorCallbacks { Gravity = new Vector3((float)s.Gx, (float)s.Gy, (float)s.Gz) }, new SolveDescription(int.TryParse(Environment.GetEnvironmentVariable("BAR_BEPU_ITERS"), out int bi) && bi > 0 ? bi : 8, 1));
             Config = $"default solve description (8 velocity iterations, 1 substep), ThreadDispatcher({threads}), contact spring 30 Hz / damping 1, heightfields as triangle meshes, queries not driven";
             int n = s.Bodies.Count;
             handles = new BodyHandle[n]; isBody = new bool[n]; shapeOffset = new Vector3[n];

@@ -21,6 +21,8 @@ interface ISim3
     void Snapshot(double[] d);
     /// <summary>Runs the scene's queries (closest ray hits, sphere overlaps counting shapes, sphere casts to the closest hit) and appends query_* lines; engines without queries append nothing.</summary>
     void Queries(Scene s, StringBuilder sb) { }
+    /// <summary>Extra result lines (key=value) appended after the run, such as final constraint counts.</summary>
+    string Extra() => "";
 }
 
 static class Driver3
@@ -61,6 +63,7 @@ static class Driver3
         if (timing && s.Queries.Count > 0) sim.Queries(s, sb);
         sb.Append(CultureInfo.InvariantCulture, $"engine={sim.Name}\nversion={sim.Version}\nconfig={sim.Config}\nscene={s.Name}\nthreads={threads}\nsteps={s.Steps}\nwarmup={s.Warmup}\nbodies={n}\n");
         sb.Append("step_ns=").Append(string.Join(',', stepNs.Select(v => v.ToString("F0", CultureInfo.InvariantCulture)))).Append('\n');
+        sb.Append(sim.Extra());
         if (prof) StageProfile.Write(sb);
         sb.Append("alloc_bytes=").Append(string.Join(',', allocB)).Append('\n');
         File.WriteAllText(o.Get("result", ""), sb.ToString());

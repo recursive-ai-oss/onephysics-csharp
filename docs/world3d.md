@@ -401,3 +401,23 @@ Every candidate below was built, run through all fifteen 3D stability scenes at 
 * **Kernel width 4 on x64** instead of 8: 15 to 18% slower (large-pile-3d 10.3 to 11.8, ragdoll-pile-3d 3.53 to 4.08).
 * **Where a step goes now** (stage timers, one thread, median ms): large-pile-3d 10.4 = broadphase 0.56, narrowphase 3.40, prepare 0.83, solve and integrate 4.96, finalize and store 0.18, sleep 0.13, other 0.36; ragdoll-pile-3d 3.50 = broadphase 0.15, narrowphase 0.87, prepare 0.25, solve and integrate 1.92, finalize 0.10, sleep 0.05, other 0.15. In large-pile-3d the contact kernel with its gather is 23% of the step and the pair driver (`Collide`, `CollideTask.Run`, `TryRecycle`) 20%; the rest is flat.
 * **Conclusion.** The soft-step pass structure (four substeps, warm start, solve, relax) is at its stability minimum for the joint scenes and for single-iteration contact stacks; the fused variants trade stability for at most the 17% a third substep gives. A world that has no joints could run three substeps (8 to 12% faster, thresholds held), but then the same scene would step differently depending on whether it holds a joint, which is a product decision.
+
+### Round 14: cost per constraint per pass against BepuPhysics (no result changes)
+
+**Method.** `bar` runs the same scene with the reference's solver iteration count swept (`BAR_BEPU_ITERS=n` sets `SolveDescription(n, 1)`; ours: `BAR_SUBSTEPS=1 BAR_VELITERS=n BAR_RELAX=0`, so one iteration is one pass), one thread, tiered compilation off, pinned to eight cores, median step. The slope between a low and a high n, divided by the constraints alive at the end of the run (the driver prints `constraints_contacts`, `constraints_points`, `constraints_joints`), is the cost of one more pass. A shared, heavily loaded host (load 20–30), so the figures are indicative; the ratios were stable across repeats.
+
+| scene | constraints | ours, ns per constraint per pass | Bepu, ns | ratio |
+|---|---|---|---|---|
+| large-pile-3d (n = 1 to 17) | 8.8k contact manifolds, 11.9k points | 30 per manifold (22 per point) | 12.8 | 2.3× |
+| joint-chains-3d (n = 1 to 17) | 656 ball-socket joints | 36.5 | 7.9 | 4.6× |
+| ragdoll-pile-3d (ours n = 1 to 9, Bepu 4 to 16) | 2.3k manifolds + 1.35k joints | 39 (mixed) | 26 (mixed) | 1.5× |
+
+**Where a ragdoll-pile-3d step goes** (one thread, stage timers plus timers around the kernels, 4.6 ms): the solve stage is 2.7 ms: constraint kernels 1.3–1.7 (12 passes over about 3,400 constraints, 31–40 ns each), integration 0.75–0.85 (velocities 0.40, with the gyroscopic term of every non-isotropic body each substep; positions 0.35), the rest staging. The other 1.9 ms are narrowphase 0.9, prepare 0.35, boxes 0.2, apply 0.2. Bepu's whole step at 8 iterations is 1.2 ms in the same run: its 8 passes cost about 0.76 ms; everything else is 0.4 ms. So a 2× step cut is not reachable from the solver alone: with the passes at Bepu's per-constraint cost and one integration the solve stage would be about 1.2 ms of the 4.6.
+
+**Changed.** Integration and packing use the unchecked accessors (bounds checked in `Checked`): `PackBody`, the world-inertia refresh, `IntegrateRotation` and `IntegratePositions` (the position pass is the one that refreshes and packs). Same arithmetic: all 37 hash-matrix lines are unchanged. Measured, local and loaded: ragdoll-pile-3d t8 1.54 to 1.43 ms, joint-chains-3d t8 0.44 to 0.40, mesh-terrain-3d t8 1.32 to 1.13, large-pile-3d t1 13.2 to 12.7; t1 ragdoll and terrain rows are within noise.
+
+**Not done, and why** (ideas that would move the per-pass cost, none built):
+* *Joint K and its inverse once per substep.* The solve and relax passes each rebuild the 3×3 block and its closed-form inverse from the rotated anchors (about a third of a joint pass). Reusing the warm-start pass's block in the relax pass changes the arithmetic (the rotation differs by one integration) and saves one of two builds per substep; the joint scenes are the stability limit, so it needs a sweep of its own.
+* *One velocity row per body.* Velocities live in two stride-3 arrays and the packed row holds the rest, so a gather is four 8×8 transposes per body side. A 24-float row (velocity, displacement and rotation, inertia) would be three. The velocity arrays are the public `Velocity` storage, so this touches the shared core.
+* *Lane-wide integration.* The gyroscopic step and the rotation integration are scalar per body (about 70 and 60 ns); eight bodies per vector would be 3–4× cheaper, with a scalar twin.
+* *Single friction anchor per manifold* would remove rows per pass but changes the contact model.

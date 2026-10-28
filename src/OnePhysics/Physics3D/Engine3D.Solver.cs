@@ -24,11 +24,13 @@ internal sealed partial class Engine3D
     /// <summary>Copies the displacement, accumulated rotation and world inverse inertia of a body into its packed row (see <see cref="Pk"/>).</summary>
     public void PackBody(int b)
     {
-        var r = Pk.AsSpan(16 * b, 16);
-        r[0] = Dp[3 * b]; r[1] = Dp[3 * b + 1]; r[2] = Dp[3 * b + 2];
-        r[3] = Dq[4 * b]; r[4] = Dq[4 * b + 1]; r[5] = Dq[4 * b + 2]; r[6] = Dq[4 * b + 3];
-        var w = WInvI.AsSpan(6 * b, 6);
-        r[7] = w[0]; r[8] = w[1]; r[9] = w[2]; r[10] = w[3]; r[11] = w[4]; r[12] = w[5];
+        // Every per-body array was sized for the world's high-water mark before any step or call that reaches here (EnsureBodies), so the unchecked accessors stay in range; the Checked build verifies each access.
+        Span<float> r = Pk;
+        ReadOnlySpan<float> dp = Dp, dq = Dq, w = WInvI;
+        int o = 16 * b, p3 = 3 * b, p4 = 4 * b, p6 = 6 * b;
+        Mem.At(r, o) = Mem.At(dp, p3); Mem.At(r, o + 1) = Mem.At(dp, p3 + 1); Mem.At(r, o + 2) = Mem.At(dp, p3 + 2);
+        Mem.At(r, o + 3) = Mem.At(dq, p4); Mem.At(r, o + 4) = Mem.At(dq, p4 + 1); Mem.At(r, o + 5) = Mem.At(dq, p4 + 2); Mem.At(r, o + 6) = Mem.At(dq, p4 + 3);
+        Mem.At(r, o + 7) = Mem.At(w, p6); Mem.At(r, o + 8) = Mem.At(w, p6 + 1); Mem.At(r, o + 9) = Mem.At(w, p6 + 2); Mem.At(r, o + 10) = Mem.At(w, p6 + 3); Mem.At(r, o + 11) = Mem.At(w, p6 + 4); Mem.At(r, o + 12) = Mem.At(w, p6 + 5);
     }
 
     /// <summary>Refreshes one body's world-axes inverse inertia from the current rotation (for impulses applied between steps).</summary>
@@ -45,23 +47,26 @@ internal sealed partial class Engine3D
     /// <summary>Inverse inertia in world axes, R · I⁻¹ · Rᵀ, from the body-frame tensor and the body's rotation. Static and kinematic bodies get zeros.</summary>
     private void RefreshWorldInertia(int b, ReadOnlySpan<float> invMass, ReadOnlySpan<float> invI, ReadOnlySpan<float> rot)
     {
-        var w = WInvI.AsSpan(6 * b, 6);
-        if (!(invMass[b] > 0f)) { w.Clear(); return; }
-        float x = rot[4 * b], y = rot[4 * b + 1], z = rot[4 * b + 2], s = rot[4 * b + 3];
+        // Callers pass arrays sized for body b (see PackBody).
+        Span<float> w = WInvI;
+        int p6 = 6 * b;
+        if (!(Mem.At(invMass, b) > 0f)) { for (int k = 0; k < 6; k++) { Mem.At(w, p6 + k) = 0f; } return; }
+        int p4 = 4 * b;
+        float x = Mem.At(rot, p4), y = Mem.At(rot, p4 + 1), z = Mem.At(rot, p4 + 2), s = Mem.At(rot, p4 + 3);
         float xx = x * x, yy = y * y, zz = z * z, xy = x * y, xz = x * z, yz = y * z, sx = s * x, sy = s * y, sz = s * z;
         float r00 = 1f - 2f * (yy + zz), r01 = 2f * (xy - sz), r02 = 2f * (xz + sy);
         float r10 = 2f * (xy + sz), r11 = 1f - 2f * (xx + zz), r12 = 2f * (yz - sx);
         float r20 = 2f * (xz - sy), r21 = 2f * (yz + sx), r22 = 1f - 2f * (xx + yy);
-        float ia = invI[6 * b], ib = invI[6 * b + 1], ic = invI[6 * b + 2], id = invI[6 * b + 3], ie = invI[6 * b + 4], ifz = invI[6 * b + 5];
+        float ia = Mem.At(invI, p6), ib = Mem.At(invI, p6 + 1), ic = Mem.At(invI, p6 + 2), id = Mem.At(invI, p6 + 3), ie = Mem.At(invI, p6 + 4), ifz = Mem.At(invI, p6 + 5);
         float t00 = r00 * ia + r01 * ib + r02 * ic, t01 = r00 * ib + r01 * id + r02 * ie, t02 = r00 * ic + r01 * ie + r02 * ifz;
         float t10 = r10 * ia + r11 * ib + r12 * ic, t11 = r10 * ib + r11 * id + r12 * ie, t12 = r10 * ic + r11 * ie + r12 * ifz;
         float t20 = r20 * ia + r21 * ib + r22 * ic, t21 = r20 * ib + r21 * id + r22 * ie, t22 = r20 * ic + r21 * ie + r22 * ifz;
-        w[0] = t00 * r00 + t01 * r01 + t02 * r02;
-        w[1] = t00 * r10 + t01 * r11 + t02 * r12;
-        w[2] = t00 * r20 + t01 * r21 + t02 * r22;
-        w[3] = t10 * r10 + t11 * r11 + t12 * r12;
-        w[4] = t10 * r20 + t11 * r21 + t12 * r22;
-        w[5] = t20 * r20 + t21 * r21 + t22 * r22;
+        Mem.At(w, p6) = t00 * r00 + t01 * r01 + t02 * r02;
+        Mem.At(w, p6 + 1) = t00 * r10 + t01 * r11 + t02 * r12;
+        Mem.At(w, p6 + 2) = t00 * r20 + t01 * r21 + t02 * r22;
+        Mem.At(w, p6 + 3) = t10 * r10 + t11 * r11 + t12 * r12;
+        Mem.At(w, p6 + 4) = t10 * r20 + t11 * r21 + t12 * r22;
+        Mem.At(w, p6 + 5) = t20 * r20 + t21 * r21 + t22 * r22;
     }
 
     /// <summary>Two unit vectors perpendicular to a unit normal and to each other, chosen by a fixed rule so the same normal always gives the same pair.</summary>
@@ -467,20 +472,20 @@ internal sealed partial class Engine3D
         return Rotate(qx, qy, qz, qw, nl);
     }
 
-    private static void IntegrateRotation(Span<float> q, int o, Vector3F w, float h)
+    private static void IntegrateRotation(Span<float> q, int o, float wx, float wy, float wz, float h)
     {
-        // Baraff: q' = q + h/2 · (w, 0) · q, renormalised. The product (w, 0)·q is written out.
-        float qx = q[o], qy = q[o + 1], qz = q[o + 2], qw = q[o + 3];
-        float dx = w.X * qw + w.Y * qz - w.Z * qy;
-        float dy = w.Y * qw + w.Z * qx - w.X * qz;
-        float dz = w.Z * qw + w.X * qy - w.Y * qx;
-        float dw = -(w.X * qx + w.Y * qy + w.Z * qz);
+        // Baraff: q' = q + h/2 · (w, 0) · q, renormalised. The product (w, 0)·q is written out. The caller passes the offset of a body's quaternion in an array sized for it.
+        float qx = Mem.At(q, o), qy = Mem.At(q, o + 1), qz = Mem.At(q, o + 2), qw = Mem.At(q, o + 3);
+        float dx = wx * qw + wy * qz - wz * qy;
+        float dy = wy * qw + wz * qx - wx * qz;
+        float dz = wz * qw + wx * qy - wy * qx;
+        float dw = -(wx * qx + wy * qy + wz * qz);
         float hh = 0.5f * h;
         float nx = qx + hh * dx, ny = qy + hh * dy, nz = qz + hh * dz, nw = qw + hh * dw;
         float mag = float.Sqrt(nx * nx + ny * ny + nz * nz + nw * nw);
         if (!(mag > 0f) || !float.IsFinite(mag)) { return; } // a runaway state (damaged or extreme input) keeps the last valid orientation instead of becoming a zero quaternion
         float inv = 1f / mag;
-        q[o] = nx * inv; q[o + 1] = ny * inv; q[o + 2] = nz * inv; q[o + 3] = nw * inv;
+        Mem.At(q, o) = nx * inv; Mem.At(q, o + 1) = ny * inv; Mem.At(q, o + 2) = nz * inv; Mem.At(q, o + 3) = nw * inv;
     }
 
     public void IntegratePositions(ReadOnlySpan<int> list, in StepContext ctx)
@@ -489,18 +494,20 @@ internal sealed partial class Engine3D
         ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
         ReadOnlySpan<float> invMass = bodies.InverseMass, invI = bodies.InverseInertia;
         Span<double> pos = bodies.Position;
-        Span<float> rot = bodies.Rotation;
+        Span<float> rot = bodies.Rotation, dp = Dp, dq = Dq;
         float h = ctx.SubstepDt;
+        // As in IntegrateVelocities: the list holds bodies below the high-water mark and every per-body array was sized for it, so the unchecked accessors stay in range (verified in Checked).
         foreach (int b in list)
         {
-            float dx = h * lin[3 * b], dy = h * lin[3 * b + 1], dz = h * lin[3 * b + 2];
-            Dp[3 * b] += dx; Dp[3 * b + 1] += dy; Dp[3 * b + 2] += dz;
-            pos[3 * b] += (double)dx; pos[3 * b + 1] += (double)dy; pos[3 * b + 2] += (double)dz;
-            var w = V(ang, 3 * b);
-            if (w.X != 0f || w.Y != 0f || w.Z != 0f)
+            int b3 = 3 * b;
+            float dx = h * Mem.At(lin, b3), dy = h * Mem.At(lin, b3 + 1), dz = h * Mem.At(lin, b3 + 2);
+            Mem.At(dp, b3) += dx; Mem.At(dp, b3 + 1) += dy; Mem.At(dp, b3 + 2) += dz;
+            pos[b3] += (double)dx; pos[b3 + 1] += (double)dy; pos[b3 + 2] += (double)dz;
+            float wx = Mem.At(ang, b3), wy = Mem.At(ang, b3 + 1), wz = Mem.At(ang, b3 + 2);
+            if (wx != 0f || wy != 0f || wz != 0f)
             {
-                IntegrateRotation(Dq, 4 * b, w, h);
-                IntegrateRotation(rot, 4 * b, w, h);
+                IntegrateRotation(dq, 4 * b, wx, wy, wz, h);
+                IntegrateRotation(rot, 4 * b, wx, wy, wz, h);
                 RefreshWorldInertia(b, invMass, invI, rot);
             }
 
