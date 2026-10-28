@@ -359,7 +359,8 @@ public sealed partial class PhysicsWorld2D
 
     private void DropDeadControllerHandlers()
     {
-        var dead = new List<int>();
+        var dead = _deadScratch;
+        dead.Clear();
         foreach (var kv in _controllerHandlers)
         {
             if (!_engine.CharHandles.IsAlive(kv.Key, kv.Value.Generation)) { dead.Add(kv.Key); }
