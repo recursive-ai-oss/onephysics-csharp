@@ -40,7 +40,7 @@ public readonly struct DimensionLayout : IEquatable<DimensionLayout>
     public static DimensionLayout Planar => new(2, 2, 2, 1, 1, 2, ManifoldLayout.Header + 2 * ManifoldLayout.PointStride + 7);
 
     /// <summary>The 3D layout, large enough for four-point manifolds with friction and rolling rows, or a six-row joint.</summary>
-    public static DimensionLayout Spatial => new(3, 4, 3, 3, 6, 4, ManifoldLayout.Header + 4 * ManifoldLayout.PointStride + 7);
+    public static DimensionLayout Spatial => new(3, 4, 3, 3, 6, 4, ManifoldLayout.Header + 4 * ManifoldLayout.PointStride + 7 + ManifoldLayout.RecycleFloats);
 
     /// <summary>True when every lane count is one of the supported 2D or 3D values.</summary>
     public bool IsSupported => Equals(Planar) || Equals(Spatial);
@@ -94,6 +94,12 @@ public static class ManifoldLayout
 
     /// <summary>Offset of the seven spare floats after four points in a 3D payload; the 3D narrowphase keeps per-pair search hints there between steps. Nothing else reads them.</summary>
     public const int HintOffset = Header + 4 * PointStride;
+
+    /// <summary>Offset of the floats after the hint that the 3D narrowphase uses to reuse a manifold while the two bodies barely move (see <see cref="RecycleFloats"/>). Nothing else reads them.</summary>
+    public const int RecycleOffset = HintOffset + 7;
+
+    /// <summary>Floats of the 3D payload kept for manifold reuse: an owner flag, the normal in the owner's frame, the relative pose of B in A when the manifold was made (3 + 4), and per point the arms in each body's own frame and the separation then (7 each).</summary>
+    public const int RecycleFloats = 40;
 
     /// <summary>Offset of the mixed friction coefficient.</summary>
     public const int Friction = 3;

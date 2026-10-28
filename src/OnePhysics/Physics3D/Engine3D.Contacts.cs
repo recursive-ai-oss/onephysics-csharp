@@ -70,6 +70,8 @@ internal struct ContactOut
     public int Cons, ShapeA, ShapeB;
     /// <summary>What the polyhedron test wants to keep for the pair's next step (see <see cref="EdgeHint3D"/>), written to the tail of the payload.</summary>
     public EdgeHint3D Hint;
+    /// <summary>The manifold is the pair's previous one moved with the bodies (see TryRecycle), not a new narrowphase result.</summary>
+    public bool Recycled;
     public float Nx, Ny, Nz;
     public PointBuffer P; // per point: rA (3), rB (3), separation
     public IdBuffer Id;
@@ -126,6 +128,9 @@ internal sealed partial class Engine3D
         }
     }
 
+    private int[] _boxStamp = new int[8];
+    private int _stamp;
+    private double[] _boxes = new double[48];
     private int[] _updateList = new int[64];
     private byte[] _resStatus = new byte[64]; // 0 untouched, 1 manifolds computed, 2 boxes no longer overlap
     private int[] _resFirst = new int[64];
@@ -145,13 +150,22 @@ internal sealed partial class Engine3D
         // 0. A changed filter re-evaluates the pair table before anything else (see Refilter).
         Refilter();
 
+        // The tight box of every shape of a moving body is kept for this step: a pair whose shapes are farther apart than the speculative distance has no contact points, and two box comparisons say so
+        // without loading either shape.
+        int shapeHigh = world.Shapes.HighWater;
+        if (_boxStamp.Length < shapeHigh) { int cap = Math.Max(shapeHigh, _boxStamp.Length * 2); _boxes = new double[cap * 6]; _boxStamp = new int[cap]; }
+        _stamp++;
         // 1. Broadphase boxes of every body that moved last step. The displacement stretches the box ahead of the motion.
         foreach (int b in world.AwakeBodies)
         {
             if (!bodies.IsLive(b)) { continue; }
             for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
             {
-                Bp.MoveProxy(Proxy[s], TightBox(b, s), Dp[3 * b], Dp[3 * b + 1], Dp[3 * b + 2]);
+                var tight = TightBox(b, s);
+                Bp.MoveProxy(Proxy[s], tight, Dp[3 * b], Dp[3 * b + 1], Dp[3 * b + 2]);
+                int o = 6 * s;
+                _boxes[o] = tight.MinX; _boxes[o + 1] = tight.MinY; _boxes[o + 2] = tight.MinZ; _boxes[o + 3] = tight.MaxX; _boxes[o + 4] = tight.MaxY; _boxes[o + 5] = tight.MaxZ;
+                _boxStamp[s] = _stamp;
             }
         }
 
@@ -401,6 +415,20 @@ internal sealed partial class Engine3D
         int sa = PairA[p], sb = PairB[p];
         if (!Aabb3D.Overlaps(Bp.GetFatBounds(Proxy[sa]), Bp.GetFatBounds(Proxy[sb]))) { _resStatus[i] = 2; return; }
         _resStatus[i] = 1;
+        // Tight boxes (this step's for a shape that moved, the stored fat box for one that did not); the extra margin keeps the shortcut clear of rounding at the threshold.
+        {
+            const double Gap = 0.005;
+            double gap = Opt.SpeculativeDistance + Gap;
+            ref readonly Aabb3D fa = ref Bp.FatBoundsOfLive(Proxy[sa]);
+            ref readonly Aabb3D fb = ref Bp.FatBoundsOfLive(Proxy[sb]);
+            double a0, a1, a2, a3, a4, a5, b0, b1, b2, b3, b4, b5;
+            if (_boxStamp[sa] == _stamp) { int o = 6 * sa; a0 = _boxes[o]; a1 = _boxes[o + 1]; a2 = _boxes[o + 2]; a3 = _boxes[o + 3]; a4 = _boxes[o + 4]; a5 = _boxes[o + 5]; }
+            else { a0 = fa.MinX; a1 = fa.MinY; a2 = fa.MinZ; a3 = fa.MaxX; a4 = fa.MaxY; a5 = fa.MaxZ; }
+            if (_boxStamp[sb] == _stamp) { int o = 6 * sb; b0 = _boxes[o]; b1 = _boxes[o + 1]; b2 = _boxes[o + 2]; b3 = _boxes[o + 3]; b4 = _boxes[o + 4]; b5 = _boxes[o + 5]; }
+            else { b0 = fb.MinX; b1 = fb.MinY; b2 = fb.MinZ; b3 = fb.MaxX; b4 = fb.MaxY; b5 = fb.MaxZ; }
+            if (a0 - gap > b3 || b0 - gap > a3 || a1 - gap > b4 || b1 - gap > a4 || a2 - gap > b5 || b2 - gap > a5) { return; }
+        }
+
         var ga = Geoms[GeomOf[sa]]!;
         var gb = Geoms[GeomOf[sb]]!;
         if (ga.Soup != null && gb.Soup != null) { return; }
@@ -431,6 +459,12 @@ internal sealed partial class Engine3D
             var gen = NarrowScratch.Gen;
             int oldCons = PairCons[p];
             var cstore = Core.Constraints;
+            if (RecycleManifolds && oldCons >= 0 && TryRecycle(sc, oldCons, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))))
+            {
+                _resCount[i] = 1;
+                return;
+            }
+
             gen.HintIn = oldCons >= 0 && cstore.PointCount[oldCons] > 0 ? new EdgeHint3D(cstore.Payload(oldCons).Slice(ManifoldLayout.HintOffset, 7)) : default;
             var m = gen.Collide(ga.Convex, gb.Convex, bInA, spec);
             int before = sc.OutCount;
@@ -538,7 +572,7 @@ internal sealed partial class Engine3D
         }
 
         ref ContactOut o = ref sc.Next();
-        o.SubA = subA; o.SubB = subB; o.Hint = default;
+        o.SubA = subA; o.SubB = subB; o.Hint = default; o.Recycled = false;
         Vector3F nw = f.Rwa.Rotate(n);
         o.Nx = nw.X; o.Ny = nw.Y; o.Nz = nw.Z;
         for (int k = 0; k < count; k++)
@@ -592,6 +626,7 @@ internal sealed partial class Engine3D
 
     private void WriteManifold(ConstraintStore cs, int c, int sa, int sb, in ContactOut res)
     {
+        if (res.Recycled) { WriteRecycled(cs, c, sa, sb, in res); return; }
         var pl = cs.Payload(c);
         var ids = cs.FeatureIdsOf(c);
         int oldCount = cs.PointCount[c];
@@ -633,6 +668,143 @@ internal sealed partial class Engine3D
         res.Hint.CopyTo(pl.Slice(ManifoldLayout.HintOffset, 7));
         for (int k = res.Count; k < ids.Length; k++) { ids[k] = 0; }
         cs.PointCount[c] = (byte)res.Count;
+        StoreRecycleFrame(pl, sa, sb, in res);
+    }
+
+    // ------------------------------------------------------------------ manifold recycling
+
+    // Catto's contact reuse (Box2D 3.2 release notes: a touching contact keeps its manifold until the shapes have moved about 5 cm or turned about 11 degrees relative to each other), as 2D does it.
+    // A manifold is a set of points fixed to the two bodies, so while the bodies move rigidly the points move with them and the separation changes by the motion of the two points along the normal.
+    // The narrowphase is skipped for such a pair; the arms, the normal and the separations are rebuilt from the body-fixed copies kept in the payload.
+    /// <summary>Whether a touching pair of convex shapes that has barely moved reuses its manifold instead of running the narrowphase. On by default; off gives every pair a fresh manifold each step (the result differs slightly, so hashes differ).</summary>
+    public bool RecycleManifolds = true;
+
+    // Bound on how far any point of B has moved relative to A since the manifold was made (metres, with the turn scaled by B's extent), and how deep a reused point may have sunk.
+    private const float RecycleTol = 0.0035f;
+    private const float RecycleDepth = 0.02f;
+    // A normal counts as a face normal when it is parallel to one to within about a quarter of a degree.
+    private const float FaceParallel = 0.99999f;
+
+    private static class Rc
+    {
+        public const int Base = ManifoldLayout.RecycleOffset;
+        public const int Owner = Base;             // 0 none, 1 shape A's body, 2 shape B's body
+        public const int Normal = Base + 1;        // the normal in the owner body's frame
+        public const int Rel = Base + 4;           // B's centre of mass in A's frame (3), then the rotation of B in A (x, y, z, w)
+        public const int Points = Base + 11;       // per point: arm A in A's frame (3), arm B in B's frame (3), the separation
+    }
+
+    private static bool IsFaceNormal(in ConvexShape3D shape, Vector3F n)
+    {
+        switch (shape.Kind)
+        {
+            case ConvexShapeKind3D.Box:
+                return Math.Abs(n.X) > FaceParallel || Math.Abs(n.Y) > FaceParallel || Math.Abs(n.Z) > FaceParallel;
+            case ConvexShapeKind3D.Cylinder:
+                return Math.Abs(n.Y) > FaceParallel;
+            case ConvexShapeKind3D.Hull:
+                var hull = shape.Hull;
+                if (hull == null) { return false; }
+                foreach (var face in hull.Faces) { if (Vector3F.Dot(face.Normal, n) > FaceParallel) { return true; } }
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    private void StoreRecycleFrame(Span<float> pl, int sa, int sb, in ContactOut res)
+    {
+        var ga = Geoms[GeomOf[sa]]!;
+        var gb = Geoms[GeomOf[sb]]!;
+        if (!(ga.IsConvex && gb.IsConvex)) { return; }
+        var owner = Core.Shapes.Owner;
+        int ba = owner[sa], bb = owner[sb];
+        var bodies = Core.Bodies;
+        var pos = bodies.Position;
+        QuaternionF qA = RotationOfBody(ba), qB = RotationOfBody(bb);
+        var n = new Vector3F(res.Nx, res.Ny, res.Nz);
+        // The normal belongs to the body whose face made it, the reference face: it is that face's normal and turns with that body. A normal that is no face normal (edge against edge, a ball, a capsule)
+        // follows shape A; it is then right to within the relative motion the reuse allows, divided by the shapes' size.
+        int frame = 1;
+        if (!IsFaceNormal(ga.Convex, (qA * Local[sa].Rotation).Conjugate().Rotate(n)) && IsFaceNormal(gb.Convex, (qB * Local[sb].Rotation).Conjugate().Rotate(-n))) { frame = 2; }
+        pl[Rc.Owner] = frame;
+        var nl = (frame == 1 ? qA : qB).Conjugate().Rotate(n);
+        pl[Rc.Normal] = nl.X; pl[Rc.Normal + 1] = nl.Y; pl[Rc.Normal + 2] = nl.Z;
+        var invA = qA.Conjugate();
+        var dW = new Vector3F((float)(pos[3 * bb] - pos[3 * ba]), (float)(pos[3 * bb + 1] - pos[3 * ba + 1]), (float)(pos[3 * bb + 2] - pos[3 * ba + 2]));
+        var d = invA.Rotate(dW);
+        pl[Rc.Rel] = d.X; pl[Rc.Rel + 1] = d.Y; pl[Rc.Rel + 2] = d.Z;
+        var qr = invA * qB;
+        pl[Rc.Rel + 3] = qr.X; pl[Rc.Rel + 4] = qr.Y; pl[Rc.Rel + 5] = qr.Z; pl[Rc.Rel + 6] = qr.W;
+        var invB = qB.Conjugate();
+        for (int k = 0; k < res.Count; k++)
+        {
+            int q = k * 7, o = Rc.Points + 7 * k;
+            var la = invA.Rotate(new Vector3F(res.P[q], res.P[q + 1], res.P[q + 2]));
+            var lb = invB.Rotate(new Vector3F(res.P[q + 3], res.P[q + 4], res.P[q + 5]));
+            pl[o] = la.X; pl[o + 1] = la.Y; pl[o + 2] = la.Z; pl[o + 3] = lb.X; pl[o + 4] = lb.Y; pl[o + 5] = lb.Z; pl[o + 6] = res.P[q + 6];
+        }
+    }
+
+    /// <summary>Builds the pair's manifold from the one kept in the constraint's payload when B has moved and turned relative to A by less than the bound; false when the narrowphase has to run.</summary>
+    private bool TryRecycle(NarrowScratch sc, int c, int ba, int bb, QuaternionF qA, QuaternionF qB, Vector3F dW)
+    {
+        var cs = Core.Constraints;
+        int count = cs.PointCount[c];
+        if (count == 0 || cs.KindOf(c) != ConstraintKind.Contact) { return false; }
+        var pl = cs.Payload(c);
+        // Compared as floats: snapshot bytes may hold anything here, and only 1 and 2 mean a stored frame.
+        float ownerF = pl[Rc.Owner];
+        int owner = ownerF == 1f ? 1 : ownerF == 2f ? 2 : 0;
+        if (owner == 0) { return false; }
+        var invA = qA.Conjugate();
+        // How far B has moved and turned in A's frame since the manifold was made.
+        var d = invA.Rotate(dW);
+        float ex = d.X - pl[Rc.Rel], ey = d.Y - pl[Rc.Rel + 1], ez = d.Z - pl[Rc.Rel + 2];
+        var q0 = new QuaternionF(pl[Rc.Rel + 3], pl[Rc.Rel + 4], pl[Rc.Rel + 5], pl[Rc.Rel + 6]);
+        var dq = (invA * qB) * q0.Conjugate();
+        float lim = RecycleTol - float.Sqrt(ex * ex + ey * ey + ez * ez); // what is left of the budget for the turn
+        float turn = 2f * float.Sqrt(dq.X * dq.X + dq.Y * dq.Y + dq.Z * dq.Z);
+        if (!(lim >= 0f && turn * MaxExtent[bb] <= lim)) { return false; } // false for NaN too
+        var nl = new Vector3F(pl[Rc.Normal], pl[Rc.Normal + 1], pl[Rc.Normal + 2]);
+        Vector3F n = (owner == 2 ? qB : qA).Rotate(nl);
+        ref ContactOut o = ref sc.Next();
+        o.SubA = 0; o.SubB = 0; o.Hint = default; o.Recycled = true;
+        for (int k = 0; k < count; k++)
+        {
+            int b = Rc.Points + 7 * k;
+            Vector3F ra = qA.Rotate(new Vector3F(pl[b], pl[b + 1], pl[b + 2]));
+            Vector3F rb = qB.Rotate(new Vector3F(pl[b + 3], pl[b + 4], pl[b + 5]));
+            // Separation now: the one when made plus the motion of B's point relative to A's point along the normal.
+            float sep = pl[b + 6] + Vector3F.Dot(dW + rb - ra, n);
+            if (!(sep <= Opt.SpeculativeDistance && sep >= -RecycleDepth)) { sc.OutCount--; return false; }
+            int q = k * 7;
+            o.P[q] = ra.X; o.P[q + 1] = ra.Y; o.P[q + 2] = ra.Z; o.P[q + 3] = rb.X; o.P[q + 4] = rb.Y; o.P[q + 5] = rb.Z; o.P[q + 6] = sep;
+        }
+
+        // The normal is already in world axes; Emit's rotation by the shape frame is not needed.
+        o.Nx = n.X; o.Ny = n.Y; o.Nz = n.Z;
+        o.Count = count;
+        return true;
+    }
+
+    private void WriteRecycled(ConstraintStore cs, int c, int sa, int sb, in ContactOut res)
+    {
+        var pl = cs.Payload(c);
+        // A material can change between steps (a body's friction setter), and a fresh manifold would pick that up, so a reused one does too.
+        var mixed = Mix(sa, sb);
+        pl[ManifoldLayout.Normal] = res.Nx; pl[ManifoldLayout.Normal + 1] = res.Ny; pl[ManifoldLayout.Normal + 2] = res.Nz;
+        pl[ManifoldLayout.Friction] = mixed.Friction;
+        pl[ManifoldLayout.Restitution] = mixed.Restitution;
+        pl[ManifoldLayout.RollingResistance] = mixed.RollingResistance;
+        for (int k = 0; k < res.Count; k++)
+        {
+            int q = 7 * k;
+            int a = ManifoldLayout.AnchorA(k), b = ManifoldLayout.AnchorB(k);
+            pl[a] = res.P[q]; pl[a + 1] = res.P[q + 1]; pl[a + 2] = res.P[q + 2];
+            pl[b] = res.P[q + 3]; pl[b + 1] = res.P[q + 4]; pl[b + 2] = res.P[q + 5];
+            pl[ManifoldLayout.Separation(k)] = res.P[q + 6];
+        }
     }
 
     private Material3D Mix(int sa, int sb)
