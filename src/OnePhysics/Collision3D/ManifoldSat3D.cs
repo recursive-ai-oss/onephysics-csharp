@@ -60,40 +60,53 @@ public sealed partial class ManifoldGenerator3D
 
         public void Load(in ConvexShape3D s, bool transform, in Matrix3x3F r, Vector3F t)
         {
-            Hull = HullOf(s);
-            NV = Hull.Vertices.Length;
-            NF = Hull.Faces.Length;
-            if (V.Length < NV)
+            var hull = HullOf(s);
+            Hull = hull;
+            ReadOnlySpan<Vector3F> hv = hull.Vertices;
+            ReadOnlySpan<HullFace3D> hf = hull.Faces;
+            ReadOnlySpan<HullEdge3D> he = hull.Edges;
+            int nv = hv.Length, nf = hf.Length;
+            NV = nv;
+            NF = nf;
+            if (V.Length < nv)
             {
-                V = new Vector3F[NV];
+                V = new Vector3F[nv];
             }
 
-            if (N.Length < NF)
+            if (N.Length < nf)
             {
-                N = new Vector3F[NF];
-                D = new float[NF];
+                N = new Vector3F[nf];
+                D = new float[nf];
             }
 
+            // A box is the unit cube's hull scaled by its half extents; the scaling and the placement are done per vertex exactly as PolyVertex and the matrix product do them.
+            bool box = s.Kind == ConvexShapeKind3D.Box;
+            Vector3F size = s.CoreSize;
+            Vector3F[] vs = V, ns = N;
+            float[] ds = D;
             Vector3F sum = default;
-            for (int i = 0; i < NV; i++)
+            for (int i = 0; i < nv; i++)
             {
-                Vector3F v = PolyVertex(s, Hull, i);
-                V[i] = transform ? (r * v) + t : v;
-                sum += V[i];
+                Vector3F v = box ? hv[i] * size : hv[i];
+                if (transform) { v = r.Transform(v) + t; }
+                vs[i] = v;
+                sum += v;
             }
 
-            Center = sum / NV;
-            for (int f = 0; f < NF; f++)
+            Center = sum / nv;
+            for (int f = 0; f < nf; f++)
             {
-                Vector3F n = Hull.Faces[f].Normal;
-                N[f] = transform ? r * n : n;
-                D[f] = Vector3F.Dot(N[f], V[Hull.Edges[Hull.Faces[f].FirstEdge].Origin]);
+                Vector3F n = hf[f].Normal;
+                if (transform) { n = r.Transform(n); }
+                ns[f] = n;
+                ds[f] = Vector3F.Dot(n, vs[he[hf[f].FirstEdge].Origin]);
             }
 
             float m = 0f;
-            for (int i = 0; i < NV; i++)
+            Vector3F c = Center;
+            for (int i = 0; i < nv; i++)
             {
-                m = Math.Max(m, (V[i] - Center).LengthSquared());
+                m = Math.Max(m, (vs[i] - c).LengthSquared());
             }
 
             Radius = ConvexShape3D.Sqrt(m);
@@ -103,6 +116,9 @@ public sealed partial class ManifoldGenerator3D
     private const float EdgeSkipSafety = 8f;
 
     private readonly PolyData _pa = new();
+    private bool _paLoaded;
+    private ConvexHull3D? _paHull;
+    private Vector3F _paSize;
     private readonly PolyData _pb = new();
 
     // Box and hull pairs: separating axis test over the faces of both and the edge pairs that form faces of the Minkowski difference (Gregorius, GDC 2013),
@@ -111,7 +127,16 @@ public sealed partial class ManifoldGenerator3D
     {
         float rA = a.ConvexRadius, rB = b.ConvexRadius, rr = rA + rB;
         Matrix3x3F r = bInA.Rotation.ToMatrix();
-        _pa.Load(a, false, r, default);
+        // Shape A is loaded in its own frame, so what Load makes depends on the shape alone; consecutive pairs of a chunk often share A (pairs are listed by A first), and the work is skipped for them.
+        // Only boxes are remembered: their hull is the shared unit cube, whereas a hull-kind shape may be a reused buffer (the triangle of a mesh contact) whose points change between calls.
+        if (!(_paLoaded && a.Kind == ConvexShapeKind3D.Box && _paHull != null && a.CoreSize.X == _paSize.X && a.CoreSize.Y == _paSize.Y && a.CoreSize.Z == _paSize.Z))
+        {
+            _pa.Load(a, false, r, default);
+            _paHull = a.Kind == ConvexShapeKind3D.Box ? s_unitBox : null;
+            _paSize = a.CoreSize;
+            _paLoaded = true;
+        }
+
         _pb.Load(b, true, r, bInA.Translation);
         PolyData pa = _pa, pb = _pb;
         float scale = pa.Radius + pb.Radius + Math.Max(1e-20f, (pb.Center - pa.Center).Length());

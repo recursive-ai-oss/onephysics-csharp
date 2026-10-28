@@ -23,11 +23,11 @@ internal static class W3D
     public const int Fields = Point0 + MaxPoints * PointStride;
     public const int Lanes = 8;
     /// <summary>Scratch after the fields: gathered body state (38 rows of eight) and the velocities on their way out (12 rows of eight), so the kernel keeps no large locals.</summary>
-    public const int StageOffset = Fields * Lanes, StageFloats = 38 * 8, OutOffset = StageOffset + StageFloats, OutFloats = 12 * 8;
+    public const int StageOffset = Fields * Lanes, StageFloats = 0, OutOffset = StageOffset + StageFloats, OutFloats = 12 * 8;
     public const int GroupFloats = OutOffset + OutFloats;
 
-    /// <summary>Integers per group in <see cref="Engine3D.WideIdx"/>: body rows of A and B, then the same rows for bodies the kernel writes (or -1), eight lanes each, then the largest point count in the group (points past it are skipped for every lane).</summary>
-    public const int IdxPerGroup = 34, MaxPointsSlot = 32, AnyRollingSlot = 33;
+    /// <summary>Integers per group in <see cref="Engine3D.WideIdx"/>: body rows of A and B, then the same rows for bodies the kernel writes (or -1), eight lanes each, then the largest point count in the group (points past it are skipped for every lane), whether any lane has rolling resistance, and whether any lane has restitution.</summary>
+    public const int IdxPerGroup = 35, MaxPointsSlot = 32, AnyRollingSlot = 33, AnyRestitutionSlot = 34;
 }
 
 /// <summary>
@@ -169,19 +169,20 @@ internal static class ContactKernel3D
 
     /// <summary>
     /// The per-point quantities of a freshly prepared group, for all eight lanes at once: the separation adjusted for the anchors' offset along the normal, the effective masses along the normal and both
-    /// tangents, and the relative normal velocity. The scalar preparation stages its inputs in the group's scratch rows (<see cref="W3D.StageOffset"/>): the six inverse-inertia entries of body A and of body B,
-    /// then the linear and angular velocities of A and of B; the separation as made sits in the adjusted-separation row. Every lane does what one scalar lane does, in the same order.
+    /// tangents, and the relative normal velocity. The bodies come from the same gathers the solver uses; the separation as made sits in the adjusted-separation row. Every lane does what one scalar lane does, in the same order.
     /// </summary>
-    public static void PrepareMasses<T>(Span<float> wide, int maxPoints) where T : struct, ILane<T>
+    public static void PrepareMasses<T>(Span<float> wide, ReadOnlySpan<int> idx, ReadOnlySpan<float> lin, ReadOnlySpan<float> ang, ReadOnlySpan<float> pk, int maxPoints) where T : struct, ILane<T>
     {
         int width = T.Count;
         T zero = T.Zero, one = T.Broadcast(1f);
+        Span<int> offs = stackalloc int[8];
         for (int l0 = 0; l0 < W3D.Lanes; l0 += width)
         {
-            int s = W3D.StageOffset / 8;
-            var iA = new Sym<T> { M0 = Field<T>(wide, s, l0), M1 = Field<T>(wide, s + 1, l0), M2 = Field<T>(wide, s + 2, l0), M3 = Field<T>(wide, s + 3, l0), M4 = Field<T>(wide, s + 4, l0), M5 = Field<T>(wide, s + 5, l0) };
-            var iB = new Sym<T> { M0 = Field<T>(wide, s + 6, l0), M1 = Field<T>(wide, s + 7, l0), M2 = Field<T>(wide, s + 8, l0), M3 = Field<T>(wide, s + 9, l0), M4 = Field<T>(wide, s + 10, l0), M5 = Field<T>(wide, s + 11, l0) };
-            V3<T> vA = Vec<T>(wide, s + 12, l0), wA = Vec<T>(wide, s + 15, l0), vB = Vec<T>(wide, s + 18, l0), wB = Vec<T>(wide, s + 21, l0);
+            // The bodies' world inverse inertias and velocities, gathered as the solver gathers them.
+            GatherBody<T>(out var ba, lin, ang, pk, idx.Slice(l0, width), offs, zero);
+            GatherBody<T>(out var bb, lin, ang, pk, idx.Slice(8 + l0, width), offs, zero);
+            var iA = ba.I; var iB = bb.I;
+            V3<T> vA = ba.V, wA = ba.W, vB = bb.V, wB = bb.W;
             T mA = Field<T>(wide, W3D.InvMassA, l0), mB = Field<T>(wide, W3D.InvMassB, l0);
             V3<T> n = Vec<T>(wide, W3D.N, l0), t1 = Vec<T>(wide, W3D.T1, l0), t2 = Vec<T>(wide, W3D.T2, l0);
             for (int i = 0; i < maxPoints; i++)
@@ -214,8 +215,10 @@ internal static class ContactKernel3D
     public static void Run<T>(Engine3D e, int group, int lane0, int n, SolvePhase phase, in KernelParams kp) where T : struct, ILane<T>
     {
         int width = T.Count;
-        var wide = e.Wide.AsSpan(group * W3D.GroupFloats, W3D.GroupFloats);
         var idx = e.WideIdx.AsSpan(group * W3D.IdxPerGroup, W3D.IdxPerGroup);
+        // With no restitution in any lane the pass changes nothing (every lane's mask is clear and the selects keep the old bits), so the gather and scatter are skipped.
+        if (phase == SolvePhase.Restitution && idx[W3D.AnyRestitutionSlot] == 0) { return; }
+        var wide = e.Wide.AsSpan(group * W3D.GroupFloats, W3D.GroupFloats);
         var bodies = e.Core.Bodies;
         ReadOnlySpan<float> lin = bodies.LinearVelocityPadded, ang = bodies.AngularVelocityPadded;
         ReadOnlySpan<float> pk = e.Pk;
@@ -335,8 +338,10 @@ internal static class ContactKernel3D
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ScatterBody(Span<float> lin, Span<float> ang, ReadOnlySpan<float> os, int at, int first, int width)
     {
-        lin[at] = os[first]; lin[at + 1] = os[first + width]; lin[at + 2] = os[first + 2 * width];
-        ang[at] = os[first + 3 * width]; ang[at + 1] = os[first + 4 * width]; ang[at + 2] = os[first + 5 * width];
+        // at is a live dynamic body's slot (3 floats a body, set when the batch was prepared) and first + 5 * width + 1 stays inside the group's output rows.
+        Mem.Range(lin, at, 3); Mem.Range(ang, at, 3); Mem.Range(os, first, 5 * width + 1);
+        Mem.At(lin, at) = Mem.At(os, first); Mem.At(lin, at + 1) = Mem.At(os, first + width); Mem.At(lin, at + 2) = Mem.At(os, first + 2 * width);
+        Mem.At(ang, at) = Mem.At(os, first + 3 * width); Mem.At(ang, at + 1) = Mem.At(os, first + 4 * width); Mem.At(ang, at + 2) = Mem.At(os, first + 5 * width);
     }
 
     private static void StorePoint<T>(Span<float> wide, int i, int l0, in PointLanes<T> p, SolvePhase phase) where T : struct, ILane<T>
