@@ -289,7 +289,7 @@ internal sealed partial class Engine2D
         {
             Mem.Lane(ref ids, l) = -1;
             ref int il = ref Mem.Lane(ref I, l);
-            Unsafe.Add(ref il, 0) = 0; Unsafe.Add(ref il, 8) = 0; Unsafe.Add(ref il, 16) = -1; Unsafe.Add(ref il, 24) = -1;
+            Mem.Lane(ref il, 0) = 0; Mem.Lane(ref il, 8) = 0; Mem.Lane(ref il, 16) = -1; Mem.Lane(ref il, 24) = -1;
         }
 
         // Pass 1: which bodies each lane touches and which of them the solve writes back (the dynamic ones), then what the two bodies and the manifold share, once per contact.
@@ -305,9 +305,9 @@ internal sealed partial class Engine2D
             Mem.Lane(ref ids, l) = c;
             SlotOf[c] = group * W2D.Lanes + l;
             ref int il = ref Mem.Lane(ref I, l);
-            Unsafe.Add(ref il, 0) = (a + 1) * BS2D.Stride; Unsafe.Add(ref il, 8) = (b + 1) * BS2D.Stride;
-            Unsafe.Add(ref il, 16) = Mem.At(type, a) == (byte)BodyType.Dynamic ? (a + 1) * BS2D.Stride : -1;
-            Unsafe.Add(ref il, 24) = Mem.At(type, b) == (byte)BodyType.Dynamic ? (b + 1) * BS2D.Stride : -1;
+            Mem.Lane(ref il, 0) = (a + 1) * BS2D.Stride; Mem.Lane(ref il, 8) = (b + 1) * BS2D.Stride;
+            Mem.Lane(ref il, 16) = Mem.At(type, a) == (byte)BodyType.Dynamic ? (a + 1) * BS2D.Stride : -1;
+            Mem.Lane(ref il, 24) = Mem.At(type, b) == (byte)BodyType.Dynamic ? (b + 1) * BS2D.Stride : -1;
             float mA = Mem.At(invMass, a), iA = Mem.At(invI, a), mB = Mem.At(invMass, b), iB = Mem.At(invI, b);
             ref float wl = ref Mem.Lane(ref W, l);
             Mem.Field(ref wl, W2D.NormalX) = Mem.At(pl, ManifoldLayout.Normal); Mem.Field(ref wl, W2D.NormalY) = Mem.At(pl, ManifoldLayout.Normal + 1);
