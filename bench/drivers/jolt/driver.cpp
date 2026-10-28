@@ -112,8 +112,26 @@ static ShapeRefC MakeShape(const Op3Shape& sh)
         int nx = (int)p[0], nz = (int)p[1]; double cell = p[2];
         std::vector<float> h((size_t)nx * nz);
         for (size_t i = 0; i < h.size(); i++) h[i] = (float)p[6 + i];
-        HeightFieldShapeSettings s(h.data(), Vec3((float)p[3], (float)p[4], (float)p[5]), Vec3((float)cell, 1.0f, (float)cell), (uint32)nx);
-        r = s.Create();
+        if (nz == nx)
+        {
+            HeightFieldShapeSettings s(h.data(), Vec3((float)p[3], (float)p[4], (float)p[5]), Vec3((float)cell, 1.0f, (float)cell), (uint32)nx);
+            r = s.Create();
+        }
+        else
+        {
+            // Jolt's height field is square: a longer field is cut into square tiles that share their edge rows, joined in a static compound.
+            int span = nx - 1;
+            if (nz < nx || (nz - 1) % span != 0) { fprintf(stderr, "height field %d x %d cannot be tiled into squares\n", nx, nz); exit(2); }
+            StaticCompoundShapeSettings comp;
+            for (int t = 0; t < (nz - 1) / span; t++)
+            {
+                HeightFieldShapeSettings s(h.data() + (size_t)t * span * nx, Vec3((float)p[3], (float)p[4], (float)(p[5] + t * span * cell)), Vec3((float)cell, 1.0f, (float)cell), (uint32)nx);
+                ShapeSettings::ShapeResult tr = s.Create();
+                if (tr.HasError()) { fprintf(stderr, "shape error: %s\n", tr.GetError().c_str()); exit(2); }
+                comp.AddShape(Vec3::sZero(), Quat::sIdentity(), tr.Get());
+            }
+            r = comp.Create();
+        }
     }
     else { fprintf(stderr, "unknown shape %s\n", sh.kind); exit(2); }
     if (r.HasError()) { fprintf(stderr, "shape error: %s\n", r.GetError().c_str()); exit(2); }
@@ -176,7 +194,7 @@ static CarState MakeCar(PhysicsSystem& physics, BodyInterface& bi, BodyID id)
     cs->mDifferentials.resize(1);
     cs->mDifferentials[0].mLeftWheel = 2; cs->mDifferentials[0].mRightWheel = 3; cs->mDifferentials[0].mDifferentialRatio = 3.4f; cs->mDifferentials[0].mEngineTorqueRatio = 1.0f;
     vcs.mController = cs;
-    CarState c; c.vc = new VehicleConstraint(*bi.TryGetBody(id), vcs);
+    CarState c; c.vc = new VehicleConstraint(*physics.GetBodyLockInterfaceNoLock().TryGetBody(id), vcs);
     c.vc->SetVehicleCollisionTester(new VehicleCollisionTesterCastCylinder(Layers::MOVING));
     physics.AddConstraint(c.vc);
     physics.AddStepListener(c.vc);

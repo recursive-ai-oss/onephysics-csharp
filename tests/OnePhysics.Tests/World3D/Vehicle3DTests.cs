@@ -335,7 +335,7 @@ public class Vehicle3DTests
         Assert.Throws<ArgumentOutOfRangeException>(() => car.Drive(0f, 0f, -0.1f));
         Assert.Throws<ArgumentOutOfRangeException>(() => car.Drive(0f, 0f, 0f, float.PositiveInfinity));
         Assert.Throws<ArgumentOutOfRangeException>(() => car.GetWheel(4));
-        Assert.Throws<InvalidOperationException>(() => w.AddVehicle(body, VehicleDef.Car));
+        Assert.Throws<PhysicsException>(() => w.AddVehicle(body, VehicleDef.Car));
         var other = w.AddBox(new Vector3F(1, 1, 1), at: new Vector3D(20, 3, 0));
         var d = VehicleDef.Car; d.Wheels[0].Radius = float.NaN;
         var ex = Assert.Throws<ArgumentOutOfRangeException>(() => w.AddVehicle(other, d));
