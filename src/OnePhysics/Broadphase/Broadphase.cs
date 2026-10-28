@@ -21,11 +21,16 @@ public sealed class BroadphaseOptions
     // are short enough for it to show up in the parallel speed-up raises the limit. Not saved: it changes when queries get faster, never which pairs are found.
     internal int EnlargedRebuildShift { get; init; } = 3;
 
+    // When an enlarged tree is due for a rebuild, up to this many consecutive times its enlarged boxes are only refitted from their children (a pass over the flagged nodes that regroups nothing); the next time is a real rebuild.
+    // 0 rebuilds every time. A count rather than a measure of tree quality, so the schedule is a function of the step sequence alone. Saved in the snapshot when not 0.
+    internal int EnlargedRefitSteps { get; init; }
+
     internal void Validate()
     {
         CheckRange(Margin, nameof(Margin), 1048576.0);
         CheckRange(StaticMargin, nameof(StaticMargin), 1048576.0);
         CheckRange(DisplacementMultiplier, nameof(DisplacementMultiplier), 64.0);
+        if (EnlargedRefitSteps < 0 || EnlargedRefitSteps > 1024) { throw new ArgumentOutOfRangeException(nameof(EnlargedRefitSteps), EnlargedRefitSteps, "EnlargedRefitSteps must be in [0, 1024]."); }
         if (EnlargedRebuildShift < 0 || EnlargedRebuildShift > 30) { throw new ArgumentOutOfRangeException(nameof(EnlargedRebuildShift), EnlargedRebuildShift, "EnlargedRebuildShift must be in [0, 30]."); }
     }
 
@@ -368,6 +373,8 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
         }
     }
 
+    private readonly int[] _refitsSinceRebuild = new int[3];
+
     private int RebuildThreshold(DynamicTree<TBox> tree) => 8 + (tree.ProxyCount >> _options.EnlargedRebuildShift);
 
     // ---- pairs ----------------------------------------------------------------------------------------------------
@@ -488,7 +495,11 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
         for (int t = 0; t < 3; t++)
         {
             var tree = _trees[t];
-            if (tree.EnlargedCount > RebuildThreshold(tree)) { tree.RebuildEnlarged(executor); }
+            if (tree.EnlargedCount > RebuildThreshold(tree))
+            {
+                if (_refitsSinceRebuild[t] < _options.EnlargedRefitSteps) { _refitsSinceRebuild[t]++; tree.RefitEnlarged(); }
+                else { _refitsSinceRebuild[t] = 0; tree.RebuildEnlarged(executor); }
+            }
         }
 
         CollectMoved();
@@ -620,6 +631,7 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
         foreach (var tree in _trees) { tree.Write(writer); }
         writer.WriteInt32(_moves.Count);
         foreach (int key in _moves) { writer.WriteInt32(key); }
+        if (_options.EnlargedRefitSteps > 0) { foreach (int c in _refitsSinceRebuild) { writer.WriteInt32(c); } }
     }
 
     /// <inheritdoc/>
@@ -636,6 +648,7 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
         }
 
         var trees = new[] { new DynamicTree<TBox>(), new DynamicTree<TBox>(), new DynamicTree<TBox>() };
+        var refits = new int[3];
         foreach (var tree in trees) { tree.Read(reader); }
         int count = reader.ReadCount(4, "move buffer");
         var moves = new List<int>(count);
@@ -646,7 +659,18 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
             moves.Add(key);
         }
 
+        if (_options.EnlargedRefitSteps > 0)
+        {
+            for (int t = 0; t < 3; t++)
+            {
+                int c = reader.ReadInt32();
+                if (c < 0 || c > _options.EnlargedRefitSteps) { throw reader.Error("refit count " + c.ToString(CultureInfo.InvariantCulture) + " is out of range"); }
+                refits[t] = c;
+            }
+        }
+
         _trees = trees;
+        for (int t = 0; t < 3; t++) { _refitsSinceRebuild[t] = refits[t]; }
         _moves.Clear();
         _moves.AddRange(moves);
         _pairCount = 0;

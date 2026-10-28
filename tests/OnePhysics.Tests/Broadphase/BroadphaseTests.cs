@@ -541,6 +541,101 @@ public class BroadphaseTests
     [Theory]
     [InlineData(2)]
     [InlineData(3)]
+    public void Refitting_the_enlarged_part_keeps_the_tree_valid_and_never_loosens_it(int dims)
+    {
+        if (dims == 2) { Refit(new Dim2()); } else { Refit(new Dim3()); }
+    }
+
+    private static void Refit<TBox>(Dim<TBox> dim) where TBox : struct, IBox<TBox>
+    {
+        var rng = new TestRng(31);
+        var tree = new DynamicTree<TBox>(2);
+        var live = new List<int>();
+        var disp = new double[dim.Axes];
+        for (int i = 0; i < 600; i++) { live.Add(tree.CreateProxy(dim.RandomBox(rng, 50, 3), i)); }
+        for (int round = 0; round < 40; round++)
+        {
+            for (int m = 0, moves = 1 + rng.Next(120); m < moves; m++) { int p = live[rng.Next(live.Count)]; tree.EnlargeProxy(p, dim.Shift(tree.GetBounds(p), rng, 10, disp)); }
+            double before = tree.TotalInternalArea;
+            tree.RefitEnlarged();
+            Assert.Equal(0, tree.EnlargedCount);
+            tree.Validate();
+            Assert.True(tree.TotalInternalArea <= before);
+            var wide = new Collect { Keys = new List<int>() };
+            tree.Query(tree.GetBounds(tree.Root), ref wide);
+            Assert.Equal(live.Count, wide.Keys.Count);
+        }
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void Refit_schedule_finds_the_same_pairs_and_snapshots_continue_identically(int dims)
+    {
+        if (dims == 2) { RefitSchedule(new Dim2()); } else { RefitSchedule(new Dim3()); }
+    }
+
+    private static void RefitSchedule<TBox>(Dim<TBox> dim) where TBox : struct, IBox<TBox>
+    {
+        // The refit schedule changes the tree's shape, never which pairs exist: a broadphase that refits between rebuilds reports what one that always rebuilds reports.
+        // Only motion happens after the setup (creating or destroying a proxy flushes the enlarged part by itself), so the schedule is what is exercised.
+        BroadphaseOptions Opt(int refits) => new() { EnlargedRebuildShift = 1, EnlargedRefitSteps = refits };
+        var always = new Broadphase<TBox>(Opt(0));
+        var refits = new Broadphase<TBox>(Opt(4));
+        var rng = new TestRng(77);
+        var keysA = new List<int>(); var keysB = new List<int>();
+        for (int i = 0; i < 900; i++)
+        {
+            var box = dim.RandomBox(rng, 30, 1.5);
+            keysA.Add(always.CreateProxy(BodyType.Dynamic, box, i));
+            keysB.Add(refits.CreateProxy(BodyType.Dynamic, box, i));
+        }
+
+        Assert.Equal(always.UpdatePairs(new AcceptAllPairs()).ToArray(), refits.UpdatePairs(new AcceptAllPairs()).ToArray());
+        Broadphase<TBox>? restored = null;
+        var keysC = new List<int>();
+        var disp = new double[dim.Axes];
+        for (int round = 0; round < 30; round++)
+        {
+            // One script of moves per round, applied to every broadphase.
+            var script = new List<(int Index, TBox Box)>();
+            for (int m = 0, moves = 150 + rng.Next(250); m < moves; m++)
+            {
+                int i = rng.Next(keysA.Count);
+                script.Add((i, dim.Shift(always.GetFatBounds(keysA[i]), rng, 6, disp)));
+            }
+
+            foreach (var (i, box) in script)
+            {
+                always.MoveProxy(keysA[i], box, ReadOnlySpan<double>.Empty);
+                refits.MoveProxy(keysB[i], box, ReadOnlySpan<double>.Empty);
+                restored?.MoveProxy(keysC[i], box, ReadOnlySpan<double>.Empty);
+            }
+
+            var expected = always.UpdatePairs(new AcceptAllPairs()).ToArray();
+            Assert.Equal(expected, refits.UpdatePairs(new AcceptAllPairs()).ToArray());
+            if (restored != null) { Assert.Equal(expected, restored.UpdatePairs(new AcceptAllPairs()).ToArray()); }
+            if (round == 9)
+            {
+                // The number of refits since the last rebuild is part of the state: a restored broadphase must rebuild on the same steps from here on.
+                var w = StateWriter.ToBuffer();
+                refits.Write(w);
+                restored = new Broadphase<TBox>(Opt(4));
+                restored.Read(new StateReader(w.ToArray()));
+                restored.Validate();
+                keysC.AddRange(keysB);
+            }
+        }
+
+        refits.Validate();
+        var a = StateWriter.ToBuffer(); refits.Write(a);
+        var b = StateWriter.ToBuffer(); restored!.Write(b);
+        Assert.Equal(a.ToArray(), b.ToArray());
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
     public void Snapshot_restore_continues_bit_identically(int dims)
     {
         if (dims == 2) { Snapshot(new Dim2()); } else { Snapshot(new Dim3()); }

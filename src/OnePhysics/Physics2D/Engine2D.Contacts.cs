@@ -132,7 +132,11 @@ internal sealed partial class Engine2D
             {
                 int s = movers[i];
                 int b = world.Shapes.Owner[s];
-                Bp.MoveProxy(Proxy[s], new Aabb2D(_boxes[4 * s], _boxes[4 * s + 1], _boxes[4 * s + 2], _boxes[4 * s + 3]), Dp[2 * b], Dp[2 * b + 1]);
+                ref ShapeBox sb = ref _sbox[s];
+                Bp.MoveProxy(Proxy[s], new Aabb2D(sb.TMinX, sb.TMinY, sb.TMaxX, sb.TMaxY), Dp[2 * b], Dp[2 * b + 1]);
+                // The proxy's stored box changed: keep the copy the pair loop reads in step with it.
+                ref readonly Aabb2D fat = ref Bp.FatBoundsOfLive(Proxy[s]);
+                sb.FMinX = fat.MinX; sb.FMinY = fat.MinY; sb.FMaxX = fat.MaxX; sb.FMaxY = fat.MaxY;
             }
         }
         // 2. Start-of-step pose and zero accumulated motion for every body (sleeping bodies may wake during the stage). Bodies are independent, so this runs in blocks.
@@ -407,9 +411,12 @@ internal sealed partial class Engine2D
                 for (int s = e.ShapeHead[b]; s >= 0; s = e.NextShape[s])
                 {
                     var box = e.TightBox(b, in e.Geom[s]);
-                    e._boxes[4 * s] = box.MinX; e._boxes[4 * s + 1] = box.MinY; e._boxes[4 * s + 2] = box.MaxX; e._boxes[4 * s + 3] = box.MaxY;
+                    ref ShapeBox sb = ref e._sbox[s];
+                    sb.TMinX = box.MinX; sb.TMinY = box.MinY; sb.TMaxX = box.MaxX; sb.TMaxY = box.MaxY;
                     e._boxStamp[s] = e._stamp;
-                    bool stays = Aabb2D.Contains(e.Bp.FatBoundsOfLive(e.Proxy[s]), box); // every shape has a live proxy
+                    ref readonly Aabb2D fat = ref e.Bp.FatBoundsOfLive(e.Proxy[s]); // every shape has a live proxy
+                    sb.FMinX = fat.MinX; sb.FMinY = fat.MinY; sb.FMaxX = fat.MaxX; sb.FMaxY = fat.MaxY;
+                    bool stays = Aabb2D.Contains(in fat, box);
                     if (!stays)
                     {
                         if (moved == movers.Length) { Array.Resize(ref movers, moved * 2); e._moverLists[task] = movers; }
@@ -448,12 +455,20 @@ internal sealed partial class Engine2D
 
     private int[] _boxStamp = new int[8];
     private int _stamp;
-    private double[] _boxes = new double[32];
+
+    // Per shape, for the shapes of awake bodies this step: the tight box (what the pair loop's gap test uses) and a copy of the proxy's stored box, side by side so the pair loop reads one record
+    // instead of walking from the proxy index through the tree to a node. Valid where _boxStamp equals the current stamp.
+    private struct ShapeBox
+    {
+        public double TMinX, TMinY, TMaxX, TMaxY, FMinX, FMinY, FMaxX, FMaxY;
+    }
+
+    private ShapeBox[] _sbox = new ShapeBox[8];
 
     private void EnsureBoxStorage()
     {
         int n = Core.Shapes.HighWater;
-        if (_boxStamp.Length < n) { int cap = Math.Max(n, _boxStamp.Length * 2); _boxes = new double[cap * 4]; _boxStamp = new int[cap]; }
+        if (_boxStamp.Length < n) { int cap = Math.Max(n, _boxStamp.Length * 2); _sbox = new ShapeBox[cap]; _boxStamp = new int[cap]; }
     }
 
     // Returns true when the pair's manifold was recycled in place (written straight into its constraint); otherwise the result is in _results[i].
@@ -470,19 +485,39 @@ internal sealed partial class Engine2D
 
         ref PairResult res = ref _results[i];
         res = default;
-        ref readonly Aabb2D fatA = ref Bp.FatBoundsOfLive(Proxy[sa]);
-        ref readonly Aabb2D fatB = ref Bp.FatBoundsOfLive(Proxy[sb]);
-        if (!Aabb2D.Overlaps(in fatA, in fatB)) { res.Status = 2; return false; }
-        res.Status = 1;
-
-        // Shapes whose bounds (this step's tight box for a body that moved, the stored box for one that did not) are farther apart than the speculative distance cannot touch: no manifold,
-        // without running the narrowphase. The extra margin keeps the shortcut clear of rounding at the threshold.
+        // Shapes of awake bodies have this step's tight box and a copy of their stored box in one record; any other shape (asleep, static) reads its stored box from the tree.
         const double Gap = Constants2D.SpeculativeDistance + 0.005;
         double ax0, ay0, ax1, ay1, bx0, by0, bx1, by1;
-        if (_boxStamp[sa] == _stamp) { ax0 = _boxes[4 * sa]; ay0 = _boxes[4 * sa + 1]; ax1 = _boxes[4 * sa + 2]; ay1 = _boxes[4 * sa + 3]; }
-        else { ax0 = fatA.MinX; ay0 = fatA.MinY; ax1 = fatA.MaxX; ay1 = fatA.MaxY; }
-        if (_boxStamp[sb] == _stamp) { bx0 = _boxes[4 * sb]; by0 = _boxes[4 * sb + 1]; bx1 = _boxes[4 * sb + 2]; by1 = _boxes[4 * sb + 3]; }
-        else { bx0 = fatB.MinX; by0 = fatB.MinY; bx1 = fatB.MaxX; by1 = fatB.MaxY; }
+        double fax0, fay0, fax1, fay1, fbx0, fby0, fbx1, fby1;
+        if (_boxStamp[sa] == _stamp)
+        {
+            ref readonly ShapeBox qa = ref _sbox[sa];
+            ax0 = qa.TMinX; ay0 = qa.TMinY; ax1 = qa.TMaxX; ay1 = qa.TMaxY;
+            fax0 = qa.FMinX; fay0 = qa.FMinY; fax1 = qa.FMaxX; fay1 = qa.FMaxY;
+        }
+        else
+        {
+            ref readonly Aabb2D fatA = ref Bp.FatBoundsOfLive(Proxy[sa]);
+            fax0 = ax0 = fatA.MinX; fay0 = ay0 = fatA.MinY; fax1 = ax1 = fatA.MaxX; fay1 = ay1 = fatA.MaxY;
+        }
+
+        if (_boxStamp[sb] == _stamp)
+        {
+            ref readonly ShapeBox qb = ref _sbox[sb];
+            bx0 = qb.TMinX; by0 = qb.TMinY; bx1 = qb.TMaxX; by1 = qb.TMaxY;
+            fbx0 = qb.FMinX; fby0 = qb.FMinY; fbx1 = qb.FMaxX; fby1 = qb.FMaxY;
+        }
+        else
+        {
+            ref readonly Aabb2D fatB = ref Bp.FatBoundsOfLive(Proxy[sb]);
+            fbx0 = bx0 = fatB.MinX; fby0 = by0 = fatB.MinY; fbx1 = bx1 = fatB.MaxX; fby1 = by1 = fatB.MaxY;
+        }
+
+        // The stored boxes (the same test the broadphase uses) no longer overlap: the pair ends.
+        if (!(fax0 <= fbx1 && fbx0 <= fax1 && fay0 <= fby1 && fby0 <= fay1)) { res.Status = 2; return false; }
+        res.Status = 1;
+        // Shapes whose bounds (this step's tight box for a body that moved, the stored box for one that did not) are farther apart than the speculative distance cannot touch: no manifold,
+        // without running the narrowphase. The extra margin keeps the shortcut clear of rounding at the threshold.
         if (ax0 - Gap > bx1 || bx0 - Gap > ax1 || ay0 - Gap > by1 || by0 - Gap > ay1) { return false; }
 
         var qA = new Rot2(hA.C, hA.S); var qB = new Rot2(hB.C, hB.S);
