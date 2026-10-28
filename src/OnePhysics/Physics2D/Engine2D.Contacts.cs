@@ -627,6 +627,7 @@ internal sealed partial class Engine2D
     public int RecycledCount;
 
     private const float RecycleTol = 0.003f;
+    private const float RoundContactMinRadius = 0.02f;
     private const float RecycleDepth = 0.03f;
 
     // Payload slots the 2D contact does not use (third components, the second tangent, the trailing floats). Offsets in floats.
@@ -655,7 +656,26 @@ internal sealed partial class Engine2D
         // The normal belongs to the body whose face made it (the reference face): it is that face's normal and turns with that body. A manifold whose normal is no face normal
         // (a vertex against a vertex, a disc) has no such body and is never recycled.
         int frame = NormalOwner(sa, sb, cA, sA, cB, sB, res.Nx, res.Ny);
+        float radiusA = Geom[sa]._radius, radiusB = Geom[sb]._radius;
+        // A single point whose normal is no face normal, between round shapes (discs, capsule ends, rounded corners), is the line between the two cores' closest points: it is
+        // stored as those two points, fixed to their bodies, and the normal and separation are rebuilt from them (a disc rolling over a disc keeps its contact without a narrowphase).
+        // Shapes with no radius are left out: the line between two bare corners that touch has no direction to rebuild.
+        if (frame == 0 && res.Count == 1 && radiusA + radiusB >= RoundContactMinRadius) { frame = 3; }
         Mem.At(pl, Rc.Owner) = frame;
+        if (frame == 3)
+        {
+            float hA = 0.5f * res.Sep0 + radiusA, hB = 0.5f * res.Sep0 + radiusB;
+            float coreAx = res.RAx0 - hA * res.Nx, coreAy = res.RAy0 - hA * res.Ny;
+            float coreBx = res.RBx0 + hB * res.Nx, coreBy = res.RBy0 + hB * res.Ny;
+            Mem.At(pl, Rc.NormalX) = 0f; Mem.At(pl, Rc.NormalY) = 0f;
+            Mem.At(pl, PointSlot(0, 0)) = cA * coreAx + sA * coreAy; Mem.At(pl, PointSlot(0, 1)) = cA * coreAy - sA * coreAx;
+            Mem.At(pl, PointSlot(0, 2)) = cB * coreBx + sB * coreBy; Mem.At(pl, PointSlot(0, 3)) = cB * coreBy - sB * coreBx;
+            Mem.At(pl, PointSlot(0, 4)) = res.Sep0;
+            Mem.At(pl, Rc.RelX) = cA * dx + sA * dy; Mem.At(pl, Rc.RelY) = cA * dy - sA * dx;
+            Mem.At(pl, Rc.RelC) = cA * cB + sA * sB; Mem.At(pl, Rc.RelS) = cA * sB - sA * cB;
+            return;
+        }
+
         if (frame == 2) { Mem.At(pl, Rc.NormalX) = cB * res.Nx + sB * res.Ny; Mem.At(pl, Rc.NormalY) = cB * res.Ny - sB * res.Nx; }
         else { Mem.At(pl, Rc.NormalX) = cA * res.Nx + sA * res.Ny; Mem.At(pl, Rc.NormalY) = cA * res.Ny - sA * res.Nx; }
         Mem.At(pl, Rc.RelX) = cA * dx + sA * dy; Mem.At(pl, Rc.RelY) = cA * dy - sA * dx;
@@ -703,7 +723,7 @@ internal sealed partial class Engine2D
         var pl = cs.Payload(c);
         // Read as a float and compared: snapshot bytes may hold anything here, and only 1 and 2 mean a stored frame (old snapshots hold 0).
         float ownerF = Mem.At(pl, Rc.Owner);
-        int owner = ownerF == 1f ? 1 : ownerF == 2f ? 2 : 0;
+        int owner = ownerF == 1f ? 1 : ownerF == 2f ? 2 : 0; // a round contact (3) is recycled only in place
         if (owner == 0) { return false; }
         float cA = qA.C, sA = qA.S, cB = qB.C, sB = qB.S;
         // How far B has moved and turned in A's frame since the manifold was made.
@@ -746,8 +766,8 @@ internal sealed partial class Engine2D
         if (count == 0 || count > 2 || cs.KindOf(c) != ConstraintKind.Contact) { return false; }
         var pl = cs.Payload(c);
         float ownerF = Mem.At(pl, Rc.Owner);
-        int owner = ownerF == 1f ? 1 : ownerF == 2f ? 2 : 0;
-        if (owner == 0) { return false; }
+        int owner = ownerF == 1f ? 1 : ownerF == 2f ? 2 : ownerF == 3f ? 3 : 0;
+        if (owner == 0 || (owner == 3 && count != 1)) { return false; }
         float cA = hA.C, sA = hA.S, cB = hB.C, sB = hB.S;
         float dx = (float)(hB.X - hA.X), dy = (float)(hB.Y - hA.Y);
         float relX = cA * dx + sA * dy, relY = cA * dy - sA * dx;
@@ -759,6 +779,8 @@ internal sealed partial class Engine2D
         if (!(dc > 0f)) { return false; }
         float lim = RecycleTol - float.Sqrt(e2);
         if (!(lim >= 0f && (ds < 0f ? -ds : ds) * hB.Extent <= lim)) { return false; }
+
+        if (owner == 3) { return RecycleRound(pl, ref pr, in hA, in hB, dx, dy); }
 
         float nlx = Mem.At(pl, Rc.NormalX), nly = Mem.At(pl, Rc.NormalY);
         float nx, ny;
@@ -797,6 +819,40 @@ internal sealed partial class Engine2D
             Mem.At(pl, ManifoldLayout.Separation(1)) = sep1;
         }
 
+        return true;
+    }
+
+    // The recycle of a round contact: the stored closest points of the two cores, carried by their bodies, give the new normal and separation exactly.
+    private bool RecycleRound(Span<float> pl, ref Pair2D pr, in BodyHot hA, in BodyHot hB, float dx, float dy)
+    {
+        float cA = hA.C, sA = hA.S, cB = hB.C, sB = hB.S;
+        float ax = Mem.At(pl, PointSlot(0, 0)), ay = Mem.At(pl, PointSlot(0, 1)), bx = Mem.At(pl, PointSlot(0, 2)), by = Mem.At(pl, PointSlot(0, 3));
+        float coreAx = cA * ax - sA * ay, coreAy = sA * ax + cA * ay;   // closest point on A's core, from A's centre of mass
+        float coreBx = cB * bx - sB * by, coreBy = sB * bx + cB * by;   // closest point on B's core, from B's centre of mass
+        float ddx = (dx + coreBx) - coreAx, ddy = (dy + coreBy) - coreAy;
+        float radiusA = Geom[pr.A]._radius, radiusB = Geom[pr.B]._radius, radii = radiusA + radiusB;
+        float len = float.Sqrt(ddx * ddx + ddy * ddy);
+        if (!(len >= 0.5f * radii)) { return false; } // the cores are nearly on top of each other: the direction between them is not reliable, make a fresh manifold (false for NaN too)
+        float inv = 1f / len;
+        float nx = ddx * inv, ny = ddy * inv;
+        float sep = len - radii;
+        if (!(sep <= Constants2D.SpeculativeDistance && sep >= -RecycleDepth)) { return false; }
+        float hAr = 0.5f * sep + radiusA, hBr = 0.5f * sep + radiusB;
+        float rax = coreAx + hAr * nx, ray = coreAy + hAr * ny;
+        float rbx = coreBx - hBr * nx, rby = coreBy - hBr * ny;
+        if (pr.MixEpoch != MaterialEpoch)
+        {
+            var mixed = Mix(pr.A, pr.B);
+            Mem.At(pl, ManifoldLayout.Friction) = mixed.Friction;
+            Mem.At(pl, ManifoldLayout.Restitution) = mixed.Restitution;
+            Mem.At(pl, ManifoldLayout.RollingResistance) = mixed.RollingResistance;
+            pr.MixEpoch = MaterialEpoch;
+        }
+
+        Mem.At(pl, ManifoldLayout.Normal) = nx; Mem.At(pl, ManifoldLayout.Normal + 1) = ny;
+        Mem.At(pl, ManifoldLayout.AnchorA(0)) = rax; Mem.At(pl, ManifoldLayout.AnchorA(0) + 1) = ray;
+        Mem.At(pl, ManifoldLayout.AnchorB(0)) = rbx; Mem.At(pl, ManifoldLayout.AnchorB(0) + 1) = rby;
+        Mem.At(pl, ManifoldLayout.Separation(0)) = sep;
         return true;
     }
 
