@@ -21,6 +21,7 @@ internal static class World3DScenarios
         Scenarios.Register("world3d/terrain", ctx => RunScene(ctx, "mesh-terrain-3d", 100));
         Scenarios.Register("world3d/restore-and-shift", RunRestoreAndShift);
         Scenarios.Register("world3d/joints", RunJoints);
+        Scenarios.Register("world3d/characters", ctx => Characters3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
         Scenarios.Register("world3d/services", ctx => Services3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
     }
 

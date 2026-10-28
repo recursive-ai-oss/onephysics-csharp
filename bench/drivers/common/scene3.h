@@ -9,7 +9,7 @@
 #include <time.h>
 
 typedef struct { char kind[16]; int material; double density, radius; int np; double* p; } Op3Shape;
-typedef struct { int type; /* 0 static 1 kinematic 2 dynamic */ double pos[3], q[4], v[3], w[3]; int bullet, asleep; int shape0, shapeN; } Op3Body;
+typedef struct { int type; /* 0 static 1 kinematic 2 dynamic */ double pos[3], q[4], v[3], w[3]; int bullet, asleep; int shape0, shapeN; int isChar; double cSpeed, cPeriod, cJump, cStop, cPush; /* scripted character (docs/scenes.md): walk speed, reversal period, jump interval, stop step, push strength */ } Op3Body;
 typedef struct { char kind[8]; int a, b; double pa[3], pb[3], axis[3]; int hasLimit; double lower, upper; } Op3Joint;
 typedef struct { int kind; /* 0 ray 1 overlap 2 cast */ double p[8]; } Op3Query;
 typedef struct { int step; } Op3Wake;
@@ -64,6 +64,11 @@ static int op3_load_scene(const char* path, Op3Scene* s)
             for (int i = 0; i < 3; i++) b->w[i] = NUM();
             char* fl = NEXT(); b->bullet = strstr(fl, "bullet") != NULL; b->asleep = strstr(fl, "asleep") != NULL;
             b->shape0 = s->nShape; b->shapeN = 0;
+        }
+        else if (!strcmp(t, "character"))
+        {
+            Op3Body* b = &s->bodies[s->nBody - 1]; b->isChar = 1;
+            b->cSpeed = NUM(); b->cPeriod = NUM(); b->cJump = NUM(); b->cStop = NUM(); b->cPush = NUM();
         }
         else if (!strcmp(t, "shape"))
         {

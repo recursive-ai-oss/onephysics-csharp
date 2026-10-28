@@ -57,7 +57,7 @@ Shape kinds (3D, local to the body; `radius` is the skin radius where one applie
 - `mesh nv ni v… i…`: `nv` vertices (x y z each) then `ni` indices (three per triangle, counter-clockwise seen from above for terrain); static bodies only.
 - `heightfield nx nz cell ox oy oz h…`: `nx × nz` samples, row-major with `nx` samples along x per row, cell size `cell` in x and z, lower corner at body-local `(ox, oy, oz)`, heights `h` added to `oy`; static bodies only, split into two triangles per cell with the diagonal from `(i, j+1)` to `(i+1, j)`.
 
-Characters, vehicles and soft bodies get their own records when their stages arrive; no scene uses them yet.
+The `character` record applies in 3D too: the last `body` must be a single y-aligned capsule (the character is centred on the body origin); the 3D scripts walk along +x. Vehicles and soft bodies get their own records when their stages arrive.
 
 ## Scene set
 
@@ -86,14 +86,17 @@ Characters, vehicles and soft bodies get their own records when their stages arr
 | `mesh-terrain-3d`, `heightfield-terrain-3d` | 1297 | 600 | the same 63-cell seeded terrain (64×64 samples, 2 m cells) as a triangle mesh and as a height field, with 1296 mixed bodies dropped on it | maxPenetration, finalPenetration, maxSpeed, nan, escapes, tunnelled (below y = −15) |
 | `sleep-wake-3d` | 1442 | 360 | 1440 boxes created asleep in 36 stacks of 40, all woken at step 120, a 2 m radius, density-10 ball dropped from 81 m lands on the stacks | maxPenetration, finalPenetration, maxSpeed, nan, escapes, asleepBeforeWake, awakeFinal |
 | `queries-3d` | 3001 | 300 + queries | the pile settled for 300 steps, then 3000 rays, 3000 sphere overlaps and 3000 sphere casts, 10 repetitions | maxSpeed, nan, escapes; throughput |
+| `characters-3d` | 393 | 600 | 300 scripted capsule characters (radius 0.3, height 1.8; slope limit 45 degrees, step 0.3) on: a triangle-mesh hill field and a height-field hill field (50 each), 40 crates with 40 pushers (half pushing), three staircases of twelve 0.5 m treads with 0.20, 0.25 and 0.29 m risers (12 climbers each), a field of 1 m blocks in 0.25 m levels built as one mesh (40 walkers, a quarter of them jumping), four ramps of 30, 40, 50 and 60 degrees (10 walkers each), and six kinematic platforms (three sliding at 1.5 m/s, three turning at 0.4 rad/s) carrying 44 characters. Characters share a layer that ignores itself. Params `engines onephysics jolt` (only these drivers run characters), `stairsN first count minY`, `steepN first count maxY`, `rotatingRiders first count…` | charJitter, stairSuccess, slopeViolations, escapes, tunnelled, maxPenetration, maxSpeed, nan |
 
-Characters, vehicles, ragdolls with joint limits, and soft bodies are defined when their stages arrive.
+Vehicles, ragdolls with joint limits, and soft bodies are defined when their stages arrive.
 
 ## Step-state dump
 
 Every driver writes the same binary file in stability mode. Little-endian. Header: the ASCII bytes `OPDUMP01`, `u32` body count, `u32` 0. Then frames: `u32` step number (0 = initial state), `u32` 0, and `7 × n` doubles per frame in scene body order: x, y, angle (body origin, radians), vx, vy (centre-of-mass velocity as the engine reports it), w, awake (1 or 0). In 3D the header word is 3 and a frame is `14 × n` doubles: x, y, z, qx, qy, qz, qw (body origin, unit quaternion), vx, vy, vz, wx, wy, wz (centre-of-mass velocity as the engine reports it), awake.
 
 The `characters` scene has no reference rows. Proposed thresholds for this library's engine: `nan` = `escapes` = `tunnelled` = 0, `maxSpeed` ≤ 20, `maxPenetration` ≤ 0.25 (overlap between two scripted characters is not counted), `charJitter` ≤ 0.01. Measured at 1 thread: 0, 0, 0, 14.3, 0.15, 0.
+
+The `characters-3d` scene has Jolt's `CharacterVirtual` as its one reference (driver written from its documented API; rows are the bar run's). Proposed thresholds for this library's engine: `nan` = `escapes` = `tunnelled` = 0, `stairSuccess` = 1, `slopeViolations` = 0, `maxPenetration` ≤ 0.05 (character-character overlap not counted), `charJitter` ≤ 0.01, `maxSpeed` ≤ 25 (a step up is one step's displacement over dt: 0.29 m in 1/60 s is 17 m/s). Measured at 1 thread: 0, 0, 0, 1, 0, 0.015, 0, 20.2.
 
 ## Metrics
 
@@ -110,7 +113,9 @@ Computed by `bar metrics SCENE DUMP` from the dump and the scene alone, so every
 | `escapes` | most dynamic bodies outside `param container x0 y0 x1 y1` (grown by 0.5 m) in any frame |
 | `tunnelled` | most dynamic bodies past `param wall x` (+ 0.1 m) or below `param floor y` in any frame |
 | `collapse` | `topDrop` and `topLateral`: the drop in height and the sideways drift of `param top <body>` at the final frame |
-| `charJitter` | characters scene: largest change of a character's velocity between consecutive dumps over the last four dump intervals (characters stop at their `stop` step, so a character standing still gives 0), m/s |
+| `charJitter` | characters scenes: largest change of a character's velocity between consecutive dumps over the last four dump intervals (characters stop at their `stop` step, so a character standing still gives 0; riders of turning platforms, listed in `rotatingRiders`, are skipped because their velocity turns by design), m/s |
+| `stairSuccess` | share of the characters listed in `stairsN` (first body, count, height) that reach that height in any dump |
+| `slopeViolations` | count of the characters listed in `steepN` (first body, count, height) that get above that height in any dump: they walk at ramps steeper than the slope limit |
 | `jointError` | largest distance between the two world positions of any joint's anchors, metres |
 | `asleepBeforeWake` | dynamic bodies asleep in the frame at the first `event` step (scenes create them asleep) |
 | `awakeFinal` | dynamic bodies awake in the final frame |

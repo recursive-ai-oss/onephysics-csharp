@@ -126,6 +126,7 @@ public sealed partial class PhysicsWorld3D
 
         foreach (int k in dead) { _handlers.Remove(k); }
         DropStaleJointHandlers();
+        DropDeadControllerHandlers();
         InvalidateQueryPad();
         BuildPublicEvents();
     }
