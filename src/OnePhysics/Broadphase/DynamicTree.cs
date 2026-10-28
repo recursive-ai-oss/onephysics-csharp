@@ -614,6 +614,39 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
         _enlarged = 0;
     }
 
+    /// <summary>
+    /// Recomputes the boxes of the part of the tree that <see cref="EnlargeProxy"/> touched from their children, bottom-up, and keeps the structure. Much cheaper than <see cref="RebuildEnlarged"/>:
+    /// the enlarged ancestors become as tight as the boxes below them again, but the nodes are not regrouped, so a tree that is only refitted slowly loses quality as proxies move.
+    /// Does nothing when nothing is flagged.
+    /// </summary>
+    public void RefitEnlarged()
+    {
+        if (_enlarged == 0) { return; }
+        if (_root == NullNode || _nodes[_root].Height == 0 || (_nodes[_root].Flags & EnlargedFlag) == 0) { _enlarged = 0; return; }
+        if (_rbWalk.Length < _used) { _rbWalk = new int[Math.Max(_used, _rbWalk.Length * 2)]; }
+        if (_rbRegion.Length < _used) { _rbRegion = new int[Math.Max(_used, _rbRegion.Length * 2)]; }
+        int walk = 0, regionCount = 0;
+        _rbWalk[walk++] = _root;
+        while (walk > 0)
+        {
+            int node = _rbWalk[--walk];
+            _rbRegion[regionCount++] = node;
+            int c1 = _nodes[node].Child1, c2 = _nodes[node].Child2;
+            if (_nodes[c2].Height > 0 && (_nodes[c2].Flags & EnlargedFlag) != 0) { _rbWalk[walk++] = c2; }
+            if (_nodes[c1].Height > 0 && (_nodes[c1].Flags & EnlargedFlag) != 0) { _rbWalk[walk++] = c1; }
+        }
+
+        // The region list is in depth-first order, parents before descendants, so walking it backwards fits children before parents.
+        for (int i = regionCount - 1; i >= 0; i--)
+        {
+            int node = _rbRegion[i];
+            _nodes[node].Flags = 0;
+            Refit(node);
+        }
+
+        _enlarged = 0;
+    }
+
     private const int ParallelRebuildItems = 1024;
     private const int RebuildUnitItems = 256;
     private const int UnitStack = RebuildUnitItems + 2;
@@ -871,22 +904,22 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     /// <summary>Reports every proxy whose box overlaps (or touches) <paramref name="box"/>, depth first with child 1 before child 2. The callback may stop the query by returning false.</summary>
     public void Query<TCallback>(in TBox box, ref TCallback callback) where TCallback : IOverlapCallback
     {
-        if (_root == NullNode) { return; }
+        if (_root == NullNode || !TBox.Overlaps(_nodes[_root].Box, box)) { return; }
         var stack = new TraversalStack(stackalloc int[128]);
         stack.Push(_root);
         while (stack.TryPop(out int i))
         {
+            // Only nodes whose box overlaps the query are ever pushed, so a miss costs one box test and no push or pop. Child 1 is still visited before child 2.
             ref Node n = ref _nodes[i];
-            if (!TBox.Overlaps(n.Box, box)) { continue; }
             if (n.Height == 0)
             {
                 if (!callback.Report(i, n.UserId)) { return; }
+                continue;
             }
-            else
-            {
-                stack.Push(n.Child2);
-                stack.Push(n.Child1);
-            }
+
+            int c1 = n.Child1, c2 = n.Child2;
+            if (TBox.Overlaps(_nodes[c2].Box, box)) { stack.Push(c2); }
+            if (TBox.Overlaps(_nodes[c1].Box, box)) { stack.Push(c1); }
         }
     }
 
