@@ -22,6 +22,7 @@ public sealed class IslandSet
     private bool[] _asleep = new bool[16];
     private int[] _removed = new int[16];
     private bool[] _scratchVisited = new bool[64];
+    private int[] _snapshot = new int[16];
     private readonly List<int> _stack = new();
     private readonly List<int> _component = new();
 
@@ -54,7 +55,9 @@ public sealed class IslandSet
             Array.Resize(ref _bodies, cap); Array.Resize(ref _count, cap); Array.Resize(ref _asleep, cap); Array.Resize(ref _removed, cap);
         }
 
-        _bodies[id] = new int[4]; _count[id] = 0; _asleep[id] = false; _removed[id] = 0;
+        // A freed island keeps its list for the next one, so splits and merges allocate nothing once warm.
+        _bodies[id] ??= new int[4];
+        _count[id] = 0; _asleep[id] = false; _removed[id] = 0;
         return id;
     }
 
@@ -81,7 +84,6 @@ public sealed class IslandSet
         if (n == 1)
         {
             _ids.Free(id);
-            _bodies[id] = null!;
             _asleep[id] = false; _removed[id] = 0; _count[id] = 0;
         }
         else
@@ -122,10 +124,11 @@ public sealed class IslandSet
         // Bodies that came from the other island (or all of them, when the survivor took over the higher island's list) now belong to the survivor.
         if (intoHi) { for (int t = 0; t < total; t++) { isl[x[t]] = lo; } }
         else { for (int t = 0; t < ny; t++) { isl[y[t]] = lo; } }
+        var spare = intoHi ? _bodies[lo] : _bodies[hi];
         _bodies[lo] = x; _count[lo] = total;
         _removed[lo] += _removed[hi];
         _ids.Free(hi);
-        _bodies[hi] = null!; _count[hi] = 0; _removed[hi] = 0; _asleep[hi] = false;
+        _bodies[hi] = spare; _count[hi] = 0; _removed[hi] = 0; _asleep[hi] = false;
         return lo;
     }
 
@@ -142,7 +145,8 @@ public sealed class IslandSet
         bool asleep = _asleep[island];
         int components = 0;
         // Components are discovered from the lowest unvisited body, so the first one holds the island's lowest body and keeps the id.
-        var snapshot = new int[n];
+        if (_snapshot.Length < n) { _snapshot = new int[Math.Max(n, _snapshot.Length * 2)]; }
+        var snapshot = _snapshot;
         Array.Copy(list, snapshot, n);
         for (int s = 0; s < n; s++)
         {
@@ -171,9 +175,11 @@ public sealed class IslandSet
             _component.Sort();
             int id = components == 0 ? island : NewId();
             components++;
-            var arr = _component.ToArray();
-            _bodies[id] = arr; _count[id] = arr.Length; _removed[id] = 0; _asleep[id] = asleep;
-            foreach (int body in arr) { isl[body] = id; }
+            int cn = _component.Count;
+            if (_bodies[id].Length < cn) { _bodies[id] = new int[Math.Max(cn, _bodies[id].Length * 2)]; }
+            var arr = _bodies[id];
+            for (int k = 0; k < cn; k++) { arr[k] = _component[k]; isl[arr[k]] = id; }
+            _count[id] = cn; _removed[id] = 0; _asleep[id] = asleep;
         }
 
         for (int s = 0; s < n; s++) { seen[snapshot[s]] = false; }

@@ -46,7 +46,10 @@ internal sealed partial class Engine3D : ISnapshotSection
     public float[] StartRot = new float[32];
     public float[] Dq = new float[32];            // accumulated rotation over the step as a quaternion (x, y, z, w)
     public float[] WInvI = new float[48];         // inverse inertia in world axes, refreshed whenever a body turns
-    public float[] Scratch = new float[Stride3D.Constraint * 8];
+    public float[] Wide = Array.Empty<float>();   // contact solver groups, one per batch (see W3D)
+    public int[] WideIdx = Array.Empty<int>();
+    public int[] SlotOf = Array.Empty<int>();     // constraint -> group * 8 + lane for this step, -1 when not in a group
+    public int KernelWidth = 8;                   // lanes per kernel run; results are the same at every width
 
     // Shapes (index = shape slot).
     public int[] GeomOf = new int[8];
