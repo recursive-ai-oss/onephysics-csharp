@@ -26,8 +26,8 @@ internal static class W3D
     public const int StageOffset = Fields * Lanes, StageFloats = 38 * 8, OutOffset = StageOffset + StageFloats, OutFloats = 12 * 8;
     public const int GroupFloats = OutOffset + OutFloats;
 
-    /// <summary>Integers per group in <see cref="Engine3D.WideIdx"/>: body rows of A and B, then the same rows for bodies the kernel writes (or -1), eight lanes each.</summary>
-    public const int IdxPerGroup = 32;
+    /// <summary>Integers per group in <see cref="Engine3D.WideIdx"/>: body rows of A and B, then the same rows for bodies the kernel writes (or -1), eight lanes each, then the largest point count in the group (points past it are skipped for every lane).</summary>
+    public const int IdxPerGroup = 33, MaxPointsSlot = 32;
 }
 
 /// <summary>
@@ -190,14 +190,15 @@ internal static class ContactKernel3D
             var t1 = Vec<T>(wide, W3D.T1, l0);
             var t2 = Vec<T>(wide, W3D.T2, l0);
             V3<T> roll = Vec<T>(wide, W3D.RollImpulse, l0);
-            var pts0 = LoadPoint<T>(wide, 0, l0); var pts1 = LoadPoint<T>(wide, 1, l0); var pts2 = LoadPoint<T>(wide, 2, l0); var pts3 = LoadPoint<T>(wide, 3, l0);
+            int maxPts = idx[W3D.MaxPointsSlot];
+            var pts0 = LoadPoint<T>(wide, 0, l0); var pts1 = maxPts > 1 ? LoadPoint<T>(wide, 1, l0) : default; var pts2 = maxPts > 2 ? LoadPoint<T>(wide, 2, l0) : default; var pts3 = maxPts > 3 ? LoadPoint<T>(wide, 3, l0) : default;
 
             if (phase == SolvePhase.WarmStart)
             {
                 WarmPoint(ref a, ref b2, in pts0, nrm, t1, t2);
-                WarmPoint(ref a, ref b2, in pts1, nrm, t1, t2);
-                WarmPoint(ref a, ref b2, in pts2, nrm, t1, t2);
-                WarmPoint(ref a, ref b2, in pts3, nrm, t1, t2);
+                if (maxPts > 1) { WarmPoint(ref a, ref b2, in pts1, nrm, t1, t2); }
+                if (maxPts > 2) { WarmPoint(ref a, ref b2, in pts2, nrm, t1, t2); }
+                if (maxPts > 3) { WarmPoint(ref a, ref b2, in pts3, nrm, t1, t2); }
                 a.W = a.W - a.I.Apply(roll);
                 b2.W = b2.W + b2.I.Apply(roll);
             }
@@ -207,9 +208,9 @@ internal static class ContactKernel3D
                 T lane = Lane.Or(T.GreaterThan(e0, zero), T.GreaterThan(zero, e0));
                 T negThr = T.Broadcast(-kp.RestitutionThreshold);
                 Restitute(ref a, ref b2, ref pts0, nrm, e0, lane, negThr, zero);
-                Restitute(ref a, ref b2, ref pts1, nrm, e0, lane, negThr, zero);
-                Restitute(ref a, ref b2, ref pts2, nrm, e0, lane, negThr, zero);
-                Restitute(ref a, ref b2, ref pts3, nrm, e0, lane, negThr, zero);
+                if (maxPts > 1) { Restitute(ref a, ref b2, ref pts1, nrm, e0, lane, negThr, zero); }
+                if (maxPts > 2) { Restitute(ref a, ref b2, ref pts2, nrm, e0, lane, negThr, zero); }
+                if (maxPts > 3) { Restitute(ref a, ref b2, ref pts3, nrm, e0, lane, negThr, zero); }
             }
             else
             {
@@ -239,15 +240,15 @@ internal static class ContactKernel3D
                 b2.W = V3<T>.Select(rollMask, bW, b2.W);
 
                 FrictionPoint(ref a, ref b2, ref pts0, t1, t2, friction);
-                FrictionPoint(ref a, ref b2, ref pts1, t1, t2, friction);
-                FrictionPoint(ref a, ref b2, ref pts2, t1, t2, friction);
-                FrictionPoint(ref a, ref b2, ref pts3, t1, t2, friction);
+                if (maxPts > 1) { FrictionPoint(ref a, ref b2, ref pts1, t1, t2, friction); }
+                if (maxPts > 2) { FrictionPoint(ref a, ref b2, ref pts2, t1, t2, friction); }
+                if (maxPts > 3) { FrictionPoint(ref a, ref b2, ref pts3, t1, t2, friction); }
 
                 T invH = T.Broadcast(kp.InverseSubstepDt), slop = T.Broadcast(kp.LinearSlop), negPush = T.Broadcast(-kp.PushOutVelocity);
                 NormalPoint(ref a, ref b2, ref pts0, nrm, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, zero, two);
-                NormalPoint(ref a, ref b2, ref pts1, nrm, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, zero, two);
-                NormalPoint(ref a, ref b2, ref pts2, nrm, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, zero, two);
-                NormalPoint(ref a, ref b2, ref pts3, nrm, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, zero, two);
+                if (maxPts > 1) { NormalPoint(ref a, ref b2, ref pts1, nrm, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, zero, two); }
+                if (maxPts > 2) { NormalPoint(ref a, ref b2, ref pts2, nrm, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, zero, two); }
+                if (maxPts > 3) { NormalPoint(ref a, ref b2, ref pts3, nrm, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, zero, two); }
             }
 
             // Velocities back out.
@@ -275,7 +276,10 @@ internal static class ContactKernel3D
 
             if (phase == SolvePhase.WarmStart) { continue; }
             // Impulses back to the group. Restitution leaves the friction and rolling impulses alone.
-            StorePoint(wide, 0, l0, in pts0, phase); StorePoint(wide, 1, l0, in pts1, phase); StorePoint(wide, 2, l0, in pts2, phase); StorePoint(wide, 3, l0, in pts3, phase);
+            StorePoint(wide, 0, l0, in pts0, phase);
+            if (maxPts > 1) { StorePoint(wide, 1, l0, in pts1, phase); }
+            if (maxPts > 2) { StorePoint(wide, 2, l0, in pts2, phase); }
+            if (maxPts > 3) { StorePoint(wide, 3, l0, in pts3, phase); }
             if (phase != SolvePhase.Restitution)
             {
                 roll.X.Store(wide.Slice((W3D.RollImpulse + 0) * 8 + l0, width)); roll.Y.Store(wide.Slice((W3D.RollImpulse + 1) * 8 + l0, width)); roll.Z.Store(wide.Slice((W3D.RollImpulse + 2) * 8 + l0, width));

@@ -123,6 +123,7 @@ internal sealed partial class Engine3D
         w.Slice(0, W3D.StageOffset).Clear();
         var idx = WideIdx.AsSpan(group * W3D.IdxPerGroup, W3D.IdxPerGroup);
         for (int l = 0; l < W3D.Lanes; l++) { idx[l] = 0; idx[8 + l] = 0; idx[16 + l] = -1; idx[24 + l] = -1; }
+        int maxPoints = 1;
         float allOnes = BitConverter.Int32BitsToSingle(-1);
         int lane = 0;
         Span<float> rm = stackalloc float[6];
@@ -151,6 +152,7 @@ internal sealed partial class Engine3D
 
             Vector3F vA = V(lin, 3 * a), wA = V(ang, 3 * a), vB = V(lin, 3 * b), wB = V(ang, 3 * b);
             int count = cs.PointCount[c];
+            if (count > maxPoints) { maxPoints = count; }
             for (int i = 0; i < count; i++)
             {
                 var rA = V(pl, ManifoldLayout.AnchorA(i));
@@ -172,6 +174,8 @@ internal sealed partial class Engine3D
 
             lane++;
         }
+
+        idx[W3D.MaxPointsSlot] = maxPoints;
     }
 
     private static void Put3(Span<float> w, int field, int lane, Vector3F v) { w[field * 8 + lane] = v.X; w[(field + 1) * 8 + lane] = v.Y; w[(field + 2) * 8 + lane] = v.Z; }
