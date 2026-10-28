@@ -116,30 +116,54 @@ public sealed class ConstraintColoring
         if (_bucketOf.Length < n) { _bucketOf = new byte[Math.Max(n, _bucketOf.Length * 2)]; }
         var bucketOf = _bucketOf;
 
-        // Whether a constraint is active is looked up (through its two bodies) once, in blocks that write only their own slice of bucketOf; the counting and the fill then read the answers.
+        // Whether a constraint is active is looked up (through its two bodies) once, in blocks that write only their own slice of bucketOf and their own row of the histogram.
+        // The row of a block says how many of its constraints fall in each bucket; the buckets are then laid out block by block, so every bucket lists its constraints in ascending index
+        // whatever the number of threads, and a second pass fills each block's share of the list.
         int blocks = (n + ActiveBlock - 1) / ActiveBlock;
-        var task = new ActiveBlockTask(bodies, cons, bucketOf);
-        if (executor != null && blocks > 1) { executor.For(blocks, task); }
-        else { for (int blk = 0; blk < blocks; blk++) { task.Run(blk); } }
+        const int Buckets = ColorCount + 1;
+        if (_hist.Length < blocks * Buckets) { _hist = new int[Math.Max(blocks * Buckets, _hist.Length * 2)]; }
+        var count = new ActiveBlockTask(bodies, cons, bucketOf, _hist);
+        if (executor != null && blocks > 1) { executor.For(blocks, count); }
+        else { for (int blk = 0; blk < blocks; blk++) { count.Run(blk); } }
 
         int total = 0;
-        for (int c = 0; c < n; c++)
+        for (int bucket = 0; bucket < Buckets; bucket++)
         {
-            int bucket = bucketOf[c];
-            if (bucket == Inactive) { continue; }
-            _start[bucket + 1]++;
-            total++;
+            _start[bucket] = total;
+            for (int blk = 0; blk < blocks; blk++)
+            {
+                int c = _hist[blk * Buckets + bucket];
+                _hist[blk * Buckets + bucket] = total; // from here on: where this block's first constraint of the bucket goes
+                total += c;
+            }
         }
 
-        for (int i = 1; i < _start.Length; i++) { _start[i] += _start[i - 1]; }
+        _start[Buckets] = total;
         if (total > _list.Length) { _list = new int[Math.Max(total, _list.Length * 2)]; }
-        var cursor = _cursor;
-        for (int i = 0; i < cursor.Length; i++) { cursor[i] = _start[i]; }
-        for (int c = 0; c < n; c++)
+        var fill = new ActiveFillTask(bucketOf, _hist, _list, n);
+        if (executor != null && blocks > 1) { executor.For(blocks, fill); }
+        else { for (int blk = 0; blk < blocks; blk++) { fill.Run(blk); } }
+    }
+
+    private int[] _hist = new int[(ColorCount + 1) * 8];
+
+    private readonly struct ActiveFillTask : IParallelBody
+    {
+        private readonly byte[] _bucketOf; private readonly int[] _hist; private readonly int[] _list; private readonly int _n;
+
+        public ActiveFillTask(byte[] bucketOf, int[] hist, int[] list, int n) { _bucketOf = bucketOf; _hist = hist; _list = list; _n = n; }
+
+        public void Run(int block)
         {
-            int bucket = bucketOf[c];
-            if (bucket == Inactive) { continue; }
-            _list[cursor[bucket]++] = c;
+            const int Buckets = ColorCount + 1;
+            var cursor = _hist.AsSpan(block * Buckets, Buckets);
+            int lo = block * ActiveBlock, hi = Math.Min(lo + ActiveBlock, _n);
+            for (int c = lo; c < hi; c++)
+            {
+                int bucket = _bucketOf[c];
+                if (bucket == Inactive) { continue; }
+                _list[cursor[bucket]++] = c;
+            }
         }
     }
 
@@ -149,18 +173,21 @@ public sealed class ConstraintColoring
 
     private readonly struct ActiveBlockTask : IParallelBody
     {
-        private readonly BodyStore _bodies; private readonly ConstraintStore _cons; private readonly byte[] _bucketOf;
+        private readonly BodyStore _bodies; private readonly ConstraintStore _cons; private readonly byte[] _bucketOf; private readonly int[] _hist;
 
-        public ActiveBlockTask(BodyStore bodies, ConstraintStore cons, byte[] bucketOf) { _bodies = bodies; _cons = cons; _bucketOf = bucketOf; }
+        public ActiveBlockTask(BodyStore bodies, ConstraintStore cons, byte[] bucketOf, int[] hist) { _bodies = bodies; _cons = cons; _bucketOf = bucketOf; _hist = hist; }
 
         public void Run(int block)
         {
             var cons = _cons;
             var kind = cons.Kind; var color = cons.Color; var ba = cons.BodyA; var bb = cons.BodyB;
+            var row = _hist.AsSpan(block * (ColorCount + 1), ColorCount + 1);
+            row.Clear();
             int lo = block * ActiveBlock, hi = Math.Min(lo + ActiveBlock, cons.HighWater);
             for (int c = lo; c < hi; c++)
             {
-                _bucketOf[c] = IsActive(_bodies, kind[c], color[c], ba[c], bb[c]) ? (byte)Bucket(color[c]) : Inactive;
+                if (IsActive(_bodies, kind[c], color[c], ba[c], bb[c])) { int bucket = Bucket(color[c]); _bucketOf[c] = (byte)bucket; row[bucket]++; }
+                else { _bucketOf[c] = Inactive; }
             }
         }
     }

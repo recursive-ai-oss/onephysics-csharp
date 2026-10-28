@@ -37,6 +37,8 @@ internal readonly struct Stages2D : IWorldStages
 
     public float BodyMotion(WorldCore world, int body) => _e.BodyMotion(body);
 
+    public bool BodyMotionIsConcurrent => true;
+
     public void FinalizeBodies(WorldCore world, ReadOnlySpan<int> bodies, in StepContext context) => _e.FinalizeBodies(bodies, in context);
 
     public void AfterFinalize(WorldCore world, in StepContext context) => _e.RunBullets();

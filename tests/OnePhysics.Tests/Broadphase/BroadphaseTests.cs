@@ -322,6 +322,54 @@ public class BroadphaseTests
         Assert.Equal(a.ToArray(), b.ToArray());
     }
 
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void Rebuilding_the_enlarged_part_on_several_threads_gives_the_serial_tree(int dims)
+    {
+        if (dims == 2) { ParallelRebuild(new Dim2()); } else { ParallelRebuild(new Dim3()); }
+    }
+
+    private static void ParallelRebuild<TBox>(Dim<TBox> dim) where TBox : struct, IBox<TBox>
+    {
+        var executor = new TaskExecutor(8);
+        for (int round = 0; round < 6; round++)
+        {
+            // Two trees built and enlarged the same way; one is rebuilt serially and one with the executor.
+            var serial = new DynamicTree<TBox>(2);
+            var threaded = new DynamicTree<TBox>(2);
+            var rngA = new TestRng((ulong)(100 + round));
+            var rngB = new TestRng((ulong)(100 + round));
+            int count = 3000 + (round * 700);
+            var keysA = new List<int>();
+            var keysB = new List<int>();
+            var dispA = new double[dim.Axes];
+            var dispB = new double[dim.Axes];
+            for (int i = 0; i < count; i++)
+            {
+                keysA.Add(serial.CreateProxy(dim.RandomBox(rngA, 80, 2), i));
+                keysB.Add(threaded.CreateProxy(dim.RandomBox(rngB, 80, 2), i));
+            }
+
+            int moves = count / 4;
+            for (int m = 0; m < moves; m++)
+            {
+                int i = rngA.Next(count);
+                Assert.Equal(i, rngB.Next(count));
+                serial.EnlargeProxy(keysA[i], dim.Shift(serial.GetBounds(keysA[i]), rngA, 6, dispA));
+                threaded.EnlargeProxy(keysB[i], dim.Shift(threaded.GetBounds(keysB[i]), rngB, 6, dispB));
+            }
+
+            Assert.Equal(serial.EnlargedCount, threaded.EnlargedCount);
+            serial.RebuildEnlarged();
+            threaded.RebuildEnlarged(executor);
+            threaded.Validate();
+            var a = StateWriter.ToBuffer(); serial.Write(a);
+            var b = StateWriter.ToBuffer(); threaded.Write(b);
+            Assert.Equal(a.ToArray(), b.ToArray());
+        }
+    }
+
     private static void Invariants<TBox>(Dim<TBox> dim) where TBox : struct, IBox<TBox>
     {
         var rng = new TestRng(5);

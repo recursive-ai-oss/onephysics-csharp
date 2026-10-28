@@ -147,7 +147,7 @@ public readonly struct AcceptAllPairs : IPairFilter
 /// <typeparam name="TBox">The box type: <see cref="Aabb2D"/> or <see cref="Aabb3D"/>.</typeparam>
 public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
 {
-    private const int ChunkSize = 64;
+    private const int ChunkSize = 16;
     private const int Version = 1;
 
     private sealed class PairChunk
@@ -456,7 +456,7 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
         for (int t = 0; t < 3; t++)
         {
             var tree = _trees[t];
-            if (tree.EnlargedCount > RebuildThreshold(tree)) { tree.RebuildEnlarged(); }
+            if (tree.EnlargedCount > RebuildThreshold(tree)) { tree.RebuildEnlarged(executor); }
         }
 
         CollectMoved();
