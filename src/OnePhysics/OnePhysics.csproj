@@ -7,7 +7,7 @@
     <Description>Deterministic 2D and 3D rigid-body physics for .NET with identical results on every platform.</Description>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
-    <!-- Only so that [SkipLocalsInit] compiles (the 3D solver kernels); tools/check.sh still rejects the unsafe keyword in src. -->
+    <!-- Only so that the SkipLocalsInit attribute compiles (the 3D solver kernels); no such code blocks are allowed in src (tools/check.sh). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
