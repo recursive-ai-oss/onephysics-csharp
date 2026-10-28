@@ -564,7 +564,7 @@ internal sealed partial class Engine2D
     public int RecycledCount;
 
     private const float RecycleTol = 0.003f;
-    private const float RecycleDepth = 0.02f;
+    private const float RecycleDepth = 0.03f;
 
     // Payload slots the 2D contact does not use (third components, the second tangent, the trailing floats). Offsets in floats.
     private static class Rc
