@@ -135,23 +135,79 @@ internal static class JointKernel3D
         b.W = b.W + b.I.Apply(V3<T>.Cross(rB, p));
     }
 
-    /// <summary>The 3×3 block K of the point constraint, one inertia term per body: column i of [r]ᵀ·I·[r] is I applied to r × eᵢ, dotted with r × eⱼ.</summary>
+    /// <summary>
+    /// One body's inertia term of the point constraint's 3×3 block, [r]ᵀ·I·[r] with [r] the cross-product matrix, written out entry by entry (I = [a b c; b d e; c e f], r = (x, y, z)):
+    /// k00 = d·z² − 2e·yz + f·y², k11 = a·z² − 2c·xz + f·x², k22 = a·y² − 2b·xy + d·x², k01 = −b·z² + e·xz + c·yz − f·xy, k02 = b·yz − d·xz − c·y² + e·xy, k12 = −a·yz + b·xz + c·xy − e·x².
+    /// The six products of the anchor's components are shared by all six entries.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void AddInertiaTerm<T>(Sym<T> inertia, V3<T> r, ref T k00, ref T k01, ref T k02, ref T k11, ref T k12, ref T k22) where T : struct, ILane<T>
     {
+        T a = inertia.M0, b = inertia.M1, c = inertia.M2, d = inertia.M3, e = inertia.M4, f = inertia.M5;
+        T xx = r.X * r.X, yy = r.Y * r.Y, zz = r.Z * r.Z, xy = r.X * r.Y, xz = r.X * r.Z, yz = r.Y * r.Z;
+        T eyz = e * yz, cxz = c * xz, bxy = b * xy;
+        k00 = k00 + (d * zz - (eyz + eyz) + f * yy);
+        k11 = k11 + (a * zz - (cxz + cxz) + f * xx);
+        k22 = k22 + (a * yy - (bxy + bxy) + d * xx);
+        k01 = k01 + (e * xz + c * yz - b * zz - f * xy);
+        k02 = k02 + (b * yz + e * xy - d * xz - c * yy);
+        k12 = k12 + (b * xz + c * xy - a * yz - e * xx);
+    }
+
+    // The two passes are separate methods on purpose: the runtime stops inlining into a method once its inlining budget is spent, and with everything in Run it was spent before the arithmetic
+    // was reached, leaving every vector operation of the 3x3 block as a call that returned its result through memory (a hundred of them per batch).
+
+    /// <summary>Applies the accumulated impulse of the previous step at the anchors, which turn with their bodies' rotation accumulated this step.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void WarmStart<T>(ref BodyLanes<T> a, ref BodyLanes<T> b2, ReadOnlySpan<float> wide, int l0, V3<T> imp, T two) where T : struct, ILane<T>
+    {
+        var rA = Rotate(a.Qx, a.Qy, a.Qz, a.Qw, Vec<T>(wide, J3D.RA, l0), two);
+        var rB = Rotate(b2.Qx, b2.Qy, b2.Qz, b2.Qw, Vec<T>(wide, J3D.RB, l0), two);
+        Apply(ref a, ref b2, rA, rB, imp);
+    }
+
+    /// <summary>One solve or relax pass of the three point rows: the block K of the current anchors and inertias, the soft or rigid impulse, applied to both bodies.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void SolveBlock<T>(ref BodyLanes<T> a, ref BodyLanes<T> b2, ReadOnlySpan<float> wide, int l0, ref V3<T> imp, T ms, T kk, T isc, T two) where T : struct, ILane<T>
+    {
+        // The anchors turn with their bodies' rotation accumulated this step; the separation of the anchors follows from the bodies' displacements.
+        var rA = Rotate(a.Qx, a.Qy, a.Qz, a.Qw, Vec<T>(wide, J3D.RA, l0), two);
+        var rB = Rotate(b2.Qx, b2.Qy, b2.Qz, b2.Qw, Vec<T>(wide, J3D.RB, l0), two);
+        var d = Vec<T>(wide, J3D.D, l0) + (b2.Dp - a.Dp);
+        var c = (d + rB) - rA;
+        var dv = (b2.V + V3<T>.Cross(b2.W, rB)) - (a.V + V3<T>.Cross(a.W, rA));
+        Block(a.InvMass + b2.InvMass, a.I, b2.I, rA, rB, c, dv, ms, kk, isc, ref imp, out var step);
+        Apply(ref a, ref b2, rA, rB, step);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void Matrix<T>(T massSum, Sym<T> iA, Sym<T> iB, V3<T> rA, V3<T> rB, out T k00, out T k01, out T k02, out T k11, out T k12, out T k22) where T : struct, ILane<T>
+    {
         T zero = T.Zero;
-        var cx = new V3<T>(zero, r.Z, T.Negate(r.Y)); // r × e_x
-        var cy = new V3<T>(T.Negate(r.Z), zero, r.X); // r × e_y
-        var cz = new V3<T>(r.Y, T.Negate(r.X), zero); // r × e_z
-        var wx = inertia.Apply(cx);
-        var wy = inertia.Apply(cy);
-        var wz = inertia.Apply(cz);
-        k00 = k00 + V3<T>.Dot(cx, wx);
-        k01 = k01 + V3<T>.Dot(cx, wy);
-        k02 = k02 + V3<T>.Dot(cx, wz);
-        k11 = k11 + V3<T>.Dot(cy, wy);
-        k12 = k12 + V3<T>.Dot(cy, wz);
-        k22 = k22 + V3<T>.Dot(cz, wz);
+        k00 = massSum; k11 = k00; k22 = k00; k01 = zero; k02 = zero; k12 = zero;
+        AddInertiaTerm(iA, rA, ref k00, ref k01, ref k02, ref k11, ref k12, ref k22);
+        AddInertiaTerm(iB, rB, ref k00, ref k01, ref k02, ref k11, ref k12, ref k22);
+    }
+
+    /// <summary>
+    /// K = (mA + mB)·1 + [rA]ᵀ·IA·[rA] + [rB]ᵀ·IB·[rB] by closed-form inverse, the soft impulse step = -K⁻¹·(Ms·Cdot + Kk·C) - Isc·accumulated, and the new accumulated impulse. Separate from its caller for the same reason.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void Block<T>(T massSum, Sym<T> iA, Sym<T> iB, V3<T> rA, V3<T> rB, V3<T> c, V3<T> dv, T ms, T kk, T isc, ref V3<T> imp, out V3<T> step) where T : struct, ILane<T>
+    {
+        T zero = T.Zero;
+        Matrix(massSum, iA, iB, rA, rB, out T k00, out T k01, out T k02, out T k11, out T k12, out T k22);
+        T c00 = k11 * k22 - k12 * k12, c01 = k02 * k12 - k01 * k22, c02 = k01 * k12 - k02 * k11;
+        T det = k00 * c00 + k01 * c01 + k02 * c02;
+        T nonZero = Lane.Or(T.GreaterThan(det, zero), T.GreaterThan(zero, det));
+        T inv = T.Select(nonZero, T.Broadcast(1f) / det, zero);
+        T c11 = k00 * k22 - k02 * k02, c12 = k01 * k02 - k00 * k12, c22 = k00 * k11 - k01 * k01;
+        T r0 = ms * dv.X + kk * c.X, r1 = ms * dv.Y + kk * c.Y, r2 = ms * dv.Z + kk * c.Z;
+        T x0 = inv * (c00 * r0 + c01 * r1 + c02 * r2);
+        T x1 = inv * (c01 * r0 + c11 * r1 + c12 * r2);
+        T x2 = inv * (c02 * r0 + c12 * r1 + c22 * r2);
+        step = new V3<T>(T.Negate(x0) - isc * imp.X, T.Negate(x1) - isc * imp.Y, T.Negate(x2) - isc * imp.Z);
+        imp = imp + step;
     }
 
     /// <summary>
@@ -170,7 +226,7 @@ internal static class JointKernel3D
         Span<int> offs = stackalloc int[8];
         Span<float> linW = bodies.LinearVelocity, angW = bodies.AngularVelocity;
         Span<float> os = e.WideJ.AsSpan(group * J3D.GroupFloats + J3D.OutOffset, J3D.OutFloats);
-        T two = T.Broadcast(2f), zero = T.Zero;
+        T two = T.Broadcast(2f);
         bool warm = phase == SolvePhase.WarmStart;
         bool useBias = phase == SolvePhase.Solve;
         // The relax pass solves the rows rigidly: no bias, full mass, no softening of the accumulated impulse.
@@ -180,36 +236,9 @@ internal static class JointKernel3D
         {
             GatherBody<T>(out var a, lin, ang, pk, idx.Slice(l0, width), offs, Field<T>(wide, J3D.InvMassA, l0));
             GatherBody<T>(out var b2, lin, ang, pk, idx.Slice(8 + l0, width), offs, Field<T>(wide, J3D.InvMassB, l0));
-            // The anchors turn with their bodies' rotation accumulated this step; the separation of the anchors follows from the bodies' displacements.
-            var rA = Rotate(a.Qx, a.Qy, a.Qz, a.Qw, Vec<T>(wide, J3D.RA, l0), two);
-            var rB = Rotate(b2.Qx, b2.Qy, b2.Qz, b2.Qw, Vec<T>(wide, J3D.RB, l0), two);
             var imp = Vec<T>(wide, J3D.Impulse, l0);
-
-            if (warm)
-            {
-                Apply(ref a, ref b2, rA, rB, imp);
-            }
-            else
-            {
-                var d = Vec<T>(wide, J3D.D, l0) + (b2.Dp - a.Dp);
-                var c = (d + rB) - rA;
-                T k00 = a.InvMass + b2.InvMass, k11 = k00, k22 = k00, k01 = zero, k02 = zero, k12 = zero;
-                AddInertiaTerm(a.I, rA, ref k00, ref k01, ref k02, ref k11, ref k12, ref k22);
-                AddInertiaTerm(b2.I, rB, ref k00, ref k01, ref k02, ref k11, ref k12, ref k22);
-                T c00 = k11 * k22 - k12 * k12, c01 = k02 * k12 - k01 * k22, c02 = k01 * k12 - k02 * k11;
-                T det = k00 * c00 + k01 * c01 + k02 * c02;
-                T nonZero = Lane.Or(T.GreaterThan(det, zero), T.GreaterThan(zero, det));
-                T inv = T.Select(nonZero, T.Broadcast(1f) / det, zero);
-                T c11 = k00 * k22 - k02 * k02, c12 = k01 * k02 - k00 * k12, c22 = k00 * k11 - k01 * k01;
-                var dv = (b2.V + V3<T>.Cross(b2.W, rB)) - (a.V + V3<T>.Cross(a.W, rA));
-                T r0 = ms * dv.X + kk * c.X, r1 = ms * dv.Y + kk * c.Y, r2 = ms * dv.Z + kk * c.Z;
-                T x0 = inv * (c00 * r0 + c01 * r1 + c02 * r2);
-                T x1 = inv * (c01 * r0 + c11 * r1 + c12 * r2);
-                T x2 = inv * (c02 * r0 + c12 * r1 + c22 * r2);
-                var step = new V3<T>(T.Negate(x0) - isc * imp.X, T.Negate(x1) - isc * imp.Y, T.Negate(x2) - isc * imp.Z);
-                imp = imp + step;
-                Apply(ref a, ref b2, rA, rB, step);
-            }
+            if (warm) { WarmStart(ref a, ref b2, wide, l0, imp, two); }
+            else { SolveBlock(ref a, ref b2, wide, l0, ref imp, ms, kk, isc, two); }
 
             a.V.X.StoreAt(os, 0 * width); a.V.Y.StoreAt(os, 1 * width); a.V.Z.StoreAt(os, 2 * width);
             a.W.X.StoreAt(os, 3 * width); a.W.Y.StoreAt(os, 4 * width); a.W.Z.StoreAt(os, 5 * width);
