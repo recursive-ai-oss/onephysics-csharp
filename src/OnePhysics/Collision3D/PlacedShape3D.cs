@@ -23,9 +23,52 @@ public static class ShapeBounds3D
     {
         Matrix3x3F m = pose.Rotation.ToMatrix();
         Vector3F t = pose.Translation;
+        // The primitives are symmetric about their origin, so each half extent is the support function along a row of the rotation, in closed form (Ericson, Real-Time Collision Detection, 4.2.6:
+        // the half extents of a rotated box are |R| times the half sizes). This replaces six support queries, each of which normalises its direction when the shape is rounded.
+        float r = shape.ConvexRadius;
+        switch (shape.Kind)
+        {
+            case ConvexShapeKind3D.Sphere:
+                Symmetric(t, r, r, r, out min, out max);
+                return;
+            case ConvexShapeKind3D.Box:
+                {
+                    Vector3F h = shape.CoreSize;
+                    Symmetric(t,
+                        Math.Abs(m.M11) * h.X + Math.Abs(m.M12) * h.Y + Math.Abs(m.M13) * h.Z + r,
+                        Math.Abs(m.M21) * h.X + Math.Abs(m.M22) * h.Y + Math.Abs(m.M23) * h.Z + r,
+                        Math.Abs(m.M31) * h.X + Math.Abs(m.M32) * h.Y + Math.Abs(m.M33) * h.Z + r, out min, out max);
+                    return;
+                }
+
+            case ConvexShapeKind3D.Capsule:
+                {
+                    float hy = shape.CoreSize.Y;
+                    Symmetric(t, Math.Abs(m.M12) * hy + r, Math.Abs(m.M22) * hy + r, Math.Abs(m.M32) * hy + r, out min, out max);
+                    return;
+                }
+
+            case ConvexShapeKind3D.Cylinder:
+                {
+                    Vector3F h = shape.CoreSize;
+                    Symmetric(t,
+                        float.Sqrt(m.M11 * m.M11 + m.M13 * m.M13) * h.X + Math.Abs(m.M12) * h.Y + r,
+                        float.Sqrt(m.M21 * m.M21 + m.M23 * m.M23) * h.X + Math.Abs(m.M22) * h.Y + r,
+                        float.Sqrt(m.M31 * m.M31 + m.M33 * m.M33) * h.X + Math.Abs(m.M32) * h.Y + r, out min, out max);
+                    return;
+                }
+        }
+
         float x0 = Extreme(shape, m.Row(0), t.X, -1f), x1 = Extreme(shape, m.Row(0), t.X, 1f);
         float y0 = Extreme(shape, m.Row(1), t.Y, -1f), y1 = Extreme(shape, m.Row(1), t.Y, 1f);
         float z0 = Extreme(shape, m.Row(2), t.Z, -1f), z1 = Extreme(shape, m.Row(2), t.Z, 1f);
+        min = new Vector3F(x0 - Pad(x0, x1), y0 - Pad(y0, y1), z0 - Pad(z0, z1));
+        max = new Vector3F(x1 + Pad(x0, x1), y1 + Pad(y0, y1), z1 + Pad(z0, z1));
+    }
+
+    private static void Symmetric(Vector3F t, float ex, float ey, float ez, out Vector3F min, out Vector3F max)
+    {
+        float x0 = t.X - ex, x1 = t.X + ex, y0 = t.Y - ey, y1 = t.Y + ey, z0 = t.Z - ez, z1 = t.Z + ez;
         min = new Vector3F(x0 - Pad(x0, x1), y0 - Pad(y0, y1), z0 - Pad(z0, z1));
         max = new Vector3F(x1 + Pad(x0, x1), y1 + Pad(y0, y1), z1 + Pad(z0, z1));
     }

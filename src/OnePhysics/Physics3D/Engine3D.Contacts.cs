@@ -281,6 +281,8 @@ internal sealed partial class Engine3D
                 continue;
             }
 
+            // A pair with no points and no constraint has nothing to add, match or remove (for a sensor pair too).
+            if (_resCount[i] == 0 && PairCons[p] < 0) { continue; }
             if (IsSensor(PairA[p]) || IsSensor(PairB[p])) { ApplySensorPair(world, p, _scratch[i >> 6], _resFirst[i], _resCount[i], owner); continue; }
             ApplyPair(world, p, _scratch[i >> 6], _resFirst[i], _resCount[i], owner);
         }
@@ -491,14 +493,14 @@ internal sealed partial class Engine3D
         int p = _updateList[i];
         _resStatus[i] = 0; _resCount[i] = 0; _resFirst[i] = sc.OutCount;
         int sa = PairA[p], sb = PairB[p];
-        if (!Aabb3D.Overlaps(Bp.GetFatBounds(Proxy[sa]), Bp.GetFatBounds(Proxy[sb]))) { _resStatus[i] = 2; return; }
+        ref readonly Aabb3D fa = ref Bp.FatBoundsOfLive(Proxy[sa]);
+        ref readonly Aabb3D fb = ref Bp.FatBoundsOfLive(Proxy[sb]);
+        if (!Aabb3D.Overlaps(fa, fb)) { _resStatus[i] = 2; return; }
         _resStatus[i] = 1;
         // Tight boxes (this step's for a shape that moved, the stored fat box for one that did not); the extra margin keeps the shortcut clear of rounding at the threshold.
         {
             const double Gap = 0.005;
             double gap = Opt.SpeculativeDistance + Gap;
-            ref readonly Aabb3D fa = ref Bp.FatBoundsOfLive(Proxy[sa]);
-            ref readonly Aabb3D fb = ref Bp.FatBoundsOfLive(Proxy[sb]);
             double a0, a1, a2, a3, a4, a5, b0, b1, b2, b3, b4, b5;
             if (_boxStamp[sa] == _stamp) { int o = 6 * sa; a0 = _boxes[o]; a1 = _boxes[o + 1]; a2 = _boxes[o + 2]; a3 = _boxes[o + 3]; a4 = _boxes[o + 4]; a5 = _boxes[o + 5]; }
             else { a0 = fa.MinX; a1 = fa.MinY; a2 = fa.MinZ; a3 = fa.MaxX; a4 = fa.MaxY; a5 = fa.MaxZ; }

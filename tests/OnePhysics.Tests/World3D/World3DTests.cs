@@ -328,6 +328,30 @@ public class World3DTests
         Assert.InRange(maxUp, -1f, 0.03f);
     }
 
+    /// <summary>A flat height field has a seam along every cell edge and diagonal: a spinning sphere sliding over it must not be kicked either.</summary>
+    [Theory]
+    [InlineData(20f)]
+    [InlineData(-20f)]
+    public void ASpinningSphereSlidingOverHeightFieldSeamsIsNotKickedUp(float spin)
+    {
+        var w = NewWorld(tweak: o => o.SleepEnabled = false);
+        const int N = 17;
+        w.AddHeightField(new float[N * N], N, N, new Vector3F(1f, 1f, 1f), new Vector3D(-8, 0, -8), material: Ice);
+        var ball = w.AddSphere(0.3f, new Vector3D(-6, 0.3, -5.3), material: Ice);
+        for (int i = 0; i < 90; i++) { w.Step(Dt); }
+        ball.LinearVelocity = new Vector3F(6f, 0f, 0.8f);
+        ball.AngularVelocity = new Vector3F(0f, 0f, spin);
+        float maxUp = 0f;
+        for (int i = 0; i < 120; i++)
+        {
+            w.Step(Dt);
+            maxUp = Math.Max(maxUp, ball.LinearVelocity.Y);
+        }
+
+        Assert.InRange(maxUp, -1f, 0.03f);
+        Assert.True(ball.Position.X > 0.0, "the ball did not slide: x = " + ball.Position.X);
+    }
+
     [Fact]
     public void AStaleBodyFailsClearly()
     {
