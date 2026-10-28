@@ -370,3 +370,10 @@ Correction to earlier notes: the polyhedron separating-axis test exists and is a
 * **Pair table** is the open-addressing `PairTable` of 2D; the broadphase pair filter drops pairs that already have an entry.
 * `IntegrateVelocities` reads through unchecked accessors (bounds checked in the Checked build).
 * Not worth it (measured): a transposed three-float scatter of velocities, inlining the row methods back, and removing the zeroing of unused point slots.
+
+### Round 11: the rest of the inlining hunt (no result changes)
+
+* Contact preparation (effective masses, relative normal velocity), the joint block's anchor setup, the warm-start rolling impulse and the rolling-resistance total moved into their own non-inlined methods, so no lane operation in the contact or joint kernels is left as a call (checked by listing the compiled code's calls). Every hash-matrix line is unchanged.
+* Triangle-soup pairs look up the per-thread buffers once per pair instead of once per triangle.
+* 2D kernels were checked the same way: nothing left to split.
+* Measured (a loaded shared host, indicative): whole-step changes are within noise, about 1.05× at best on the joint and ragdoll scenes at one thread. The remaining gap to the fastest managed engine is the cost of gather and scatter around the solver, per-pair narrowphase overhead and the four substeps, not the inlining.
