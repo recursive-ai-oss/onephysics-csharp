@@ -8,7 +8,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// A rigid body you can hold: a small struct (world, slot, generation) that allocates nothing. Every member fails with a clear <see cref="InvalidHandleException"/> once the body is destroyed
 /// or when used on the default value. Positions are doubles in world coordinates; velocities, forces and orientation are float32.
 /// </summary>
-public readonly struct Body : IEquatable<Body>
+public readonly partial struct Body : IEquatable<Body>
 {
     private readonly PhysicsWorld3D? _world;
     private readonly BodyHandle _handle;
@@ -277,40 +277,6 @@ public readonly struct Body : IEquatable<Body>
         return list.ToArray();
     }
 
-    /// <summary>Raised after a step when a shape of this body starts touching another body (within the speculative distance). Handlers run in the core's event order.</summary>
-    public event Action<Collision> OnCollisionEnter
-    {
-        add { Subscribe(0, value); }
-        remove { Unsubscribe(0, value); }
-    }
-
-    /// <summary>Raised after every step while a contact persists; needs <see cref="EventMask.ContactPersist"/> in the world options.</summary>
-    public event Action<Collision> OnCollisionStay
-    {
-        add { Subscribe(1, value); }
-        remove { Unsubscribe(1, value); }
-    }
-
-    /// <summary>Raised after a step when a contact ends.</summary>
-    public event Action<Collision> OnCollisionExit
-    {
-        add { Subscribe(2, value); }
-        remove { Unsubscribe(2, value); }
-    }
-
-    private void Subscribe(int kind, Action<Collision> handler)
-    {
-        ArgumentNullException.ThrowIfNull(handler);
-        if (_world == null) { throw new InvalidHandleException("The default Body is not attached to a world."); }
-        _world.AddHandler(_handle, kind, handler);
-    }
-
-    private void Unsubscribe(int kind, Action<Collision> handler)
-    {
-        if (_world == null || handler == null) { return; }
-        _world.RemoveHandler(_handle, kind, handler);
-    }
-
     /// <inheritdoc />
     public bool Equals(Body other) => ReferenceEquals(_world, other._world) && _handle == other._handle;
 
@@ -331,7 +297,7 @@ public readonly struct Body : IEquatable<Body>
 }
 
 /// <summary>A shape handle: geometry attached to a body, with its material and filter. Fails clearly once destroyed.</summary>
-public readonly struct Shape : IEquatable<Shape>
+public readonly partial struct Shape : IEquatable<Shape>
 {
     private readonly PhysicsWorld3D? _world;
     private readonly ShapeHandle _handle;

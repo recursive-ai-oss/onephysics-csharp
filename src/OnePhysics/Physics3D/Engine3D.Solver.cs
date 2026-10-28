@@ -473,7 +473,7 @@ internal sealed partial class Engine3D
         public bool Report(int key, int userId)
         {
             var e = E;
-            if (!e.CanCollide(MoverShape, userId)) { return true; }
+            if (e.IsSensor(MoverShape) || e.IsSensor(userId) || !e.CanCollide(MoverShape, userId)) { return true; }
             var core = e.Core;
             int sb = core.Shapes.Owner[userId];
             var bodies = core.Bodies;

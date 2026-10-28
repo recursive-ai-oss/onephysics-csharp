@@ -32,8 +32,11 @@ public enum DebugContent
     /// <summary>One entry per character with its capsule, ground state and ground normal (<see cref="DebugGeometry.Characters"/>); worlds without characters emit none.</summary>
     Characters = 64,
 
+    /// <summary>With <see cref="Shapes"/>: triangle meshes and height fields emit their triangles too (large; off by default). Ignored by 2D worlds.</summary>
+    MeshTriangles = 128,
+
     /// <summary>Everything.</summary>
-    All = 127,
+    All = 255,
 }
 
 /// <summary>The kind of a <see cref="DebugShape"/>. The same enum serves 2D and 3D worlds; a 2D world emits the first five.</summary>
@@ -53,6 +56,24 @@ public enum DebugShapeKind : byte
 
     /// <summary>Two points of a chain (ghost vertices are not emitted).</summary>
     ChainSegment = 4,
+
+    /// <summary>3D: the eight corners of a box (x, y, z bits of the index choose the sign; corner 0 is the lowest), rounded by the radius; twelve triangles in <see cref="DebugGeometry.Indices"/>.</summary>
+    Box = 5,
+
+    /// <summary>3D: the two ends of the axis and the radius.</summary>
+    Cylinder = 6,
+
+    /// <summary>3D: the two cap centres; <see cref="DebugShape.Radius"/> is the first cap's radius and <see cref="DebugShape.BottomRadius"/> the second's.</summary>
+    TaperedCapsule = 7,
+
+    /// <summary>3D: the hull's vertices; its faces as triangles (a fan per face, outward winding) in <see cref="DebugGeometry.Indices"/>.</summary>
+    Hull = 8,
+
+    /// <summary>3D: the mesh's vertices; its triangles in <see cref="DebugGeometry.Indices"/> only with <see cref="DebugContent.MeshTriangles"/>. The points are the mesh's bounding box corners otherwise.</summary>
+    Mesh = 9,
+
+    /// <summary>3D: like <see cref="Mesh"/> for a height field; holes have no triangles.</summary>
+    HeightField = 10,
 }
 
 /// <summary>How a body takes part right now.</summary>
@@ -79,6 +100,22 @@ public readonly struct DebugShape
     {
         Body = body; Shape = shape; Kind = kind; IsSensor = isSensor; Radius = radius; FirstPoint = firstPoint; PointCount = pointCount;
     }
+
+    /// <summary>Creates an entry with a second radius and triangle indices (3D shapes).</summary>
+    public DebugShape(BodyHandle body, ShapeHandle shape, DebugShapeKind kind, bool isSensor, float radius, int firstPoint, int pointCount, float bottomRadius, int firstIndex, int indexCount)
+        : this(body, shape, kind, isSensor, radius, firstPoint, pointCount)
+    {
+        BottomRadius = bottomRadius; FirstIndex = firstIndex; IndexCount = indexCount;
+    }
+
+    /// <summary>Tapered capsules: the second cap's radius; otherwise 0.</summary>
+    public float BottomRadius { get; }
+
+    /// <summary>Index of the first triangle corner in <see cref="DebugGeometry.Indices"/>; the entry's triangles are <see cref="IndexCount"/> values from there, three per triangle, each a point index relative to <see cref="FirstPoint"/>.</summary>
+    public int FirstIndex { get; }
+
+    /// <summary>Number of triangle corner indices (0 for shapes drawn from their points alone).</summary>
+    public int IndexCount { get; }
 
     /// <summary>The owning body.</summary>
     public BodyHandle Body { get; }
@@ -199,6 +236,28 @@ public readonly struct DebugJoint
         Axis = axis;
     }
 
+    /// <summary>Creates an entry with the limits of a 3D joint.</summary>
+    public DebugJoint(JointHandle joint, BodyHandle bodyA, BodyHandle bodyB, Vector3D anchorA, Vector3D anchorB, Vector3D axis, Vector3D referenceAxis, int type, float lowerLimit, float upperLimit, float coneAngle)
+        : this(joint, bodyA, bodyB, anchorA, anchorB, axis)
+    {
+        ReferenceAxis = referenceAxis; Type = type; LowerLimit = lowerLimit; UpperLimit = upperLimit; ConeAngle = coneAngle;
+    }
+
+    /// <summary>3D: the joint's second main axis (frame B's x axis in world coordinates); with <see cref="Axis"/> (frame A's x axis) it spans a limit cone. Zero for 2D joints.</summary>
+    public Vector3D ReferenceAxis { get; }
+
+    /// <summary>3D: the joint type as the world's joint-type enum value; 0 for 2D joints.</summary>
+    public int Type { get; }
+
+    /// <summary>3D: lower limit (radians for angular limits, metres for linear), 0 when the joint has none.</summary>
+    public float LowerLimit { get; }
+
+    /// <summary>3D: upper limit; see <see cref="LowerLimit"/>.</summary>
+    public float UpperLimit { get; }
+
+    /// <summary>3D: the cone half angle of a cone or swing-twist joint's swing limit in radians, 0 otherwise.</summary>
+    public float ConeAngle { get; }
+
     /// <summary>The joint.</summary>
     public JointHandle Joint { get; }
 
@@ -263,6 +322,8 @@ public sealed class DebugGeometry
     private DebugBody[] _bodies = new DebugBody[16];
     private DebugJoint[] _joints = new DebugJoint[4];
     private DebugCharacter[] _characters = new DebugCharacter[4];
+    private int[] _indices = new int[64];
+    private int _nIndices;
     private int _nShapes, _nPoints, _nBounds, _nFat, _nContacts, _nBodies, _nJoints, _nCharacters;
 
     /// <summary>The shapes in world space.</summary>
@@ -270,6 +331,9 @@ public sealed class DebugGeometry
 
     /// <summary>The points the shapes refer to.</summary>
     public ReadOnlySpan<Vector3D> Points => _points.AsSpan(0, _nPoints);
+
+    /// <summary>Triangle corner indices of 3D shapes, each relative to its shape's first point.</summary>
+    public ReadOnlySpan<int> Indices => _indices.AsSpan(0, _nIndices);
 
     /// <summary>Tight shape boxes.</summary>
     public ReadOnlySpan<DebugBox> Bounds => _bounds.AsSpan(0, _nBounds);
@@ -290,7 +354,7 @@ public sealed class DebugGeometry
     public ReadOnlySpan<DebugCharacter> Characters => _characters.AsSpan(0, _nCharacters);
 
     /// <summary>Empties every list (capacity is kept).</summary>
-    public void Clear() => _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = 0;
+    public void Clear() => _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = 0;
 
     private static void Push<T>(ref T[] a, ref int n, in T v)
     {
@@ -300,6 +364,9 @@ public sealed class DebugGeometry
 
     /// <summary>Appends a point and returns its index (for engines filling the buffer).</summary>
     public int AddPoint(in Vector3D p) { int i = _nPoints; Push(ref _points, ref _nPoints, in p); return i; }
+
+    /// <summary>Appends a triangle corner index and returns its position.</summary>
+    public int AddIndex(int i) { int k = _nIndices; Push(ref _indices, ref _nIndices, in i); return k; }
 
     /// <summary>Appends a shape entry.</summary>
     public void Add(in DebugShape s) => Push(ref _shapes, ref _nShapes, in s);
