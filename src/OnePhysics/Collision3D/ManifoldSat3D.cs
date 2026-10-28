@@ -85,21 +85,48 @@ public sealed partial class ManifoldGenerator3D
             Vector3F[] vs = V, ns = N;
             float[] ds = D;
             Vector3F sum = default;
-            for (int i = 0; i < nv; i++)
+            bool placedBox = box && transform;
+            if (placedBox)
             {
-                Vector3F v = box ? hv[i] * size : hv[i];
-                if (transform) { v = r.Transform(v) + t; }
-                vs[i] = v;
-                sum += v;
+                // A placed box is its centre plus or minus its three half-extent columns: the corners are sums of the scaled columns with signs, not eight matrix products.
+                Vector3F c0 = r.Transform(new Vector3F(size.X, 0f, 0f)), c1 = r.Transform(new Vector3F(0f, size.Y, 0f)), c2 = r.Transform(new Vector3F(0f, 0f, size.Z));
+                for (int i = 0; i < nv; i++)
+                {
+                    Vector3F h = hv[i];
+                    vs[i] = new Vector3F(
+                        t.X + (h.X > 0f ? c0.X : -c0.X) + (h.Y > 0f ? c1.X : -c1.X) + (h.Z > 0f ? c2.X : -c2.X),
+                        t.Y + (h.X > 0f ? c0.Y : -c0.Y) + (h.Y > 0f ? c1.Y : -c1.Y) + (h.Z > 0f ? c2.Y : -c2.Y),
+                        t.Z + (h.X > 0f ? c0.Z : -c0.Z) + (h.Y > 0f ? c1.Z : -c1.Z) + (h.Z > 0f ? c2.Z : -c2.Z));
+                }
+
+                Center = t;
+            }
+            else
+            {
+                for (int i = 0; i < nv; i++)
+                {
+                    Vector3F v = box ? hv[i] * size : hv[i];
+                    if (transform) { v = r.Transform(v) + t; }
+                    vs[i] = v;
+                    sum += v;
+                }
+
+                Center = sum / nv;
             }
 
-            Center = sum / nv;
             for (int f = 0; f < nf; f++)
             {
                 Vector3F n = hf[f].Normal;
                 if (transform) { n = r.Transform(n); }
                 ns[f] = n;
                 ds[f] = Vector3F.Dot(n, vs[he[hf[f].FirstEdge].Origin]);
+            }
+
+            if (box)
+            {
+                // Every corner of a box is the same distance from its centre.
+                Radius = ConvexShape3D.Sqrt(size.LengthSquared());
+                return;
             }
 
             float m = 0f;
@@ -127,23 +154,29 @@ public sealed partial class ManifoldGenerator3D
     {
         float rA = a.ConvexRadius, rB = b.ConvexRadius, rr = rA + rB;
         Matrix3x3F r = bInA.Rotation.ToMatrix();
-        // Shape A is loaded in its own frame, so what Load makes depends on the shape alone; consecutive pairs of a chunk often share A (pairs are listed by A first), and the work is skipped for them.
-        // Only boxes are remembered: their hull is the shared unit cube, whereas a hull-kind shape may be a reused buffer (the triangle of a mesh contact) whose points change between calls.
-        if (!(_paLoaded && a.Kind == ConvexShapeKind3D.Box && _paHull != null && a.CoreSize.X == _paSize.X && a.CoreSize.Y == _paSize.Y && a.CoreSize.Z == _paSize.Z))
+        PolyData pa = _pa, pb = _pb;
+        bool boxes = a.Kind == ConvexShapeKind3D.Box && b.Kind == ConvexShapeKind3D.Box;
+        Vector3F tB = bInA.Translation;
+        float sepA, sepB;
+        int faceA, faceB;
+        if (boxes)
         {
-            _pa.Load(a, false, r, default);
-            _paHull = a.Kind == ConvexShapeKind3D.Box ? s_unitBox : null;
-            _paSize = a.CoreSize;
-            _paLoaded = true;
+            // Two boxes: the face axes come from the boxes' half extents and the relative rotation; neither box is expanded into vertices unless the test finds a contact to build.
+            BoxFaces(a.CoreSize, b.CoreSize, r, tB, out sepA, out faceA, out sepB, out faceB);
+            pa.Radius = ConvexShape3D.Sqrt(a.CoreSize.LengthSquared()); pb.Radius = ConvexShape3D.Sqrt(b.CoreSize.LengthSquared());
+            pa.Center = default; pb.Center = tB;
+        }
+        else
+        {
+            LoadPair(a, b, r, tB);
+            sepA = float.NaN; sepB = float.NaN; faceA = 0; faceB = 0;
         }
 
-        _pb.Load(b, true, r, bInA.Translation);
-        PolyData pa = _pa, pb = _pb;
         float scale = pa.Radius + pb.Radius + Math.Max(1e-20f, (pb.Center - pa.Center).Length());
         float tol = 5e-4f * (pa.Radius + pb.Radius);
         float limit = rr + margin;
 
-        float sepA = FaceQuery(pa, pb, out int faceA);
+        if (!boxes) { sepA = FaceQuery(pa, pb, out faceA); }
         if (sepA > limit)
         {
             // The face plane separates the cores by sepA, so the shapes are at least this far apart whatever the edges say.
@@ -151,7 +184,7 @@ public sealed partial class ManifoldGenerator3D
             return Empty;
         }
 
-        float sepB = FaceQuery(pb, pa, out int faceB);
+        if (!boxes) { sepB = FaceQuery(pb, pa, out faceB); }
         if (sepB > limit)
         {
             ClearanceOut = sepB - limit;
@@ -171,7 +204,7 @@ public sealed partial class ManifoldGenerator3D
         }
         else
         {
-            sepE = EdgeQuery(pa, pb, out edgeA, out edgeB, out axisE);
+            sepE = boxes ? BoxEdges(a.CoreSize, b.CoreSize, r, tB, out edgeA, out edgeB, out axisE) : EdgeQuery(pa, pb, out edgeA, out edgeB, out axisE);
             HintOut = default;
         }
 
@@ -192,9 +225,20 @@ public sealed partial class ManifoldGenerator3D
             return Empty;
         }
 
+        if (boxes) { LoadPair(a, b, r, tB); }
         ConvexContact3D c = default;
         bool haveC = false;
-        if (best > 0f)
+        // A face axis whose nearest vertex of the other core lies over the face itself measures the true distance: that vertex and its projection on the face are the closest points of the two cores,
+        // exactly what GJK would return, so they are written down directly. Only the other cases (a vertex or edge past the face's rim, where the axis test can under-estimate the gap) need GJK to confirm.
+        if (best > 0f && !useEdge && NearestVertexOverFace(useB ? pb : pa, useB ? pa : pb, useB ? faceB : faceA, out Vector3F nearest))
+        {
+            Vector3F nFace = useB ? -pb.N[faceB] : pa.N[faceA];
+            Vector3F coreA = useB ? nearest : nearest - (nFace * best);
+            Vector3F coreB = useB ? nearest + (nFace * best) : nearest;
+            c = new ConvexContact3D(best - rr, nFace, coreA + (nFace * rA), coreB - (nFace * rB));
+            haveC = true;
+        }
+        else if (best > 0f)
         {
             // Separated cores: the axis test may under-estimate the gap near vertex-vertex and vertex-edge closest pairs. Ask GJK and defer to it when it disagrees.
             c = _epa.Collide(a, b, bInA);
@@ -250,6 +294,55 @@ public sealed partial class ManifoldGenerator3D
         }
 
         return m;
+    }
+
+    // Shape A is loaded in its own frame, so what Load makes depends on the shape alone; consecutive pairs of a chunk often share A (pairs are listed by A first), and the work is skipped for them.
+    // Only boxes are remembered: their hull is the shared unit cube, whereas a hull-kind shape may be a reused buffer (the triangle of a mesh contact) whose points change between calls.
+    private void LoadPair(in ConvexShape3D a, in ConvexShape3D b, in Matrix3x3F r, Vector3F t)
+    {
+        if (!(_paLoaded && a.Kind == ConvexShapeKind3D.Box && _paHull != null && a.CoreSize.X == _paSize.X && a.CoreSize.Y == _paSize.Y && a.CoreSize.Z == _paSize.Z))
+        {
+            _pa.Load(a, false, r, default);
+            _paHull = a.Kind == ConvexShapeKind3D.Box ? s_unitBox : null;
+            _paSize = a.CoreSize;
+            _paLoaded = true;
+        }
+
+        _pb.Load(b, true, r, t);
+    }
+
+    // Whether the vertex of q nearest to the plane of p's face lies, projected along the face normal, inside the face's polygon (on its boundary counts).
+    private static bool NearestVertexOverFace(PolyData p, PolyData q, int face, out Vector3F nearest)
+    {
+        Vector3F n = p.N[face];
+        int v = 0;
+        float lo = float.PositiveInfinity;
+        for (int i = 0; i < q.NV; i++)
+        {
+            float d = Vector3F.Dot(n, q.V[i]);
+            if (d < lo) { lo = d; v = i; }
+        }
+
+        Vector3F x = q.V[v];
+        nearest = x;
+        ReadOnlySpan<HullEdge3D> edges = p.Hull.Edges;
+        HullFace3D hf = p.Hull.Faces[face];
+        int count = hf.EdgeCount;
+        Vector3F cen = default;
+        int e = hf.FirstEdge;
+        for (int k = 0; k < count; k++) { cen += p.V[edges[e].Origin]; e = edges[e].Next; }
+        cen /= count;
+        e = hf.FirstEdge;
+        for (int k = 0; k < count; k++)
+        {
+            Vector3F a = p.V[edges[e].Origin], b = p.V[edges[edges[e].Next].Origin];
+            Vector3F s = Vector3F.Cross(b - a, n);
+            if (Vector3F.Dot(s, cen - a) < 0f) { s = -s; }
+            if (Vector3F.Dot(s, x - a) < 0f) { return false; }
+            e = edges[e].Next;
+        }
+
+        return true;
     }
 
     private static void AddEdge(Feat f, PolyData p, int halfEdge, Vector3F shift)

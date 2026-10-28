@@ -418,9 +418,10 @@ internal sealed partial class Engine3D
             float tx = Mem.At(torque, b3), ty = Mem.At(torque, b3 + 1), tz = Mem.At(torque, b3 + 2);
             if (tx != 0f || ty != 0f || tz != 0f) { w += Apply(wInvI.Slice(6 * b, 6), new Vector3F(tx, ty, tz)) * h; }
             if ((Mem.At(flags, b) & 2) != 0) { w = Gyroscopic(b, w, h, rot); }
-            float dl = 1f / (1f + h * Mem.At(linDamping, b));
-            float da = 1f / (1f + h * Mem.At(angDamping, b));
-            vx *= dl; vy *= dl; vz *= dl; w *= da;
+            // Zero damping (the default) scales by exactly one, so the divisions are skipped.
+            float ld = Mem.At(linDamping, b), ad = Mem.At(angDamping, b);
+            if (ld != 0f) { float dl = 1f / (1f + h * ld); vx *= dl; vy *= dl; vz *= dl; }
+            if (ad != 0f) { w *= 1f / (1f + h * ad); }
             float v2 = vx * vx + vy * vy + vz * vz;
             if (v2 > maxSpeed2)
             {
