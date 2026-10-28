@@ -500,6 +500,18 @@ public sealed class WorldCore
         _constraints.Handles.Free(c);
     }
 
+    /// <summary>
+    /// Queues a sensor enter or exit event for a pair of shapes (slots, A below B). Sensor overlaps are kept in the engines' pair tables, not as constraints,
+    /// so that a sensor never takes a constraint slot or a color that a contact could have had. Serial, like <see cref="AddConstraint"/>.
+    /// </summary>
+    internal void EmitSensorEvent(bool enter, int shapeA, int shapeB)
+    {
+        var kind = enter ? EventKind.SensorEnter : EventKind.SensorExit;
+        if (!_events.Wants(kind)) { return; }
+        var shapes = _shapes;
+        _events.Emit(0, new PhysicsEvent(kind, HandleOfBody(shapes.Owner[shapeA]), HandleOfBody(shapes.Owner[shapeB]), HandleOfShape(shapeA), HandleOfShape(shapeB), 0, 0, default, 0f));
+    }
+
     private void EmitConstraintEvent(EventKind kind, int c, bool withShapes, float value)
     {
         if (!_events.Wants(kind)) { return; }

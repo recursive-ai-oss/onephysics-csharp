@@ -102,6 +102,7 @@ internal sealed partial class Engine3D
         for (int p = 0; p < PairHigh; p++)
         {
             if (!PairLive[p] || PairAllowed(PairA[p], PairB[p])) { continue; }
+            EndSensorOverlap(p);
             for (int c = PairCons[p]; c >= 0;)
             {
                 int next = ConsNext[c];
@@ -124,7 +125,8 @@ internal sealed partial class Engine3D
     // ------------------------------------------------------------------ sensors in the contact stage
 
     /// <summary>
-    /// A sensor pair has one constraint that is never solved: it exists while the shapes overlap (some manifold point with separation at most 0) and gives the enter and exit events.
+    /// A sensor pair is marked while the shapes overlap (some manifold point with separation at most 0) and gives the enter and exit events. The mark lives in the pair table, not in a constraint,
+    /// so a sensor never takes a constraint slot or a color that a contact could have had.
     /// </summary>
     private void ApplySensorPair(WorldCore world, int p, NarrowScratch sc, int first, int count, ReadOnlySpan<int> owner)
     {
@@ -140,18 +142,12 @@ internal sealed partial class Engine3D
         }
 
         int c = PairCons[p];
-        if (overlap && c < 0)
+        if (overlap && c == -1)
         {
-            c = world.AddConstraint(new ConstraintDesc { Kind = ConstraintKind.Sensor, BodyA = world.HandleOfBody(owner[sa]), BodyB = world.HandleOfBody(owner[sb]), ShapeA = world.HandleOfShape(sa), ShapeB = world.HandleOfShape(sb) });
-            Grow(ref ConsNext, c + 1);
-            ConsNext[c] = -1;
-            PairCons[p] = c;
+            PairCons[p] = SensorOverlap;
+            world.EmitSensorEvent(true, sa, sb);
         }
-        else if (!overlap && c >= 0)
-        {
-            world.RemoveConstraint(c);
-            PairCons[p] = -1;
-        }
+        else if (!overlap && c == SensorOverlap) { EndSensorOverlap(p); }
     }
 
     // ------------------------------------------------------------------ hit events

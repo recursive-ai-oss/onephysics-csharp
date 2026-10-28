@@ -79,6 +79,11 @@ internal sealed partial class Engine3D : ISnapshotSection
     public int PairHigh;
     public int[] PairFree = new int[8];
     public int PairFreeCount;
+    // Pairs with a sensor shape take their slots from their own free stack, so that contact pairs get the same slots relative to each other whether or not a sensor is in the world
+    // (the order of slots is the order contacts are added and colored). An overlapping sensor pair has PairCons = SensorOverlap; it owns no constraint.
+    public int[] SensorFree = new int[8];
+    public int SensorFreeCount;
+    public const int SensorOverlap = -2;
     public readonly Dictionary<long, int> PairMap = new();
     public int[] ConsNext = new int[8];           // next constraint in the pair's chain, indexed by constraint slot
 
@@ -488,7 +493,8 @@ internal sealed partial class Engine3D : ISnapshotSection
     private int AllocatePair(int a, int b)
     {
         int p;
-        if (PairFreeCount > 0) { p = PairFree[--PairFreeCount]; }
+        bool sensor = IsSensor(a) || IsSensor(b);
+        if (sensor ? SensorFreeCount > 0 : PairFreeCount > 0) { p = sensor ? SensorFree[--SensorFreeCount] : PairFree[--PairFreeCount]; }
         else
         {
             p = PairHigh++;
@@ -506,8 +512,23 @@ internal sealed partial class Engine3D : ISnapshotSection
         PairMap.Remove(PairKey(PairA[p], PairB[p]));
         PairLive[p] = false;
         PairCons[p] = -1;
+        if (IsSensor(PairA[p]) || IsSensor(PairB[p]))
+        {
+            Grow(ref SensorFree, SensorFreeCount + 1);
+            SensorFree[SensorFreeCount++] = p;
+            return;
+        }
+
         Grow(ref PairFree, PairFreeCount + 1);
         PairFree[PairFreeCount++] = p;
+    }
+
+    /// <summary>Ends an overlapping sensor pair's overlap with an exit event; does nothing for other pairs. The pair keeps its slot.</summary>
+    private void EndSensorOverlap(int p)
+    {
+        if (PairCons[p] != SensorOverlap) { return; }
+        Core.EmitSensorEvent(false, PairA[p], PairB[p]);
+        PairCons[p] = -1;
     }
 
     /// <summary>Forgets every pair that involves the shape. The constraints go with the body or shape in the core; this only clears the table.</summary>
@@ -515,7 +536,12 @@ internal sealed partial class Engine3D : ISnapshotSection
     {
         for (int p = 0; p < PairHigh; p++)
         {
-            if (PairLive[p] && (PairA[p] == s || PairB[p] == s)) { FreePair(p); }
+            if (PairLive[p] && (PairA[p] == s || PairB[p] == s))
+            {
+                // The core removes a destroyed body's contact constraints itself; an overlapping sensor pair has none, so its exit is reported here, while the handles are still valid.
+                EndSensorOverlap(p);
+                FreePair(p);
+            }
         }
     }
 
@@ -598,14 +624,17 @@ internal sealed partial class Engine3D : ISnapshotSection
             w.WriteBool(PairLive[p]);
             if (!PairLive[p]) { continue; }
             w.WriteInt32(PairA[p]); w.WriteInt32(PairB[p]);
+            if (PairCons[p] == SensorOverlap) { w.WriteInt32(1); w.WriteInt32(SensorOverlap); continue; } // an overlapping sensor pair: a chain holding the marker
             int n = 0;
             for (int c = PairCons[p]; c >= 0; c = ConsNext[c]) { n++; }
             w.WriteInt32(n);
             for (int c = PairCons[p]; c >= 0; c = ConsNext[c]) { w.WriteInt32(c); }
         }
 
-        w.WriteInt32(PairFreeCount);
+        // The contact stack bottom to top, then the sensor stack as complements (~slot); a world without sensor pairs writes the same bytes as before.
+        w.WriteInt32(PairFreeCount + SensorFreeCount);
         w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
+        for (int i = 0; i < SensorFreeCount; i++) { w.WriteInt32(~SensorFree[i]); }
         if (joints || services || chars || vehs || rags || fluids)
         {
             // Version 2: a presence-flags word, then the flagged blocks in a fixed order: joints, services (layers, filters, sensors), characters.
@@ -721,6 +750,16 @@ internal sealed partial class Engine3D : ISnapshotSection
             if (pa[p] < 0 || pb[p] <= pa[p] || pb[p] >= ns || !live[pa[p]] || !live[pb[p]]) { throw r.Error("invalid pair"); }
             int n = r.ReadCount(4, "pair constraints");
             chainLen[p] = n;
+            if (n == 1)
+            {
+                int first = r.ReadInt32();
+                if (first == SensorOverlap) { chainLen[p] = -1; continue; }
+                if (first < 0 || first >= 1 << 26) { throw r.Error("invalid pair constraint"); }
+                if (first >= maxCons) { maxCons = first + 1; }
+                chains.Add(first);
+                continue;
+            }
+
             for (int i = 0; i < n; i++)
             {
                 int c = r.ReadInt32();
@@ -735,7 +774,8 @@ internal sealed partial class Engine3D : ISnapshotSection
         r.ReadInt32s(free.AsSpan(0, nf));
         for (int i = 0; i < nf; i++)
         {
-            if (free[i] < 0 || free[i] >= np || pl[free[i]]) { throw r.Error("invalid free pair"); }
+            int slot = free[i] < 0 ? ~free[i] : free[i];
+            if (slot < 0 || slot >= np || pl[slot]) { throw r.Error("invalid free pair"); }
         }
 
         JointData3D[]? joints = null;
@@ -799,6 +839,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         {
             if (!pl[p]) { continue; }
             int n = chainLen[p];
+            if (n < 0) { pc[p] = SensorOverlap; continue; }
             pc[p] = n > 0 ? chains[cursor] : -1;
             for (int i = 0; i + 1 < n; i++) { consNext[chains[cursor + i]] = chains[cursor + i + 1]; }
             cursor += n;
@@ -824,7 +865,14 @@ internal sealed partial class Engine3D : ISnapshotSection
         (Rolling, _sRo) = (_sRo, Rolling); (Density, _sDe) = (_sDe, Density); (Category, _sCat) = (_sCat, Category); (Mask, _sMask) = (_sMask, Mask); (Group, _sGrp) = (_sGrp, Group); (NextShape, _sNext) = (_sNext, NextShape);
         EnsureShapes(Math.Max(ns, 1));
         (PairA, _sPa) = (_sPa, PairA); (PairB, _sPb) = (_sPb, PairB); (PairCons, _sPc) = (_sPc, PairCons); (PairLive, _sPl) = (_sPl, PairLive); PairHigh = np;
-        (PairFree, _sFree) = (_sFree, PairFree); PairFreeCount = nf; (ConsNext, _sConsNext) = (_sConsNext, ConsNext);
+        PairFreeCount = 0; SensorFreeCount = 0;
+        Grow(ref PairFree, nf); Grow(ref SensorFree, nf);
+        for (int i = 0; i < nf; i++)
+        {
+            if (free[i] < 0) { SensorFree[SensorFreeCount++] = ~free[i]; } else { PairFree[PairFreeCount++] = free[i]; }
+        }
+
+        (ConsNext, _sConsNext) = (_sConsNext, ConsNext);
         CommitServices(services, ns);
         CommitCharacters(characters);
         CommitVehicles(vehicles);
@@ -898,10 +946,16 @@ internal sealed partial class Engine3D : ISnapshotSection
         for (int p = 0; p < PairHigh; p++)
         {
             if (!PairLive[p]) { continue; }
+            if (PairCons[p] == SensorOverlap)
+            {
+                if (!(IsSensor(PairA[p]) || IsSensor(PairB[p]))) { return false; }
+                continue;
+            }
+
             int steps = 0, prevA = -1, prevB = -1;
             for (int c = PairCons[p]; c >= 0; c = c < ConsNext.Length ? ConsNext[c] : -1)
             {
-                if (!cons.IsLive(c) || (cons.KindOf(c) != ConstraintKind.Contact && cons.KindOf(c) != ConstraintKind.Sensor) || cons.ShapeA[c] != PairA[p] || cons.ShapeB[c] != PairB[p] || ++steps > cons.HighWater) { return false; }
+                if (!cons.IsLive(c) || cons.KindOf(c) != ConstraintKind.Contact || cons.ShapeA[c] != PairA[p] || cons.ShapeB[c] != PairB[p] || ++steps > cons.HighWater) { return false; }
                 int sa = cons.SubShapeA[c], sb = cons.SubShapeB[c];
                 if (sa < prevA || (sa == prevA && sb <= prevB)) { return false; }
                 prevA = sa; prevB = sb;
@@ -913,7 +967,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         int contacts = 0;
         for (int c = 0; c < cons.HighWater; c++)
         {
-            if (cons.IsLive(c) && (cons.KindOf(c) == ConstraintKind.Contact || cons.KindOf(c) == ConstraintKind.Sensor)) { contacts++; }
+            if (cons.IsLive(c) && cons.KindOf(c) == ConstraintKind.Contact) { contacts++; }
         }
 
         return contacts == seen;
