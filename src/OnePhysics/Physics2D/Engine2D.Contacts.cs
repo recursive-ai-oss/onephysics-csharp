@@ -103,7 +103,7 @@ internal sealed partial class Engine2D
 
     private int[] _updateList = new int[64];
     private PairResult[] _results = new PairResult[64];
-    private int _updateCount;
+    private int _collideBlocks;
 
     // ------------------------------------------------------------------ contact stage
 
@@ -134,7 +134,11 @@ internal sealed partial class Engine2D
             {
                 int s = movers[i];
                 int b = world.Shapes.Owner[s];
-                Bp.MoveProxy(Proxy[s], new Aabb2D(_boxes[4 * s], _boxes[4 * s + 1], _boxes[4 * s + 2], _boxes[4 * s + 3]), Dp[2 * b], Dp[2 * b + 1]);
+                ref ShapeBox sb = ref _sbox[s];
+                Bp.MoveProxy(Proxy[s], new Aabb2D(sb.TMinX, sb.TMinY, sb.TMaxX, sb.TMaxY), Dp[2 * b], Dp[2 * b + 1]);
+                // The proxy's stored box changed: keep the copy the pair loop reads in step with it.
+                ref readonly Aabb2D fat = ref Bp.FatBoundsOfLive(Proxy[s]);
+                sb.FMinX = fat.MinX; sb.FMinY = fat.MinY; sb.FMaxX = fat.MaxX; sb.FMaxY = fat.MaxY;
             }
         }
         // 2. Start-of-step pose and zero accumulated motion for every body (sleeping bodies may wake during the stage). Bodies are independent, so this runs in blocks.
@@ -165,24 +169,15 @@ internal sealed partial class Engine2D
         if (_updateList.Length < need) { _updateList = new int[Math.Max(need, _updateList.Length * 2)]; _results = new PairResult[_updateList.Length]; _actItems = new int[_updateList.Length]; }
         if (_actCounts.Length < need / 64) { _actCounts = new int[Math.Max(need / 64, _actCounts.Length * 2)]; _recycledCounts = new int[_actCounts.Length]; }
         var owner = world.Shapes.Owner;
-        int listBlocks = (PairHigh + 1023) / 1024;
-        if (_blockCounts.Length < listBlocks) { _blockCounts = new int[Math.Max(listBlocks, _blockCounts.Length * 2)]; }
-        world.Executor.For(listBlocks, new UpdateListTask(this, anyFresh));
-        // Each block wrote its pairs at the start of its own 1024 slots, in pair order; closing the gaps in block order gives the list a single serial loop would have built.
-        _updateCount = 0;
+        // 5. Manifolds, in parallel, in blocks of 64 pair slots: a block picks its pairs that need updating and computes them in the same pass, writing its own part of the lists and results
+        // (entry i of the sparse list is slot block * 64 + k for the block's k-th pair to update), so a pair's records are read once. Walking the blocks in order walks the pairs in pair order.
+        int chunks = (PairHigh + 63) / 64;
+        if (_blockCounts.Length < chunks) { _blockCounts = new int[Math.Max(chunks, _blockCounts.Length * 2)]; }
+        _collideBlocks = chunks;
+        world.Executor.For(chunks, new CollideTask(this, anyFresh));
         RecycledCount = 0;
-        for (int k = 0; k < listBlocks; k++)
-        {
-            int n = _blockCounts[k];
-            if (n > 0 && _updateCount != k * 1024) { Array.Copy(_updateList, k * 1024, _updateList, _updateCount, n); }
-            _updateCount += n;
-        }
-
-        if (anyFresh) { Array.Clear(_fresh, 0, Math.Min(PairHigh, _fresh.Length)); }
-        // 5. Manifolds, in parallel; each task writes only its own results.
-        int chunks = (_updateCount + 63) / 64;
-        world.Executor.For(chunks, new CollideTask(this));
         for (int t = 0; t < chunks; t++) { RecycledCount += _recycledCounts[t]; }
+        if (anyFresh) { Array.Clear(_fresh, 0, Math.Min(PairHigh, _fresh.Length)); }
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Apply);
 #endif
@@ -251,7 +246,7 @@ internal sealed partial class Engine2D
             if (res.Status != 4) { res.Status = 3; } // 3: a manifold to write into the pair's constraint; 4: a recycled one already written
         }
         if (Opt.MaterialMixer != null) { new WriteTask(this).RunAll(); } // a user mixer runs serially, in pair order
-        else { world.Executor.For((_updateCount + 63) / 64, new WriteTask(this)); }
+        else { world.Executor.For(_collideBlocks, new WriteTask(this)); }
     }
 
     private Shape WrapShape(int slot) => new(World!, Core.HandleOfShape(slot));
@@ -266,22 +261,26 @@ internal sealed partial class Engine2D
 
     private readonly struct CollideTask : IParallelBody
     {
-        private readonly Engine2D _e;
+        private readonly Engine2D _e; private readonly bool _anyFresh;
 
-        public CollideTask(Engine2D e) => _e = e;
+        public CollideTask(Engine2D e, bool anyFresh) { _e = e; _anyFresh = anyFresh; }
 
         public void Run(int task)
         {
             var e = _e;
-            int lo = task * 64, hi = Math.Min(lo + 64, e._updateCount);
+            int lo = task * 64, hi = Math.Min(lo + 64, e.PairHigh);
             ReadOnlySpan<BodyHot> hot = e.Hot;
-            int acts = 0, recycled = 0;
-            for (int i = lo; i < hi; i++)
+            int acts = 0, recycled = 0, listed = 0;
+            for (int p = lo; p < hi; p++)
             {
-                int p = e._updateList[i];
                 ref Pair2D pr = ref e.Pairs[p];
+                if (!pr.Live) { continue; }
                 e.Ready(ref pr);
                 int flags = hot[pr.BodyA].Flags | hot[pr.BodyB].Flags;
+                // A pair needs a fresh manifold when a body is awake (or a kinematic body is moving), or when it was just found and has a sensor.
+                if ((flags & BodyHot.Active) == 0 && !(_anyFresh && e._fresh[p])) { continue; }
+                int i = lo + listed++;
+                e._updateList[i] = p;
                 bool act;
                 if (e.Collide(i, ref pr, hot))
                 {
@@ -313,6 +312,7 @@ internal sealed partial class Engine2D
                 if (act) { e._actItems[task * 64 + acts++] = i; }
             }
 
+            e._blockCounts[task] = listed;
             e._actCounts[task] = acts;
             e._recycledCounts[task] = recycled;
         }
@@ -365,30 +365,6 @@ internal sealed partial class Engine2D
         }
     }
 
-    private readonly struct UpdateListTask : IParallelBody
-    {
-        private readonly Engine2D _e; private readonly bool _anyFresh;
-
-        public UpdateListTask(Engine2D e, bool anyFresh) { _e = e; _anyFresh = anyFresh; }
-
-        public void Run(int block)
-        {
-            var e = _e;
-            ReadOnlySpan<BodyHot> hot = e.Hot;
-            int lo = block * 1024, hi = Math.Min(lo + 1024, e.PairHigh);
-            int n = 0;
-            for (int p = lo; p < hi; p++)
-            {
-                ref Pair2D pr = ref e.Pairs[p];
-                if (!pr.Live) { continue; }
-                e.Ready(ref pr);
-                if (((hot[pr.BodyA].Flags | hot[pr.BodyB].Flags) & BodyHot.Active) != 0 || (_anyFresh && e._fresh[p])) { e._updateList[lo + n++] = p; }
-            }
-
-            e._blockCounts[block] = n;
-        }
-    }
-
     private readonly struct BoxTask : IParallelBody
     {
         private readonly Engine2D _e; private readonly int[] _list; private readonly int _count;
@@ -409,9 +385,12 @@ internal sealed partial class Engine2D
                 for (int s = e.ShapeHead[b]; s >= 0; s = e.NextShape[s])
                 {
                     var box = e.TightBox(b, in e.Geom[s]);
-                    e._boxes[4 * s] = box.MinX; e._boxes[4 * s + 1] = box.MinY; e._boxes[4 * s + 2] = box.MaxX; e._boxes[4 * s + 3] = box.MaxY;
+                    ref ShapeBox sb = ref e._sbox[s];
+                    sb.TMinX = box.MinX; sb.TMinY = box.MinY; sb.TMaxX = box.MaxX; sb.TMaxY = box.MaxY;
                     e._boxStamp[s] = e._stamp;
-                    bool stays = Aabb2D.Contains(e.Bp.FatBoundsOfLive(e.Proxy[s]), box); // every shape has a live proxy
+                    ref readonly Aabb2D fat = ref e.Bp.FatBoundsOfLive(e.Proxy[s]); // every shape has a live proxy
+                    sb.FMinX = fat.MinX; sb.FMinY = fat.MinY; sb.FMaxX = fat.MaxX; sb.FMaxY = fat.MaxY;
+                    bool stays = Aabb2D.Contains(in fat, box);
                     if (!stays)
                     {
                         if (moved == movers.Length) { Array.Resize(ref movers, moved * 2); e._moverLists[task] = movers; }
@@ -430,13 +409,13 @@ internal sealed partial class Engine2D
 
         public WriteTask(Engine2D e) => _e = e;
 
-        public void RunAll() { for (int t = 0; t < (_e._updateCount + 63) / 64; t++) { Run(t); } }
+        public void RunAll() { for (int t = 0; t < _e._collideBlocks; t++) { Run(t); } }
 
         public void Run(int task)
         {
             var e = _e;
             var cs = e.Core.Constraints;
-            int lo = task * 64, hi = Math.Min(lo + 64, e._updateCount);
+            int lo = task * 64, hi = lo + e._blockCounts[task];
             for (int i = lo; i < hi; i++)
             {
                 ref PairResult res = ref e._results[i];
@@ -450,12 +429,20 @@ internal sealed partial class Engine2D
 
     private int[] _boxStamp = new int[8];
     private int _stamp;
-    private double[] _boxes = new double[32];
+
+    // Per shape, for the shapes of awake bodies this step: the tight box (what the pair loop's gap test uses) and a copy of the proxy's stored box, side by side so the pair loop reads one record
+    // instead of walking from the proxy index through the tree to a node. Valid where _boxStamp equals the current stamp.
+    private struct ShapeBox
+    {
+        public double TMinX, TMinY, TMaxX, TMaxY, FMinX, FMinY, FMaxX, FMaxY;
+    }
+
+    private ShapeBox[] _sbox = new ShapeBox[8];
 
     private void EnsureBoxStorage()
     {
         int n = Core.Shapes.HighWater;
-        if (_boxStamp.Length < n) { int cap = Math.Max(n, _boxStamp.Length * 2); _boxes = new double[cap * 4]; _boxStamp = new int[cap]; }
+        if (_boxStamp.Length < n) { int cap = Math.Max(n, _boxStamp.Length * 2); _sbox = new ShapeBox[cap]; _boxStamp = new int[cap]; }
     }
 
     // Returns true when the pair's manifold was recycled in place (written straight into its constraint); otherwise the result is in _results[i].
@@ -472,19 +459,39 @@ internal sealed partial class Engine2D
 
         ref PairResult res = ref _results[i];
         res = default;
-        ref readonly Aabb2D fatA = ref Bp.FatBoundsOfLive(Proxy[sa]);
-        ref readonly Aabb2D fatB = ref Bp.FatBoundsOfLive(Proxy[sb]);
-        if (!Aabb2D.Overlaps(in fatA, in fatB)) { res.Status = 2; return false; }
-        res.Status = 1;
-
-        // Shapes whose bounds (this step's tight box for a body that moved, the stored box for one that did not) are farther apart than the speculative distance cannot touch: no manifold,
-        // without running the narrowphase. The extra margin keeps the shortcut clear of rounding at the threshold.
+        // Shapes of awake bodies have this step's tight box and a copy of their stored box in one record; any other shape (asleep, static) reads its stored box from the tree.
         const double Gap = Constants2D.SpeculativeDistance + 0.005;
         double ax0, ay0, ax1, ay1, bx0, by0, bx1, by1;
-        if (_boxStamp[sa] == _stamp) { ax0 = _boxes[4 * sa]; ay0 = _boxes[4 * sa + 1]; ax1 = _boxes[4 * sa + 2]; ay1 = _boxes[4 * sa + 3]; }
-        else { ax0 = fatA.MinX; ay0 = fatA.MinY; ax1 = fatA.MaxX; ay1 = fatA.MaxY; }
-        if (_boxStamp[sb] == _stamp) { bx0 = _boxes[4 * sb]; by0 = _boxes[4 * sb + 1]; bx1 = _boxes[4 * sb + 2]; by1 = _boxes[4 * sb + 3]; }
-        else { bx0 = fatB.MinX; by0 = fatB.MinY; bx1 = fatB.MaxX; by1 = fatB.MaxY; }
+        double fax0, fay0, fax1, fay1, fbx0, fby0, fbx1, fby1;
+        if (_boxStamp[sa] == _stamp)
+        {
+            ref readonly ShapeBox qa = ref _sbox[sa];
+            ax0 = qa.TMinX; ay0 = qa.TMinY; ax1 = qa.TMaxX; ay1 = qa.TMaxY;
+            fax0 = qa.FMinX; fay0 = qa.FMinY; fax1 = qa.FMaxX; fay1 = qa.FMaxY;
+        }
+        else
+        {
+            ref readonly Aabb2D fatA = ref Bp.FatBoundsOfLive(Proxy[sa]);
+            fax0 = ax0 = fatA.MinX; fay0 = ay0 = fatA.MinY; fax1 = ax1 = fatA.MaxX; fay1 = ay1 = fatA.MaxY;
+        }
+
+        if (_boxStamp[sb] == _stamp)
+        {
+            ref readonly ShapeBox qb = ref _sbox[sb];
+            bx0 = qb.TMinX; by0 = qb.TMinY; bx1 = qb.TMaxX; by1 = qb.TMaxY;
+            fbx0 = qb.FMinX; fby0 = qb.FMinY; fbx1 = qb.FMaxX; fby1 = qb.FMaxY;
+        }
+        else
+        {
+            ref readonly Aabb2D fatB = ref Bp.FatBoundsOfLive(Proxy[sb]);
+            fbx0 = bx0 = fatB.MinX; fby0 = by0 = fatB.MinY; fbx1 = bx1 = fatB.MaxX; fby1 = by1 = fatB.MaxY;
+        }
+
+        // The stored boxes (the same test the broadphase uses) no longer overlap: the pair ends.
+        if (!(fax0 <= fbx1 && fbx0 <= fax1 && fay0 <= fby1 && fby0 <= fay1)) { res.Status = 2; return false; }
+        res.Status = 1;
+        // Shapes whose bounds (this step's tight box for a body that moved, the stored box for one that did not) are farther apart than the speculative distance cannot touch: no manifold,
+        // without running the narrowphase. The extra margin keeps the shortcut clear of rounding at the threshold.
         if (ax0 - Gap > bx1 || bx0 - Gap > ax1 || ay0 - Gap > by1 || by0 - Gap > ay1) { return false; }
 
         var qA = new Rot2(hA.C, hA.S); var qB = new Rot2(hB.C, hB.S);
