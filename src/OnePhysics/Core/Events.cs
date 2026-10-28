@@ -200,7 +200,7 @@ public sealed class EventCollector
         }
 
         _deliveredCount = k;
-        Array.Sort(_delivered, 0, k, EventComparer.Instance);
+        Sorting.Sort(_delivered.AsSpan(0, k), new EventComparer());
     }
 
     internal void Write(StateWriter w)
@@ -230,10 +230,8 @@ public sealed class EventCollector
         _counts[0] = p;
     }
 
-    private sealed class EventComparer : IComparer<PhysicsEvent>
+    private readonly struct EventComparer : IComparer<PhysicsEvent>
     {
-        public static readonly EventComparer Instance = new();
-
         public int Compare(PhysicsEvent x, PhysicsEvent y) => PhysicsEvent.Compare(in x, in y);
     }
 }

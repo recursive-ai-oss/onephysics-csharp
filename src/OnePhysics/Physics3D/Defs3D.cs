@@ -162,7 +162,10 @@ public sealed class WorldOptions3D
         Positive(JointHertz, nameof(JointHertz), true);
         Positive(JointDampingRatio, nameof(JointDampingRatio), true);
         if (!double.IsFinite(BroadphaseMargin) || BroadphaseMargin < 0.0) { throw new ArgumentOutOfRangeException(nameof(BroadphaseMargin), BroadphaseMargin, "BroadphaseMargin must be finite and at least 0."); }
-        ToCore().Validate();
+        // One reusable options object for the check: Validate runs on every step, and building a new one each time would allocate.
+        _coreCheck ??= new WorldOptions();
+        FillCore(_coreCheck);
+        _coreCheck.Validate();
     }
 
     private static void Positive(float v, string name, bool allowZero)
@@ -170,20 +173,29 @@ public sealed class WorldOptions3D
         if (!float.IsFinite(v) || v < 0f || (!allowZero && v == 0f)) { throw new ArgumentOutOfRangeException(name, v, name + " must be finite and " + (allowZero ? "at least 0." : "positive.")); }
     }
 
-    internal WorldOptions ToCore() => new()
+    private WorldOptions? _coreCheck;
+
+    internal WorldOptions ToCore()
     {
-        Layout = DimensionLayout.Spatial,
-        ThreadCount = ThreadCount,
-        WorldId = WorldId,
-        Gravity = Gravity,
-        Substeps = Substeps,
-        VelocityIterations = VelocityIterations,
-        RelaxIterations = RelaxIterations,
-        SleepEnabled = SleepEnabled,
-        TimeToSleep = TimeToSleep,
-        SleepThreshold = SleepThreshold,
-        Events = Events,
-    };
+        var o = new WorldOptions();
+        FillCore(o);
+        return o;
+    }
+
+    private void FillCore(WorldOptions o)
+    {
+        o.Layout = DimensionLayout.Spatial;
+        o.ThreadCount = ThreadCount;
+        o.WorldId = WorldId;
+        o.Gravity = Gravity;
+        o.Substeps = Substeps;
+        o.VelocityIterations = VelocityIterations;
+        o.RelaxIterations = RelaxIterations;
+        o.SleepEnabled = SleepEnabled;
+        o.TimeToSleep = TimeToSleep;
+        o.SleepThreshold = SleepThreshold;
+        o.Events = Events;
+    }
 }
 
 /// <summary>Everything needed to create a body; defaults make a dynamic body at the origin.</summary>

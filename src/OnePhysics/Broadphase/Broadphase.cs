@@ -479,7 +479,7 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
         }
 
         _pairCount = total;
-        _pairs.AsSpan(0, total).Sort(new PairComparer());
+        Sorting.Sort(_pairs.AsSpan(0, total), new PairComparer());
 
         for (int i = 0; i < _movedCount; i++)
         {

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics.Broadphase;
 using RecursiveAI.OnePhysics.Collision3D;
@@ -450,7 +451,7 @@ internal sealed partial class Engine3D
             }
             else
             {
-                if (!other.Soup!.ShapeCast(Shape, rel, motion, out var hit) || hit.StartsOverlapping) { return true; }
+                if (!other.Soup!.ShapeCast(Shape, rel, motion, out var hit, CastIds()) || hit.StartsOverlapping) { return true; }
                 t = hit.Fraction; approach = -Vector3F.Dot(motion, hit.Normal);
             }
 
@@ -461,6 +462,12 @@ internal sealed partial class Engine3D
             return true;
         }
     }
+
+    // Continuous collision runs on whichever thread finalizes the body, so the id list its soup casts reuse is per thread; it only holds candidates while one cast runs and never decides a result.
+    [ThreadStatic]
+    private static List<int>? t_castIds;
+
+    private static List<int> CastIds() => t_castIds ??= new List<int>();
 
     /// <summary>
     /// Continuous collision against static geometry for a body that moved far compared with its size this step: a linear shape cast of each shape along the centre-of-mass motion, with the shape held at its

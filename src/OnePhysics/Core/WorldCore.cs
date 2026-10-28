@@ -222,30 +222,32 @@ public sealed class WorldCore
     /// <summary>Checks a body handle and returns its slot. Throws <see cref="InvalidHandleException"/> (null handle), <see cref="ForeignHandleException"/> or <see cref="StaleHandleException"/>.</summary>
     public int Resolve(BodyHandle h)
     {
-        Check(h.IsNull, h.World, h.Index, h.Generation, _bodies.Handles, "body", h.ToString());
+        Check(h.IsNull, h.World, h.Index, h.Generation, _bodies.Handles, "body", h);
         return h.Index;
     }
 
     /// <summary>Checks a shape handle and returns its slot; throws as <see cref="Resolve(BodyHandle)"/>.</summary>
     public int Resolve(ShapeHandle h)
     {
-        Check(h.IsNull, h.World, h.Index, h.Generation, _shapes.Handles, "shape", h.ToString());
+        Check(h.IsNull, h.World, h.Index, h.Generation, _shapes.Handles, "shape", h);
         return h.Index;
     }
 
     /// <summary>Checks a joint handle and returns its constraint slot; throws as <see cref="Resolve(BodyHandle)"/>, and also when the slot holds a constraint that is not a joint.</summary>
     public int Resolve(JointHandle h)
     {
-        Check(h.IsNull, h.World, h.Index, h.Generation, _constraints.Handles, "joint", h.ToString());
+        Check(h.IsNull, h.World, h.Index, h.Generation, _constraints.Handles, "joint", h);
         if (_constraints.KindOf(h.Index) != ConstraintKind.Joint) { throw new InvalidHandleException(h + " does not refer to a joint."); }
         return h.Index;
     }
 
-    private void Check(bool isNull, int world, int index, int generation, HandleTable table, string what, string text)
+    // The handle is only turned into text when the check fails: building the text up front would allocate on every successful lookup.
+    private void Check<THandle>(bool isNull, int world, int index, int generation, HandleTable table, string what, THandle handle)
     {
+        string Text() => handle!.ToString()!;
         if (isNull) { throw new InvalidHandleException("The null " + what + " handle was used."); }
-        if (world != Id) { throw new ForeignHandleException(text + " belongs to world " + world.ToString(CultureInfo.InvariantCulture) + ", not world " + Id.ToString(CultureInfo.InvariantCulture) + "."); }
-        if (!table.IsAlive(index, generation)) { throw new StaleHandleException(text + " is stale: the " + what + " was destroyed."); }
+        if (world != Id) { throw new ForeignHandleException(Text() + " belongs to world " + world.ToString(CultureInfo.InvariantCulture) + ", not world " + Id.ToString(CultureInfo.InvariantCulture) + "."); }
+        if (!table.IsAlive(index, generation)) { throw new StaleHandleException(Text() + " is stale: the " + what + " was destroyed."); }
     }
 
     // ------------------------------------------------------------------ bodies and shapes
