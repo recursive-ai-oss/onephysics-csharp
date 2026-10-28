@@ -336,6 +336,37 @@ internal sealed partial class Engine3D
         }
     }
 
+    private void ClearJointIdx(int group)
+    {
+        var idx = WideJIdx.AsSpan(group * J3D.IdxPerGroup, J3D.IdxPerGroup);
+        for (int l = 0; l < J3D.Lanes; l++) { idx[l] = 0; idx[8 + l] = 0; idx[16 + l] = -1; idx[24 + l] = -1; }
+    }
+
+    /// <summary>Once per step: a point joint's start-of-step anchors, centre-of-mass offset, inverse masses and warm-start impulse into one lane of its batch's joint group.</summary>
+    private void PreparePointJoint(int c, int group, int lane)
+    {
+        var core = Core;
+        var cs = core.Constraints;
+        var bodies = core.Bodies;
+        ref JointData3D j = ref Joints[c];
+        int a = cs.BodyA[c], b = cs.BodyB[c];
+        var w = WideJ.AsSpan(group * J3D.GroupFloats, J3D.GroupFloats);
+        var idx = WideJIdx.AsSpan(group * J3D.IdxPerGroup, J3D.IdxPerGroup);
+        SlotOf[c] = group * J3D.Lanes + lane;
+        float mA = bodies.InverseMass[a], mB = bodies.InverseMass[b];
+        idx[lane] = a; idx[8 + lane] = b;
+        idx[16 + lane] = mA > 0f ? a : -1; idx[24 + lane] = mB > 0f ? b : -1;
+        var pA = bodies.PositionOf(a); var pB = bodies.PositionOf(b);
+        var lcA = LocalCenterOf(a); var lcB = LocalCenterOf(b);
+        var rA = RotationOfBody(a).Rotate(new Vector3F(j.LAx - lcA.X, j.LAy - lcA.Y, j.LAz - lcA.Z));
+        var rB = RotationOfBody(b).Rotate(new Vector3F(j.LBx - lcB.X, j.LBy - lcB.Y, j.LBz - lcB.Z));
+        Put3(w, J3D.RA, lane, rA); Put3(w, J3D.RB, lane, rB);
+        Put3(w, J3D.D, lane, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])));
+        w[J3D.InvMassA * 8 + lane] = mA; w[J3D.InvMassB * 8 + lane] = mB;
+        var p = cs.Payload(c);
+        for (int k = 0; k < 3; k++) { w[(J3D.Impulse + k) * 8 + lane] = p[k]; }
+    }
+
     private static void PreparePath(ref JointData3D j, Span<float> s, QuaternionF qA, Vector3F lcA, Vector3F d, Vector3F rB)
     {
         // The follower's anchor in A's origin frame: the vector from A's origin to it, in A's axes.

@@ -49,6 +49,8 @@ internal sealed partial class Engine3D : ISnapshotSection
     public float[] WInvI = new float[48];         // inverse inertia in world axes, refreshed whenever a body turns
     public float[] Wide = Array.Empty<float>();   // contact solver groups, one per batch (see W3D)
     public int[] WideIdx = Array.Empty<int>();
+    public float[] WideJ = Array.Empty<float>();   // point-joint solver groups, one per batch (see J3D)
+    public int[] WideJIdx = Array.Empty<int>();
     public int[] SlotOf = Array.Empty<int>();     // constraint -> group * 8 + lane for this step, -1 when not in a group
     public int KernelWidth = KernelWidthChoice.Default; // lanes per kernel run; results are the same at every width
 

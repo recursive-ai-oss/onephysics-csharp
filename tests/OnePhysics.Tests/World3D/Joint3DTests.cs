@@ -757,4 +757,57 @@ public class Joint3DTests
             Assert.True(Math.Abs(pa.Y - pb.Y) < 0.05 && Math.Abs(pa.X - (pb.X + 64)) < 0.05, "pulley body drifted: " + pa + " vs " + pb);
         }
     }
+
+    /// <summary>Chains, a hub with more joints than there are colors (so some run one lane at a time) and a hinge among point joints: one world hash at every thread count and kernel width.</summary>
+    private static PhysicsWorld3D BuildPointJointScene(int threads, int kernelWidth)
+    {
+        var w = World3DTests.NewWorld(threads, 31, o => { o.SleepEnabled = false; });
+        w.Engine.KernelWidth = kernelWidth;
+        World3DTests.Floor(w);
+        var top = w.AddBox(new Vector3F(60f, 0.5f, 6f), new Vector3D(0, 12, 0), type: BodyType.Static);
+        for (int c = 0; c < 3; c++)
+        {
+            Body prev = top;
+            for (int i = 0; i < 12; i++)
+            {
+                var link = w.AddBox(new Vector3F(0.5f, 0.2f, 0.2f), new Vector3D(-20 + (c * 4) + (0.5 * i), 11.5 - (0.25 * i), c), density: i == 11 ? 40f : 1f);
+                if (i % 5 == 4) { w.AddHinge(prev, link, new Vector3D(-20 + (c * 4) + (0.5 * i), 11.5 - (0.25 * i), c), new Vector3F(0, 0, 1)); }
+                else { w.AddPoint(prev, link, new Vector3D(-20 + (c * 4) + (0.5 * i), 11.5 - (0.25 * i), c)); }
+                prev = link;
+            }
+        }
+
+        var hub = w.AddSphere(0.5f, new Vector3D(10, 8, 0), density: 3f);
+        for (int k = 0; k < 30; k++)
+        {
+            var leaf = w.AddBox(new Vector3F(0.2f, 0.2f, 0.2f), new Vector3D(10 + (3 * Math.Cos(k * 0.2)), 8 + (3 * Math.Sin(k * 0.2)), 0));
+            w.AddPoint(hub, leaf, new Vector3D(10 + Math.Cos(k * 0.2), 8 + Math.Sin(k * 0.2), 0));
+        }
+
+        // Joints whose point block runs in the wide kernel and whose other rows stay scalar: fixed, cone, swing-twist.
+        Body upper = w.AddBox(new Vector3F(0.3f, 0.6f, 0.3f), new Vector3D(-10, 9, 5), density: 2f);
+        w.AddFixed(top, upper, new Vector3D(-10, 11.5, 5));
+        Body arm = w.AddBox(new Vector3F(0.2f, 0.6f, 0.2f), new Vector3D(-10, 8, 5));
+        w.AddCharacterJoint(upper, arm, new Vector3D(-10, 8.5, 5), new Vector3F(0, -1, 0), -0.4f, 0.4f, 0.6f, 0.3f);
+        Body hand = w.AddBox(new Vector3F(0.15f, 0.3f, 0.15f), new Vector3D(-10, 7.2, 5));
+        w.AddCone(arm, hand, new Vector3D(-10, 7.5, 5), new Vector3F(0, -1, 0), 0.5f);
+        return w;
+    }
+
+    [Fact]
+    public void PointJointSceneIsIdenticalAcrossThreadsAndKernelWidths()
+    {
+        var a = BuildPointJointScene(1, 8);
+        var b = BuildPointJointScene(4, 8);
+        var c = BuildPointJointScene(1, 1);
+        var d = BuildPointJointScene(3, 4);
+        for (int i = 0; i < 120; i++)
+        {
+            a.Step(Dt); b.Step(Dt); c.Step(Dt); d.Step(Dt);
+            ulong h = a.ComputeHash();
+            Assert.Equal(h, b.ComputeHash());
+            Assert.Equal(h, c.ComputeHash());
+            Assert.Equal(h, d.ComputeHash());
+        }
+    }
 }
