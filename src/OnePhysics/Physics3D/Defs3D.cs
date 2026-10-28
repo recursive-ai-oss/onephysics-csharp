@@ -128,6 +128,9 @@ public sealed class WorldOptions3D
     /// <summary>Damping ratio of the rigid rows of joints. Default 2.</summary>
     public float JointDampingRatio { get; set; } = 2f;
 
+    /// <summary>Approach speed (m/s, along the contact normal at the start of the step) above which a contact reports a hit event, when <see cref="EventMask.ContactHit"/> is on. At least 0. Default 1.</summary>
+    public float HitSpeedThreshold { get; set; } = 1f;
+
     /// <summary>Distance at which surfaces get a speculative contact, metres. Default 0.02.</summary>
     public float SpeculativeDistance { get; set; } = 0.02f;
 
@@ -155,6 +158,7 @@ public sealed class WorldOptions3D
         Positive(MaxLinearSpeed, nameof(MaxLinearSpeed), false);
         Positive(MaxRotationPerSubstep, nameof(MaxRotationPerSubstep), false);
         Positive(SpeculativeDistance, nameof(SpeculativeDistance), true);
+        Positive(HitSpeedThreshold, nameof(HitSpeedThreshold), true);
         Positive(JointHertz, nameof(JointHertz), true);
         Positive(JointDampingRatio, nameof(JointDampingRatio), true);
         if (!double.IsFinite(BroadphaseMargin) || BroadphaseMargin < 0.0) { throw new ArgumentOutOfRangeException(nameof(BroadphaseMargin), BroadphaseMargin, "BroadphaseMargin must be finite and at least 0."); }
@@ -265,6 +269,12 @@ public struct ShapeDef
     /// <summary>Non-zero: shapes in one group always (positive) or never (negative) collide, ignoring masks.</summary>
     public int GroupIndex { get; set; }
 
+    /// <summary>A sensor (trigger): produces no contact response, adds no mass and reports overlaps as trigger events. Fixed at creation.</summary>
+    public bool IsSensor { get; set; }
+
+    /// <summary>Layer 0..31 for the world's layer collision matrix and query layer masks. Default 0.</summary>
+    public int Layer { get; set; }
+
     /// <summary>Position of the shape in the body's frame.</summary>
     public Vector3F LocalPosition { get; set; }
 
@@ -282,24 +292,54 @@ public struct ShapeDef
     }
 }
 
-/// <summary>Passed to collision callbacks: who touched whom and where.</summary>
+/// <summary>One manifold point of a contact as a callback sees it.</summary>
+public readonly struct ContactPoint3D
+{
+    internal ContactPoint3D(Vector3D point, float separation, float normalImpulse, float tangentImpulse)
+    {
+        Point = point;
+        Separation = separation;
+        NormalImpulse = normalImpulse;
+        TangentImpulse = tangentImpulse;
+    }
+
+    /// <summary>World position of the point.</summary>
+    public Vector3D Point { get; }
+
+    /// <summary>Signed gap along the normal; negative when the shapes overlap.</summary>
+    public float Separation { get; }
+
+    /// <summary>Estimate of the normal impulse over the step: the last substep's accumulated impulse times the substep count.</summary>
+    public float NormalImpulse { get; }
+
+    /// <summary>Estimate of the friction impulse over the step (length of the two tangent impulses, same scaling).</summary>
+    public float TangentImpulse { get; }
+}
+
+/// <summary>
+/// Passed to collision callbacks: who touched whom and where. One event describes a pair of shapes, however many triangles or compound children touch; the points are those of the pair's first
+/// sub-shape contact (lowest sub-shape ids), as they are at the end of the step.
+/// </summary>
 public readonly struct Collision
 {
-    internal Collision(Body self, Body other, Shape selfShape, Shape otherShape, Vector3D point, Vector3F normal, bool hasPoint)
+    private readonly ContactPoint3D _p0, _p1, _p2, _p3;
+
+    internal Collision(Body self, Body other, Shape selfShape, Shape otherShape, Vector3F normal, int pointCount, in ContactPoint3D p0, in ContactPoint3D p1, in ContactPoint3D p2, in ContactPoint3D p3, float approachSpeed)
     {
         Body = self;
         Other = other;
         Shape = selfShape;
         OtherShape = otherShape;
-        Point = point;
         Normal = normal;
-        HasPoint = hasPoint;
+        PointCount = pointCount;
+        _p0 = p0; _p1 = p1; _p2 = p2; _p3 = p3;
+        ApproachSpeed = approachSpeed;
     }
 
     /// <summary>The body whose callback runs.</summary>
     public Body Body { get; }
 
-    /// <summary>The body it touched.</summary>
+    /// <summary>The body it touched. For an exit caused by destroying a body this handle is stale.</summary>
     public Body Other { get; }
 
     /// <summary>The callback body's shape.</summary>
@@ -308,14 +348,59 @@ public readonly struct Collision
     /// <summary>The other body's shape.</summary>
     public Shape OtherShape { get; }
 
-    /// <summary>A contact point in world coordinates (the first point of the contact); valid when <see cref="HasPoint"/>.</summary>
-    public Vector3D Point { get; }
-
-    /// <summary>Contact normal pointing from <see cref="Body"/> towards <see cref="Other"/>; valid when <see cref="HasPoint"/>.</summary>
+    /// <summary>Contact normal pointing from <see cref="Body"/> towards <see cref="Other"/>; zero when there are no points.</summary>
     public Vector3F Normal { get; }
 
-    /// <summary>False for end events and when the contact is gone.</summary>
-    public bool HasPoint { get; }
+    /// <summary>Number of manifold points, 0 to 4. 0 for exit callbacks and for contacts that began and ended inside one step.</summary>
+    public int PointCount { get; }
+
+    /// <summary>False when there are no manifold points.</summary>
+    public bool HasPoint => PointCount > 0;
+
+    /// <summary>The first manifold point in world coordinates; zero when <see cref="HasPoint"/> is false.</summary>
+    public Vector3D Point => _p0.Point;
+
+    /// <summary>The manifold point with the given index.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is not within 0..<see cref="PointCount"/>-1.</exception>
+    public ContactPoint3D GetPoint(int index)
+    {
+        if ((uint)index >= (uint)PointCount) { throw new ArgumentOutOfRangeException(nameof(index), index, "A contact point index must be within 0.." + (PointCount - 1).ToString(System.Globalization.CultureInfo.InvariantCulture) + "."); }
+        return index == 0 ? _p0 : index == 1 ? _p1 : index == 2 ? _p2 : _p3;
+    }
+
+    /// <summary>Sum of the points' normal impulses.</summary>
+    public float NormalImpulse => PointCount == 0 ? 0f : ((_p0.NormalImpulse + (PointCount > 1 ? _p1.NormalImpulse : 0f)) + (PointCount > 2 ? _p2.NormalImpulse : 0f)) + (PointCount > 3 ? _p3.NormalImpulse : 0f);
+
+    /// <summary>For hit events: the approach speed along the normal at the start of the step; 0 for other callbacks.</summary>
+    public float ApproachSpeed { get; }
+}
+
+/// <summary>What a trigger callback is told: the other body and shapes of a sensor overlap.</summary>
+public readonly struct Trigger
+{
+    internal Trigger(Body self, Body other, Shape selfShape, Shape otherShape, bool selfIsSensor)
+    {
+        Body = self;
+        Other = other;
+        Shape = selfShape;
+        OtherShape = otherShape;
+        SelfIsSensor = selfIsSensor;
+    }
+
+    /// <summary>The body the callback belongs to.</summary>
+    public Body Body { get; }
+
+    /// <summary>The other body. After an exit caused by destroying a body or shape this handle may be stale.</summary>
+    public Body Other { get; }
+
+    /// <summary>The callback body's shape.</summary>
+    public Shape Shape { get; }
+
+    /// <summary>The other body's shape.</summary>
+    public Shape OtherShape { get; }
+
+    /// <summary>True when <see cref="Shape"/> is the sensor, false when <see cref="OtherShape"/> is.</summary>
+    public bool SelfIsSensor { get; }
 }
 
 /// <summary>A body has left the range the engine supports; <see cref="Body"/> names it.</summary>

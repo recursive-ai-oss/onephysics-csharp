@@ -57,7 +57,11 @@ internal static class SmokeProgram
         ulong k1 = World3DJoints(1, false), k3 = World3DJoints(3, false), kr = World3DJoints(1, true);
         bool kSame = k1 == k3 && k1 == kr;
         Console.WriteLine((kSame ? "OK joints3d " : "FAIL joints3d ") + k1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
-        return ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame ? 0 : 1;
+        // 3D services (layers, a sensor, mesh pair events, queries): same state on one and three threads and after a restore.
+        ulong s1 = Services3DScene.Run(1, false), s3 = Services3DScene.Run(3, false), sr = Services3DScene.Run(1, true);
+        bool sSame = s1 == s3 && s1 == sr;
+        Console.WriteLine((sSame ? "OK services3d " : "FAIL services3d ") + s1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        return ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame ? 0 : 1;
     }
 
     private static ulong World2DJoints(int threads, bool restoreHalfway)

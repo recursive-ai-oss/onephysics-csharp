@@ -15,16 +15,6 @@ public sealed partial class PhysicsWorld3D
 {
     private readonly Engine3D _engine;
     private readonly WorldCore _core;
-    private readonly Dictionary<int, Handlers> _handlers = new();
-
-    internal sealed class Handlers
-    {
-        public int Generation;
-        public Action<Collision>? Enter;
-        public Action<Collision>? Stay;
-        public Action<Collision>? Exit;
-    }
-
     /// <summary>Creates a world.</summary>
     /// <param name="options">Options; copied. Defaults when null.</param>
     /// <exception cref="ArgumentOutOfRangeException">An option is out of range.</exception>
@@ -55,8 +45,8 @@ public sealed partial class PhysicsWorld3D
     /// <summary>The shared core (raw tier): bodies, shapes, constraints, islands, coloring, events.</summary>
     public WorldCore Core => _core;
 
-    /// <summary>The events of the last step, in the core's deterministic order.</summary>
-    public ReadOnlySpan<PhysicsEvent> Events => _core.Events.Delivered;
+    /// <summary>The events of the last step in the core's deterministic order, with contact and hit events collapsed to one per pair of shapes (see docs/world3d.md). Valid until the next <see cref="Step"/>.</summary>
+    public ReadOnlySpan<PhysicsEvent> Events => _publicEvents.AsSpan(0, _publicEventCount);
 
     internal Engine3D Engine => _engine;
 
@@ -73,6 +63,8 @@ public sealed partial class PhysicsWorld3D
         SyncCoreOptions();
         _core.Step(new Stages3D(_engine), dt);
         _engine.ReconcileJoints();
+        InvalidateQueryPad();
+        BuildPublicEvents();
         if (_handlers.Count > 0 || _jointHandlers.Count > 0) { DispatchEvents(); }
     }
 
@@ -92,75 +84,6 @@ public sealed partial class PhysicsWorld3D
         o.Gravity = c.Gravity;
         o.Substeps = c.Substeps; o.VelocityIterations = c.VelocityIterations; o.RelaxIterations = c.RelaxIterations;
         o.SleepEnabled = c.SleepEnabled; o.TimeToSleep = c.TimeToSleep; o.SleepThreshold = c.SleepThreshold; o.Events = c.Events;
-    }
-
-    private void DispatchEvents()
-    {
-        foreach (var e in _core.Events.Delivered)
-        {
-            if (e.Kind == EventKind.JointBreak) { FireJointBreak(e); continue; }
-            if (e.Kind != EventKind.ContactBegin && e.Kind != EventKind.ContactPersist && e.Kind != EventKind.ContactEnd) { continue; }
-            Fire(e, e.BodyA, e.BodyB, e.ShapeA, e.ShapeB, false);
-            Fire(e, e.BodyB, e.BodyA, e.ShapeB, e.ShapeA, true);
-        }
-    }
-
-    private void Fire(in PhysicsEvent e, BodyHandle self, BodyHandle other, ShapeHandle selfShape, ShapeHandle otherShape, bool flip)
-    {
-        if (!_handlers.TryGetValue(self.Index, out var h) || h.Generation != self.Generation) { return; }
-        var action = e.Kind == EventKind.ContactBegin ? h.Enter : e.Kind == EventKind.ContactPersist ? h.Stay : h.Exit;
-        if (action == null) { return; }
-        Vector3D point = default;
-        Vector3F normal = default;
-        bool has = false;
-        if (e.Kind != EventKind.ContactEnd && _core.Constraints.HighWater > 0)
-        {
-            int c = FindContact(e);
-            if (c >= 0 && _core.Constraints.PointCount[c] > 0)
-            {
-                var pl = _core.Constraints.Payload(c);
-                var posA = _core.Bodies.PositionOf(_core.Constraints.BodyA[c]);
-                int a = ManifoldLayout.AnchorA(0);
-                point = new Vector3D(posA[0] + (double)pl[a], posA[1] + (double)pl[a + 1], posA[2] + (double)pl[a + 2]);
-                normal = new Vector3F(pl[ManifoldLayout.Normal], pl[ManifoldLayout.Normal + 1], pl[ManifoldLayout.Normal + 2]);
-                if (flip) { normal = -normal; }
-                has = true;
-            }
-        }
-
-        action(new Collision(new Body(this, self), new Body(this, other), new Shape(this, selfShape), new Shape(this, otherShape), point, normal, has));
-    }
-
-    // The event names a sub-shape pair; walk the pair's chain for it.
-    private int FindContact(in PhysicsEvent e)
-    {
-        int c = _engine.ContactOf(e.ShapeA.Index, e.ShapeB.Index);
-        var cs = _core.Constraints;
-        for (; c >= 0 && c < cs.HighWater && cs.IsLive(c); c = _engine.ConsNext[c])
-        {
-            if (cs.SubShapeA[c] == e.SubShapeA && cs.SubShapeB[c] == e.SubShapeB) { return c; }
-        }
-
-        return -1;
-    }
-
-    internal void AddHandler(BodyHandle h, int kind, Action<Collision> handler)
-    {
-        _core.Resolve(h);
-        if (!_handlers.TryGetValue(h.Index, out var set) || set.Generation != h.Generation)
-        {
-            set = new Handlers { Generation = h.Generation };
-            _handlers[h.Index] = set;
-        }
-
-        if (kind == 0) { set.Enter += handler; } else if (kind == 1) { set.Stay += handler; } else { set.Exit += handler; }
-    }
-
-    internal void RemoveHandler(BodyHandle h, int kind, Action<Collision> handler)
-    {
-        if (!_handlers.TryGetValue(h.Index, out var set) || set.Generation != h.Generation) { return; }
-        if (kind == 0) { set.Enter -= handler; } else if (kind == 1) { set.Stay -= handler; } else { set.Exit -= handler; }
-        if (set.Enter == null && set.Stay == null && set.Exit == null) { _handlers.Remove(h.Index); }
     }
 
     // ------------------------------------------------------------------ hooks for a deterministic host
@@ -203,6 +126,8 @@ public sealed partial class PhysicsWorld3D
 
         foreach (int k in dead) { _handlers.Remove(k); }
         DropStaleJointHandlers();
+        InvalidateQueryPad();
+        BuildPublicEvents();
     }
 
     /// <summary>Moves the world origin by <paramref name="offset"/> (call between steps, on every peer at the same step): all positions shrink by it. Offsets must be multiples of 2^-31.</summary>
@@ -211,6 +136,7 @@ public sealed partial class PhysicsWorld3D
         _core.ShiftOrigin([offset.X, offset.Y, offset.Z]);
         _engine.ShiftJoints([offset.X, offset.Y, offset.Z]);
         _engine.RebuildProxies();
+        InvalidateQueryPad();
     }
 
     // ------------------------------------------------------------------ middle tier: bodies and shapes

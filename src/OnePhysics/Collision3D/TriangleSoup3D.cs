@@ -521,6 +521,9 @@ public abstract class TriangleSoup3D
         return CastTriangles(shape, shapeInSoup, motion, ids, out hit);
     }
 
+    [ThreadStatic]
+    private static TriangleShapeBuffer3D? s_castBuffer;
+
     /// <summary>The cast over an explicit list of triangle ids, ascending: the filtered path of <see cref="ShapeCast"/>, and with every id the brute-force reference.</summary>
     /// <param name="shape">The moving convex shape.</param>
     /// <param name="shapeInSoup">Start placement of the shape in the soup's frame.</param>
@@ -536,7 +539,8 @@ public abstract class TriangleSoup3D
         hit = default;
         QuaternionF inv = shapeInSoup.Rotation.Conjugate();
         Vector3F motionA = inv.Rotate(motion);
-        var buffer = new TriangleShapeBuffer3D();
+        // One scratch triangle per thread, so repeated casts allocate nothing.
+        var buffer = s_castBuffer ??= new TriangleShapeBuffer3D();
         bool found = false;
         float bestFraction = 0f;
         for (int k = 0; k < ids.Count; k++)
