@@ -239,6 +239,94 @@ public class CharacterTests
     }
 
     [Fact]
+    public void ASteepSlopeIsReportedAndTheCharacterSlidesDownIt()
+    {
+        var w = NewWorld();
+        Floor(w);
+        // A ramp rising to the right at 54 degrees, steeper than the 45 degree limit; the character drops onto its face and cannot stand there.
+        w.AddBox(new Vector2F(20f, 1f), at: new Vector2D(0, 3), angle: 0.9425f, type: BodyType.Static);
+        var d = Spawn(w, -0.5, 8);
+        bool sawSteep = false;
+        for (int i = 0; i < 240; i++)
+        {
+            d.Tick(w);
+            sawSteep |= d.C.Ground == GroundState.OnSteepGround;
+            Assert.Equal(d.C.Ground == GroundState.OnGround, d.C.IsGrounded);
+        }
+
+        Assert.True(sawSteep);
+    }
+
+    [Fact]
+    public void FlatGroundIsOnGroundAndTheAirIsInAir()
+    {
+        var w = NewWorld();
+        Floor(w);
+        var d = Spawn(w, 0, 3);
+        Assert.Equal(GroundState.InAir, d.C.Ground);
+        Run(w, d, 120);
+        Assert.Equal(GroundState.OnGround, d.C.Ground);
+        Assert.Equal(1f, d.C.GroundNormal.Y, 4);
+    }
+
+    [Fact]
+    public void MassAndMaxPushForceHaveTheirDefaultsPresetsAndLimits()
+    {
+        var c = NewWorld().AddCharacter(default);
+        Assert.Equal(70f, c.Mass);
+        Assert.Equal(500f, c.MaxPushForce);
+        Assert.Equal(30f, Character.Child.Mass);
+        Assert.Equal(400f, Character.Giant.Mass);
+        Assert.Equal(2000f, Character.Giant.MaxPushForce);
+        c.MaxPushForce = 0f;
+        Assert.Equal(0f, c.MaxPushForce);
+        Assert.Throws<ArgumentOutOfRangeException>(() => c.MaxPushForce = -1f);
+        Assert.Throws<ArgumentOutOfRangeException>(() => c.MaxPushForce = float.NaN);
+        Assert.Throws<ArgumentOutOfRangeException>(() => c.MaxPushForce = 2e9f);
+        var w = NewWorld(id: 62);
+        Assert.Throws<ArgumentOutOfRangeException>(() => w.AddCharacter(default, new CharacterDef { Mass = 0f }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => w.AddCharacter(default, new CharacterDef { Mass = float.NaN }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => w.AddCharacter(default, new CharacterDef { MaxPushForce = -1f }));
+    }
+
+    [Fact]
+    public void MaxPushForceLimitsHowHardACharacterPushes()
+    {
+        double BoxSpeed(float maxForce)
+        {
+            var w = NewWorld();
+            Floor(w);
+            var box = w.AddBox(new Vector2F(1f, 1f), at: new Vector2D(1.2, 0.5), density: 20f); // 20 kg
+            var def = Character.Humanoid;
+            def.PushStrength = 1f;
+            def.MaxPushForce = maxForce;
+            var d = Spawn(w, 0, 0.95, def);
+            d.Vx = 2f;
+            Run(w, d, 30);
+            return box.LinearVelocity.X;
+        }
+
+        double strong = BoxSpeed(1e6f), weak = BoxSpeed(10f), none = BoxSpeed(0f);
+        Assert.True(strong > 1.0, "strong " + strong);
+        Assert.True(weak < 0.5 * strong, "weak " + weak + " strong " + strong);
+        Assert.True(none < weak, "none " + none + " weak " + weak);
+    }
+
+    [Fact]
+    public void StandingOnADynamicBodyPressesItDownWithTheCharactersWeight()
+    {
+        var w = NewWorld();
+        var plank = w.AddBox(new Vector2F(4f, 0.4f), at: new Vector2D(0, -0.2), density: 100f); // 160 kg
+        var def = Character.Humanoid;
+        def.Mass = 80f;
+        var c = w.AddCharacter(new Vector2D(0, 0.9 + 0.001), def);
+        c.Move(new Vector2F(0f, -0.001f), Dt); // first move: finds the ground and presses on it
+        Assert.True(c.IsGrounded);
+        // Impulse 80 kg * 9.81 * dt on a 160 kg plank.
+        Assert.Equal(-80f * 9.81f * Dt / 160f, plank.LinearVelocity.Y, 4);
+    }
+
+    [Fact]
     public void TheHitCallbackReportsTheWallOnceWithItsNormal()
     {
         var w = NewWorld();

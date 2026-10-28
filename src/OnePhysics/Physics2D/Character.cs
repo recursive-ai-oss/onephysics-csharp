@@ -63,10 +63,10 @@ public readonly struct Character : IEquatable<Character>
     public static CharacterDef Humanoid => new();
 
     /// <summary>A child: 1.2 m tall, 0.25 m radius, 45 degree slope limit, 0.2 m step.</summary>
-    public static CharacterDef Child => new() { Radius = 0.25f, Height = 1.2f, StepOffset = 0.2f };
+    public static CharacterDef Child => new() { Radius = 0.25f, Height = 1.2f, StepOffset = 0.2f, Mass = 30f };
 
     /// <summary>A large creature: 3 m tall, 0.6 m radius, 40 degree slope limit, 0.5 m step.</summary>
-    public static CharacterDef Giant => new() { Radius = 0.6f, Height = 3f, SlopeLimit = 40f, StepOffset = 0.5f, Skin = 0.02f };
+    public static CharacterDef Giant => new() { Radius = 0.6f, Height = 3f, SlopeLimit = 40f, StepOffset = 0.5f, Skin = 0.02f, Mass = 400f, MaxPushForce = 2000f };
 
     private Engine2D Resolve(out int slot)
     {
@@ -96,7 +96,7 @@ public readonly struct Character : IEquatable<Character>
         {
             var e = Resolve(out int c);
             Body.SetTransform(value, 0f);
-            e.CharGrounded[c] = false; e.CharNx[c] = 0f; e.CharNy[c] = 0f; e.CharGroundBody[c] = -1; e.CharGroundGen[c] = 0;
+            e.CharGround[c] = GroundState.InAir; e.CharNx[c] = 0f; e.CharNy[c] = 0f; e.CharGroundBody[c] = -1; e.CharGroundGen[c] = 0;
         }
     }
 
@@ -104,9 +104,12 @@ public readonly struct Character : IEquatable<Character>
     public Vector2F Velocity { get { var e = Resolve(out int c); return new Vector2F(e.CharVx[c], e.CharVy[c]); } }
 
     /// <summary>True when the last move ended standing on ground within <see cref="SlopeLimit"/>.</summary>
-    public bool IsGrounded { get { var e = Resolve(out int c); return e.CharGrounded[c]; } }
+    public bool IsGrounded { get { var e = Resolve(out int c); return e.CharGround[c] == GroundState.OnGround; } }
 
-    /// <summary>Normal of the ground under the character when <see cref="IsGrounded"/>; zero otherwise.</summary>
+    /// <summary>What the character stood on after the last move: in the air, on a slope steeper than <see cref="SlopeLimit"/> (it slides), or on walkable ground.</summary>
+    public GroundState Ground { get { var e = Resolve(out int c); return e.CharGround[c]; } }
+
+    /// <summary>Normal of the surface under the character when it is on ground or on a steep slope; zero in the air.</summary>
     public Vector2F GroundNormal { get { var e = Resolve(out int c); return new Vector2F(e.CharNx[c], e.CharNy[c]); } }
 
     /// <summary>The body the character stands on when grounded (it may be static), otherwise the default (invalid) body.</summary>
@@ -115,7 +118,7 @@ public readonly struct Character : IEquatable<Character>
         get
         {
             var e = Resolve(out int c);
-            if (!e.CharGrounded[c]) { return default; }
+            if (e.CharGround[c] != GroundState.OnGround) { return default; }
             var h = new BodyHandle(_world!.Id, e.CharGroundBody[c], e.CharGroundGen[c]);
             return _world.Core.Bodies.Handles.IsAlive(h.Index, h.Generation) ? new Body(_world, h) : default;
         }
@@ -157,12 +160,23 @@ public readonly struct Character : IEquatable<Character>
         set { var e = Resolve(out int c); var d = e.CharDef[c]; d.PushStrength = value; d.Validate(); e.CharDef[c] = d; }
     }
 
+    /// <summary>The most force a character pushes a dynamic body with, newtons, within [0, 1e9]. See <see cref="CharacterDef.MaxPushForce"/>.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">Setting a value outside [0, 1e9].</exception>
+    public float MaxPushForce
+    {
+        get { var e = Resolve(out int c); return e.CharDef[c].MaxPushForce; }
+        set { var e = Resolve(out int c); var d = e.CharDef[c]; d.MaxPushForce = value; d.Validate(); e.CharDef[c] = d; }
+    }
+
     /// <summary>Which layers the mover collides with (bit i: layer i). Default all.</summary>
     public uint LayerMask
     {
         get { var e = Resolve(out int c); return e.CharDef[c].LayerMask; }
         set { var e = Resolve(out int c); var d = e.CharDef[c]; d.LayerMask = value; e.CharDef[c] = d; }
     }
+
+    /// <summary>Mass in kg: the weight the character presses on a dynamic body it stands on (fixed at creation). See <see cref="CharacterDef.Mass"/>.</summary>
+    public float Mass { get { var e = Resolve(out int c); return e.CharDef[c].Mass; } }
 
     /// <summary>Radius of the capsule, metres (fixed at creation).</summary>
     public float Radius { get { var e = Resolve(out int c); return e.CharDef[c].Radius; } }
@@ -185,8 +199,8 @@ public readonly struct Character : IEquatable<Character>
         var w = _world!;
         var body = Body;
         var def = e.CharDef[c];
-        var state = new MoverState2D { Position = body.Position, IsGrounded = e.CharGrounded[c], GroundNormal = new Vector2F(e.CharNx[c], e.CharNy[c]) };
-        if (e.CharGrounded[c] && e.CharGroundBody[c] >= 0)
+        var state = new MoverState2D { Position = body.Position, Ground = e.CharGround[c], GroundNormal = new Vector2F(e.CharNx[c], e.CharNy[c]) };
+        if (e.CharGround[c] == GroundState.OnGround && e.CharGroundBody[c] >= 0)
         {
             var gh = new BodyHandle(w.Id, e.CharGroundBody[c], e.CharGroundGen[c]);
             if (w.Core.Bodies.Handles.IsAlive(gh.Index, gh.Generation)) { state.GroundBody = new Body(w, gh); }
@@ -198,7 +212,7 @@ public readonly struct Character : IEquatable<Character>
         var lin = w.Core.Bodies.LinearVelocityOf(body.RawHandle.Index);
         lin[0] = v.X; lin[1] = v.Y;
         e.CharVx[c] = v.X; e.CharVy[c] = v.Y;
-        e.CharGrounded[c] = state.IsGrounded;
+        e.CharGround[c] = state.Ground;
         e.CharNx[c] = state.GroundNormal.X; e.CharNy[c] = state.GroundNormal.Y;
         if (state.IsGrounded) { var g = state.GroundBody.RawHandle; e.CharGroundBody[c] = g.Index; e.CharGroundGen[c] = g.Generation; }
         else { e.CharGroundBody[c] = -1; e.CharGroundGen[c] = 0; }

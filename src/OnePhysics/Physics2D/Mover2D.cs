@@ -21,6 +21,19 @@ public enum CharacterContact : byte
     Below = 4,
 }
 
+/// <summary>What a character stands on after its last move.</summary>
+public enum GroundState : byte
+{
+    /// <summary>Nothing walkable or steep is within reach below the character.</summary>
+    InAir = 0,
+
+    /// <summary>The character touches a surface steeper than its slope limit that leans up towards it; it cannot stand there and slides.</summary>
+    OnSteepGround = 1,
+
+    /// <summary>The character stands on ground within its slope limit.</summary>
+    OnGround = 2,
+}
+
 /// <summary>
 /// One surface the mover must stay in front of, for the plane solver (<see cref="Mover2D.SolvePlanes"/>). The mover satisfies, for the movement vector <c>d</c>,
 /// <c>dot(d, Normal) + Separation >= 0</c>, pushing itself out along the normal by at most <see cref="PushLimit"/> when it starts inside.
@@ -58,6 +71,8 @@ public struct CharacterDef
         LayerMask = uint.MaxValue;
         CategoryBits = 1u;
         MaskBits = uint.MaxValue;
+        Mass = 70f;
+        MaxPushForce = 500f;
     }
 
     /// <summary>Radius of the capsule, metres, within (0, 1000]. Default 0.3.</summary>
@@ -90,6 +105,12 @@ public struct CharacterDef
     /// <summary>Mask bits of the body's shape (see <see cref="ShapeDef.MaskBits"/>). Default all.</summary>
     public uint MaskBits { get; set; }
 
+    /// <summary>Mass in kg, positive and at most 1e6: the weight a character presses on a dynamic body it stands on. Default 70.</summary>
+    public float Mass { get; set; }
+
+    /// <summary>The most force, in newtons, a character pushes a dynamic body with (impulse per move is at most this times dt), within [0, 1e9]. Default 500.</summary>
+    public float MaxPushForce { get; set; }
+
     internal readonly void Validate()
     {
         if (!(Radius > 0f && Radius <= 1000f)) { throw new ArgumentOutOfRangeException(nameof(Radius), Radius, "Radius must be within (0, 1000]."); }
@@ -98,6 +119,8 @@ public struct CharacterDef
         if (!(StepOffset >= 0f && StepOffset <= Height)) { throw new ArgumentOutOfRangeException(nameof(StepOffset), StepOffset, "StepOffset must be within [0, Height]."); }
         if (!(Skin >= 0.0001f && Skin <= 0.5f * Radius)) { throw new ArgumentOutOfRangeException(nameof(Skin), Skin, "Skin must be within [0.0001, Radius / 2]."); }
         if (!(PushStrength >= 0f && PushStrength <= 100f)) { throw new ArgumentOutOfRangeException(nameof(PushStrength), PushStrength, "PushStrength must be within [0, 100]."); }
+        if (!(Mass > 0f && Mass <= 1e6f)) { throw new ArgumentOutOfRangeException(nameof(Mass), Mass, "Mass must be within (0, 1e6]."); }
+        if (!(MaxPushForce >= 0f && MaxPushForce <= 1e9f)) { throw new ArgumentOutOfRangeException(nameof(MaxPushForce), MaxPushForce, "MaxPushForce must be within [0, 1e9]."); }
         Engine2D.CheckLayer(Layer, nameof(Layer));
     }
 }
@@ -108,10 +131,13 @@ public struct MoverState2D
     /// <summary>Centre of the capsule in world coordinates, finite and within +-2^21 of the world origin.</summary>
     public Vector2D Position { get; set; }
 
-    /// <summary>True when the last move ended standing on ground within the slope limit.</summary>
-    public bool IsGrounded { get; internal set; }
+    /// <summary>What the character stood on after the last move.</summary>
+    public GroundState Ground { get; internal set; }
 
-    /// <summary>Normal of the ground when <see cref="IsGrounded"/>; zero otherwise.</summary>
+    /// <summary>True when <see cref="Ground"/> is <see cref="GroundState.OnGround"/>.</summary>
+    public readonly bool IsGrounded => Ground == GroundState.OnGround;
+
+    /// <summary>Normal of the surface under the character when it is on ground or on a steep slope; zero in the air.</summary>
     public Vector2F GroundNormal { get; internal set; }
 
     /// <summary>The body under the character when grounded (may be static); the default (invalid) body otherwise. The next move carries the character with this body's velocity.</summary>
