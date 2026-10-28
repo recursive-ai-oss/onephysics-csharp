@@ -94,27 +94,23 @@ internal sealed partial class Engine2D
         var awake = world.AwakeBodies;
         EnsureBoxStorage();
         _stamp++;
-        world.Executor.For((awake.Length + 63) / 64, new BoxTask(this, world.AwakeArray, awake.Length));
-        foreach (int b in awake)
+        int boxTasks = (awake.Length + 63) / 64;
+        if (_moverLists.Length < boxTasks) { Array.Resize(ref _moverLists, Math.Max(boxTasks, _moverLists.Length * 2)); Array.Resize(ref _moverCounts, _moverLists.Length); }
+        world.Executor.For(boxTasks, new BoxTask(this, world.AwakeArray, awake.Length));
+        // The shapes whose boxes left their stored fat box, in the order of the awake list (task by task, each task in list order), are moved in the tree here, serially.
+        for (int t = 0; t < boxTasks; t++)
         {
-            if (!bodies.IsLive(b)) { continue; }
-            for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
+            int[] movers = _moverLists[t];
+            for (int i = 0, n = _moverCounts[t]; i < n; i++)
             {
-                if (_needMove[s] == 0) { continue; }
+                int s = movers[i];
+                int b = world.Shapes.Owner[s];
                 Bp.MoveProxy(Proxy[s], new Aabb2D(_boxes[4 * s], _boxes[4 * s + 1], _boxes[4 * s + 2], _boxes[4 * s + 3]), Dp[2 * b], Dp[2 * b + 1]);
             }
         }
 
-        // 2. Start-of-step pose and zero accumulated motion for every body (sleeping bodies may wake during the stage).
-        var pos = bodies.Position;
-        var rot = bodies.Rotation;
-        for (int b = 0; b < nb; b++)
-        {
-            if (!bodies.IsLive(b)) { continue; }
-            StartPos[2 * b] = pos[2 * b]; StartPos[2 * b + 1] = pos[2 * b + 1];
-            StartRot[2 * b] = rot[2 * b]; StartRot[2 * b + 1] = rot[2 * b + 1];
-            Dp[2 * b] = 0f; Dp[2 * b + 1] = 0f;
-        }
+        // 2. Start-of-step pose and zero accumulated motion for every body (sleeping bodies may wake during the stage). Bodies are independent, so this runs in blocks.
+        world.Executor.For((nb + 1023) / 1024, new StartPoseTask(this, nb));
 
         // 3. New pairs from the broadphase, in its sorted order.
         var found = Bp.UpdatePairs(new PairFilter(this), world.Executor);
@@ -133,13 +129,19 @@ internal sealed partial class Engine2D
         }
 
         // 4. Pairs that need a fresh manifold: at least one body awake (or a kinematic body in motion).
-        if (_updateList.Length < PairHigh) { _updateList = new int[Math.Max(PairHigh, _updateList.Length * 2)]; _results = new PairResult[_updateList.Length]; }
-        _updateCount = 0;
+        int need = (PairHigh + 1023) / 1024 * 1024;
+        if (_updateList.Length < need) { _updateList = new int[Math.Max(need, _updateList.Length * 2)]; _results = new PairResult[_updateList.Length]; }
         var owner = world.Shapes.Owner;
-        for (int p = 0; p < PairHigh; p++)
+        int listBlocks = (PairHigh + 1023) / 1024;
+        if (_blockCounts.Length < listBlocks) { _blockCounts = new int[Math.Max(listBlocks, _blockCounts.Length * 2)]; }
+        world.Executor.For(listBlocks, new UpdateListTask(this, world, anyFresh));
+        // Each block wrote its pairs at the start of its own 1024 slots, in pair order; closing the gaps in block order gives the list a single serial loop would have built.
+        _updateCount = 0;
+        for (int k = 0; k < listBlocks; k++)
         {
-            if (!PairLive[p]) { continue; }
-            if (IsActive(bodies, owner[PairA[p]]) || IsActive(bodies, owner[PairB[p]]) || (anyFresh && _fresh[p])) { _updateList[_updateCount++] = p; }
+            int n = _blockCounts[k];
+            if (n > 0 && _updateCount != k * 1024) { Array.Copy(_updateList, k * 1024, _updateList, _updateCount, n); }
+            _updateCount += n;
         }
 
         if (anyFresh) { Array.Clear(_fresh, 0, Math.Min(PairHigh, _fresh.Length)); }
@@ -241,6 +243,56 @@ internal sealed partial class Engine2D
         }
     }
 
+    private int[][] _moverLists = [];
+    private int[] _moverCounts = [];
+    private int[] _blockCounts = new int[4];
+
+    private readonly struct StartPoseTask : IParallelBody
+    {
+        private readonly Engine2D _e; private readonly int _count;
+
+        public StartPoseTask(Engine2D e, int count) { _e = e; _count = count; }
+
+        public void Run(int task)
+        {
+            var e = _e;
+            var bodies = e.Core.Bodies;
+            var pos = bodies.Position;
+            var rot = bodies.Rotation;
+            int lo = task * 1024, hi = Math.Min(lo + 1024, _count);
+            for (int b = lo; b < hi; b++)
+            {
+                if (!bodies.IsLive(b)) { continue; }
+                e.StartPos[2 * b] = pos[2 * b]; e.StartPos[2 * b + 1] = pos[2 * b + 1];
+                e.StartRot[2 * b] = rot[2 * b]; e.StartRot[2 * b + 1] = rot[2 * b + 1];
+                e.Dp[2 * b] = 0f; e.Dp[2 * b + 1] = 0f;
+            }
+        }
+    }
+
+    private readonly struct UpdateListTask : IParallelBody
+    {
+        private readonly Engine2D _e; private readonly WorldCore _w; private readonly bool _anyFresh;
+
+        public UpdateListTask(Engine2D e, WorldCore w, bool anyFresh) { _e = e; _w = w; _anyFresh = anyFresh; }
+
+        public void Run(int block)
+        {
+            var e = _e;
+            var bodies = _w.Bodies;
+            var owner = _w.Shapes.Owner;
+            int lo = block * 1024, hi = Math.Min(lo + 1024, e.PairHigh);
+            int n = 0;
+            for (int p = lo; p < hi; p++)
+            {
+                if (!e.PairLive[p]) { continue; }
+                if (IsActive(bodies, owner[e.PairA[p]]) || IsActive(bodies, owner[e.PairB[p]]) || (_anyFresh && e._fresh[p])) { e._updateList[lo + n++] = p; }
+            }
+
+            e._blockCounts[block] = n;
+        }
+    }
+
     private readonly struct BoxTask : IParallelBody
     {
         private readonly Engine2D _e; private readonly int[] _list; private readonly int _count;
@@ -252,6 +304,8 @@ internal sealed partial class Engine2D
             var e = _e;
             var bodies = e.Core.Bodies;
             int lo = task * 64, hi = Math.Min(lo + 64, _count);
+            int[] movers = e._moverLists[task] ?? (e._moverLists[task] = new int[64]);
+            int moved = 0;
             for (int i = lo; i < hi; i++)
             {
                 int b = _list[i];
@@ -261,9 +315,16 @@ internal sealed partial class Engine2D
                     var box = e.TightBox(b, in e.Geom[s]);
                     e._boxes[4 * s] = box.MinX; e._boxes[4 * s + 1] = box.MinY; e._boxes[4 * s + 2] = box.MaxX; e._boxes[4 * s + 3] = box.MaxY;
                     e._boxStamp[s] = e._stamp;
-                    e._needMove[s] = (byte)(Aabb2D.Contains(e.Bp.GetFatBounds(e.Proxy[s]), box) ? 0 : 1);
+                    bool stays = Aabb2D.Contains(e.Bp.GetFatBounds(e.Proxy[s]), box);
+                    if (!stays)
+                    {
+                        if (moved == movers.Length) { Array.Resize(ref movers, moved * 2); e._moverLists[task] = movers; }
+                        movers[moved++] = s;
+                    }
                 }
             }
+
+            e._moverCounts[task] = moved;
         }
     }
 
@@ -290,7 +351,6 @@ internal sealed partial class Engine2D
         }
     }
 
-    private byte[] _needMove = new byte[8];
     private int[] _boxStamp = new int[8];
     private int _stamp;
     private double[] _boxes = new double[32];
@@ -298,7 +358,7 @@ internal sealed partial class Engine2D
     private void EnsureBoxStorage()
     {
         int n = Core.Shapes.HighWater;
-        if (_needMove.Length < n) { _needMove = new byte[Math.Max(n, _needMove.Length * 2)]; _boxes = new double[_needMove.Length * 4]; _boxStamp = new int[_needMove.Length]; }
+        if (_boxStamp.Length < n) { int cap = Math.Max(n, _boxStamp.Length * 2); _boxes = new double[cap * 4]; _boxStamp = new int[cap]; }
     }
 
     private void Collide(int i, ReadOnlySpan<double> pos, ReadOnlySpan<float> rot, ReadOnlySpan<int> owner)
