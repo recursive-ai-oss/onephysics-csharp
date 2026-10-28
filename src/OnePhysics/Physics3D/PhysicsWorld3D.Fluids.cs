@@ -42,7 +42,7 @@ public sealed partial class PhysicsWorld3D
         ArgumentNullException.ThrowIfNull(fluid);
         if (!(dt > 0f) || !float.IsFinite(dt)) { throw new ArgumentOutOfRangeException(nameof(dt), dt, "dt must be finite and positive."); }
         int b = ResolveBody(body.RawHandle);
-        if (_core.Bodies.TypeOf(b) != BodyType.Dynamic) { throw new InvalidOperationException("Buoyancy applies to dynamic bodies only."); }
+        if (_core.Bodies.TypeOf(b) != BodyType.Dynamic) { throw new BodyTypeException(nameof(ApplyBuoyancy), body.RawHandle, _core.Bodies.TypeOf(b), true); }
         var prepared = Engine3D.Prepare(fluid);
         float v = _engine.ApplyFluidToBody(b, prepared, dt);
         if (v > 0f) { _core.WakeIsland(_core.Bodies.Island[b]); _core.Bodies.SleepTime[b] = 0f; }

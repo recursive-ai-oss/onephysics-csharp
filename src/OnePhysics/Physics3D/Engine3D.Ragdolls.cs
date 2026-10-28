@@ -234,8 +234,8 @@ internal sealed partial class Engine3D
         Array.Fill(_ragOfBody, -1);
         if (b == null)
         {
-            RagHandles = new HandleTable();
-            Ragdolls = new RagdollState?[4];
+            RagHandles.Reset();
+            Array.Clear(Ragdolls);
             return;
         }
 

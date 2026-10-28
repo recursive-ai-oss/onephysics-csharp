@@ -41,7 +41,7 @@ public sealed class ConstraintColoring
 
     internal void CopyFrom(ConstraintColoring other)
     {
-        _mask = other._mask;
+        (_mask, other._mask) = (other._mask, _mask);
         Array.Clear(_start);
     }
 

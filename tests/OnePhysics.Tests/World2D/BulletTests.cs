@@ -124,7 +124,7 @@ public class BulletTests
         b.IsBullet = true;
         Assert.True(b.IsBullet);
         var wall = w.AddBox(new Vector2F(1, 1), type: BodyType.Static);
-        Assert.Throws<InvalidOperationException>(() => wall.IsBullet = true);
+        Assert.Throws<BodyTypeException>(() => wall.IsBullet = true);
         var snap = w.Snapshot();
         var w2 = NoGravity(1, 41);
         w2.Restore(snap);

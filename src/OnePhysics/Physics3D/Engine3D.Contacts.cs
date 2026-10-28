@@ -42,6 +42,11 @@ internal readonly struct Stages3D : IWorldStages
     public float BodyMotion(WorldCore world, int body) => _e.BodyMotion(body);
 
     public void FinalizeBodies(WorldCore world, ReadOnlySpan<int> bodies, in StepContext context) => _e.FinalizeBodies(bodies, in context);
+
+    // Spelled out because calling a default interface member on a struct boxes it: that was 48 bytes allocated by every step.
+    public void AfterFinalize(WorldCore world, in StepContext context) { }
+
+    public bool BodyMotionIsConcurrent => false;
 }
 
 [InlineArray(28)]
@@ -120,6 +125,8 @@ internal sealed partial class Engine3D
         private readonly Engine3D _e;
 
         public PairFilter(Engine3D e) => _e = e;
+
+        public bool IsSensor(int shape) => _e.IsSensor(shape);
 
         public bool ShouldCollide(int shapeA, int shapeB)
         {

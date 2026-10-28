@@ -204,13 +204,13 @@ internal sealed partial class Engine2D
         }
     }
 
-    private void ReadJoints(StateReader r, out JointData2D[] joints)
+    private void ReadJoints(StateReader r, ref JointData2D[] joints)
     {
         float hertz = r.ReadSingle(), zeta = r.ReadSingle();
         if (!(hertz >= 0f && zeta >= 0f) || !float.IsFinite(hertz + zeta)) { throw r.Error("invalid joint tunables"); }
         int n = r.ReadCount(1, "joint slots");
         if (n > 1 << 24) { throw r.Error("too many joint slots"); }
-        joints = new JointData2D[Math.Max(n, 16)];
+        if (joints.Length < Math.Max(n, 16)) { joints = new JointData2D[Math.Max(n, 16)]; } // a regrown array is zero; a kept one was cleared by the caller
         for (int c = 0; c < n; c++)
         {
             if (!r.ReadBool()) { continue; }

@@ -174,8 +174,8 @@ public class World2DTests
         Assert.Throws<ArgumentOutOfRangeException>(() => w.Step(float.NaN));
         Assert.Throws<ArgumentOutOfRangeException>(() => new PhysicsWorld2D(new WorldOptions2D { Substeps = 0 }));
         var s = w.AddBox(new Vector2F(1, 1), type: BodyType.Static);
-        Assert.Throws<InvalidOperationException>(() => s.LinearVelocity = new Vector2F(1, 0));
-        Assert.Throws<InvalidOperationException>(() => s.ApplyForce(new Vector2F(1, 0)));
+        Assert.Throws<BodyTypeException>(() => s.LinearVelocity = new Vector2F(1, 0));
+        Assert.Throws<BodyTypeException>(() => s.ApplyForce(new Vector2F(1, 0)));
         w.Step(Dt);
     }
 

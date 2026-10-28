@@ -85,6 +85,12 @@ public readonly struct Character : IEquatable<Character>
         return e;
     }
 
+    /// <summary>The character's slot index in its world; with <see cref="Generation"/> it identifies the character (see <see cref="PhysicsWorld3D.GetCharacter"/>).</summary>
+    public int Index => _index;
+
+    /// <summary>The generation of the slot when the character was created; a later character reusing the slot has a different one.</summary>
+    public int Generation => _generation;
+
     /// <summary>True while the character exists.</summary>
     public bool IsValid => _world != null && _world.Engine.CharHandles.IsAlive(_index, _generation);
 
@@ -380,7 +386,8 @@ public sealed partial class PhysicsWorld3D
 
     private void DropDeadControllerHandlers()
     {
-        var dead = new List<int>();
+        var dead = _deadScratch;
+        dead.Clear();
         foreach (var kv in _controllerHandlers)
         {
             if (!_engine.CharHandles.IsAlive(kv.Key, kv.Value.Generation)) { dead.Add(kv.Key); }

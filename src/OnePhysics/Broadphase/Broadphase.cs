@@ -124,6 +124,12 @@ public interface IPairFilter
 {
     /// <summary>True to keep the pair of proxies with these user ids.</summary>
     bool ShouldCollide(int userIdA, int userIdB);
+
+    /// <summary>
+    /// True if the proxy with this user id is a sensor. Two proxies that are both static or kinematic are paired only when one of them is a sensor and they are not both static,
+    /// so a body that moves by script (a kinematic body or a character) still enters and leaves a sensor.
+    /// </summary>
+    bool IsSensor(int userId);
 }
 
 /// <summary>A filter that keeps every pair.</summary>
@@ -131,6 +137,9 @@ public readonly struct AcceptAllPairs : IPairFilter
 {
     /// <inheritdoc/>
     public bool ShouldCollide(int userIdA, int userIdB) => true;
+
+    /// <inheritdoc/>
+    public bool IsSensor(int userId) => false;
 }
 
 /// <summary>
@@ -139,7 +148,7 @@ public readonly struct AcceptAllPairs : IPairFilter
 /// <remarks>
 /// A proxy is created with its tight bounds; the stored box is the fat box (margin plus motion prediction). <see cref="MoveProxy(int, in TBox, ReadOnlySpan{double})"/> touches the tree only when the new tight box leaves the fat box,
 /// and only then is the proxy put in the move buffer. <see cref="UpdatePairs{TFilter}"/> queries the trees for every buffered proxy and returns the overlaps involving at least one of them:
-/// a moved dynamic proxy against all three trees, a moved static or kinematic proxy against the dynamic tree only (static-static, static-kinematic and kinematic-kinematic never pair).
+/// a moved dynamic proxy against all three trees, a moved static or kinematic proxy against the dynamic tree only (static-static never pairs; static-kinematic and kinematic-kinematic pair only when one of the two shapes is a sensor).
 /// A pair of two moved proxies is reported once. The returned pairs are sorted by (user id A, user id B, proxy A, proxy B), a total order that does not depend on thread count or traversal order.
 /// The caller keeps the set of pairs it already has (for example the contact table) and treats the output as candidates.
 /// The whole state, tree structures and the move buffer included, is a snapshot section; see docs/broadphase.md.
@@ -165,6 +174,7 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
     private readonly BroadphaseOptions _options;
     private DynamicTree<TBox>[] _trees;
     private readonly List<int> _moves = new();
+    private readonly List<int> _moveStage = new();
     private readonly List<PairChunk> _chunks = new();
     private int[] _moved = new int[64];
     private int _movedCount;
@@ -424,6 +434,7 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
         public int Tag;
         public int QueryKey;
         public int QueryUser;
+        public bool BothNonDynamic;
 
         public bool Report(int node, int userId)
         {
@@ -431,6 +442,7 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
             if (other == QueryKey) { return true; }
             // Both moved: only the smaller key reports, so the pair appears once.
             if ((Tree.GetFlags(node) & DynamicTree<TBox>.MovedFlag) != 0 && QueryKey > other) { return true; }
+            if (BothNonDynamic && !Filter.IsSensor(QueryUser) && !Filter.IsSensor(userId)) { return true; }
             if (!Filter.ShouldCollide(QueryUser, userId)) { return true; }
             bool queryFirst = QueryUser < userId || (QueryUser == userId && QueryKey < other);
             Chunk.Add(queryFirst ? new ProxyPair(QueryKey, other, QueryUser, userId) : new ProxyPair(other, QueryKey, userId, QueryUser));
@@ -465,9 +477,11 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
                 TBox box = own.GetBounds(node);
                 c.QueryKey = key;
                 c.QueryUser = own.GetUserId(node);
-                // A dynamic proxy meets every tree; a static or kinematic one meets only the dynamic tree.
-                for (int t = type == 2 ? 0 : 2; t < 3; t++)
+                // A dynamic proxy meets every tree; a static or kinematic one meets the dynamic tree and, for sensor pairs only, the other non-dynamic trees (never static against static).
+                for (int t = 0; t < 3; t++)
                 {
+                    if (type != 2 && t != 2 && type == 0 && t == 0) { continue; }
+                    c.BothNonDynamic = type != 2 && t != 2;
                     c.Tag = t;
                     c.Tree = _bp._trees[t];
                     c.Tree.Query(box, ref c);
@@ -635,20 +649,20 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
             throw reader.Error("broadphase options in the snapshot differ from this broadphase's options");
         }
 
-        var trees = new[] { new DynamicTree<TBox>(), new DynamicTree<TBox>(), new DynamicTree<TBox>() };
-        foreach (var tree in trees) { tree.Read(reader); }
+        // Each tree reads into its own staging copy and the moves into a staging list; nothing live changes until everything validated.
+        foreach (var tree in _trees) { tree.ReadStaged(reader); }
         int count = reader.ReadCount(4, "move buffer");
-        var moves = new List<int>(count);
+        _moveStage.Clear();
         for (int i = 0; i < count; i++)
         {
             int key = reader.ReadInt32();
-            if (key < 0 || (key & 3) > 2 || (key >> 2) >= trees[key & 3].NodeSlots) { throw reader.Error("move buffer entry " + key.ToString(CultureInfo.InvariantCulture) + " names no node slot"); }
-            moves.Add(key);
+            if (key < 0 || (key & 3) > 2 || (key >> 2) >= _trees[key & 3].StagedNodeSlots) { throw reader.Error("move buffer entry " + key.ToString(CultureInfo.InvariantCulture) + " names no node slot"); }
+            _moveStage.Add(key);
         }
 
-        _trees = trees;
+        foreach (var tree in _trees) { tree.CommitStaged(); }
         _moves.Clear();
-        _moves.AddRange(moves);
+        _moves.AddRange(_moveStage);
         _pairCount = 0;
         _movedCount = 0;
     }
