@@ -379,6 +379,8 @@ public static class Gjk3D
         return true;
     }
 
+    private const float TinyRayLength = 1e-6f;
+
     /// <summary>Casts a ray against a convex shape.</summary>
     /// <param name="shape">The shape, in its own frame.</param>
     /// <param name="shapeInRay">Placement of the shape's frame in the ray's frame.</param>
@@ -400,7 +402,10 @@ public static class Gjk3D
         Vector3F castOrigin = origin;
         float castMax = maxFraction;
         Vector3F far = shapeInRay.Translation - origin;
-        if (far.LengthSquared() > FarRayDistance * FarRayDistance)
+        // A ray whose whole length is a hair (a denormal fraction, say) gives the cast no motion to measure against its tolerances, which are then coarser than the ray: it would report a hit on a shape
+        // metres away. It takes the same bounds test.
+        float reach = Math.Max(Math.Abs(direction.X), Math.Max(Math.Abs(direction.Y), Math.Abs(direction.Z))) * maxFraction;
+        if (far.LengthSquared() > FarRayDistance * FarRayDistance || !(reach > TinyRayLength))
         {
             ShapeBounds3D.Compute(shape, shapeInRay, out Vector3F lo, out Vector3F hi);
             var clip = new Broadphase.Ray3D(origin.X, origin.Y, origin.Z, direction.X, direction.Y, direction.Z);
