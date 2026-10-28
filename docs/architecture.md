@@ -87,7 +87,7 @@ A **batch** is `ConstraintColoring.Lanes` (8) consecutive constraints of one col
 
 ### Executor
 
-`TaskExecutor.For(taskCount, body)` runs tasks `0..taskCount−1` on at most `ThreadCount` threads (`Parallel.For` when more than 1, a plain loop for 1, which is the only mode on single-threaded WASM). Each task writes only data it owns, so any interleaving gives the same bits. `ThreadCount` comes from `WorldOptions` (default 1), is fixed at world creation and is never read from the machine. The core's only thread-dependent scheduling is in `TaskExecutor.cs`.
+`TaskExecutor.For(taskCount, body)` runs tasks `0..taskCount−1` on at most `ThreadCount` threads (the shared worker pool when more than 1, a plain loop for 1, which is the only mode on single-threaded WASM). Each task writes only data it owns, so any interleaving gives the same bits. `ThreadCount` comes from `WorldOptions` (default 1), is fixed at world creation and is never read from the machine. The core's only thread-dependent scheduling is in `TaskExecutor.cs`. `TaskExecutor.ForStages(stageCount, body, mostTasks)` runs a sequence of stages (`IStagedBody`: task count per stage, run a task) in one call: every thread walks all stages in order, runs its own contiguous block of the stage first and then helps with the other blocks, and waits for the whole stage before the next one. The solver runs all substeps as one staged call (integrate velocities, then for each pass the overflow constraints serially and each color in ascending order, integrate positions, ...). A call with fewer than four tasks in every stage stays on the calling thread.
 
 ### Pipeline
 

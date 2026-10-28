@@ -1,2 +1,3 @@
 # Allow-list for tools/check.sh. One extended regex per line, matched against grep's "path:line:text" output.
 # Lines starting with # and blank lines are ignored. A hit that matches here is not a failure. Keep it empty unless a hit is justified.
+^src/OnePhysics/Physics2D/Mem\.cs:

@@ -266,6 +266,62 @@ public class BroadphaseTests
         if (dims == 2) { Invariants(new Dim2()); } else { Invariants(new Dim3()); }
     }
 
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void Enlarged_trees_stay_valid_and_rebuilding_the_enlarged_part_keeps_every_proxy(int dims)
+    {
+        if (dims == 2) { EnlargeAndRebuild(new Dim2()); } else { EnlargeAndRebuild(new Dim3()); }
+    }
+
+    private static void EnlargeAndRebuild<TBox>(Dim<TBox> dim) where TBox : struct, IBox<TBox>
+    {
+        var rng = new TestRng(11);
+        var tree = new DynamicTree<TBox>(2);
+        var live = new List<int>();
+        var disp = new double[dim.Axes];
+        for (int i = 0; i < 700; i++) { live.Add(tree.CreateProxy(dim.RandomBox(rng, 50, 3), i)); }
+        for (int round = 0; round < 60; round++)
+        {
+            int moves = 1 + rng.Next(80);
+            for (int m = 0; m < moves; m++) { int p = live[rng.Next(live.Count)]; tree.EnlargeProxy(p, dim.Shift(tree.GetBounds(p), rng, 10, disp)); }
+            tree.Validate();
+            Assert.True(tree.EnlargedCount > 0);
+            if (round % 3 == 0)
+            {
+                tree.RebuildEnlarged();
+                Assert.Equal(0, tree.EnlargedCount);
+                tree.Validate();
+            }
+            else if (round % 7 == 1)
+            {
+                // A structural change flushes the enlarged region first.
+                int i = rng.Next(live.Count);
+                tree.DestroyProxy(live[i]);
+                live[i] = tree.CreateProxy(dim.RandomBox(rng, 50, 3), 1000 + round);
+                Assert.Equal(0, tree.EnlargedCount);
+                tree.Validate();
+            }
+
+            // Every proxy is still reachable: a query over the whole space reports all of them.
+            var wide = new Collect { Keys = new List<int>() };
+            var root = tree.GetBounds(tree.Root);
+            tree.Query(root, ref wide);
+            Assert.Equal(live.Count, wide.Keys.Count);
+        }
+
+        // A snapshot taken with a flagged region restores to a tree that rebuilds the same way.
+        var w = StateWriter.ToBuffer();
+        tree.Write(w);
+        var copy = new DynamicTree<TBox>();
+        copy.Read(new StateReader(w.ToArray()));
+        Assert.Equal(tree.EnlargedCount, copy.EnlargedCount);
+        tree.RebuildEnlarged(); copy.RebuildEnlarged();
+        var a = StateWriter.ToBuffer(); tree.Write(a);
+        var b = StateWriter.ToBuffer(); copy.Write(b);
+        Assert.Equal(a.ToArray(), b.ToArray());
+    }
+
     private static void Invariants<TBox>(Dim<TBox> dim) where TBox : struct, IBox<TBox>
     {
         var rng = new TestRng(5);

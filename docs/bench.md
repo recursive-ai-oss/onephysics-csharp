@@ -15,7 +15,7 @@ Output directory: `meta.txt` (machine, CPU model, logical cores, OS, runtime, jo
 
 ## Method
 
-- **Step time**: wall time of the engine's step call only, one sample per step, steady clock, in-process. The first `warmup` steps of the scene are dropped; median, mean, p90, p99, min and max are reported over the rest. With `--repeat N` the whole process is run N times and the run with the lowest median is kept.
+- **Step time**: wall time of the engine's step call only, one sample per step, steady clock, in-process, with tiered compilation off (`Bar.csproj`) so that every managed engine, ours and the in-process references, runs optimised code from its first call; with it on, small scenes finish before the hot methods are promoted and measure the JIT instead. The first `warmup` steps of the scene are dropped; median, mean, p90, p99, min and max are reported over the rest. With `--repeat N` the whole process is run N times and the run with the lowest median is kept.
 - **Threads**: 1, 8 and the machine's logical core count (`all`). Box2D: `workerCount` set to the thread count and the library's own task system used. Rapier2D: the `parallel` feature (the documented way to multithread the whole step) and the step runs inside a rayon pool of exactly that many threads. Box2D.NET has no documented multithreading, so it runs 1 thread only.
 - **Memory**: peak resident set size of the driver process from `/usr/bin/time -v` (Linux) or `-l` (macOS), whole run including scene loading.
 - **Query throughput**: after the scene's `settle` steps, each query kind runs over all its queries `query_reps` times; the first repetition is untimed; queries per second = queries ÷ time for that kind. Hit counts are recorded so engines can be compared for agreement.

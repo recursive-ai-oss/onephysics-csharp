@@ -11,6 +11,9 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <EnableNETAnalyzers>false</EnableNETAnalyzers>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- Every managed engine measured here (ours and the in-process references) runs fully optimised code from its first call. With tiered compilation a 600-step scene of a small world ends before
+         the hot methods leave their unoptimised first tier, and the row measures the JIT, not the engine: chain 0.47 ms against 0.03 ms. The native references have no such phase. -->
+    <TieredCompilation>false</TieredCompilation>
   </PropertyGroup>
 
   <ItemGroup>
