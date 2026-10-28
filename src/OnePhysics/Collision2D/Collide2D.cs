@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.Intrinsics;
 using RecursiveAI.OnePhysics.Physics2D;
 
 namespace RecursiveAI.OnePhysics.Collision2D;
@@ -179,18 +180,66 @@ public static class Collide2D
     {
         float best = -float.MaxValue;
         edge = 0;
-        ReadOnlySpan<Vec2> rv = r.V, rn = r.Nm, ov = o.V;
+        ReadOnlySpan<Vec2> rv = r.V, rn = r.Nm;
         int on = o.N;
+        if (on <= 2)
+        {
+            // A point or a segment: two dot products per face are cheaper than setting up lanes.
+            ReadOnlySpan<Vec2> ovs = o.V;
+            for (int i = 0; i < faces; i++)
+            {
+                Vec2 nrm = rn[i];
+                Vec2 v = rv[i];
+                float min = float.MaxValue;
+                for (int j = 0; j < on; j++)
+                {
+                    float s = Vec2.Dot(nrm, ovs[j] - v);
+                    if (s < min) { min = s; }
+                }
+
+                if (min - rT > margin) { return float.PositiveInfinity; }
+                if (min > best) { best = min; edge = i; }
+            }
+
+            return best;
+        }
+
+        // The other core's points as x and y lanes, four per vector; lanes past the count are masked out of the minimum. Every lane computes
+        // nx * (ox - vx) + ny * (oy - vy), the scalar expression, and the minimum of finite values does not depend on the order it is taken in.
+        Vector128<float> big = Vector128.Create(float.MaxValue);
+        Vector256<float> sh0 = Vector256.Shuffle(Mem.LoadFour(in o.V, 0), Vector256.Create(0, 2, 4, 6, 1, 3, 5, 7));
+        Vector128<float> ox0 = sh0.GetLower(), oy0 = sh0.GetUpper();
+        Vector128<int> idx = Vector128.Create(0, 1, 2, 3);
+        Vector128<float> mask0 = Vector128.LessThan(idx, Vector128.Create(on)).AsSingle();
+        Vector128<float> ox1 = default, oy1 = default, mask1 = default;
+        bool two = on > 4;
+        if (two)
+        {
+            Vector256<float> sh1 = Vector256.Shuffle(Mem.LoadFour(in o.V, 4), Vector256.Create(0, 2, 4, 6, 1, 3, 5, 7));
+            ox1 = sh1.GetLower(); oy1 = sh1.GetUpper();
+            mask1 = Vector128.LessThan(idx + Vector128.Create(4), Vector128.Create(on)).AsSingle();
+        }
+
         for (int i = 0; i < faces; i++)
         {
             Vec2 nrm = rn[i];
             Vec2 v = rv[i];
-            float min = float.MaxValue;
-            for (int j = 0; j < on; j++)
+            Vector128<float> nx = Vector128.Create(nrm.X), ny = Vector128.Create(nrm.Y), vx = Vector128.Create(v.X), vy = Vector128.Create(v.Y);
+            Vector128<float> s = nx * (ox0 - vx) + ny * (oy0 - vy);
+            Vector128<float> m = Vector128.ConditionalSelect(mask0, s, big);
+            if (two)
             {
-                float s = Vec2.Dot(nrm, ov[j] - v);
-                if (s < min) { min = s; }
+                Vector128<float> s1 = nx * (ox1 - vx) + ny * (oy1 - vy);
+                Vector128<float> m1 = Vector128.ConditionalSelect(mask1, s1, big);
+                m = Vector128.ConditionalSelect(Vector128.LessThan(m1, m), m1, m);
             }
+
+            // Minimum of the four lanes by compare and select, the scalar loop's `if (s < min)`.
+            Vector128<float> sw = Vector128.Shuffle(m, Vector128.Create(2, 3, 0, 1));
+            m = Vector128.ConditionalSelect(Vector128.LessThan(sw, m), sw, m);
+            sw = Vector128.Shuffle(m, Vector128.Create(1, 0, 3, 2));
+            m = Vector128.ConditionalSelect(Vector128.LessThan(sw, m), sw, m);
+            float min = m.ToScalar();
 
             if (min - rT > margin) { return float.PositiveInfinity; }
             if (min > best) { best = min; edge = i; }
@@ -256,7 +305,7 @@ public static class Collide2D
     private static Manifold2D Face(in Poly r, in Poly inc, int i, bool flip, float margin)
     {
         int n = r.N;
-        int i2 = (i + 1) % n;
+        int i2 = i + 1 == n ? 0 : i + 1;
         Vec2 v1 = r.V[i], v2 = r.V[i2];
         Vec2 nrm = r.Nm[i];
         Vec2 tan = Vec2.LeftPerp(nrm);
@@ -273,7 +322,7 @@ public static class Collide2D
                 if (dd < minDot) { minDot = dd; j1 = k; }
             }
 
-            j2 = (j1 + 1) % ni;
+            j2 = j1 + 1 == ni ? 0 : j1 + 1;
         }
 
         Vec2 w1 = inc.V[j1], w2 = inc.V[j2];

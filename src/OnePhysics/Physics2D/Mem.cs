@@ -2,6 +2,8 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using RecursiveAI.OnePhysics.Collision2D;
 
 namespace RecursiveAI.OnePhysics.Physics2D;
 
@@ -29,4 +31,12 @@ internal static class Mem
     /// <summary>Declares a scratch buffer without clearing it; the caller writes every element it reads.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void SkipInit<TBuffer>(out TBuffer buffer) => Unsafe.SkipInit(out buffer);
+
+    /// <summary>Loads the eight floats of four consecutive points of <paramref name="points"/> starting at <paramref name="first"/> (0 or 4; x and y interleaved). Lanes of points past the shape's count hold whatever the buffer holds; the caller masks them.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Vector256<float> LoadFour(in Vec2x8 points, int first)
+    {
+        // first is 0 or 4 and the buffer holds eight points (16 floats), so the 8 floats read end at index 15 at most.
+        return Vector256.LoadUnsafe(ref Unsafe.Add(ref Unsafe.As<Vec2x8, float>(ref Unsafe.AsRef(in points)), 2 * first));
+    }
 }
