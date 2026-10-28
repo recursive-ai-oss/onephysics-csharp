@@ -32,6 +32,7 @@ internal readonly struct Stages3D : IWorldStages
         // Contact impulses go from the wide groups back to the payloads; joints work out their reaction and may ask to break.
         _e.StoreResults(constraints);
         _e.StoreJointResults(constraints, in context);
+        _e.EmitHits(world, constraints, eventSlot);
     }
 
     public void BeginSolve(WorldCore world, int batches, in StepContext context) => _e.BeginSolve(batches, in context);
@@ -121,6 +122,9 @@ internal sealed partial class Engine3D
         EnsureBodies(nb);
         ReconcileJoints();
 
+        // 0. A changed filter re-evaluates the pair table before anything else (see Refilter).
+        Refilter();
+
         // 1. Broadphase boxes of every body that moved last step. The displacement stretches the box ahead of the motion.
         foreach (int b in world.AwakeBodies)
         {
@@ -148,14 +152,18 @@ internal sealed partial class Engine3D
 
         // 3. New pairs from the broadphase, in its sorted order.
         var found = Bp.UpdatePairs(new PairFilter(this), world.Executor);
-        var pairFilter = Opt.PairFilter;
+        bool anyFresh = false;
         for (int i = 0; i < found.Length; i++)
         {
             int a = found[i].UserA, b = found[i].UserB;
             if (a > b) { (a, b) = (b, a); }
             if (PairMap.ContainsKey(PairKey(a, b))) { continue; }
-            if (pairFilter != null && !pairFilter(WrapShape(a), WrapShape(b))) { continue; }
-            AllocatePair(a, b);
+            if (!PairAllowed(a, b)) { continue; }
+            int np = AllocatePair(a, b);
+            if (_fresh.Length < PairHigh) { Array.Resize(ref _fresh, Math.Max(PairHigh, _fresh.Length * 2)); }
+            // A pair with a sensor is evaluated once when found even if both bodies are asleep, so a sleeping body inside a sensor still gets its enter event.
+            _fresh[np] = IsSensor(a) || IsSensor(b);
+            anyFresh |= _fresh[np];
         }
 
         // 4. Pairs that need fresh manifolds: at least one body awake (or a kinematic body in motion). Soup-against-soup pairs never collide.
@@ -170,8 +178,10 @@ internal sealed partial class Engine3D
         for (int p = 0; p < PairHigh; p++)
         {
             if (!PairLive[p]) { continue; }
-            if (IsActive(bodies, owner[PairA[p]]) || IsActive(bodies, owner[PairB[p]])) { _updateList[_updateCount++] = p; }
+            if (IsActive(bodies, owner[PairA[p]]) || IsActive(bodies, owner[PairB[p]]) || (anyFresh && p < _fresh.Length && _fresh[p])) { _updateList[_updateCount++] = p; }
         }
+
+        if (anyFresh) { Array.Clear(_fresh, 0, Math.Min(PairHigh, _fresh.Length)); }
 
         // 5. Manifolds, in parallel over fixed chunks; each chunk writes only its own results.
         int chunks = (_updateCount + 63) / 64;
@@ -203,6 +213,7 @@ internal sealed partial class Engine3D
                 continue;
             }
 
+            if (IsSensor(PairA[p]) || IsSensor(PairB[p])) { ApplySensorPair(world, p, _scratch[i >> 6], _resFirst[i], _resCount[i], owner); continue; }
             ApplyPair(world, p, _scratch[i >> 6], _resFirst[i], _resCount[i], owner);
         }
 

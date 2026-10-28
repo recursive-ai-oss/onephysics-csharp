@@ -106,7 +106,7 @@ internal sealed partial class Engine3D : ISnapshotSection
     public void EnsureShapes(int n)
     {
         Grow(ref GeomOf, n); Grow(ref Local, n); Grow(ref Proxy, n); Grow(ref Friction, n); Grow(ref Restitution, n); Grow(ref Rolling, n); Grow(ref Density, n);
-        Grow(ref Category, n); Grow(ref Mask, n); Grow(ref Group, n); Grow(ref NextShape, n);
+        Grow(ref Category, n); Grow(ref Mask, n); Grow(ref Group, n); Grow(ref NextShape, n); EnsureServiceShapes(n);
     }
 
     // ------------------------------------------------------------------ geometry table
@@ -244,6 +244,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         Nonnegative(def.RollingResistance, "RollingResistance");
         if (!(def.Restitution >= 0f && def.Restitution <= 1f)) { throw new ArgumentOutOfRangeException(nameof(def), def.Restitution, "Restitution must be within 0..1."); }
         Finite3(def.LocalPosition, "LocalPosition");
+        CheckLayer(def.Layer, "Layer");
         var rot = Normalize(def.LocalRotation, nameof(def));
         int b = Core.Resolve(body);
         var type = Core.Bodies.TypeOf(b);
@@ -267,6 +268,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         Local[s] = new RigidTransformF(rot, def.LocalPosition);
         Friction[s] = def.Friction; Restitution[s] = def.Restitution; Rolling[s] = def.RollingResistance; Density[s] = def.Density;
         Category[s] = def.CategoryBits; Mask[s] = def.MaskBits; Group[s] = def.GroupIndex;
+        ShapeFlags[s] = def.IsSensor ? FlagSensor : (byte)0; ShapeLayer[s] = (byte)def.Layer;
         NextShape[s] = -1;
         var tight = TightBox(b, s);
         if (!tight.IsValid(out string reason))
@@ -392,7 +394,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         _parts.Clear();
         for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
         {
-            if (!(Density[s] > 0f)) { continue; }
+            if (!(Density[s] > 0f) || IsSensor(s)) { continue; }
             var g = Geoms[GeomOf[s]]!;
             if (g.Soup != null) { continue; }
             var m = g.UnitMass;
@@ -500,13 +502,6 @@ internal sealed partial class Engine3D : ISnapshotSection
         return PairMap.TryGetValue(PairKey(shapeA, shapeB), out int p) ? PairCons[p] : -1;
     }
 
-    /// <summary>Category, mask and group rule: same non-zero group decides; otherwise both masks must include the other's category.</summary>
-    public bool CanCollide(int sa, int sb)
-    {
-        if (Group[sa] == Group[sb] && Group[sa] != 0) { return Group[sa] > 0; }
-        return (Mask[sa] & Category[sb]) != 0 && (Category[sa] & Mask[sb]) != 0;
-    }
-
     // ------------------------------------------------------------------ origin shifting
 
     /// <summary>After the core shifted the origin: rebuild every proxy, since the broadphase keeps boxes in origin-relative coordinates. Shapes are visited in ascending slot order.</summary>
@@ -528,7 +523,8 @@ internal sealed partial class Engine3D : ISnapshotSection
     public void Write(StateWriter w)
     {
         bool joints = LiveJointCount() > 0;
-        w.WriteUInt32(joints ? VersionJoints : Version);
+        bool services = HasServiceState();
+        w.WriteUInt32(joints || services ? VersionJoints : Version);
         w.WriteSingle(Opt.ContactHertz); w.WriteSingle(Opt.ContactDampingRatio); w.WriteSingle(Opt.PushOutVelocity); w.WriteSingle(Opt.RestitutionThreshold);
         w.WriteSingle(Opt.MaxLinearSpeed); w.WriteSingle(Opt.MaxRotationPerSubstep); w.WriteBool(Opt.ContinuousEnabled); w.WriteSingle(Opt.ContactSlop);
         w.WriteSingle(Opt.SpeculativeDistance);
@@ -582,11 +578,12 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         w.WriteInt32(PairFreeCount);
         w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
-        if (joints)
+        if (joints || services)
         {
-            // Version 2: a presence-flags word, then the flagged blocks in a fixed order (only joints so far).
-            w.WriteUInt32(BlockJoints);
-            WriteJoints(w);
+            // Version 2: a presence-flags word, then the flagged blocks in a fixed order: joints, then services (layers, filters, sensors).
+            w.WriteUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u));
+            if (joints) { WriteJoints(w); }
+            if (services) { WriteServices(w, ns); }
         }
     }
 
@@ -698,11 +695,17 @@ internal sealed partial class Engine3D : ISnapshotSection
         }
 
         JointData3D[]? joints = null;
+        ServiceBlock? services = null;
         if (v == VersionJoints)
         {
             uint flags = r.ReadUInt32();
-            if (flags != BlockJoints) { throw r.Error("invalid 3D section block flags " + flags.ToString(CultureInfo.InvariantCulture)); }
-            joints = ReadJoints(r);
+            if (flags == 0 || (flags & ~(BlockJoints | BlockServices)) != 0) { throw r.Error("invalid 3D section block flags " + flags.ToString(CultureInfo.InvariantCulture)); }
+            if ((flags & BlockJoints) != 0) { joints = ReadJoints(r); }
+            if ((flags & BlockServices) != 0)
+            {
+                services = ReadServices(r, ns, live);
+                if (services.IsDefault()) { throw r.Error("a services block holding only default state"); }
+            }
         }
 
         // A constraint belongs to at most one chain, once (a repeated id would make a cycle that the writer and the solver would walk forever).
@@ -744,6 +747,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         GeomOf = geomOf; Local = local; Proxy = proxy; Friction = fr; Restitution = re; Rolling = ro; Density = de; Category = cat; Mask = mask; Group = grp; NextShape = next;
         EnsureShapes(Math.Max(ns, 1));
         PairA = pa; PairB = pb; PairCons = pc; PairLive = pl; PairHigh = np; PairFree = free; PairFreeCount = nf; ConsNext = consNext;
+        CommitServices(services, ns);
         if (joints != null) { Opt.JointHertz = _pendingJointHertz; Opt.JointDampingRatio = _pendingJointDamping; }
         Joints = joints ?? new JointData3D[16];
         JointForce = new float[Joints.Length]; JointTorque = new float[Joints.Length];
@@ -793,7 +797,7 @@ internal sealed partial class Engine3D : ISnapshotSection
             int steps = 0, prevA = -1, prevB = -1;
             for (int c = PairCons[p]; c >= 0; c = c < ConsNext.Length ? ConsNext[c] : -1)
             {
-                if (!cons.IsLive(c) || cons.KindOf(c) != ConstraintKind.Contact || cons.ShapeA[c] != PairA[p] || cons.ShapeB[c] != PairB[p] || ++steps > cons.HighWater) { return false; }
+                if (!cons.IsLive(c) || (cons.KindOf(c) != ConstraintKind.Contact && cons.KindOf(c) != ConstraintKind.Sensor) || cons.ShapeA[c] != PairA[p] || cons.ShapeB[c] != PairB[p] || ++steps > cons.HighWater) { return false; }
                 int sa = cons.SubShapeA[c], sb = cons.SubShapeB[c];
                 if (sa < prevA || (sa == prevA && sb <= prevB)) { return false; }
                 prevA = sa; prevB = sb;
@@ -805,7 +809,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         int contacts = 0;
         for (int c = 0; c < cons.HighWater; c++)
         {
-            if (cons.IsLive(c) && cons.KindOf(c) == ConstraintKind.Contact) { contacts++; }
+            if (cons.IsLive(c) && (cons.KindOf(c) == ConstraintKind.Contact || cons.KindOf(c) == ConstraintKind.Sensor)) { contacts++; }
         }
 
         return contacts == seen;
