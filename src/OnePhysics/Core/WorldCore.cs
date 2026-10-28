@@ -531,7 +531,12 @@ public sealed class WorldCore
 
         int lanes = Layout.PositionLanes;
         var pos = _bodies.Position;
-        for (int i = 0; i < pos.Length; i++) { pos[i] -= offset[i % lanes]; }
+        // Dead slots stay zeroed: the snapshot reader rejects a destroyed body whose position is not zero.
+        for (int b = 0; b < _bodies.HighWater; b++)
+        {
+            if (!_bodies.IsLive(b)) { continue; }
+            for (int k = 0; k < lanes; k++) { pos[b * lanes + k] -= offset[k]; }
+        }
         for (int i = 0; i < lanes; i++) { _origin[i] += offset[i]; }
     }
 

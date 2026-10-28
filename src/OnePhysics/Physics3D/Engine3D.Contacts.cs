@@ -281,6 +281,8 @@ internal sealed partial class Engine3D
                 continue;
             }
 
+            // A pair with no points and no constraint has nothing to add, match or remove (for a sensor pair too).
+            if (_resCount[i] == 0 && PairCons[p] < 0) { continue; }
             if (IsSensor(PairA[p]) || IsSensor(PairB[p])) { ApplySensorPair(world, p, _scratch[i >> 6], _resFirst[i], _resCount[i], owner); continue; }
             ApplyPair(world, p, _scratch[i >> 6], _resFirst[i], _resCount[i], owner);
         }
@@ -491,14 +493,14 @@ internal sealed partial class Engine3D
         int p = _updateList[i];
         _resStatus[i] = 0; _resCount[i] = 0; _resFirst[i] = sc.OutCount;
         int sa = PairA[p], sb = PairB[p];
-        if (!Aabb3D.Overlaps(Bp.GetFatBounds(Proxy[sa]), Bp.GetFatBounds(Proxy[sb]))) { _resStatus[i] = 2; return; }
+        ref readonly Aabb3D fa = ref Bp.FatBoundsOfLive(Proxy[sa]);
+        ref readonly Aabb3D fb = ref Bp.FatBoundsOfLive(Proxy[sb]);
+        if (!Aabb3D.Overlaps(fa, fb)) { _resStatus[i] = 2; return; }
         _resStatus[i] = 1;
         // Tight boxes (this step's for a shape that moved, the stored fat box for one that did not); the extra margin keeps the shortcut clear of rounding at the threshold.
         {
             const double Gap = 0.005;
             double gap = Opt.SpeculativeDistance + Gap;
-            ref readonly Aabb3D fa = ref Bp.FatBoundsOfLive(Proxy[sa]);
-            ref readonly Aabb3D fb = ref Bp.FatBoundsOfLive(Proxy[sb]);
             double a0, a1, a2, a3, a4, a5, b0, b1, b2, b3, b4, b5;
             if (_boxStamp[sa] == _stamp) { int o = 6 * sa; a0 = _boxes[o]; a1 = _boxes[o + 1]; a2 = _boxes[o + 2]; a3 = _boxes[o + 3]; a4 = _boxes[o + 4]; a5 = _boxes[o + 5]; }
             else { a0 = fa.MinX; a1 = fa.MinY; a2 = fa.MinZ; a3 = fa.MaxX; a4 = fa.MaxY; a5 = fa.MaxZ; }
@@ -730,10 +732,30 @@ internal sealed partial class Engine3D
     private static bool IsGhostRegion(Vector3F pointInSoup, in SoupTriangle3D tri)
     {
         int region = ClosestRegion(pointInSoup, tri.V0, tri.V1, tri.V2);
-        if (region == 0) { return false; }
+        if (region == 0)
+        {
+            // A point on a seam is a hair inside the face as often as a hair outside it, and which one float rounding picks depends on the exact pose (a spinning sphere crosses the same seam at
+            // different phases). Within 5 mm of an inactive edge (the contact point sits midway between the surfaces, so a penetrating shape puts it off the edge by about half its depth) it counts as being on that edge.
+            return NearInactiveEdge(pointInSoup, in tri, 0, tri.V0, tri.V1) || NearInactiveEdge(pointInSoup, in tri, 1, tri.V1, tri.V2) || NearInactiveEdge(pointInSoup, in tri, 2, tri.V2, tri.V0);
+        }
+
         if (region <= 3) { return !tri.IsEdgeActive(region - 1); }
         int v = region - 4;
         return !tri.IsEdgeActive((v + 2) % 3) && !tri.IsEdgeActive(v);
+    }
+
+    private const float SeamTolerance = 5e-3f;
+
+    private static bool NearInactiveEdge(Vector3F p, in SoupTriangle3D tri, int edge, Vector3F a, Vector3F b)
+    {
+        if (tri.IsEdgeActive(edge)) { return false; }
+        // Distance from the point to the segment (Ericson 5.1.2).
+        Vector3F ab = b - a, ap = p - a;
+        float len2 = Vector3F.Dot(ab, ab);
+        float t = len2 > 0f ? Vector3F.Dot(ap, ab) / len2 : 0f;
+        t = t < 0f ? 0f : t > 1f ? 1f : t;
+        Vector3F d = ap - ab * t;
+        return Vector3F.Dot(d, d) <= SeamTolerance * SeamTolerance;
     }
 
     /// <summary>Which feature of a triangle is nearest to a point (Ericson, Real-Time Collision Detection, 5.1.5): 0 face, 1..3 edge 0..2, 4..6 vertex 0..2.</summary>

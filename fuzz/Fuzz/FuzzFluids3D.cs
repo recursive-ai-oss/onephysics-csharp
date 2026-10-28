@@ -169,7 +169,14 @@ internal static class FuzzFluids3D
                     if (!(res.Volume >= 0f) && float.IsFinite(pose.Translation.X)) { throw new InvalidOperationException("negative submerged volume"); }
                     break;
                 }
-            default: { StepTolerant(w); break; }   // (origin shifts are left out: ShiftOrigin moves the slots of destroyed bodies too, which a snapshot then refuses)
+            case 10:
+                {
+                    // Offsets on the 2^-31 grid, small enough to keep bodies in range; huge or off-grid ones must be refused with an argument error.
+                    double Off() => r.Byte() >= 250 ? r.Double() : (sbyte)r.Byte() * 0.5;
+                    w.ShiftOrigin(new Vector3D(Off(), Off(), Off()));
+                    break;
+                }
+            default: { StepTolerant(w); break; }
         }
     }
 

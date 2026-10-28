@@ -399,6 +399,20 @@ public class OriginTests
     }
 
     [Fact]
+    public void ShiftingAWorldWithADestroyedBodyStillSnapshotsAndRestores()
+    {
+        var scene = ParticleScene.CreatePile(50, 1, worldId: 1);
+        var w = scene.World;
+        scene.Step(1f / 60f);
+        w.DestroyBody(w.HandleOfBody(7));
+        w.ShiftOrigin(new double[] { 16.0, 0.5, -3.0 });
+        Assert.Equal(0.0, w.Bodies.PositionOf(7)[0]);
+        var restored = new WorldCore(new WorldOptions { WorldId = 1 });
+        restored.Restore(w.Snapshot());
+        Assert.Equal(w.ComputeHash(), restored.ComputeHash());
+    }
+
+    [Fact]
     public void OffsetsMustBeFiniteGridMultiplesWithinBounds()
     {
         var w = new WorldCore();
