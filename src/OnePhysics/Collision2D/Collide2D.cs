@@ -105,6 +105,19 @@ internal struct Poly
     }
 }
 
+// A read-only window onto a convex core: the shape's own arrays when it is shape A (no copy), or a transformed Poly when it is shape B.
+internal readonly ref struct PolyView
+{
+    public readonly int N;
+    public readonly float R;
+    public readonly ref readonly Vec2x8 V;
+    public readonly ref readonly Vec2x8 Nm;
+
+    public PolyView(in Poly p) { N = p.N; R = p.R; V = ref p.V; Nm = ref p.Nm; }
+
+    public PolyView(in Shape2D s) { N = s._count; R = s._radius; V = ref s._v; Nm = ref s._n; }
+}
+
 /// <summary>
 /// Contact manifolds between 2D shapes, up to two points, found by SAT on reference and incident faces with clipping
 /// (Gregorius, GDC 2013, "The Separating Axis Test between Convex Polyhedra"; Catto, GDC 2007 and 2010, contact manifolds; Ericson, Real-Time Collision Detection ch. 5).
@@ -160,11 +173,11 @@ public static class Collide2D
             return new Manifold2D(n, 1, new ManifoldPoint2D(mid, sep, 0), default);
         }
 
-        Mem.SkipInit(out Poly pa);
         Mem.SkipInit(out Poly pb);
-        Poly.Load(ref pa, in a);
         Poly.LoadTransformed(ref pb, in b, xfBInA);
-        return Convex(in pa, in pb, speculativeDistance, false);
+        var va = new PolyView(in a);
+        var vb = new PolyView(in pb);
+        return Convex(in va, in vb, speculativeDistance, false);
     }
 
     private static uint SwapId(uint id) => ((id & 0xFFu) << 8) | ((id >> 8) & 0xFFu);
@@ -176,7 +189,7 @@ public static class Collide2D
     // Largest over the reference faces of the smallest distance from the face plane to the other core's vertices; ties go to the lowest face index.
     // A face that already separates the shapes by more than the radii plus the margin settles the pair: the answer is then +infinity, which the caller reads as "too far apart".
     // The caller's own test is best - rT > margin and best is at least this face's value, so stopping early cannot change a result.
-    private static float FindMaxSeparation(in Poly r, in Poly o, int faces, float rT, float margin, out int edge)
+    private static float FindMaxSeparation(in PolyView r, in PolyView o, int faces, float rT, float margin, out int edge)
     {
         float best = -float.MaxValue;
         edge = 0;
@@ -207,18 +220,29 @@ public static class Collide2D
         // The other core's points as x and y lanes, four per vector; lanes past the count are masked out of the minimum. Every lane computes
         // nx * (ox - vx) + ny * (oy - vy), the scalar expression, and the minimum of finite values does not depend on the order it is taken in.
         Vector128<float> big = Vector128.Create(float.MaxValue);
-        Vector256<float> sh0 = Vector256.Shuffle(Mem.LoadFour(in o.V, 0), Vector256.Create(0, 2, 4, 6, 1, 3, 5, 7));
-        Vector128<float> ox0 = sh0.GetLower(), oy0 = sh0.GetUpper();
+        Vector128<float> ox0, oy0, ox1 = default, oy1 = default, mask1 = default;
+        ReadOnlySpan<Vec2> ov = o.V;
+        bool two = on > 4;
+        if (Vector256.IsHardwareAccelerated)
+        {
+            Vector256<float> sh0 = Vector256.Shuffle(Mem.LoadFour(in o.V, 0), Vector256.Create(0, 2, 4, 6, 1, 3, 5, 7));
+            ox0 = sh0.GetLower(); oy0 = sh0.GetUpper();
+            if (two)
+            {
+                Vector256<float> sh1 = Vector256.Shuffle(Mem.LoadFour(in o.V, 4), Vector256.Create(0, 2, 4, 6, 1, 3, 5, 7));
+                ox1 = sh1.GetLower(); oy1 = sh1.GetUpper();
+            }
+        }
+        else
+        {
+            // The same lanes without a 256-bit vector (arm64 and WebAssembly have 128-bit vectors only).
+            ox0 = Vector128.Create(ov[0].X, ov[1].X, ov[2].X, ov[3].X); oy0 = Vector128.Create(ov[0].Y, ov[1].Y, ov[2].Y, ov[3].Y);
+            if (two) { ox1 = Vector128.Create(ov[4].X, ov[5].X, ov[6].X, ov[7].X); oy1 = Vector128.Create(ov[4].Y, ov[5].Y, ov[6].Y, ov[7].Y); }
+        }
+
         Vector128<int> idx = Vector128.Create(0, 1, 2, 3);
         Vector128<float> mask0 = Vector128.LessThan(idx, Vector128.Create(on)).AsSingle();
-        Vector128<float> ox1 = default, oy1 = default, mask1 = default;
-        bool two = on > 4;
-        if (two)
-        {
-            Vector256<float> sh1 = Vector256.Shuffle(Mem.LoadFour(in o.V, 4), Vector256.Create(0, 2, 4, 6, 1, 3, 5, 7));
-            ox1 = sh1.GetLower(); oy1 = sh1.GetUpper();
-            mask1 = Vector128.LessThan(idx + Vector128.Create(4), Vector128.Create(on)).AsSingle();
-        }
+        if (two) { mask1 = Vector128.LessThan(idx + Vector128.Create(4), Vector128.Create(on)).AsSingle(); }
 
         for (int i = 0; i < faces; i++)
         {
@@ -248,7 +272,7 @@ public static class Collide2D
         return best;
     }
 
-    private static Manifold2D Convex(in Poly pa, in Poly pb, float margin, bool onlyFace0OfA, bool forceReferenceA = false)
+    private static Manifold2D Convex(in PolyView pa, in PolyView pb, float margin, bool onlyFace0OfA, bool forceReferenceA = false)
     {
         float rT = pa.R + pb.R;
         if (pa.N == 1 && pb.N == 1)
@@ -303,7 +327,7 @@ public static class Collide2D
 
     // Manifold with reference face i of R and the most anti-parallel face of I as the incident edge. Everything is in A's frame; flip says that R is shape B.
     // coreSep is the smallest distance from the reference face to the incident core's vertices, which the separating-axis search has just computed for this very face.
-    private static Manifold2D Face(in Poly r, in Poly inc, int i, float coreSep, bool flip, float margin)
+    private static Manifold2D Face(in PolyView r, in PolyView inc, int i, float coreSep, bool flip, float margin)
     {
         int n = r.N;
         int i2 = i + 1 == n ? 0 : i + 1;
@@ -430,7 +454,8 @@ public static class Collide2D
         pa.Nm[0] = n;
         pa.Nm[1] = -n;
         var pb = Poly.From(in other, xf);
-        Manifold2D m = Convex(in pa, in pb, margin, true);
+        var va = new PolyView(in pa); var vb = new PolyView(in pb);
+        Manifold2D m = Convex(in va, in vb, margin, true);
         if (m.PointCount == 0) { return m; }
         Manifold2D f = FilterGhosts(in m, p1, p2, g2, has1, has2, n);
         if (f.PointCount == 0)
@@ -438,7 +463,7 @@ public static class Collide2D
             // The other shape's own face was the minimum-translation axis, but it only touches the segment's end vertices with a normal a smooth surface
             // could not produce (a tilted body whose corner has sunk through the line of the segment, with the joint poking into its face).
             // Resolve it against the segment's face instead.
-            Manifold2D alt = Convex(in pa, in pb, margin, true, true);
+            Manifold2D alt = Convex(in va, in vb, margin, true, true);
             if (alt.PointCount > 0) { f = FilterGhosts(in alt, p1, p2, g2, has1, has2, n); }
         }
 

@@ -85,12 +85,13 @@ internal static class ContactKernel2D
     {
         var wide = e.Wide.AsSpan(group * W2D.GroupFloats, W2D.GroupFloats);
         var idx = e.WideIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup);
-        if (phase == SolvePhase.WarmStart) { RunWarm<T>(e.BodyState, wide, idx, lane0, lanes); }
+        bool rolls = e.GroupRolling[group] != 0;
+        if (phase == SolvePhase.WarmStart) { RunWarm<T>(e.BodyState, wide, idx, lane0, lanes, rolls); }
         else if (phase == SolvePhase.Restitution) { RunRestitution<T>(e.BodyState, wide, idx, lane0, lanes, in kp); }
-        else { RunSolve<T>(e.BodyState, wide, idx, lane0, lanes, phase == SolvePhase.Solve, in kp); }
+        else { RunSolve<T>(e.BodyState, wide, idx, lane0, lanes, phase == SolvePhase.Solve, rolls, in kp); }
     }
 
-    private static void RunWarm<T>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, int lane0, int lanes) where T : struct, ILane<T>
+    private static void RunWarm<T>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, int lane0, int lanes, bool rolls) where T : struct, ILane<T>
     {
         int width = T.Count;
         for (int l0 = lane0; l0 < lane0 + lanes; l0 += width)
@@ -112,8 +113,7 @@ internal static class ContactKernel2D
                     W<T>(wide, pb + W2D.AnchorAX, l0), W<T>(wide, pb + W2D.AnchorAY, l0), W<T>(wide, pb + W2D.AnchorBX, l0), W<T>(wide, pb + W2D.AnchorBY, l0), px, py);
             }
 
-            wA = wA - iA * rollImp;
-            wB = wB + iB * rollImp;
+            if (rolls) { wA = wA - iA * rollImp; wB = wB + iB * rollImp; }
             Scatter(state, idx, l0, vAx, vAy, wA, vBx, vBy, wB);
         }
     }
@@ -157,7 +157,7 @@ internal static class ContactKernel2D
         }
     }
 
-    private static void RunSolve<T>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, int lane0, int lanes, bool useBias, in KernelParams kp) where T : struct, ILane<T>
+    private static void RunSolve<T>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, int lane0, int lanes, bool useBias, bool rolls, in KernelParams kp) where T : struct, ILane<T>
     {
         int width = T.Count;
         for (int l0 = lane0; l0 < lane0 + lanes; l0 += width)
@@ -166,19 +166,22 @@ internal static class ContactKernel2D
             var rb = T.GatherRows(state, idx.Slice(8 + l0, width));
             T vAx = ra.R0, vAy = ra.R1, wA = ra.R2, vBx = rb.R0, vBy = rb.R1, wB = rb.R2;
             T mA = W<T>(wide, W2D.InvMassA, l0), iA = W<T>(wide, W2D.InvInertiaA, l0), mB = W<T>(wide, W2D.InvMassB, l0), iB = W<T>(wide, W2D.InvInertiaB, l0);
-            T rolling = W<T>(wide, W2D.Rolling, l0), rollingMass = W<T>(wide, W2D.RollingMass, l0);
-            T rollImp = W<T>(wide, W2D.Roll, l0);
-
             // Rolling resistance, then friction, then non-penetration last: the last constraint solved wins the argument, and keeping bodies apart matters most.
-            T total = W<T>(wide, W2D.Impulse0, l0) + W<T>(wide, W2D.Impulse1, l0);
-            T maxRoll = rolling * total;
-            T lambda = Lane.Neg(rollingMass * (wB - wA));
-            T newRoll = Clamp(rollImp + lambda, Lane.Neg(maxRoll), maxRoll);
-            lambda = newRoll - rollImp;
-            rollImp = newRoll;
-            wA = wA - iA * lambda;
-            wB = wB + iB * lambda;
-            rollImp.StoreAt(wide, W2D.Roll * 8 + l0);
+            // A group with no rolling resistance and no stored rolling impulse would clamp a zero impulse to zero, so the step is skipped for it.
+            if (rolls)
+            {
+                T rolling = W<T>(wide, W2D.Rolling, l0), rollingMass = W<T>(wide, W2D.RollingMass, l0);
+                T rollImp = W<T>(wide, W2D.Roll, l0);
+                T total = W<T>(wide, W2D.Impulse0, l0) + W<T>(wide, W2D.Impulse1, l0);
+                T maxRoll = rolling * total;
+                T lambda = Lane.Neg(rollingMass * (wB - wA));
+                T newRoll = Clamp(rollImp + lambda, Lane.Neg(maxRoll), maxRoll);
+                lambda = newRoll - rollImp;
+                rollImp = newRoll;
+                wA = wA - iA * lambda;
+                wB = wB + iB * lambda;
+                rollImp.StoreAt(wide, W2D.Roll * 8 + l0);
+            }
 
             FrictionPoints<T>(wide, l0, ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB);
             NormalPoints<T>(wide, l0, useBias, in kp, in ra, in rb, ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB);

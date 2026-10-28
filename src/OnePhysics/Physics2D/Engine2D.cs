@@ -51,6 +51,12 @@ internal sealed partial class Engine2D : ISnapshotSection
     public int[] WideIdx = new int[W2D.IdxPerGroup];
     public int[] WideCons = new int[W2D.Lanes];
 
+    /// <summary>Per group: whether any contact in it has a positive restitution, so the restitution pass can skip a group that cannot change anything.</summary>
+    public byte[] GroupRestitution = new byte[1];
+
+    /// <summary>Per group: whether any contact in it has rolling resistance or a stored rolling impulse; without either the rolling step of the solver changes nothing.</summary>
+    public byte[] GroupRolling = new byte[1];
+
     /// <summary>Per constraint: its group times eight plus its lane, for the contacts of the current step.</summary>
     public int[] SlotOf = new int[8];
     /// <summary>Per step, on the first constraint of each batch: 1 when the batch is contacts only and 2 when it is wide revolute joints only (neither is the serial overflow set), so the wide kernels solve it directly.</summary>
@@ -84,7 +90,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     public readonly PairTable PairMap = new();
 
     /// <summary>Lanes per kernel call: 8, 4 or 1. All give the same bits; the choice exists so tests can prove it.</summary>
-    public int KernelWidth = 8;
+    public int KernelWidth = KernelWidthChoice.Default;
 
     public Engine2D(WorldCore core, Broadphase2D bp, WorldOptions2D opt)
     {

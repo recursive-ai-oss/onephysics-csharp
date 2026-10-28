@@ -1,3 +1,6 @@
 # Allow-list for tools/check.sh. One extended regex per line, matched against grep's "path:line:text" output.
 # Lines starting with # and blank lines are ignored. A hit that matches here is not a failure. Keep it empty unless a hit is justified.
 ^src/OnePhysics/Physics2D/Mem\.cs:
+# Speed-only choices between code that computes the same lanes: the default kernel width and the way the separating-axis search loads shape B's points (docs/world2d.md, Performance).
+^src/OnePhysics/Core/KernelWidthChoice\.cs:.*IsHardwareAccelerated
+^src/OnePhysics/Collision2D/Collide2D\.cs:[0-9]+:\s*if \(Vector256\.IsHardwareAccelerated\)
