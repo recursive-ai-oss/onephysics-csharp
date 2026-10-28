@@ -54,6 +54,9 @@ internal sealed partial class Engine2D
 
         public bool ShouldCollide(int shapeA, int shapeB)
         {
+            // A pair that already has a table entry is not new, so it is dropped here instead of being sorted with the new ones and dropped after.
+            // The table is only read while pairs are searched; it changes in the serial stage that follows.
+            if (_e.PairMap.ContainsKey(shapeA < shapeB ? PairKey(shapeA, shapeB) : PairKey(shapeB, shapeA))) { return false; }
             var owner = _e.Core.Shapes.Owner;
             return owner[shapeA] != owner[shapeB] && _e.CanCollide(shapeA, shapeB) && !_e.JointsPreventCollision(owner[shapeA], owner[shapeB]);
         }
