@@ -20,6 +20,8 @@ internal sealed partial class Engine2D
         EnsureBoxStorage();
         Grow(ref Pairs, pairs); Grow(ref PairFree, pairs); Grow(ref SensorFree, pairs);
         PairMap.Reserve(pairs);
+        // A restore reads into staging arrays and swaps them in, so they need the same room as the live ones.
+        Fit(ref _sPa, pairs); Fit(ref _sPb, pairs); Fit(ref _sPc, pairs); Fit(ref _sPl, pairs); Fit(ref _sFree, pairs);
         if (_fresh.Length < pairs) { Array.Resize(ref _fresh, pairs); }
         int need = (pairs + 1023) / 1024 * 1024;
         if (_updateList.Length < need) { _updateList = new int[need]; _results = new PairResult[need]; _actItems = new int[need]; }

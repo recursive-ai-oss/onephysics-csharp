@@ -137,6 +137,7 @@ public sealed class HandleTable
     {
         if (_generation.Length < capacity) { Array.Resize(ref _generation, capacity); Array.Resize(ref _live, capacity); }
         if (_heap.Length < capacity) { Array.Resize(ref _heap, capacity); }
+        if (_seenScratch.Length < capacity) { _seenScratch = new bool[capacity]; }
     }
 
     /// <summary>One more than the highest slot index ever allocated; arrays indexed by slot are valid below this.</summary>

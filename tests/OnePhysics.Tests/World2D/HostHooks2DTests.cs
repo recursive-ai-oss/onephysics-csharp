@@ -7,6 +7,7 @@ using Xunit;
 namespace RecursiveAI.OnePhysics.Tests.World2D;
 
 /// <summary>The span snapshot API, restore atomicity and the allocation-free hash, step, snapshot and restore of the 2D world.</summary>
+[Collection("Allocation")]
 public class HostHooks2DTests
 {
     private const float Dt = 1f / 60f;

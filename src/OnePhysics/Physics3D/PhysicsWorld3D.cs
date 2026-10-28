@@ -42,6 +42,7 @@ public sealed partial class PhysicsWorld3D
         // Pool threads started from here on prepare their narrowphase scratch before their first step.
         WorkerPool.ThreadInit = Engine3D.PrepareThread;
         _core.Reserve(contacts, islands, bodies);
+        _core.ReserveRestore(contacts, pairs, islands, bodies);
         _engine.Reserve(pairs, contacts, bodies, shapes);
         // The public contact events are built from the core's every step.
         _pairIndex.EnsureCapacity(contacts + 16);
@@ -61,13 +62,13 @@ public sealed partial class PhysicsWorld3D
     private void WarmupCore(bool prime)
     {
         if (prime) { PrimeProcess(_engine.Opt.ThreadCount); }
-        ReserveCapacity(true);
         QueryScratch.Warm(_engine.Opt.QueryScratchCapacity > 0 ? _engine.Opt.QueryScratchCapacity : 64);
         _core.ComputeHash();
-        var buffer = new byte[_core.GetSnapshotSize()];
-        // Restoring swaps the live storage with a spare, so two round trips size both.
+        // Restoring swaps the live storage with a spare. The first round trip makes the spare the live one, so the storage is reserved again before the second.
         for (int i = 0; i < 2; i++)
         {
+            ReserveCapacity(true);
+            var buffer = new byte[_core.GetSnapshotSize()];
             if (!TrySnapshot(buffer, out int n)) { break; }
             Restore(buffer.AsSpan(0, n));
         }

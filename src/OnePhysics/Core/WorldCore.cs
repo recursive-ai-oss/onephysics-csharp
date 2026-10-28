@@ -669,6 +669,24 @@ public sealed class WorldCore
         Executor.Reserve(stages);
     }
 
+    /// <summary>
+    /// Sizes the buffers a restore uses (the copy of its input and the saved state it rolls back to) for a world holding up to the given counts, and sizes the spare storage a restore reads into
+    /// like the live storage, so a restore of a larger world allocates nothing. Call it while the live storage is already reserved. Never changes a result.
+    /// </summary>
+    internal void ReserveRestore(int contacts, int pairs, int islands, int bodies)
+    {
+        // What a snapshot of the world grows to when it holds that many contacts and pairs: the current size plus the per-contact columns and payload and a few words per pair.
+        long grown = (long)GetSnapshotSize() + ((long)contacts * (64 + (4 * (Layout.PayloadFloats + Layout.MaxManifoldPoints)))) + ((long)pairs * 24);
+        int bytes = (int)Math.Min(grown, int.MaxValue / 2);
+        if (_inputBuffer.Length < bytes) { _inputBuffer = new byte[bytes]; }
+        (_backupWriter ??= StateWriter.ToBuffer()).EnsureCapacity(bytes);
+        (_snapWriter ??= StateWriter.ToBuffer()).EnsureCapacity(bytes);
+        (_spCons ??= new ConstraintStore(Layout, 1)).Reserve(contacts);
+        (_spIslands ??= new IslandSet()).Reserve(islands, bodies);
+        (_spColoring ??= new ConstraintColoring()).Reserve(contacts, bodies);
+        (_spEvents ??= new EventCollector(_options)).Reserve(2 * contacts + 16, 1 + (contacts / ChunkSize + 2), 2 * ChunkSize);
+    }
+
     private void BuildAwakeBodies()
     {
         int n = _bodies.HighWater;

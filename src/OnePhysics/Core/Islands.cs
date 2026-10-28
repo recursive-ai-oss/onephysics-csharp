@@ -52,6 +52,27 @@ public sealed class IslandSet
         Array.Copy(old, grown, used);
         return grown;
     }
+
+    // A list for an island read from a snapshot: the smallest spare that fits (the outgrown one takes its place), else a new one. Contents are not copied.
+    private int[] Swap(int[]? old, int need)
+    {
+        int best = -1;
+        for (int i = 0; i < _spare.Count; i++)
+        {
+            if (_spare[i].Length >= need && (best < 0 || _spare[i].Length < _spare[best].Length)) { best = i; }
+        }
+
+        if (best >= 0)
+        {
+            int[] taken = _spare[best];
+            if (old != null) { _spare[best] = old; } else { _spare.RemoveAt(best); }
+            return taken;
+        }
+
+        if (old != null && _spare.Count < MaxSpare) { _spare.Add(old); }
+        return new int[Math.Max(need, 8)];
+    }
+
     private readonly List<int> _stack = new();
     private readonly List<int> _component = new();
 
@@ -294,7 +315,7 @@ public sealed class IslandSet
             {
                 if (counts[i] == 0) { throw r.Error("empty island"); }
                 int need = Math.Max(4, counts[i]);
-                if (s._bodies[i] == null || s._bodies[i].Length < need) { s._bodies[i] = new int[need]; }
+                if (s._bodies[i] == null || s._bodies[i].Length < need) { s._bodies[i] = s.Swap(s._bodies[i], need); }
             }
         }
 

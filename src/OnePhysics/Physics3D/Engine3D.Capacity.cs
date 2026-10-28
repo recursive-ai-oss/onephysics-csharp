@@ -18,6 +18,10 @@ internal sealed partial class Engine3D
         EnsureShapes(shapes);
         Grow(ref PairA, pairs); Grow(ref PairB, pairs); Grow(ref PairCons, pairs); Grow(ref PairLive, pairs); Grow(ref PairFree, pairs); Grow(ref SensorFree, pairs);
         PairMap.Reserve(pairs);
+        // A restore reads into staging arrays and swaps them in, so they need the same room as the live ones.
+        Fit(ref _sPa, pairs); Fit(ref _sPb, pairs); Fit(ref _sPc, pairs); Fit(ref _sPl, pairs); Fit(ref _sFree, pairs); Fit(ref _sChainLen, pairs);
+        Fit(ref _sConsNext, contacts); Fit(ref _sInChain, contacts);
+        _sChains.EnsureCapacity(contacts);
         if (_fresh.Length < pairs) { Array.Resize(ref _fresh, pairs); }
         if (_skip.Length < pairs) { Array.Resize(ref _skip, pairs); }
         if (_updateList.Length < pairs) { _updateList = new int[pairs]; _resStatus = new byte[pairs]; _resFirst = new int[pairs]; _resCount = new int[pairs]; }

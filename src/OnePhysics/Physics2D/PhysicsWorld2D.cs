@@ -40,6 +40,7 @@ public sealed partial class PhysicsWorld2D
         int contacts = o.ContactCapacity > 0 ? o.ContactCapacity : defaults ? Math.Max(6 * bodies, 64) : 0;
         int islands = o.IslandCapacity > 0 ? o.IslandCapacity : defaults ? Math.Max(bodies, 16) : 0;
         _core.Reserve(contacts, islands, bodies);
+        _core.ReserveRestore(contacts, pairs, islands, bodies);
         _engine.Reserve(pairs, contacts, bodies, shapes);
     }
 
@@ -55,13 +56,13 @@ public sealed partial class PhysicsWorld2D
     private void WarmupCore(bool prime)
     {
         if (prime) { PrimeProcess(_engine.Opt.ThreadCount); }
-        ReserveCapacity(true);
         QueryScratch.Warm(_engine.Opt.QueryScratchCapacity > 0 ? _engine.Opt.QueryScratchCapacity : 64);
         _core.ComputeHash();
-        var buffer = new byte[_core.GetSnapshotSize()];
-        // Restoring swaps the live storage with a spare, so two round trips size both.
+        // Restoring swaps the live storage with a spare. The first round trip makes the spare the live one, so the storage is reserved again before the second.
         for (int i = 0; i < 2; i++)
         {
+            ReserveCapacity(true);
+            var buffer = new byte[_core.GetSnapshotSize()];
             if (!TrySnapshot(buffer, out int n)) { break; }
             Restore(buffer.AsSpan(0, n));
         }

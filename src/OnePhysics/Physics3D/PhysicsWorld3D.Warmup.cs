@@ -6,8 +6,8 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 
 public sealed partial class PhysicsWorld3D
 {
-    private static bool s_primed;
-    private static int s_primedThreads;
+    // Bit 0: primed with one thread (serial paths), bit 1: primed with several (worker paths). The two run different code.
+    private static int s_primedMask;
     private static readonly object s_primeLock = new();
 
     // The first use of a code path in a process allocates a little in the runtime itself (type loading and generic instantiation), whatever the world holds. Warmup runs the paths the
@@ -16,7 +16,8 @@ public sealed partial class PhysicsWorld3D
     {
         lock (s_primeLock)
         {
-            if (s_primed && s_primedThreads >= threads) { return; }
+            int bit = threads > 1 ? 2 : 1;
+            if ((s_primedMask & bit) != 0) { return; }
             var w = new PhysicsWorld3D(new WorldOptions3D { WorldId = 1, ThreadCount = threads });
             w.AddBox(new Vector3F(20, 1, 20), at: new Vector3D(0, -0.5, 0), type: BodyType.Static);
             for (int i = 0; i < 60; i++) { w.AddBox(new Vector3F(1, 1, 1), at: new Vector3D(-5 + 1.05 * (i % 10), 0.5 + 1.02 * (i / 10), 0)); }
@@ -40,8 +41,7 @@ public sealed partial class PhysicsWorld3D
 
             w.WarmupCore(false);
             GC.KeepAlive(buffer);
-            s_primed = sink >= 0;
-            s_primedThreads = threads;
+            if (sink >= 0) { s_primedMask |= bit; }
         }
     }
 }
