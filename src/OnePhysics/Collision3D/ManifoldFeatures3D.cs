@@ -34,6 +34,9 @@ public sealed partial class ManifoldGenerator3D
     {
         if (c.Separation > margin)
         {
+            // GJK's distance is accurate to a small fraction of the shapes' size; the bound keeps clear of that.
+            float clear = c.Separation - margin - (1e-3f * (Extent(a) + Extent(b)));
+            if (clear > 0f) { ClearanceOut = clear; }
             return Empty;
         }
 

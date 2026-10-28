@@ -200,6 +200,8 @@ internal sealed partial class Engine3D
         // 3. New pairs from the broadphase, in its sorted order.
         var found = Bp.UpdatePairs(new PairFilter(this), world.Executor);
         bool anyFresh = false;
+        // A burst of new pairs (a stack waking, a pile landing) would otherwise rehash the table again and again.
+        if (found.Length > 64) { PairMap.EnsureCapacity(PairMap.Count + found.Length); }
         for (int i = 0; i < found.Length; i++)
         {
             int a = found[i].UserA, b = found[i].UserB;
