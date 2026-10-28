@@ -43,6 +43,9 @@ public sealed class Epa3D
     // A face is removed when the new point is farther than this above its plane (relative to the shapes' size); nearly coplanar faces stay, which keeps the polytope closed in the face of round-off.
     private const float VisTol = 1e-6f;
 
+    // The six axis directions the starting simplex is grown along; shared because the method runs for every deep contact and must not allocate.
+    private static readonly Vector3F[] s_axes = { Vector3F.UnitX, -Vector3F.UnitX, Vector3F.UnitY, -Vector3F.UnitY, Vector3F.UnitZ, -Vector3F.UnitZ };
+
     private readonly Vector3F[] _p = new Vector3F[MaxVertices];
     private readonly Vector3F[] _a = new Vector3F[MaxVertices];
     private readonly Vector3F[] _b = new Vector3F[MaxVertices];
@@ -504,7 +507,7 @@ public sealed class Epa3D
     {
         flatNormal = default;
         float minDist = 1e-5f * scale;
-        Vector3F[] axes = { Vector3F.UnitX, -Vector3F.UnitX, Vector3F.UnitY, -Vector3F.UnitY, Vector3F.UnitZ, -Vector3F.UnitZ };
+        Vector3F[] axes = s_axes;
         while (_nv < 4)
         {
             bool added = false;
