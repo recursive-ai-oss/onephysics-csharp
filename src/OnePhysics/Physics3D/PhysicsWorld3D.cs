@@ -11,7 +11,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// A 3D rigid-body world. The happy path is the <c>Add*</c> methods and <see cref="Step"/>; <see cref="CreateBody(in BodyDef)"/> and the <c>Create*</c> shape methods are the middle tier;
 /// <see cref="Core"/> exposes the shared storage for the raw tier. Results are bit-identical on every platform, thread count and vector width. Not thread-safe: use a world from one thread at a time.
 /// </summary>
-public sealed class PhysicsWorld3D
+public sealed partial class PhysicsWorld3D
 {
     private readonly Engine3D _engine;
     private readonly WorldCore _core;
@@ -72,7 +72,8 @@ public sealed class PhysicsWorld3D
         _engine.CheckBounds();
         SyncCoreOptions();
         _core.Step(new Stages3D(_engine), dt);
-        if (_handlers.Count > 0) { DispatchEvents(); }
+        _engine.ReconcileJoints();
+        if (_handlers.Count > 0 || _jointHandlers.Count > 0) { DispatchEvents(); }
     }
 
     private void SyncCoreOptions()
@@ -97,6 +98,7 @@ public sealed class PhysicsWorld3D
     {
         foreach (var e in _core.Events.Delivered)
         {
+            if (e.Kind == EventKind.JointBreak) { FireJointBreak(e); continue; }
             if (e.Kind != EventKind.ContactBegin && e.Kind != EventKind.ContactPersist && e.Kind != EventKind.ContactEnd) { continue; }
             Fire(e, e.BodyA, e.BodyB, e.ShapeA, e.ShapeB, false);
             Fire(e, e.BodyB, e.BodyA, e.ShapeB, e.ShapeA, true);
@@ -200,12 +202,14 @@ public sealed class PhysicsWorld3D
         }
 
         foreach (int k in dead) { _handlers.Remove(k); }
+        DropStaleJointHandlers();
     }
 
     /// <summary>Moves the world origin by <paramref name="offset"/> (call between steps, on every peer at the same step): all positions shrink by it. Offsets must be multiples of 2^-31.</summary>
     public void ShiftOrigin(Vector3D offset)
     {
         _core.ShiftOrigin([offset.X, offset.Y, offset.Z]);
+        _engine.ShiftJoints([offset.X, offset.Y, offset.Z]);
         _engine.RebuildProxies();
     }
 

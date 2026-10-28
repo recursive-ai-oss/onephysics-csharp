@@ -27,7 +27,12 @@ internal readonly struct Stages3D : IWorldStages
 
     public void IntegratePositions(WorldCore world, ReadOnlySpan<int> bodies, in StepContext context) => _e.IntegratePositions(bodies, in context);
 
-    public void StoreResults(WorldCore world, ReadOnlySpan<int> constraints, int eventSlot, in StepContext context) => _e.StoreResults(constraints);
+    public void StoreResults(WorldCore world, ReadOnlySpan<int> constraints, int eventSlot, in StepContext context)
+    {
+        // Contact impulses go from the wide groups back to the payloads; joints work out their reaction and may ask to break.
+        _e.StoreResults(constraints);
+        _e.StoreJointResults(constraints, in context);
+    }
 
     public void BeginSolve(WorldCore world, int batches, in StepContext context) => _e.BeginSolve(batches, in context);
 
@@ -96,7 +101,7 @@ internal sealed partial class Engine3D
         public bool ShouldCollide(int shapeA, int shapeB)
         {
             var owner = _e.Core.Shapes.Owner;
-            return owner[shapeA] != owner[shapeB] && _e.CanCollide(shapeA, shapeB);
+            return owner[shapeA] != owner[shapeB] && _e.CanCollide(shapeA, shapeB) && !_e.JointsPreventCollision(owner[shapeA], owner[shapeB]);
         }
     }
 
@@ -114,6 +119,7 @@ internal sealed partial class Engine3D
         var bodies = world.Bodies;
         int nb = bodies.HighWater;
         EnsureBodies(nb);
+        ReconcileJoints();
 
         // 1. Broadphase boxes of every body that moved last step. The displacement stretches the box ahead of the motion.
         foreach (int b in world.AwakeBodies)
@@ -202,6 +208,7 @@ internal sealed partial class Engine3D
 
         int ch = cs.HighWater;
         Grow(ref ConsNext, ch);
+        SizeJointStorage();
     }
 
     private void ApplyPair(WorldCore world, int p, NarrowScratch sc, int first, int count, ReadOnlySpan<int> owner)

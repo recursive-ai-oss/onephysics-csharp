@@ -560,17 +560,22 @@ public sealed class WorldCore
         PrepareBatches(stages, ctx);
 
         int bodyChunks = (_awakeCount + ChunkSize - 1) / ChunkSize;
+
+        // All substeps run as one staged call: the stage boundaries (integrate, then each color of each pass) are crossed by polling inside the executor instead of one fork and join per stage.
+        _stageCount = 0;
+        _stageMostTasks = 0;
         for (int s = 0; s < _options.Substeps; s++)
         {
             _flipSweep = (s & 1) == 1;
-            Executor.For(bodyChunks, new BodyTask<TStages>(this, stages, _awake, _awakeCount, ctx, true));
-            SolveAll(stages, SolvePhase.WarmStart, ctx);
-            for (int i = 0; i < _options.VelocityIterations; i++) { SolveAll(stages, SolvePhase.Solve, ctx); }
-            Executor.For(bodyChunks, new BodyTask<TStages>(this, stages, _awake, _awakeCount, ctx, false));
-            for (int i = 0; i < _options.RelaxIterations; i++) { SolveAll(stages, SolvePhase.Relax, ctx); }
+            AddStage(StageIntegrateVelocities, 0, bodyChunks);
+            AddSolvePass(SolvePhase.WarmStart);
+            for (int i = 0; i < _options.VelocityIterations; i++) { AddSolvePass(SolvePhase.Solve); }
+            AddStage(StageIntegratePositions, 0, bodyChunks);
+            for (int i = 0; i < _options.RelaxIterations; i++) { AddSolvePass(SolvePhase.Relax); }
         }
 
-        SolveAll(stages, SolvePhase.Restitution, ctx);
+        AddSolvePass(SolvePhase.Restitution);
+        Executor.ForStages(_stageCount, new SolveProgram<TStages>(this, stages, list, ctx), _stageMostTasks);
         Executor.For(bodyChunks, new FinalizeTask<TStages>(this, stages, _awake, _awakeCount, ctx));
         stages.AfterFinalize(this, ctx);
         Executor.For(storeChunks, new StoreTask<TStages>(this, stages, list, active, ctx));
@@ -644,35 +649,84 @@ public sealed class WorldCore
     /// </summary>
     public bool SplitWhenAnyBodyRests { get; set; }
 
-    /// <summary>When set, the relax pass sweeps the colors in the opposite order (and the serial overflow last), so the sequential bias of one sweep is cancelled by the next.</summary>
+    /// <summary>When set, the solve and relax passes sweep the colors in opposite directions, flipping on alternate substeps, and the serial overflow goes last when the sweep is reversed, so the sequential bias of one sweep is cancelled by the next. Warm starting always runs forward.</summary>
     public bool SymmetricSweep { get; set; }
     private bool _flipSweep;
 
-    private void SolveAll<TStages>(TStages stages, SolvePhase phase, in StepContext ctx) where TStages : IWorldStages
+    private const int StageIntegrateVelocities = 0, StageIntegratePositions = 1, StageOverflow = 2, StageColor = 3;
+    private int[] _stageKind = new int[64];
+    private int[] _stageArg = new int[64];
+    private int[] _stageTasks = new int[64];
+    private int _stageCount;
+    private int _stageMostTasks;
+
+    private void AddStage(int kind, int arg, int tasks)
     {
-        var list = _coloring.ListArray;
-        int os = _coloring.OverflowStart;
-        int on = _coloring.Overflow.Length;
+        if (_stageCount == _stageKind.Length)
+        {
+            Array.Resize(ref _stageKind, _stageCount * 2); Array.Resize(ref _stageArg, _stageCount * 2); Array.Resize(ref _stageTasks, _stageCount * 2);
+        }
+
+        _stageKind[_stageCount] = kind; _stageArg[_stageCount] = arg; _stageTasks[_stageCount] = tasks;
+        if (tasks > _stageMostTasks) { _stageMostTasks = tasks; }
+        _stageCount++;
+    }
+
+    // One pass over every constraint in one phase: the overflow constraints first, serially and in order, then each color (the constraints of a color share no dynamic body, so their order cannot matter).
+    private void AddSolvePass(SolvePhase phase)
+    {
         bool reverse = SymmetricSweep && phase != SolvePhase.WarmStart && ((phase == SolvePhase.Relax) != _flipSweep);
-        if (!reverse) { SolveOverflow(stages, list, os, on, phase, in ctx); }
+        if (!reverse && _coloring.Overflow.Length > 0) { AddStage(StageOverflow, (int)phase, 1); }
         for (int k = 0; k < ConstraintColoring.ColorCount; k++)
         {
             int color = reverse ? ConstraintColoring.ColorCount - 1 - k : k;
             int n = _coloring.Color(color).Length;
             if (n == 0) { continue; }
             int batches = (n + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
-            int tasks = (batches + ConstraintColoring.BatchesPerTask - 1) / ConstraintColoring.BatchesPerTask;
-            Executor.For(tasks, new SolveTask<TStages>(this, stages, list, _coloring.ColorStart(color), n, phase, ctx));
+            AddStage(StageColor, (int)phase | (color << 8), (batches + ConstraintColoring.BatchesPerTask - 1) / ConstraintColoring.BatchesPerTask);
         }
 
-        if (reverse) { SolveOverflow(stages, list, os, on, phase, in ctx); }
+        if (reverse && _coloring.Overflow.Length > 0) { AddStage(StageOverflow, (int)phase, 1); }
     }
 
-    private void SolveOverflow<TStages>(TStages stages, int[] list, int os, int on, SolvePhase phase, in StepContext ctx) where TStages : IWorldStages
+    private readonly struct SolveProgram<TStages> : IStagedBody where TStages : IWorldStages
     {
-        for (int lo = 0; lo < on; lo += ConstraintColoring.Lanes)
+        private readonly WorldCore _w; private readonly TStages _s; private readonly int[] _list; private readonly StepContext _ctx;
+        public SolveProgram(WorldCore w, TStages s, int[] list, StepContext ctx) { _w = w; _s = s; _list = list; _ctx = ctx; }
+
+        public int TaskCount(int stage) => _w._stageTasks[stage];
+
+        public void Run(int stage, int task)
         {
-            stages.SolveBatch(this, list.AsSpan(os + lo, Math.Min(ConstraintColoring.Lanes, on - lo)), phase, in ctx);
+            var w = _w;
+            int kind = w._stageKind[stage], arg = w._stageArg[stage];
+            if (kind <= StageIntegratePositions)
+            {
+                int lo = task * ChunkSize;
+                var span = w._awake.AsSpan(lo, Math.Min(ChunkSize, w._awakeCount - lo));
+                if (kind == StageIntegrateVelocities) { _s.IntegrateVelocities(w, span, in _ctx); } else { _s.IntegratePositions(w, span, in _ctx); }
+            }
+            else if (kind == StageOverflow)
+            {
+                int os = w._coloring.OverflowStart;
+                int on = w._coloring.Overflow.Length;
+                for (int lo = 0; lo < on; lo += ConstraintColoring.Lanes)
+                {
+                    _s.SolveBatch(w, _list.AsSpan(os + lo, Math.Min(ConstraintColoring.Lanes, on - lo)), (SolvePhase)arg, in _ctx);
+                }
+            }
+            else
+            {
+                int color = arg >> 8;
+                int start = w._coloring.ColorStart(color), count = w._coloring.Color(color).Length;
+                int firstBatch = task * ConstraintColoring.BatchesPerTask;
+                for (int bt = firstBatch; bt < firstBatch + ConstraintColoring.BatchesPerTask; bt++)
+                {
+                    int lo = bt * ConstraintColoring.Lanes;
+                    if (lo >= count) { break; }
+                    _s.SolveBatch(w, _list.AsSpan(start + lo, Math.Min(ConstraintColoring.Lanes, count - lo)), (SolvePhase)(arg & 0xFF), in _ctx);
+                }
+            }
         }
     }
 
@@ -687,18 +741,6 @@ public sealed class WorldCore
         }
     }
 
-    private readonly struct BodyTask<TStages> : IParallelBody where TStages : IWorldStages
-    {
-        private readonly WorldCore _w; private readonly TStages _s; private readonly int[] _list; private readonly int _count; private readonly StepContext _ctx; private readonly bool _velocities;
-        public BodyTask(WorldCore w, TStages s, int[] list, int count, StepContext ctx, bool velocities) { _w = w; _s = s; _list = list; _count = count; _ctx = ctx; _velocities = velocities; }
-        public void Run(int task)
-        {
-            int lo = task * ChunkSize;
-            var span = _list.AsSpan(lo, Math.Min(ChunkSize, _count - lo));
-            if (_velocities) { _s.IntegrateVelocities(_w, span, in _ctx); } else { _s.IntegratePositions(_w, span, in _ctx); }
-        }
-    }
-
     private readonly struct FinalizeTask<TStages> : IParallelBody where TStages : IWorldStages
     {
         private readonly WorldCore _w; private readonly TStages _s; private readonly int[] _list; private readonly int _count; private readonly StepContext _ctx;
@@ -707,22 +749,6 @@ public sealed class WorldCore
         {
             int lo = task * ChunkSize;
             _s.FinalizeBodies(_w, _list.AsSpan(lo, Math.Min(ChunkSize, _count - lo)), in _ctx);
-        }
-    }
-
-    private readonly struct SolveTask<TStages> : IParallelBody where TStages : IWorldStages
-    {
-        private readonly WorldCore _w; private readonly TStages _s; private readonly int[] _list; private readonly int _start, _count; private readonly SolvePhase _phase; private readonly StepContext _ctx;
-        public SolveTask(WorldCore w, TStages s, int[] list, int start, int count, SolvePhase phase, StepContext ctx) { _w = w; _s = s; _list = list; _start = start; _count = count; _phase = phase; _ctx = ctx; }
-        public void Run(int task)
-        {
-            int firstBatch = task * ConstraintColoring.BatchesPerTask;
-            for (int bt = firstBatch; bt < firstBatch + ConstraintColoring.BatchesPerTask; bt++)
-            {
-                int lo = bt * ConstraintColoring.Lanes;
-                if (lo >= _count) { break; }
-                _s.SolveBatch(_w, _list.AsSpan(_start + lo, Math.Min(ConstraintColoring.Lanes, _count - lo)), _phase, in _ctx);
-            }
         }
     }
 

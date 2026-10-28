@@ -339,7 +339,7 @@ internal sealed partial class Engine2D
         Vec2 comDiff = new((float)(pAx - pBx), (float)(pAy - pBy));
         for (int k = 0; k < m.PointCount; k++)
         {
-            var mp = m[k];
+            var mp = k == 0 ? m.Point0 : m.Point1;
             Vec2 ra = qA.Rotate(mp.Point - lcA);
             Vec2 rb = ra + comDiff;
             if (k == 0) { res.RAx0 = ra.X; res.RAy0 = ra.Y; res.RBx0 = rb.X; res.RBy0 = rb.Y; res.Sep0 = mp.Separation; res.Id0 = mp.Id; }

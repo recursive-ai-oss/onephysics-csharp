@@ -86,6 +86,7 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     private const int NullNode = -1;
     private const int MaxNodes = 1 << 26;
     internal const int MovedFlag = 1;
+    private const int EnlargedFlag = 2; // internal nodes only: this node's box grew, or a descendant's did, since the last rebuild of the enlarged region
     private const int BinCount = 16;
 
     private struct Node
@@ -104,6 +105,20 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     private int _free = NullNode;
     private int _root = NullNode;
     private int _leafCount;
+    private int _enlarged;  // internal nodes carrying EnlargedFlag
+
+    // Scratch of RebuildEnlarged, kept so a step allocates nothing.
+    private int[] _rbItems = new int[16];
+    private int[] _rbRegion = new int[16];
+    private int[] _rbWalk = new int[64];
+    private double[] _rbCentroids = new double[32];
+    private BuildItem[] _rbStack = new BuildItem[64];
+    private readonly int[] _rbBinCount = new int[BinCount];
+    private readonly TBox[] _rbBinBox = new TBox[BinCount];
+    private readonly double[] _rbRightArea = new double[BinCount];
+    private readonly int[] _rbRightCount = new int[BinCount];
+    private readonly double[] _rbMin = new double[3];
+    private readonly double[] _rbMax = new double[3];
 
     /// <summary>Creates an empty tree with room for <paramref name="initialCapacity"/> nodes (it grows as needed).</summary>
     public DynamicTree(int initialCapacity = 64)
@@ -205,6 +220,7 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     public int CreateProxy(in TBox box, int userId)
     {
         CheckBox(box);
+        RebuildEnlarged(); // insertion rotates nodes, which would scatter the enlarged region
         int leaf = Alloc();
         ref Node n = ref _nodes[leaf];
         n.Box = box;
@@ -219,6 +235,7 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     public void DestroyProxy(int proxy)
     {
         CheckProxy(proxy);
+        RebuildEnlarged();
         RemoveLeaf(proxy);
         Free(proxy);
         _leafCount--;
@@ -229,10 +246,41 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     {
         CheckProxy(proxy);
         CheckBox(box);
+        RebuildEnlarged();
         RemoveLeaf(proxy);
         _nodes[proxy].Box = box;
         InsertLeaf(proxy);
     }
+
+    /// <summary>
+    /// Gives a proxy new bounds without moving it in the tree: the boxes of its ancestors grow to contain the new box and nothing else changes (Catto, Box2D v3 release notes: enlarge instead of reinserting).
+    /// The ancestors stay valid but may be looser than necessary; <see cref="EnlargedCount"/> tells how much of the tree is affected and <see cref="RebuildEnlarged"/> restores its quality.
+    /// </summary>
+    public void EnlargeProxy(int proxy, in TBox box)
+    {
+        CheckProxy(proxy);
+        CheckBox(box);
+        _nodes[proxy].Box = box;
+        int p = _nodes[proxy].Parent;
+        bool growing = true;
+        while (p != NullNode)
+        {
+            ref Node n = ref _nodes[p];
+            if (growing)
+            {
+                if (TBox.Contains(n.Box, box)) { growing = false; }
+                else { n.Box = TBox.Union(n.Box, box); }
+            }
+
+            // The flag marks every ancestor of a changed node up to the root, so the flagged nodes always form a connected region at the top of the tree.
+            if ((n.Flags & EnlargedFlag) != 0) { if (!growing) { break; } }
+            else { n.Flags |= EnlargedFlag; _enlarged++; }
+            p = n.Parent;
+        }
+    }
+
+    /// <summary>The number of internal nodes whose boxes have been enlarged, or have an enlarged descendant, since the last <see cref="RebuildEnlarged"/>.</summary>
+    public int EnlargedCount => _enlarged;
 
     private int Alloc()
     {
@@ -262,6 +310,7 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
 
     private void Free(int n)
     {
+        if ((_nodes[n].Flags & EnlargedFlag) != 0 && _nodes[n].Height > 0) { _enlarged--; }
         _nodes[n] = default;
         _nodes[n].Height = -1;
         _nodes[n].Parent = _free;
@@ -515,6 +564,67 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
 
         // Children are allocated after their parents, so walking the internals backwards fits boxes bottom-up.
         for (int i = internalCount - 1; i >= 0; i--) { Refit(internals[i]); }
+        _enlarged = 0;
+    }
+
+    /// <summary>
+    /// Rebuilds only the part of the tree that <see cref="EnlargeProxy"/> touched: the subtrees below the flagged region stay as they are and become the leaves of a new top, built by binned SAH like <see cref="Rebuild"/>.
+    /// The flagged internal nodes are reused, so no node is allocated. Does nothing when nothing is flagged. The result depends only on the tree's current structure and boxes.
+    /// </summary>
+    public void RebuildEnlarged()
+    {
+        if (_enlarged == 0) { return; }
+        if (_root == NullNode || _nodes[_root].Height == 0 || (_nodes[_root].Flags & EnlargedFlag) == 0) { _enlarged = 0; return; }
+
+        // Collect the flagged region (internal nodes) and the unflagged children hanging below it (the items to rebuild over).
+        if (_rbWalk.Length < _used) { _rbWalk = new int[Math.Max(_used, _rbWalk.Length * 2)]; }
+        if (_rbRegion.Length < _used) { _rbRegion = new int[Math.Max(_used, _rbRegion.Length * 2)]; }
+        if (_rbItems.Length < _used) { _rbItems = new int[Math.Max(_used, _rbItems.Length * 2)]; }
+        int walk = 0, regionCount = 0, itemCount = 0;
+        _rbWalk[walk++] = _root;
+        while (walk > 0)
+        {
+            int node = _rbWalk[--walk];
+            _rbRegion[regionCount++] = node;
+            int c1 = _nodes[node].Child1, c2 = _nodes[node].Child2;
+            // Child 1 is handled first, so push child 2 first.
+            if (_nodes[c2].Height > 0 && (_nodes[c2].Flags & EnlargedFlag) != 0) { _rbWalk[walk++] = c2; } else { _rbItems[itemCount++] = c2; }
+            if (_nodes[c1].Height > 0 && (_nodes[c1].Flags & EnlargedFlag) != 0) { _rbWalk[walk++] = c1; } else { _rbItems[itemCount++] = c1; }
+        }
+
+        int axes = TBox.Axes;
+        if (_rbCentroids.Length < itemCount * axes) { _rbCentroids = new double[Math.Max(itemCount * axes, _rbCentroids.Length * 2)]; }
+        for (int i = 0; i < itemCount; i++)
+        {
+            ref Node it = ref _nodes[_rbItems[i]];
+            for (int a = 0; a < axes; a++) { _rbCentroids[(i * axes) + a] = (it.Box.Min(a) + it.Box.Max(a)) * 0.5; }
+        }
+
+        for (int i = 0; i < regionCount; i++) { _nodes[_rbRegion[i]].Flags = 0; }
+        int nextRegion = 0;
+        int sp = 0;
+        _rbStack[sp++] = new BuildItem { Begin = 0, End = itemCount, Parent = NullNode, Side = 0 };
+        _root = NullNode;
+        while (sp > 0)
+        {
+            BuildItem item = _rbStack[--sp];
+            if (item.End - item.Begin == 1)
+            {
+                Attach(item, _rbItems[item.Begin]);
+                continue;
+            }
+
+            int node = _rbRegion[nextRegion++];
+            Attach(item, node);
+            int mid = SplitAtMidpoint(_rbItems, _rbCentroids, item.Begin, item.End, axes, _rbMin, _rbMax);
+            if (sp + 2 > _rbStack.Length) { Array.Resize(ref _rbStack, _rbStack.Length * 2); }
+            _rbStack[sp++] = new BuildItem { Begin = mid, End = item.End, Parent = node, Side = 1 };
+            _rbStack[sp++] = new BuildItem { Begin = item.Begin, End = mid, Parent = node, Side = 0 };
+        }
+
+        // The reused nodes were taken in top-down order, so walking them backwards fits boxes and heights bottom-up.
+        for (int i = regionCount - 1; i >= 0; i--) { Refit(_rbRegion[i]); }
+        _enlarged = 0;
     }
 
     private void Attach(in BuildItem item, int node)
@@ -613,6 +723,46 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
             else
             {
                 SwapLeaves(leaves, centroids, axes, lo, hi);
+                hi--;
+            }
+        }
+
+        return lo > begin && lo < end ? lo : begin + (count / 2);
+    }
+
+    // Cheap top-down split for the partial rebuild: cut the axis with the widest spread of centroids at the middle of that spread (a spatial median). It costs two passes over the items,
+    // and the rebuild runs every step, so it must stay far cheaper than the reinsertions it replaces; the full Rebuild keeps the binned SAH.
+    private static int SplitAtMidpoint(int[] items, double[] centroids, int begin, int end, int axes, double[] cmin, double[] cmax)
+    {
+        int count = end - begin;
+        if (count == 2) { return begin + 1; }
+        for (int a = 0; a < axes; a++) { cmin[a] = double.PositiveInfinity; cmax[a] = double.NegativeInfinity; }
+        for (int i = begin; i < end; i++)
+        {
+            for (int a = 0; a < axes; a++)
+            {
+                double c = centroids[(i * axes) + a];
+                if (c < cmin[a]) { cmin[a] = c; }
+                if (c > cmax[a]) { cmax[a] = c; }
+            }
+        }
+
+        int axis = 0;
+        double widest = cmax[0] - cmin[0];
+        for (int a = 1; a < axes; a++)
+        {
+            if (cmax[a] - cmin[a] > widest) { widest = cmax[a] - cmin[a]; axis = a; }
+        }
+
+        if (!(widest > 0.0)) { return begin + (count / 2); }
+        double cut = cmin[axis] + (widest * 0.5);
+        int lo = begin, hi = end - 1;
+        while (lo <= hi)
+        {
+            if (centroids[(lo * axes) + axis] < cut) { lo++; }
+            else
+            {
+                SwapLeaves(items, centroids, axes, lo, hi);
                 hi--;
             }
         }
@@ -836,6 +986,10 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
         }
 
         tree._leafCount = leaves;
+        for (int i = 0; i < used; i++)
+        {
+            if (tree._nodes[i].Height > 0 && (tree._nodes[i].Flags & EnlargedFlag) != 0) { tree._enlarged++; }
+        }
         try
         {
             tree.Validate();
@@ -850,5 +1004,6 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
         _root = tree._root;
         _free = tree._free;
         _leafCount = tree._leafCount;
+        _enlarged = tree._enlarged;
     }
 }

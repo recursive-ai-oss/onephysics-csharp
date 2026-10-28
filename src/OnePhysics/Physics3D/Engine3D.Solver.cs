@@ -128,7 +128,7 @@ internal sealed partial class Engine3D
         Span<float> rm = stackalloc float[6];
         foreach (int c in constraints)
         {
-            if (cs.KindOf(c) == ConstraintKind.Joint) { continue; }
+            if (cs.KindOf(c) == ConstraintKind.Joint) { PrepareJoint(c, in ctx); continue; }
             var pl = cs.Payload(c);
             int a = bodyA[c], b = bodyB[c];
             SlotOf[c] = group * W3D.Lanes + lane;
@@ -254,17 +254,27 @@ internal sealed partial class Engine3D
         {
             for (int i = 0; i < constraints.Length; i++)
             {
-                int slot = SlotOf[constraints[i]];
+                int c = constraints[i];
+                int slot = SlotOf[c];
                 if (slot >= 0) { ContactKernel3D.Run<Lanes1>(this, slot >> 3, slot & 7, 1, phase, in kp); }
+                else if (cons.KindOf(c) == ConstraintKind.Joint) { SolveJoint(c, phase, in ctx); }
             }
 
             return;
         }
 
-        int first = SlotOf[constraints[0]];
-        if (first < 0) { return; }
+        // Contacts were packed into the first lanes of the batch's group in list order; joints (which share no dynamic body with anything else in the batch) solve one by one.
+        int first = -1, count = 0;
+        for (int i = 0; i < constraints.Length; i++)
+        {
+            int c = constraints[i];
+            if (cons.KindOf(c) == ConstraintKind.Joint) { SolveJoint(c, phase, in ctx); continue; }
+            if (count == 0) { first = SlotOf[c]; }
+            count++;
+        }
+
+        if (count == 0 || first < 0) { return; }
         int group = first >> 3;
-        int count = constraints.Length;
         if (KernelWidth == 1) { ContactKernel3D.Run<Lanes1>(this, group, 0, count, phase, in kp); }
         else if (KernelWidth == 4) { ContactKernel3D.Run<Lanes128>(this, group, 0, count, phase, in kp); }
         else { ContactKernel3D.Run<Lanes256>(this, group, 0, count, phase, in kp); }

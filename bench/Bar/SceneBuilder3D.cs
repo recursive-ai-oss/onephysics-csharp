@@ -4,7 +4,7 @@ using P3 = RecursiveAI.OnePhysics.Physics3D;
 
 namespace Bar;
 
-/// <summary>Builds a 3D world from a scene definition. Shared by the bar runner and the hash-matrix scenarios. Joints are not supported yet and are skipped; queries are not run.</summary>
+/// <summary>Builds a 3D world from a scene definition. Shared by the bar runner and the hash-matrix scenarios. Point joints are built from the scene (the only 3D joint kind the scenes use); queries are not run.</summary>
 public static class SceneBuilder3D
 {
     public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads)
@@ -29,6 +29,18 @@ public static class SceneBuilder3D
             bodies[i] = world.CreateBody(in bd);
             foreach (var sh in ob.Shapes) CreateShape(world, bodies[i], sh, s);
         }
+        foreach (var j in s.Joints)
+        {
+            if (j.Kind != "point") throw new InvalidDataException("3D joint kind not supported by the builder: " + j.Kind);
+            var jd = new P3.PointJointDef
+            {
+                BodyA = bodies[j.A], BodyB = bodies[j.B],
+                LocalFrameA = new P3.JointFrame3D(new Vector3F((float)j.Ax, (float)j.Ay, (float)j.Az), QuaternionF.Identity),
+                LocalFrameB = new P3.JointFrame3D(new Vector3F((float)j.Bx, (float)j.By, (float)j.Bz), QuaternionF.Identity),
+            };
+            world.CreateJoint(in jd);
+        }
+
         for (int i = 0; i < bodies.Length; i++) if (s.Bodies[i].Asleep) bodies[i].Sleep();
         return (world, bodies, opt);
     }

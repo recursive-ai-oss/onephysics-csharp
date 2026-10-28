@@ -10,7 +10,7 @@ using RecursiveAI.OnePhysics.Core;
 internal static class BroadphaseHash
 {
     /// <summary>The hash every platform must produce.</summary>
-    public const ulong Expected = 4661559988502166513UL;
+    public const ulong Expected = 13433168801495368711UL;
 
     private delegate TBox MakeBox<TBox>(ReadOnlySpan<double> min, ReadOnlySpan<double> max);
 

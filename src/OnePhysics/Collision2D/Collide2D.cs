@@ -1,4 +1,5 @@
 using System;
+using RecursiveAI.OnePhysics.Physics2D;
 
 namespace RecursiveAI.OnePhysics.Collision2D;
 
@@ -79,6 +80,21 @@ internal struct Poly
         return p;
     }
 
+    // Fill an existing, uncleared Poly in place. Building one by value and copying it out costs more than the transform: scalar stores followed by wide loads of the same bytes stall.
+    // Only the first N entries of V and Nm are set (Nm only when N >= 2); nothing reads past N.
+    public static void Load(ref Poly p, in Shape2D s)
+    {
+        p.N = s._count; p.R = s._radius; p.V = s._v; p.Nm = s._n;
+    }
+
+    public static void LoadTransformed(ref Poly p, in Shape2D s, Transform2 xf)
+    {
+        int n = s._count;
+        p.N = n; p.R = s._radius;
+        for (int i = 0; i < n; i++) { p.V[i] = xf.Apply(s._v[i]); }
+        if (n >= 2) { for (int i = 0; i < n; i++) { p.Nm[i] = xf.Q.Rotate(s._n[i]); } }
+    }
+
     public static Poly From(in Shape2D s, Transform2 xf)
     {
         var p = new Poly { N = s._count, R = s._radius };
@@ -130,8 +146,23 @@ public static class Collide2D
             return new Manifold2D(n, m.PointCount, p0, p1);
         }
 
-        var pa = Poly.From(in a);
-        var pb = Poly.From(in b, xfBInA);
+        if (a._count == 1 && b._count == 1)
+        {
+            // Two discs: the same arithmetic as Convex, without building polygons.
+            Vec2 ca = a._v[0], cb = xfBInA.Apply(b._v[0]);
+            Vec2 d = cb - ca;
+            float len = d.Length;
+            Vec2 n = len > 1e-12f ? d * (1f / len) : new Vec2(0f, 1f);
+            float sep = len - (a._radius + b._radius);
+            if (sep > speculativeDistance) { return default; }
+            Vec2 mid = 0.5f * ((ca + a._radius * n) + (cb - b._radius * n));
+            return new Manifold2D(n, 1, new ManifoldPoint2D(mid, sep, 0), default);
+        }
+
+        Mem.SkipInit(out Poly pa);
+        Mem.SkipInit(out Poly pb);
+        Poly.Load(ref pa, in a);
+        Poly.LoadTransformed(ref pb, in b, xfBInA);
         return Convex(in pa, in pb, speculativeDistance, false);
     }
 
@@ -142,21 +173,26 @@ public static class Collide2D
     private const uint EdgeFlag = 0x80u;
 
     // Largest over the reference faces of the smallest distance from the face plane to the other core's vertices; ties go to the lowest face index.
-    private static float FindMaxSeparation(in Poly r, in Poly o, int faces, out int edge)
+    // A face that already separates the shapes by more than the radii plus the margin settles the pair: the answer is then +infinity, which the caller reads as "too far apart".
+    // The caller's own test is best - rT > margin and best is at least this face's value, so stopping early cannot change a result.
+    private static float FindMaxSeparation(in Poly r, in Poly o, int faces, float rT, float margin, out int edge)
     {
         float best = -float.MaxValue;
         edge = 0;
+        ReadOnlySpan<Vec2> rv = r.V, rn = r.Nm, ov = o.V;
+        int on = o.N;
         for (int i = 0; i < faces; i++)
         {
-            Vec2 nrm = r.Nm[i];
-            Vec2 v = r.V[i];
+            Vec2 nrm = rn[i];
+            Vec2 v = rv[i];
             float min = float.MaxValue;
-            for (int j = 0; j < o.N; j++)
+            for (int j = 0; j < on; j++)
             {
-                float s = Vec2.Dot(nrm, o.V[j] - v);
+                float s = Vec2.Dot(nrm, ov[j] - v);
                 if (s < min) { min = s; }
             }
 
+            if (min - rT > margin) { return float.PositiveInfinity; }
             if (min > best) { best = min; edge = i; }
         }
 
@@ -179,8 +215,9 @@ public static class Collide2D
 
         float sepA = -float.MaxValue, sepB = -float.MaxValue;
         int edgeA = 0, edgeB = 0;
-        if (pa.N >= 2) { sepA = FindMaxSeparation(in pa, in pb, onlyFace0OfA ? 1 : pa.N, out edgeA); }
-        if (pb.N >= 2) { sepB = FindMaxSeparation(in pb, in pa, pb.N, out edgeB); }
+        if (pa.N >= 2) { sepA = FindMaxSeparation(in pa, in pb, onlyFace0OfA ? 1 : pa.N, rT, margin, out edgeA); }
+        if (float.IsPositiveInfinity(sepA)) { return default; }
+        if (pb.N >= 2) { sepB = FindMaxSeparation(in pb, in pa, pb.N, rT, margin, out edgeB); }
         float best = sepA > sepB ? sepA : sepB;
         if (best - rT > margin) { return default; }
 

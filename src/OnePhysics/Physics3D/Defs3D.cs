@@ -122,6 +122,12 @@ public sealed class WorldOptions3D
     /// <summary>Whether fast bodies are stopped at static geometry. Default true.</summary>
     public bool ContinuousEnabled { get; set; } = true;
 
+    /// <summary>Stiffness of the rigid rows of joints in Hz (capped at a quarter of the substep rate). Default 60.</summary>
+    public float JointHertz { get; set; } = 60f;
+
+    /// <summary>Damping ratio of the rigid rows of joints. Default 2.</summary>
+    public float JointDampingRatio { get; set; } = 2f;
+
     /// <summary>Distance at which surfaces get a speculative contact, metres. Default 0.02.</summary>
     public float SpeculativeDistance { get; set; } = 0.02f;
 
@@ -149,6 +155,8 @@ public sealed class WorldOptions3D
         Positive(MaxLinearSpeed, nameof(MaxLinearSpeed), false);
         Positive(MaxRotationPerSubstep, nameof(MaxRotationPerSubstep), false);
         Positive(SpeculativeDistance, nameof(SpeculativeDistance), true);
+        Positive(JointHertz, nameof(JointHertz), true);
+        Positive(JointDampingRatio, nameof(JointDampingRatio), true);
         if (!double.IsFinite(BroadphaseMargin) || BroadphaseMargin < 0.0) { throw new ArgumentOutOfRangeException(nameof(BroadphaseMargin), BroadphaseMargin, "BroadphaseMargin must be finite and at least 0."); }
         ToCore().Validate();
     }

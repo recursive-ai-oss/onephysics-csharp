@@ -48,12 +48,14 @@ internal sealed partial class Engine2D
         }
 
         int nc = core.Constraints.HighWater;
-        if (SlotOf.Length < nc) { SlotOf = new int[Math.Max(nc, SlotOf.Length * 2)]; JSlotOf = new int[SlotOf.Length]; }
+        if (SlotOf.Length < nc) { SlotOf = new int[Math.Max(nc, SlotOf.Length * 2)]; JSlotOf = new int[SlotOf.Length]; BatchSimple = new byte[SlotOf.Length]; }
         ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
         var st = BodyState.AsSpan();
+        _movingKinematic = false;
         for (int b = 0; b < nb; b++)
         {
             if (!bodies.IsLive(b)) { continue; }
+            if (bodies.TypeOf(b) == BodyType.Kinematic && IsActive(bodies, b)) { _movingKinematic = true; }
             int o = (b + 1) * BS2D.Stride;
             st[o + BS2D.Vx] = lin[2 * b]; st[o + BS2D.Vy] = lin[2 * b + 1]; st[o + BS2D.W] = ang[b];
             st[o + BS2D.Dpx] = 0f; st[o + BS2D.Dpy] = 0f; st[o + BS2D.DqC] = 1f; st[o + BS2D.DqS] = 0f;
@@ -66,7 +68,8 @@ internal sealed partial class Engine2D
         var cs = Core.Constraints;
         foreach (int c in constraints)
         {
-            if (cs.KindOf(c) == ConstraintKind.Joint) { PrepareJoint(c, in ctx); }
+            // A plain revolute joint that the wide kernel will solve is prepared straight into its group by PrepareBatch.
+            if (cs.KindOf(c) == ConstraintKind.Joint && !IsPlainRevolute(c, cs)) { PrepareJoint(c, in ctx); }
         }
     }
 
@@ -99,14 +102,21 @@ internal sealed partial class Engine2D
             for (int l = 0; l < W2D.Lanes; l++) { jidx[l] = 0; jidx[8 + l] = 0; jidx[16 + l] = -1; jidx[24 + l] = -1; }
         }
 
+        float jointRigidBias = 0f, jointRigidMass = 1f, jointRigidImpulse = 0f;
+        if (jidx.Length != 0) { MakeSoft(Opt.JointHertz > cap ? cap : Opt.JointHertz, Opt.JointDampingRatio, ctx.SubstepDt, out jointRigidBias, out jointRigidMass, out jointRigidImpulse); }
         bool anyJoint = false;
         foreach (int c in constraints)
         {
             if (cs.KindOf(c) == ConstraintKind.Joint)
             {
                 anyJoint = true;
-                if (jidx.Length != 0 && IsPlainRevolute(c, cs)) { PrepareWideJoint(c, cs, jw, jidx, jlane++, group); }
-                else { JSlotOf[c] = -1; }
+                if (IsPlainRevolute(c, cs))
+                {
+                    if (jidx.Length != 0) { PrepareWideJoint(c, cs, jw, jidx, jlane++, group, in ctx, jointRigidBias, jointRigidMass, jointRigidImpulse); continue; }
+                    PrepareJoint(c, in ctx); // no wide group to put it in (cannot happen while joints exist): solve it scalar
+                }
+
+                JSlotOf[c] = -1;
                 continue;
             }
 
@@ -173,8 +183,15 @@ internal sealed partial class Engine2D
             for (int l = jlane; l < J2D.Lanes; l++) { for (int f = 0; f < J2D.Fields; f++) { jw[f * 8 + l] = 0f; } }
         }
 
-        // Unused lanes of a short group read as zeros.
-        for (int l = lane; l < W2D.Lanes; l++)
+        // Remembered on the batch's first constraint so the solve passes can pick the wide path without looking at every constraint: contacts only, not the overflow set.
+        if (constraints.Length > 0)
+        {
+            bool overflowSet = cs.Color[constraints[0]] == ConstraintStore.Overflow;
+            BatchSimple[constraints[0]] = (byte)(overflowSet ? 0 : !anyJoint ? 1 : jlane == constraints.Length && jidx.Length != 0 ? 2 : 0);
+        }
+
+        // Unused lanes of a short group read as zeros. A batch with no contacts never reads its contact group.
+        for (int l = lane > 0 ? lane : W2D.Lanes; l < W2D.Lanes; l++)
         {
             for (int f = 0; f < W2D.Fields; f++) { w[f * 8 + l] = 0f; }
         }
@@ -192,20 +209,27 @@ internal sealed partial class Engine2D
         return p[JPay.Spring] == 0f && p[JPay.Motor] == 0f && p[JPay.Lower] == 0f && p[JPay.Upper] == 0f;
     }
 
-    private void PrepareWideJoint(int c, ConstraintStore cs, Span<float> w, Span<int> idx, int lane, int group)
+    // The scalar PrepareJoint for a plain revolute joint, written straight into the wide group: same operations in the same order, without the scratch row.
+    private void PrepareWideJoint(int c, ConstraintStore cs, Span<float> w, Span<int> idx, int lane, int group, in StepContext ctx, float jBias, float jMass, float jImp)
     {
         var bodies = Core.Bodies;
-        var s = JScratch.AsSpan(c * JRow.Stride, JRow.Stride);
+        ref JointData2D j = ref Joints[c];
         var p = cs.Payload(c);
         int a = cs.BodyA[c], b = cs.BodyB[c];
         JSlotOf[c] = group * J2D.Lanes + lane;
         idx[lane] = (a + 1) * BS2D.Stride; idx[8 + lane] = (b + 1) * BS2D.Stride;
         idx[16 + lane] = bodies.TypeOf(a) == BodyType.Dynamic ? (a + 1) * BS2D.Stride : -1;
         idx[24 + lane] = bodies.TypeOf(b) == BodyType.Dynamic ? (b + 1) * BS2D.Stride : -1;
-        w[J2D.MA * 8 + lane] = s[JRow.MA]; w[J2D.IA * 8 + lane] = s[JRow.IA]; w[J2D.MB * 8 + lane] = s[JRow.MB]; w[J2D.IB * 8 + lane] = s[JRow.IB];
-        w[J2D.RAx * 8 + lane] = s[JRow.RAx]; w[J2D.RAy * 8 + lane] = s[JRow.RAy]; w[J2D.RBx * 8 + lane] = s[JRow.RBx]; w[J2D.RBy * 8 + lane] = s[JRow.RBy];
-        w[J2D.Dx * 8 + lane] = s[JRow.Dx]; w[J2D.Dy * 8 + lane] = s[JRow.Dy];
-        w[J2D.Rigid * 8 + lane] = s[JRow.JMass] * s[JRow.JBias]; w[J2D.Mass * 8 + lane] = s[JRow.JMass]; w[J2D.Impulse * 8 + lane] = s[JRow.JImp];
+        var pA = bodies.PositionOf(a); var pB = bodies.PositionOf(b);
+        var qA = bodies.RotationOf(a); var qB = bodies.RotationOf(b);
+        float qAc = qA[0], qAs = qA[1], qBc = qB[0], qBs = qB[1];
+        float xa = j.LAx - LocalCenter[2 * a], ya = j.LAy - LocalCenter[2 * a + 1];
+        float xb = j.LBx - LocalCenter[2 * b], yb = j.LBy - LocalCenter[2 * b + 1];
+        w[J2D.MA * 8 + lane] = bodies.InverseMass[a]; w[J2D.IA * 8 + lane] = bodies.InverseInertia[a]; w[J2D.MB * 8 + lane] = bodies.InverseMass[b]; w[J2D.IB * 8 + lane] = bodies.InverseInertia[b];
+        w[J2D.RAx * 8 + lane] = qAc * xa - qAs * ya; w[J2D.RAy * 8 + lane] = qAs * xa + qAc * ya;
+        w[J2D.RBx * 8 + lane] = qBc * xb - qBs * yb; w[J2D.RBy * 8 + lane] = qBs * xb + qBc * yb;
+        w[J2D.Dx * 8 + lane] = (float)(pB[0] - pA[0]); w[J2D.Dy * 8 + lane] = (float)(pB[1] - pA[1]);
+        w[J2D.Rigid * 8 + lane] = jMass * jBias; w[J2D.Mass * 8 + lane] = jMass; w[J2D.Impulse * 8 + lane] = jImp;
         w[J2D.P0 * 8 + lane] = p[JPay.P0]; w[J2D.P1 * 8 + lane] = p[JPay.P1];
     }
 
@@ -249,6 +273,18 @@ internal sealed partial class Engine2D
     {
         var kp = new KernelParams(ctx.InverseSubstepDt, Opt.PushOutVelocity, Opt.ContactSlop, Opt.RestitutionThreshold);
         if (constraints.Length == 0) { return; }
+        int simple = BatchSimple[constraints[0]];
+        if (simple == 1) { RunContacts(SlotOf[constraints[0]] >> 3, constraints.Length, phase, in kp); return; }
+        if (simple == 2)
+        {
+            // Only wide revolute joints: one group of the joint kernel.
+            int group = JSlotOf[constraints[0]] >> 3;
+            if (KernelWidth == 1) { JointKernel2D.Run<Lanes1>(this, group, 0, constraints.Length, phase); }
+            else if (KernelWidth == 4) { JointKernel2D.Run<Lanes128>(this, group, 0, constraints.Length, phase); }
+            else { JointKernel2D.Run<Lanes256>(this, group, 0, constraints.Length, phase); }
+            return;
+        }
+
         var cons = Core.Constraints;
         bool overflow = cons.Color[constraints[0]] == ConstraintStore.Overflow;
         int joints = 0;
@@ -476,12 +512,14 @@ internal sealed partial class Engine2D
 
     // ------------------------------------------------------------------ sleeping
 
+    private bool _movingKinematic; // set once per step in BeginSolve: whether any kinematic body moves, so BodyMotion can skip looking at contact partners when none does
+
     public float BodyMotion(int b)
     {
         var bodies = Core.Bodies;
         // A body touching a moving kinematic body is not at rest.
         var cs = Core.Constraints;
-        for (int e = bodies.FirstEdge(b); e >= 0; e = cs.NextEdge(e))
+        for (int e = _movingKinematic ? bodies.FirstEdge(b) : -1; e >= 0; e = cs.NextEdge(e))
         {
             int c = e >> 1;
             int other = (e & 1) == 0 ? cs.BodyB[c] : cs.BodyA[c];
