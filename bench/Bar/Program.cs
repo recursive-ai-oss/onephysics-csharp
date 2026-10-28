@@ -116,7 +116,7 @@ static class Runner
             foreach (var eng in engines)
                 foreach (var th in threadList)
                 {
-                    if (eng == "onephysics" ? (scene.Dim == 3 && scene.Joints.Count > 0) : Engines3D.Contains(eng) != (scene.Dim == 3)) continue; // our engine runs both dimensions; 3D joints not yet
+                    if (eng == "onephysics" ? false : Engines3D.Contains(eng) != (scene.Dim == 3)) continue; // our engine runs both dimensions
                     if (scene.Params.TryGetValue("engines", out var only) && !only.Contains(eng)) continue; // a scene only some drivers understand
                     if (eng == "box2dnet" && th != 1) continue; // no documented multithreading
                     if (!timing && th != threadList[0]) continue;
