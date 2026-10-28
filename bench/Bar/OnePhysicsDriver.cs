@@ -2,7 +2,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using RecursiveAI.OnePhysics.Physics2D;
 using P2 = RecursiveAI.OnePhysics.Physics2D;
 

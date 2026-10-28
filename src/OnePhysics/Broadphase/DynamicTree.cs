@@ -1,10 +1,13 @@
 using System;
 using System.Globalization;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Broadphase;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>Receives the proxies whose box overlaps a query box.</summary>
+[Experimental("OPHYS0001")]
 public interface IOverlapCallback
 {
     /// <summary>Called once per overlapping proxy, in a fixed traversal order. Return false to stop the query.</summary>
@@ -14,6 +17,7 @@ public interface IOverlapCallback
 }
 
 /// <summary>Receives the proxies a ray or box sweep reaches, and decides how far the traversal goes (Catto, GDC 2019: the callback clips the ray).</summary>
+[Experimental("OPHYS0001")]
 public interface IRayCallback
 {
     /// <summary>
@@ -25,6 +29,7 @@ public interface IRayCallback
 
 /// <summary>A ray, or a box swept along a translation, prepared for repeated tests against boxes.</summary>
 /// <typeparam name="TBox">The box type it tests against.</typeparam>
+[Experimental("OPHYS0001")]
 public interface IRay<TBox> where TBox : struct, IBox<TBox>
 {
     /// <summary>True when the ray reaches <paramref name="box"/> at a fraction in [0, <paramref name="maxFraction"/>]; <paramref name="enter"/> is the entry fraction (0 when the ray starts inside).</summary>
@@ -68,6 +73,52 @@ internal ref struct TraversalStack
     }
 }
 
+/// <summary>The traversal stack of a ray cast: node indices with the fraction at which the ray enters each node's box, so a node popped later is dropped by one comparison when the ray has been clipped shorter.</summary>
+internal ref struct RayStack
+{
+    private Span<int> _nodes;
+    private Span<double> _enters;
+    private int _count;
+
+    public RayStack(Span<int> nodes, Span<double> enters)
+    {
+        _nodes = nodes;
+        _enters = enters;
+        _count = 0;
+    }
+
+    public void Push(int node, double enter)
+    {
+        if (_count == _nodes.Length)
+        {
+            var n = new int[_nodes.Length * 2];
+            var e = new double[_nodes.Length * 2];
+            _nodes.CopyTo(n);
+            _enters.CopyTo(e);
+            _nodes = n;
+            _enters = e;
+        }
+
+        _nodes[_count] = node;
+        _enters[_count++] = enter;
+    }
+
+    public bool TryPop(out int node, out double enter)
+    {
+        if (_count == 0)
+        {
+            node = 0;
+            enter = 0.0;
+            return false;
+        }
+
+        --_count;
+        node = _nodes[_count];
+        enter = _enters[_count];
+        return true;
+    }
+}
+
 /// <summary>
 /// A dynamic bounding-volume hierarchy of axis-aligned boxes: a binary tree whose leaves are proxies and whose internal nodes bound their children.
 /// Insertion picks the sibling by the surface area heuristic and rotates grandchildren to shrink internal boxes (Catto, GDC 2019 "Dynamic Bounding Volume Hierarchies";
@@ -81,6 +132,7 @@ internal ref struct TraversalStack
 /// Not thread-safe for writes; any number of threads may query while nobody writes.
 /// </remarks>
 /// <typeparam name="TBox">The box type: <see cref="Aabb2D"/> or <see cref="Aabb3D"/>.</typeparam>
+[Experimental("OPHYS0001")]
 public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
 {
     private const int NullNode = -1;
@@ -938,17 +990,20 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     /// Walks the tree with a ray (or a swept box), nearest subtrees first, calling the callback for each leaf reached. Returns the final max fraction after any clipping.
     /// A callback result of 0 stops the traversal and the return value is 0.
     /// </summary>
+    [System.Runtime.CompilerServices.SkipLocalsInit] // the traversal stacks are written before they are read; zeroing 1.5 KB per call showed in query time
     public double RayCast<TRay, TCallback>(in TRay ray, double maxFraction, ref TCallback callback)
         where TRay : struct, IRay<TBox>
         where TCallback : IRayCallback
     {
         if (_root == NullNode || !(maxFraction > 0.0)) { return maxFraction; }
-        var stack = new TraversalStack(stackalloc int[128]);
-        stack.Push(_root);
-        while (stack.TryPop(out int i))
+        // A box was accepted by its parent at some fraction limit no shorter than the current one, and its entry fraction does not depend on the limit, so "the ray still reaches it" is enter <= maxFraction.
+        if (!ray.Hit(_nodes[_root].Box, maxFraction, out double rootEnter)) { return maxFraction; }
+        var stack = new RayStack(stackalloc int[128], stackalloc double[128]);
+        stack.Push(_root, rootEnter);
+        while (stack.TryPop(out int i, out double enter))
         {
+            if (enter > maxFraction) { continue; }
             ref Node n = ref _nodes[i];
-            if (!ray.Hit(n.Box, maxFraction, out _)) { continue; }
             if (n.Height == 0)
             {
                 double v = callback.Report(i, n.UserId, maxFraction);
@@ -963,11 +1018,11 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
             if (h1 && h2)
             {
                 // Farther child first on the stack so the nearer one pops first; equal entry goes to child 1.
-                if (t2 < t1) { stack.Push(n.Child1); stack.Push(n.Child2); }
-                else { stack.Push(n.Child2); stack.Push(n.Child1); }
+                if (t2 < t1) { stack.Push(n.Child1, t1); stack.Push(n.Child2, t2); }
+                else { stack.Push(n.Child2, t2); stack.Push(n.Child1, t1); }
             }
-            else if (h1) { stack.Push(n.Child1); }
-            else if (h2) { stack.Push(n.Child2); }
+            else if (h1) { stack.Push(n.Child1, t1); }
+            else if (h2) { stack.Push(n.Child2, t2); }
         }
 
         return maxFraction;

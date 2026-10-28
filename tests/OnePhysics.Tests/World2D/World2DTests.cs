@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Collision2D;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using RecursiveAI.OnePhysics.Physics2D;
 using Xunit;
 
@@ -195,10 +195,10 @@ public class World2DTests
         }
 
         Assert.NotNull(caught);
-        Assert.Equal(runaway.RawHandle, caught!.Body);
+        Assert.Equal(runaway, caught!.Body);
         Assert.Equal(before, w.ComputeHash());
         Assert.Throws<BodyOutOfBoundsException>(() => w.Step(Dt));
-        w.GetBody(caught.Body).Destroy();
+        caught.Body.Destroy();
         Assert.False(runaway.IsValid);
         w.Step(Dt);
         Assert.True(other.IsValid);

@@ -1,7 +1,8 @@
 using System;
 using RecursiveAI.OneMath;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 // Feature codes: 16 bits, kind in the top two bits, index in the low fourteen. Two codes (shape A's high, shape B's low) make a manifold point id.
 internal static class FCode

@@ -1,8 +1,8 @@
 using System;
 using System.Globalization;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Collision3D;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 

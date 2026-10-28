@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using RecursiveAI.OnePhysics.Core;
-using RecursiveAI.OnePhysics.Core.Reference;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Bench;
 

@@ -1,125 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Core;
-
-/// <summary>Handle to a body: the id of the world that created it, the slot index and the slot's generation. The default value is the null handle and is never valid.</summary>
-public readonly struct BodyHandle : IEquatable<BodyHandle>
-{
-    /// <summary>Id of the owning world (at least 1 for a real handle).</summary>
-    public int World { get; }
-
-    /// <summary>Slot index in the world's body arrays.</summary>
-    public int Index { get; }
-
-    /// <summary>Generation of the slot when the body was created (at least 1 for a real handle).</summary>
-    public int Generation { get; }
-
-    /// <summary>Creates a handle from its parts.</summary>
-    public BodyHandle(int world, int index, int generation) { World = world; Index = index; Generation = generation; }
-
-    /// <summary>True for the default (null) handle.</summary>
-    public bool IsNull => Generation == 0;
-
-    /// <inheritdoc/>
-    public bool Equals(BodyHandle other) => World == other.World && Index == other.Index && Generation == other.Generation;
-
-    /// <inheritdoc/>
-    public override bool Equals(object? obj) => obj is BodyHandle h && Equals(h);
-
-    /// <inheritdoc/>
-    public override int GetHashCode() => unchecked(World * 73856093 ^ Index * 19349663 ^ Generation * 83492791);
-
-    /// <inheritdoc/>
-    public override string ToString() => "Body(world " + World.ToString(CultureInfo.InvariantCulture) + ", #" + Index.ToString(CultureInfo.InvariantCulture) + ", gen " + Generation.ToString(CultureInfo.InvariantCulture) + ")";
-
-    /// <summary>Equality of all three parts.</summary>
-    public static bool operator ==(BodyHandle a, BodyHandle b) => a.Equals(b);
-
-    /// <summary>Inequality of any part.</summary>
-    public static bool operator !=(BodyHandle a, BodyHandle b) => !a.Equals(b);
-}
-
-/// <summary>Handle to a shape; same layout and rules as <see cref="BodyHandle"/>.</summary>
-public readonly struct ShapeHandle : IEquatable<ShapeHandle>
-{
-    /// <summary>Id of the owning world.</summary>
-    public int World { get; }
-
-    /// <summary>Slot index in the world's shape arrays.</summary>
-    public int Index { get; }
-
-    /// <summary>Generation of the slot when the shape was created.</summary>
-    public int Generation { get; }
-
-    /// <summary>Creates a handle from its parts.</summary>
-    public ShapeHandle(int world, int index, int generation) { World = world; Index = index; Generation = generation; }
-
-    /// <summary>True for the default (null) handle.</summary>
-    public bool IsNull => Generation == 0;
-
-    /// <inheritdoc/>
-    public bool Equals(ShapeHandle other) => World == other.World && Index == other.Index && Generation == other.Generation;
-
-    /// <inheritdoc/>
-    public override bool Equals(object? obj) => obj is ShapeHandle h && Equals(h);
-
-    /// <inheritdoc/>
-    public override int GetHashCode() => unchecked(World * 73856093 ^ Index * 19349663 ^ Generation * 83492791);
-
-    /// <inheritdoc/>
-    public override string ToString() => "Shape(world " + World.ToString(CultureInfo.InvariantCulture) + ", #" + Index.ToString(CultureInfo.InvariantCulture) + ", gen " + Generation.ToString(CultureInfo.InvariantCulture) + ")";
-
-    /// <summary>Equality of all three parts.</summary>
-    public static bool operator ==(ShapeHandle a, ShapeHandle b) => a.Equals(b);
-
-    /// <summary>Inequality of any part.</summary>
-    public static bool operator !=(ShapeHandle a, ShapeHandle b) => !a.Equals(b);
-}
-
-/// <summary>Handle to a joint (a constraint of kind <see cref="ConstraintKind.Joint"/>); same layout and rules as <see cref="BodyHandle"/>. The index is the constraint index.</summary>
-public readonly struct JointHandle : IEquatable<JointHandle>
-{
-    /// <summary>Id of the owning world.</summary>
-    public int World { get; }
-
-    /// <summary>Constraint index.</summary>
-    public int Index { get; }
-
-    /// <summary>Generation of the slot when the joint was created.</summary>
-    public int Generation { get; }
-
-    /// <summary>Creates a handle from its parts.</summary>
-    public JointHandle(int world, int index, int generation) { World = world; Index = index; Generation = generation; }
-
-    /// <summary>True for the default (null) handle.</summary>
-    public bool IsNull => Generation == 0;
-
-    /// <inheritdoc/>
-    public bool Equals(JointHandle other) => World == other.World && Index == other.Index && Generation == other.Generation;
-
-    /// <inheritdoc/>
-    public override bool Equals(object? obj) => obj is JointHandle h && Equals(h);
-
-    /// <inheritdoc/>
-    public override int GetHashCode() => unchecked(World * 73856093 ^ Index * 19349663 ^ Generation * 83492791);
-
-    /// <inheritdoc/>
-    public override string ToString() => "Joint(world " + World.ToString(CultureInfo.InvariantCulture) + ", #" + Index.ToString(CultureInfo.InvariantCulture) + ", gen " + Generation.ToString(CultureInfo.InvariantCulture) + ")";
-
-    /// <summary>Equality of all three parts.</summary>
-    public static bool operator ==(JointHandle a, JointHandle b) => a.Equals(b);
-
-    /// <summary>Inequality of any part.</summary>
-    public static bool operator !=(JointHandle a, JointHandle b) => !a.Equals(b);
-}
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// Slot allocator with generations. Freed slots are reused lowest index first (a binary min-heap), so the arrays that hang off the table
 /// stay compact and the allocation sequence is a pure function of the create/destroy sequence.
 /// A slot whose generation would overflow is retired and never reused.
 /// </summary>
+[Experimental("OPHYS0001")]
 public sealed class HandleTable
 {
     private int[] _generation = new int[16];

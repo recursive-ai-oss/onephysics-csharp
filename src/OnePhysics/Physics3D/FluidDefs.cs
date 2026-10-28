@@ -89,7 +89,7 @@ public sealed class FluidDef
 
 /// <summary>
 /// A fluid in a 3D world: a small struct handle (world, slot, generation) made by <see cref="PhysicsWorld3D.AddWater(double, float, Vector3F, float)"/> or <see cref="PhysicsWorld3D.AddFluid"/>.
-/// It allocates nothing and throws <see cref="Core.StaleHandleException"/> once removed. Properties change the fluid from the next step and wake sleeping bodies.
+/// It allocates nothing and throws <see cref="StaleHandleException"/> once removed. Properties change the fluid from the next step and wake sleeping bodies.
 /// </summary>
 public readonly struct Fluid : IEquatable<Fluid>
 {
@@ -106,11 +106,11 @@ public readonly struct Fluid : IEquatable<Fluid>
 
     private FluidDef Resolve()
     {
-        if (_world == null) { throw new Core.InvalidHandleException("The default Fluid is not attached to a world."); }
+        if (_world == null) { throw new InvalidHandleException("The default Fluid is not attached to a world."); }
         var e = _world.Engine;
         if (!e.FluidHandles.IsAlive(_index, _generation))
         {
-            throw new Core.StaleHandleException("Fluid(world " + _world.Id.ToString(CultureInfo.InvariantCulture) + ", #" + _index.ToString(CultureInfo.InvariantCulture) + ", gen " + _generation.ToString(CultureInfo.InvariantCulture) + ") is stale: the fluid was removed.");
+            throw new StaleHandleException("Fluid(world " + _world.Id.ToString(CultureInfo.InvariantCulture) + ", #" + _index.ToString(CultureInfo.InvariantCulture) + ", gen " + _generation.ToString(CultureInfo.InvariantCulture) + ") is stale: the fluid was removed.");
         }
 
         return e.Fluids[_index]!;
@@ -120,12 +120,12 @@ public readonly struct Fluid : IEquatable<Fluid>
     public bool IsValid => _world != null && _world.Engine.FluidHandles.IsAlive(_index, _generation);
 
     /// <summary>A copy of the fluid's definition.</summary>
-    /// <exception cref="Core.StaleHandleException">The fluid was removed.</exception>
+    /// <exception cref="StaleHandleException">The fluid was removed.</exception>
     public FluidDef Definition => Resolve().Clone();
 
     /// <summary>Replaces the definition (validated first; the fluid is unchanged if it throws) and wakes sleeping bodies.</summary>
     /// <exception cref="ArgumentOutOfRangeException">A field is out of range.</exception>
-    /// <exception cref="Core.StaleHandleException">The fluid was removed.</exception>
+    /// <exception cref="StaleHandleException">The fluid was removed.</exception>
     public void SetDefinition(FluidDef def)
     {
         ArgumentNullException.ThrowIfNull(def);
@@ -151,7 +151,7 @@ public readonly struct Fluid : IEquatable<Fluid>
     }
 
     /// <summary>Removes the fluid and wakes sleeping bodies.</summary>
-    /// <exception cref="Core.StaleHandleException">The fluid was already removed.</exception>
+    /// <exception cref="StaleHandleException">The fluid was already removed.</exception>
     public void Remove()
     {
         Resolve();

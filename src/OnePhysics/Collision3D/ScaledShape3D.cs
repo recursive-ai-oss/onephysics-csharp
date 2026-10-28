@@ -1,9 +1,11 @@
 using System;
 using RecursiveAI.OneMath;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>How much freedom a shape has when it is scaled.</summary>
+[Experimental("OPHYS0001")]
 public enum ScaleSupport3D : byte
 {
     /// <summary>Only equal scale on all three axes keeps the shape what it is: sphere, capsule, tapered capsule, and any rounded box, cylinder or inflated hull.</summary>
@@ -27,6 +29,7 @@ public enum ScaleSupport3D : byte
 /// placement is better expressed in the transform of the child. See <see cref="GetScaleSupport"/>.
 /// </para>
 /// </summary>
+[Experimental("OPHYS0001")]
 public static class ScaledShape3D
 {
     /// <summary>The scales <paramref name="shape"/> accepts.</summary>

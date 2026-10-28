@@ -1,7 +1,7 @@
 using System;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Collision3D;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using RecursiveAI.OnePhysics.Physics3D;
 
 // Fuzz targets for the 2D world. "world3d-snapshot" damages a valid snapshot (byte flips, truncation) and restores it: the only error allowed is SnapshotFormatException, a rejected
@@ -123,12 +123,12 @@ internal static class Fuzz3DWorld
             try { w.Step(1f / 60f); throw new InvalidOperationException("a step after the out-of-bounds error did not raise it again"); }
             catch (BodyOutOfBoundsException) { }
             if (before != w.ComputeHash()) { throw new InvalidOperationException("the out-of-bounds error changed the world"); }
-            w.GetBody(e.Body).Destroy();
+            e.Body.Destroy();
             s_oob++;
         }
     }
 
-    private static bool Allowed(Exception e) => e is ArgumentException || e is PhysicsException || e is RecursiveAI.OnePhysics.Collision3D.StaticOnlyShapeException;
+    private static bool Allowed(Exception e) => e is ArgumentException || e is PhysicsException || e is RecursiveAI.OnePhysics.StaticOnlyShapeException;
 
     public static void DefsTarget(byte[] data)
     {

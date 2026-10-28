@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
 using RecursiveAI.OneMath.Physics;
-using RecursiveAI.OnePhysics.Collision3D;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 
@@ -103,6 +103,7 @@ internal sealed class Geom3D
     public TriangleSoup3D? Soup;
     public MassPropertiesF UnitMass;      // unit density, in the geometry's own frame (convex and compound only)
     public Bounds3F LocalBounds;          // the geometry's bounds in its own frame (convex shapes use ShapeBounds3D instead)
+    public Vector3F ConvexMin, ConvexMax; // convex only: padded bounds of the shape in its own frame, for rejecting query candidates before the narrow phase (derived, never saved)
     public int Refs;
     public BuoyancyCache? Buoyancy;       // polyhedra for fluid cutting, built on first use (derived, never saved)
 
@@ -119,6 +120,7 @@ internal sealed class Geom3D
             g.Kind = GeomKind.Convex;
             g.Convex = ReadConvex(r, kind);
             g.UnitMass = g.Convex.GetMassProperties();
+            ShapeBounds3D.Compute(g.Convex, RigidTransformF.Identity, out g.ConvexMin, out g.ConvexMax);
         }
         else if (kind == KCompound)
         {

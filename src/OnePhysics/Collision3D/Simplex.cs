@@ -2,7 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using RecursiveAI.OneMath;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 [InlineArray(4)]
 internal struct Vec4

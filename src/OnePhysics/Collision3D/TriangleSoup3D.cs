@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
 using RecursiveAI.OneMath.Physics;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>One triangle of a <see cref="TriangleSoup3D"/>, with its stable id and which of its edges are active.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct SoupTriangle3D
 {
     internal SoupTriangle3D(int id, Vector3F v0, Vector3F v1, Vector3F v2, byte activeEdges)
@@ -52,6 +54,7 @@ public readonly struct SoupTriangle3D
 }
 
 /// <summary>A reusable flat convex shape standing in for one triangle at a time, so loops over candidate triangles allocate nothing. Not thread-safe; each <see cref="Set"/> invalidates shapes returned earlier.</summary>
+[Experimental("OPHYS0001")]
 public sealed class TriangleShapeBuffer3D
 {
     private static readonly int[] s_vertexEdges = { 0, 2, 4 };
@@ -93,6 +96,7 @@ public sealed class TriangleShapeBuffer3D
 }
 
 /// <summary>A ray hit on a triangle soup.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct TriangleRayHit3D
 {
     internal TriangleRayHit3D(int id, float fraction, Vector3F point, Vector3F normal, bool backFace)
@@ -121,6 +125,7 @@ public readonly struct TriangleRayHit3D
 }
 
 /// <summary>The first contact of a convex shape swept through a triangle soup.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct SoupCastHit3D
 {
     internal SoupCastHit3D(int id, float fraction, Vector3F normal, Vector3F point, bool startsOverlapping)
@@ -264,6 +269,7 @@ internal struct RayCollector
 /// Common surface of the static, non-convex shapes made of triangles: <see cref="TriangleMesh3D"/> and <see cref="HeightField3D"/>. Both live in their own local frame, in float32, are immutable and
 /// can only be static: they have no mass properties. Queries are deterministic, with stated tie rules, and agree exactly with a brute-force loop over <see cref="TryGetTriangle"/> and <see cref="TriangleTests3D"/>.
 /// </summary>
+[Experimental("OPHYS0001")]
 public abstract class TriangleSoup3D
 {
     internal TriangleSoup3D()

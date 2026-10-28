@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 
@@ -94,10 +95,20 @@ public sealed partial class PhysicsWorld3D
         return b.Handle;
     }
 
+    // The parameter name of the definition in the CreateJoint overloads, which are the callers of Make.
+    private static readonly string DefParameter = "def";
+
     private Joint Make(Body a, Body b, JointData3D d)
     {
-        var h = _engine.CreateJoint(H(a, "BodyA"), H(b, "BodyB"), d);
-        return new Joint(this, h);
+        try
+        {
+            var h = _engine.CreateJoint(H(a, "BodyA"), H(b, "BodyB"), d);
+            return new Joint(this, h);
+        }
+        catch (InvalidJointException e) when (e.ParamName is null)
+        {
+            throw new InvalidJointException(e.Message, DefParameter);
+        }
     }
 
     private static byte Flags(bool limit, bool motor, bool spring, bool collide) =>
@@ -277,7 +288,8 @@ public sealed partial class PhysicsWorld3D
     {
         var w = WorldFrame(axis, nameof(axis));
         var d = new HingeJointDef { BodyA = a, BodyB = b, LocalFrameA = FrameOn(a, anchor, w, "anchor"), LocalFrameB = FrameOn(b, anchor, w, "anchor"), CollideConnected = collideConnected };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(b)); }
     }
 
     /// <summary>A slider: B moves along <paramref name="axis"/> (a world direction) through <paramref name="anchor"/>, rotation locked as it is now; translation 0 is the current pose.</summary>
@@ -285,21 +297,24 @@ public sealed partial class PhysicsWorld3D
     {
         var w = WorldFrame(axis, nameof(axis));
         var d = new SliderJointDef { BodyA = a, BodyB = b, LocalFrameA = FrameOn(a, anchor, w, "anchor"), LocalFrameB = FrameOn(b, anchor, w, "anchor"), CollideConnected = collideConnected };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(b)); }
     }
 
     /// <summary>Welds the bodies together as they are now: position and rotation locked at <paramref name="anchor"/>.</summary>
     public Joint AddFixed(Body a, Body b, Vector3D anchor, bool collideConnected = false)
     {
         var d = new FixedJointDef { BodyA = a, BodyB = b, LocalFrameA = FrameOn(a, anchor, QuaternionF.Identity, "anchor"), LocalFrameB = FrameOn(b, anchor, QuaternionF.Identity, "anchor"), CollideConnected = collideConnected };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(b)); }
     }
 
     /// <summary>A ball-and-socket: the world point <paramref name="anchor"/> stays on both bodies, rotation is free.</summary>
     public Joint AddPoint(Body a, Body b, Vector3D anchor, bool collideConnected = false)
     {
         var d = new PointJointDef { BodyA = a, BodyB = b, LocalFrameA = FrameOn(a, anchor, QuaternionF.Identity, "anchor"), LocalFrameB = FrameOn(b, anchor, QuaternionF.Identity, "anchor"), CollideConnected = collideConnected };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(b)); }
     }
 
     /// <summary>A spring between two world points (one on each body): rest length is their current distance, frequency <paramref name="hertz"/> and damping ratio <paramref name="dampingRatio"/>; the length is free to change.</summary>
@@ -308,7 +323,8 @@ public sealed partial class PhysicsWorld3D
         var fa = new JointFrame3D(ToLocal(a, anchorA, "anchorA"), QuaternionF.Identity); var fb = new JointFrame3D(ToLocal(b, anchorB, "anchorB"), QuaternionF.Identity);
         float len = (float)Dist(anchorA, anchorB);
         var d = new DistanceJointDef { BodyA = a, BodyB = b, LocalFrameA = fa, LocalFrameB = fb, Length = len < 0.005f ? 0.005f : len, EnableSpring = true, SpringHertz = hertz, SpringDampingRatio = dampingRatio, CollideConnected = collideConnected };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(b)); }
     }
 
     /// <summary>A rigid rod between two world points, at their current distance.</summary>
@@ -317,7 +333,8 @@ public sealed partial class PhysicsWorld3D
         var fa = new JointFrame3D(ToLocal(a, anchorA, "anchorA"), QuaternionF.Identity); var fb = new JointFrame3D(ToLocal(b, anchorB, "anchorB"), QuaternionF.Identity);
         float len = (float)Dist(anchorA, anchorB);
         var d = new DistanceJointDef { BodyA = a, BodyB = b, LocalFrameA = fa, LocalFrameB = fb, Length = len < 0.005f ? 0.005f : len, CollideConnected = collideConnected };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(b)); }
     }
 
     /// <summary>A cone joint: a ball-and-socket at <paramref name="anchor"/> that keeps the two bodies' copies of <paramref name="axis"/> within <paramref name="halfAngle"/> radians of each other.</summary>
@@ -325,7 +342,8 @@ public sealed partial class PhysicsWorld3D
     {
         var w = WorldFrame(axis, nameof(axis));
         var d = new ConeJointDef { BodyA = a, BodyB = b, LocalFrameA = FrameOn(a, anchor, w, "anchor"), LocalFrameB = FrameOn(b, anchor, w, "anchor"), HalfConeAngle = halfAngle, CollideConnected = collideConnected };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(b)); }
     }
 
     /// <summary>A limb joint (Unity's CharacterJoint): a ball-and-socket at <paramref name="anchor"/> with twist about <paramref name="twistAxis"/> limited to the given range and swing limited to an elliptical cone (half angles about the two perpendicular axes). Angles in radians.</summary>
@@ -337,14 +355,16 @@ public sealed partial class PhysicsWorld3D
             BodyA = parent, BodyB = child, LocalFrameA = FrameOn(parent, anchor, w, "anchor"), LocalFrameB = FrameOn(child, anchor, w, "anchor"),
             LowerTwist = lowTwist, UpperTwist = highTwist, SwingYHalfAngle = swingYHalfAngle, SwingZHalfAngle = swingZHalfAngle, CollideConnected = collideConnected,
         };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(child)); }
     }
 
     /// <summary>A six-degrees-of-freedom joint (Unity's ConfigurableJoint) with every axis locked at the current pose and the frame axes along the world axes; free or limit axes through <see cref="Joint.SetAxisMode"/> and <see cref="Joint.SetAxisLimits"/>.</summary>
     public Joint AddConfigurable(Body a, Body b, Vector3D anchor, bool collideConnected = false)
     {
         var d = new SixDofJointDef { BodyA = a, BodyB = b, LocalFrameA = FrameOn(a, anchor, QuaternionF.Identity, "anchor"), LocalFrameB = FrameOn(b, anchor, QuaternionF.Identity, "anchor"), CollideConnected = collideConnected };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(b)); }
     }
 
     /// <summary>A gear: A turns about world axis <paramref name="axisA"/> and B about <paramref name="axisB"/> so that <c>ωA·axisA + ratio·ωB·axisB = 0</c>.</summary>
@@ -355,7 +375,8 @@ public sealed partial class PhysicsWorld3D
             BodyA = a, BodyB = b, LocalFrameA = new JointFrame3D(default, a.Rotation.Conjugated() * WorldFrame(axisA, nameof(axisA))), LocalFrameB = new JointFrame3D(default, b.Rotation.Conjugated() * WorldFrame(axisB, nameof(axisB))),
             Ratio = ratio, CollideConnected = collideConnected,
         };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(b)); }
     }
 
     /// <summary>A rack and pinion: the pinion turns about world axis <paramref name="pinionAxis"/> and the rack slides along <paramref name="rackAxis"/>, <paramref name="ratio"/> metres per radian.</summary>
@@ -366,7 +387,8 @@ public sealed partial class PhysicsWorld3D
             BodyA = pinion, BodyB = rack, LocalFrameA = new JointFrame3D(default, pinion.Rotation.Conjugated() * WorldFrame(pinionAxis, nameof(pinionAxis))), LocalFrameB = new JointFrame3D(default, rack.Rotation.Conjugated() * WorldFrame(rackAxis, nameof(rackAxis))),
             Ratio = ratio, CollideConnected = collideConnected,
         };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(rack)); }
     }
 
     /// <summary>A pulley: a rope from <paramref name="anchorA"/> over <paramref name="fixedA"/> and <paramref name="fixedB"/> to <paramref name="anchorB"/> at its current length, <c>lengthA + ratio·lengthB</c> held constant.</summary>
@@ -377,7 +399,8 @@ public sealed partial class PhysicsWorld3D
             BodyA = a, BodyB = b, LocalFrameA = new JointFrame3D(ToLocal(a, anchorA, "anchorA"), QuaternionF.Identity), LocalFrameB = new JointFrame3D(ToLocal(b, anchorB, "anchorB"), QuaternionF.Identity),
             FixedPointA = fixedA, FixedPointB = fixedB, Ratio = ratio, CollideConnected = collideConnected,
         };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(b)); }
     }
 
     /// <summary>A path: the origin of <paramref name="follower"/> rides a smooth curve through <paramref name="worldPoints"/> (world coordinates as the bodies are now) fixed to <paramref name="pathBody"/>. Add a motor through the <see cref="Joint"/>.</summary>
@@ -386,6 +409,7 @@ public sealed partial class PhysicsWorld3D
         var pts = new Vector3F[worldPoints.Length];
         for (int i = 0; i < pts.Length; i++) { pts[i] = ToLocal(pathBody, worldPoints[i], "worldPoints"); }
         var d = new PathJointDef { BodyA = pathBody, BodyB = follower, Points = pts, Loop = loop, CollideConnected = collideConnected };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(follower)); }
     }
 }

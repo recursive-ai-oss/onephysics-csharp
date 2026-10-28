@@ -20,6 +20,9 @@
 
   <!-- Minimised inputs that once made a fuzz target fail; FuzzRegressionTests replays them. -->
   <ItemGroup>
+    <Content Include="../../README.md" Link="readme/README.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../ReadmeExamples/Quickstart*.cs" Link="readme/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../testdata/api/*.txt" Link="api/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../testdata/fuzz/**" Link="fuzz-regress/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
@@ -31,6 +34,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/OnePhysics/OnePhysics.csproj" />
+    <ProjectReference Include="../ReadmeExamples/ReadmeExamples.csproj" />
     <ProjectReference Include="../../fuzz/Fuzz/Fuzz.csproj" />
   </ItemGroup>
 

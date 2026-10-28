@@ -1,6 +1,8 @@
 using System;
 
-namespace RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics.LowLevel;
+
+namespace RecursiveAI.OnePhysics;
 
 /// <summary>Base class of the errors the physics core raises for bad handles and bad snapshot bytes. Argument errors use the standard argument exceptions.</summary>
 public class PhysicsException : InvalidOperationException

@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Core;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>The phases the solver runs on every batch, in each substep (see <see cref="IWorldStages"/>).</summary>
+[Experimental("OPHYS0001")]
 public enum SolvePhase : byte
 {
     /// <summary>Apply the impulses accumulated in the previous step.</summary>
@@ -21,6 +23,7 @@ public enum SolvePhase : byte
 }
 
 /// <summary>Timing and counts of the running step, passed to every stage call.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct StepContext
 {
     /// <summary>The step's time step in seconds.</summary>
@@ -55,6 +58,7 @@ public readonly struct StepContext
 /// Constraint batches never contain two constraints that share a dynamic body, so solving a batch may update both bodies freely; static and kinematic bodies are read-only for solvers.</para>
 /// <para><see cref="UpdateContacts"/> runs serially: it may use <see cref="WorldCore.Executor"/> internally for a parallel narrowphase, but must apply its additions and removals in an order that depends only on the data (ascending keys), because the coloring depends on the order constraints are added.</para>
 /// </remarks>
+[Experimental("OPHYS0001")]
 public interface IWorldStages
 {
     /// <summary>Broadphase pairs and narrowphase: add, remove and update contact, sensor and joint constraints with <see cref="WorldCore.AddConstraint"/> and <see cref="WorldCore.RemoveConstraint"/>.</summary>
@@ -113,6 +117,7 @@ public interface IWorldStages
 /// An engine (2D or 3D) owns one, adds its shape data and algorithms through <see cref="IWorldStages"/> and <see cref="ISnapshotSection"/>, and drives it with <see cref="Step{TStages}"/>.
 /// All mutation happens on one thread between or inside steps as documented; only the phases that call the stages run in parallel.
 /// </summary>
+[Experimental("OPHYS0001")]
 public sealed class WorldCore
 {
     private const int ChunkSize = 64;

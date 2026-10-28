@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using RecursiveAI.OneMath;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// An immutable height field for static terrain: a regular grid of height samples in the shape's own frame, Y up. Sample <c>(i, j)</c> sits at
@@ -16,6 +17,7 @@ namespace RecursiveAI.OnePhysics.Collision3D;
 /// Height fields are static-only: <see cref="TriangleSoup3D.GetMassProperties"/> throws.
 /// </para>
 /// </summary>
+[Experimental("OPHYS0001")]
 public sealed class HeightField3D : TriangleSoup3D
 {
     /// <summary>Largest number of samples along one side, 2^14.</summary>

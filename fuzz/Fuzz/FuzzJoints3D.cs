@@ -1,6 +1,7 @@
 using System;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using RecursiveAI.OnePhysics.Physics3D;
 
 // Fuzz targets for 3D joints. "world3d-joints" turns bytes into a program: bodies, hostile joint definitions of every kind (NaN, infinity, huge, tiny, negative, the same body twice, default and destroyed handles,
@@ -97,7 +98,7 @@ internal static class FuzzJoints3D
     private static void StepTolerant(PhysicsWorld3D w)
     {
         try { w.Step(1f / 60f); s_steps++; }
-        catch (BodyOutOfBoundsException e) { w.GetBody(e.Body).Destroy(); }
+        catch (BodyOutOfBoundsException e) { e.Body.Destroy(); }
     }
 
     private static Body Pick(Body[] bodies, Reader r)

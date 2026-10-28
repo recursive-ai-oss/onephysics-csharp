@@ -2,9 +2,8 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Broadphase;
-using RecursiveAI.OnePhysics.Collision2D;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics2D;
 

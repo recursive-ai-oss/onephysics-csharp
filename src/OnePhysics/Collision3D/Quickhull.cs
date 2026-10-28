@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// Quickhull in double precision over float32 input points (Barber, Dobkin, Huhdanpaa 1996; Gregorius, GDC 2014).

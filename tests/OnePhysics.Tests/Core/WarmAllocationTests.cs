@@ -1,6 +1,7 @@
 using System;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using RecursiveAI.OnePhysics.Physics2D;
 using RecursiveAI.OnePhysics.Physics3D;
 using Xunit;
@@ -100,6 +101,18 @@ public class WarmAllocationTests
 
         var hits = new QueryHit3D[16];
         var scratch = new byte[1 << 22];
+        var query = new PhysicsQuery3D(w);
+        var rays = new RayInput3D[130];
+        var spheres = new SphereInput3D[130];
+        for (int k = 0; k < rays.Length; k++)
+        {
+            rays[k] = new RayInput3D(new Vector3D((k % 13) - 6, 10, (k / 13) - 5), new Vector3F(0, -1, 0), 30f);
+            spheres[k] = new SphereInput3D(new Vector3D((k % 13) - 6, 6, (k / 13) - 5), 0.4f, new Vector3F(0, -1, 0), 20f);
+        }
+
+        var rayHits = new QueryHit3D[rays.Length];
+        var sphereHits = new QueryHit3D[spheres.Length];
+        var counts = new int[spheres.Length];
         long total = 0;
         // 400 steps cover the pile landing and settling, the phase in which deep contacts use the penetration solver.
         for (int i = 1; i <= 400; i++)
@@ -109,6 +122,13 @@ public class WarmAllocationTests
             w.Step(Dt);
             w.Raycast(new Vector3D(0, 10, 0), new Vector3F(0, -1, 0), out _);
             w.OverlapSphereAll(new Vector3D(0, 1, 0), 3f, hits);
+            w.SphereCast(new Vector3D(0, 10, 0), 0.3f, new Vector3F(0.1f, -1, 0), out _);
+            w.BoxCast(new Vector3D(1, 10, 0), new Vector3F(0.5f, 0.5f, 0.5f), QuaternionF.Identity, new Vector3F(0, -1, 0), out _);
+            w.OverlapBoxAll(new Vector3D(0, 1, 0), new Vector3F(2, 2, 2), QuaternionF.Identity, hits);
+            w.OverlapCapsuleAll(new Vector3D(0, 1, 0), 1f, 0.5f, QuaternionF.Identity, hits);
+            query.RaycastBatch(rays, rayHits);
+            query.SphereCastBatch(spheres, sphereHits);
+            query.OverlapSphereCountBatch(spheres, counts);
             w.ComputeHash();
             if (i % 50 == 0)
             {

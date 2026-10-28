@@ -1,8 +1,7 @@
 using System;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Broadphase;
-using RecursiveAI.OnePhysics.Collision3D;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 
@@ -419,4 +418,6 @@ public sealed partial class PhysicsWorld3D
     }
 
     internal bool Brute { get => _engine.BruteQueries; set => _engine.BruteQueries = value; }
+
+    internal bool QuickRejects { get => _engine.QuickRejects; set => _engine.QuickRejects = value; }
 }

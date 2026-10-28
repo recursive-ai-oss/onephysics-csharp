@@ -1,6 +1,8 @@
 using System;
 
-namespace RecursiveAI.OnePhysics.Collision2D;
+using RecursiveAI.OnePhysics.LowLevel;
+
+namespace RecursiveAI.OnePhysics;
 
 /// <summary>
 /// Mass properties of a shape per unit density, in the shape's frame. Everything is computed in double precision relative to a vertex of the shape,

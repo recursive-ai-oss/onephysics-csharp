@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
-using RecursiveAI.OnePhysics.Core;
-using RecursiveAI.OnePhysics.Core.Reference;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.HashMatrix;
 
@@ -43,7 +43,7 @@ internal static class CoreScenarios
             }
         });
 
-        Scenarios.Register("collision/hash2d", ctx => { ctx.Write((long)RecursiveAI.OnePhysics.Collision2D.Reference.CollisionHash2D.Compute()); ctx.EndStep(); });
+        Scenarios.Register("collision/hash2d", ctx => { ctx.Write((long)RecursiveAI.OnePhysics.LowLevel.CollisionHash2D.Compute()); ctx.EndStep(); });
         Scenarios.Register("collision/hash3d", ctx => { ctx.Write((long)Collision3DHash.Compute()); ctx.EndStep(); });
         Scenarios.Register("broadphase/hash", ctx => { ctx.Write((long)BroadphaseHash.Compute()); ctx.EndStep(); });
     }

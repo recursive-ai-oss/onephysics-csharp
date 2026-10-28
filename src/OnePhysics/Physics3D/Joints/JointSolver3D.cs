@@ -1,7 +1,8 @@
 using System;
 using System.Runtime.CompilerServices;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 

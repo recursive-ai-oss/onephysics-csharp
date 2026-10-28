@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using RecursiveAI.OnePhysics.Broadphase;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 // Fuzz target: the input bytes are a program of broadphase operations (create, destroy, move, touch, update pairs, queries, rebuild, snapshot round trip),
 // run against a brute-force model. Any mismatch, broken invariant or exception other than the documented argument errors is a finding.

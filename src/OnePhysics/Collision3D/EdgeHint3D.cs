@@ -1,7 +1,7 @@
 using System;
 using RecursiveAI.OneMath;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// What a full separating-axis query learned about a touching pair of polyhedra, kept with the pair's contact between steps: how far the face axes lead the edge-pair axes

@@ -1,7 +1,8 @@
 using System;
 using RecursiveAI.OneMath;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 // A contact feature of one shape: a point, a segment or a convex polygon, as points on the shape's surface (core points moved out by the convex radius),
 // each with a feature code for the corner and for the edge that leaves it towards the next corner.

@@ -1,9 +1,11 @@
 using System;
 using RecursiveAI.OneMath;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>Closest points between two convex shapes (see <see cref="Gjk3D.Distance"/>). All vectors are in the frame of shape A.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct ConvexDistance3D
 {
     internal ConvexDistance3D(float distance, bool overlapping, Vector3F normal, Vector3F pointA, Vector3F pointB, int iterations)
@@ -36,6 +38,7 @@ public readonly struct ConvexDistance3D
 }
 
 /// <summary>Result of a shape cast or ray cast. Vectors are in the frame of shape A (shape casts) or of the ray's frame (ray casts).</summary>
+[Experimental("OPHYS0001")]
 public readonly struct ConvexCastHit3D
 {
     internal ConvexCastHit3D(float fraction, Vector3F normal, Vector3F pointA, Vector3F pointB, bool startsOverlapping)
@@ -100,6 +103,7 @@ internal readonly struct ConvexPair
 /// Shapes are float32 in their own local frames; B's placement relative to A is a rigid transform. Rotations must be unit quaternions.
 /// Results are deterministic: the same inputs give the same bits on every platform.
 /// </summary>
+[Experimental("OPHYS0001")]
 public static class Gjk3D
 {
     // A step is accepted as converged when v.v - v.w <= max(RelTol * v.v, AbsTol * |v| * scale): the distance error is then about AbsTol * scale.
@@ -408,8 +412,8 @@ public static class Gjk3D
         if (far.LengthSquared() > FarRayDistance * FarRayDistance || !(reach > TinyRayLength))
         {
             ShapeBounds3D.Compute(shape, shapeInRay, out Vector3F lo, out Vector3F hi);
-            var clip = new Broadphase.Ray3D(origin.X, origin.Y, origin.Z, direction.X, direction.Y, direction.Z);
-            if (!clip.Hit(new Broadphase.Aabb3D(lo.X, lo.Y, lo.Z, hi.X, hi.Y, hi.Z), maxFraction, out double enter))
+            var clip = new Ray3D(origin.X, origin.Y, origin.Z, direction.X, direction.Y, direction.Z);
+            if (!clip.Hit(new Aabb3D(lo.X, lo.Y, lo.Z, hi.X, hi.Y, hi.Z), maxFraction, out double enter))
             {
                 hit = default;
                 return false;

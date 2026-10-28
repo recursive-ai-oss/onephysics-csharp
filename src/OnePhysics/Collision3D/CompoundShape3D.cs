@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
 using RecursiveAI.OneMath.Physics;
-using RecursiveAI.OnePhysics.Broadphase;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>A compound's child: a placed convex shape and the id of the material its surface uses.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct CompoundChild3D
 {
     /// <summary>Creates a child.</summary>
@@ -39,6 +41,7 @@ public readonly struct CompoundChild3D
 }
 
 /// <summary>A stable reference to a child of a <see cref="MutableCompound3D"/>: the child's id (its slot) and the slot's generation, which changes when the child is removed.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct CompoundChildHandle3D : IEquatable<CompoundChildHandle3D>
 {
     internal CompoundChildHandle3D(int index, int generation)
@@ -73,6 +76,7 @@ public readonly struct CompoundChildHandle3D : IEquatable<CompoundChildHandle3D>
 }
 
 /// <summary>The first hit of a ray against a compound.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct CompoundRayHit3D
 {
     internal CompoundRayHit3D(float fraction, Vector3F point, Vector3F normal, int child, int materialId, bool startsInside)
@@ -105,6 +109,7 @@ public readonly struct CompoundRayHit3D
 }
 
 /// <summary>The first hit of a swept convex shape against a compound.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct CompoundCastHit3D
 {
     internal CompoundCastHit3D(float fraction, Vector3F normal, Vector3F pointOnCast, Vector3F pointOnChild, int child, int materialId, bool startsOverlapping)
@@ -141,7 +146,7 @@ public readonly struct CompoundCastHit3D
 }
 
 /// <summary>
-/// A shape made of convex children, each with a local transform and a material id, over an incrementally updatable AABB tree (<see cref="Broadphase.DynamicTree{TBox}"/>). This is the part common to
+/// A shape made of convex children, each with a local transform and a material id, over an incrementally updatable AABB tree (<see cref="DynamicTree{TBox}"/>). This is the part common to
 /// <see cref="Compound3D"/> (built once) and <see cref="MutableCompound3D"/> (edited between steps): child storage, combined mass properties and queries.
 /// <para>
 /// Child ids are slot numbers in <c>[0, SlotCount)</c>: the child's position for a static compound, a reused lowest-free slot for a mutable one. They are the sub-shape ids in contacts.
@@ -151,6 +156,7 @@ public readonly struct CompoundCastHit3D
 /// </para>
 /// Queries are read-only and may run concurrently with each other, not with edits. The methods taking a <see cref="List{T}"/> clear it first and reuse its storage.
 /// </summary>
+[Experimental("OPHYS0001")]
 public abstract class CompoundShape3D
 {
     /// <summary>Most children (slots) a compound can hold, 2^16: a child id fits in 16 bits, so two child ids and a 32-bit feature id make one 64-bit point key (<see cref="ChildContact3D.GetPointKey"/>).</summary>
@@ -662,7 +668,7 @@ public abstract class CompoundShape3D
     // ---- state -----------------------------------------------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// Writes the compound's acceleration structure and child table in a fixed layout: the tree (<see cref="Broadphase.DynamicTree{TBox}.Write"/>: node count, root, free-list head, then each node's
+    /// Writes the compound's acceleration structure and child table in a fixed layout: the tree (<see cref="DynamicTree{TBox}.Write"/>: node count, root, free-list head, then each node's
     /// height, parent, child 1, child 2, user id, flags and box), then the slot count and, for each slot, its alive flag, generation, and for live slots the material id, the local transform
     /// (rotation x, y, z, w, translation x, y, z) and the padded bounds (min x, y, z, max x, y, z). Equal inputs and equal edit sequences give equal bytes everywhere.
     /// </summary>
@@ -698,7 +704,7 @@ public abstract class CompoundShape3D
         }
     }
 
-    /// <summary>Checks the tree's structural invariants (<see cref="Broadphase.DynamicTree{TBox}.Validate"/>) and that the child table agrees with it; throws if one is broken.</summary>
+    /// <summary>Checks the tree's structural invariants (<see cref="DynamicTree{TBox}.Validate"/>) and that the child table agrees with it; throws if one is broken.</summary>
     public void Validate()
     {
         _tree.Validate();

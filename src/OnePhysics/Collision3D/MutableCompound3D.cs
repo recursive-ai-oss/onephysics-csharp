@@ -1,7 +1,8 @@
 using System;
 using RecursiveAI.OneMath;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// A compound whose children can be added, removed and moved between steps. Edits update the tree incrementally (removal, then reinsertion by the surface-area heuristic with rotations, see
@@ -10,6 +11,7 @@ namespace RecursiveAI.OnePhysics.Collision3D;
 /// of the same children would have. Child ids are stable: a child keeps its id until removed, and freed ids are reused lowest first.
 /// Not thread-safe against concurrent edits and queries.
 /// </summary>
+[Experimental("OPHYS0001")]
 public sealed class MutableCompound3D : CompoundShape3D
 {
     /// <summary>Creates an empty compound. It has no mass properties until it has a child.</summary>
