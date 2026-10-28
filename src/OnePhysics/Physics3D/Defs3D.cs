@@ -91,6 +91,20 @@ public sealed class WorldOptions3D
     /// <summary>World id used in handles; 0 picks one. Default 0.</summary>
     public int WorldId { get; set; }
 
+    /// <summary>Pairs of shapes with overlapping boxes the world should have room for (0..16777216). With <see cref="PhysicsWorld3D.Warmup"/> or at creation, the pair table and the per-step pair lists are sized to it so steps within it allocate nothing. 0 (the default) grows on demand; <c>Warmup()</c> then assumes eight per body. Never changes a result; not saved.</summary>
+    public int PairCapacity { get; set; }
+
+    /// <summary>Contact constraints (and joints) the world should have room for (0..16777216): constraint storage, colors, solver rows and event buffers. 0 (the default) grows on demand; <c>Warmup()</c> then assumes six per body. Never changes a result; not saved.</summary>
+    public int ContactCapacity { get; set; }
+
+    /// <summary>Islands the world should have room for (0..16777216). 0 (the default) grows on demand; <c>Warmup()</c> then assumes one per body. Never changes a result; not saved.</summary>
+    public int IslandCapacity { get; set; }
+
+    /// <summary>Hits the query scratch of the thread that calls <c>Warmup()</c> should hold (0..1048576), so the first queries of up to that many hits allocate nothing. 0 keeps the default of 64. Never changes a result; not saved.</summary>
+    public int QueryScratchCapacity { get; set; }
+
+    internal const int MaxCapacity = 1 << 24;
+
     /// <summary>Whether resting bodies fall asleep. Default true.</summary>
     public bool SleepEnabled { get; set; } = true;
 
@@ -154,6 +168,10 @@ public sealed class WorldOptions3D
     /// <exception cref="ArgumentOutOfRangeException">A value is outside its range.</exception>
     public void Validate()
     {
+        if (PairCapacity < 0 || PairCapacity > MaxCapacity) { throw new ArgumentOutOfRangeException(nameof(PairCapacity), PairCapacity, "PairCapacity must be in 0..16777216."); }
+        if (ContactCapacity < 0 || ContactCapacity > MaxCapacity) { throw new ArgumentOutOfRangeException(nameof(ContactCapacity), ContactCapacity, "ContactCapacity must be in 0..16777216."); }
+        if (IslandCapacity < 0 || IslandCapacity > MaxCapacity) { throw new ArgumentOutOfRangeException(nameof(IslandCapacity), IslandCapacity, "IslandCapacity must be in 0..16777216."); }
+        if (QueryScratchCapacity < 0 || QueryScratchCapacity > 1 << 20) { throw new ArgumentOutOfRangeException(nameof(QueryScratchCapacity), QueryScratchCapacity, "QueryScratchCapacity must be in 0..1048576."); }
         if (!float.IsFinite(Gravity.X) || !float.IsFinite(Gravity.Y) || !float.IsFinite(Gravity.Z)) { throw new ArgumentOutOfRangeException(nameof(Gravity), "Gravity must be finite."); }
         Positive(ContactHertz, nameof(ContactHertz), true);
         Positive(ContactDampingRatio, nameof(ContactDampingRatio), true);

@@ -176,6 +176,20 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
         }
     }
 
+    /// <summary>Sizes the pair search and the tree rebuilds for up to <paramref name="proxies"/> proxies and <paramref name="pairs"/> pairs found in one step, so searches within those counts allocate nothing.</summary>
+    public void Reserve(int proxies, int pairs)
+    {
+        int chunks = (proxies + ChunkSize - 1) / ChunkSize;
+        int perChunk = Math.Min(pairs, 64 + 4 * pairs / Math.Max(chunks, 1));
+        while (_chunks.Count < chunks) { _chunks.Add(new PairChunk()); }
+        foreach (var c in _chunks) { if (c.Items.Length < perChunk) { Array.Resize(ref c.Items, perChunk); } }
+        if (_pairs.Length < pairs) { Array.Resize(ref _pairs, pairs); }
+        if (_moved.Length < proxies) { Array.Resize(ref _moved, proxies); }
+        _moves.EnsureCapacity(proxies);
+        _moveStage.EnsureCapacity(proxies);
+        foreach (var t in _trees) { t.ReserveScratch(proxies); }
+    }
+
     private readonly BroadphaseOptions _options;
     private DynamicTree<TBox>[] _trees;
     private readonly List<int> _moves = new();

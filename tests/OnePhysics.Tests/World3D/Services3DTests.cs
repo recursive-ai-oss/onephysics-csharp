@@ -267,8 +267,9 @@ public class Services3DTests
     public void SnapshotMidOverlapRoundTripsBitIdentically()
     {
         var w = ServiceScene();
-        for (int i = 0; i < 40; i++) { w.Step(Dt); }
-        Assert.True(w.Core.Constraints.HighWater > 0);
+        int entered = 0;
+        for (int i = 0; i < 40; i++) { w.Step(Dt); entered += w.GetEvents(EventKind.SensorEnter).Length; }
+        Assert.True(entered > 0, "the snapshot must be taken with a sensor overlap on the books");
         byte[] snap = w.Snapshot();
         ulong h0 = w.ComputeHash();
         var hashes = new List<ulong>();

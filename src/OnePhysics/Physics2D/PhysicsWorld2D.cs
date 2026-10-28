@@ -28,6 +28,46 @@ public sealed partial class PhysicsWorld2D
         _engine = new Engine2D(_core, bp, o) { World = this };
         _core.AddSection(bp);
         _core.AddSection(_engine);
+        if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
+    }
+
+    // Sizes the storage to the capacity options, and to a multiple of the body count where an option is 0 and Warmup asked for a default.
+    private void ReserveCapacity(bool defaults = false)
+    {
+        var o = _engine.Opt;
+        int bodies = Math.Max(_core.Bodies.HighWater, 1), shapes = Math.Max(_core.Shapes.HighWater, 1);
+        int pairs = o.PairCapacity > 0 ? o.PairCapacity : defaults ? Math.Max(8 * bodies, 64) : 0;
+        int contacts = o.ContactCapacity > 0 ? o.ContactCapacity : defaults ? Math.Max(6 * bodies, 64) : 0;
+        int islands = o.IslandCapacity > 0 ? o.IslandCapacity : defaults ? Math.Max(bodies, 16) : 0;
+        _core.Reserve(contacts, islands, bodies);
+        _core.ReserveRestore(contacts, pairs, islands, bodies);
+        _engine.Reserve(pairs, contacts, bodies, shapes);
+    }
+
+    /// <summary>
+    /// Gets the world ready for allocation-free steps: sizes the storage to <see cref="WorldOptions2D.PairCapacity"/>, <see cref="WorldOptions2D.ContactCapacity"/> and <see cref="WorldOptions2D.IslandCapacity"/>
+    /// (eight pairs, six contacts and one island per body where an option is 0, and never less than the world holds now), starts the worker threads, makes the calling thread's query scratch
+    /// (<see cref="WorldOptions2D.QueryScratchCapacity"/>), and runs the hash, snapshot and restore paths once. Call it after the bodies exist, from the thread that will run queries.
+    /// Steps, queries, <see cref="ComputeHash"/>, <see cref="TrySnapshot"/> and <see cref="Restore(ReadOnlySpan{byte})"/> then allocate nothing while the world stays within those counts and the calling thread does the querying.
+    /// The world's state, events and results are unchanged (the snapshot round trip restores exactly what it saved; no callback runs). Allocates.
+    /// </summary>
+    public void Warmup() => WarmupCore(true);
+
+    private void WarmupCore(bool prime)
+    {
+        if (prime) { PrimeProcess(_engine.Opt.ThreadCount); }
+        QueryScratch.Warm(_engine.Opt.QueryScratchCapacity > 0 ? _engine.Opt.QueryScratchCapacity : 64);
+        _core.ComputeHash();
+        // Restoring swaps the live storage with a spare. The first round trip makes the spare the live one, so the storage is reserved again before the second.
+        for (int i = 0; i < 2; i++)
+        {
+            ReserveCapacity(true);
+            var buffer = new byte[_core.GetSnapshotSize()];
+            if (!TrySnapshot(buffer, out int n)) { break; }
+            Restore(buffer.AsSpan(0, n));
+        }
+
+        InvalidateQueryPad();
     }
 
     /// <summary>The live options. Change a value between steps and the next step uses it.</summary>

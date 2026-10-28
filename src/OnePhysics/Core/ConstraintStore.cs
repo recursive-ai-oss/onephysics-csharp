@@ -189,6 +189,7 @@ public sealed class ConstraintStore
     {
         // Grows by at least half again: growing to exactly the requested size copied every array (the payloads are tens of megabytes in a big pile) each time the pair count rose by one.
         if (count > Capacity) { Resize(Math.Max(count, Capacity + (Capacity >> 1))); }
+        Handles.Reserve(Capacity);
     }
 
     private void Resize(int cap)

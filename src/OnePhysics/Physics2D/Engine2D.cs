@@ -87,6 +87,11 @@ internal sealed partial class Engine2D : ISnapshotSection
     public int PairHigh;
     public int[] PairFree = new int[8];
     public int PairFreeCount;
+    // Pairs with a sensor shape take their slots from their own free stack, so that contact pairs get the same slots relative to each other whether or not a sensor is in the world
+    // (the order of slots is the order contacts are added and colored). An overlapping sensor pair has Cons = SensorOverlap; it owns no constraint.
+    public int[] SensorFree = new int[8];
+    public int SensorFreeCount;
+    public const int SensorOverlap = -2;
     public readonly PairTable PairMap = new();
 
     /// <summary>Lanes per kernel call: 8, 4 or 1. All give the same bits; the choice exists so tests can prove it.</summary>
@@ -444,7 +449,8 @@ internal sealed partial class Engine2D : ISnapshotSection
     private int AllocatePair(int a, int b)
     {
         int p;
-        if (PairFreeCount > 0) { p = PairFree[--PairFreeCount]; }
+        bool sensor = IsSensor(a) || IsSensor(b);
+        if (sensor ? SensorFreeCount > 0 : PairFreeCount > 0) { p = sensor ? SensorFree[--SensorFreeCount] : PairFree[--PairFreeCount]; }
         else
         {
             p = PairHigh++;
@@ -461,8 +467,24 @@ internal sealed partial class Engine2D : ISnapshotSection
         PairMap.Remove(PairKey(Pairs[p].A, Pairs[p].B));
         Pairs[p].Live = false;
         Pairs[p].Cons = -1;
+        if (IsSensor(Pairs[p].A) || IsSensor(Pairs[p].B))
+        {
+            Grow(ref SensorFree, SensorFreeCount + 1);
+            SensorFree[SensorFreeCount++] = p;
+            return;
+        }
+
         Grow(ref PairFree, PairFreeCount + 1);
         PairFree[PairFreeCount++] = p;
+    }
+
+    /// <summary>Ends a pair's constraint: removes a contact, or reports the exit of an overlapping sensor pair. The pair keeps its slot.</summary>
+    private void EndPairConstraint(int p)
+    {
+        int c = Pairs[p].Cons;
+        if (c >= 0) { Core.RemoveConstraint(c); }
+        else if (c == SensorOverlap) { Core.EmitSensorEvent(false, Pairs[p].A, Pairs[p].B); }
+        Pairs[p].Cons = -1;
     }
 
     /// <summary>Forgets every pair that involves the shape. The constraints go with the body or shape in the core; this only clears the table.</summary>
@@ -470,7 +492,12 @@ internal sealed partial class Engine2D : ISnapshotSection
     {
         for (int p = 0; p < PairHigh; p++)
         {
-            if (Pairs[p].Live && (Pairs[p].A == s || Pairs[p].B == s)) { FreePair(p); }
+            if (Pairs[p].Live && (Pairs[p].A == s || Pairs[p].B == s))
+            {
+                // The core removes a destroyed body's contact constraints itself; an overlapping sensor pair has none, so its exit is reported here, while the handles are still valid.
+                if (Pairs[p].Cons == SensorOverlap) { Core.EmitSensorEvent(false, Pairs[p].A, Pairs[p].B); }
+                FreePair(p);
+            }
         }
     }
 
@@ -559,8 +586,10 @@ internal sealed partial class Engine2D : ISnapshotSection
             if (Pairs[p].Live) { w.WriteInt32(Pairs[p].A); w.WriteInt32(Pairs[p].B); w.WriteInt32(Pairs[p].Cons); }
         }
 
-        w.WriteInt32(PairFreeCount);
+        // The contact stack bottom to top, then the sensor stack as complements (~slot); a world without sensor pairs writes the same bytes as before.
+        w.WriteInt32(PairFreeCount + SensorFreeCount);
         w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
+        for (int i = 0; i < SensorFreeCount; i++) { w.WriteInt32(~SensorFree[i]); }
         if (chars)
         {
             // Version 4: a presence-flags word, then the flagged blocks in a fixed order.
@@ -662,6 +691,7 @@ internal sealed partial class Engine2D : ISnapshotSection
             pl[p] = r.ReadBool();
             if (!pl[p]) { continue; }
             pa[p] = r.ReadInt32(); pb[p] = r.ReadInt32(); pc[p] = r.ReadInt32();
+            if (pc[p] < SensorOverlap) { throw r.Error("invalid pair constraint"); }
             if (pa[p] < 0 || pb[p] <= pa[p] || pb[p] >= ns || !live[pa[p]] || !live[pb[p]]) { throw r.Error("invalid pair"); }
         }
 
@@ -670,7 +700,8 @@ internal sealed partial class Engine2D : ISnapshotSection
         r.ReadInt32s(free.AsSpan(0, nf));
         for (int i = 0; i < nf; i++)
         {
-            if (free[i] < 0 || free[i] >= np || pl[free[i]]) { throw r.Error("invalid free pair"); }
+            int slot = free[i] < 0 ? ~free[i] : free[i];
+            if (slot < 0 || slot >= np || pl[slot]) { throw r.Error("invalid free pair"); }
         }
 
         var joints = Fit(ref _sJoints, 16);
@@ -720,7 +751,13 @@ internal sealed partial class Engine2D : ISnapshotSection
         EnsureShapes(Math.Max(ns, 1));
         Grow(ref Pairs, Math.Max(np, 1));
         for (int p = 0; p < np; p++) { Pairs[p] = new Pair2D { A = pa[p], B = pb[p], Cons = pc[p], Live = pl[p], BodyA = -1, BodyB = -1, MixEpoch = -1 }; }
-        PairHigh = np; (PairFree, _sFree) = (_sFree, PairFree); PairFreeCount = nf;
+        PairHigh = np;
+        PairFreeCount = 0; SensorFreeCount = 0;
+        Grow(ref PairFree, nf); Grow(ref SensorFree, nf);
+        for (int i = 0; i < nf; i++)
+        {
+            if (free[i] < 0) { SensorFree[SensorFreeCount++] = ~free[i]; } else { PairFree[PairFreeCount++] = free[i]; }
+        }
         if (jointsRead) { Opt.JointHertz = _pendingJointHertz; Opt.JointDampingRatio = _pendingJointDamping; }
         (Joints, _sJoints) = (_sJoints, Joints);
         Fit(ref JointForce, Joints.Length); Fit(ref JointTorque, Joints.Length);
@@ -792,6 +829,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         for (int p = 0; p < PairHigh; p++)
         {
             if (!Pairs[p].Live) { continue; }
+            if (Pairs[p].Cons < -1 && (Pairs[p].Cons != SensorOverlap || !(IsSensor(Pairs[p].A) || IsSensor(Pairs[p].B)))) { return false; }
             if (Pairs[p].Cons >= 0 && (!cons.IsLive(Pairs[p].Cons) || cons.ShapeA[Pairs[p].Cons] != Pairs[p].A || cons.ShapeB[Pairs[p].Cons] != Pairs[p].B)) { return false; }
         }
 

@@ -32,6 +32,12 @@ internal sealed class PairTable
 
     private int Slot(long key) => (int)(((ulong)key * 0x9E3779B97F4A7C15UL) >> _shift);
 
+    /// <summary>Makes room for <paramref name="count"/> entries without growing.</summary>
+    public void Reserve(int count)
+    {
+        while (count * 2 > _entries.Length) { Grow(); }
+    }
+
     public bool TryGetValue(long key, out int value)
     {
         var entries = _entries;
