@@ -37,7 +37,7 @@ public static class Program
             usage: bar gen [--out DIR]
                    bar metrics SCENE DUMP
                    bar run --mode timing|stability [--scenes a,b|all] [--engines box2d,rapier2d,box2dnet,jolt,box3d,rapier3d,bepu,jitter2,onephysics] [--threads 1,8,all]
-                           [--scene-dir DIR] [--state DIR] [--out DIR] [--repeat N] [--job-id ID] [--lock-held]
+                           [--scene-dir DIR] [--state DIR] [--out DIR] [--repeat N] [--job-id ID] [--lock-held] [--force-engines]
                    bar run --mode profile [--scenes ...] [--engines box2d,rapier2d,rapier3d,onephysics] [--threads 1] [--lock-held]   per-stage times beside ours (see docs/bench.md)
                    bar summarize RESULT_DIR
             """);
@@ -121,7 +121,7 @@ static class Runner
                 foreach (var th in threadList)
                 {
                     if (eng == "onephysics" ? false : Engines3D.Contains(eng) != (scene.Dim == 3)) continue; // our engine runs both dimensions
-                    if (scene.Params.TryGetValue("engines", out var only) && !only.Contains(eng)) continue; // a scene only some drivers understand
+                    if (!o.Has("force-engines") && scene.Params.TryGetValue("engines", out var only) && !only.Contains(eng)) continue; // a scene only some drivers understand; --force-engines runs the listed engines anyway (a driver written after the scene)
                     if (eng == "box2dnet" && th != 1) continue; // no documented multithreading
                     if (!timing && th != threadList[0]) continue;
                     Row? best = null; string? bestDump = null;

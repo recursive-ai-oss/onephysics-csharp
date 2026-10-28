@@ -9,8 +9,8 @@
 #include <time.h>
 
 typedef struct { char kind[16]; int material; double density, radius; int np; double* p; } Op3Shape;
-typedef struct { int type; /* 0 static 1 kinematic 2 dynamic */ double pos[3], q[4], v[3], w[3]; int bullet, asleep; int shape0, shapeN; int isChar; double cSpeed, cPeriod, cJump, cStop, cPush; /* scripted character (docs/scenes.md): walk speed, reversal period, jump interval, stop step, push strength */ int isVeh; double vThrottle, vSteer, vPeriod, vSteerFrom, vBrakeFrom; /* scripted car (docs/scenes.md): throttle, steering amplitude, steering period, first steering step, first braking step */ } Op3Body;
-typedef struct { char kind[8]; int a, b; double pa[3], pb[3], axis[3]; int hasLimit; double lower, upper; } Op3Joint;
+typedef struct { int type; /* 0 static 1 kinematic 2 dynamic */ double pos[3], q[4], v[3], w[3]; int bullet, asleep; int shape0, shapeN; int isChar; double cSpeed, cPeriod, cJump, cStop, cPush; /* scripted character (docs/scenes.md): walk speed, reversal period, jump interval, stop step, push strength */ int isVeh; char vPreset[8]; /* "car", "tank" or "bike" */ double vThrottle, vSteer, vPeriod, vSteerFrom, vBrakeFrom; /* scripted car (docs/scenes.md): throttle, steering amplitude, steering period, first steering step, first braking step */ } Op3Body;
+typedef struct { char kind[16]; int a, b; double pa[3], pb[3], axis[3]; int hasLimit; double lower, upper; int hasSwing; double swingY, swingZ; int hasDrive; double driveK, driveC, driveMax, driveAx, driveAy, driveAz, driveAmp; int drivePeriod; /* swingtwist (docs/scenes.md): twist axis in axis[], swing half angles, pose drive */ } Op3Joint;
 typedef struct { int kind; /* 0 ray 1 overlap 2 cast */ double p[8]; } Op3Query;
 typedef struct { int step; } Op3Wake;
 typedef struct {
@@ -74,7 +74,7 @@ static int op3_load_scene(const char* path, Op3Scene* s)
         else if (!strcmp(t, "vehicle"))
         {
             Op3Body* b = &s->bodies[s->nBody - 1]; b->isVeh = 1;
-            NEXT(); // preset name: only "car" exists
+            strncpy(b->vPreset, NEXT(), 7);
             b->vThrottle = NUM(); b->vSteer = NUM(); b->vPeriod = NUM(); b->vSteerFrom = NUM(); b->vBrakeFrom = NUM();
         }
         else if (!strcmp(t, "shape"))
@@ -90,12 +90,21 @@ static int op3_load_scene(const char* path, Op3Scene* s)
         {
             OP3_GROW(Op3Joint, s->joints, s->nJoint, capJ);
             Op3Joint* j = &s->joints[s->nJoint++]; memset(j, 0, sizeof *j);
-            strncpy(j->kind, NEXT(), 7); j->a = INT(); j->b = INT();
+            strncpy(j->kind, NEXT(), 15); j->a = INT(); j->b = INT();
             for (int i = 0; i < 3; i++) j->pa[i] = NUM();
             for (int i = 0; i < 3; i++) j->pb[i] = NUM();
-            if (!strcmp(j->kind, "hinge")) for (int i = 0; i < 3; i++) j->axis[i] = NUM();
+            if (!strcmp(j->kind, "hinge") || !strcmp(j->kind, "swingtwist")) for (int i = 0; i < 3; i++) j->axis[i] = NUM();
             char* tok;
-            while ((tok = NEXT())) if (!strcmp(tok, "limit")) { j->hasLimit = 1; j->lower = NUM(); j->upper = NUM(); }
+            while ((tok = NEXT()))
+            {
+                if (!strcmp(tok, "limit")) { j->hasLimit = 1; j->lower = NUM(); j->upper = NUM(); }
+                else if (!strcmp(tok, "swing")) { j->hasSwing = 1; j->swingY = NUM(); j->swingZ = NUM(); }
+                else if (!strcmp(tok, "drive"))
+                {
+                    j->hasDrive = 1; j->driveK = NUM(); j->driveC = NUM(); j->driveMax = NUM();
+                    j->driveAx = NUM(); j->driveAy = NUM(); j->driveAz = NUM(); j->driveAmp = NUM(); j->drivePeriod = INT();
+                }
+            }
         }
         else if (!strcmp(t, "query"))
         {
