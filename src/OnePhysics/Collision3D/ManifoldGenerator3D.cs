@@ -116,6 +116,11 @@ public sealed partial class ManifoldGenerator3D
             return PolyPoly(a, b, bInA, speculativeDistance);
         }
 
+        if (((ka == ConvexShapeKind3D.Capsule && polyB) || (kb == ConvexShapeKind3D.Capsule && polyA)) && CapsulePolyApart(a, b, kb == ConvexShapeKind3D.Capsule, bInA, speculativeDistance))
+        {
+            return Empty;
+        }
+
         ConvexContact3D c = _epa.Collide(a, b, bInA);
         return Generic(a, b, bInA, c, speculativeDistance);
     }

@@ -1,4 +1,6 @@
 using System;
+using System.Numerics;
+using System.Runtime.Intrinsics;
 using RecursiveAI.OneMath;
 
 namespace RecursiveAI.OnePhysics.Collision3D;
@@ -20,6 +22,10 @@ public sealed partial class ManifoldGenerator3D
         public Vector3F[] EC = new Vector3F[24], ED = new Vector3F[24], EDxC = new Vector3F[24], EQ0 = new Vector3F[24], EDir = new Vector3F[24];
         public float[] EDir2 = new float[24];
 
+        // The same data as component arrays padded with zeros to a multiple of four, for the four-lane edge search: the negated face normals (C, D), their cross product (E), the direction (G) and the first vertex (Q).
+        public float[] Cx = new float[24], Cy = new float[24], Cz = new float[24], Dx = new float[24], Dy = new float[24], Dz = new float[24], Ex = new float[24], Ey = new float[24], Ez = new float[24];
+        public float[] Gx = new float[24], Gy = new float[24], Gz = new float[24], Qx = new float[24], Qy = new float[24], Qz = new float[24], G2 = new float[24];
+
         public void PrepareEdges()
         {
             ReadOnlySpan<HullEdge3D> e = Hull.Edges;
@@ -29,6 +35,16 @@ public sealed partial class ManifoldGenerator3D
                 EC = new Vector3F[n]; ED = new Vector3F[n]; EDxC = new Vector3F[n]; EQ0 = new Vector3F[n]; EDir = new Vector3F[n]; EDir2 = new float[n];
             }
 
+            int padded = (n + 3) & ~3;
+            if (Cx.Length < padded)
+            {
+                Cx = new float[padded]; Cy = new float[padded]; Cz = new float[padded]; Dx = new float[padded]; Dy = new float[padded]; Dz = new float[padded]; Ex = new float[padded]; Ey = new float[padded]; Ez = new float[padded];
+                Gx = new float[padded]; Gy = new float[padded]; Gz = new float[padded]; Qx = new float[padded]; Qy = new float[padded]; Qz = new float[padded]; G2 = new float[padded];
+            }
+
+            // Lanes past the last edge pair hold zeros: the sign tests multiply to zero there, which neither accepts.
+            for (int j = n; j < padded; j++) { Cx[j] = 0f; Cy[j] = 0f; Cz[j] = 0f; Dx[j] = 0f; Dy[j] = 0f; Dz[j] = 0f; Ex[j] = 0f; Ey[j] = 0f; Ez[j] = 0f; Gx[j] = 0f; Gy[j] = 0f; Gz[j] = 0f; Qx[j] = 0f; Qy[j] = 0f; Qz[j] = 0f; G2[j] = 0f; }
+
             for (int j = 0; j < n; j++)
             {
                 Vector3F c = -N[e[2 * j].Face], d = -N[e[2 * j + 1].Face];
@@ -37,6 +53,8 @@ public sealed partial class ManifoldGenerator3D
                 EQ0[j] = q0;
                 Vector3F dir = V[e[2 * j + 1].Origin] - q0;
                 EDir[j] = dir; EDir2[j] = dir.LengthSquared();
+                Cx[j] = c.X; Cy[j] = c.Y; Cz[j] = c.Z; Dx[j] = d.X; Dy[j] = d.Y; Dz[j] = d.Z; Ex[j] = EDxC[j].X; Ey[j] = EDxC[j].Y; Ez[j] = EDxC[j].Z;
+                Gx[j] = dir.X; Gy[j] = dir.Y; Gz[j] = dir.Z; Qx[j] = q0.X; Qy[j] = q0.Y; Qz[j] = q0.Z; G2[j] = EDir2[j];
             }
         }
 
@@ -291,6 +309,8 @@ public sealed partial class ManifoldGenerator3D
         ReadOnlySpan<HullEdge3D> ep = p.Hull.Edges;
         int nq = q.Hull.Edges.Length >> 1;
         q.PrepareEdges();
+        Vector128<float> signBit = Vector128.Create(-0f);
+        Vector128<float> zero = Vector128<float>.Zero;
         for (int i = 0; i < ep.Length; i += 2)
         {
             Vector3F a = p.N[ep[i].Face], b = p.N[ep[i + 1].Face];
@@ -298,53 +318,63 @@ public sealed partial class ManifoldGenerator3D
             Vector3F pi0 = p.V[ep[i].Origin];
             Vector3F dirP = p.V[ep[i + 1].Origin] - pi0;
             float lenP2 = dirP.LengthSquared();
-            for (int j = 0; j < nq; j++)
+            Vector3F side = pi0 - p.Center, ba = b - a;
+            Vector128<float> bxX = Vector128.Create(bxa.X), bxY = Vector128.Create(bxa.Y), bxZ = Vector128.Create(bxa.Z);
+            Vector128<float> aX = Vector128.Create(a.X), aY = Vector128.Create(a.Y), aZ = Vector128.Create(a.Z);
+            Vector128<float> bX = Vector128.Create(b.X), bY = Vector128.Create(b.Y), bZ = Vector128.Create(b.Z);
+            Vector128<float> baX = Vector128.Create(ba.X), baY = Vector128.Create(ba.Y), baZ = Vector128.Create(ba.Z);
+            Vector128<float> dpX = Vector128.Create(dirP.X), dpY = Vector128.Create(dirP.Y), dpZ = Vector128.Create(dirP.Z);
+            Vector128<float> sdX = Vector128.Create(side.X), sdY = Vector128.Create(side.Y), sdZ = Vector128.Create(side.Z);
+            Vector128<float> p0X = Vector128.Create(pi0.X), p0Y = Vector128.Create(pi0.Y), p0Z = Vector128.Create(pi0.Z);
+            Vector128<float> thr = Vector128.Create(1e-10f * lenP2);
+            for (int j0 = 0; j0 < nq; j0 += 4)
             {
-                Vector3F c = q.EC[j], d = q.ED[j];
-                Vector3F dxc = q.EDxC[j];
-                // Either test rejects most pairs, so the second pair of dot products is only computed for the ones that pass the first.
-                float cba = Vector3F.Dot(c, bxa), dba = Vector3F.Dot(d, bxa);
-                if (!(cba * dba < 0f))
-                {
-                    continue;
-                }
-
-                float adc = Vector3F.Dot(a, dxc), bdc = Vector3F.Dot(b, dxc);
-                if (!(adc * bdc < 0f))
-                {
-                    continue;
-                }
+                // Four edge pairs of q at a time. Every lane does exactly the scalar arithmetic of one pair (Gregorius's arc test, then the axis and its separation); lanes past the end are zeros
+                // that fail the first test. Candidates are compared in ascending pair order, so ties go to the lowest index as in a one-at-a-time search.
+                var cx = Vector128.Create(q.Cx, j0); var cy = Vector128.Create(q.Cy, j0); var cz = Vector128.Create(q.Cz, j0);
+                var dx = Vector128.Create(q.Dx, j0); var dy = Vector128.Create(q.Dy, j0); var dz = Vector128.Create(q.Dz, j0);
+                var cba = (cx * bxX) + (cy * bxY) + (cz * bxZ);
+                var dba = (dx * bxX) + (dy * bxY) + (dz * bxZ);
+                var m = Vector128.LessThan(cba * dba, zero);
+                var ex = Vector128.Create(q.Ex, j0); var ey = Vector128.Create(q.Ey, j0); var ez = Vector128.Create(q.Ez, j0);
+                var adc = (aX * ex) + (aY * ey) + (aZ * ez);
+                var bdc = (bX * ex) + (bY * ey) + (bZ * ez);
+                m &= Vector128.LessThan(adc * bdc, zero);
+                if (m == zero) { continue; }
 
                 // The great circles cross at two antipodal points; the arcs meet only if one of them lies on both. Where each arc crosses the other's plane
                 // (a positive mix of its ends), the two crossing points must point the same way.
-                Vector3F xa = a + ((b - a) * (adc / (adc - bdc)));
-                Vector3F xc = c + ((d - c) * (cba / (cba - dba)));
-                if (!(Vector3F.Dot(xa, xc) > 0f))
-                {
-                    continue;
-                }
+                var ta = adc / (adc - bdc);
+                var tc = cba / (cba - dba);
+                var xaX = aX + (baX * ta); var xaY = aY + (baY * ta); var xaZ = aZ + (baZ * ta);
+                var xcX = cx + ((dx - cx) * tc); var xcY = cy + ((dy - cy) * tc); var xcZ = cz + ((dz - cz) * tc);
+                m &= Vector128.GreaterThan((xaX * xcX) + (xaY * xcY) + (xaZ * xcZ), zero);
+                var gx = Vector128.Create(q.Gx, j0); var gy = Vector128.Create(q.Gy, j0); var gz = Vector128.Create(q.Gz, j0);
+                var axX = (dpY * gz) - (dpZ * gy); var axY = (dpZ * gx) - (dpX * gz); var axZ = (dpX * gy) - (dpY * gx);
+                var l2 = (axX * axX) + (axY * axY) + (axZ * axZ);
+                m &= Vector128.GreaterThan(l2, thr * Vector128.Create(q.G2, j0));
+                if (m == zero) { continue; }
 
-                Vector3F qj0 = q.EQ0[j];
-                Vector3F ax = Vector3F.Cross(dirP, q.EDir[j]);
-                float l2 = ax.LengthSquared();
-                if (!(l2 > 1e-10f * lenP2 * q.EDir2[j]))
+                var len = Vector128.Sqrt(l2);
+                axX /= len; axY /= len; axZ /= len;
+                var flip = Vector128.LessThan((axX * sdX) + (axY * sdY) + (axZ * sdZ), zero);
+                axX = Vector128.ConditionalSelect(flip, axX ^ signBit, axX);
+                axY = Vector128.ConditionalSelect(flip, axY ^ signBit, axY);
+                axZ = Vector128.ConditionalSelect(flip, axZ ^ signBit, axZ);
+                var sep = (axX * (Vector128.Create(q.Qx, j0) - p0X)) + (axY * (Vector128.Create(q.Qy, j0) - p0Y)) + (axZ * (Vector128.Create(q.Qz, j0) - p0Z));
+                uint bits = m.ExtractMostSignificantBits();
+                while (bits != 0)
                 {
-                    continue;
-                }
-
-                ax /= ConvexShape3D.Sqrt(l2);
-                if (Vector3F.Dot(ax, pi0 - p.Center) < 0f)
-                {
-                    ax = -ax;
-                }
-
-                float sep = Vector3F.Dot(ax, qj0 - pi0);
-                if (sep > best)
-                {
-                    best = sep;
-                    edgeP = i;
-                    edgeQ = 2 * j;
-                    axis = ax;
+                    int lane = BitOperations.TrailingZeroCount(bits);
+                    bits &= bits - 1;
+                    float s = sep.GetElement(lane);
+                    if (s > best)
+                    {
+                        best = s;
+                        edgeP = i;
+                        edgeQ = 2 * (j0 + lane);
+                        axis = new Vector3F(axX.GetElement(lane), axY.GetElement(lane), axZ.GetElement(lane));
+                    }
                 }
             }
         }
