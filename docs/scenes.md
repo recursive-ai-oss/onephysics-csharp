@@ -111,12 +111,12 @@ Computed by `bar metrics SCENE DUMP` from the dump and the scene alone, so every
 | metric | definition (maximum over dumped frames unless noted) |
 |---|---|
 | `maxPenetration` | deepest overlap of any shape pair, metres |
-| `finalPenetration` | the same measure in the final frame only (the resting state) |
+| `finalPenetration` | robust: the median over the last 3 dumped frames of the 95th-percentile depth of the overlapping pairs of that frame (the resting state; "Robust metrics" below). `finalPenetrationRaw`: the deepest pair in the final frame only |
 | `maxSpeed` | largest centre-of-mass speed of any dynamic body, m/s |
 | `nan` | count of non-finite values in the dump (0 required) |
-| `restKE` | kinetic energy per unit mass in the final frame, J/kg (linear + rotational, shape-area mass) |
-| `jitter` | largest mean speed of any dynamic body over the last dump interval, m/s |
-| `escapes` | most dynamic bodies outside `param container x0 y0 x1 y1` (grown by 0.5 m) in any frame |
+| `restKE` | robust: the median over the last 3 dumped frames of the 90th-percentile body kinetic energy per unit mass, J/kg (2D: linear + rotational, shape-area mass; 3D: below). `restKERaw`: the mean over bodies in the final frame (2D mass-weighted) |
+| `jitter` | robust: over the last 3 dump intervals, the 99th-percentile mean speed (distance moved over the interval) of the dynamic bodies, m/s; the median of the three. `jitterRaw`: the fastest single body over the last interval |
+| `escapes` | most dynamic bodies outside `param container x0 y0 x1 y1` (grown by `param escapeMargin`, default 0.5 m) in any frame. `escapesRaw`: the same with the default margin |
 | `tunnelled` | most dynamic bodies past `param wall x` (+ 0.1 m) or below `param floor y` in any frame |
 | `collapse` | `topDrop` and `topLateral`: the drop in height and the sideways drift of `param top <body>` at the final frame |
 | `charJitter` | characters scenes: largest change of a character's velocity between consecutive dumps over the last four dump intervals (characters stop at their `stop` step, so a character standing still gives 0; riders of turning platforms, listed in `rotatingRiders`, are skipped because their velocity turns by design), m/s |
@@ -129,4 +129,159 @@ Computed by `bar metrics SCENE DUMP` from the dump and the scene alone, so every
 | `asleepBeforeWake` | dynamic bodies asleep in the frame at the first `event` step (scenes create them asleep) |
 | `awakeFinal` | dynamic bodies awake in the final frame |
 
-3D differences: `restKE` is the mean over dynamic bodies of ½(v² + ω²R²), R the body's bounding radius (not mass-weighted); `escapes` and `tunnelled` test x, y and z against the container (z uses the x extent); `topLateral` is the horizontal distance in x and z.
+3D differences: the per-body `restKE` is ½(v² + ω²R²), R the body's bounding radius (not mass-weighted; `restKERaw` is its mean over dynamic bodies); `escapes` and `tunnelled` test x, y and z against the container (z uses the x extent); `topLateral` is the horizontal distance in x and z.
+
+## Robust metrics
+
+A pile has chaotic contact order. A change as small as 1% of the contact frequency, or a different rounding order, changes which body is deepest, fastest or flung furthest in one frame, with no change in how stable the pile is. A pass or fail on a single body in a single frame is partly luck. The metrics that carry a threshold and showed this (`jitter`, `restKE`, `finalPenetration`, and `escapes` where a heavy impact throws bodies) therefore take **a high percentile across bodies or pairs and a median across a window of the last 3 frames or intervals** (`bench/Bar/Robust.cs`; nearest-rank percentiles, the median of an even count is the lower middle value). The window and the percentiles are constants in that file. Each robust metric is reported beside its old definition under the name with the suffix `Raw`, so nothing is hidden. Hard failures keep their definitions: `nan`, `tunnelled`, `maxSpeed` (explosions), `maxPenetration` (the deepest pair in any frame), `jointError`, `topDrop`/`topLateral`, `collapse`.
+
+- **Window.** The last 3 dumped frames (3 intervals for `jitter`; 4 frames). Dumps are 60 steps apart in the pile and pyramid scenes and 30 apart in the others, so the window covers 1 to 2 simulated seconds.
+- **`jitter`: 99th percentile of body speeds.** One body sliding on a rolled-over neighbour is not jitter; a pile in which more than 1% of the bodies keep moving is. Median over the window so one noisy interval does not decide.
+- **`restKE`: 90th percentile of body energies.** Bodies that roll without rolling resistance (the heads of a ragdoll pile roll between the walls for the whole run, at 3 to 25 J/kg each) are not instability; a pile in which more than a tenth of the bodies still carries energy is.
+- **`finalPenetration`: 95th percentile of pair depths.** Under a heavy load (the ball landing on the stacks in the sleep-wake scenes) the deepest pair varies from run to run by a factor of two; the depth that 95% of the overlapping pairs stay under does not. Pairs that do not overlap are not in the set, so a frame with a single overlapping pair reports that pair.
+- **`escapes` margin.** In `sleep-wake-3d` a 335 kg ball lands at about 40 m/s on forty-high stacks and throws boxes off the 80 m slab. In nine perturbed runs 1 to 19 boxes were out of the container (grown by 0.5 m) in the last frame, up to 28 m past it and still flying (the scene ends 0.7 s after the impact). The scene sets `param escapeMargin 60`: a body counts as escaped only when it is more than 60 m outside the container, about twice the farthest throw seen. An explosion sends bodies much further and also trips `maxSpeed`. Scenes that do not set the param keep the 0.5 m margin: there the container is a closed set of walls and a body outside it has gone through a wall. Adding the param changed `scenes/SHA256SUMS` for `sleep-wake-3d` only.
+
+### Perturbation sweep (this library's engine, 1 thread)
+
+Nine runs per scene: contact frequency scaled by 0.97, 0.98, 0.99, 0.995, 1.00, 1.005, 1.01, 1.02 and 1.03 (the sweep hooks are environment variables read by the `onephysics` driver of `bench/Bar`: `BAR_CONTACT_HERTZ_SCALE`, `BAR_JOINT_HERTZ_SCALE`, `BAR_PUSH_OUT_SCALE`, `BAR_CONTACT_DAMPING`, `BAR_JOINT_DAMPING`, `BAR_SUBSTEPS`; the library is not touched). The old thresholds are those of the previous definitions.
+
+| scene | metric | old threshold | raw min – max | robust min – median – max | robust spread / old threshold |
+|---|---|---|---|---|---|
+| large-pile | jitter | 0.25 | 0.00429 – 1.26 | 0.0322 – 0.0465 – 0.0533 | 0.084 |
+| large-pile | restKE | 0.005 | 0 – 0.000695 | 0.000272 – 0.000817 – 0.00141 | 0.228 |
+| large-pile | finalPenetration | 0.25 | 0.0923 – 0.117 | 0.0334 – 0.0352 – 0.0394 | 0.024 |
+| large-pile-3d | jitter | 0.25 | 0.0124 – 0.181 | 0.00116 – 0.00288 – 0.00415 | 0.012 |
+| large-pile-3d | restKE | 0.005 | 2.57e-06 – 5.1e-05 | 4.48e-07 – 4.01e-06 – 1.17e-05 | 0.002 |
+| large-pile-3d | finalPenetration | 0.25 | 0.0257 – 0.038 | 0.00672 – 0.00723 – 0.00795 | 0.005 |
+| pyramid-100 | finalPenetration | 0.04 | 0.0117 – 0.0131 | 0.00963 – 0.0102 – 0.0108 | 0.029 |
+| pyramid-3d-30 | finalPenetration | 0.04 | 0.0016 – 0.00207 | 0.00113 – 0.00119 – 0.00126 | 0.003 |
+| sleep-wake | finalPenetration | 0.15 | 0.124 – 0.284 | 0.0287 – 0.0316 – 0.0362 | 0.050 |
+| sleep-wake-3d | finalPenetration | 1.0 | 0.257 – 0.51 | 0.0625 – 0.0994 – 0.124 | 0.062 |
+| sleep-wake-3d | escapes | 10 | 1 – 19 | 0 – 0 – 0 | 0.000 |
+| ragdoll-pile-3d | restKE | 0.5 | 0.396 – 1.42 | 0.0409 – 0.0962 – 0.181 | 0.280 |
+| ragdoll-pile-3d | finalPenetration | 0.2 | 0.0135 – 0.0253 | 0.0031 – 0.0035 – 0.00414 | 0.005 |
+
+Every robust spread is under 0.3 of the old threshold, and the raw columns show the single-frame statistics that were not (large-pile `jitter` reached 1.26 in one run, ragdoll `restKE` 1.42, sleep-wake `finalPenetration` 0.28, sleep-wake-3d `escapes` 19).
+
+### Forced-unstable controls
+
+The robust metrics must still fail an unstable configuration. Each row is the same engine on the same scene with the named perturbation; values over the old threshold are in bold.
+
+| scene | control | metric | value | old threshold | fails |
+|---|---|---|---|---|---|
+| large-pile | 1 substep (default 4) | jitter | **2.28** | 0.25 | yes |
+| large-pile | push-out x500, contact damping 0 | jitter | **0.259** | 0.25 | yes |
+| large-pile | 1 substep (default 4) | restKE | **1.28** | 0.005 | yes |
+| large-pile | damping 0, contact frequency x1.6, push-out x10 | restKE | **0.111** | 0.005 | yes |
+| large-pile | push-out x500, contact damping 0 | restKE | **0.718** | 0.005 | yes |
+| large-pile | contact frequency x0.1 | finalPenetration | **0.516** | 0.25 | yes |
+| pyramid-100 | 1 substep (default 4) | jitter | **18.2** | 0.05 | yes |
+| pyramid-100 | damping 0, contact frequency x1.6, push-out x10 | jitter | **0.0562** | 0.05 | yes |
+| pyramid-100 | 1 substep (default 4) | restKE | **3.98** | 0.01 | yes |
+| pyramid-100 | damping 0, contact frequency x1.6, push-out x10 | restKE | **0.0164** | 0.01 | yes |
+| pyramid-100 | 1 substep (default 4) | finalPenetration | **0.0841** | 0.04 | yes |
+| pyramid-3d-30 | 1 substep (default 4) | jitter | **0.107** | 0.05 | yes |
+| pyramid-3d-30 | damping 0, contact frequency x1.6, push-out x10 | jitter | **0.0792** | 0.05 | yes |
+| pyramid-3d-30 | 1 substep (default 4) | restKE | **0.107** | 0.01 | yes |
+| sleep-wake | contact frequency x0.1 | finalPenetration | **0.705** | 0.15 | yes |
+
+Four controls (1 substep; "springy": damping 0, contact frequency x1.6, push-out x10; "mushy": contact frequency x0.1; "explosive": push-out x500, contact damping 0) were run on large-pile, pyramid-100, pyramid-3d-30, large-pile-3d, sleep-wake, sleep-wake-3d and ragdoll-pile-3d; only the rows that exceed the old threshold are listed. Every 2D pile and pyramid scene fails at least one robust metric under at least one control, and so does pyramid-3d-30 (and the sinking of a soft contact fails `finalPenetration` in sleep-wake). **Not shown to fail by any control:** `large-pile-3d` (the 3D pile stays quiet even at one substep), `ragdoll-pile-3d` (`restKE` 0.035 to 0.134 against 0.5) and the `escapes` of `sleep-wake-3d` (a body thrown beyond 60 m takes a speed above its `maxSpeed` cap first, and no solver setting reachable from the options sends one there). The thresholds of these three come from the references, not from a control.
+
+### Values under the robust metrics
+
+This library's engine, 1 thread, default options (robust / raw):
+
+| scene | jitter | restKE | finalPenetration | escapes |
+|---|---|---|---|---|
+| pyramid-20 | 0 / 0 | 0 / 0 | 0.00206 / 0.00235 | 0 / 0 |
+| pyramid-100 | 0 / 0 | 0 / 0 | 0.0102 / 0.0124 | 0 / 0 |
+| pyramid-3d-10 | 0 / 0 | 0 / 0 | 0.000396 / 0.000477 | 0 / 0 |
+| pyramid-3d-30 | 0 / 0 | 0 / 0 | 0.00120 / 0.00164 | 0 / 0 |
+| large-pile | 0.0410 / 0.122 | 0.00110 / 3.4e-6 | 0.0353 / 0.110 | 0 / 0 |
+| large-pile-3d | 0.00274 / 0.0124 | 1.6e-6 / 6.0e-6 | 0.00722 / 0.0335 | 0 / 0 |
+| ragdoll-pile-3d | | 0.0662 / 0.396 | 0.00413 / 0.0203 | 0 / 0 |
+| sleep-wake | | | 0.0362 / 0.129 | 0 / 0 |
+| sleep-wake-3d | | | 0.0978 / 0.503 | 0 / 1 |
+| tumbler, mixed-terrain | | | 0.0253 / 0.0661, 0.00356 / 0.0107 | 0 / 0 |
+| mesh-terrain-3d, heightfield-terrain-3d | | | 0.000362 / 0.0196, 0.00893 / 0.0344 | 0 / 0 |
+
+### Reference values and proposed thresholds
+
+Measured on the x64 worker (Ryzen 9 7950X3D, 32 logical cores; load 26 before, 17 to 23 during, 18 after: other projects' work shared the machine, which does not change simulated results), one thread, .NET 10.0.13, the references at the versions and configurations pinned above, every engine through `bar run --mode stability` on the scenes regenerated from this commit. Values are the robust metric; `*` marks an engine that is not stable on that scene (the engines in the previous section's list, plus any whose `maxSpeed`, `maxPenetration` or `escapes` exceed the old caps), whose value does not set the threshold. The raw values of every engine are in `docs/bench.md`.
+
+**Rule.** The proposed threshold is 1.5 times the worst value among the stable engines other than ours, rounded up to 1, 1.5, 2, 3, 5 or 7 times a power of ten, and not below a floor of 0.01 for `jitter`, 0.0001 for `restKE` and 0.005 for `finalPenetration` (a pile that is at rest in every engine has zeros, and a threshold of zero would fail on rounding noise). `escapes` stays 0 everywhere. "ours ok" says whether this library's engine passes the proposed threshold.
+
+| scene | metric | box2d | box2dnet | rapier2d | jolt | box3d | rapier3d | bepu | jitter2 | ours | proposed | ours ok |
+| pyramid-20 | jitter | 0 | 0 | 0 |  |  |  |  |  | 0 | 0.01 | yes |
+| pyramid-20 | restKE | 0 | 0 | 0 |  |  |  |  |  | 0 | 0.0001 | yes |
+| pyramid-20 | finalPenetration | 0.00304 | 0.00301 | 0.00304 |  |  |  |  |  | 0.00206 | 0.005 | yes |
+| pyramid-20 | escapes | 0 | 0 | 0 |  |  |  |  |  | 0 | 0 | yes |
+
+<!-- pyramid-20: stable ['box2d', 'rapier2d', 'box2dnet']; unstable [] -->
+| pyramid-100 | jitter | 0.115 | 0 | 0.00965 |  |  |  |  |  | 0 | 0.2 | yes |
+| pyramid-100 | restKE | 0.00224 | 0 | 0 |  |  |  |  |  | 0 | 0.005 | yes |
+| pyramid-100 | finalPenetration | 0.0152 | 0.0156 | 0.0151 |  |  |  |  |  | 0.0102 | 0.03 | yes |
+| pyramid-100 | escapes | 0 | 0 | 0 |  |  |  |  |  | 0 | 0 | yes |
+
+<!-- pyramid-100: stable ['box2d', 'rapier2d', 'box2dnet']; unstable [] -->
+| large-pile | jitter | 0.0449 | 0.0137 | 0.078 |  |  |  |  |  | 0.041 | 0.15 | yes |
+| large-pile | restKE | 0.00432 | 0.000543 | 0.00834 |  |  |  |  |  | 0.0011 | 0.015 | yes |
+| large-pile | finalPenetration | 0.0489 | 0.0502 | 0.0499 |  |  |  |  |  | 0.0353 | 0.1 | yes |
+| large-pile | escapes | 0 | 0 | 0 |  |  |  |  |  | 0 | 0 | yes |
+
+<!-- large-pile: stable ['box2d', 'rapier2d', 'box2dnet']; unstable [] -->
+| tumbler | finalPenetration | 0.0316 | 0.0342 | 0.0353 |  |  |  |  |  | 0.0253 | 0.07 | yes |
+| tumbler | escapes | 0 | 0 | 0 |  |  |  |  |  | 0 | 0 | yes |
+
+<!-- tumbler: stable ['box2d', 'rapier2d', 'box2dnet']; unstable [] -->
+| sleep-wake | finalPenetration | 0.0355 | 0.0481 | 0.0351 |  |  |  |  |  | 0.0362 | 0.1 | yes |
+| sleep-wake | escapes | 0 | 0 | 0 |  |  |  |  |  | 0 | 0 | yes |
+
+<!-- sleep-wake: stable ['box2d', 'rapier2d', 'box2dnet']; unstable [] -->
+| mixed-terrain | finalPenetration | 0.00503 | 0.00481 | 0.00504 |  |  |  |  |  | 0.00356 | 0.01 | yes |
+| mixed-terrain | escapes | 0 | 0 | 0 |  |  |  |  |  | 0 | 0 | yes |
+
+<!-- mixed-terrain: stable ['box2d', 'rapier2d', 'box2dnet']; unstable [] -->
+| pyramid-3d-10 | jitter |  |  |  | 0 | 0 | 0 | 0 | 0 | 0 | 0.01 | yes |
+| pyramid-3d-10 | restKE |  |  |  | 0 | 0 | 0 | 2.41e-07 | 2.12e-12 | 0 | 0.0001 | yes |
+| pyramid-3d-10 | finalPenetration |  |  |  | 0.000546 | 0.000422 | 0.000405 | 0.00081 | 0.000935 | 0.000393 | 0.005 | yes |
+| pyramid-3d-10 | escapes |  |  |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | yes |
+
+<!-- pyramid-3d-10: stable ['jolt', 'box3d', 'rapier3d', 'bepu', 'jitter2']; unstable [] -->
+| pyramid-3d-30 | jitter |  |  |  | 0 | 0 | 0 | 0.0457* | 0* | 0 | 0.01 | yes |
+| pyramid-3d-30 | restKE |  |  |  | 0 | 0 | 0 | 0.0294* | 9.14e-06* | 0 | 0.0001 | yes |
+| pyramid-3d-30 | finalPenetration |  |  |  | 0.00267 | 0.00132 | 0.00127 | 0.00215* | 0.0034* | 0.00125 | 0.005 | yes |
+| pyramid-3d-30 | escapes |  |  |  | 0 | 0 | 0 | 0* | 0* | 0 | 0 | yes |
+
+<!-- pyramid-3d-30: stable ['jolt', 'box3d', 'rapier3d']; unstable ['bepu', 'jitter2'] -->
+| large-pile-3d | jitter |  |  |  | 0.00313 | 8.77e-06 | 0.000332 | 0.00664 | 0.000343 | 0.000121 | 0.01 | yes |
+| large-pile-3d | restKE |  |  |  | 9.32e-08 | 0 | 5.95e-07 | 5.87e-06 | 2.97e-08 | 1.71e-08 | 0.0001 | yes |
+| large-pile-3d | finalPenetration |  |  |  | 0.0305 | 0.00919 | 0.00518 | 0.00735 | 0.00998 | 0.00729 | 0.05 | yes |
+| large-pile-3d | escapes |  |  |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | yes |
+
+<!-- large-pile-3d: stable ['jolt', 'box3d', 'rapier3d', 'bepu', 'jitter2']; unstable [] -->
+| ragdoll-pile-3d | restKE |  |  |  | 0.0315 | 0.00897 | 0.0131 | 0.0169 | 0.00486 | 0.126 | 0.05 | NO |
+| ragdoll-pile-3d | finalPenetration |  |  |  | 0.0202 | 0.00394 | 0.00172 | 0.00581 | 0.01 | 0.00378 | 0.05 | yes |
+| ragdoll-pile-3d | escapes |  |  |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | yes |
+
+<!-- ragdoll-pile-3d: stable ['jolt', 'box3d', 'rapier3d', 'bepu', 'jitter2']; unstable [] -->
+| mesh-terrain-3d | finalPenetration |  |  |  | 0.02 | 0.00346 | 0.00115 | 0.000876 | 0.01* | 0.000367 | 0.03 | yes |
+| mesh-terrain-3d | escapes |  |  |  | 0 | 0 | 0 | 0 | 3* | 0 | 0 | yes |
+
+<!-- mesh-terrain-3d: stable ['jolt', 'box3d', 'rapier3d', 'bepu']; unstable ['jitter2'] -->
+| heightfield-terrain-3d | finalPenetration |  |  |  | 0.0209 | 0.195* | 0.00115 | 0.000876 | 0.01* | 0.00893 | 0.05 | yes |
+| heightfield-terrain-3d | escapes |  |  |  | 0 | 0* | 0 | 0 | 3* | 0 | 0 | yes |
+
+<!-- heightfield-terrain-3d: stable ['jolt', 'rapier3d', 'bepu']; unstable ['box3d', 'jitter2'] -->
+| sleep-wake-3d | finalPenetration |  |  |  | 0.119 | 0.033 | 0.0413 | 0.067 | 0.193 | 0.103 | 0.3 | yes |
+| sleep-wake-3d | escapes |  |  |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | yes |
+
+<!-- sleep-wake-3d: stable ['jolt', 'box3d', 'rapier3d', 'bepu', 'jitter2']; unstable [] -->
+
+The comments list, per scene, which engines were counted stable.
+
+**Findings.**
+- `ragdoll-pile-3d` `restKE`: ours is **0.126** (raw 0.821) against 0.0049 to 0.032 for the others (raw 0.0057 to 0.245), so this library's engine fails the proposed 0.05. It is the one row where the robust metric does not rescue us: more than a tenth of our bodies keep moving at the end of the run. Within our sweep the same metric ran 0.041 to 0.181. This is an engine finding, not a metric artefact.
+- `heightfield-terrain-3d`: Box3D (0.195 deep, an alpha height-field finding) is not counted. `sleep-wake-3d`: all engines pass with `escapeMargin` 60; with the old 0.5 m margin Bepu, Box3D and Rapier3D threw 7, 4 and 5 boxes out of the container (`escapesRaw`).
+- `pyramid-100` `jitter`: Box2D's robust value (0.115) is higher than its raw one (0.01): the window includes an earlier interval in which the pyramid was still settling.
+- Scenes without a row (`joint-grid`, `chain`, `bullets`, `queries`, `characters`, vehicles) carry none of the four metrics except `escapes`, which is 0 for every stable engine.

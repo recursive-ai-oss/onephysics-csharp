@@ -220,6 +220,7 @@ public static class Gen3
         Sh(Add3(s, "dynamic", 0, 81, 0), "sphere", 10, 2.0, 0, 0, 0);
         s.Events.Add(new EventDef { Step = 120, Kind = "wake_all" });
         s.Params["container"] = ["-40", "-5", "40", "200"];
+        s.Params["escapeMargin"] = ["60"]; // the ball landing at about 40 m/s throws boxes up to 30 m past the slab; only bodies beyond that count as escaped
         return s;
     }
 

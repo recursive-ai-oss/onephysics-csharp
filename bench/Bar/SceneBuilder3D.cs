@@ -7,6 +7,9 @@ namespace Bar;
 /// <summary>Builds a 3D world from a scene definition. Shared by the bar runner and the hash-matrix scenarios. Point joints are built from the scene (the only 3D joint kind the scenes use); queries are not run.</summary>
 public static class SceneBuilder3D
 {
+    /// <summary>Applied to the world options before the world is created; the stability sweeps use it to perturb contact stiffness or the substep count. Null in every other use.</summary>
+    public static Action<P3.WorldOptions3D>? Tweak { get; set; }
+
     public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads) => Build(s, threads, out _);
 
     /// <summary>Builds the scene; bodies with a <c>character</c> script become virtual characters (their bodies are in the array), returned with their scripts in body order.</summary>
@@ -18,6 +21,7 @@ public static class SceneBuilder3D
     {
         var opt = new P3.WorldOptions3D { Gravity = new Vector3F((float)s.Gx, (float)s.Gy, (float)s.Gz), ThreadCount = threads };
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
+        Tweak?.Invoke(opt);
         var world = new P3.PhysicsWorld3D(opt);
 
         if (s.Bodies.Exists(b => b.Script != null)) world.SetLayerCollision(1, 1, false); // characters pass through each other (layer 1); the world and the crates are layer 0
