@@ -174,7 +174,7 @@ internal sealed partial class Engine3D
             {
                 if (!comp.IsLive(j)) { continue; }
                 var child = comp.GetChild(j);
-                var d = Gjk3D.Distance(child.Shape, mover, child.Local.Inverse() * moverInShape);
+                var d = Gjk3D.Distance(child.Shape, mover, child.Local.Inverted() * moverInShape);
                 float dist = d.Overlapping ? 0f : d.Distance;
                 if (dist < best && dist <= maxDist)
                 {
@@ -241,7 +241,7 @@ internal sealed partial class Engine3D
         h = default;
         h.Slot = s;
         ShapeFrame(s, out double ox, out double oy, out double oz, out QuaternionF rs);
-        var inv = rs.Conjugate();
+        var inv = rs.Conjugated();
         var g = Geoms[GeomOf[s]]!;
         var lo = inv.Rotate(new Vector3F((float)(q.X - ox), (float)(q.Y - oy), (float)(q.Z - oz)));
         switch (q.Kind)

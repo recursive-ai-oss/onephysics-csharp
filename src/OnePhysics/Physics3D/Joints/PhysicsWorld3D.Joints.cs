@@ -250,7 +250,7 @@ public sealed partial class PhysicsWorld3D
     {
         CheckWorldPoint(world, what);
         var o = body.Position;
-        return body.Rotation.Conjugate().Rotate(new Vector3F((float)(world.X - o.X), (float)(world.Y - o.Y), (float)(world.Z - o.Z)));
+        return body.Rotation.Conjugated().Rotate(new Vector3F((float)(world.X - o.X), (float)(world.Y - o.Y), (float)(world.Z - o.Z)));
     }
 
     /// <summary>A world orientation whose x axis is <paramref name="axis"/> (a finite, non-zero world direction), with an arbitrary but fixed choice of the other two axes.</summary>
@@ -264,7 +264,7 @@ public sealed partial class PhysicsWorld3D
 
     /// <summary>The frame on a body that coincides with a world frame at <paramref name="anchor"/> now.</summary>
     private static JointFrame3D FrameOn(Body body, Vector3D anchor, QuaternionF worldFrame, string what)
-        => new(ToLocal(body, anchor, what), body.Rotation.Conjugate() * worldFrame);
+        => new(ToLocal(body, anchor, what), body.Rotation.Conjugated() * worldFrame);
 
     /// <summary>A hinge: the world point <paramref name="anchor"/> (on both bodies as they are now) stays together and the bodies turn about <paramref name="axis"/> (a world direction). Angle 0 is the current pose. Set limits, a motor or a spring through the returned <see cref="Joint"/>.</summary>
     /// <param name="a">The first body.</param>
@@ -352,7 +352,7 @@ public sealed partial class PhysicsWorld3D
     {
         var d = new GearJointDef
         {
-            BodyA = a, BodyB = b, LocalFrameA = new JointFrame3D(default, a.Rotation.Conjugate() * WorldFrame(axisA, nameof(axisA))), LocalFrameB = new JointFrame3D(default, b.Rotation.Conjugate() * WorldFrame(axisB, nameof(axisB))),
+            BodyA = a, BodyB = b, LocalFrameA = new JointFrame3D(default, a.Rotation.Conjugated() * WorldFrame(axisA, nameof(axisA))), LocalFrameB = new JointFrame3D(default, b.Rotation.Conjugated() * WorldFrame(axisB, nameof(axisB))),
             Ratio = ratio, CollideConnected = collideConnected,
         };
         return CreateJoint(in d);
@@ -363,7 +363,7 @@ public sealed partial class PhysicsWorld3D
     {
         var d = new RackAndPinionJointDef
         {
-            BodyA = pinion, BodyB = rack, LocalFrameA = new JointFrame3D(default, pinion.Rotation.Conjugate() * WorldFrame(pinionAxis, nameof(pinionAxis))), LocalFrameB = new JointFrame3D(default, rack.Rotation.Conjugate() * WorldFrame(rackAxis, nameof(rackAxis))),
+            BodyA = pinion, BodyB = rack, LocalFrameA = new JointFrame3D(default, pinion.Rotation.Conjugated() * WorldFrame(pinionAxis, nameof(pinionAxis))), LocalFrameB = new JointFrame3D(default, rack.Rotation.Conjugated() * WorldFrame(rackAxis, nameof(rackAxis))),
             Ratio = ratio, CollideConnected = collideConnected,
         };
         return CreateJoint(in d);

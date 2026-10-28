@@ -24,7 +24,7 @@ public sealed partial class ManifoldGenerator3D
         }
         else
         {
-            QuaternionF inv = bInA.Rotation.Conjugate();
+            QuaternionF inv = bInA.Rotation.Conjugated();
             e0 = inv.Rotate(new Vector3F(0f, hy, 0f) - bInA.Translation);
             e1 = inv.Rotate(new Vector3F(0f, -hy, 0f) - bInA.Translation);
         }

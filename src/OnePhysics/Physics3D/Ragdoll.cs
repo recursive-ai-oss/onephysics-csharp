@@ -127,7 +127,7 @@ public readonly struct Ragdoll : IEquatable<Ragdoll>
             var p = s.Def.Parts[i];
             var r = s.JointRot[i];
             var d = Engine3D.Normalize(pose[i], nameof(pose));
-            var target = (r.Conjugate() * d * r);   // the pose rotation in the joint frame: rel = R^-1 D R
+            var target = (r.Conjugated() * d * r);   // the pose rotation in the joint frame: rel = R^-1 D R
             new Joint(_world, new JointHandle(_world.Id, s.Joint[i], s.JointGen[i])).SetPoseDrive(target, p.DriveStiffness * strength, p.DriveDamping * strength, p.MaxTorque * strength);
         }
 
@@ -198,7 +198,7 @@ public readonly struct Ragdoll : IEquatable<Ragdoll>
             var t = s.TargetPos[i];
             b.LinearVelocity = new Vector3F((float)(t.X - p.X) * inv, (float)(t.Y - p.Y) * inv, (float)(t.Z - p.Z) * inv);
             // The rotation from the current to the target orientation as an axis-angle, spread over the step.
-            var dq = s.TargetRot[i] * b.Rotation.Conjugate();
+            var dq = s.TargetRot[i] * b.Rotation.Conjugated();
             if (dq.W < 0f) { dq = new QuaternionF(-dq.X, -dq.Y, -dq.Z, -dq.W); }
             float sn = float.Sqrt(dq.X * dq.X + dq.Y * dq.Y + dq.Z * dq.Z);
             if (sn > 1e-12f)
@@ -350,8 +350,8 @@ public sealed partial class PhysicsWorld3D
                 if (p.Parent < 0) { continue; }
                 var parent = made[p.Parent];
                 var pp = d.Parts[p.Parent];
-                var qpInv = s.BindRot[p.Parent].Conjugate();
-                var qcInv = s.BindRot[i].Conjugate();
+                var qpInv = s.BindRot[p.Parent].Conjugated();
+                var qcInv = s.BindRot[i].Conjugated();
                 var jr = s.JointRot[i];
                 var jd = new SwingTwistJointDef
                 {

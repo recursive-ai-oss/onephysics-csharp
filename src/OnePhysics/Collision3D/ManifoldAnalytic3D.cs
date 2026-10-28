@@ -134,7 +134,7 @@ public sealed partial class ManifoldGenerator3D
     private Manifold3D SpherePoly(in ConvexShape3D sphere, in ConvexShape3D poly, bool sphereIsA, in RigidTransformF bInA, float margin)
     {
         Matrix3x3F rot = bInA.Rotation.ToMatrix();
-        Vector3F c = sphereIsA ? (rot.Transpose() * -bInA.Translation) : bInA.Translation;
+        Vector3F c = sphereIsA ? (rot.Transposed() * -bInA.Translation) : bInA.Translation;
         ConvexHull3D h = HullOf(poly);
         float rS = sphere.ConvexRadius, rP = poly.ConvexRadius;
         ReadOnlySpan<HullFace3D> faces = h.Faces;

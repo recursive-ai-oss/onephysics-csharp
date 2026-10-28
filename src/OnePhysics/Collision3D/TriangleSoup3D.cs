@@ -436,7 +436,7 @@ public abstract class TriangleSoup3D
     // The box of a convex shape placed in the soup's frame, from six support points.
     private static Bounds3F ShapeBounds(in ConvexShape3D shape, in RigidTransformF placement)
     {
-        QuaternionF inv = placement.Rotation.Conjugate();
+        QuaternionF inv = placement.Rotation.Conjugated();
         Vector3F px = placement.TransformPoint(shape.Support(inv.Rotate(Vector3F.UnitX)));
         Vector3F nx = placement.TransformPoint(shape.Support(inv.Rotate(-Vector3F.UnitX)));
         Vector3F py = placement.TransformPoint(shape.Support(inv.Rotate(Vector3F.UnitY)));
@@ -537,7 +537,7 @@ public abstract class TriangleSoup3D
         CheckPlacement(shapeInSoup);
         CheckFinite(motion, nameof(motion));
         hit = default;
-        QuaternionF inv = shapeInSoup.Rotation.Conjugate();
+        QuaternionF inv = shapeInSoup.Rotation.Conjugated();
         Vector3F motionA = inv.Rotate(motion);
         // One scratch triangle per thread, so repeated casts allocate nothing.
         var buffer = s_castBuffer ??= new TriangleShapeBuffer3D();

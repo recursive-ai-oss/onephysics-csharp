@@ -94,7 +94,7 @@ public sealed partial class ManifoldGenerator3D
         RigidTransformF rel = bInA;
         if (aPlaced)
         {
-            rel = aLocal.Inverse() * rel;
+            rel = aLocal.Inverted() * rel;
         }
 
         if (bPlaced)
@@ -153,7 +153,7 @@ public sealed partial class ManifoldGenerator3D
         CheckBodyPose(bInA);
         results.Clear();
         List<int> kids = _scratchIds;
-        CompoundPairs3D.FindChildren(b, a, bInA.Inverse(), speculativeDistance, kids);
+        CompoundPairs3D.FindChildren(b, a, bInA.Inverted(), speculativeDistance, kids);
         foreach (int j in kids)
         {
             PlacedShape3D c = b.GetChild(j);

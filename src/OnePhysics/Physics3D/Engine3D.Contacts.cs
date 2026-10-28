@@ -596,7 +596,7 @@ internal sealed partial class Engine3D
         double dx = (pB[0] + (double)armB.X) - (pA[0] + (double)armA.X);
         double dy = (pB[1] + (double)armB.Y) - (pA[1] + (double)armA.Y);
         double dz = (pB[2] + (double)armB.Z) - (pA[2] + (double)armA.Z);
-        var inv = rwa.Conjugate();
+        var inv = rwa.Conjugated();
         var bInA = new RigidTransformF(inv * rwb, inv.Rotate(new Vector3F((float)dx, (float)dy, (float)dz)));
         var f = new PairFrame { Rwa = rwa, ArmA = armA, ComDiff = new Vector3F((float)(pA[0] - pB[0]), (float)(pA[1] - pB[1]), (float)(pA[2] - pB[2])) };
         float spec = Opt.SpeculativeDistance;
@@ -627,7 +627,7 @@ internal sealed partial class Engine3D
             if (m.PointCount == 0 && oldCons < 0 && gen.ClearanceOut > 0f)
             {
                 // The pose of B's body in A's body at this query, and how far apart the shapes were.
-                var invA = qA.Conjugate();
+                var invA = qA.Conjugated();
                 var d = invA.Rotate(new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])));
                 var qr = invA * qB;
                 float sg = qr.W < 0f ? -1f : 1f;
@@ -679,7 +679,7 @@ internal sealed partial class Engine3D
     // from that centre (chord = 2 sin(angle / 2) = twice the vector part of the relative rotation). The slack covers float rounding of the relative pose, which grows with its size.
     private static bool StillApart(in SkipFrame3 f, QuaternionF qA, QuaternionF qB, float dx, float dy, float dz)
     {
-        var invA = qA.Conjugate();
+        var invA = qA.Conjugated();
         var d = invA.Rotate(new Vector3F(dx, dy, dz));
         float ex = d.X - f.X, ey = d.Y - f.Y, ez = d.Z - f.Z;
         var qr = invA * qB;
@@ -699,7 +699,7 @@ internal sealed partial class Engine3D
     private static void SoupAgainst(NarrowScratch sc, in PairFrame f, TriangleSoup3D soup, bool soupIsA, Geom3D other, in RigidTransformF otherLocal, in RigidTransformF bInA, float spec)
     {
         // The other shape's frame in the soup's frame.
-        RigidTransformF otherInSoup = soupIsA ? bInA : bInA.Inverse();
+        RigidTransformF otherInSoup = soupIsA ? bInA : bInA.Inverted();
         RigidTransformF soupFromA = soupIsA ? RigidTransformF.Identity : otherInSoup; // points in A's frame into the soup's frame (soup is B: A in B)
         int first = sc.OutCount;
         if (other.IsConvex)
@@ -746,7 +746,7 @@ internal sealed partial class Engine3D
             }
             else
             {
-                m = NarrowScratch.Gen.Collide(shape, tshape, shapeInSoup.Inverse(), spec);
+                m = NarrowScratch.Gen.Collide(shape, tshape, shapeInSoup.Inverted(), spec);
                 subA = child < 0 ? 0 : child; subB = tri.Id;
             }
 
@@ -956,19 +956,19 @@ internal sealed partial class Engine3D
         // The normal belongs to the body whose face made it, the reference face: it is that face's normal and turns with that body. A normal that is no face normal (edge against edge, a ball, a capsule)
         // follows shape A; it is then right to within the relative motion the reuse allows, divided by the shapes' size.
         int frame = soup == 2 ? 2 : 1;
-        if (soup == 0 && !IsFaceNormal(ga.Convex, (qA * Local[sa].Rotation).Conjugate().Rotate(n)) && IsFaceNormal(gb.Convex, (qB * Local[sb].Rotation).Conjugate().Rotate(-n))) { frame = 2; }
+        if (soup == 0 && !IsFaceNormal(ga.Convex, (qA * Local[sa].Rotation).Conjugated().Rotate(n)) && IsFaceNormal(gb.Convex, (qB * Local[sb].Rotation).Conjugated().Rotate(-n))) { frame = 2; }
         pl[Rc.Owner] = frame;
-        var nl = (frame == 1 ? qA : qB).Conjugate().Rotate(n);
+        var nl = (frame == 1 ? qA : qB).Conjugated().Rotate(n);
         pl[Rc.Normal] = nl.X; pl[Rc.Normal + 1] = nl.Y; pl[Rc.Normal + 2] = nl.Z;
-        var invA = qA.Conjugate();
+        var invA = qA.Conjugated();
         var dW = new Vector3F((float)(pos[3 * bb] - pos[3 * ba]), (float)(pos[3 * bb + 1] - pos[3 * ba + 1]), (float)(pos[3 * bb + 2] - pos[3 * ba + 2]));
         // The relative pose is kept as the other body's in the frame of the reference body: A, or the soup's body when B is the soup (the soup's own points are fixed in its frame, so only the other body's move).
-        var invR = soup == 2 ? qB.Conjugate() : invA;
+        var invR = soup == 2 ? qB.Conjugated() : invA;
         var d = invR.Rotate(soup == 2 ? -dW : dW);
         pl[Rc.Rel] = d.X; pl[Rc.Rel + 1] = d.Y; pl[Rc.Rel + 2] = d.Z;
         var qr = invR * (soup == 2 ? qA : qB);
         pl[Rc.Rel + 3] = qr.X; pl[Rc.Rel + 4] = qr.Y; pl[Rc.Rel + 5] = qr.Z; pl[Rc.Rel + 6] = qr.W;
-        var invB = qB.Conjugate();
+        var invB = qB.Conjugated();
         for (int k = 0; k < res.Count; k++)
         {
             int q = k * 7, o = Rc.Points + 7 * k;
@@ -990,14 +990,14 @@ internal sealed partial class Engine3D
         int owner = ownerF == 1f ? 1 : ownerF == 2f ? 2 : 0;
         if (owner == 0) { return false; }
         // The reference body is A, or the soup's body when B is the soup; the other body is the mover (see StoreRecycleFrame).
-        var invA = qA.Conjugate();
-        var invR = soup == 2 ? qB.Conjugate() : invA;
+        var invA = qA.Conjugated();
+        var invR = soup == 2 ? qB.Conjugated() : invA;
         int mover = soup == 2 ? ba : bb;
         // How far the mover has moved and turned in the reference body's frame since the manifold was made.
         var d = invR.Rotate(soup == 2 ? -dW : dW);
         float ex = d.X - pl[Rc.Rel], ey = d.Y - pl[Rc.Rel + 1], ez = d.Z - pl[Rc.Rel + 2];
         var q0 = new QuaternionF(pl[Rc.Rel + 3], pl[Rc.Rel + 4], pl[Rc.Rel + 5], pl[Rc.Rel + 6]);
-        var dq = (invR * (soup == 2 ? qA : qB)) * q0.Conjugate();
+        var dq = (invR * (soup == 2 ? qA : qB)) * q0.Conjugated();
         float lim = RecycleTol - float.Sqrt(ex * ex + ey * ey + ez * ez); // what is left of the budget for the turn
         float turn = 2f * float.Sqrt(dq.X * dq.X + dq.Y * dq.Y + dq.Z * dq.Z);
         if (!(lim >= 0f && turn * MaxExtent[mover] <= lim)) { return false; } // false for NaN too
