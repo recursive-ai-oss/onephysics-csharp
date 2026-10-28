@@ -184,7 +184,11 @@ internal sealed partial class Engine2D
         }
 
         // Remembered on the batch's first constraint so the solve passes can pick the wide path without looking at every constraint: contacts only, not the overflow set.
-        if (constraints.Length > 0) { BatchSimple[constraints[0]] = (byte)(!anyJoint && cs.Color[constraints[0]] != ConstraintStore.Overflow ? 1 : 0); }
+        if (constraints.Length > 0)
+        {
+            bool overflowSet = cs.Color[constraints[0]] == ConstraintStore.Overflow;
+            BatchSimple[constraints[0]] = (byte)(overflowSet ? 0 : !anyJoint ? 1 : jlane == constraints.Length && jidx.Length != 0 ? 2 : 0);
+        }
 
         // Unused lanes of a short group read as zeros.
         for (int l = lane; l < W2D.Lanes; l++)
@@ -269,7 +273,18 @@ internal sealed partial class Engine2D
     {
         var kp = new KernelParams(ctx.InverseSubstepDt, Opt.PushOutVelocity, Opt.ContactSlop, Opt.RestitutionThreshold);
         if (constraints.Length == 0) { return; }
-        if (BatchSimple[constraints[0]] == 1) { RunContacts(SlotOf[constraints[0]] >> 3, constraints.Length, phase, in kp); return; }
+        int simple = BatchSimple[constraints[0]];
+        if (simple == 1) { RunContacts(SlotOf[constraints[0]] >> 3, constraints.Length, phase, in kp); return; }
+        if (simple == 2)
+        {
+            // Only wide revolute joints: one group of the joint kernel.
+            int group = JSlotOf[constraints[0]] >> 3;
+            if (KernelWidth == 1) { JointKernel2D.Run<Lanes1>(this, group, 0, constraints.Length, phase); }
+            else if (KernelWidth == 4) { JointKernel2D.Run<Lanes128>(this, group, 0, constraints.Length, phase); }
+            else { JointKernel2D.Run<Lanes256>(this, group, 0, constraints.Length, phase); }
+            return;
+        }
+
         var cons = Core.Constraints;
         bool overflow = cons.Color[constraints[0]] == ConstraintStore.Overflow;
         int joints = 0;
