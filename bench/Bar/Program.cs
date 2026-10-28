@@ -309,7 +309,7 @@ static class Runner
 }
 
 
-/// <summary>Stability-sweep perturbations of this library's own engine, read from the environment of the driver process: BAR_CONTACT_HERTZ_SCALE, BAR_JOINT_HERTZ_SCALE and BAR_PUSH_OUT_SCALE multiply the soft-constraint frequencies and the push-out speed, BAR_CONTACT_DAMPING and BAR_JOINT_DAMPING set the damping ratios, BAR_SUBSTEPS sets the substep count. Unset means the defaults.</summary>
+/// <summary>Stability-sweep perturbations of this library's own engine, read from the environment of the driver process: BAR_CONTACT_HERTZ_SCALE, BAR_JOINT_HERTZ_SCALE and BAR_PUSH_OUT_SCALE multiply the soft-constraint frequencies and the push-out speed, BAR_CONTACT_DAMPING and BAR_JOINT_DAMPING set the damping ratios, BAR_SUBSTEPS sets the substep count, BAR_RELAX and BAR_VELITERS (3D only) the relax and solve pass counts. Unset means the defaults.</summary>
 static class SweepTweaks
 {
     static float Get(string name, float d) => float.TryParse(Environment.GetEnvironmentVariable(name), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : d;
@@ -317,9 +317,9 @@ static class SweepTweaks
     public static void Install()
     {
         float ch = Get("BAR_CONTACT_HERTZ_SCALE", 1f), jh = Get("BAR_JOINT_HERTZ_SCALE", 1f), cd = Get("BAR_CONTACT_DAMPING", -1f), jd = Get("BAR_JOINT_DAMPING", -1f), push = Get("BAR_PUSH_OUT_SCALE", 1f);
-        int sub = (int)Get("BAR_SUBSTEPS", 0f);
-        if (ch == 1f && jh == 1f && cd < 0 && jd < 0 && push == 1f && sub == 0) return;
+        int sub = (int)Get("BAR_SUBSTEPS", 0f), relax = (int)Get("BAR_RELAX", -1f), vit = (int)Get("BAR_VELITERS", 0f);
+        if (ch == 1f && jh == 1f && cd < 0 && jd < 0 && push == 1f && sub == 0 && relax < 0 && vit == 0) return;
         SceneBuilder2D.Tweak = o => { o.ContactHertz *= ch; o.JointHertz *= jh; o.PushOutVelocity *= push; if (cd >= 0) o.ContactDampingRatio = cd; if (jd >= 0) o.JointDampingRatio = jd; if (sub > 0) o.Substeps = sub; };
-        SceneBuilder3D.Tweak = o => { o.ContactHertz *= ch; o.JointHertz *= jh; o.PushOutVelocity *= push; if (cd >= 0) o.ContactDampingRatio = cd; if (jd >= 0) o.JointDampingRatio = jd; if (sub > 0) o.Substeps = sub; };
+        SceneBuilder3D.Tweak = o => { if (relax >= 0) o.RelaxIterations = relax; if (vit > 0) o.VelocityIterations = vit; o.ContactHertz *= ch; o.JointHertz *= jh; o.PushOutVelocity *= push; if (cd >= 0) o.ContactDampingRatio = cd; if (jd >= 0) o.JointDampingRatio = jd; if (sub > 0) o.Substeps = sub; };
     }
 }
