@@ -347,3 +347,16 @@ Left as measured not worth doing now: manifold reuse costs 265 ns per reused pai
 - *Seams.* A contact point in a triangle's face region but within 5 mm of an inactive edge counts as on that edge. A point on a seam falls on either side of the edge depending on float rounding, and which one depends on the exact pose, so a spinning sphere crossing the same seam kept a leaning normal at some phases and was kicked up (0.57 m/s at 20 rad/s against 0.012 without spin). Tests: spinning spheres on a triangle mesh and on a height field.
 - *Where the narrowphase time goes* (large-pile-3d, one thread, instrumented, indicative): about 27,000 pairs a step, of which 46% are rejected by the tight boxes (about 20 ns each), 24% reuse their manifold (220 ns each, 1.7 ms), 16% run the full query (4,500 a step, 3 ms of which box/hull pairs take half at about 2 us each), the rest are skipped as still apart.
 - `ShiftOrigin` leaves the position of a destroyed body slot at zero (a snapshot with a non-zero dead slot is refused by the reader).
+
+### Round 9: step cost (no result changes)
+
+None of these changes a world hash; every `world3d` and `collision3d` hash-matrix line is as before.
+
+- *Kernel frames are not cleared.* The contact and joint solver kernels carry kilobytes of vector-struct locals (a batch's bodies and points); the runtime cleared about 3.7 KB at every call. They are marked `SkipLocalsInit` (the project file allows unsafe blocks only so that the attribute compiles; the source scan still rejects the keyword). Every local is assigned before it is read, and the one stack buffer (gather offsets) is fully written before use. About 8% of a pile step.
+- *Joint kernel gathers like the contact kernel.* Bodies come in through the same whole-row loads and transposes, and velocities go out through the same unchecked scatter (`Mem` accessors, bounded by the prepared body slots; bounds-checked in `Checked`).
+- *Contact preparation gathers bodies itself.* The inverse inertias and velocities of a group are gathered in `PrepareMasses` instead of being copied lane by lane into scratch rows; the scratch rows are gone from the group.
+- *Restitution pass skipped* for a group where no lane has restitution (the pass would change nothing).
+- *Clearance for more pair kinds.* Sphere and capsule pairs, sphere against polyhedron and GJK-decided pairs report how far apart they are, so the pair is not queried again until the relative motion has used the distance up (the same rule as polyhedron pairs). In large-pile-3d full queries fell from about 3,900 to 430 a step.
+- *Box A reuse in the SAT:* shape A's vertices, normals and plane offsets are kept between consecutive queries with the same box.
+- *Bounds check:* a dynamic body well inside the range (position under 1e6, sizes under 1e5) skips the exact box test; anything else takes it.
+- *Parallel glue:* the per-body start-of-step pass runs in chunks of 128 bodies; the serial constraint pass visits only the pairs the narrowphase tasks listed.

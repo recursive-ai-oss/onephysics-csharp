@@ -176,11 +176,10 @@ internal sealed partial class Engine3D
         var bodies = core.Bodies;
         ReadOnlySpan<int> bodyA = cs.BodyA, bodyB = cs.BodyB;
         ReadOnlySpan<float> invMass = bodies.InverseMass;
-        ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
         var w = Wide.AsSpan(group * W3D.GroupFloats, W3D.GroupFloats);
         var idx = WideIdx.AsSpan(group * W3D.IdxPerGroup, W3D.IdxPerGroup);
         for (int l = 0; l < W3D.Lanes; l++) { idx[l] = 0; idx[8 + l] = 0; idx[16 + l] = -1; idx[24 + l] = -1; }
-        int maxPoints = 1, anyRolling = 0;
+        int maxPoints = 1, anyRolling = 0, anyRestitution = 0;
         float allOnes = BitConverter.Int32BitsToSingle(-1);
         int lane = 0, jlane = 0;
         Span<float> rm = stackalloc float[6];
@@ -206,24 +205,22 @@ internal sealed partial class Engine3D
             float mA = invMass[a], mB = invMass[b];
             idx[lane] = a; idx[8 + lane] = b;
             idx[16 + lane] = mA > 0f ? a : -1; idx[24 + lane] = mB > 0f ? b : -1;
-            ReadOnlySpan<float> iA = WInvI.AsSpan(6 * a, 6), iB = WInvI.AsSpan(6 * b, 6);
             var n = V(pl, ManifoldLayout.Normal);
             Tangents(n, out var t1, out var t2);
             Put3(w, W3D.N, lane, n); Put3(w, W3D.T1, lane, t1); Put3(w, W3D.T2, lane, t2);
             w[W3D.Friction * 8 + lane] = pl[ManifoldLayout.Friction];
-            w[W3D.Restitution * 8 + lane] = pl[ManifoldLayout.Restitution];
+            float restitution = pl[ManifoldLayout.Restitution];
+            w[W3D.Restitution * 8 + lane] = restitution;
+            if (restitution != 0f) { anyRestitution = 1; }
             float rolling = pl[ManifoldLayout.RollingResistance];
             w[W3D.Rolling * 8 + lane] = rolling;
             w[W3D.InvMassA * 8 + lane] = mA; w[W3D.InvMassB * 8 + lane] = mB;
             if (mA == 0f || mB == 0f) { w[W3D.BiasRate * 8 + lane] = _stBias; w[W3D.MassScale * 8 + lane] = _stMass; w[W3D.ImpulseScale * 8 + lane] = _stImpulse; }
             else { w[W3D.BiasRate * 8 + lane] = _dynBias; w[W3D.MassScale * 8 + lane] = _dynMass; w[W3D.ImpulseScale * 8 + lane] = _dynImpulse; }
-            if (rolling > 0f) { anyRolling = 1; RollingMass(iA, iB, rm); for (int k = 0; k < 6; k++) { w[(W3D.RollMass + k) * 8 + lane] = rm[k]; } }
+            if (rolling > 0f) { anyRolling = 1; RollingMass(WInvI.AsSpan(6 * a, 6), WInvI.AsSpan(6 * b, 6), rm); for (int k = 0; k < 6; k++) { w[(W3D.RollMass + k) * 8 + lane] = rm[k]; } }
             Put3(w, W3D.RollImpulse, lane, V(pl, ManifoldLayout.RollingImpulse));
 
-            // The effective masses, adjusted separations and relative velocities are computed for the whole group at once afterwards (ContactKernel3D.PrepareMasses); the inputs wait in the group's scratch rows.
-            int st = W3D.StageOffset;
-            for (int k = 0; k < 6; k++) { w[st + k * 8 + lane] = iA[k]; w[st + (6 + k) * 8 + lane] = iB[k]; }
-            Put3(w, st / 8 + 12, lane, V(lin, 3 * a)); Put3(w, st / 8 + 15, lane, V(ang, 3 * a)); Put3(w, st / 8 + 18, lane, V(lin, 3 * b)); Put3(w, st / 8 + 21, lane, V(ang, 3 * b));
+            // The effective masses, adjusted separations and relative velocities are computed for the whole group at once afterwards (ContactKernel3D.PrepareMasses), which gathers the bodies itself.
             int count = cs.PointCount[c];
             if (count > maxPoints) { maxPoints = count; }
             for (int i = 0; i < count; i++)
@@ -252,12 +249,13 @@ internal sealed partial class Engine3D
 
         if (lane > 0)
         {
-            if (KernelWidth == 1) { ContactKernel3D.PrepareMasses<Lanes1>(w, maxPoints); }
-            else if (KernelWidth == 4) { ContactKernel3D.PrepareMasses<Lanes128>(w, maxPoints); }
-            else { ContactKernel3D.PrepareMasses<Lanes256>(w, maxPoints); }
+            ReadOnlySpan<float> linP = bodies.LinearVelocityPadded, angP = bodies.AngularVelocityPadded;
+            if (KernelWidth == 1) { ContactKernel3D.PrepareMasses<Lanes1>(w, idx, linP, angP, Pk, maxPoints); }
+            else if (KernelWidth == 4) { ContactKernel3D.PrepareMasses<Lanes128>(w, idx, linP, angP, Pk, maxPoints); }
+            else { ContactKernel3D.PrepareMasses<Lanes256>(w, idx, linP, angP, Pk, maxPoints); }
         }
 
-        idx[W3D.MaxPointsSlot] = maxPoints; idx[W3D.AnyRollingSlot] = anyRolling;
+        idx[W3D.MaxPointsSlot] = maxPoints; idx[W3D.AnyRollingSlot] = anyRolling; idx[W3D.AnyRestitutionSlot] = anyRestitution;
     }
 
     /// <summary>The joint types whose three-row point block (always their last rows) is solved by <see cref="JointKernel3D"/>; their other rows stay in <see cref="SolveJoint"/>.</summary>

@@ -330,6 +330,9 @@ internal sealed partial class Engine3D : ISnapshotSection
             if (!bodies.IsLive(b) || (!includeStatic && bodies.TypeOf(b) == BodyType.Static)) { continue; }
             // A sleeping body has not moved since it was last checked (teleporting wakes it), and building the box of thousands of resting bodies every step is most of the cost of a sleeping world.
             if (movingOnly && bodies.IsDynamic(b) && !bodies.IsAwake(b)) { continue; }
+            // A dynamic body well inside the range cannot have an invalid box: every point of its shapes is within MaxExtent (padded for rounding) of its centre of mass, and the fattening adds the margin and
+            // twice the last displacement. The limits below leave a wide gap to the 2^22 box limit, and NaN or infinite values fail every comparison, so those bodies take the exact test.
+            if (movingOnly && bodies.IsDynamic(b) && WellInsideRange(b)) { continue; }
             for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
             {
                 var box = TightBox(b, s);
@@ -348,6 +351,17 @@ internal sealed partial class Engine3D : ISnapshotSection
         handle = default;
         message = "";
         return false;
+    }
+
+    private bool WellInsideRange(int b)
+    {
+        const double PositionLimit = 1.0e6, SizeLimit = 1.0e5;
+        var p = Core.Bodies.PositionOf(b);
+        double margin = Opt.BroadphaseMargin;
+        return Math.Abs(p[0]) <= PositionLimit && Math.Abs(p[1]) <= PositionLimit && Math.Abs(p[2]) <= PositionLimit
+            && MaxExtent[b] >= 0f && MaxExtent[b] <= SizeLimit
+            && Math.Abs(Dp[3 * b]) <= SizeLimit && Math.Abs(Dp[3 * b + 1]) <= SizeLimit && Math.Abs(Dp[3 * b + 2]) <= SizeLimit
+            && margin >= 0.0 && margin <= SizeLimit;
     }
 
     public QuaternionF RotationOfBody(int b)

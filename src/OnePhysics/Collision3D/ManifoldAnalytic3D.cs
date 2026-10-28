@@ -86,6 +86,13 @@ public sealed partial class ManifoldGenerator3D
         ushort sa = s <= 0f ? FCode.Vertex(0) : s >= 1f ? FCode.Vertex(1) : FCode.Edge(0);
         ushort sb = t <= 0f ? FCode.Vertex(0) : t >= 1f ? FCode.Vertex(1) : FCode.Edge(0);
         PushSurface(c1, c2, nn, rA, rB, sa, sb, margin);
+        if (_count == 0 && dist2 > 0f)
+        {
+            // Apart by more than the margin: the core segments are ConvexShape3D.Sqrt(dist2) apart, the surfaces that much less the radii.
+            float clear = ConvexShape3D.Sqrt(dist2) - rr - margin;
+            if (clear > 0f) { ClearanceOut = clear; }
+        }
+
         return Finish(nn);
     }
 
@@ -241,6 +248,8 @@ public sealed partial class ManifoldGenerator3D
         float sep = distCore - rS - rP;
         if (sep > margin)
         {
+            // The distance is exact up to rounding, so a caller that knows the shapes' motion can skip the next queries until the motion has used it up.
+            ClearanceOut = sep - margin;
             return Empty;
         }
 

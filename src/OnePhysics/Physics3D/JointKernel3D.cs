@@ -15,7 +15,7 @@ internal static class J3D
     public const int RA = 0, RB = 3, D = 6, InvMassA = 9, InvMassB = 10, Impulse = 11;
     public const int Fields = 14;
     public const int Lanes = 8;
-    public const int StageOffset = Fields * Lanes, StageFloats = 38 * 8, OutOffset = StageOffset + StageFloats, OutFloats = 12 * 8;
+    public const int StageOffset = Fields * Lanes, StageFloats = 0, OutOffset = StageOffset + StageFloats, OutFloats = 12 * 8;
     public const int GroupFloats = OutOffset + OutFloats;
 
     /// <summary>Integers per group in <see cref="Engine3D.WideJIdx"/>: body rows of A and B, then the same rows for bodies the kernel writes (or -1), eight lanes each.</summary>
@@ -35,6 +35,7 @@ internal readonly struct JointKernelParams
 /// the same operations in the same order at every width and scattered back. The three rows (the anchors coincide) are solved together as one 3×3 block through the closed-form inverse of
 /// K = (mA + mB)·1 + [rA]ᵀ·IA·[rA] + [rB]ᵀ·IB·[rB], where [r] is the cross-product matrix. The joints of a batch touch disjoint dynamic bodies, so lanes never depend on each other.
 /// </summary>
+[System.Runtime.CompilerServices.SkipLocalsInit]
 internal static class JointKernel3D
 {
     private struct V3<T> where T : struct, ILane<T>
@@ -78,24 +79,43 @@ internal static class JointKernel3D
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static T Field<T>(ReadOnlySpan<float> wide, int f, int lane0) where T : struct, ILane<T> => T.Load(wide.Slice(f * 8 + lane0, T.Count));
+    private static T Field<T>(ReadOnlySpan<float> wide, int f, int lane0) where T : struct, ILane<T> => T.LoadAt(wide, f * 8 + lane0);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static V3<T> Vec<T>(ReadOnlySpan<float> wide, int f, int lane0) where T : struct, ILane<T> => new(Field<T>(wide, f, lane0), Field<T>(wide, f + 1, lane0), Field<T>(wide, f + 2, lane0));
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static T Stage<T>(ReadOnlySpan<float> stage, int f) where T : struct, ILane<T> => T.Load(stage.Slice(f * T.Count, T.Count));
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static V3<T> StageVec<T>(ReadOnlySpan<float> stage, int f) where T : struct, ILane<T> => new(Stage<T>(stage, f), Stage<T>(stage, f + 1), Stage<T>(stage, f + 2));
-
-    private static BodyLanes<T> LoadBody<T>(ReadOnlySpan<float> stage, int f0, T invMass) where T : struct, ILane<T> => new()
+    /// <summary>
+    /// The state of the bodies on one side of a batch, one body per lane, by whole-row loads and a transpose (the same data movement as the contact kernel's): velocities from the velocity arrays,
+    /// displacement, accumulated rotation and world inverse inertia from the packed rows (<see cref="Engine3D.Pk"/>).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void GatherBody<T>(out BodyLanes<T> r, ReadOnlySpan<float> lin, ReadOnlySpan<float> ang, ReadOnlySpan<float> pk, ReadOnlySpan<int> bodyIds, Span<int> offs, T invMass) where T : struct, ILane<T>
     {
-        V = StageVec<T>(stage, f0), W = StageVec<T>(stage, f0 + 3), Dp = StageVec<T>(stage, f0 + 6),
-        Qx = Stage<T>(stage, f0 + 9), Qy = Stage<T>(stage, f0 + 10), Qz = Stage<T>(stage, f0 + 11), Qw = Stage<T>(stage, f0 + 12),
-        I = new Sym<T> { M0 = Stage<T>(stage, f0 + 13), M1 = Stage<T>(stage, f0 + 14), M2 = Stage<T>(stage, f0 + 15), M3 = Stage<T>(stage, f0 + 16), M4 = Stage<T>(stage, f0 + 17), M5 = Stage<T>(stage, f0 + 18) },
-        InvMass = invMass,
-    };
+        int width = T.Count;
+        for (int l = 0; l < width; l++) { offs[l] = 3 * bodyIds[l]; }
+        var v = T.GatherRows(lin, offs);
+        var w = T.GatherRows(ang, offs);
+        for (int l = 0; l < width; l++) { offs[l] = 16 * bodyIds[l]; }
+        var g0 = T.GatherRows(pk, offs);
+        for (int l = 0; l < width; l++) { offs[l] += 8; }
+        var g1 = T.GatherRows(pk, offs);
+        r = new BodyLanes<T>
+        {
+            V = new V3<T>(v.R0, v.R1, v.R2), W = new V3<T>(w.R0, w.R1, w.R2), Dp = new V3<T>(g0.R0, g0.R1, g0.R2),
+            Qx = g0.R3, Qy = g0.R4, Qz = g0.R5, Qw = g0.R6,
+            I = new Sym<T> { M0 = g0.R7, M1 = g1.R0, M2 = g1.R1, M3 = g1.R2, M4 = g1.R3, M5 = g1.R4 },
+            InvMass = invMass,
+        };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ScatterBody(Span<float> lin, Span<float> ang, ReadOnlySpan<float> os, int at, int first, int width)
+    {
+        // at is a live dynamic body's slot (3 floats a body, set when the batch was prepared) and first + 5 * width + 1 stays inside the group's output rows.
+        Mem.Range(lin, at, 3); Mem.Range(ang, at, 3); Mem.Range(os, first, 5 * width + 1);
+        Mem.At(lin, at) = Mem.At(os, first); Mem.At(lin, at + 1) = Mem.At(os, first + width); Mem.At(lin, at + 2) = Mem.At(os, first + 2 * width);
+        Mem.At(ang, at) = Mem.At(os, first + 3 * width); Mem.At(ang, at + 1) = Mem.At(os, first + 4 * width); Mem.At(ang, at + 2) = Mem.At(os, first + 5 * width);
+    }
 
     /// <summary>q v q⁻¹ for a unit quaternion: v + w·t + u × t with t = 2 u × v.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -145,10 +165,10 @@ internal static class JointKernel3D
         var wide = e.WideJ.AsSpan(group * J3D.GroupFloats, J3D.GroupFloats);
         var idx = e.WideJIdx.AsSpan(group * J3D.IdxPerGroup, J3D.IdxPerGroup);
         var bodies = e.Core.Bodies;
-        ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
+        ReadOnlySpan<float> lin = bodies.LinearVelocityPadded, ang = bodies.AngularVelocityPadded;
         ReadOnlySpan<float> pk = e.Pk;
+        Span<int> offs = stackalloc int[8];
         Span<float> linW = bodies.LinearVelocity, angW = bodies.AngularVelocity;
-        Span<float> stage = e.WideJ.AsSpan(group * J3D.GroupFloats + J3D.StageOffset, J3D.StageFloats);
         Span<float> os = e.WideJ.AsSpan(group * J3D.GroupFloats + J3D.OutOffset, J3D.OutFloats);
         T two = T.Broadcast(2f), zero = T.Zero;
         bool warm = phase == SolvePhase.WarmStart;
@@ -158,21 +178,8 @@ internal static class JointKernel3D
 
         for (int l0 = lane0; l0 < lane0 + n; l0 += width)
         {
-            for (int l = 0; l < width; l++)
-            {
-                for (int side = 0; side < 2; side++)
-                {
-                    int b = idx[8 * side + l0 + l];
-                    int f = 19 * side;
-                    stage[(f + 0) * width + l] = lin[3 * b]; stage[(f + 1) * width + l] = lin[3 * b + 1]; stage[(f + 2) * width + l] = lin[3 * b + 2];
-                    stage[(f + 3) * width + l] = ang[3 * b]; stage[(f + 4) * width + l] = ang[3 * b + 1]; stage[(f + 5) * width + l] = ang[3 * b + 2];
-                    var row = pk.Slice(16 * b, 13);
-                    for (int k = 0; k < 13; k++) { stage[(f + 6 + k) * width + l] = row[k]; }
-                }
-            }
-
-            var a = LoadBody<T>(stage, 0, Field<T>(wide, J3D.InvMassA, l0));
-            var b2 = LoadBody<T>(stage, 19, Field<T>(wide, J3D.InvMassB, l0));
+            GatherBody<T>(out var a, lin, ang, pk, idx.Slice(l0, width), offs, Field<T>(wide, J3D.InvMassA, l0));
+            GatherBody<T>(out var b2, lin, ang, pk, idx.Slice(8 + l0, width), offs, Field<T>(wide, J3D.InvMassB, l0));
             // The anchors turn with their bodies' rotation accumulated this step; the separation of the anchors follows from the bodies' displacements.
             var rA = Rotate(a.Qx, a.Qy, a.Qz, a.Qw, Vec<T>(wide, J3D.RA, l0), two);
             var rB = Rotate(b2.Qx, b2.Qy, b2.Qz, b2.Qw, Vec<T>(wide, J3D.RB, l0), two);
@@ -204,30 +211,21 @@ internal static class JointKernel3D
                 Apply(ref a, ref b2, rA, rB, step);
             }
 
-            a.V.X.Store(os.Slice(0 * width, width)); a.V.Y.Store(os.Slice(1 * width, width)); a.V.Z.Store(os.Slice(2 * width, width));
-            a.W.X.Store(os.Slice(3 * width, width)); a.W.Y.Store(os.Slice(4 * width, width)); a.W.Z.Store(os.Slice(5 * width, width));
-            b2.V.X.Store(os.Slice(6 * width, width)); b2.V.Y.Store(os.Slice(7 * width, width)); b2.V.Z.Store(os.Slice(8 * width, width));
-            b2.W.X.Store(os.Slice(9 * width, width)); b2.W.Y.Store(os.Slice(10 * width, width)); b2.W.Z.Store(os.Slice(11 * width, width));
+            a.V.X.StoreAt(os, 0 * width); a.V.Y.StoreAt(os, 1 * width); a.V.Z.StoreAt(os, 2 * width);
+            a.W.X.StoreAt(os, 3 * width); a.W.Y.StoreAt(os, 4 * width); a.W.Z.StoreAt(os, 5 * width);
+            b2.V.X.StoreAt(os, 6 * width); b2.V.Y.StoreAt(os, 7 * width); b2.V.Z.StoreAt(os, 8 * width);
+            b2.W.X.StoreAt(os, 9 * width); b2.W.Y.StoreAt(os, 10 * width); b2.W.Z.StoreAt(os, 11 * width);
             for (int l = 0; l < width && l0 + l < lane0 + n; l++)
             {
                 // Scatter offsets are body indices of dynamic bodies, or -1 for a body that keeps its velocity.
                 int ia = idx[16 + l0 + l];
-                if (ia >= 0)
-                {
-                    linW[3 * ia] = os[l]; linW[3 * ia + 1] = os[width + l]; linW[3 * ia + 2] = os[2 * width + l];
-                    angW[3 * ia] = os[3 * width + l]; angW[3 * ia + 1] = os[4 * width + l]; angW[3 * ia + 2] = os[5 * width + l];
-                }
-
+                if (ia >= 0) { ScatterBody(linW, angW, os, 3 * ia, l, width); }
                 int ib = idx[24 + l0 + l];
-                if (ib >= 0)
-                {
-                    linW[3 * ib] = os[6 * width + l]; linW[3 * ib + 1] = os[7 * width + l]; linW[3 * ib + 2] = os[8 * width + l];
-                    angW[3 * ib] = os[9 * width + l]; angW[3 * ib + 1] = os[10 * width + l]; angW[3 * ib + 2] = os[11 * width + l];
-                }
+                if (ib >= 0) { ScatterBody(linW, angW, os, 3 * ib, l + 6 * width, width); }
             }
 
             if (warm) { continue; }
-            imp.X.Store(wide.Slice((J3D.Impulse + 0) * 8 + l0, width)); imp.Y.Store(wide.Slice((J3D.Impulse + 1) * 8 + l0, width)); imp.Z.Store(wide.Slice((J3D.Impulse + 2) * 8 + l0, width));
+            imp.X.StoreAt(wide, (J3D.Impulse + 0) * 8 + l0); imp.Y.StoreAt(wide, (J3D.Impulse + 1) * 8 + l0); imp.Z.StoreAt(wide, (J3D.Impulse + 2) * 8 + l0);
         }
     }
 }
