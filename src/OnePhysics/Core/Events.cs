@@ -155,6 +155,15 @@ public sealed class EventCollector
         }
     }
 
+    /// <summary>Gives slot 0 room for <paramref name="events"/> events and every other slot (up to <paramref name="slots"/>) room for <paramref name="perSlot"/>, so a step that raises that many allocates nothing.</summary>
+    internal void Reserve(int events, int slots, int perSlot)
+    {
+        EnsureSlots(slots);
+        if (_slots[0].Length < events) { Array.Resize(ref _slots[0], events); }
+        for (int i = 1; i < _slots.Length; i++) { if (_slots[i].Length < perSlot) { Array.Resize(ref _slots[i], perSlot); } }
+        if (_delivered.Length < events) { Array.Resize(ref _delivered, events); }
+    }
+
     /// <summary>Makes sure slots <c>0..count-1</c> exist. Call from serial code before a parallel phase that emits events.</summary>
     public void EnsureSlots(int count)
     {

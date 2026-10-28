@@ -51,6 +51,12 @@ public sealed class StateWriter
     /// <summary>Number of bytes written so far (buffer and count modes).</summary>
     public int Length => _length;
 
+    /// <summary>Makes room for at least <paramref name="bytes"/> bytes so writing up to that much allocates nothing. No effect on a hashing or counting writer.</summary>
+    internal void EnsureCapacity(int bytes)
+    {
+        if (!_hashing && !_counting && _buffer.Length < bytes) { Array.Resize(ref _buffer, bytes); }
+    }
+
     /// <summary>Starts over: an empty buffer (its storage is kept), a zero count, or the initial hash. Lets a world reuse one writer for every snapshot or hash.</summary>
     public void Reset()
     {

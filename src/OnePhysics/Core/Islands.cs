@@ -52,6 +52,27 @@ public sealed class IslandSet
         Array.Copy(old, grown, used);
         return grown;
     }
+
+    // A list for an island read from a snapshot: the smallest spare that fits (the outgrown one takes its place), else a new one. Contents are not copied.
+    private int[] Swap(int[]? old, int need)
+    {
+        int best = -1;
+        for (int i = 0; i < _spare.Count; i++)
+        {
+            if (_spare[i].Length >= need && (best < 0 || _spare[i].Length < _spare[best].Length)) { best = i; }
+        }
+
+        if (best >= 0)
+        {
+            int[] taken = _spare[best];
+            if (old != null) { _spare[best] = old; } else { _spare.RemoveAt(best); }
+            return taken;
+        }
+
+        if (old != null && _spare.Count < MaxSpare) { _spare.Add(old); }
+        return new int[Math.Max(need, 8)];
+    }
+
     private readonly List<int> _stack = new();
     private readonly List<int> _component = new();
 
@@ -74,6 +95,25 @@ public sealed class IslandSet
     public ReadOnlySpan<int> Bodies(int island) => _bodies[island].AsSpan(0, _count[island]);
 
     internal void SetAsleep(int island, bool asleep) => _asleep[island] = asleep;
+
+    /// <summary>Sizes the tables for up to <paramref name="islands"/> islands and <paramref name="bodies"/> bodies, and keeps a few body lists big enough for the biggest island in reserve.</summary>
+    internal void Reserve(int islands, int bodies)
+    {
+        _ids.Reserve(islands);
+        _stack.EnsureCapacity(bodies);
+        _component.EnsureCapacity(bodies);
+        if (_bodies.Length < islands)
+        {
+            Array.Resize(ref _bodies, islands); Array.Resize(ref _count, islands); Array.Resize(ref _asleep, islands); Array.Resize(ref _removed, islands);
+        }
+
+        if (_countsScratch.Length < islands) { Array.Resize(ref _countsScratch, islands); }
+        if (_scratchVisited.Length < bodies) { Array.Resize(ref _scratchVisited, bodies); }
+        if (_snapshot.Length < bodies) { Array.Resize(ref _snapshot, bodies); }
+        int big = 0;
+        foreach (var spare in _spare) { if (spare.Length >= bodies) { big++; } }
+        for (; big < 4 && _spare.Count < MaxSpare; big++) { _spare.Add(new int[Math.Max(bodies, 4)]); }
+    }
 
     private int NewId()
     {
@@ -275,7 +315,7 @@ public sealed class IslandSet
             {
                 if (counts[i] == 0) { throw r.Error("empty island"); }
                 int need = Math.Max(4, counts[i]);
-                if (s._bodies[i] == null || s._bodies[i].Length < need) { s._bodies[i] = new int[need]; }
+                if (s._bodies[i] == null || s._bodies[i].Length < need) { s._bodies[i] = s.Swap(s._bodies[i], need); }
             }
         }
 

@@ -37,6 +37,16 @@ public sealed class ConstraintColoring
         if (highWater > _mask.Length) { Array.Resize(ref _mask, Math.Max(highWater, _mask.Length * 2)); }
     }
 
+    /// <summary>Sizes the lists a step builds for up to <paramref name="constraints"/> constraints and <paramref name="bodies"/> bodies, so that steps within those counts allocate nothing.</summary>
+    internal void Reserve(int constraints, int bodies)
+    {
+        EnsureBodies(bodies);
+        if (_list.Length < constraints) { Array.Resize(ref _list, constraints); }
+        if (_bucketOf.Length < constraints) { Array.Resize(ref _bucketOf, constraints); }
+        int hist = ((constraints + ActiveBlock - 1) / ActiveBlock) * (ColorCount + 1);
+        if (_hist.Length < hist) { Array.Resize(ref _hist, hist); }
+    }
+
     internal void ResetBody(int body) => _mask[body] = 0;
 
     internal void CopyFrom(ConstraintColoring other)

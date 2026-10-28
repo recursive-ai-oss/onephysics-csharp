@@ -105,7 +105,7 @@ internal sealed partial class Engine2D
         for (int p = 0; p < PairHigh; p++)
         {
             if (!Pairs[p].Live || PairAllowed(Pairs[p].A, Pairs[p].B)) { continue; }
-            if (Pairs[p].Cons >= 0) { Core.RemoveConstraint(Pairs[p].Cons); }
+            EndPairConstraint(p);
             FreePair(p);
         }
 

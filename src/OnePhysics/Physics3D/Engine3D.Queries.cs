@@ -33,6 +33,13 @@ internal sealed class QueryScratch
     public readonly TriangleShapeBuffer3D TriBuf = new();
     private bool _inUse;
 
+    /// <summary>Creates the calling thread's scratch with room for <paramref name="capacity"/> hits, so its first queries allocate nothing.</summary>
+    public static void Warm(int capacity)
+    {
+        var s = t_cached ??= new QueryScratch();
+        if (s.Hits.Length < capacity) { s.Hits = new RawHit[capacity]; }
+    }
+
     public static QueryScratch Acquire(int capacity)
     {
         var s = t_cached ??= new QueryScratch();

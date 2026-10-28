@@ -195,14 +195,14 @@ internal sealed partial class Engine2D
             ref PairResult res = ref _results[i];
             if (res.Status == 2)
             {
-                if (Pairs[p].Cons >= 0) { world.RemoveConstraint(Pairs[p].Cons); }
+                EndPairConstraint(p);
                 FreePair(p);
                 continue;
             }
 
             if (res.Count == 0)
             {
-                if (Pairs[p].Cons >= 0) { world.RemoveConstraint(Pairs[p].Cons); Pairs[p].Cons = -1; }
+                EndPairConstraint(p);
                 continue;
             }
 
@@ -210,17 +210,15 @@ internal sealed partial class Engine2D
             int c = Pairs[p].Cons;
             if (IsSensor(sa) || IsSensor(sb))
             {
-                // A sensor overlap is a constraint that is never solved: it exists while the shapes overlap (separation at most 0) and gives enter and exit events.
+                // A sensor overlap exists while the shapes overlap (separation at most 0) and gives enter and exit events. It is a mark on the pair, not a constraint, so a sensor never takes
+                // a constraint slot or a color: adding, moving or removing one cannot change how contacts are ordered or solved.
                 bool overlap = res.Sep0 <= 0f || (res.Count > 1 && res.Sep1 <= 0f);
-                if (overlap && c < 0)
+                if (overlap && c == -1)
                 {
-                    Pairs[p].Cons = world.AddConstraint(new ConstraintDesc { Kind = ConstraintKind.Sensor, BodyA = world.HandleOfBody(owner[sa]), BodyB = world.HandleOfBody(owner[sb]), ShapeA = world.HandleOfShape(sa), ShapeB = world.HandleOfShape(sb) });
+                    Pairs[p].Cons = SensorOverlap;
+                    world.EmitSensorEvent(true, sa, sb);
                 }
-                else if (!overlap && c >= 0)
-                {
-                    world.RemoveConstraint(c);
-                    Pairs[p].Cons = -1;
-                }
+                else if (!overlap && c == SensorOverlap) { EndPairConstraint(p); }
 
                 continue;
             }
@@ -299,7 +297,7 @@ internal sealed partial class Engine2D
                     ref PairResult res = ref e._results[i];
                     int c = pr.Cons;
                     if (res.Status == 2) { act = true; }
-                    else if (res.Count == 0) { act = c >= 0; }
+                    else if (res.Count == 0) { act = c != -1; }
                     else
                     {
                         // A sleeping body in a touching pair must wake; the serial stage looks again, since an earlier pair may have woken it already.

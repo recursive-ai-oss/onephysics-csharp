@@ -46,6 +46,12 @@ public sealed class TaskExecutor
     /// <summary>Maximum number of threads working at once.</summary>
     public int ThreadCount { get; }
 
+    /// <summary>Starts the pool threads this executor may use and sizes the per-stage counters for calls of up to <paramref name="stages"/> stages, so the first parallel step allocates nothing. Does nothing without threads.</summary>
+    internal void Reserve(int stages)
+    {
+        if (ThreadCount > 1) { WorkerPool.Reserve(ThreadCount - 1, stages); }
+    }
+
     /// <summary>Runs <paramref name="body"/> for every task in <c>0..taskCount-1</c> and returns when all are done. Order of execution is unspecified; the result must not depend on it.</summary>
     public void For<TBody>(int taskCount, TBody body) where TBody : IParallelBody
     {
@@ -197,6 +203,24 @@ internal static class WorkerPool
             var error = _error;
             if (error != null) { throw new AggregateException(error); }
             return true;
+        }
+        finally
+        {
+            Volatile.Write(ref _owner, 0);
+        }
+    }
+
+    internal static void Reserve(int workers, int stages)
+    {
+        if (OperatingSystem.IsBrowser()) { return; }
+        if (workers > MaxWorkers) { workers = MaxWorkers; }
+        // Only when no other world is stepping on the pool: the counters are shared.
+        if (Interlocked.CompareExchange(ref _owner, 1, 0) != 0) { return; }
+        try
+        {
+            if (_workers.Length < workers) { Grow(workers); }
+            int needed = stages * (workers + 1) * CounterStride;
+            if (_stageCounters.Length < needed) { _stageCounters = new long[needed]; }
         }
         finally
         {
@@ -389,8 +413,12 @@ internal static class WorkerPool
         }
     }
 
+    /// <summary>Run once on every pool thread started after it is set, before the thread takes work; an engine uses it to create the per-thread scratch its steps would otherwise create on first use.</summary>
+    internal static Action? ThreadInit;
+
     private static void Loop(Worker w)
     {
+        ThreadInit?.Invoke();
         long seen = Volatile.Read(ref _claim) >> 32;
         while (true)
         {

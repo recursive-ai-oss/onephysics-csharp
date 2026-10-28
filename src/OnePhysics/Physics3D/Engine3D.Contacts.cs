@@ -106,7 +106,7 @@ internal sealed class NarrowScratch
     public static List<SoupTriangle3D> Tris => H.Tris;
     public static List<int> Ids => H.Ids;
     public static TriangleShapeBuffer3D TriBuf => H.TriBuf;
-    public ContactOut[] Out = new ContactOut[16];
+    public ContactOut[] Out = new ContactOut[128];
     public int OutCount;
 
     public ref ContactOut Next()
@@ -281,6 +281,7 @@ internal sealed partial class Engine3D
                 int p = _updateList[i];
                 if (_resStatus[i] == 2)
                 {
+                    EndSensorOverlap(p);
                     for (int c = PairCons[p]; c >= 0;)
                     {
                         int nx = ConsNext[c];
@@ -529,7 +530,7 @@ internal sealed partial class Engine3D
             {
                 e.Collide(i, sc);
                 // Worth the serial pass: the boxes no longer overlap (the pair goes), or the pair has points or a constraint to match.
-                if (e._resStatus[i] == 2 || e._resCount[i] != 0 || e.PairCons[e._updateList[i]] >= 0) { e._applyIdx[lo + listed++] = i; }
+                if (e._resStatus[i] == 2 || e._resCount[i] != 0 || e.PairCons[e._updateList[i]] != -1) { e._applyIdx[lo + listed++] = i; }
             }
 
             e._applyCount[task] = listed;

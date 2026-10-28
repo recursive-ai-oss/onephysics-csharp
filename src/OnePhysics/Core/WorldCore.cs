@@ -500,6 +500,18 @@ public sealed class WorldCore
         _constraints.Handles.Free(c);
     }
 
+    /// <summary>
+    /// Queues a sensor enter or exit event for a pair of shapes (slots, A below B). Sensor overlaps are kept in the engines' pair tables, not as constraints,
+    /// so that a sensor never takes a constraint slot or a color that a contact could have had. Serial, like <see cref="AddConstraint"/>.
+    /// </summary>
+    internal void EmitSensorEvent(bool enter, int shapeA, int shapeB)
+    {
+        var kind = enter ? EventKind.SensorEnter : EventKind.SensorExit;
+        if (!_events.Wants(kind)) { return; }
+        var shapes = _shapes;
+        _events.Emit(0, new PhysicsEvent(kind, HandleOfBody(shapes.Owner[shapeA]), HandleOfBody(shapes.Owner[shapeB]), HandleOfShape(shapeA), HandleOfShape(shapeB), 0, 0, default, 0f));
+    }
+
     private void EmitConstraintEvent(EventKind kind, int c, bool withShapes, float value)
     {
         if (!_events.Wants(kind)) { return; }
@@ -635,6 +647,45 @@ public sealed class WorldCore
     // Bodies per block when the awake list is built in parallel; below two blocks the loop is serial.
     private const int AwakeBlock = 2048;
     private int[] _awakeBlockCounts = new int[4];
+
+    /// <summary>
+    /// Sizes the core's per-step storage for up to <paramref name="contacts"/> constraints, <paramref name="islands"/> islands and <paramref name="bodies"/> bodies, and starts the pool threads,
+    /// so that steps within those counts allocate nothing. Never changes a result. Serial.
+    /// </summary>
+    internal void Reserve(int contacts, int islands, int bodies)
+    {
+        _constraints.Reserve(contacts);
+        _scratch.EnsureCapacity(bodies);
+        _coloring.Reserve(contacts, bodies);
+        _islands.Reserve(islands, bodies);
+        int chunks = contacts / ChunkSize + 2;
+        _events.Reserve(2 * contacts + 16, 1 + chunks, 2 * ChunkSize);
+        int awake = (Math.Max((bodies + AwakeBlock - 1) / AwakeBlock, 1)) * AwakeBlock;
+        if (_awake.Length < awake) { Array.Resize(ref _awake, awake); }
+        // Stages of one step: per substep the two integrations and a pass over every color for warm starting, each solve and each relax pass (plus the restitution pass).
+        int passes = _options.VelocityIterations + _options.RelaxIterations + 2;
+        int stages = _options.Substeps * (3 + passes * (ConstraintColoring.ColorCount + 1)) + 8;
+        if (_stageKind.Length < stages) { Array.Resize(ref _stageKind, stages); Array.Resize(ref _stageArg, stages); Array.Resize(ref _stageTasks, stages); }
+        Executor.Reserve(stages);
+    }
+
+    /// <summary>
+    /// Sizes the buffers a restore uses (the copy of its input and the saved state it rolls back to) for a world holding up to the given counts, and sizes the spare storage a restore reads into
+    /// like the live storage, so a restore of a larger world allocates nothing. Call it while the live storage is already reserved. Never changes a result.
+    /// </summary>
+    internal void ReserveRestore(int contacts, int pairs, int islands, int bodies)
+    {
+        // What a snapshot of the world grows to when it holds that many contacts and pairs: the current size plus the per-contact columns and payload and a few words per pair.
+        long grown = (long)GetSnapshotSize() + ((long)contacts * (64 + (4 * (Layout.PayloadFloats + Layout.MaxManifoldPoints)))) + ((long)pairs * 24);
+        int bytes = (int)Math.Min(grown, int.MaxValue / 2);
+        if (_inputBuffer.Length < bytes) { _inputBuffer = new byte[bytes]; }
+        (_backupWriter ??= StateWriter.ToBuffer()).EnsureCapacity(bytes);
+        (_snapWriter ??= StateWriter.ToBuffer()).EnsureCapacity(bytes);
+        (_spCons ??= new ConstraintStore(Layout, 1)).Reserve(contacts);
+        (_spIslands ??= new IslandSet()).Reserve(islands, bodies);
+        (_spColoring ??= new ConstraintColoring()).Reserve(contacts, bodies);
+        (_spEvents ??= new EventCollector(_options)).Reserve(2 * contacts + 16, 1 + (contacts / ChunkSize + 2), 2 * ChunkSize);
+    }
 
     private void BuildAwakeBodies()
     {
