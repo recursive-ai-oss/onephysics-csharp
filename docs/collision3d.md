@@ -226,3 +226,12 @@ All take and return the shape's frame. Inputs must be finite (`ArgumentOutOfRang
 ### Determinism check
 
 `tools/HashMatrix/Scenarios/Mesh3D/MeshScenarios.cs` registers `mesh3d/queries`: a jittered terrain mesh, a soup with degenerate triangles and a height field with holes from SplitMix64 streams; step 0 hashes the BVH bytes, the counts, bounds and every triangle's flags; for each shape one step hashes 1500 ray casts (closest, any, some all-hits) and a second step 800 overlaps and 200 shape casts with candidate lists (seven steps in all).
+
+## Triangles in the 3D world
+
+The 3D world (`world3d.md`) collides convex shapes with the triangles of meshes and height fields through the same manifold generator as every other convex pair:
+
+- **Triangle kind.** A candidate triangle (`SoupTriangle3D`, from `GetCandidates`) becomes a convex shape of kind triangle: the three vertices as a degenerate hull with two faces (normal and its negation) and zero convex radius. Its support is the farthest vertex (lowest index on ties), as for `TriangleShapeBuffer3D`.
+- **One manifold per triangle.** The generator runs once per (convex sub-shape, triangle) pair in ascending triangle id order for each convex sub-shape in ascending sub-shape id; every result with points becomes its own constraint. Results are not merged per body pair: merging would need a common normal across triangles and the internal-edge rule already removes the seam contacts that would double up, so the per-triangle constraints stay (a body over N triangles has up to N constraints, each with at most 4 points).
+- **Feature ids and warm starting.** Each constraint records its sub-shape ids (the triangle id for a soup); the constraint chain of a pair is matched to the new manifolds by `(subA, subB)`, and inside a constraint points keep their impulses by the generator's feature id (vertex, edge and face codes). Crossing to another triangle therefore starts that triangle's constraint from zero.
+- **Internal edges.** The rule in `world3d.md` (drop a manifold whose normal is not the face normal when its closest feature is an inactive edge or a vertex with both edges inactive) is applied after the manifold is generated and before points are stored.

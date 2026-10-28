@@ -26,7 +26,7 @@ public static class Program
             case "box2dnet-driver": return Box2DNetDriver.Run(opts);
             case "bepu-driver": return BepuDriver.Run(opts);
             case "jitter2-driver": return Jitter2Driver.Run(opts);
-            case "onephysics-driver": return OnePhysicsDriver.Run(opts);
+            case "onephysics-driver": return Scene.Load(opts.Get("scene", "")).Dim == 3 ? Driver3.Run(opts, new OnePhysics3Sim()) : OnePhysicsDriver.Run(opts);
             default: return Usage();
         }
     }
@@ -116,7 +116,7 @@ static class Runner
             foreach (var eng in engines)
                 foreach (var th in threadList)
                 {
-                    if (Engines3D.Contains(eng) != (scene.Dim == 3)) continue;
+                    if (eng == "onephysics" ? (scene.Dim == 3 && scene.Joints.Count > 0) : Engines3D.Contains(eng) != (scene.Dim == 3)) continue; // our engine runs both dimensions; 3D joints not yet
                     if (scene.Params.TryGetValue("engines", out var only) && !only.Contains(eng)) continue; // a scene only some drivers understand
                     if (eng == "box2dnet" && th != 1) continue; // no documented multithreading
                     if (!timing && th != threadList[0]) continue;
