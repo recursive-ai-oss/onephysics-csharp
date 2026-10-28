@@ -417,5 +417,68 @@ public static class Gen3
         }
     }
 
-    public static List<Scene> All() => [Pyramid(10), Pyramid(30), LargePile(), JointChains(), JointGrid(), RagdollPile(), TerrainScene(false), TerrainScene(true), SleepWake(), Queries(), Characters3()];
+    // ---- vehicles-3d ----
+
+    // Height of the vehicle terrain on a 61 x 241 grid of 1 m cells: rolling hills of 0.12 m (smoothstep knots), speed bumps (2 m wide triangles of 0.1 m) at z = 30, 60, 90, 150 and 200, and one ramp (0.4 m rise over 5 m,
+    // 2 m flat top, 5 m descent) from z = 120.
+    static double[] VehicleTerrain(ulong seed)
+    {
+        var h = Hills(new Gen.Rng(seed), 60, 240, 1.0, 0.12);
+        for (int j = 0; j <= 240; j++)
+        {
+            double f = 0;
+            foreach (int zc in new[] { 30, 60, 90, 150, 200 }) f = Math.Max(f, Math.Max(0, 0.1 - 0.05 * Math.Abs(j - zc)));
+            if (j >= 120 && j <= 132) f = Math.Max(f, j <= 125 ? 0.08 * (j - 120) : j <= 127 ? 0.4 : 0.4 - 0.08 * (j - 127));
+            for (int i = 0; i <= 60; i++) h[j * 61 + i] += f;
+        }
+        return h;
+    }
+
+    static double VehicleHeightAt(double[] h, double x, double z)
+    {
+        int i = Math.Clamp((int)x, 0, 59), j = Math.Clamp((int)z, 0, 239); double fu = x - i, fv = z - j;
+        return (h[j * 61 + i] * (1 - fu) + h[j * 61 + i + 1] * fu) * (1 - fv) + (h[(j + 1) * 61 + i] * (1 - fu) + h[(j + 1) * 61 + i + 1] * fu) * fv;
+    }
+
+    static Scene Vehicles3()
+    {
+        var s = Base3("vehicles-3d", 600, "maxPenetration", "maxSpeed", "nan", "escapes", "tunnelled", "wheelThroughGround", "rollovers", "suspensionJitter");
+        s.DumpEvery = 10;
+        s.Params["engines"] = ["onephysics", "jolt"]; // the engines that have a wheeled-vehicle driver
+        var hf = VehicleTerrain(31); var ms = VehicleTerrain(32);
+        // Height field over x -60 .. 0, triangle mesh (1 m cells, alternating diagonals) over x 0 .. 60; both z 0 .. 240.
+        Sh(Add3(s, "static", 0, 0, 0), "heightfield", 0, 0, [61, 241, 1.0, -60, 0, 0, .. hf]);
+        {
+            var p = new List<double> { 61 * 241, 60 * 240 * 6 };
+            for (int j = 0; j <= 240; j++) for (int i = 0; i <= 60; i++) { p.Add(i); p.Add(ms[j * 61 + i]); p.Add(j); }
+            for (int j = 0; j < 240; j++)
+                for (int i = 0; i < 60; i++)
+                {
+                    int a = j * 61 + i, b = a + 1, c = a + 61, d = c + 1;
+                    if (((i + j) & 1) == 0) p.AddRange([a, c, b, b, c, d]); else p.AddRange([a, c, d, a, d, b]);
+                }
+            Sh(Add3(s, "static", 0, 0, 0), "mesh", 0, 0, p.ToArray());
+        }
+        s.Params["terrainHf"] = ["-60", "0"];
+        s.Params["terrainMesh"] = ["0", "0"];
+        s.Params["wheelRadius"] = ["0.34"];
+        int first = s.Bodies.Count;
+        // Two fields of 50 cars: ten lanes 5.8 m apart, five rows 25 m apart. Cars of a lane share a throttle, so they keep their spacing; the steering is a slalom of the same phase for every car.
+        for (int area = 0; area < 2; area++)
+            for (int lane = 0; lane < 10; lane++)
+                for (int row = 0; row < 5; row++)
+                {
+                    double lx = 3 + 5.8 * lane, z = 8 + 25 * row, x = (area == 0 ? -60 : 0) + lx;
+                    double ground = VehicleHeightAt(area == 0 ? hf : ms, lx, z);
+                    var b = Add3(s, "dynamic", x, ground + 0.34 + 0.5 - 0.11 + 0.05, z);
+                    Box3(b, 0.9, 0.25, 2.1, 0, 0, 0, 1500.0 / 3.78);
+                    b.Vehicle = new VehicleScript { Preset = "car", Throttle = 0.35 + 0.04 * lane, SteerAmp = 0.12, SteerPeriod = 150, SteerFrom = 90, BrakeFrom = 450 };
+                }
+        s.Params["cars"] = [first.ToString(), (s.Bodies.Count - first).ToString()];
+        s.Params["container"] = ["-80", "-20", "280", "60"];
+        s.Params["floor"] = ["-15"];
+        return s;
+    }
+
+    public static List<Scene> All() => [Pyramid(10), Pyramid(30), LargePile(), JointChains(), JointGrid(), RagdollPile(), TerrainScene(false), TerrainScene(true), SleepWake(), Queries(), Characters3(), Vehicles3()];
 }

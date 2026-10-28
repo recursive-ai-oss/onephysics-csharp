@@ -14,6 +14,9 @@ interface ISim3
     void Build(Scene s, int threads);
     void Step(double dt);
     void WakeAll(Scene s);
+    /// <summary>Number of doubles <see cref="Wheels"/> fills: three per wheel (centre x y z), the wheels of each vehicle in body order; 0 for engines without vehicles.</summary>
+    int WheelDoubles => 0;
+    void Wheels(double[] d) { }
     /// <summary>Fills 14 doubles per body: x y z qx qy qz qw vx vy vz wx wy wz awake.</summary>
     void Snapshot(double[] d);
     /// <summary>Runs the scene's queries (closest ray hits, sphere overlaps counting shapes, sphere casts to the closest hit) and appends query_* lines; engines without queries append nothing.</summary>
@@ -35,7 +38,8 @@ static class Driver3
             dump = new BinaryWriter(File.Create(o.Get("dump", "")));
             dump.Write(Encoding.ASCII.GetBytes("OPDUMP01")); dump.Write((uint)n); dump.Write((uint)3);
         }
-        void Frame(int step) { sim.Snapshot(d); dump!.Write((uint)step); dump.Write((uint)0); foreach (var v in d) dump.Write(v); }
+        var wd = new double[sim.WheelDoubles];
+        void Frame(int step) { sim.Snapshot(d); sim.Wheels(wd); dump!.Write((uint)step); dump.Write((uint)wd.Length); foreach (var v in d) dump.Write(v); foreach (var v in wd) dump.Write(v); }
         if (dump != null) Frame(0);
         var stepNs = new double[s.Steps]; var allocB = new long[s.Steps]; double nsPerTick = 1e9 / Stopwatch.Frequency;
         for (int step = 0; step < s.Steps; step++)

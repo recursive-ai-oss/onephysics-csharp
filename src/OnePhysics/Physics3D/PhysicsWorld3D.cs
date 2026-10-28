@@ -61,6 +61,7 @@ public sealed partial class PhysicsWorld3D
         _engine.Opt.Validate();
         _engine.CheckBounds();
         SyncCoreOptions();
+        _engine.StepVehicles(this, dt);
         _core.Step(new Stages3D(_engine), dt);
         _engine.ReconcileJoints();
         InvalidateQueryPad();
