@@ -23,7 +23,7 @@
     <Compile Include="../../experiments/batching/Sim/*.cs" LinkBase="Batching" />
     <!-- Existing determinism checks and the shared scene definitions, linked from where they live. -->
     <Compile Include="../../tests/OnePhysics.Tests/Collision3D/Collision3DHash.cs;../../tests/OnePhysics.Tests/Collision3D/TestRng.cs;../../tests/OnePhysics.Tests/Broadphase/BroadphaseHash.cs" LinkBase="Checks" />
-    <Compile Include="../../bench/Bar/Scene.cs;../../bench/Bar/Gen.cs;../../bench/Bar/Gen3.cs;../../bench/Bar/SceneBuilder2D.cs" LinkBase="Scenes" />
+    <Compile Include="../../bench/Bar/Scene.cs;../../bench/Bar/Gen.cs;../../bench/Bar/Gen3.cs;../../bench/Bar/SceneBuilder2D.cs;../../bench/Bar/SceneBuilder3D.cs" LinkBase="Scenes" />
   </ItemGroup>
 
 </Project>

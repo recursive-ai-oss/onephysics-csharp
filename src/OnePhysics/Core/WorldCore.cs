@@ -566,6 +566,7 @@ public sealed class WorldCore
         _stageMostTasks = 0;
         for (int s = 0; s < _options.Substeps; s++)
         {
+            _flipSweep = (s & 1) == 1;
             AddStage(StageIntegrateVelocities, 0, bodyChunks);
             AddSolvePass(SolvePhase.WarmStart);
             for (int i = 0; i < _options.VelocityIterations; i++) { AddSolvePass(SolvePhase.Solve); }
@@ -642,6 +643,10 @@ public sealed class WorldCore
         }
     }
 
+    /// <summary>When set, the solve and relax passes sweep the colors in opposite directions, flipping on alternate substeps, and the serial overflow goes last when the sweep is reversed, so the sequential bias of one sweep is cancelled by the next. Warm starting always runs forward.</summary>
+    public bool SymmetricSweep { get; set; }
+    private bool _flipSweep;
+
     private const int StageIntegrateVelocities = 0, StageIntegratePositions = 1, StageOverflow = 2, StageColor = 3;
     private int[] _stageKind = new int[64];
     private int[] _stageArg = new int[64];
@@ -664,14 +669,18 @@ public sealed class WorldCore
     // One pass over every constraint in one phase: the overflow constraints first, serially and in order, then each color (the constraints of a color share no dynamic body, so their order cannot matter).
     private void AddSolvePass(SolvePhase phase)
     {
-        if (_coloring.Overflow.Length > 0) { AddStage(StageOverflow, (int)phase, 1); }
-        for (int color = 0; color < ConstraintColoring.ColorCount; color++)
+        bool reverse = SymmetricSweep && phase != SolvePhase.WarmStart && ((phase == SolvePhase.Relax) != _flipSweep);
+        if (!reverse && _coloring.Overflow.Length > 0) { AddStage(StageOverflow, (int)phase, 1); }
+        for (int k = 0; k < ConstraintColoring.ColorCount; k++)
         {
+            int color = reverse ? ConstraintColoring.ColorCount - 1 - k : k;
             int n = _coloring.Color(color).Length;
             if (n == 0) { continue; }
             int batches = (n + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
             AddStage(StageColor, (int)phase | (color << 8), (batches + ConstraintColoring.BatchesPerTask - 1) / ConstraintColoring.BatchesPerTask);
         }
+
+        if (reverse && _coloring.Overflow.Length > 0) { AddStage(StageOverflow, (int)phase, 1); }
     }
 
     private readonly struct SolveProgram<TStages> : IStagedBody where TStages : IWorldStages
