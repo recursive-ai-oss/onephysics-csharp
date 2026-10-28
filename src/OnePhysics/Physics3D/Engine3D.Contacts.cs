@@ -128,6 +128,7 @@ internal sealed partial class Engine3D
         }
     }
 
+    private byte[] _active = new byte[8]; // per body: awake and dynamic, or a kinematic body in motion (see IsActive); valid for the contact stage that filled it
     private int[] _boxStamp = new int[8];
     private int _stamp;
     private double[] _boxes = new double[48];
@@ -176,9 +177,11 @@ internal sealed partial class Engine3D
         var invMass = bodies.InverseMass;
         if (_sleepers.Length < nb) { _sleepers = new int[Math.Max(nb, _sleepers.Length * 2)]; }
         _sleeperCount = 0;
+        if (_active.Length < nb) { _active = new byte[Math.Max(nb, _active.Length * 2)]; }
         for (int b = 0; b < nb; b++)
         {
-            if (!bodies.IsLive(b)) { continue; }
+            if (!bodies.IsLive(b)) { _active[b] = 0; continue; }
+            _active[b] = IsActive(bodies, b) ? (byte)1 : (byte)0;
             StartPos[3 * b] = pos[3 * b]; StartPos[3 * b + 1] = pos[3 * b + 1]; StartPos[3 * b + 2] = pos[3 * b + 2];
             for (int k = 0; k < 4; k++) { StartRot[4 * b + k] = rot[4 * b + k]; }
             Dp[3 * b] = 0f; Dp[3 * b + 1] = 0f; Dp[3 * b + 2] = 0f;
@@ -215,14 +218,21 @@ internal sealed partial class Engine3D
             _updateList = new int[n]; _resStatus = new byte[n]; _resFirst = new int[n]; _resCount = new int[n];
         }
 
-        _updateCount = 0;
         var owner = world.Shapes.Owner;
         // With no awake dynamic body and no kinematic body, only a freshly found sensor pair can need work.
-        bool anyAwake = world.AwakeBodies.Length > 0;
-        for (int p = 0; p < PairHigh && (anyAwake || anyFresh); p++)
+        // Fixed chunks of the pair table each list their own pairs in place, then the chunks are packed in order, so the list is the same whatever the thread count.
+        _updateCount = 0;
+        if (world.AwakeBodies.Length > 0 || anyFresh)
         {
-            if (!PairLive[p]) { continue; }
-            if (IsActive(bodies, owner[PairA[p]]) || IsActive(bodies, owner[PairB[p]]) || (anyFresh && p < _fresh.Length && _fresh[p])) { _updateList[_updateCount++] = p; }
+            int pchunks = (PairHigh + PairListChunk - 1) / PairListChunk;
+            if (_pairChunkCount.Length < pchunks) { _pairChunkCount = new int[Math.Max(pchunks, _pairChunkCount.Length * 2)]; }
+            world.Executor.For(pchunks, new PairListTask(this, anyFresh));
+            for (int ck = 0; ck < pchunks; ck++)
+            {
+                int n = _pairChunkCount[ck];
+                if (_updateCount != ck * PairListChunk) { Array.Copy(_updateList, ck * PairListChunk, _updateList, _updateCount, n); }
+                _updateCount += n;
+            }
         }
 
         if (anyFresh) { Array.Clear(_fresh, 0, Math.Min(PairHigh, _fresh.Length)); }
@@ -359,6 +369,33 @@ internal sealed partial class Engine3D
     private int[] _sleepers = new int[64];
     private int _sleeperCount;
 
+    private const int PairListChunk = 1024;
+    private int[] _pairChunkCount = new int[8];
+
+    private readonly struct PairListTask : IParallelBody
+    {
+        private readonly Engine3D _e;
+        private readonly bool _anyFresh;
+
+        public PairListTask(Engine3D e, bool anyFresh) { _e = e; _anyFresh = anyFresh; }
+
+        public void Run(int task)
+        {
+            var e = _e;
+            int lo = task * PairListChunk, hi = Math.Min(lo + PairListChunk, e.PairHigh), n = 0;
+            var owner = e.Core.Shapes.Owner;
+            var active = e._active;
+            var fresh = e._fresh;
+            for (int p = lo; p < hi; p++)
+            {
+                if (!e.PairLive[p]) { continue; }
+                if (active[owner[e.PairA[p]]] != 0 || active[owner[e.PairB[p]]] != 0 || (_anyFresh && p < fresh.Length && fresh[p])) { e._updateList[lo + n++] = p; }
+            }
+
+            e._pairChunkCount[task] = n;
+        }
+    }
+
     private readonly struct WriteTask : IParallelBody
     {
         private readonly Engine3D _e;
@@ -441,6 +478,14 @@ internal sealed partial class Engine3D
         // A pair without a constraint whose last query proved the shapes apart stays empty until their relative motion has used up the margin by which they were apart.
         int existingCons = PairCons[p];
         if (existingCons < 0 && _skip[p].Clear > 0f && StillApart(in _skip[p], qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]), MaxExtent[bb])) { return; }
+        // A touching convex pair that has barely moved reuses its manifold; this is tried before the shape frames are built, which the reuse does not need.
+        if (RecycleManifolds && existingCons >= 0 && ga.Soup == null && gb.Soup == null && ga.IsConvex && gb.IsConvex
+            && TryRecycle(sc, existingCons, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))))
+        {
+            _resCount[i] = 1;
+            return;
+        }
+
         var la = Local[sa]; var lb = Local[sb];
         var lcA = LocalCenterOf(ba); var lcB = LocalCenterOf(bb);
 
@@ -476,12 +521,6 @@ internal sealed partial class Engine3D
             var gen = NarrowScratch.Gen;
             int oldCons = PairCons[p];
             var cstore = Core.Constraints;
-            if (RecycleManifolds && oldCons >= 0 && TryRecycle(sc, oldCons, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))))
-            {
-                _resCount[i] = 1;
-                return;
-            }
-
             gen.HintIn = oldCons >= 0 && cstore.PointCount[oldCons] > 0 ? new EdgeHint3D(cstore.Payload(oldCons).Slice(ManifoldLayout.HintOffset, 7)) : default;
             var m = gen.Collide(ga.Convex, gb.Convex, bInA, spec);
             if (m.PointCount == 0 && oldCons < 0 && gen.ClearanceOut > 0f)
