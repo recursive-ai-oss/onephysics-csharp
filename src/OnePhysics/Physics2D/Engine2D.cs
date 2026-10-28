@@ -53,6 +53,8 @@ internal sealed partial class Engine2D : ISnapshotSection
 
     /// <summary>Per constraint: its group times eight plus its lane, for the contacts of the current step.</summary>
     public int[] SlotOf = new int[8];
+    /// <summary>Per step, on the first constraint of each batch: 1 when the batch is contacts only and not the serial overflow set, so the wide kernel solves it directly.</summary>
+    public byte[] BatchSimple = new byte[8];
 
     /// <summary>Plain revolute joints of the step in groups of eight lanes (<see cref="J2D"/>), their gather and scatter offsets (as <see cref="WideIdx"/>) and, per constraint, group times eight plus lane, or -1 for a joint solved by the scalar code.</summary>
     public float[] JWide = new float[J2D.GroupFloats];

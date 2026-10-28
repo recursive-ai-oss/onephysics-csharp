@@ -48,7 +48,7 @@ internal sealed partial class Engine2D
         }
 
         int nc = core.Constraints.HighWater;
-        if (SlotOf.Length < nc) { SlotOf = new int[Math.Max(nc, SlotOf.Length * 2)]; JSlotOf = new int[SlotOf.Length]; }
+        if (SlotOf.Length < nc) { SlotOf = new int[Math.Max(nc, SlotOf.Length * 2)]; JSlotOf = new int[SlotOf.Length]; BatchSimple = new byte[SlotOf.Length]; }
         ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
         var st = BodyState.AsSpan();
         _movingKinematic = false;
@@ -183,6 +183,9 @@ internal sealed partial class Engine2D
             for (int l = jlane; l < J2D.Lanes; l++) { for (int f = 0; f < J2D.Fields; f++) { jw[f * 8 + l] = 0f; } }
         }
 
+        // Remembered on the batch's first constraint so the solve passes can pick the wide path without looking at every constraint: contacts only, not the overflow set.
+        if (constraints.Length > 0) { BatchSimple[constraints[0]] = (byte)(!anyJoint && cs.Color[constraints[0]] != ConstraintStore.Overflow ? 1 : 0); }
+
         // Unused lanes of a short group read as zeros.
         for (int l = lane; l < W2D.Lanes; l++)
         {
@@ -266,6 +269,7 @@ internal sealed partial class Engine2D
     {
         var kp = new KernelParams(ctx.InverseSubstepDt, Opt.PushOutVelocity, Opt.ContactSlop, Opt.RestitutionThreshold);
         if (constraints.Length == 0) { return; }
+        if (BatchSimple[constraints[0]] == 1) { RunContacts(SlotOf[constraints[0]] >> 3, constraints.Length, phase, in kp); return; }
         var cons = Core.Constraints;
         bool overflow = cons.Color[constraints[0]] == ConstraintStore.Overflow;
         int joints = 0;
