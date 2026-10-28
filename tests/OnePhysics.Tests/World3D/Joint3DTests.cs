@@ -784,6 +784,13 @@ public class Joint3DTests
             w.AddPoint(hub, leaf, new Vector3D(10 + Math.Cos(k * 0.2), 8 + Math.Sin(k * 0.2), 0));
         }
 
+        // Joints whose point block runs in the wide kernel and whose other rows stay scalar: fixed, cone, swing-twist.
+        Body upper = w.AddBox(new Vector3F(0.3f, 0.6f, 0.3f), new Vector3D(-10, 9, 5), density: 2f);
+        w.AddFixed(top, upper, new Vector3D(-10, 11.5, 5));
+        Body arm = w.AddBox(new Vector3F(0.2f, 0.6f, 0.2f), new Vector3D(-10, 8, 5));
+        w.AddCharacterJoint(upper, arm, new Vector3D(-10, 8.5, 5), new Vector3F(0, -1, 0), -0.4f, 0.4f, 0.6f, 0.3f);
+        Body hand = w.AddBox(new Vector3F(0.15f, 0.3f, 0.15f), new Vector3D(-10, 7.2, 5));
+        w.AddCone(arm, hand, new Vector3D(-10, 7.5, 5), new Vector3F(0, -1, 0), 0.5f);
         return w;
     }
 

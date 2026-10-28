@@ -154,12 +154,14 @@ internal sealed partial class Engine3D
         {
             if (cs.KindOf(c) == ConstraintKind.Joint)
             {
-                if (Joints[c].Type == (byte)JointType3D.Point)
+                byte jt = Joints[c].Type;
+                if (WidePointBlock(jt))
                 {
                     if (jlane == 0) { ClearJointIdx(group); }
                     PreparePointJoint(c, group, jlane++);
                 }
-                else { PrepareJoint(c, in ctx); }
+
+                if (jt != (byte)JointType3D.Point) { PrepareJoint(c, in ctx); }
 
                 continue;
             }
@@ -225,6 +227,10 @@ internal sealed partial class Engine3D
             else { JointKernel3D.Prepare<Lanes256>(this, group, jlane); }
         }
     }
+
+    /// <summary>The joint types whose three-row point block (always their last rows) is solved by <see cref="JointKernel3D"/>; their other rows stay in <see cref="SolveJoint"/>.</summary>
+    private static bool WidePointBlock(byte type) =>
+        type == (byte)JointType3D.Point || type == (byte)JointType3D.Fixed || type == (byte)JointType3D.Hinge || type == (byte)JointType3D.Cone || type == (byte)JointType3D.SwingTwist;
 
     private static void Put3(Span<float> w, int field, int lane, Vector3F v) { w[field * 8 + lane] = v.X; w[(field + 1) * 8 + lane] = v.Y; w[(field + 2) * 8 + lane] = v.Z; }
 
@@ -307,8 +313,9 @@ internal sealed partial class Engine3D
                 int slot = SlotOf[c];
                 if (cons.KindOf(c) == ConstraintKind.Joint)
                 {
+                    // A joint's own rows first, then its point block, as the joint's rows have always been ordered.
+                    if (Joints[c].Type != (byte)JointType3D.Point) { SolveJoint(c, phase, in ctx); }
                     if (slot >= 0) { JointKernel3D.Run<Lanes1>(this, slot >> 3, slot & 7, 1, phase, in _jointParams); }
-                    else { SolveJoint(c, phase, in ctx); }
                 }
                 else if (slot >= 0) { ContactKernel3D.Run<Lanes1>(this, slot >> 3, slot & 7, 1, phase, in kp); }
             }
@@ -323,12 +330,12 @@ internal sealed partial class Engine3D
             int c = constraints[i];
             if (cons.KindOf(c) == ConstraintKind.Joint)
             {
+                if (Joints[c].Type != (byte)JointType3D.Point) { SolveJoint(c, phase, in ctx); }
                 if (SlotOf[c] >= 0)
                 {
                     if (jcount == 0) { jfirst = SlotOf[c]; }
                     jcount++;
                 }
-                else { SolveJoint(c, phase, in ctx); }
 
                 continue;
             }
@@ -536,6 +543,17 @@ internal sealed partial class Engine3D
         }
     }
 
+    private struct AnyCandidate : IOverlapCallback
+    {
+        public bool Found;
+
+        public bool Report(int key, int userId)
+        {
+            Found = true;
+            return false;
+        }
+    }
+
     // Continuous collision runs on whichever thread finalizes the body, so the id list its soup casts reuse is per thread; it only holds candidates while one cast runs and never decides a result.
     [ThreadStatic]
     private static List<int>? t_castIds;
@@ -560,6 +578,15 @@ internal sealed partial class Engine3D
         float spin = 2f * float.Sqrt(rel.X * rel.X + rel.Y * rel.Y + rel.Z * rel.Z) * MaxExtent[b];
         float len = float.Sqrt(m.X * m.X + m.Y * m.Y + m.Z * m.Z);
         if (!float.IsFinite(len + spin) || !(len + spin > 0.5f * MinExtent[b]) || !(len > 0f)) { return; } // non-finite motion is reported by the bounds check, not cast
+
+        // Nothing static near the whole sweep: no shape can touch anything, so skip the per-shape bounds and casts. The box holds every point of every shape at the start and the end pose
+        // (each within MaxExtent of the centre of mass, padded for float rounding), which contains every per-shape sweep box below, so the answer is the same as without this test.
+        double reach = (double)(MaxExtent[b] * 1.01f + 1e-4f);
+        var coarse = new Aabb3D(cx + Math.Min(0.0, (double)m.X) - reach, cy + Math.Min(0.0, (double)m.Y) - reach, cz + Math.Min(0.0, (double)m.Z) - reach,
+            cx + Math.Max(0.0, (double)m.X) + reach, cy + Math.Max(0.0, (double)m.Y) + reach, cz + Math.Max(0.0, (double)m.Z) + reach);
+        var near = new AnyCandidate();
+        Bp.QueryAabb(in coarse, ref near, BodyTypeMask.Static);
+        if (!near.Found) { return; }
 
         var lc = LocalCenterOf(b);
         float best = 1f;

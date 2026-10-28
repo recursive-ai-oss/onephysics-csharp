@@ -276,15 +276,6 @@ internal sealed partial class Engine3D
 
     private static readonly Vector3F UX = new(1f, 0f, 0f), UY = new(0f, 1f, 0f), UZ = new(0f, 0f, 1f);
 
-    /// <summary>The three-row point constraint: the two anchors coincide. Slots 0..2.</summary>
-    private static void PointBlock(ref JS3 j, in JGeo g, Span<float> p, Soft rigid, bool warm)
-    {
-        JRowBuf rows = default; JF3 c = default;
-        rows[0] = JointRow.Lin(UX, g.RA, g.RB); rows[1] = JointRow.Lin(UY, g.RA, g.RB); rows[2] = JointRow.Lin(UZ, g.RA, g.RB);
-        c[0] = g.C.X; c[1] = g.C.Y; c[2] = g.C.Z;
-        Block(ref j, p, 0, 3, rows, c, rigid, warm);
-    }
-
     /// <summary>Locks the relative rotation of the two frames with a block along frame A's axes. The error of axis i is twice the vector part of the relative rotation.</summary>
     private static void LockRotation(ref JS3 j, in JGeo g, Span<float> p, int slot, Soft rigid, bool warm)
     {
@@ -300,7 +291,6 @@ internal sealed partial class Engine3D
     private static void SolveFixed(ref JS3 j, in JGeo g, Span<float> p, Soft rigid, bool warm)
     {
         LockRotation(ref j, in g, p, 3, rigid, warm);
-        PointBlock(ref j, in g, p, rigid, warm);
     }
 
     // ------------------------------------------------------------------ distance
@@ -358,7 +348,6 @@ internal sealed partial class Engine3D
         rows[0] = JointRow.Ang(g.AyA); rows[1] = JointRow.Ang(g.AzA);
         c[0] = Vector3F.Dot(e, g.AyA); c[1] = Vector3F.Dot(e, g.AzA);
         Block(ref j, p, 3, 2, rows, c, rigid, warm);
-        PointBlock(ref j, in g, p, rigid, warm);
     }
 
     // ------------------------------------------------------------------ slider
@@ -399,7 +388,6 @@ internal sealed partial class Engine3D
         else { n = g.AyA; angle = JPi; }
         // Rotating B about n by a positive angle opens the cone, so the row for "half angle minus angle >= 0" is the negated angular row.
         LimitRow(ref j, p, JP.Lower, JointRow.Ang(n).Neg(), d.Swing1 - angle, useBias, s[JRow3.JBias], s[JRow3.JMass], s[JRow3.JImp], invH, warm);
-        PointBlock(ref j, in g, p, rigid, warm);
     }
 
     /// <summary>
@@ -430,8 +418,6 @@ internal sealed partial class Engine3D
         bool outside = SwingRow(in g, rel, swing, ly, lz, out var swingRow, out float cval);
         if (outside) { LimitRow(ref j, p, JP.Swing, swingRow, cval, useBias, jb, jm, ji, invH, warm); }
         else if (!warm) { p[JP.Swing] = 0f; }
-
-        PointBlock(ref j, in g, p, rigid, warm);
     }
 
     /// <summary>
