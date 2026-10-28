@@ -360,3 +360,13 @@ None of these changes a world hash; every `world3d` and `collision3d` hash-matri
 - *Box A reuse in the SAT:* shape A's vertices, normals and plane offsets are kept between consecutive queries with the same box.
 - *Bounds check:* a dynamic body well inside the range (position under 1e6, sizes under 1e5) skips the exact box test; anything else takes it.
 - *Parallel glue:* the per-body start-of-step pass runs in chunks of 128 bodies; the serial constraint pass visits only the pairs the narrowphase tasks listed.
+
+### Round 10: kernel inlining and the pair table
+
+Correction to earlier notes: the polyhedron separating-axis test exists and is a small part of a step; the gap to the leaders is per-pair overhead around it and the solver.
+
+* **Kernel methods stay small enough to be inlined into.** The runtime inlines only a few hundred calls into one method; after that every vector operation of a lane type is left as a call that returns its 32-byte result through memory. The point-joint block, the contact normal row (separation, then impulse) and the friction row had passed that limit (over a hundred un-inlined operations per batch in the joint block). They are now split into methods of their own (`SolveBlock`, `Block`, `Matrix`, `Separation`, `NormalImpulse`, `FrictionImpulse`). Arithmetic is unchanged for contacts (hashes equal). Per pass over the pile's contacts, microseconds (one thread, warm, best of 300): solve 535 to 309, relax 532 to 306; joint-chains point joints: solve 58 to 19.
+* **Point-joint inertia term** written out entry by entry (the six products of the anchor are shared), which changes the rounding of joint scenes: the `world3d/joints` and `world3d/ragdolls` lines moved, all others are equal.
+* **Pair table** is the open-addressing `PairTable` of 2D; the broadphase pair filter drops pairs that already have an entry.
+* `IntegrateVelocities` reads through unchecked accessors (bounds checked in the Checked build).
+* Not worth it (measured): a transposed three-float scatter of velocities, inlining the row methods back, and removing the zeroing of unused point slots.

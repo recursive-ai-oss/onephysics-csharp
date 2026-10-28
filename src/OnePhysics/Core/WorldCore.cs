@@ -537,15 +537,7 @@ public sealed class WorldCore
     /// </summary>
     public void ShiftOrigin(ReadOnlySpan<double> offset)
     {
-        if (offset.Length != Layout.PositionLanes) { throw new ArgumentException("offset needs " + Layout.PositionLanes.ToString(CultureInfo.InvariantCulture) + " components.", nameof(offset)); }
-        for (int i = 0; i < offset.Length; i++)
-        {
-            double o = offset[i];
-            if (!double.IsFinite(o) || Math.Abs(o) > OffsetBound) { throw new ArgumentOutOfRangeException(nameof(offset), o, "Origin offset component " + i.ToString(CultureInfo.InvariantCulture) + " = " + o.ToString("R", CultureInfo.InvariantCulture) + " is not finite or exceeds 2^22."); }
-            double scaled = o * OffsetScale;
-            if (Math.Floor(scaled) != scaled) { throw new ArgumentException("Origin offset component " + i.ToString(CultureInfo.InvariantCulture) + " = " + o.ToString("R", CultureInfo.InvariantCulture) + " is not a multiple of 2^-31.", nameof(offset)); }
-        }
-
+        ValidateShift(offset);
         int lanes = Layout.PositionLanes;
         var pos = _bodies.Position;
         // Dead slots stay zeroed: the snapshot reader rejects a destroyed body whose position is not zero.
@@ -555,6 +547,19 @@ public sealed class WorldCore
             for (int k = 0; k < lanes; k++) { pos[b * lanes + k] -= offset[k]; }
         }
         for (int i = 0; i < lanes; i++) { _origin[i] += offset[i]; }
+    }
+
+    /// <summary>Checks an origin offset without applying it: one finite multiple of 2^-31 within 2^22 per position lane.</summary>
+    public void ValidateShift(ReadOnlySpan<double> offset)
+    {
+        if (offset.Length != Layout.PositionLanes) { throw new ArgumentException("offset needs " + Layout.PositionLanes.ToString(CultureInfo.InvariantCulture) + " components.", nameof(offset)); }
+        for (int i = 0; i < offset.Length; i++)
+        {
+            double o = offset[i];
+            if (!double.IsFinite(o) || Math.Abs(o) > OffsetBound) { throw new ArgumentOutOfRangeException(nameof(offset), o, "Origin offset component " + i.ToString(CultureInfo.InvariantCulture) + " = " + o.ToString("R", CultureInfo.InvariantCulture) + " is not finite or exceeds 2^22."); }
+            double scaled = o * OffsetScale;
+            if (Math.Floor(scaled) != scaled) { throw new ArgumentException("Origin offset component " + i.ToString(CultureInfo.InvariantCulture) + " = " + o.ToString("R", CultureInfo.InvariantCulture) + " is not a multiple of 2^-31.", nameof(offset)); }
+        }
     }
 
     // ------------------------------------------------------------------ the step

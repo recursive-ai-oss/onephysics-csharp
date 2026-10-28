@@ -17,7 +17,7 @@ internal sealed partial class Engine3D
         EnsureBodies(bodies);
         EnsureShapes(shapes);
         Grow(ref PairA, pairs); Grow(ref PairB, pairs); Grow(ref PairCons, pairs); Grow(ref PairLive, pairs); Grow(ref PairFree, pairs); Grow(ref SensorFree, pairs);
-        PairMap.EnsureCapacity(pairs);
+        PairMap.Reserve(pairs);
         if (_fresh.Length < pairs) { Array.Resize(ref _fresh, pairs); }
         if (_skip.Length < pairs) { Array.Resize(ref _skip, pairs); }
         if (_updateList.Length < pairs) { _updateList = new int[pairs]; _resStatus = new byte[pairs]; _resFirst = new int[pairs]; _resCount = new int[pairs]; }

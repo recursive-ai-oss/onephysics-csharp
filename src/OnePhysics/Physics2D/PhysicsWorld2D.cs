@@ -96,7 +96,7 @@ public sealed partial class PhysicsWorld2D
     /// collision callbacks registered on bodies run in event order (kind, then the bodies' slots) and <see cref="Events"/> holds the same list for polling.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="dt"/> is not finite and positive, or an option is out of range.</exception>
-    /// <exception cref="BodyOutOfBoundsException">A moving body's bounds are beyond ±2^22 or not finite; nothing was changed.</exception>
+    /// <exception cref="BodyOutOfBoundsException">A moving body's bounds are beyond ±2^22 or not finite, or its position, velocity or rotation is not finite; nothing was changed.</exception>
     public void Step(float dt)
     {
         _engine.Opt.Validate();
@@ -209,7 +209,10 @@ public sealed partial class PhysicsWorld2D
     /// </summary>
     public void ShiftOrigin(Vector2D offset)
     {
-        _core.ShiftOrigin([offset.X, offset.Y]);
+        double[] d = [offset.X, offset.Y];
+        _core.ValidateShift(d);
+        _engine.CheckShift(d);
+        _core.ShiftOrigin(d);
         _engine.RebuildProxies();
         InvalidateQueryPad();
     }

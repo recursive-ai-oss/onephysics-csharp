@@ -397,23 +397,29 @@ internal sealed partial class Engine3D
         Span<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
         ReadOnlySpan<float> invMass = bodies.InverseMass, rot = bodies.Rotation;
         ReadOnlySpan<byte> type = bodies.Type;
+        ReadOnlySpan<float> gravityScale = GravityScale, force = Force, torque = Torque, linDamping = LinearDamping, angDamping = AngularDamping, wInvI = WInvI;
+        ReadOnlySpan<byte> flags = BodyFlags;
         float h = ctx.SubstepDt;
         var g = Core.Options.Gravity;
         float maxSpeed = Opt.MaxLinearSpeed, maxSpeed2 = maxSpeed * maxSpeed;
         float maxSpin = Opt.MaxRotationPerSubstep / h;
+        float maxSpin2 = maxSpin * maxSpin;
+        // Every index below is a body of the awake list (below the world's high-water mark) and every per-body array was sized for that mark when the step began, so the unchecked accessors stay in range;
+        // the Checked build verifies each access.
         foreach (int b in list)
         {
-            if (type[b] != (byte)BodyType.Dynamic) { continue; }
-            float gs = GravityScale[b], im = invMass[b];
-            float vx = lin[3 * b] + h * (gs * g.X + im * Force[3 * b]);
-            float vy = lin[3 * b + 1] + h * (gs * g.Y + im * Force[3 * b + 1]);
-            float vz = lin[3 * b + 2] + h * (gs * g.Z + im * Force[3 * b + 2]);
-            var w = V(ang, 3 * b);
-            var tq = V(Torque, 3 * b);
-            if (tq.X != 0f || tq.Y != 0f || tq.Z != 0f) { w += Apply(WInvI.AsSpan(6 * b, 6), tq) * h; }
-            if ((BodyFlags[b] & 2) != 0) { w = Gyroscopic(b, w, h, rot); }
-            float dl = 1f / (1f + h * LinearDamping[b]);
-            float da = 1f / (1f + h * AngularDamping[b]);
+            if (Mem.At(type, b) != (byte)BodyType.Dynamic) { continue; }
+            int b3 = 3 * b;
+            float gs = Mem.At(gravityScale, b), im = Mem.At(invMass, b);
+            float vx = Mem.At(lin, b3) + h * (gs * g.X + im * Mem.At(force, b3));
+            float vy = Mem.At(lin, b3 + 1) + h * (gs * g.Y + im * Mem.At(force, b3 + 1));
+            float vz = Mem.At(lin, b3 + 2) + h * (gs * g.Z + im * Mem.At(force, b3 + 2));
+            var w = new Vector3F(Mem.At(ang, b3), Mem.At(ang, b3 + 1), Mem.At(ang, b3 + 2));
+            float tx = Mem.At(torque, b3), ty = Mem.At(torque, b3 + 1), tz = Mem.At(torque, b3 + 2);
+            if (tx != 0f || ty != 0f || tz != 0f) { w += Apply(wInvI.Slice(6 * b, 6), new Vector3F(tx, ty, tz)) * h; }
+            if ((Mem.At(flags, b) & 2) != 0) { w = Gyroscopic(b, w, h, rot); }
+            float dl = 1f / (1f + h * Mem.At(linDamping, b));
+            float da = 1f / (1f + h * Mem.At(angDamping, b));
             vx *= dl; vy *= dl; vz *= dl; w *= da;
             float v2 = vx * vx + vy * vy + vz * vz;
             if (v2 > maxSpeed2)
@@ -423,9 +429,9 @@ internal sealed partial class Engine3D
             }
 
             float w2 = w.X * w.X + w.Y * w.Y + w.Z * w.Z;
-            if (w2 > maxSpin * maxSpin) { w *= maxSpin / float.Sqrt(w2); }
-            lin[3 * b] = vx; lin[3 * b + 1] = vy; lin[3 * b + 2] = vz;
-            Put(ang, 3 * b, w);
+            if (w2 > maxSpin2) { w *= maxSpin / float.Sqrt(w2); }
+            Mem.At(lin, b3) = vx; Mem.At(lin, b3 + 1) = vy; Mem.At(lin, b3 + 2) = vz;
+            Mem.At(ang, b3) = w.X; Mem.At(ang, b3 + 1) = w.Y; Mem.At(ang, b3 + 2) = w.Z;
         }
     }
 
@@ -556,8 +562,10 @@ internal sealed partial class Engine3D
             }
             else if (other.Compound != null)
             {
-                if (!other.Compound.ShapeCast(Shape, rel, motion, out var hit) || hit.StartsOverlapping) { return true; }
-                t = hit.Fraction; approach = Vector3F.Dot(motion, hit.Normal);
+                // The compound refuses a sweep that leaves its coordinate range (a fast body far from the compound), so the sweep is cut to the range first, as the query path does.
+                if (!ClipToReach(rel.Translation, motion, out var co, out var cd, out float t0, out float t1)) { return true; }
+                if (!other.Compound.ShapeCast(Shape, new RigidTransformF(rel.Rotation, co), cd, out var hit) || hit.StartsOverlapping) { return true; }
+                t = t0 + (hit.Fraction * (t1 - t0)); approach = Vector3F.Dot(motion, hit.Normal);
             }
             else
             {

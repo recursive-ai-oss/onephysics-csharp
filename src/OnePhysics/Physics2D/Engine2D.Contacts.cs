@@ -57,6 +57,9 @@ internal struct BodyHot
 internal struct SkipFrame
 {
     public float X, Y, C, S, Clear;
+
+    /// <summary>Farthest point of B's shape from B's centre of mass, so the bound holds for any kind of body (a kinematic or static body has no stored extent).</summary>
+    public float Reach;
 }
 
 /// <summary>One entry of the pair table: the two shapes (A below B), their contact constraint while they touch (or -1), the owning bodies (-1 until first needed) and the narrowphase hints.</summary>
@@ -497,7 +500,7 @@ internal sealed partial class Engine2D
         double pAx = hA.X, pAy = hA.Y, pBx = hB.X, pBy = hB.Y;
         // A pair without a manifold whose last narrowphase proved the shapes apart by more than the speculative distance stays empty until they have moved that far toward each other.
         ref SkipFrame skip = ref pr.Skip;
-        if (existing < 0 && skip.Clear > 0f && StillApart(in skip, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy), hB.Lcx, hB.Lcy, hB.Extent)) { return false; }
+        if (existing < 0 && skip.Clear > 0f && StillApart(in skip, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy))) { return false; }
         if (RecycleManifolds && existing >= 0 && !plain && TryRecycle(existing, sa, sb, hB.Extent, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy), ref res))
         {
             // A recycled manifold only rewrites the pair's own payload, and nothing in the serial stage can remove it, so it is written here, in parallel, instead of going through the result list.
@@ -522,6 +525,7 @@ internal sealed partial class Engine2D
                 skip.X = cA * fdx + sA * fdy; skip.Y = cA * fdy - sA * fdx;
                 skip.C = cA * cB + sA * sB; skip.S = cA * sB - sA * cB;
                 skip.Clear = clearance;
+                skip.Reach = ReachOf(in Geom[sb], hB.Lcx, hB.Lcy);
             }
             else { skip.Clear = 0f; }
 
@@ -555,15 +559,30 @@ internal sealed partial class Engine2D
         return false;
     }
 
-    // Whether a pair recorded as apart still is. Every point of B's shape moves, relative to A, by at most the move of B's origin plus the chord of the turn times the point's distance from that origin
+    // The farthest point of a shape from the body's centre of mass (given in the body frame), radius included.
+    private static float ReachOf(in Shape2D g, float lcx, float lcy)
+    {
+        var cv = g.Vertices;
+        float reach = 0f;
+        for (int i = 0; i < cv.Length; i++)
+        {
+            float ex = cv[i].X - lcx, ey = cv[i].Y - lcy;
+            float e = float.Sqrt(ex * ex + ey * ey);
+            if (e > reach) { reach = e; }
+        }
+
+        return reach + g.Radius;
+    }
+
+    // Whether a pair recorded as apart still is. Every point of B's shape moves, relative to A, by at most the move of B's centre of mass plus the chord of the turn times the point's distance from that centre
     // (the turn's cosine is the product of the two stored and current rotations, so no angle is needed). The slack covers float rounding of the relative pose, which grows with its size.
-    private static bool StillApart(in SkipFrame f, Rot2 qA, Rot2 qB, float dx, float dy, float lcx, float lcy, float extent)
+    private static bool StillApart(in SkipFrame f, Rot2 qA, Rot2 qB, float dx, float dy)
     {
         float cA = qA.C, sA = qA.S;
         float ex = cA * dx + sA * dy - f.X, ey = cA * dy - sA * dx - f.Y;
         float dc = (cA * qB.C + sA * qB.S) * f.C + (cA * qB.S - sA * qB.C) * f.S;
         float turn = 2f * (1f - dc);
-        float radius = float.Sqrt(lcx * lcx + lcy * lcy) + extent;
+        float radius = f.Reach;
         float slack = 0.001f + 1e-6f * (float.Abs(dx) + float.Abs(dy) + radius);
         float used = float.Sqrt(ex * ex + ey * ey) + float.Sqrt(turn > 0f ? turn : 0f) * radius + slack;
         return used <= f.Clear; // false for NaN

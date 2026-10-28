@@ -28,4 +28,4 @@ State (instrumented build, corpora, crashes, logs, `stats.tsv`) lives under `$FU
 
 A finding becomes a minimised file at `testdata/fuzz/<target>/<name>.bin` (that is what `minimize` writes), plus a fix. `FuzzRegressionTests` replays every such file through its target in the normal test run.
 
-`testdata/fuzz-open/<target>/` holds minimised inputs of findings that are not fixed yet; nothing replays them. When a fix lands the file moves to `testdata/fuzz/`.
+`testdata/fuzz-open/<target>/` holds minimised inputs of findings that are not fixed yet; nothing replays them (it is empty at the moment). When a fix lands the file moves to `testdata/fuzz/`.
