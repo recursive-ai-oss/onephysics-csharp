@@ -265,8 +265,7 @@ internal static class ContactKernel3D
                 if (maxPts > 1) { WarmPoint(ref a, ref b2, in pts1, nrm, t1, t2); }
                 if (maxPts > 2) { WarmPoint(ref a, ref b2, in pts2, nrm, t1, t2); }
                 if (maxPts > 3) { WarmPoint(ref a, ref b2, in pts3, nrm, t1, t2); }
-                a.W = a.W - a.I.Apply(roll);
-                b2.W = b2.W + b2.I.Apply(roll);
+                ApplyRoll(ref a, ref b2, roll);
             }
             else if (phase == SolvePhase.Restitution)
             {
@@ -286,7 +285,7 @@ internal static class ContactKernel3D
 
                 // Rolling resistance first, then friction, then non-penetration last: the last constraint solved wins the argument, and keeping bodies apart matters most.
                 // A group with no rolling resistance in any lane would leave every lane unchanged (the selects keep the old bits), so it skips the work.
-                if (idx[W3D.AnyRollingSlot] != 0) { RollingResistance(ref a, ref b2, nrm, ref roll, wide, l0, rolling, T.Zero + pts0.NImp + pts1.NImp + pts2.NImp + pts3.NImp); }
+                if (idx[W3D.AnyRollingSlot] != 0) { RollingResistance(ref a, ref b2, nrm, ref roll, wide, l0, rolling, in pts0, in pts1, in pts2, in pts3); }
 
                 FrictionPoint(ref a, ref b2, ref pts0, t1, t2, friction);
                 if (maxPts > 1) { FrictionPoint(ref a, ref b2, ref pts1, t1, t2, friction); }
@@ -327,10 +326,19 @@ internal static class ContactKernel3D
         }
     }
 
+    /// <summary>Applies the rolling impulse carried over from the last step to both bodies' angular velocity.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void RollingResistance<T>(ref BodyLanes<T> a, ref BodyLanes<T> b2, V3<T> nrm, ref V3<T> roll, ReadOnlySpan<float> wide, int l0, T rolling, T total) where T : struct, ILane<T>
+    private static void ApplyRoll<T>(ref BodyLanes<T> a, ref BodyLanes<T> b2, V3<T> roll) where T : struct, ILane<T>
+    {
+        a.W = a.W - a.I.Apply(roll);
+        b2.W = b2.W + b2.I.Apply(roll);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void RollingResistance<T>(ref BodyLanes<T> a, ref BodyLanes<T> b2, V3<T> nrm, ref V3<T> roll, ReadOnlySpan<float> wide, int l0, T rolling, in PointLanes<T> p0, in PointLanes<T> p1, in PointLanes<T> p2, in PointLanes<T> p3) where T : struct, ILane<T>
     {
         T zero = T.Zero;
+        T total = T.Zero + p0.NImp + p1.NImp + p2.NImp + p3.NImp;
         T rollMask = T.GreaterThan(rolling, zero);
         T maxRoll = rolling * total;
         var dw = b2.W - a.W;
