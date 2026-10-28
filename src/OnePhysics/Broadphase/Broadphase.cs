@@ -148,7 +148,7 @@ public readonly struct AcceptAllPairs : IPairFilter
 /// <remarks>
 /// A proxy is created with its tight bounds; the stored box is the fat box (margin plus motion prediction). <see cref="MoveProxy(int, in TBox, ReadOnlySpan{double})"/> touches the tree only when the new tight box leaves the fat box,
 /// and only then is the proxy put in the move buffer. <see cref="UpdatePairs{TFilter}"/> queries the trees for every buffered proxy and returns the overlaps involving at least one of them:
-/// a moved dynamic proxy against all three trees, a moved static or kinematic proxy against the dynamic tree only (static-static, static-kinematic and kinematic-kinematic never pair).
+/// a moved dynamic proxy against all three trees, a moved static or kinematic proxy against the dynamic tree only (static-static never pairs; static-kinematic and kinematic-kinematic pair only when one of the two shapes is a sensor).
 /// A pair of two moved proxies is reported once. The returned pairs are sorted by (user id A, user id B, proxy A, proxy B), a total order that does not depend on thread count or traversal order.
 /// The caller keeps the set of pairs it already has (for example the contact table) and treats the output as candidates.
 /// The whole state, tree structures and the move buffer included, is a snapshot section; see docs/broadphase.md.
