@@ -63,7 +63,8 @@ internal sealed partial class Engine2D
         }
     }
 
-    private int[] _partScratch = new int[64];
+    private int[] _partOne = new int[64];
+    private int[] _partTwo = new int[64];
 
     /// <summary>
     /// Inside each color, puts the contacts with one manifold point before those with two (each keeping its order). The constraints of a color share no dynamic body, so which of them
@@ -74,31 +75,26 @@ internal sealed partial class Engine2D
         var coloring = Core.Coloring;
         var cs = Core.Constraints;
         ReadOnlySpan<byte> points = cs.PointCount;
+        ReadOnlySpan<byte> kind = cs.Kind;
         for (int g = 0; g < ConstraintColoring.ColorCount; g++)
         {
             var color = coloring.Color(g);
             int n = color.Length;
             if (n <= W2D.Lanes) { continue; }
-            int two = 0;
+            if (_partOne.Length < n) { _partOne = new int[Math.Max(n, _partOne.Length * 2)]; _partTwo = new int[_partOne.Length]; }
+            int one = 0, two = 0;
             bool joint = false;
             for (int i = 0; i < n; i++)
             {
                 int c = color[i];
-                if (cs.KindOf(c) == ConstraintKind.Joint) { joint = true; break; }
-                if (points[c] > 1) { two++; }
+                if (kind[c] == (byte)ConstraintKind.Joint) { joint = true; break; }
+                if (points[c] > 1) { _partTwo[two++] = c; } else { _partOne[one++] = c; }
             }
 
-            if (joint || two == 0 || two == n) { continue; }
-            if (_partScratch.Length < n) { _partScratch = new int[Math.Max(n, _partScratch.Length * 2)]; }
+            if (joint || two == 0 || one == 0) { continue; }
             var list = coloring.ListArray.AsSpan(coloring.ColorStart(g), n);
-            int one = 0, t = 0;
-            for (int i = 0; i < n; i++)
-            {
-                int c = list[i];
-                if (points[c] > 1) { _partScratch[t++] = c; } else { list[one++] = c; }
-            }
-
-            _partScratch.AsSpan(0, t).CopyTo(list.Slice(one));
+            _partOne.AsSpan(0, one).CopyTo(list);
+            _partTwo.AsSpan(0, two).CopyTo(list.Slice(one));
         }
     }
 

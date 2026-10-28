@@ -850,7 +850,7 @@ public sealed class WorldCore
         for (int i = 0; i < _islands.HighWater; i++)
         {
             if (!_islands.IsLive(i) || _islands.IsAsleep(i) || _islands.RemovedConstraints(i) != 0) { continue; }
-            if (MinSleepTime(i) >= limit) { SleepIsland(i); }
+            if (AllRested(i, limit)) { SleepIsland(i); }
         }
     }
 
@@ -860,6 +860,14 @@ public sealed class WorldCore
         var sleep = _bodies.SleepTime;
         foreach (int b in _islands.Bodies(island)) { if (sleep[b] > m) { m = sleep[b]; } }
         return m;
+    }
+
+    // Whether every body of the island has rested at least the limit: the same answer as MinSleepTime(island) >= limit, but it stops at the first body that has not.
+    private bool AllRested(int island, float limit)
+    {
+        var sleep = _bodies.SleepTime;
+        foreach (int b in _islands.Bodies(island)) { if (sleep[b] < limit) { return false; } }
+        return true;
     }
 
     private float MinSleepTime(int island)
