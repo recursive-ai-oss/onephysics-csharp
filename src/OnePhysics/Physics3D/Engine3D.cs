@@ -228,6 +228,7 @@ internal sealed partial class Engine3D : ISnapshotSection
             ReleaseGeom(GeomOf[s]);
         }
 
+        DropCharacterOfBody(b);
         Core.DestroyBody(handle);
         ReconcileJoints();
         ShapeHead[b] = -1; ShapeTail[b] = -1;
@@ -524,7 +525,8 @@ internal sealed partial class Engine3D : ISnapshotSection
     {
         bool joints = LiveJointCount() > 0;
         bool services = HasServiceState();
-        w.WriteUInt32(joints || services ? VersionJoints : Version);
+        bool chars = HasCharacters;
+        w.WriteUInt32(joints || services || chars ? VersionJoints : Version);
         w.WriteSingle(Opt.ContactHertz); w.WriteSingle(Opt.ContactDampingRatio); w.WriteSingle(Opt.PushOutVelocity); w.WriteSingle(Opt.RestitutionThreshold);
         w.WriteSingle(Opt.MaxLinearSpeed); w.WriteSingle(Opt.MaxRotationPerSubstep); w.WriteBool(Opt.ContinuousEnabled); w.WriteSingle(Opt.ContactSlop);
         w.WriteSingle(Opt.SpeculativeDistance);
@@ -578,12 +580,13 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         w.WriteInt32(PairFreeCount);
         w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
-        if (joints || services)
+        if (joints || services || chars)
         {
-            // Version 2: a presence-flags word, then the flagged blocks in a fixed order: joints, then services (layers, filters, sensors).
-            w.WriteUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u));
+            // Version 2: a presence-flags word, then the flagged blocks in a fixed order: joints, services (layers, filters, sensors), characters.
+            w.WriteUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u) | (chars ? BlockCharacters : 0u));
             if (joints) { WriteJoints(w); }
             if (services) { WriteServices(w, ns); }
+            if (chars) { WriteCharacters(w); }
         }
     }
 
@@ -696,15 +699,22 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         JointData3D[]? joints = null;
         ServiceBlock? services = null;
+        CharacterBlock? characters = null;
         if (v == VersionJoints)
         {
             uint flags = r.ReadUInt32();
-            if (flags == 0 || (flags & ~(BlockJoints | BlockServices)) != 0) { throw r.Error("invalid 3D section block flags " + flags.ToString(CultureInfo.InvariantCulture)); }
+            if (flags == 0 || (flags & ~(BlockJoints | BlockServices | BlockCharacters)) != 0) { throw r.Error("invalid 3D section block flags " + flags.ToString(CultureInfo.InvariantCulture)); }
             if ((flags & BlockJoints) != 0) { joints = ReadJoints(r); }
             if ((flags & BlockServices) != 0)
             {
                 services = ReadServices(r, ns, live);
                 if (services.IsDefault()) { throw r.Error("a services block holding only default state"); }
+            }
+
+            if ((flags & BlockCharacters) != 0)
+            {
+                characters = ReadCharacters(r, nb);
+                if (characters.Handles.Count == 0) { throw r.Error("a characters block holding no characters"); }
             }
         }
 
@@ -748,6 +758,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         EnsureShapes(Math.Max(ns, 1));
         PairA = pa; PairB = pb; PairCons = pc; PairLive = pl; PairHigh = np; PairFree = free; PairFreeCount = nf; ConsNext = consNext;
         CommitServices(services, ns);
+        CommitCharacters(characters);
         if (joints != null) { Opt.JointHertz = _pendingJointHertz; Opt.JointDampingRatio = _pendingJointDamping; }
         Joints = joints ?? new JointData3D[16];
         JointForce = new float[Joints.Length]; JointTorque = new float[Joints.Length];
@@ -766,7 +777,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || GeomOf.Length < shapes.HighWater) { return false; }
         var cons = Core.Constraints;
-        if (!JointsConsistentWithCore()) { return false; }
+        if (!JointsConsistentWithCore() || !CharactersConsistent()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)
         {
             if (!shapes.Handles.IsLive(s)) { continue; }

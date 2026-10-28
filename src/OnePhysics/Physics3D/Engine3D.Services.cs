@@ -70,6 +70,7 @@ internal sealed partial class Engine3D
     public bool CanCollide(int sa, int sb)
     {
         if ((ShapeFlags[sa] & ShapeFlags[sb] & FlagSensor) != 0) { return false; }
+        if (_virtualCharacters != 0 && CharacterPairBlocked(sa, sb)) { return false; }
         if (((LayerMatrix[ShapeLayer[sa]] >> ShapeLayer[sb]) & 1u) == 0) { return false; }
         if (Group[sa] == Group[sb] && Group[sa] != 0) { return Group[sa] > 0; }
         return (Mask[sa] & Category[sb]) != 0 && (Category[sa] & Mask[sb]) != 0;
