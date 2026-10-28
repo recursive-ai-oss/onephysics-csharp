@@ -13,6 +13,10 @@ sealed class OnePhysics3Sim : ISim3
     P3.PhysicsWorld3D world = null!;
     P3.Body[] bodies = [];
     int threads;
+    List<(P3.Character Character, CharacterScript Script, int Body)> characters = [];
+    float[] vy = [];
+    float gravity;
+    int stepNo;
 
     public string Name => "onephysics";
     public string Version => "0.1.0-dev";
@@ -21,10 +25,31 @@ sealed class OnePhysics3Sim : ISim3
     public void Build(Scene s, int threads)
     {
         this.threads = threads;
-        (world, bodies, _) = SceneBuilder3D.Build(s, threads);
+        (world, bodies, _) = SceneBuilder3D.Build(s, threads, out characters);
+        vy = new float[characters.Count]; gravity = (float)-s.Gy; stepNo = 0;
     }
 
-    public void Step(double dt) => world.Step((float)dt);
+    public void Step(double dt)
+    {
+        MoveCharacters((float)dt);
+        world.Step((float)dt);
+        stepNo++;
+    }
+
+    // Scripted input, as in the 2D driver: walk along +x at the script's speed, reversing every period steps, jump every so many steps, stand still from the stop step; gravity is integrated into a vertical
+    // speed that is held at a small downward value while grounded, so the mover keeps contact with ramps and stairs.
+    void MoveCharacters(float dt)
+    {
+        for (int i = 0; i < characters.Count; i++)
+        {
+            var (ch, sc, _) = characters[i];
+            bool active = stepNo < sc.Stop;
+            float walk = active ? (float)sc.Speed * (((stepNo / sc.Period) & 1) == 0 ? 1f : -1f) : 0f;
+            if (ch.IsGrounded && vy[i] <= 0f) vy[i] = active && sc.Jump > 0 && stepNo > 0 && (stepNo + i) % sc.Jump == 0 ? 5f : -1f;
+            else vy[i] -= gravity * dt;
+            ch.Move(new Vector3F(walk * dt, vy[i] * dt, 0f), dt);
+        }
+    }
 
     public void WakeAll(Scene s)
     {

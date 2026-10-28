@@ -383,6 +383,7 @@ public static class Gen3
             if (moving) pl.Vx = 1.5; else pl.Wy = 0.4;
             Box3(pl, 2, 0.25, 2);
             int n = g < 2 ? 8 : 7;
+            if (!moving) { if (g == 3) s.Params["rotatingRiders"] = []; s.Params["rotatingRiders"] = [.. s.Params["rotatingRiders"], .. new[] { (s.Bodies.Count).ToString(), n.ToString() }]; }
             for (int i = 0; i < n; i++)
             {
                 var b = Add3(s, "dynamic", px - 1.2 + 0.8 * (i % 4), 1.0 + 0.95 + 0.05, pz - 0.9 + 1.2 * (i / 4));

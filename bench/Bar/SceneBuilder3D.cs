@@ -7,16 +7,31 @@ namespace Bar;
 /// <summary>Builds a 3D world from a scene definition. Shared by the bar runner and the hash-matrix scenarios. Point joints are built from the scene (the only 3D joint kind the scenes use); queries are not run.</summary>
 public static class SceneBuilder3D
 {
-    public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads)
+    public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads) => Build(s, threads, out _);
+
+    /// <summary>Builds the scene; bodies with a <c>character</c> script become virtual characters (their bodies are in the array), returned with their scripts in body order.</summary>
+    public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads, out List<(P3.Character Character, CharacterScript Script, int Body)> characters)
     {
         var opt = new P3.WorldOptions3D { Gravity = new Vector3F((float)s.Gx, (float)s.Gy, (float)s.Gz), ThreadCount = threads };
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
         var world = new P3.PhysicsWorld3D(opt);
 
+        if (s.Bodies.Exists(b => b.Script != null)) world.SetLayerCollision(1, 1, false); // characters pass through each other (layer 1); the world and the crates are layer 0
         var bodies = new P3.Body[s.Bodies.Count];
+        characters = new List<(P3.Character, CharacterScript, int)>();
         for (int i = 0; i < bodies.Length; i++)
         {
             var ob = s.Bodies[i];
+            if (ob.Script != null)
+            {
+                var cap = ob.Shapes[0].P;
+                float radius = (float)ob.Shapes[0].Radius;
+                var cdef = new P3.CharacterDef { Radius = radius, Height = (float)(cap[4] - cap[1]) + 2f * radius, PushStrength = (float)ob.Script.Push, Layer = 1, LayerMask = ~(1u << 1) };
+                var ch = world.AddCharacter(new Vector3D(ob.X, ob.Y, ob.Z), cdef);
+                bodies[i] = ch.Body;
+                characters.Add((ch, ob.Script, i));
+                continue;
+            }
             var bd = new P3.BodyDef
             {
                 Type = ob.Type == "static" ? BodyType.Static : ob.Type == "kinematic" ? BodyType.Kinematic : BodyType.Dynamic,

@@ -301,6 +301,48 @@ public static class Metrics3
             foreach (var i in dyn) j = Math.Max(j, Math.Sqrt(new V(last.d[i * St] - prev.d[i * St], last.d[i * St + 1] - prev.d[i * St + 1], last.d[i * St + 2] - prev.d[i * St + 2]).Len2) / dt);
             r["jitter"] = j;
         }
+        if (want.Contains("charJitter") && frames.Count >= 3)
+        {
+            // Characters standing still (or riding constant-velocity ground) should not change velocity: the largest change between consecutive dumps over the last four intervals.
+            // Riders of rotating platforms (params rotatingRiders: first count pairs) change velocity by design and are skipped.
+            var skip = new HashSet<int>();
+            if (s.Params.TryGetValue("rotatingRiders", out var rr))
+                for (int q = 0; q + 1 < rr.Length; q += 2) for (int i = int.Parse(rr[q], CultureInfo.InvariantCulture); i < int.Parse(rr[q], CultureInfo.InvariantCulture) + int.Parse(rr[q + 1], CultureInfo.InvariantCulture); i++) skip.Add(i);
+            double worst = 0;
+            for (int k = frames.Count - 4; k + 1 < frames.Count; k++)
+            {
+                if (k < 0) continue;
+                for (int i = 0; i < n; i++)
+                {
+                    if (s.Bodies[i].Script == null || skip.Contains(i)) continue;
+                    var a = frames[k].d; var b = frames[k + 1].d;
+                    worst = Math.Max(worst, Math.Sqrt(new V(b[i * St + 7] - a[i * St + 7], b[i * St + 8] - a[i * St + 8], b[i * St + 9] - a[i * St + 9]).Len2));
+                }
+            }
+            r["charJitter"] = worst;
+        }
+        if (want.Contains("stairSuccess"))
+        {
+            // Share of the scripted climbers (params stairsN: first count minY) that reach minY in any dumped frame.
+            int total = 0, ok = 0;
+            for (int g = 0; s.Params.ContainsKey("stairs" + g); g++)
+            {
+                int first = (int)P("stairs" + g, 0), count = (int)P("stairs" + g, 1); double minY = P("stairs" + g, 2);
+                for (int i = first; i < first + count; i++) { total++; if (frames.Any(f => f.d[i * St + 1] >= minY)) ok++; }
+            }
+            r["stairSuccess"] = total == 0 ? 1 : (double)ok / total;
+        }
+        if (want.Contains("slopeViolations"))
+        {
+            // Walkers on the ramps steeper than the limit (params steepN: first count maxY) that get above maxY in any dumped frame.
+            int bad = 0;
+            for (int g = 0; s.Params.ContainsKey("steep" + g); g++)
+            {
+                int first = (int)P("steep" + g, 0), count = (int)P("steep" + g, 1); double maxY = P("steep" + g, 2);
+                for (int i = first; i < first + count; i++) if (frames.Any(f => f.d[i * St + 1] > maxY)) bad++;
+            }
+            r["slopeViolations"] = bad;
+        }
         if (want.Contains("asleepBeforeWake") && s.Events.Count > 0)
         {
             var f = frames.FirstOrDefault(x => x.step == s.Events[0].Step);
@@ -392,6 +434,7 @@ public static class Metrics3
                     var pj = parts[j];
                     if (pi.Body == pj.Body) continue;
                     if (!di && s.Bodies[pj.Body].Type != "dynamic") continue;
+                    if (s.Bodies[pi.Body].Script != null && s.Bodies[pj.Body].Script != null) continue; // scripted characters are on a layer that ignores itself
                     if (jointed.Contains(((long)Math.Min(pi.Body, pj.Body) << 32) | (uint)Math.Max(pi.Body, pj.Body))) continue;
                     double sd = CoreDistance(wp[i], wp[j]);
                     if (double.IsNaN(sd)) { undecided++; continue; }
