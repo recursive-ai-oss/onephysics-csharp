@@ -120,7 +120,6 @@ internal sealed partial class Engine3D
         ReadOnlySpan<float> invMass = bodies.InverseMass;
         ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
         var w = Wide.AsSpan(group * W3D.GroupFloats, W3D.GroupFloats);
-        w.Slice(0, W3D.StageOffset).Clear();
         var idx = WideIdx.AsSpan(group * W3D.IdxPerGroup, W3D.IdxPerGroup);
         for (int l = 0; l < W3D.Lanes; l++) { idx[l] = 0; idx[8 + l] = 0; idx[16 + l] = -1; idx[24 + l] = -1; }
         int maxPoints = 1;
@@ -169,7 +168,15 @@ internal sealed partial class Engine3D
                 w[(f + W3D.NormalImpulse) * 8 + lane] = pl[ManifoldLayout.NormalImpulse(i)];
                 w[(f + W3D.Tangent1Impulse) * 8 + lane] = pl[ManifoldLayout.Tangent1Impulse(i)];
                 w[(f + W3D.Tangent2Impulse) * 8 + lane] = pl[ManifoldLayout.Tangent2Impulse(i)];
+                w[(f + W3D.MaxNormalImpulse) * 8 + lane] = 0f;
                 w[(f + W3D.Mask) * 8 + lane] = allOnes;
+            }
+
+            // Slots past the manifold's points take no part: their mask is clear and their impulse reads as zero in the rolling-resistance total. Everything else in the slot is ignored under the mask.
+            for (int i = count; i < W3D.MaxPoints; i++)
+            {
+                int f = W3D.Point0 + i * W3D.PointStride;
+                w[(f + W3D.Mask) * 8 + lane] = 0f; w[(f + W3D.NormalImpulse) * 8 + lane] = 0f;
             }
 
             lane++;
