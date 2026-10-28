@@ -65,6 +65,7 @@ internal sealed partial class Engine2D
     private struct PairResult
     {
         public byte Status; // 0 untouched, 1 manifold computed, 2 boxes no longer overlap
+        public bool Recycled; // the manifold is the previous one moved with the bodies (see Recycle), not a new narrowphase result
         public int Count;
         public float Nx, Ny;
         public float RAx0, RAy0, RBx0, RBy0, Sep0;
@@ -85,7 +86,6 @@ internal sealed partial class Engine2D
         EnsureBodies(nb);
         ReconcileJoints();
         SizeJointStorage();
-
         // 0. A changed filter re-evaluates the pair table before anything else (see Refilter).
         Refilter();
 
@@ -108,10 +108,8 @@ internal sealed partial class Engine2D
                 Bp.MoveProxy(Proxy[s], new Aabb2D(_boxes[4 * s], _boxes[4 * s + 1], _boxes[4 * s + 2], _boxes[4 * s + 3]), Dp[2 * b], Dp[2 * b + 1]);
             }
         }
-
         // 2. Start-of-step pose and zero accumulated motion for every body (sleeping bodies may wake during the stage). Bodies are independent, so this runs in blocks.
         world.Executor.For((nb + 1023) / 1024, new StartPoseTask(this, nb));
-
         // 3. New pairs from the broadphase, in its sorted order.
         var found = Bp.UpdatePairs(new PairFilter(this), world.Executor);
         bool anyFresh = false;
@@ -127,7 +125,6 @@ internal sealed partial class Engine2D
             _fresh[np] = IsSensor(a) || IsSensor(b);
             anyFresh |= _fresh[np];
         }
-
         // 4. Pairs that need a fresh manifold: at least one body awake (or a kinematic body in motion).
         int need = (PairHigh + 1023) / 1024 * 1024;
         if (_updateList.Length < need) { _updateList = new int[Math.Max(need, _updateList.Length * 2)]; _results = new PairResult[_updateList.Length]; }
@@ -137,6 +134,7 @@ internal sealed partial class Engine2D
         world.Executor.For(listBlocks, new UpdateListTask(this, world, anyFresh));
         // Each block wrote its pairs at the start of its own 1024 slots, in pair order; closing the gaps in block order gives the list a single serial loop would have built.
         _updateCount = 0;
+        RecycledCount = 0;
         for (int k = 0; k < listBlocks; k++)
         {
             int n = _blockCounts[k];
@@ -145,11 +143,9 @@ internal sealed partial class Engine2D
         }
 
         if (anyFresh) { Array.Clear(_fresh, 0, Math.Min(PairHigh, _fresh.Length)); }
-
         // 5. Manifolds, in parallel; each task writes only its own results.
         int chunks = (_updateCount + 63) / 64;
         world.Executor.For(chunks, new CollideTask(this));
-
         // 6. Apply serially in ascending pair order: this fixes the order constraints are added, which fixes their colors. Writing the manifolds into existing constraints happens afterwards, in parallel.
         var cs = world.Constraints;
         for (int i = 0; i < _updateCount; i++)
@@ -209,9 +205,9 @@ internal sealed partial class Engine2D
                 if (bodies.IsDynamic(bb) && !bodies.IsAwake(bb)) { world.WakeIsland(bodies.Island[bb]); }
             }
 
+            if (res.Recycled) { RecycledCount++; }
             res.Status = 3; // a manifold to write into the pair's constraint
         }
-
         if (Opt.MaterialMixer != null) { new WriteTask(this).RunAll(); } // a user mixer runs serially, in pair order
         else { world.Executor.For((_updateCount + 63) / 64, new WriteTask(this)); }
     }
@@ -346,7 +342,8 @@ internal sealed partial class Engine2D
                 ref PairResult res = ref e._results[i];
                 if (res.Status != 3) { continue; }
                 int p = e._updateList[i];
-                e.WriteManifold(cs, e.PairCons[p], e.PairA[p], e.PairB[p], in res);
+                if (res.Recycled) { e.WriteRecycled(cs, e.PairCons[p], e.PairA[p], e.PairB[p], in res); }
+                else { e.WriteManifold(cs, e.PairCons[p], e.PairA[p], e.PairB[p], in res); }
             }
         }
     }
@@ -386,6 +383,11 @@ internal sealed partial class Engine2D
         var qA = new Rot2(rot[2 * ba], rot[2 * ba + 1]); var qB = new Rot2(rot[2 * bb], rot[2 * bb + 1]);
         var lcA = new Vec2(LocalCenter[2 * ba], LocalCenter[2 * ba + 1]); var lcB = new Vec2(LocalCenter[2 * bb], LocalCenter[2 * bb + 1]);
         double pAx = pos[2 * ba], pAy = pos[2 * ba + 1], pBx = pos[2 * bb], pBy = pos[2 * bb + 1];
+        int existing = PairCons[p];
+        if (RecycleManifolds && existing >= 0 && TryRecycle(existing, sa, sb, bb, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy), ref res))
+        {
+            return;
+        }
 
         // Subtract the double positions first; only the (small) difference of the body origins becomes float.
         Vec2 wA = qA.Rotate(lcA), wB = qB.Rotate(lcB);
@@ -457,6 +459,148 @@ internal sealed partial class Engine2D
 
         for (int k = count; k < ids.Length; k++) { ids[k] = 0; }
         cs.PointCount[c] = (byte)count;
+        StoreRecycleFrame(pl, sa, sb, in res);
+    }
+
+    // ------------------------------------------------------------------ manifold recycling
+
+    // Catto's contact recycling (Box2D 3.2 release notes: a touching contact keeps its manifold until the shapes have moved about 5 cm or turned about 11 degrees relative to each other).
+    // A manifold is a set of points fixed to the two bodies, so while the bodies move rigidly the points move with them and the separation changes by the motion of the two points along the normal.
+    // The narrowphase is skipped for such a pair; the arms, the normal and the separations are rebuilt from the body-fixed copies kept in the payload.
+    // Extent-scaled bound on how far any point of B has moved relative to A since the manifold was made (metres), and how deep a recycled point may have sunk.
+    // Box2D 3.2 allows 5 cm and about 11 degrees; mixed-terrain stability failed at that, because turning about a contact point sinks other vertices by extent * sin(angle).
+    /// <summary>Whether a touching pair that has barely moved reuses its manifold instead of running the narrowphase. On by default; off gives every pair a fresh manifold each step (the result differs slightly, so hashes differ).</summary>
+    public bool RecycleManifolds = true;
+
+    /// <summary>How many manifolds the last step reused.</summary>
+    public int RecycledCount;
+
+    private const float RecycleTol = 0.003f;
+    private const float RecycleDepth = 0.02f;
+
+    // Payload slots the 2D contact does not use (third components, the second tangent, the trailing floats). Offsets in floats.
+    private static class Rc
+    {
+        public const int NormalX = 2, NormalY = 7;             // normal in the frame of the body that owns it
+        public const int Owner = 32;                           // 0 none, 1 shape A, 2 shape B
+        public const int RelX = 8, RelY = 11, RelC = 14, RelS = 18; // pose of B's centre of mass and rotation in A's frame when the manifold was made
+    }
+
+    // The five floats of point k's body-fixed record: arm A x, y, arm B x, y, separation.
+    private static int PointSlot(int k, int f)
+    {
+        // point 0: 20, 33, 34, 35, 36   point 1: 37, 38, 39, 23, 26
+        return k == 0 ? (f == 0 ? 20 : 32 + f) : (f < 3 ? 37 + f : f == 3 ? 23 : 26);
+    }
+
+    private void StoreRecycleFrame(Span<float> pl, int sa, int sb, in PairResult res)
+    {
+        var owner = Core.Shapes.Owner;
+        int ba = owner[sa], bb = owner[sb];
+        var bodies = Core.Bodies;
+        var pos = bodies.Position; var rot = bodies.Rotation;
+        float cA = rot[2 * ba], sA = rot[2 * ba + 1], cB = rot[2 * bb], sB = rot[2 * bb + 1];
+        float dx = (float)(pos[2 * bb] - pos[2 * ba]), dy = (float)(pos[2 * bb + 1] - pos[2 * ba + 1]);
+        // The normal belongs to the body whose face made it (the reference face): it is that face's normal and turns with that body. A manifold whose normal is no face normal
+        // (a vertex against a vertex, a disc) has no such body and is never recycled.
+        int frame = NormalOwner(sa, sb, cA, sA, cB, sB, res.Nx, res.Ny);
+        Mem.At(pl, Rc.Owner) = frame;
+        if (frame == 2) { Mem.At(pl, Rc.NormalX) = cB * res.Nx + sB * res.Ny; Mem.At(pl, Rc.NormalY) = cB * res.Ny - sB * res.Nx; }
+        else { Mem.At(pl, Rc.NormalX) = cA * res.Nx + sA * res.Ny; Mem.At(pl, Rc.NormalY) = cA * res.Ny - sA * res.Nx; }
+        Mem.At(pl, Rc.RelX) = cA * dx + sA * dy; Mem.At(pl, Rc.RelY) = cA * dy - sA * dx;
+        Mem.At(pl, Rc.RelC) = cA * cB + sA * sB; Mem.At(pl, Rc.RelS) = cA * sB - sA * cB;
+        for (int k = 0; k < res.Count; k++)
+        {
+            float rax = k == 0 ? res.RAx0 : res.RAx1, ray = k == 0 ? res.RAy0 : res.RAy1, rbx = k == 0 ? res.RBx0 : res.RBx1, rby = k == 0 ? res.RBy0 : res.RBy1;
+            Mem.At(pl, PointSlot(k, 0)) = cA * rax + sA * ray; Mem.At(pl, PointSlot(k, 1)) = cA * ray - sA * rax;
+            Mem.At(pl, PointSlot(k, 2)) = cB * rbx + sB * rby; Mem.At(pl, PointSlot(k, 3)) = cB * rby - sB * rbx;
+            Mem.At(pl, PointSlot(k, 4)) = k == 0 ? res.Sep0 : res.Sep1;
+        }
+    }
+
+    private int NormalOwner(int sa, int sb, float cA, float sA, float cB, float sB, float nx, float ny)
+    {
+        const float Parallel = 0.99999f;
+        ref readonly Shape2D ga = ref Geom[sa];
+        if (ga._count >= 2)
+        {
+            for (int i = 0; i < ga._count; i++)
+            {
+                Vec2 f = ga._n[i];
+                if ((cA * f.X - sA * f.Y) * nx + (sA * f.X + cA * f.Y) * ny > Parallel) { return 1; }
+            }
+        }
+
+        ref readonly Shape2D gb = ref Geom[sb];
+        if (gb._count >= 2)
+        {
+            for (int i = 0; i < gb._count; i++)
+            {
+                Vec2 f = gb._n[i];
+                if ((cB * f.X - sB * f.Y) * nx + (sB * f.X + cB * f.Y) * ny < -Parallel) { return 2; }
+            }
+        }
+
+        return 0;
+    }
+
+    private bool TryRecycle(int c, int sa, int sb, int ba, Rot2 qA, Rot2 qB, float dx, float dy, ref PairResult res)
+    {
+        var cs = Core.Constraints;
+        int count = cs.PointCount[c];
+        if (count == 0 || cs.KindOf(c) != ConstraintKind.Contact) { return false; }
+        var pl = cs.Payload(c);
+        // Read as a float and compared: snapshot bytes may hold anything here, and only 1 and 2 mean a stored frame (old snapshots hold 0).
+        float ownerF = Mem.At(pl, Rc.Owner);
+        int owner = ownerF == 1f ? 1 : ownerF == 2f ? 2 : 0;
+        if (owner == 0) { return false; }
+        float cA = qA.C, sA = qA.S, cB = qB.C, sB = qB.S;
+        // How far B has moved and turned in A's frame since the manifold was made.
+        float relX = cA * dx + sA * dy, relY = cA * dy - sA * dx;
+        float ex = relX - Mem.At(pl, Rc.RelX), ey = relY - Mem.At(pl, Rc.RelY);
+        float e2 = ex * ex + ey * ey;
+        float rc = cA * cB + sA * sB, rs = cA * sB - sA * cB;
+        float c0 = Mem.At(pl, Rc.RelC), s0 = Mem.At(pl, Rc.RelS);
+        float dc = rc * c0 + rs * s0, ds = rs * c0 - rc * s0; // rotation from the made pose to now
+        if (!(dc > 0f)) { return false; }
+        float lim = RecycleTol - float.Sqrt(e2); // what is left of the budget for the turn
+        if (!(lim >= 0f && (ds < 0f ? -ds : ds) * MaxExtent[ba] <= lim)) { return false; }
+
+        float nlx = Mem.At(pl, Rc.NormalX), nly = Mem.At(pl, Rc.NormalY);
+        float nx, ny;
+        if (owner == 2) { nx = cB * nlx - sB * nly; ny = sB * nlx + cB * nly; }
+        else { nx = cA * nlx - sA * nly; ny = sA * nlx + cA * nly; }
+        for (int k = 0; k < count; k++)
+        {
+            float ax = Mem.At(pl, PointSlot(k, 0)), ay = Mem.At(pl, PointSlot(k, 1)), bx = Mem.At(pl, PointSlot(k, 2)), by = Mem.At(pl, PointSlot(k, 3));
+            float rax = cA * ax - sA * ay, ray = sA * ax + cA * ay;
+            float rbx = cB * bx - sB * by, rby = sB * bx + cB * by;
+            // Separation now: the one when made plus the motion of B's point relative to A's point along the normal.
+            float sep = Mem.At(pl, PointSlot(k, 4)) + (((dx + rbx) - rax) * nx + ((dy + rby) - ray) * ny);
+            if (!(sep <= Constants2D.SpeculativeDistance && sep >= -RecycleDepth)) { return false; } // false for NaN too
+            if (k == 0) { res.RAx0 = rax; res.RAy0 = ray; res.RBx0 = rbx; res.RBy0 = rby; res.Sep0 = sep; }
+            else { res.RAx1 = rax; res.RAy1 = ray; res.RBx1 = rbx; res.RBy1 = rby; res.Sep1 = sep; }
+        }
+
+        res.Nx = nx; res.Ny = ny; res.Count = count; res.Status = 1; res.Recycled = true;
+        return true;
+    }
+
+    private void WriteRecycled(ConstraintStore cs, int c, int sa, int sb, in PairResult res)
+    {
+        var pl = cs.Payload(c);
+        // A material can change between steps (a body's friction setter), and a fresh manifold would pick that up, so a recycled one does too.
+        var mixed = Mix(sa, sb);
+        Mem.At(pl, ManifoldLayout.Friction) = mixed.Friction;
+        Mem.At(pl, ManifoldLayout.Restitution) = mixed.Restitution;
+        Mem.At(pl, ManifoldLayout.RollingResistance) = mixed.RollingResistance;
+        Mem.At(pl, ManifoldLayout.Normal) = res.Nx; Mem.At(pl, ManifoldLayout.Normal + 1) = res.Ny;
+        for (int k = 0; k < res.Count; k++)
+        {
+            Mem.At(pl, ManifoldLayout.AnchorA(k)) = k == 0 ? res.RAx0 : res.RAx1; Mem.At(pl, ManifoldLayout.AnchorA(k) + 1) = k == 0 ? res.RAy0 : res.RAy1;
+            Mem.At(pl, ManifoldLayout.AnchorB(k)) = k == 0 ? res.RBx0 : res.RBx1; Mem.At(pl, ManifoldLayout.AnchorB(k) + 1) = k == 0 ? res.RBy0 : res.RBy1;
+            Mem.At(pl, ManifoldLayout.Separation(k)) = k == 0 ? res.Sep0 : res.Sep1;
+        }
     }
 
     private Material2D Mix(int sa, int sb)
