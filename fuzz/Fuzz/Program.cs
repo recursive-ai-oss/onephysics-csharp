@@ -31,6 +31,7 @@ internal static class Program
         ["compound3d"] = FuzzCompound3D.Run,
         ["world2d-joints"] = FuzzJoints2D.Run,
         ["world2d-joint-snapshot"] = FuzzJoints2D.SnapshotTarget,
+        ["world3d-services"] = Fuzz3DServices.Run,
         ["world3d-joints"] = FuzzJoints3D.Run,
         ["world3d-joint-snapshot"] = FuzzJoints3D.SnapshotTarget,
         ["world2d-characters"] = FuzzCharacters2D.Run,

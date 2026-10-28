@@ -16,6 +16,8 @@ interface ISim3
     void WakeAll(Scene s);
     /// <summary>Fills 14 doubles per body: x y z qx qy qz qw vx vy vz wx wy wz awake.</summary>
     void Snapshot(double[] d);
+    /// <summary>Runs the scene's queries (closest ray hits, sphere overlaps counting shapes, sphere casts to the closest hit) and appends query_* lines; engines without queries append nothing.</summary>
+    void Queries(Scene s, StringBuilder sb) { }
 }
 
 static class Driver3
@@ -46,6 +48,7 @@ static class Driver3
         }
         dump?.Dispose();
         var sb = new StringBuilder();
+        if (timing && s.Queries.Count > 0) sim.Queries(s, sb);
         sb.Append(CultureInfo.InvariantCulture, $"engine={sim.Name}\nversion={sim.Version}\nconfig={sim.Config}\nscene={s.Name}\nthreads={threads}\nsteps={s.Steps}\nwarmup={s.Warmup}\nbodies={n}\n");
         sb.Append("step_ns=").Append(string.Join(',', stepNs.Select(v => v.ToString("F0", CultureInfo.InvariantCulture)))).Append('\n');
         File.WriteAllText(o.Get("result", ""), sb.ToString());

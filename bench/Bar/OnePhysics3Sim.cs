@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.Text;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics.Core;
 using P3 = RecursiveAI.OnePhysics.Physics3D;
@@ -38,5 +41,44 @@ sealed class OnePhysics3Sim : ISim3
             d[o + 7] = v.X; d[o + 8] = v.Y; d[o + 9] = v.Z; d[o + 10] = w.X; d[o + 11] = w.Y; d[o + 12] = w.Z;
             d[o + 13] = b.IsAwake ? 1 : 0;
         }
+    }
+
+    // The same protocol as the reference drivers; the first repetition is untimed when there are several.
+    public void Queries(Scene s, StringBuilder sb)
+    {
+        var ns = new double[3]; var count = new int[3]; var hits = new long[3];
+        double nsPerTick = 1e9 / Stopwatch.Frequency;
+        var buffer = new P3.QueryHit3D[256];
+        string[] names = ["ray", "overlap", "cast"];
+        for (int rep = 0; rep < s.QueryReps; rep++)
+        {
+            bool measure = s.QueryReps == 1 || rep > 0;
+            for (int kind = 0; kind < 3; kind++)
+            {
+                long h = 0; int c = 0; long t0 = Stopwatch.GetTimestamp();
+                foreach (var q in s.Queries)
+                {
+                    if (q.Kind != names[kind]) continue;
+                    c++;
+                    var P = q.P;
+                    if (kind == 0)
+                    {
+                        if (world.Raycast(new Vector3D(P[0], P[1], P[2]), new Vector3F((float)P[3], (float)P[4], (float)P[5]), out _, (float)P[6])) h++;
+                    }
+                    else if (kind == 1)
+                    {
+                        h += world.OverlapSphereAll(new Vector3D(P[0], P[1], P[2]), (float)P[3], buffer);
+                    }
+                    else
+                    {
+                        float tx = (float)P[4], ty = (float)P[5], tz = (float)P[6];
+                        float len = float.Sqrt(tx * tx + ty * ty + tz * tz);
+                        if (world.SphereCast(new Vector3D(P[0], P[1], P[2]), (float)P[3], new Vector3F(tx, ty, tz), out _, len)) h++;
+                    }
+                }
+                if (measure) { ns[kind] += (Stopwatch.GetTimestamp() - t0) * nsPerTick; count[kind] += c; hits[kind] = h; }
+            }
+        }
+        for (int k = 0; k < 3; k++) sb.Append(CultureInfo.InvariantCulture, $"query_{names[k]}_ns={ns[k]:F0}\nquery_{names[k]}_count={count[k]}\nquery_{names[k]}_hits={hits[k]}\n");
     }
 }

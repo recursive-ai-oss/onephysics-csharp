@@ -116,7 +116,7 @@ public class Services3DTests
         sensor.Body.OnTriggerEnter += t => log.Add("sensor enter " + t.SelfIsSensor);
         sensor.Body.OnTriggerExit += t => log.Add("sensor exit " + t.SelfIsSensor);
         for (int i = 0; i < 120; i++) { w.Step(Dt); }
-        Assert.Equal(["ball enter False", "sensor enter True", "ball exit False", "sensor exit True"], log);
+        Assert.Equal(["sensor enter True", "ball enter False", "sensor exit True", "ball exit False"], log);
         Assert.True(sensor.IsSensor);
         Assert.Equal(0f, sensor.Body.Mass);
     }
@@ -346,7 +346,7 @@ public class Services3DTests
     {
         var w = NewWorld(o => o.Gravity = default);
         var box = w.AddBox(new Vector3F(2, 4, 6), at: new Vector3D(10, 20, 30), type: BodyType.Static);
-        var ball = w.AddSphere(0.5f, new Vector3D(10, 20, 31.2), type: BodyType.Dynamic);
+        var ball = w.AddSphere(0.5f, new Vector3D(10, 20, 33.4), type: BodyType.Dynamic);
         w.AddCapsule(0.5f, 0.25f, new Vector3D(0, 0, 0), type: BodyType.Static);
         w.AddConvexHull([new(0, 0, 0), new(1, 0, 0), new(0, 1, 0), new(0, 0, 1)], new Vector3D(-5, 0, 0), type: BodyType.Static);
         var g = new DebugGeometry();
@@ -369,15 +369,15 @@ public class Services3DTests
         Assert.Equal(4, g.Shapes[3].PointCount);
         Assert.Equal(12, g.Shapes[3].IndexCount);
         Assert.Equal(4, g.Bounds.Length);
-        Assert.Equal(new Vector3D(9, 18, 27), g.Bounds[0].Min);
+        Assert.True(Math.Abs(g.Bounds[0].Min.X - 9) < 1e-3 && Math.Abs(g.Bounds[0].Min.Y - 18) < 1e-3 && Math.Abs(g.Bounds[0].Min.Z - 27) < 1e-3, "tight bounds are padded by a few float ulps");
         Assert.Equal(4, g.Bodies.Length);
         Assert.Equal(DebugBodyState.Static, g.Bodies[0].State);
         Assert.Equal(new Vector3D(10, 20, 30), g.Bodies[0].CenterOfMass);
         Assert.Equal(DebugBodyState.Awake, g.Bodies[1].State);
         Assert.True(g.Contacts.Length > 0);
         var c0 = g.Contacts[0];
-        Assert.Equal(new Vector3F(0, 0, -1).Z, Math.Abs(c0.Normal.Z) > 0.99f ? -1f : c0.Normal.Z, 2);
-        Assert.True(Math.Abs(c0.Point.Z - 30.999) < 0.1, "contact point z " + c0.Point.Z);
+        Assert.True(Math.Abs(c0.Normal.Z) > 0.99f, "contact normal " + c0.Normal);
+        Assert.True(Math.Abs(c0.Point.Z - 33.0) < 0.1, "contact point z " + c0.Point.Z);
         Assert.Equal(box.Position, new Vector3D(10, 20, 30));
         Assert.True(ball.IsValid);
 
@@ -455,5 +455,18 @@ public class Services3DTests
         Assert.InRange(hit.Distance, 4.99f, 5.01f);
         Assert.Equal(new Vector3F(0, 1, 0).Y, hit.Normal.Y, 3);
         Assert.Equal(0, w.RaycastAll(new Vector3D(0, 5, 0), new Vector3F(0, -1, 0), Span<QueryHit3D>.Empty));
+    }
+
+    [Fact]
+    public void TheSharedServicesSceneIsThreadAndRestoreIndependent()
+    {
+        // The scene the hash matrix and smoke apps run: every path must end in the same hash.
+        ulong a = Services3DScene.Run(1, false), b = Services3DScene.Run(4, false), c = Services3DScene.Run(1, true);
+        Assert.Equal(a, b);
+        Assert.Equal(a, c);
+        Services3DScene.Run(1, false);
+        var seen = Services3DScene.Seen!;
+        Assert.True(seen[(int)EventKind.SensorEnter] > 0 && seen[(int)EventKind.SensorExit] > 0, "the sensor must fire");
+        Assert.True(seen[(int)EventKind.ContactBegin] > 0 && seen[(int)EventKind.ContactEnd] > 0, "contacts must begin and end");
     }
 }

@@ -97,7 +97,7 @@ internal sealed partial class Engine3D
 
     /// <summary>
     /// How far any moving proxy's stored (fat) box may be behind the body's pose: bodies move during a step but their proxies are updated at the start of the next one, so between steps a box can be stale.
-    /// Queries grow the kinematic and dynamic trees' boxes by this (computed lazily once per step; it never changes simulation state).
+    /// Queries grow the moving-body trees' boxes by this (computed lazily once per step; it never changes simulation state).
     /// </summary>
     private double QueryPad()
     {
@@ -199,6 +199,35 @@ internal sealed partial class Engine3D
         }
     }
 
+    // Cuts the segment from..from+delta to the cube the compound accepts (half its coordinate range, so float rounding stays clear of the limit); a segment already inside is returned untouched.
+    private static bool ClipToReach(Vector3F from, Vector3F delta, out Vector3F origin, out Vector3F span, out float t0, out float t1)
+    {
+        origin = from; span = delta; t0 = 0f; t1 = 1f;
+        double lim = BoxLimits.MaxCoordinate * 0.5;
+        double a0 = 0.0, a1 = 1.0;
+        bool inside = true;
+        for (int k = 0; k < 3; k++)
+        {
+            double o = k == 0 ? from.X : k == 1 ? from.Y : from.Z;
+            double d = k == 0 ? delta.X : k == 1 ? delta.Y : delta.Z;
+            double e = o + d;
+            if (Math.Abs(o) <= lim && Math.Abs(e) <= lim) { continue; }
+            inside = false;
+            if (d == 0.0) { return false; }
+            double u = (-lim - o) / d, v = (lim - o) / d;
+            if (u > v) { (u, v) = (v, u); }
+            if (u > a0) { a0 = u; }
+            if (v < a1) { a1 = v; }
+            if (a0 > a1) { return false; }
+        }
+
+        if (inside) { return true; }
+        t0 = (float)a0; t1 = (float)a1;
+        origin = from + (delta * t0);
+        span = delta * (t1 - t0);
+        return true;
+    }
+
     /// <summary>The narrow phase for one candidate shape. All of it is float arithmetic in the shape's own frame after one double subtraction, like the contact stage.</summary>
     private bool Narrow(in QueryParams q, QueryMode mode, int s, QueryScratch sc, out RawHit h)
     {
@@ -221,8 +250,10 @@ internal sealed partial class Engine3D
                 }
                 else if (g.Compound != null)
                 {
-                    if (!g.Compound.RayCast(lo, lt, 1f, out var hit)) { return false; }
-                    f = hit.Fraction; n = hit.Normal; sub = hit.Child;
+                    // The compound refuses segments that leave its coordinate range, so a long ray is cut to the range first.
+                    if (!ClipToReach(lo, lt, out var co, out var cd, out float t0, out float t1)) { return false; }
+                    if (!g.Compound.RayCast(co, cd, 1f, out var hit)) { return false; }
+                    f = t0 + (hit.Fraction * (t1 - t0)); n = hit.Normal; sub = hit.Child;
                 }
                 else
                 {
@@ -248,8 +279,10 @@ internal sealed partial class Engine3D
                 }
                 else if (g.Compound != null)
                 {
-                    if (!g.Compound.ShapeCast(q.Mover, rel, motion, out var hit)) { return false; }
-                    f = hit.Fraction; n = -hit.Normal; p = hit.PointOnChild; sub = hit.Child; startsOverlapping = hit.StartsOverlapping;
+                    if (!ClipToReach(lo, motion, out var co, out var cd, out float t0, out float t1)) { return false; }
+                    var crel = new RigidTransformF(rel.Rotation, co);
+                    if (!g.Compound.ShapeCast(q.Mover, crel, cd, out var hit)) { return false; }
+                    f = t0 + (hit.Fraction * (t1 - t0)); n = -hit.Normal; p = hit.PointOnChild; sub = hit.Child; startsOverlapping = hit.StartsOverlapping;
                 }
                 else
                 {
