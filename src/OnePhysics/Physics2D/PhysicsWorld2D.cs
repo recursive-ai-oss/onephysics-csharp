@@ -106,7 +106,7 @@ public sealed partial class PhysicsWorld2D
         byte[] backup = _core.Snapshot();
         _core.Restore(snapshot);
         string? problem = null;
-        if (!_engine.IsConsistentWithCore()) { problem = "the snapshot's 2D engine state does not match its bodies and shapes"; }
+        if (!_engine.IsConsistentWithCore()) { problem = _engine.ConsistencyProblem.Length > 0 ? _engine.ConsistencyProblem : "the snapshot's 2D engine state does not match its bodies and shapes"; }
         else
         {
             LoadOptionsFromCore();

@@ -250,7 +250,8 @@ internal sealed partial class Engine2D : ISnapshotSection
             // A dynamic body well inside the range whose shapes and motion are small cannot have an invalid box: its fat box reaches at most 5 * 2^19 < the limit of 2^22.
             // (Extents are measured from the centre of mass and include the radius; the box is stretched by at most twice the last displacement and widened by the margin.)
             // Anything not obviously inside, NaN included, takes the exact test below.
-            if (bodies.TypeOf(b) == BodyType.Dynamic)
+            // A restore (includeStatic) never takes the shortcut: the stored extents come from untrusted bytes.
+            if (!includeStatic && bodies.TypeOf(b) == BodyType.Dynamic)
             {
                 var p = bodies.PositionOf(b);
                 if (Math.Abs(p[0]) < SafeBound && Math.Abs(p[1]) < SafeBound && MaxExtent[b] < SafeBound && Math.Abs(Dp[2 * b]) < SafeBound && Math.Abs(Dp[2 * b + 1]) < SafeBound && Opt.BroadphaseMargin < SafeBound) { continue; }
@@ -285,6 +286,26 @@ internal sealed partial class Engine2D : ISnapshotSection
         var lc = new Vec2(LocalCenter[2 * b], LocalCenter[2 * b + 1]);
         var box = shape.ComputeAabb(new Transform2(-q.Rotate(lc), q));
         return new Aabb2D(pos[0] + (double)box.Lower.X, pos[1] + (double)box.Lower.Y, pos[0] + (double)box.Upper.X, pos[1] + (double)box.Upper.Y);
+    }
+
+    /// <summary>Farthest point of any shape of the body from the given centre of mass, radius included.</summary>
+    private float ComputeMaxExtent(int b, float cx, float cy)
+    {
+        float maxExt = 0f;
+        for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
+        {
+            ref readonly var g = ref Geom[s];
+            var cv = g.Vertices;
+            float r = g.Radius;
+            for (int i = 0; i < cv.Length; i++)
+            {
+                float ex = cv[i].X - cx, ey = cv[i].Y - cy;
+                float e = float.Sqrt(ex * ex + ey * ey) + r;
+                if (e > maxExt) { maxExt = e; }
+            }
+        }
+
+        return maxExt;
     }
 
     /// <summary>Recomputes mass, centre of mass, inertia and extents of a dynamic body from its shapes, moving the stored centre-of-mass position so the body origin stays put.</summary>
@@ -340,18 +361,12 @@ internal sealed partial class Engine2D : ISnapshotSection
         pos[1] += (double)(rot[1] * dx + rot[0] * dy);
         LocalCenter[2 * b] = newX; LocalCenter[2 * b + 1] = newY;
 
-        float maxExt = 0f, minExt = float.MaxValue;
+        float maxExt = ComputeMaxExtent(b, newX, newY), minExt = float.MaxValue;
         for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
         {
             ref readonly var g = ref Geom[s];
             var cv = g.Vertices;
             float r = g.Radius;
-            for (int i = 0; i < cv.Length; i++)
-            {
-                float ex = cv[i].X - newX, ey = cv[i].Y - newY;
-                float e = float.Sqrt(ex * ex + ey * ey) + r;
-                if (e > maxExt) { maxExt = e; }
-            }
 
             float me = r;
             if (g.Kind == ShapeKind2D.Polygon)
@@ -646,8 +661,12 @@ internal sealed partial class Engine2D : ISnapshotSection
     }
 
     /// <summary>Checks the section against the core after a restore; false when the two disagree (a damaged snapshot that parsed).</summary>
+    /// <summary>Why the last <see cref="IsConsistentWithCore"/> failed.</summary>
+    public string ConsistencyProblem = "";
+
     public bool IsConsistentWithCore()
     {
+        ConsistencyProblem = "";
         var bodies = Core.Bodies;
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || Geom.Length < shapes.HighWater) { return false; }
@@ -668,6 +687,13 @@ internal sealed partial class Engine2D : ISnapshotSection
             for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
             {
                 if (!shapes.Handles.IsLive(s) || shapes.Owner[s] != b || ++count > shapes.HighWater) { return false; }
+            }
+
+            // The bounds shortcut and the continuous-collision tests trust the stored extent, so it must cover the geometry.
+            if (bodies.TypeOf(b) == BodyType.Dynamic && !(MaxExtent[b] >= ComputeMaxExtent(b, LocalCenter[2 * b], LocalCenter[2 * b + 1])))
+            {
+                ConsistencyProblem = "the stored maximum extent of body slot " + b + " does not cover its shapes";
+                return false;
             }
         }
 
