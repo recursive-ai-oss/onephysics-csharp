@@ -64,16 +64,42 @@ internal sealed partial class Engine2D
 
         int nc = core.Constraints.HighWater;
         if (SlotOf.Length < nc) { SlotOf = new int[Math.Max(nc, SlotOf.Length * 2)]; JSlotOf = new int[SlotOf.Length]; BatchSimple = new byte[SlotOf.Length]; }
-        ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
-        var st = BodyState.AsSpan();
-        _movingKinematic = false;
-        for (int b = 0; b < nb; b++)
+        // Every live body's velocity goes into its solver row. Blocks write their own rows and their own flag, so they run on several threads.
+        int blocks = (nb + BeginBlock - 1) / BeginBlock;
+        if (_beginMoving.Length < blocks) { _beginMoving = new int[Math.Max(blocks, _beginMoving.Length * 2)]; }
+        core.Executor.For(blocks, new BeginBodiesTask(this, nb));
+        bool moving = false;
+        for (int blk = 0; blk < blocks; blk++) { moving |= _beginMoving[blk] != 0; }
+        _movingKinematic = moving;
+    }
+
+    private const int BeginBlock = 1024;
+    private int[] _beginMoving = new int[4];
+
+    private readonly struct BeginBodiesTask : IParallelBody
+    {
+        private readonly Engine2D _e; private readonly int _count;
+
+        public BeginBodiesTask(Engine2D e, int count) { _e = e; _count = count; }
+
+        public void Run(int block)
         {
-            if (!bodies.IsLive(b)) { continue; }
-            if (bodies.TypeOf(b) == BodyType.Kinematic && IsActive(bodies, b)) { _movingKinematic = true; }
-            int o = (b + 1) * BS2D.Stride;
-            st[o + BS2D.Vx] = lin[2 * b]; st[o + BS2D.Vy] = lin[2 * b + 1]; st[o + BS2D.W] = ang[b];
-            st[o + BS2D.Dpx] = 0f; st[o + BS2D.Dpy] = 0f; st[o + BS2D.DqC] = 1f; st[o + BS2D.DqS] = 0f;
+            var e = _e;
+            var bodies = e.Core.Bodies;
+            ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
+            var st = e.BodyState.AsSpan();
+            int lo = block * BeginBlock, hi = Math.Min(lo + BeginBlock, _count);
+            int moving = 0;
+            for (int b = lo; b < hi; b++)
+            {
+                if (!bodies.IsLive(b)) { continue; }
+                if (bodies.TypeOf(b) == BodyType.Kinematic && IsActive(bodies, b)) { moving = 1; }
+                int o = (b + 1) * BS2D.Stride;
+                st[o + BS2D.Vx] = lin[2 * b]; st[o + BS2D.Vy] = lin[2 * b + 1]; st[o + BS2D.W] = ang[b];
+                st[o + BS2D.Dpx] = 0f; st[o + BS2D.Dpy] = 0f; st[o + BS2D.DqC] = 1f; st[o + BS2D.DqS] = 0f;
+            }
+
+            e._beginMoving[block] = moving;
         }
     }
 
@@ -83,38 +109,53 @@ internal sealed partial class Engine2D
     /// <summary>
     /// Inside each color, puts the contacts with one manifold point before those with two (each keeping its order). The constraints of a color share no dynamic body, so which of them
     /// share a group of lanes cannot change any result; it only lets a group of single-point contacts skip the second point's arithmetic. A color holding a joint is left alone.
+    /// Colors are independent (each rewrites its own stretch of the list and uses the same stretch of the scratch arrays), so they run as parallel tasks.
     /// </summary>
     private void GroupSinglePointFirst()
     {
-        var coloring = Core.Coloring;
-        var cs = Core.Constraints;
-        ReadOnlySpan<byte> points = cs.PointCount;
-        ReadOnlySpan<byte> kind = cs.Kind;
-        for (int g = 0; g < ConstraintColoring.ColorCount; g++)
+        int total = Core.Coloring.ActiveCount;
+        if (_partOne.Length < total) { _partOne = new int[Math.Max(total, _partOne.Length * 2)]; _partTwo = new int[_partOne.Length]; }
+        Core.Executor.For(ConstraintColoring.ColorCount, new GroupPointsTask(this));
+    }
+
+    private readonly struct GroupPointsTask : IParallelBody
+    {
+        private readonly Engine2D _e;
+
+        public GroupPointsTask(Engine2D e) => _e = e;
+
+        public void Run(int g)
         {
+            var e = _e;
+            var coloring = e.Core.Coloring;
+            var cs = e.Core.Constraints;
+            ReadOnlySpan<byte> points = cs.PointCount;
+            ReadOnlySpan<byte> kind = cs.Kind;
             var color = coloring.Color(g);
             int n = color.Length;
-            if (n <= W2D.Lanes) { continue; }
-            if (_partOne.Length < n) { _partOne = new int[Math.Max(n, _partOne.Length * 2)]; _partTwo = new int[_partOne.Length]; }
+            if (n <= W2D.Lanes) { return; }
+            int at = coloring.ColorStart(g);
+            var partOne = e._partOne.AsSpan(at, n);
+            var partTwo = e._partTwo.AsSpan(at, n);
             int one = 0, two = 0;
-            bool joint = false;
             for (int i = 0; i < n; i++)
             {
                 int c = color[i];
-                if (kind[c] == (byte)ConstraintKind.Joint) { joint = true; break; }
-                if (points[c] > 1) { _partTwo[two++] = c; } else { _partOne[one++] = c; }
+                if (kind[c] == (byte)ConstraintKind.Joint) { return; }
+                if (points[c] > 1) { partTwo[two++] = c; } else { partOne[one++] = c; }
             }
 
-            if (joint || two == 0 || one == 0) { continue; }
-            var list = coloring.ListArray.AsSpan(coloring.ColorStart(g), n);
-            _partOne.AsSpan(0, one).CopyTo(list);
-            _partTwo.AsSpan(0, two).CopyTo(list.Slice(one));
+            if (two == 0 || one == 0) { return; }
+            var list = coloring.ListArray.AsSpan(at, n);
+            partOne.Slice(0, one).CopyTo(list);
+            partTwo.Slice(0, two).CopyTo(list.Slice(one));
         }
     }
 
     /// <summary>Prepares the joints among a chunk of constraints (contacts are prepared per batch by <see cref="PrepareBatch"/>).</summary>
     public void PrepareJoints(ReadOnlySpan<int> constraints, in StepContext ctx)
     {
+        if (_trackedJoints == 0) { return; }
         var cs = Core.Constraints;
         foreach (int c in constraints)
         {

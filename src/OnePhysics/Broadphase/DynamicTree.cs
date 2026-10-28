@@ -117,8 +117,6 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     private readonly TBox[] _rbBinBox = new TBox[BinCount];
     private readonly double[] _rbRightArea = new double[BinCount];
     private readonly int[] _rbRightCount = new int[BinCount];
-    private readonly double[] _rbMin = new double[3];
-    private readonly double[] _rbMax = new double[3];
 
     /// <summary>Creates an empty tree with room for <paramref name="initialCapacity"/> nodes (it grows as needed).</summary>
     public DynamicTree(int initialCapacity = 64)
@@ -488,6 +486,7 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     private struct BuildItem
     {
         public int Begin, End, Parent, Side;
+        public int Base; // index in the region list of this item's node (a parallel rebuild numbers the nodes of every subtree up front)
     }
 
     /// <summary>
@@ -571,7 +570,8 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     /// Rebuilds only the part of the tree that <see cref="EnlargeProxy"/> touched: the subtrees below the flagged region stay as they are and become the leaves of a new top, built by binned SAH like <see cref="Rebuild"/>.
     /// The flagged internal nodes are reused, so no node is allocated. Does nothing when nothing is flagged. The result depends only on the tree's current structure and boxes.
     /// </summary>
-    public void RebuildEnlarged()
+    /// <param name="executor">When given and the tree is large, independent subtrees of the new top are built on several threads; the tree is the same as the serial build's.</param>
+    public void RebuildEnlarged(TaskExecutor? executor = null)
     {
         if (_enlarged == 0) { return; }
         if (_root == NullNode || _nodes[_root].Height == 0 || (_nodes[_root].Flags & EnlargedFlag) == 0) { _enlarged = 0; return; }
@@ -601,13 +601,36 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
         }
 
         for (int i = 0; i < regionCount; i++) { _nodes[_rbRegion[i]].Flags = 0; }
-        int nextRegion = 0;
-        int sp = 0;
-        _rbStack[sp++] = new BuildItem { Begin = 0, End = itemCount, Parent = NullNode, Side = 0 };
         _root = NullNode;
+        if (executor != null && itemCount >= ParallelRebuildItems) { BuildTopParallel(itemCount, regionCount, executor); }
+        else
+        {
+            if (_rbStack.Length < itemCount + 2) { _rbStack = new BuildItem[Math.Max(itemCount + 2, _rbStack.Length * 2)]; }
+            BuildSubtree(new BuildItem { Begin = 0, End = itemCount, Parent = NullNode, Side = 0, Base = 0 }, _rbStack);
+            // The reused nodes were taken in top-down order, so walking them backwards fits boxes and heights bottom-up.
+            for (int i = regionCount - 1; i >= 0; i--) { Refit(_rbRegion[i]); }
+        }
+
+        _enlarged = 0;
+    }
+
+    private const int ParallelRebuildItems = 1024;
+    private const int RebuildUnitItems = 256;
+    private const int UnitStack = RebuildUnitItems + 2;
+    private BuildItem[] _rbUnits = new BuildItem[16];
+    private BuildItem[] _rbUnitStacks = new BuildItem[16];
+    private int[] _rbTop = new int[16];
+
+    // Builds the subtree over items [Begin, End) of the rebuild list top-down by midpoint splits (depth first, first child first), taking its internal nodes from the region list
+    // starting at item.Base. A subtree of k items uses exactly k - 1 of them, so a parent can hand each child its own stretch of the list before either is built.
+    private void BuildSubtree(BuildItem first, Span<BuildItem> stack)
+    {
+        int nextRegion = first.Base;
+        int sp = 0;
+        stack[sp++] = first;
         while (sp > 0)
         {
-            BuildItem item = _rbStack[--sp];
+            BuildItem item = stack[--sp];
             if (item.End - item.Begin == 1)
             {
                 Attach(item, _rbItems[item.Begin]);
@@ -616,15 +639,68 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
 
             int node = _rbRegion[nextRegion++];
             Attach(item, node);
-            int mid = SplitAtMidpoint(_rbItems, _rbCentroids, item.Begin, item.End, axes, _rbMin, _rbMax);
-            if (sp + 2 > _rbStack.Length) { Array.Resize(ref _rbStack, _rbStack.Length * 2); }
-            _rbStack[sp++] = new BuildItem { Begin = mid, End = item.End, Parent = node, Side = 1 };
-            _rbStack[sp++] = new BuildItem { Begin = item.Begin, End = mid, Parent = node, Side = 0 };
+            int mid = SplitAtMidpoint(_rbItems, _rbCentroids, item.Begin, item.End);
+            stack[sp++] = new BuildItem { Begin = mid, End = item.End, Parent = node, Side = 1 };
+            stack[sp++] = new BuildItem { Begin = item.Begin, End = mid, Parent = node, Side = 0 };
+        }
+    }
+
+    // The same tree as the serial build: the top of the tree is split here, serially, down to subtrees of at most RebuildUnitItems items; each of those (which owns its stretch of the region list,
+    // its items and its centroids) is built and refit by a task; the nodes above are refit last, children before parents.
+    private void BuildTopParallel(int itemCount, int regionCount, TaskExecutor executor)
+    {
+        int unitCount = 0, topCount = 0;
+        if (_rbStack.Length < 64) { _rbStack = new BuildItem[64]; }
+        var stack = _rbStack;
+        int sp = 0;
+        stack[sp++] = new BuildItem { Begin = 0, End = itemCount, Parent = NullNode, Side = 0, Base = 0 };
+        while (sp > 0)
+        {
+            BuildItem item = stack[--sp];
+            int count = item.End - item.Begin;
+            if (count == 1) { Attach(item, _rbItems[item.Begin]); continue; }
+            if (count <= RebuildUnitItems)
+            {
+                if (unitCount == _rbUnits.Length) { Array.Resize(ref _rbUnits, unitCount * 2); }
+                _rbUnits[unitCount++] = item;
+                continue;
+            }
+
+            int node = _rbRegion[item.Base];
+            Attach(item, node);
+            if (topCount == _rbTop.Length) { Array.Resize(ref _rbTop, topCount * 2); }
+            _rbTop[topCount++] = node;
+            int mid = SplitAtMidpoint(_rbItems, _rbCentroids, item.Begin, item.End);
+            if (sp + 2 > stack.Length) { Array.Resize(ref stack, stack.Length * 2); _rbStack = stack; }
+            int leftInternals = mid - item.Begin - 1; // a subtree of k items has k - 1 internal nodes
+            stack[sp++] = new BuildItem { Begin = mid, End = item.End, Parent = node, Side = 1, Base = item.Base + 1 + leftInternals };
+            stack[sp++] = new BuildItem { Begin = item.Begin, End = mid, Parent = node, Side = 0, Base = item.Base + 1 };
         }
 
-        // The reused nodes were taken in top-down order, so walking them backwards fits boxes and heights bottom-up.
-        for (int i = regionCount - 1; i >= 0; i--) { Refit(_rbRegion[i]); }
-        _enlarged = 0;
+        // Each unit builds with its own slice of the stack scratch (a subtree of at most RebuildUnitItems items needs fewer entries than that).
+        if (_rbUnitStacks.Length < unitCount * UnitStack) { _rbUnitStacks = new BuildItem[Math.Max(unitCount * UnitStack, _rbUnitStacks.Length * 2)]; }
+        executor.For(unitCount, new UnitBuild(this, unitCount));
+        for (int i = topCount - 1; i >= 0; i--) { Refit(_rbTop[i]); }
+        _ = regionCount;
+    }
+
+    private readonly struct UnitBuild : IParallelBody
+    {
+        private readonly DynamicTree<TBox> _t;
+        private readonly int _units;
+
+        public UnitBuild(DynamicTree<TBox> t, int units) { _t = t; _units = units; }
+
+        public void Run(int task)
+        {
+            var t = _t;
+            BuildItem unit = t._rbUnits[task];
+            var scratch = new Span<BuildItem>(t._rbUnitStacks, task * UnitStack, UnitStack);
+            t.BuildSubtree(unit, scratch);
+            // Children before parents within the subtree: its nodes were taken in top-down order from item.Base.
+            int count = unit.End - unit.Begin;
+            for (int i = unit.Base + count - 2; i >= unit.Base; i--) { t.Refit(t._rbRegion[i]); }
+        }
     }
 
     private void Attach(in BuildItem item, int node)
@@ -732,30 +808,35 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
 
     // Cheap top-down split for the partial rebuild: cut the axis with the widest spread of centroids at the middle of that spread (a spatial median). It costs two passes over the items,
     // and the rebuild runs every step, so it must stay far cheaper than the reinsertions it replaces; the full Rebuild keeps the binned SAH.
-    private static int SplitAtMidpoint(int[] items, double[] centroids, int begin, int end, int axes, double[] cmin, double[] cmax)
+    private static int SplitAtMidpoint(int[] items, double[] centroids, int begin, int end)
     {
         int count = end - begin;
         if (count == 2) { return begin + 1; }
-        for (int a = 0; a < axes; a++) { cmin[a] = double.PositiveInfinity; cmax[a] = double.NegativeInfinity; }
+        // The bounds of the centroids on every axis, in locals (the axis count is a constant of the box type), then the widest axis; ties go to the lower axis.
+        int axes = TBox.Axes;
+        double min0 = double.PositiveInfinity, max0 = double.NegativeInfinity, min1 = double.PositiveInfinity, max1 = double.NegativeInfinity, min2 = double.PositiveInfinity, max2 = double.NegativeInfinity;
         for (int i = begin; i < end; i++)
         {
-            for (int a = 0; a < axes; a++)
+            double c0 = centroids[i * axes], c1 = centroids[(i * axes) + 1];
+            if (c0 < min0) { min0 = c0; }
+            if (c0 > max0) { max0 = c0; }
+            if (c1 < min1) { min1 = c1; }
+            if (c1 > max1) { max1 = c1; }
+            if (axes > 2)
             {
-                double c = centroids[(i * axes) + a];
-                if (c < cmin[a]) { cmin[a] = c; }
-                if (c > cmax[a]) { cmax[a] = c; }
+                double c2 = centroids[(i * axes) + 2];
+                if (c2 < min2) { min2 = c2; }
+                if (c2 > max2) { max2 = c2; }
             }
         }
 
         int axis = 0;
-        double widest = cmax[0] - cmin[0];
-        for (int a = 1; a < axes; a++)
-        {
-            if (cmax[a] - cmin[a] > widest) { widest = cmax[a] - cmin[a]; axis = a; }
-        }
+        double widest = max0 - min0, lowest = min0;
+        if (max1 - min1 > widest) { widest = max1 - min1; axis = 1; lowest = min1; }
+        if (axes > 2 && max2 - min2 > widest) { widest = max2 - min2; axis = 2; lowest = min2; }
 
         if (!(widest > 0.0)) { return begin + (count / 2); }
-        double cut = cmin[axis] + (widest * 0.5);
+        double cut = lowest + (widest * 0.5);
         int lo = begin, hi = end - 1;
         while (lo <= hi)
         {

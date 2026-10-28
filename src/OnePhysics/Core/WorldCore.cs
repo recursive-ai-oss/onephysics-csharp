@@ -101,6 +101,11 @@ public interface IWorldStages
     /// sweeping against bodies that moved this step. It may use <see cref="WorldCore.Executor"/> for its own parallel work. The default does nothing.
     /// </summary>
     void AfterFinalize(WorldCore world, in StepContext context) { }
+
+    /// <summary>
+    /// Whether <see cref="BodyMotion"/> only reads world data and may be called from several threads at once for different bodies. When true the sleep timers are updated in parallel blocks; the default (false) keeps the serial loop.
+    /// </summary>
+    bool BodyMotionIsConcurrent => false;
 }
 
 /// <summary>
@@ -850,21 +855,54 @@ public sealed class WorldCore
         foreach (int c in breaking) { RemoveInternal(c, _constraints.BreakValue[c], true); }
     }
 
+    private const int SleepBlock = 256;
+    private int[] _sleepRested = new int[8];
+
+    // Adds dt to the sleep time of every awake dynamic body that is at rest and clears the others; a block reports whether any of its bodies has now rested at least `limit`.
+    private readonly struct SleepTimeTask<TStages> : IParallelBody where TStages : IWorldStages
+    {
+        private readonly WorldCore _w; private readonly TStages _s; private readonly float _dt, _limit; private readonly bool _enabled;
+        public SleepTimeTask(WorldCore w, TStages s, float dt, float limit, bool enabled) { _w = w; _s = s; _dt = dt; _limit = limit; _enabled = enabled; }
+
+        public void Run(int block)
+        {
+            var w = _w;
+            var bodies = w._bodies;
+            var sleep = bodies.SleepTime;
+            var flags = bodies.Flags;
+            int lo = block * SleepBlock, hi = Math.Min(lo + SleepBlock, w._awakeCount);
+            float threshold = w._options.SleepThreshold;
+            int rested = 0;
+            for (int i = lo; i < hi; i++)
+            {
+                int b = w._awake[i];
+                if (!bodies.IsLive(b) || bodies.TypeOf(b) != BodyType.Dynamic) { continue; }
+                if (_enabled && (flags[b] & (byte)BodyBits.NoSleep) == 0 && _s.BodyMotion(w, b) <= threshold) { sleep[b] += _dt; }
+                else { sleep[b] = 0f; }
+                if (sleep[b] >= _limit) { rested = 1; }
+            }
+
+            w._sleepRested[block] = rested;
+        }
+    }
+
     private void UpdateSleep<TStages>(TStages stages, float dt) where TStages : IWorldStages
     {
-        var sleep = _bodies.SleepTime;
-        var flags = _bodies.Flags;
         bool enabled = _options.SleepEnabled;
-        for (int i = 0; i < _awakeCount; i++)
-        {
-            int b = _awake[i];
-            if (!_bodies.IsLive(b) || _bodies.TypeOf(b) != BodyType.Dynamic) { continue; }
-            if (enabled && (flags[b] & (byte)BodyBits.NoSleep) == 0 && stages.BodyMotion(this, b) <= _options.SleepThreshold) { sleep[b] += dt; }
-            else { sleep[b] = 0f; }
-        }
+        float limit = _options.TimeToSleep;
+        int blocks = (_awakeCount + SleepBlock - 1) / SleepBlock;
+        if (_sleepRested.Length < blocks) { _sleepRested = new int[Math.Max(blocks, _sleepRested.Length * 2)]; }
+        var task = new SleepTimeTask<TStages>(this, stages, dt, limit, enabled);
+        // Body motion is a read of the body and, with a moving kinematic body, of its partners; engines that say so let the blocks run on several threads.
+        if (stages.BodyMotionIsConcurrent) { Executor.For(blocks, task); }
+        else { for (int blk = 0; blk < blocks; blk++) { task.Run(blk); } }
 
         if (!enabled) { return; }
-        float limit = _options.TimeToSleep;
+
+        // An island can only split or sleep once a body of it has rested for the limit, so while no awake body has, the island scans are skipped.
+        bool anyRested = false;
+        for (int blk = 0; blk < blocks && !anyRested; blk++) { anyRested = _sleepRested[blk] != 0; }
+        if (!anyRested) { return; }
 
         // Split the one island that has lost constraints and is about to sleep (every body rested, or with SplitWhenAnyBodyRests any body), the one that has rested longest (lowest id on ties).
         // With the option, one moving body does not keep a whole pile awake: the split separates the resting part, which then sleeps by itself (Catto, "Simulation Islands").
