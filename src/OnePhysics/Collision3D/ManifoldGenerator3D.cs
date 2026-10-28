@@ -86,6 +86,13 @@ public sealed partial class ManifoldGenerator3D
 
         if (polyA && polyB)
         {
+            // Bounding spheres around the shape origins: when they are farther apart than the speculative distance, so are the shapes. Most broadphase pairs in a pile end here.
+            float reach = Extent(a) + Extent(b) + speculativeDistance;
+            if (t.LengthSquared() > reach * reach)
+            {
+                return Empty;
+            }
+
             return PolyPoly(a, b, bInA, speculativeDistance);
         }
 
