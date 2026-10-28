@@ -220,7 +220,9 @@ internal sealed partial class Engine3D
             catch (Exception e) when (e is ArgumentException or PhysicsException) { throw r.Error("invalid ragdoll definition: " + e.Message); }
             s.Powered = r.ReadBool(); s.Strength = r.ReadSingle();
             if (!(s.Strength >= 0f && s.Strength <= 1f) || (s.Powered && !(s.Strength > 0f))) { throw r.Error("invalid ragdoll drive strength"); }
-            s.Derive();
+            // A stored rotation can be finite yet overflow when squared; Derive rejects it.
+            try { s.Derive(); }
+            catch (ArgumentException e) { throw r.Error("invalid ragdoll definition: " + e.Message); }
             b.States[k] = s;
         }
 
@@ -257,6 +259,12 @@ internal sealed partial class Engine3D
             {
                 int b = s.Body[i];
                 if (!bodies.Handles.IsAlive(b, s.BodyGen[i]) || bodies.TypeOf(b) != BodyType.Dynamic || _ragOfBody[b] != r) { return false; }
+                // A part's joint, while it lives, must be a swing-twist joint: that is what the pose drive writes to.
+                if (s.Joint[i] >= 0 && RagdollJointAlive(s, i))
+                {
+                    BindJoints();
+                    if (Joints[s.Joint[i]].Type != (int)JointType3D.SwingTwist) { return false; }
+                }
             }
         }
 
