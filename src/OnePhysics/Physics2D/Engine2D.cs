@@ -82,10 +82,8 @@ internal sealed partial class Engine2D : ISnapshotSection
     public int[] NextShape = new int[8];
 
     // Pair table: one entry per pair of shapes whose broadphase boxes overlap, with the contact constraint while the shapes touch.
-    public int[] PairA = new int[8];
-    public int[] PairB = new int[8];
-    public int[] PairCons = new int[8];
-    public bool[] PairLive = new bool[8];
+    // One record per pair so the narrowphase touches one or two cache lines per pair instead of one per field.
+    public Pair2D[] Pairs = new Pair2D[8];
     public int PairHigh;
     public int[] PairFree = new int[8];
     public int PairFreeCount;
@@ -402,20 +400,19 @@ internal sealed partial class Engine2D : ISnapshotSection
         else
         {
             p = PairHigh++;
-            Grow(ref PairA, PairHigh); Grow(ref PairB, PairHigh); Grow(ref PairCons, PairHigh); Grow(ref PairLive, PairHigh);
+            Grow(ref Pairs, PairHigh);
         }
 
-        PairA[p] = a; PairB[p] = b; PairCons[p] = -1; PairLive[p] = true;
-        if (p < _skip.Length) { _skip[p].Clear = 0f; }
+        Pairs[p] = new Pair2D { A = a, B = b, Cons = -1, Live = true, BodyA = -1, BodyB = -1, MixEpoch = -1 };
         PairMap.Set(PairKey(a, b), p);
         return p;
     }
 
     private void FreePair(int p)
     {
-        PairMap.Remove(PairKey(PairA[p], PairB[p]));
-        PairLive[p] = false;
-        PairCons[p] = -1;
+        PairMap.Remove(PairKey(Pairs[p].A, Pairs[p].B));
+        Pairs[p].Live = false;
+        Pairs[p].Cons = -1;
         Grow(ref PairFree, PairFreeCount + 1);
         PairFree[PairFreeCount++] = p;
     }
@@ -425,7 +422,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     {
         for (int p = 0; p < PairHigh; p++)
         {
-            if (PairLive[p] && (PairA[p] == s || PairB[p] == s)) { FreePair(p); }
+            if (Pairs[p].Live && (Pairs[p].A == s || Pairs[p].B == s)) { FreePair(p); }
         }
     }
 
@@ -433,7 +430,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     public int ContactOf(int shapeA, int shapeB)
     {
         if (shapeA > shapeB) { (shapeA, shapeB) = (shapeB, shapeA); }
-        return PairMap.TryGetValue(PairKey(shapeA, shapeB), out int p) ? PairCons[p] : -1;
+        return PairMap.TryGetValue(PairKey(shapeA, shapeB), out int p) ? Pairs[p].Cons : -1;
     }
 
     // ------------------------------------------------------------------ origin shifting
@@ -489,8 +486,8 @@ internal sealed partial class Engine2D : ISnapshotSection
         w.WriteInt32(PairHigh);
         for (int p = 0; p < PairHigh; p++)
         {
-            w.WriteBool(PairLive[p]);
-            if (PairLive[p]) { w.WriteInt32(PairA[p]); w.WriteInt32(PairB[p]); w.WriteInt32(PairCons[p]); }
+            w.WriteBool(Pairs[p].Live);
+            if (Pairs[p].Live) { w.WriteInt32(Pairs[p].A); w.WriteInt32(Pairs[p].B); w.WriteInt32(Pairs[p].Cons); }
         }
 
         w.WriteInt32(PairFreeCount);
@@ -648,8 +645,9 @@ internal sealed partial class Engine2D : ISnapshotSection
         EnsureBodies(Math.Max(nb, 1));
         Geom = geom; Proxy = proxy; Friction = fr; Restitution = re; Rolling = ro; Density = de; Category = cat; Mask = mask; Group = grp; NextShape = next;
         EnsureShapes(Math.Max(ns, 1));
-        PairA = pa; PairB = pb; PairCons = pc; PairLive = pl; PairHigh = np; PairFree = free; PairFreeCount = nf;
-        _skip = new SkipFrame[8];
+        Pairs = new Pair2D[Math.Max(np, 1)];
+        for (int p = 0; p < np; p++) { Pairs[p] = new Pair2D { A = pa[p], B = pb[p], Cons = pc[p], Live = pl[p], BodyA = -1, BodyB = -1, MixEpoch = -1 }; }
+        PairHigh = np; PairFree = free; PairFreeCount = nf;
         if (jointsRead) { Opt.JointHertz = _pendingJointHertz; Opt.JointDampingRatio = _pendingJointDamping; }
         Joints = joints;
         JointForce = new float[joints.Length]; JointTorque = new float[joints.Length];
@@ -657,7 +655,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         PairMap.Clear();
         for (int p = 0; p < np; p++)
         {
-            if (PairLive[p]) { PairMap.Set(PairKey(PairA[p], PairB[p]), p); }
+            if (Pairs[p].Live) { PairMap.Set(PairKey(Pairs[p].A, Pairs[p].B), p); }
         }
 
         CommitServices(svc, ns);
@@ -703,8 +701,8 @@ internal sealed partial class Engine2D : ISnapshotSection
 
         for (int p = 0; p < PairHigh; p++)
         {
-            if (!PairLive[p]) { continue; }
-            if (PairCons[p] >= 0 && (!cons.IsLive(PairCons[p]) || cons.ShapeA[PairCons[p]] != PairA[p] || cons.ShapeB[PairCons[p]] != PairB[p])) { return false; }
+            if (!Pairs[p].Live) { continue; }
+            if (Pairs[p].Cons >= 0 && (!cons.IsLive(Pairs[p].Cons) || cons.ShapeA[Pairs[p].Cons] != Pairs[p].A || cons.ShapeB[Pairs[p].Cons] != Pairs[p].B)) { return false; }
         }
 
         return true;

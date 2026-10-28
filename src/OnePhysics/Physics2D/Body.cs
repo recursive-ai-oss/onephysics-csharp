@@ -329,6 +329,7 @@ public readonly partial struct Shape : IEquatable<Shape>
             int s = Resolve();
             if (!(value >= 0f) || !float.IsFinite(value)) { throw new ArgumentOutOfRangeException(nameof(value), value, "Friction must be finite and at least 0."); }
             _world!.Engine.Friction[s] = value;
+            _world!.Engine.MaterialEpoch++;
         }
     }
 
@@ -341,6 +342,7 @@ public readonly partial struct Shape : IEquatable<Shape>
             int s = Resolve();
             if (!(value >= 0f && value <= 1f)) { throw new ArgumentOutOfRangeException(nameof(value), value, "Restitution must be within 0..1."); }
             _world!.Engine.Restitution[s] = value;
+            _world!.Engine.MaterialEpoch++;
         }
     }
 

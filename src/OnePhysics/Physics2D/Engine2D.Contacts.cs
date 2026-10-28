@@ -42,6 +42,30 @@ internal readonly struct Stages2D : IWorldStages
     public void AfterFinalize(WorldCore world, in StepContext context) => _e.RunBullets();
 }
 
+/// <summary>The pose of a body at the start of the contact stage and what the pair loops need to know about it, in one record so a pair reads two records instead of a dozen scattered arrays.</summary>
+internal struct BodyHot
+{
+    public const int Active = 1, AsleepDynamic = 2;
+    public double X, Y;
+    public float C, S, Lcx, Lcy, Extent;
+    public int Flags;
+}
+
+/// <summary>The pose of B in A's frame when a pair last had no points, and how far apart (beyond the speculative distance) the shapes were proved to be then.</summary>
+internal struct SkipFrame
+{
+    public float X, Y, C, S, Clear;
+}
+
+/// <summary>One entry of the pair table: the two shapes (A below B), their contact constraint while they touch (or -1), the owning bodies (-1 until first needed) and the narrowphase hints.</summary>
+internal struct Pair2D
+{
+    public int A, B, Cons, BodyA, BodyB;
+    public bool Live, Sensor;
+    public int MixEpoch; // the material epoch whose mixed coefficients the constraint's payload holds
+    public SkipFrame Skip;
+}
+
 internal sealed partial class Engine2D
 {
     // ------------------------------------------------------------------ pair filter for the broadphase
@@ -84,6 +108,7 @@ internal sealed partial class Engine2D
         var bodies = world.Bodies;
         int nb = bodies.HighWater;
         EnsureBodies(nb);
+        if (Hot.Length < nb) { Hot = new BodyHot[Math.Max(nb, Hot.Length * 2)]; }
         ReconcileJoints();
         SizeJointStorage();
         // 0. A changed filter re-evaluates the pair table before anything else (see Refilter).
@@ -134,12 +159,11 @@ internal sealed partial class Engine2D
         // 4. Pairs that need a fresh manifold: at least one body awake (or a kinematic body in motion).
         int need = (PairHigh + 1023) / 1024 * 1024;
         if (_updateList.Length < need) { _updateList = new int[Math.Max(need, _updateList.Length * 2)]; _results = new PairResult[_updateList.Length]; _actItems = new int[_updateList.Length]; }
-        if (_skip.Length < PairHigh) { Array.Resize(ref _skip, Math.Max(PairHigh, _skip.Length * 2)); }
         if (_actCounts.Length < need / 64) { _actCounts = new int[Math.Max(need / 64, _actCounts.Length * 2)]; _recycledCounts = new int[_actCounts.Length]; }
         var owner = world.Shapes.Owner;
         int listBlocks = (PairHigh + 1023) / 1024;
         if (_blockCounts.Length < listBlocks) { _blockCounts = new int[Math.Max(listBlocks, _blockCounts.Length * 2)]; }
-        world.Executor.For(listBlocks, new UpdateListTask(this, world, anyFresh));
+        world.Executor.For(listBlocks, new UpdateListTask(this, anyFresh));
         // Each block wrote its pairs at the start of its own 1024 slots, in pair order; closing the gaps in block order gives the list a single serial loop would have built.
         _updateCount = 0;
         RecycledCount = 0;
@@ -169,31 +193,31 @@ internal sealed partial class Engine2D
             ref PairResult res = ref _results[i];
             if (res.Status == 2)
             {
-                if (PairCons[p] >= 0) { world.RemoveConstraint(PairCons[p]); }
+                if (Pairs[p].Cons >= 0) { world.RemoveConstraint(Pairs[p].Cons); }
                 FreePair(p);
                 continue;
             }
 
             if (res.Count == 0)
             {
-                if (PairCons[p] >= 0) { world.RemoveConstraint(PairCons[p]); PairCons[p] = -1; }
+                if (Pairs[p].Cons >= 0) { world.RemoveConstraint(Pairs[p].Cons); Pairs[p].Cons = -1; }
                 continue;
             }
 
-            int sa = PairA[p], sb = PairB[p];
-            int c = PairCons[p];
+            int sa = Pairs[p].A, sb = Pairs[p].B;
+            int c = Pairs[p].Cons;
             if (IsSensor(sa) || IsSensor(sb))
             {
                 // A sensor overlap is a constraint that is never solved: it exists while the shapes overlap (separation at most 0) and gives enter and exit events.
                 bool overlap = res.Sep0 <= 0f || (res.Count > 1 && res.Sep1 <= 0f);
                 if (overlap && c < 0)
                 {
-                    PairCons[p] = world.AddConstraint(new ConstraintDesc { Kind = ConstraintKind.Sensor, BodyA = world.HandleOfBody(owner[sa]), BodyB = world.HandleOfBody(owner[sb]), ShapeA = world.HandleOfShape(sa), ShapeB = world.HandleOfShape(sb) });
+                    Pairs[p].Cons = world.AddConstraint(new ConstraintDesc { Kind = ConstraintKind.Sensor, BodyA = world.HandleOfBody(owner[sa]), BodyB = world.HandleOfBody(owner[sb]), ShapeA = world.HandleOfShape(sa), ShapeB = world.HandleOfShape(sb) });
                 }
                 else if (!overlap && c >= 0)
                 {
                     world.RemoveConstraint(c);
-                    PairCons[p] = -1;
+                    Pairs[p].Cons = -1;
                 }
 
                 continue;
@@ -210,7 +234,7 @@ internal sealed partial class Engine2D
                     ShapeB = world.HandleOfShape(sb),
                     Flags = ConstraintBits.ReportPersist,
                 };
-                PairCons[p] = world.AddConstraint(desc);
+                Pairs[p].Cons = world.AddConstraint(desc);
             }
             else
             {
@@ -246,31 +270,39 @@ internal sealed partial class Engine2D
         {
             var e = _e;
             int lo = task * 64, hi = Math.Min(lo + 64, e._updateCount);
-            ReadOnlySpan<double> pos = e.Core.Bodies.Position;
-            ReadOnlySpan<float> rot = e.Core.Bodies.Rotation;
-            ReadOnlySpan<int> owner = e.Core.Shapes.Owner;
-            var bodies = e.Core.Bodies;
+            ReadOnlySpan<BodyHot> hot = e.Hot;
             int acts = 0, recycled = 0;
             for (int i = lo; i < hi; i++)
             {
-                e.Collide(i, pos, rot, owner);
-                ref PairResult res = ref e._results[i];
                 int p = e._updateList[i];
-                int c = e.PairCons[p];
+                ref Pair2D pr = ref e.Pairs[p];
+                e.Ready(ref pr);
+                int flags = hot[pr.BodyA].Flags | hot[pr.BodyB].Flags;
                 bool act;
-                if (res.Status == 2) { act = true; }
-                else if (res.Count == 0) { act = c >= 0; }
+                if (e.Collide(i, ref pr, hot))
+                {
+                    // Recycled in place: the manifold is already in the constraint. Only a sleeping body that must wake needs the serial stage.
+                    recycled++;
+                    act = (flags & BodyHot.AsleepDynamic) != 0;
+                    // What the serial stage and the write stage read: a manifold already written (an entry left from an earlier step must not be taken for a new one).
+                    ref PairResult done = ref e._results[i];
+                    done.Status = 4; done.Count = 1;
+                }
                 else
                 {
-                    int sa = e.PairA[p], sb = e.PairB[p];
-                    int ba = owner[sa], bb = owner[sb];
-                    // A sleeping body in a touching pair must wake; the serial stage looks again, since an earlier pair may have woken it already.
-                    bool sensor = e.IsSensor(sa) || e.IsSensor(sb);
-                    act = c < 0 || sensor || (bodies.IsDynamic(ba) && !bodies.IsAwake(ba)) || (bodies.IsDynamic(bb) && !bodies.IsAwake(bb));
-                    if (!sensor)
+                    ref PairResult res = ref e._results[i];
+                    int c = pr.Cons;
+                    if (res.Status == 2) { act = true; }
+                    else if (res.Count == 0) { act = c >= 0; }
+                    else
                     {
-                        if (res.Recycled) { recycled++; }
-                        if (res.Status == 1) { res.Status = 3; } // a fresh manifold to write into the pair's constraint (the serial stage sets the same for the pairs it handles)
+                        // A sleeping body in a touching pair must wake; the serial stage looks again, since an earlier pair may have woken it already.
+                        act = c < 0 || pr.Sensor || (flags & BodyHot.AsleepDynamic) != 0;
+                        if (!pr.Sensor)
+                        {
+                            if (res.Recycled) { recycled++; }
+                            if (res.Status == 1) { res.Status = 3; } // a fresh manifold to write into the pair's constraint (the serial stage sets the same for the pairs it handles)
+                        }
                     }
                 }
 
@@ -280,6 +312,19 @@ internal sealed partial class Engine2D
             e._actCounts[task] = acts;
             e._recycledCounts[task] = recycled;
         }
+    }
+
+    public BodyHot[] Hot = new BodyHot[8];
+
+    /// <summary>The material coefficients a pair's payload holds are valid while this equals the pair's epoch; a friction or restitution setter moves it on.</summary>
+    public int MaterialEpoch;
+
+    private void Ready(ref Pair2D pr)
+    {
+        if (pr.BodyA >= 0) { return; }
+        var owner = Core.Shapes.Owner;
+        pr.BodyA = owner[pr.A]; pr.BodyB = owner[pr.B];
+        pr.Sensor = IsSensor(pr.A) || IsSensor(pr.B);
     }
 
     private int[] _actItems = new int[64];
@@ -308,27 +353,32 @@ internal sealed partial class Engine2D
                 e.StartPos[2 * b] = pos[2 * b]; e.StartPos[2 * b + 1] = pos[2 * b + 1];
                 e.StartRot[2 * b] = rot[2 * b]; e.StartRot[2 * b + 1] = rot[2 * b + 1];
                 e.Dp[2 * b] = 0f; e.Dp[2 * b + 1] = 0f;
+                ref BodyHot h = ref e.Hot[b];
+                h.X = pos[2 * b]; h.Y = pos[2 * b + 1]; h.C = rot[2 * b]; h.S = rot[2 * b + 1];
+                h.Lcx = e.LocalCenter[2 * b]; h.Lcy = e.LocalCenter[2 * b + 1]; h.Extent = e.MaxExtent[b];
+                h.Flags = (IsActive(bodies, b) ? BodyHot.Active : 0) | (bodies.IsDynamic(b) && !bodies.IsAwake(b) ? BodyHot.AsleepDynamic : 0);
             }
         }
     }
 
     private readonly struct UpdateListTask : IParallelBody
     {
-        private readonly Engine2D _e; private readonly WorldCore _w; private readonly bool _anyFresh;
+        private readonly Engine2D _e; private readonly bool _anyFresh;
 
-        public UpdateListTask(Engine2D e, WorldCore w, bool anyFresh) { _e = e; _w = w; _anyFresh = anyFresh; }
+        public UpdateListTask(Engine2D e, bool anyFresh) { _e = e; _anyFresh = anyFresh; }
 
         public void Run(int block)
         {
             var e = _e;
-            var bodies = _w.Bodies;
-            var owner = _w.Shapes.Owner;
+            ReadOnlySpan<BodyHot> hot = e.Hot;
             int lo = block * 1024, hi = Math.Min(lo + 1024, e.PairHigh);
             int n = 0;
             for (int p = lo; p < hi; p++)
             {
-                if (!e.PairLive[p]) { continue; }
-                if (IsActive(bodies, owner[e.PairA[p]]) || IsActive(bodies, owner[e.PairB[p]]) || (_anyFresh && e._fresh[p])) { e._updateList[lo + n++] = p; }
+                ref Pair2D pr = ref e.Pairs[p];
+                if (!pr.Live) { continue; }
+                e.Ready(ref pr);
+                if (((hot[pr.BodyA].Flags | hot[pr.BodyB].Flags) & BodyHot.Active) != 0 || (_anyFresh && e._fresh[p])) { e._updateList[lo + n++] = p; }
             }
 
             e._blockCounts[block] = n;
@@ -388,8 +438,8 @@ internal sealed partial class Engine2D
                 ref PairResult res = ref e._results[i];
                 if (res.Status != 3) { continue; }
                 int p = e._updateList[i];
-                if (res.Recycled) { e.WriteRecycled(cs, e.PairCons[p], e.PairA[p], e.PairB[p], in res); }
-                else { e.WriteManifold(cs, e.PairCons[p], e.PairA[p], e.PairB[p], in res); }
+                if (res.Recycled) { e.WriteRecycled(cs, e.Pairs[p].Cons, e.Pairs[p].A, e.Pairs[p].B, in res); }
+                else { e.WriteManifold(cs, e.Pairs[p].Cons, e.Pairs[p].A, e.Pairs[p].B, in res); }
             }
         }
     }
@@ -404,15 +454,23 @@ internal sealed partial class Engine2D
         if (_boxStamp.Length < n) { int cap = Math.Max(n, _boxStamp.Length * 2); _boxes = new double[cap * 4]; _boxStamp = new int[cap]; }
     }
 
-    private void Collide(int i, ReadOnlySpan<double> pos, ReadOnlySpan<float> rot, ReadOnlySpan<int> owner)
+    // Returns true when the pair's manifold was recycled in place (written straight into its constraint); otherwise the result is in _results[i].
+    private bool Collide(int i, ref Pair2D pr, ReadOnlySpan<BodyHot> hot)
     {
-        int p = _updateList[i];
+        int sa = pr.A, sb = pr.B;
+        ref readonly BodyHot hA = ref hot[pr.BodyA];
+        ref readonly BodyHot hB = ref hot[pr.BodyB];
+        int existing = pr.Cons;
+        bool plain = !pr.Sensor && Opt.MaterialMixer == null;
+        // A touching pair that has barely moved reuses its manifold. This is tried before the bounds tests: a manifold within the speculative distance
+        // means the boxes overlap, so they would not have stopped it, and it saves loading the proxies of the pairs that are still touching.
+        if (RecycleManifolds && existing >= 0 && plain && TryRecycleInPlace(existing, ref pr, in hA, in hB)) { return true; }
+
         ref PairResult res = ref _results[i];
         res = default;
-        int sa = PairA[p], sb = PairB[p];
         ref readonly Aabb2D fatA = ref Bp.FatBoundsOfLive(Proxy[sa]);
         ref readonly Aabb2D fatB = ref Bp.FatBoundsOfLive(Proxy[sb]);
-        if (!Aabb2D.Overlaps(in fatA, in fatB)) { res.Status = 2; return; }
+        if (!Aabb2D.Overlaps(in fatA, in fatB)) { res.Status = 2; return false; }
         res.Status = 1;
 
         // Shapes whose bounds (this step's tight box for a body that moved, the stored box for one that did not) are farther apart than the speculative distance cannot touch: no manifold,
@@ -423,22 +481,20 @@ internal sealed partial class Engine2D
         else { ax0 = fatA.MinX; ay0 = fatA.MinY; ax1 = fatA.MaxX; ay1 = fatA.MaxY; }
         if (_boxStamp[sb] == _stamp) { bx0 = _boxes[4 * sb]; by0 = _boxes[4 * sb + 1]; bx1 = _boxes[4 * sb + 2]; by1 = _boxes[4 * sb + 3]; }
         else { bx0 = fatB.MinX; by0 = fatB.MinY; bx1 = fatB.MaxX; by1 = fatB.MaxY; }
-        if (ax0 - Gap > bx1 || bx0 - Gap > ax1 || ay0 - Gap > by1 || by0 - Gap > ay1) { return; }
+        if (ax0 - Gap > bx1 || bx0 - Gap > ax1 || ay0 - Gap > by1 || by0 - Gap > ay1) { return false; }
 
-        int ba = owner[sa], bb = owner[sb];
-        var qA = new Rot2(rot[2 * ba], rot[2 * ba + 1]); var qB = new Rot2(rot[2 * bb], rot[2 * bb + 1]);
-        var lcA = new Vec2(LocalCenter[2 * ba], LocalCenter[2 * ba + 1]); var lcB = new Vec2(LocalCenter[2 * bb], LocalCenter[2 * bb + 1]);
-        double pAx = pos[2 * ba], pAy = pos[2 * ba + 1], pBx = pos[2 * bb], pBy = pos[2 * bb + 1];
-        int existing = PairCons[p];
+        var qA = new Rot2(hA.C, hA.S); var qB = new Rot2(hB.C, hB.S);
+        var lcA = new Vec2(hA.Lcx, hA.Lcy); var lcB = new Vec2(hB.Lcx, hB.Lcy);
+        double pAx = hA.X, pAy = hA.Y, pBx = hB.X, pBy = hB.Y;
         // A pair without a manifold whose last narrowphase proved the shapes apart by more than the speculative distance stays empty until they have moved that far toward each other.
-        ref SkipFrame skip = ref _skip[p];
-        if (existing < 0 && skip.Clear > 0f && StillApart(in skip, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy), LocalCenter[2 * bb], LocalCenter[2 * bb + 1], MaxExtent[bb])) { return; }
-        if (RecycleManifolds && existing >= 0 && TryRecycle(existing, sa, sb, bb, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy), ref res))
+        ref SkipFrame skip = ref pr.Skip;
+        if (existing < 0 && skip.Clear > 0f && StillApart(in skip, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy), hB.Lcx, hB.Lcy, hB.Extent)) { return false; }
+        if (RecycleManifolds && existing >= 0 && !plain && TryRecycle(existing, sa, sb, hB.Extent, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy), ref res))
         {
             // A recycled manifold only rewrites the pair's own payload, and nothing in the serial stage can remove it, so it is written here, in parallel, instead of going through the result list.
             // A user mixer runs serially in pair order, and a pair with a sensor shape never writes a contact payload.
-            if (Opt.MaterialMixer == null && !IsSensor(sa) && !IsSensor(sb)) { WriteRecycled(Core.Constraints, existing, sa, sb, in res); res.Status = 4; }
-            return;
+            if (Opt.MaterialMixer == null && !pr.Sensor) { WriteRecycled(Core.Constraints, existing, sa, sb, in res); res.Status = 4; }
+            return false;
         }
 
         // Subtract the double positions first; only the (small) difference of the body origins becomes float.
@@ -460,7 +516,7 @@ internal sealed partial class Engine2D
             }
             else { skip.Clear = 0f; }
 
-            return;
+            return false;
         }
 
         skip.Clear = 0f;
@@ -480,20 +536,15 @@ internal sealed partial class Engine2D
 
         // A pair that already has its constraint writes the fresh manifold right here, while the payload is still in cache from the recycle test: the serial stage can only wake bodies for it,
         // never remove or move it. Pairs without a constraint (and runs with a user mixer, and sensors) write after the serial stage.
-        if (existing >= 0 && Opt.MaterialMixer == null && !IsSensor(sa) && !IsSensor(sb))
+        if (existing >= 0 && plain)
         {
-            WriteManifold(Core.Constraints, existing, sa, sb, in res);
+            WriteManifold(Core.Constraints, existing, sa, sb, in res, pr.MixEpoch == MaterialEpoch);
+            pr.MixEpoch = MaterialEpoch;
             res.Status = 4;
         }
-    }
 
-    // The pose of B in A's frame when a pair last had no points, and how far apart (beyond the speculative distance) the shapes were proved to be then.
-    private struct SkipFrame
-    {
-        public float X, Y, C, S, Clear;
+        return false;
     }
-
-    private SkipFrame[] _skip = new SkipFrame[8];
 
     // Whether a pair recorded as apart still is. Every point of B's shape moves, relative to A, by at most the move of B's origin plus the chord of the turn times the point's distance from that origin
     // (the turn's cosine is the product of the two stored and current rotations, so no angle is needed). The slack covers float rounding of the relative pose, which grows with its size.
@@ -509,7 +560,8 @@ internal sealed partial class Engine2D
         return used <= f.Clear; // false for NaN
     }
 
-    private void WriteManifold(ConstraintStore cs, int c, int sa, int sb, in PairResult res)
+    // keepMix: the payload still holds the pair's current mixed coefficients (nothing has changed a material since it was written), so they are kept instead of mixed again.
+    private void WriteManifold(ConstraintStore cs, int c, int sa, int sb, in PairResult res, bool keepMix = false)
     {
         var pl = cs.Payload(c);
         var ids = cs.FeatureIdsOf(c);
@@ -536,12 +588,14 @@ internal sealed partial class Engine2D
         }
 
         float rolling = oldCount > 0 ? Mem.At(pl, ManifoldLayout.RollingImpulse) : 0f;
+        float mixFriction, mixRestitution, mixRolling;
+        if (keepMix) { mixFriction = Mem.At(pl, ManifoldLayout.Friction); mixRestitution = Mem.At(pl, ManifoldLayout.Restitution); mixRolling = Mem.At(pl, ManifoldLayout.RollingResistance); }
+        else { var mixed = Mix(sa, sb); mixFriction = mixed.Friction; mixRestitution = mixed.Restitution; mixRolling = mixed.RollingResistance; }
         pl.Clear();
-        var mixed = Mix(sa, sb);
         Mem.At(pl, ManifoldLayout.Normal) = res.Nx; Mem.At(pl, ManifoldLayout.Normal + 1) = res.Ny;
-        Mem.At(pl, ManifoldLayout.Friction) = mixed.Friction;
-        Mem.At(pl, ManifoldLayout.Restitution) = mixed.Restitution;
-        Mem.At(pl, ManifoldLayout.RollingResistance) = mixed.RollingResistance;
+        Mem.At(pl, ManifoldLayout.Friction) = mixFriction;
+        Mem.At(pl, ManifoldLayout.Restitution) = mixRestitution;
+        Mem.At(pl, ManifoldLayout.RollingResistance) = mixRolling;
         Mem.At(pl, ManifoldLayout.RollingImpulse) = rolling;
         for (int k = 0; k < count; k++)
         {
@@ -641,7 +695,7 @@ internal sealed partial class Engine2D
         return 0;
     }
 
-    private bool TryRecycle(int c, int sa, int sb, int ba, Rot2 qA, Rot2 qB, float dx, float dy, ref PairResult res)
+    private bool TryRecycle(int c, int sa, int sb, float extentB, Rot2 qA, Rot2 qB, float dx, float dy, ref PairResult res)
     {
         var cs = Core.Constraints;
         int count = cs.PointCount[c];
@@ -661,7 +715,7 @@ internal sealed partial class Engine2D
         float dc = rc * c0 + rs * s0, ds = rs * c0 - rc * s0; // rotation from the made pose to now
         if (!(dc > 0f)) { return false; }
         float lim = RecycleTol - float.Sqrt(e2); // what is left of the budget for the turn
-        if (!(lim >= 0f && (ds < 0f ? -ds : ds) * MaxExtent[ba] <= lim)) { return false; }
+        if (!(lim >= 0f && (ds < 0f ? -ds : ds) * extentB <= lim)) { return false; }
 
         float nlx = Mem.At(pl, Rc.NormalX), nly = Mem.At(pl, Rc.NormalY);
         float nx, ny;
@@ -680,6 +734,69 @@ internal sealed partial class Engine2D
         }
 
         res.Nx = nx; res.Ny = ny; res.Count = count; res.Status = 1; res.Recycled = true;
+        return true;
+    }
+
+    // The recycle test and the write of TryRecycle and WriteRecycled for a plain contact (no sensor, no user mixer), straight from the body records into the constraint's payload.
+    // Same arithmetic in the same order, so the result is the same bits; nothing is written unless every point passes.
+    private bool TryRecycleInPlace(int c, ref Pair2D pr, in BodyHot hA, in BodyHot hB)
+    {
+        var cs = Core.Constraints;
+        int count = cs.PointCount[c];
+        if (count == 0 || count > 2 || cs.KindOf(c) != ConstraintKind.Contact) { return false; }
+        var pl = cs.Payload(c);
+        float ownerF = Mem.At(pl, Rc.Owner);
+        int owner = ownerF == 1f ? 1 : ownerF == 2f ? 2 : 0;
+        if (owner == 0) { return false; }
+        float cA = hA.C, sA = hA.S, cB = hB.C, sB = hB.S;
+        float dx = (float)(hB.X - hA.X), dy = (float)(hB.Y - hA.Y);
+        float relX = cA * dx + sA * dy, relY = cA * dy - sA * dx;
+        float ex = relX - Mem.At(pl, Rc.RelX), ey = relY - Mem.At(pl, Rc.RelY);
+        float e2 = ex * ex + ey * ey;
+        float rc = cA * cB + sA * sB, rs = cA * sB - sA * cB;
+        float c0 = Mem.At(pl, Rc.RelC), s0 = Mem.At(pl, Rc.RelS);
+        float dc = rc * c0 + rs * s0, ds = rs * c0 - rc * s0;
+        if (!(dc > 0f)) { return false; }
+        float lim = RecycleTol - float.Sqrt(e2);
+        if (!(lim >= 0f && (ds < 0f ? -ds : ds) * hB.Extent <= lim)) { return false; }
+
+        float nlx = Mem.At(pl, Rc.NormalX), nly = Mem.At(pl, Rc.NormalY);
+        float nx, ny;
+        if (owner == 2) { nx = cB * nlx - sB * nly; ny = sB * nlx + cB * nly; }
+        else { nx = cA * nlx - sA * nly; ny = sA * nlx + cA * nly; }
+        float rax0 = 0f, ray0 = 0f, rbx0 = 0f, rby0 = 0f, sep0 = 0f, rax1 = 0f, ray1 = 0f, rbx1 = 0f, rby1 = 0f, sep1 = 0f;
+        for (int k = 0; k < count; k++)
+        {
+            float ax = Mem.At(pl, PointSlot(k, 0)), ay = Mem.At(pl, PointSlot(k, 1)), bx = Mem.At(pl, PointSlot(k, 2)), by = Mem.At(pl, PointSlot(k, 3));
+            float rax = cA * ax - sA * ay, ray = sA * ax + cA * ay;
+            float rbx = cB * bx - sB * by, rby = sB * bx + cB * by;
+            float sep = Mem.At(pl, PointSlot(k, 4)) + (((dx + rbx) - rax) * nx + ((dy + rby) - ray) * ny);
+            if (!(sep <= Constants2D.SpeculativeDistance && sep >= -RecycleDepth)) { return false; }
+            if (k == 0) { rax0 = rax; ray0 = ray; rbx0 = rbx; rby0 = rby; sep0 = sep; }
+            else { rax1 = rax; ray1 = ray; rbx1 = rbx; rby1 = rby; sep1 = sep; }
+        }
+
+        // A material can change between steps (a friction or restitution setter moves the epoch), and a fresh manifold would pick that up, so a recycled one does too.
+        if (pr.MixEpoch != MaterialEpoch)
+        {
+            var mixed = Mix(pr.A, pr.B);
+            Mem.At(pl, ManifoldLayout.Friction) = mixed.Friction;
+            Mem.At(pl, ManifoldLayout.Restitution) = mixed.Restitution;
+            Mem.At(pl, ManifoldLayout.RollingResistance) = mixed.RollingResistance;
+            pr.MixEpoch = MaterialEpoch;
+        }
+
+        Mem.At(pl, ManifoldLayout.Normal) = nx; Mem.At(pl, ManifoldLayout.Normal + 1) = ny;
+        Mem.At(pl, ManifoldLayout.AnchorA(0)) = rax0; Mem.At(pl, ManifoldLayout.AnchorA(0) + 1) = ray0;
+        Mem.At(pl, ManifoldLayout.AnchorB(0)) = rbx0; Mem.At(pl, ManifoldLayout.AnchorB(0) + 1) = rby0;
+        Mem.At(pl, ManifoldLayout.Separation(0)) = sep0;
+        if (count > 1)
+        {
+            Mem.At(pl, ManifoldLayout.AnchorA(1)) = rax1; Mem.At(pl, ManifoldLayout.AnchorA(1) + 1) = ray1;
+            Mem.At(pl, ManifoldLayout.AnchorB(1)) = rbx1; Mem.At(pl, ManifoldLayout.AnchorB(1) + 1) = rby1;
+            Mem.At(pl, ManifoldLayout.Separation(1)) = sep1;
+        }
+
         return true;
     }
 
