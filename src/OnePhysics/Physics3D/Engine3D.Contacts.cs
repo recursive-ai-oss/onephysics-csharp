@@ -17,7 +17,9 @@ internal readonly struct Stages3D : IWorldStages
 
     public void UpdateContacts(WorldCore world) => _e.UpdateContacts(world);
 
-    public void Prepare(WorldCore world, ReadOnlySpan<int> constraints, in StepContext context) => _e.Prepare(constraints, in context);
+    public void Prepare(WorldCore world, ReadOnlySpan<int> constraints, in StepContext context) {
+        // Contacts are prepared per batch (PrepareBatch); nothing else needs chunk-wise preparation yet.
+    }
 
     public void IntegrateVelocities(WorldCore world, ReadOnlySpan<int> bodies, in StepContext context) => _e.IntegrateVelocities(bodies, in context);
 
@@ -27,10 +29,15 @@ internal readonly struct Stages3D : IWorldStages
 
     public void StoreResults(WorldCore world, ReadOnlySpan<int> constraints, int eventSlot, in StepContext context)
     {
-        // Contact impulses are updated in place in each constraint's payload, so there is nothing to copy back; joints work out their reaction and may ask to break.
+        // Contact impulses go from the wide groups back to the payloads; joints work out their reaction and may ask to break.
+        _e.StoreResults(constraints);
         _e.StoreJointResults(constraints, in context);
         _e.EmitHits(world, constraints, eventSlot);
     }
+
+    public void BeginSolve(WorldCore world, int batches, in StepContext context) => _e.BeginSolve(batches, in context);
+
+    public void PrepareBatch(WorldCore world, ReadOnlySpan<int> constraints, int batch, in StepContext context) => _e.PrepareBatch(constraints, batch, in context);
 
     public float BodyMotion(WorldCore world, int body) => _e.BodyMotion(body);
 
@@ -212,7 +219,6 @@ internal sealed partial class Engine3D
 
         int ch = cs.HighWater;
         Grow(ref ConsNext, ch);
-        if (Scratch.Length < ch * Stride3D.Constraint) { Scratch = new float[Math.Max(ch, Scratch.Length / Stride3D.Constraint * 2) * Stride3D.Constraint]; }
         SizeJointStorage();
     }
 

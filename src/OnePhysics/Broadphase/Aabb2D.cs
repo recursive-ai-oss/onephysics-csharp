@@ -41,6 +41,7 @@ public readonly struct Aabb2D : IBox<Aabb2D>, IEquatable<Aabb2D>
         a.MaxY > b.MaxY ? a.MaxY : b.MaxY);
 
     /// <inheritdoc/>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static bool Overlaps(in Aabb2D a, in Aabb2D b) =>
         a.MinX <= b.MaxX && b.MinX <= a.MaxX && a.MinY <= b.MaxY && b.MinY <= a.MaxY;
 

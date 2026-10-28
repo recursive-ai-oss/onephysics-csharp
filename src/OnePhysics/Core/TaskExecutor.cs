@@ -11,6 +11,19 @@ public interface IParallelBody
 }
 
 /// <summary>
+/// A sequence of stages, each a set of independent tasks; every task of a stage finishes before any task of the next stage starts. <see cref="TaskCount"/> must depend only on data that does not
+/// change during the call.
+/// </summary>
+public interface IStagedBody
+{
+    /// <summary>Number of tasks in stage <paramref name="stage"/> (zero skips the stage).</summary>
+    int TaskCount(int stage);
+
+    /// <summary>Runs task <paramref name="task"/> of stage <paramref name="stage"/>.</summary>
+    void Run(int stage, int task);
+}
+
+/// <summary>
 /// Runs independent tasks on up to <see cref="ThreadCount"/> threads. The task split is chosen by the caller from the data alone, never from the thread count,
 /// and tasks write only their own slots, so results are the same for any thread count. This is the only place in the core that creates parallelism.
 /// </summary>
@@ -27,6 +40,9 @@ public sealed class TaskExecutor
         ThreadCount = threadCount;
     }
 
+    // A staged call needs at least this many tasks in some stage before waking the workers pays for itself.
+    private const int MinParallelTasks = 4;
+
     /// <summary>Maximum number of threads working at once.</summary>
     public int ThreadCount { get; }
 
@@ -38,12 +54,58 @@ public sealed class TaskExecutor
             for (int i = 0; i < taskCount; i++) { body.Run(i); }
         }
     }
+
+    /// <summary>
+    /// Runs <paramref name="stageCount"/> stages in order, the tasks of each stage in parallel, and returns when the last one is done. The threads stay inside the call from the first stage to the last and
+    /// pass the stage boundaries by polling shared counters, which costs far less than one <see cref="For{TBody}"/> call per stage when stages are short. The result must not depend on which thread runs which task.
+    /// </summary>
+    /// <param name="stageCount">Number of stages.</param>
+    /// <param name="body">The stages.</param>
+    /// <param name="mostTasks">An upper bound on the task count of any one stage; when it is below four there is too little to share and the call stays on the calling thread.</param>
+    public void ForStages<TBody>(int stageCount, TBody body, int mostTasks = int.MaxValue) where TBody : IStagedBody
+    {
+        if (stageCount <= 0) { return; }
+        if (ThreadCount == 1 || mostTasks < MinParallelTasks || !WorkerPool.TryRunStages(ThreadCount - 1, stageCount, in body))
+        {
+            for (int s = 0; s < stageCount; s++)
+            {
+                int n = body.TaskCount(s);
+                for (int i = 0; i < n; i++) { body.Run(s, i); }
+            }
+        }
+    }
 }
 
 /// <summary>A reusable holder that lets the shared workers run a body of any struct type without allocating per call.</summary>
 internal abstract class PoolJob
 {
+    public virtual bool Staged => false;
+
     public abstract void Run(int task);
+
+    public virtual int Stages => 0;
+
+    public virtual int TaskCount(int stage) => 0;
+
+    public virtual void RunStage(int stage, int task) { }
+}
+
+internal sealed class StagedJob<TBody> : PoolJob where TBody : IStagedBody
+{
+    public static readonly StagedJob<TBody> Instance = new();
+
+    public TBody Body = default!;
+    public int StageCount;
+
+    public override bool Staged => true;
+
+    public override void Run(int task) { }
+
+    public override int Stages => StageCount;
+
+    public override int TaskCount(int stage) => Body.TaskCount(stage);
+
+    public override void RunStage(int stage, int task) => Body.Run(stage, task);
 }
 
 internal sealed class PoolJob<TBody> : PoolJob where TBody : IParallelBody
@@ -82,6 +144,10 @@ internal static class WorkerPool
     private static int _limit;                 // workers with an index below this take part
     private static int _completed;
     private static Exception? _error;
+    private const long ClosedBit = 0x80000000L;
+    private static long _stagedState;          // (call << 32) | closed bit | number of threads inside the staged call
+    private static long[] _stageCounters = new long[64 * 8]; // per stage and participant slot, one cache line: tasks claimed, then tasks finished
+    private static int _slots;                 // participants of the current staged call: the caller (slot 0) and the workers (slot index + 1)
 
     /// <summary>Runs the tasks with up to <paramref name="workers"/> pool threads plus the caller; false when the pool is not available (the caller then runs them itself).</summary>
     public static bool TryRun<TBody>(int workers, int taskCount, in TBody body) where TBody : IParallelBody
@@ -124,6 +190,139 @@ internal static class WorkerPool
         finally
         {
             Volatile.Write(ref _owner, 0);
+        }
+    }
+
+    /// <summary>Runs a staged body with up to <paramref name="workers"/> pool threads plus the caller; false when the pool is not available.</summary>
+    public static bool TryRunStages<TBody>(int workers, int stages, in TBody body) where TBody : IStagedBody
+    {
+        if (OperatingSystem.IsBrowser()) { return false; }
+        if (Interlocked.CompareExchange(ref _owner, 1, 0) != 0) { return false; }
+        try
+        {
+            if (workers > MaxWorkers) { workers = MaxWorkers; }
+            if (_workers.Length < workers && !Grow(workers)) { return false; }
+            var job = StagedJob<TBody>.Instance;
+            int slots = workers + 1;
+            int needed = stages * slots * CounterStride;
+            if (_stageCounters.Length < needed) { _stageCounters = new long[Math.Max(needed, _stageCounters.Length * 2)]; }
+            Array.Clear(_stageCounters, 0, needed);
+            _slots = slots;
+
+            long call = (Volatile.Read(ref _claim) >> 32) + 1;
+            Volatile.Write(ref _claim, (call << 32) | Closed);
+            job.Body = body;
+            job.StageCount = stages;
+            _job = job;
+            _taskCount = 0;
+            _limit = workers;
+            _error = null;
+            Volatile.Write(ref _stagedState, (call << 32) | 1);
+            Interlocked.Exchange(ref _claim, call << 32);
+
+            var all = _workers;
+            for (int i = 0; i < workers; i++)
+            {
+                if (Interlocked.CompareExchange(ref all[i].Sleeping, 0, 1) == 1) { Signal(all[i]); }
+            }
+
+            RunStageLoop(job, 0);
+
+            // No thread may join from here on; wait for those inside to leave before the job and counters are reused.
+            Volatile.Write(ref _claim, (call << 32) | Closed);
+            while (true)
+            {
+                long st = Volatile.Read(ref _stagedState);
+                if (Interlocked.CompareExchange(ref _stagedState, st | ClosedBit, st) == st) { break; }
+            }
+
+            var wait = new SpinWait();
+            while ((Volatile.Read(ref _stagedState) & 0x7FFFFFFFL) > 1) { wait.SpinOnce(-1); }
+            job.Body = default!;
+            _job = null;
+            var error = _error;
+            if (error != null) { throw new AggregateException(error); }
+            return true;
+        }
+        finally
+        {
+            Volatile.Write(ref _owner, 0);
+        }
+    }
+
+    private const int CounterStride = 8; // longs per slot: one 64-byte cache line, so a thread working through its own tasks never shares a line with another
+
+    // Every thread inside the call walks all stages in order. The tasks of a stage are cut into one contiguous block per participant: a thread runs its own block first (the same tasks, on the same thread,
+    // in every pass of the solver, so the constraint groups stay in that core's cache) and then helps itself to what is left of the other blocks. It then waits for every block of the stage to finish.
+    // A thread that joins late, or never, costs nothing but locality: the others take over its block. Which thread runs a task never matters, tasks write disjoint data.
+    private static void RunStageLoop(PoolJob job, int slot)
+    {
+        var counters = _stageCounters;
+        int stages = job.Stages;
+        int slots = _slots;
+        for (int s = 0; s < stages; s++)
+        {
+            int n = job.TaskCount(s);
+            if (n <= 0) { continue; }
+            int size = (n + slots - 1) / slots;
+            int baseIndex = s * slots * CounterStride;
+            for (int k = 0; k < slots; k++)
+            {
+                int owner = slot + k;
+                if (owner >= slots) { owner -= slots; }
+                int first = owner * size;
+                int count = Math.Min(size, n - first);
+                if (count <= 0) { continue; }
+                int c = baseIndex + (owner * CounterStride);
+                while (true)
+                {
+                    long i = Interlocked.Increment(ref counters[c]) - 1;
+                    if (i >= count) { break; }
+                    try
+                    {
+                        job.RunStage(s, first + (int)i);
+                    }
+                    catch (Exception e)
+                    {
+                        Interlocked.CompareExchange(ref _error, e, null);
+                    }
+
+                    Interlocked.Increment(ref counters[c + 1]);
+                }
+            }
+
+            for (int owner = 0; owner < slots; owner++)
+            {
+                int first = owner * size;
+                int count = Math.Min(size, n - first);
+                if (count <= 0) { break; }
+                int c = baseIndex + (owner * CounterStride) + 1;
+                if (Volatile.Read(ref counters[c]) < count)
+                {
+                    var wait = new SpinWait();
+                    while (Volatile.Read(ref counters[c]) < count) { wait.SpinOnce(-1); }
+                }
+            }
+        }
+    }
+
+    private static void JoinStaged(PoolJob job, long call, int index)
+    {
+        if (index >= _limit) { return; }
+        while (true)
+        {
+            long st = Volatile.Read(ref _stagedState);
+            if ((st >> 32) != call || (st & ClosedBit) != 0) { return; }
+            if (Interlocked.CompareExchange(ref _stagedState, st + 1, st) == st) { break; }
+        }
+
+        try
+        {
+            RunStageLoop(job, index + 1);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _stagedState);
         }
     }
 
@@ -215,6 +414,7 @@ internal static class WorkerPool
             int next = (int)(v & 0xFFFFFFFFL);
             if (next == Closed) { return; }
             var job = _job;
+            if (job != null && job.Staged) { JoinStaged(job, v >> 32, index); return; }
             int count = _taskCount, limit = _limit;
             if (job == null || next >= count || (index >= limit)) { if (Volatile.Read(ref _claim) == v) { return; } continue; }
             if (Interlocked.CompareExchange(ref _claim, v + 1, v) != v) { continue; }

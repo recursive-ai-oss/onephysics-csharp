@@ -168,13 +168,18 @@ internal sealed partial class Engine3D
         foreach (int c in constraints)
         {
             if (cs.KindOf(c) != ConstraintKind.Contact) { continue; }
+            int slot = SlotOf[c];
+            if (slot < 0) { continue; }
+            // The relative normal velocity from the start of the step is still in the contact's wide group: the kernel only reads it.
+            var w = Wide.AsSpan((slot >> 3) * W3D.GroupFloats, W3D.GroupFloats);
+            int lane = slot & 7;
             var pl = cs.Payload(c);
             int count = cs.PointCount[c];
             float best = 0f;
             for (int i = 0; i < count; i++)
             {
                 if (!(pl[ManifoldLayout.MaxNormalImpulse(i)] > 0f)) { continue; }
-                float approach = 0f - Scratch[c * Stride3D.Constraint + Stride3D.Point0 + i * Stride3D.PointStride + Stride3D.RelativeVelocity];
+                float approach = 0f - w[(W3D.Point0 + i * W3D.PointStride + W3D.RelativeVelocity) * 8 + lane];
                 if (approach > best) { best = approach; }
             }
 
