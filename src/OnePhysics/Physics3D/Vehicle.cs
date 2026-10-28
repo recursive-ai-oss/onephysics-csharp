@@ -212,7 +212,7 @@ public sealed partial class PhysicsWorld3D
     /// <param name="def">The vehicle, for example <see cref="VehicleDef.Car"/>; copied.</param>
     /// <exception cref="ArgumentOutOfRangeException">A definition value is out of range.</exception>
     /// <exception cref="ArgumentException">The body is not dynamic.</exception>
-    /// <exception cref="InvalidOperationException">The body already carries a vehicle.</exception>
+    /// <exception cref="PhysicsException">The body already carries a vehicle.</exception>
     /// <exception cref="StaleHandleException">The body was destroyed.</exception>
     public Vehicle AddVehicle(Body chassis, VehicleDef def)
     {

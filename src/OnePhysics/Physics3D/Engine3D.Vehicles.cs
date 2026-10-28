@@ -90,7 +90,7 @@ internal sealed partial class Engine3D
     {
         int b = Core.Resolve(body);
         if (Core.Bodies.TypeOf(b) != BodyType.Dynamic) { throw new ArgumentException("A vehicle's chassis must be a dynamic body.", nameof(body)); }
-        if (VehicleOfBody(b) >= 0) { throw new InvalidOperationException("The body already carries a vehicle."); }
+        if (VehicleOfBody(b) >= 0) { throw new PhysicsException("The body already carries a vehicle."); }
         def.Validate();
         var s = new VehicleState { Body = body.Index, BodyGen = body.Generation, Def = def.Clone() };
         s.Allocate();
@@ -272,6 +272,7 @@ internal sealed partial class Engine3D
                     int gb = hh.Body.Handle.Index;
                     s.GroundBody[i] = gb; s.GroundGen[i] = bodies.Handles.GenerationOf(gb);
                     s.GroundShape[i] = hh.Shape.Handle.Index;
+                    RefreshWorldInertia(gb);   // the ground body takes impulses too; its cached world inertia may be stale (and is not saved)
                 }
             }
 

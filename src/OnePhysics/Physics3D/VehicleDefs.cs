@@ -134,6 +134,8 @@ public sealed class WheelDef
         VehicleCheck.UnitVec(SuspensionDirection, w + ".SuspensionDirection"); VehicleCheck.UnitVec(SteerAxis, w + ".SteerAxis");
         VehicleCheck.UnitVec(AxleDirection, w + ".AxleDirection"); VehicleCheck.UnitVec(ForwardDirection, w + ".ForwardDirection");
         VehicleCheck.Positive(Radius, w + ".Radius"); VehicleCheck.Positive(Width, w + ".Width");
+        if (Radius > 100f) { throw new ArgumentOutOfRangeException(w + ".Radius", Radius, w + ".Radius must be at most 100."); }
+        if (Width > 100f) { throw new ArgumentOutOfRangeException(w + ".Width", Width, w + ".Width must be at most 100."); }
         VehicleCheck.AtLeast0(SuspensionMinLength, w + ".SuspensionMinLength");
         if (!(SuspensionMaxLength > SuspensionMinLength) || !float.IsFinite(SuspensionMaxLength) || SuspensionMaxLength > 100f)
         {

@@ -38,6 +38,8 @@ internal static class Program
         ["world2d-character-snapshot"] = FuzzCharacters2D.SnapshotTarget,
         ["world3d-characters"] = FuzzCharacters3D.Run,
         ["world3d-character-snapshot"] = FuzzCharacters3D.SnapshotTarget,
+        ["world3d-vehicles"] = FuzzVehicles3D.Run,
+        ["world3d-vehicle-snapshot"] = FuzzVehicles3D.SnapshotTarget,
     };
 
     private static int Main(string[] args)
