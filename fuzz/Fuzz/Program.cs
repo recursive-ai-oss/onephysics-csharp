@@ -42,10 +42,15 @@ internal static class Program
         {
             var rng = new Random(int.Parse(args[2], System.Globalization.CultureInfo.InvariantCulture));
             int count = int.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture);
+            // FUZZ_DUMP=<iteration>:<file> writes that iteration's input before running it (to keep the input of a hang or crash).
+            string? dumpSpec = Environment.GetEnvironmentVariable("FUZZ_DUMP");
+            int dumpAt = dumpSpec == null ? -1 : int.Parse(dumpSpec.Split(':')[0], System.Globalization.CultureInfo.InvariantCulture);
+            string? dumpPath = dumpSpec?.Split(':', 2)[1];
             var buffer = new byte[args.Length == 5 ? int.Parse(args[4], System.Globalization.CultureInfo.InvariantCulture) : 64];
             for (int i = 0; i < count; i++)
             {
                 rng.NextBytes(buffer);
+                if (i + 1 == dumpAt) { File.WriteAllBytes(dumpPath!, buffer); }
                 target(buffer);
             }
 

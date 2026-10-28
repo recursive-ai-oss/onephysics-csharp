@@ -19,6 +19,7 @@
 !/scenes
 !/experiments
 !/docs
+!/testdata
 
 # Build output never belongs in the tree, wherever it appears.
 bin/

@@ -686,6 +686,14 @@ internal sealed partial class Engine3D : ISnapshotSection
             if (free[i] < 0 || free[i] >= np || pl[free[i]]) { throw r.Error("invalid free pair"); }
         }
 
+        // A constraint belongs to at most one chain, once (a repeated id would make a cycle that the writer and the solver would walk forever).
+        var inChain = new bool[maxCons];
+        foreach (int c in chains)
+        {
+            if (inChain[c]) { throw r.Error("a constraint appears twice in the pair chains"); }
+            inChain[c] = true;
+        }
+
         // Resolve chains: the first constraint heads the pair, the rest link through ConsNext. Constraint ids are checked against the core afterwards.
         var consNext = new int[maxCons];
         Array.Fill(consNext, -1);
