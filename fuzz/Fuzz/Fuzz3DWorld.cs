@@ -215,7 +215,15 @@ internal static class Fuzz3DWorld
 
         byte[] snap = w.Snapshot();
         var w2 = new PhysicsWorld3D(new WorldOptions3D { WorldId = 9, Substeps = opt.Substeps });
-        w2.Restore(snap);
+        // A snapshot is refused when a body is outside the supported range, and the next step of the original world would have raised for the same body.
+        try { w2.Restore(snap); }
+        catch (SnapshotFormatException)
+        {
+            try { w.Step(1f / 60f); }
+            catch (BodyOutOfBoundsException) { s_oob++; return; }
+            throw new InvalidOperationException("a snapshot of a world whose next step succeeds was refused");
+        }
+
         if (w2.ComputeHash() != w.ComputeHash()) { throw new InvalidOperationException("restored world hash differs"); }
         if (!w2.Snapshot().AsSpan().SequenceEqual(snap)) { throw new InvalidOperationException("restored world re-serializes differently"); }
     }
