@@ -10,6 +10,10 @@ publish = false
 rapier3d = { version = "=0.36.1", features = ["parallel"] }
 rayon = "1"
 
+# `--features profile` builds the per-stage profile variant (the crate's documented `profiler` feature turns its counters on); the timing binary is built without it.
+[features]
+profile = ["rapier3d/profiler"]
+
 [profile.release]
 opt-level = 3
 lto = "thin"

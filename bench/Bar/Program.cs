@@ -20,7 +20,7 @@ public static class Program
                 foreach (var kv in Metrics.Compute(s, opts.Pos(1))) Console.WriteLine($"{kv.Key}={kv.Value.ToString("R", CultureInfo.InvariantCulture)}");
                 return 0;
             }
-            case "selftest": return Metrics.SelfTest() + Metrics3.SelfTest() + Robust.SelfTest();
+            case "selftest": return Metrics.SelfTest() + Metrics3.SelfTest() + Robust.SelfTest() + ProfileReport.SelfTest();
             case "run": return Runner.Run(opts);
             case "summarize": Runner.Summarize(opts.Pos(0)); return 0;
             case "box2dnet-driver": return Box2DNetDriver.Run(opts);
@@ -38,6 +38,7 @@ public static class Program
                    bar metrics SCENE DUMP
                    bar run --mode timing|stability [--scenes a,b|all] [--engines box2d,rapier2d,box2dnet,jolt,box3d,rapier3d,bepu,jitter2,onephysics] [--threads 1,8,all]
                            [--scene-dir DIR] [--state DIR] [--out DIR] [--repeat N] [--job-id ID] [--lock-held]
+                   bar run --mode profile [--scenes ...] [--engines box2d,rapier2d,rapier3d,onephysics] [--threads 1] [--lock-held]   per-stage times beside ours (see docs/bench.md)
                    bar summarize RESULT_DIR
             """);
         return 2;
@@ -78,24 +79,27 @@ static class Runner
         public int Threads, Bodies, Measured;
         public double Median, P90, P99, Min, Max, Mean, PeakRssMb, WallSec;
         public Dictionary<string, double> Query = new();
+        public Dictionary<string, double> Prof = new(); // native stage name -> median ms (profile mode)
+        public Dictionary<string, double> Counts = new();
     }
 
     public static int Run(Opts o)
     {
         string mode = o.Get("mode", "stability");
-        bool timing = mode == "timing";
+        bool profile = mode == "profile";
+        bool timing = mode == "timing" || profile; // a profile run is a timing run with per-stage output
         string sceneDir = o.Get("scene-dir", "scenes/generated");
         string state = o.Get("state", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "onephysics"));
         string outDir = o.Get("out", Path.Combine(state, "bench", "results", DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)));
         int repeat = int.Parse(o.Get("repeat", "1"), CultureInfo.InvariantCulture);
         string jobId = o.Get("job-id", Environment.GetEnvironmentVariable("BAR_JOB_ID") ?? "");
-        var engines = o.Get("engines", "box2d,rapier2d,box2dnet,jolt,box3d,rapier3d,bepu,jitter2").Split(',');
+        var engines = o.Get("engines", profile ? "box2d,rapier2d,rapier3d,onephysics" : "box2d,rapier2d,box2dnet,jolt,box3d,rapier3d,bepu,jitter2").Split(',');
         var scenes = o.Get("scenes", "all") == "all"
             ? Directory.GetFiles(sceneDir, "*.scene").Select(p => Path.GetFileNameWithoutExtension(p)).OrderBy(x => x, StringComparer.Ordinal).ToArray()
             : o.Get("scenes", "").Split(',');
         int cores = Environment.ProcessorCount; // a benchmark setting, not a simulation input
-        var threadList = o.Get("threads", timing ? "1,8,all" : "1").Split(',').Select(t => t == "all" ? cores : int.Parse(t, CultureInfo.InvariantCulture)).Distinct().ToArray();
-        if (timing && !o.Has("lock-held") && !o.Has("no-lock-check"))
+        var threadList = o.Get("threads", profile ? "1" : timing ? "1,8,all" : "1").Split(',').Select(t => t == "all" ? cores : int.Parse(t, CultureInfo.InvariantCulture)).Distinct().ToArray();
+        if (mode == "timing" && !o.Has("lock-held") && !o.Has("no-lock-check"))
         {
             Console.Error.WriteLine("timing runs must hold the shared benchmark lock; run tools/bench/timing.sh (or pass --lock-held from inside a job that holds it)");
             return 2;
@@ -104,7 +108,7 @@ static class Runner
         string wipe = Path.Combine(outDir, "raw"); Directory.CreateDirectory(wipe);
 
         var meta = new StringBuilder();
-        meta.AppendLine($"mode={mode}\njob_id={jobId}\nmachine={Environment.MachineName}\ncpu={CpuModel()}\ncores={cores}\nos={System.Runtime.InteropServices.RuntimeInformation.OSDescription}\nrepeat={repeat}");
+        meta.AppendLine($"mode={mode}\ntiming_grade={(!profile || o.Has("lock-held") ? "yes" : "NO (profile run without the bench lock)")}\njob_id={jobId}\nmachine={Environment.MachineName}\ncpu={CpuModel()}\ncores={cores}\nos={System.Runtime.InteropServices.RuntimeInformation.OSDescription}\nrepeat={repeat}");
         meta.AppendLine($"runtime={System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}\nload_before={Load()}");
         var during = new List<string>();
         var rows = new List<Row>(); var metricRows = new List<(string scene, string engine, int threads, string key, double v)>();
@@ -125,7 +129,7 @@ static class Runner
                     {
                         string tag = $"{sceneName}.{eng}.t{th}";
                         string result = Path.Combine(wipe, tag + ".result"), dump = Path.Combine(wipe, tag + ".dump");
-                        var row = RunOne(eng, scenePath, th, timing, result, dump, state, sceneName, scene.Warmup);
+                        var row = RunOne(eng, scenePath, th, timing, profile, result, dump, state, sceneName, scene.Warmup);
                         during.Add(Load().Split(' ')[0]);
                         if (row == null) { Console.Error.WriteLine($"FAILED {tag}"); continue; }
                         if (best == null || row.Median < best.Median) { best = row; bestDump = dump; }
@@ -141,20 +145,21 @@ static class Runner
         meta.AppendLine($"load_after={Load()}");
         File.WriteAllText(Path.Combine(outDir, "meta.txt"), meta.ToString());
         WriteCsv(outDir, rows, metricRows);
+        if (profile) File.WriteAllText(Path.Combine(outDir, "profile.md"), ProfileReport.Render(rows.Select(r => new ProfileRow(r.Scene, r.Engine, r.Threads, r.Median, r.Prof, r.Counts)).ToList(), meta.ToString()));
         Summarize(outDir);
         return 0;
     }
 
-    static Row? RunOne(string eng, string scene, int threads, bool timing, string result, string dump, string state, string sceneName, int warmup)
+    static Row? RunOne(string eng, string scene, int threads, bool timing, bool profile, string result, string dump, string state, string sceneName, int warmup)
     {
         string exe; var args = new List<string>();
         switch (eng)
         {
             case "box2d": exe = Path.Combine(state, "bin", "box2d-driver"); break;
-            case "rapier2d": exe = Path.Combine(state, "bin", "rapier-driver"); break;
+            case "rapier2d": exe = Path.Combine(state, "bin", profile ? "rapier-driver-profile" : "rapier-driver"); break;
             case "jolt": exe = Path.Combine(state, "bin", "jolt-driver"); break;
             case "box3d": exe = Path.Combine(state, "bin", "box3d-driver"); break;
-            case "rapier3d": exe = Path.Combine(state, "bin", "rapier3d-driver"); break;
+            case "rapier3d": exe = Path.Combine(state, "bin", profile ? "rapier3d-driver-profile" : "rapier3d-driver"); break;
             case "box2dnet": case "bepu": case "jitter2": case "onephysics": exe = Environment.ProcessPath!; args.Add(Assembly.GetEntryAssembly()!.Location); args.Add(eng + "-driver"); break;
             default: throw new ArgumentException("unknown engine " + eng);
         }
@@ -173,6 +178,7 @@ static class Runner
         }
         else psi.FileName = exe;
         foreach (var a in args) psi.ArgumentList.Add(a);
+        if (profile) psi.Environment["OP_PROFILE"] = "1";
         var sw = Stopwatch.StartNew();
         using var p = Process.Start(psi)!;
         string stderr = p.StandardError.ReadToEnd(); p.StandardOutput.ReadToEnd();
@@ -192,6 +198,7 @@ static class Runner
             Scene = sceneName, Engine = eng, Version = kv["version"], Config = kv["config"], Threads = threads, Bodies = int.Parse(kv["bodies"], CultureInfo.InvariantCulture),
             Measured = ns.Length, Median = Pct(0.5), P90 = Pct(0.9), P99 = Pct(0.99), Min = ns[0], Max = ns[^1], Mean = ns.Average(), PeakRssMb = rssMb, WallSec = sw.Elapsed.TotalSeconds,
         };
+        ProfileReport.Parse(File.ReadLines(result), row.Prof, row.Counts);
         foreach (var k in new[] { "ray", "overlap", "cast" })
             if (kv.TryGetValue($"query_{k}_ns", out var qn))
             {

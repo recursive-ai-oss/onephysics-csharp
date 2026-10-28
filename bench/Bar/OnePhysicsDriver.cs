@@ -40,16 +40,19 @@ static class OnePhysicsDriver
         void Frame(int step) { Snap(); dump!.Write((uint)step); dump.Write((uint)0); foreach (var v in d) dump.Write(v); }
         if (dump != null) Frame(0);
 
+        bool prof = StageProfile.Requested; if (prof) StageProfile.Install();
         var stepNs = new double[s.Steps];
         double nsPerTick = 1e9 / Stopwatch.Frequency;
         float dt = (float)s.Dt;
         for (int step = 0; step < s.Steps; step++)
         {
             foreach (var e in s.Events) if (e.Step == step) for (int i = 0; i < n; i++) if (s.Bodies[i].Type == "dynamic") bodies[i].Wake();
+            if (prof) StageProfile.Begin();
             long t0 = Stopwatch.GetTimestamp();
             MoveCharacters(characters, vy, step, dt, (float)-s.Gy);
             world.Step(dt);
             stepNs[step] = (Stopwatch.GetTimestamp() - t0) * nsPerTick;
+            if (prof) StageProfile.End(step, s.Warmup);
             if (dump != null && ((step + 1) % s.DumpEvery == 0 || step + 1 == s.Steps)) Frame(step + 1);
         }
         dump?.Dispose();
@@ -58,6 +61,7 @@ static class OnePhysicsDriver
         sb.Append(CultureInfo.InvariantCulture, $"engine=onephysics\nversion=0.1.0-dev\nconfig=threads={threads}, substeps={opt.Substeps}, default options\nscene={s.Name}\nthreads={threads}\nsteps={s.Steps}\nwarmup={s.Warmup}\nbodies={n}\n");
         sb.Append("step_ns=").Append(string.Join(',', stepNs.Select(v => v.ToString("F0", CultureInfo.InvariantCulture)))).Append('\n');
         if (s.Queries.Count > 0) Queries(world, s, sb);
+        if (prof) StageProfile.Write(sb);
         sb.Append(CultureInfo.InvariantCulture, $"hash={world.ComputeHash():x16}\n");
         File.WriteAllText(result, sb.ToString());
         return 0;

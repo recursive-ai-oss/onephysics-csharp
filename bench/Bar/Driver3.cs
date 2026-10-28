@@ -41,15 +41,18 @@ static class Driver3
         var wd = new double[sim.WheelDoubles];
         void Frame(int step) { sim.Snapshot(d); sim.Wheels(wd); dump!.Write((uint)step); dump.Write((uint)wd.Length); foreach (var v in d) dump.Write(v); foreach (var v in wd) dump.Write(v); }
         if (dump != null) Frame(0);
+        bool prof = StageProfile.Requested && sim.Name == "onephysics"; if (prof) StageProfile.Install();
         var stepNs = new double[s.Steps]; var allocB = new long[s.Steps]; double nsPerTick = 1e9 / Stopwatch.Frequency;
         for (int step = 0; step < s.Steps; step++)
         {
             if (s.Events.Any(e => e.Step == step)) sim.WakeAll(s);
+            if (prof) StageProfile.Begin();
             long t0 = Stopwatch.GetTimestamp();
             long a0 = GC.GetAllocatedBytesForCurrentThread();
             sim.Step(s.Dt);
             allocB[step] = GC.GetAllocatedBytesForCurrentThread() - a0;
             stepNs[step] = (Stopwatch.GetTimestamp() - t0) * nsPerTick;
+            if (prof) StageProfile.End(step, s.Warmup);
             if (dump != null && ((step + 1) % s.DumpEvery == 0 || step + 1 == s.Steps)) Frame(step + 1);
         }
         dump?.Dispose();
@@ -57,6 +60,7 @@ static class Driver3
         if (timing && s.Queries.Count > 0) sim.Queries(s, sb);
         sb.Append(CultureInfo.InvariantCulture, $"engine={sim.Name}\nversion={sim.Version}\nconfig={sim.Config}\nscene={s.Name}\nthreads={threads}\nsteps={s.Steps}\nwarmup={s.Warmup}\nbodies={n}\n");
         sb.Append("step_ns=").Append(string.Join(',', stepNs.Select(v => v.ToString("F0", CultureInfo.InvariantCulture)))).Append('\n');
+        if (prof) StageProfile.Write(sb);
         sb.Append("alloc_bytes=").Append(string.Join(',', allocB)).Append('\n');
         File.WriteAllText(o.Get("result", ""), sb.ToString());
         return 0;

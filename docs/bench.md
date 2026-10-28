@@ -9,9 +9,43 @@ tools/bench/run.sh stability [--scenes a,b|all] [--engines box2d,rapier2d,box2dn
 tools/bench/run.sh timing    [--scenes ...] [--engines ...] [--threads 1,8,all] [--repeat N] [--out DIR]
 ```
 
+(`profile` is described under "Per-stage profile".)
+
 Both build the runner, set up the reference drivers when missing (`tools/refs/setup.sh STATE [box2d|rapier|rapier3d|jolt|box3d|all|all3d]`: fetch by pinned URL and sha256, build unattended, install under `STATE`, default `~/onephysics`), regenerate and verify the scenes, and run scene × engine × thread count. A scene runs on the engines of its dimension (2D scenes: Box2D, Rapier2D, Box2D.NET; 3D scenes: Jolt, Box3D, Rapier3D, Bepu, Jitter2). `timing` takes the shared benchmark lock itself (atomically, released on exit) and records the lock as held; `stability` refuses to run while the lock exists and runs under `nice`. `BAR_JOB_ID` is recorded in `meta.txt`.
 
 Output directory: `meta.txt` (machine, CPU model, logical cores, OS, runtime, job id, system load before, after each run and after), `timing.csv`, `metrics.csv` (stability mode), `summary.md`, and `raw/` (per-run result files, dumps, `time` output).
+
+## Per-stage profile
+
+```
+tools/bench/run.sh profile        [--scenes large-pile,pyramid-100,tumbler,large-pile-3d,mesh-terrain-3d] [--engines box2d,rapier2d,rapier3d,onephysics] [--threads 1]
+tools/bench/run.sh profile-locked [same options]
+```
+
+`bar run --mode profile` is a timing run that also reads each engine's own per-stage timers and writes `profile.md` (the side-by-side table, ours divided by each reference, and every native stage and counter) next to `timing.csv`. Medians over the measured steps (after the scene's warm-up). `profile` runs niced without the bench lock and records `timing_grade=NO` in `meta.txt`; `profile-locked` takes the lock like `timing` and is timing-grade. The default engines are Box2D v3 and Rapier2D/3D (whichever matches the scene's dimension) and ours.
+
+**Where the stage times come from**
+
+- **Box2D v3**: `b2World_GetProfile` after every step (the fields of `b2Profile` in the rendered API reference) and `b2World_GetCounters`. The driver prints the median of each field when `OP_PROFILE` is set; the normal build and its timing are untouched.
+- **Rapier**: the documented performance counters (`counters` of the physics pipeline: step, collision detection, broad phase, narrow phase, solver, assembly, velocity resolution, velocity update, CCD and island construction timers). They only measure in a build with the crate's `profiler` feature, so profile mode uses a separate driver binary (`rapier-driver-profile`, `rapier3d-driver-profile`, built by `tools/refs/setup.sh STATE profile`); the timing binaries never carry it. The profiler's own overhead is part of those times.
+- **Ours**: the library reports stage boundaries when it is built in the `Profile` configuration (Release plus the `STAGE_TIMERS` symbol; `dotnet build -c Profile`). The calls and the `StageProbe` type exist only under that symbol, so the package build contains none of it and steps are identical either way; the clock is read by the benchmark (`bench/Bar/StageProfile.cs`), not the library. The boundaries are on the stepping thread, so a stage's time is wall time including its parallel work. The solver's substeps run as one staged call, so integration, warm start, solve, relax and restitution are one stage.
+- **Jolt**: not available. Its documentation says the profiler is part of the Release build type and the `JPH_PROFILE_ENABLED` option, not Distribution (the reference configuration), and describes no query API for per-stage times; the dump facility is only in a header the documentation does not describe. No profile variant is built.
+- **Box3D**: the rendered 3D API reference lists `b3World_GetProfile` but no description of the profile fields, so Box3D has no profile driver yet.
+
+**Bucket mapping** (`bench/Bar/ProfileReport.cs`; stages that contain other stages are shown natively and never summed; "other" is the engine's own step total minus the mapped stages)
+
+| bucket | ours | Box2D v3 | Rapier |
+|---|---|---|---|
+| broadphase/pairs | boxes (proxy boxes, tree moves, start poses), pairs (broadphase pair search) | pairs, refit | broad phase |
+| narrowphase | narrowphase (pair list and manifolds), apply (serial constraint add/remove) | collide | narrow phase |
+| solver prepare | prepare (joint chunks and contact batches) | solverSetup, prepareConstraints | assembly |
+| solve+integrate | solve (all substeps, one staged call) | integrateVelocities, warmStart, solveImpulses, integratePositions, relaxImpulses, restitution | velocity resolution, velocity update |
+| finalize/store | finalize (per-body pass, bullets), store | storeImpulses, transforms, hitEvents, jointEvents, bullets, sensors, sensorHits | CCD, update |
+| islands/sleep | sleep (joint breaks, sleep timers, island split and sleep) | splitIslands, sleepIslands | island construction |
+| other | coloring, events | step minus the above | step minus the above |
+| aggregates, not summed | | step, solve, constraints | step, collision detection, solver |
+
+Observed hierarchy in Box2D 3.2.0 (large-pile, one thread): `constraints` is about the sum of the solver leaves and `solve` is about `constraints` plus `transforms`, which is why `transforms` is counted under finalize and `solve` and `constraints` are not summed. The buckets are for aiming optimisation work, not an exact accounting: engines draw their stage borders differently (for example, where body-pose updates and contact preparation fall), and the ratios are most reliable at bucket level.
 
 ## Method
 

@@ -194,6 +194,9 @@ internal sealed partial class Engine3D
             PackBody(b);
         }
 
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Pairs);
+#endif
         // 3. New pairs from the broadphase, in its sorted order.
         var found = Bp.UpdatePairs(new PairFilter(this), world.Executor);
         bool anyFresh = false;
@@ -213,6 +216,9 @@ internal sealed partial class Engine3D
         // Most pairs end up with one constraint; making room for them (and half as many again) at once saves the repeated doubling when thousands of pairs appear in one step.
         world.Constraints.Reserve(PairHigh + (PairHigh >> 1));
         if (_skip.Length < PairHigh) { Array.Resize(ref _skip, Math.Max(PairHigh, _skip.Length * 2)); }
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Narrowphase);
+#endif
         // 4. Pairs that need fresh manifolds: at least one body awake (or a kinematic body in motion). Soup-against-soup pairs never collide.
         if (_updateList.Length < PairHigh)
         {
@@ -254,6 +260,9 @@ internal sealed partial class Engine3D
         // The serial pass only adds, matches and removes constraints (their order fixes the colors); writing the manifolds into the payloads is independent per constraint and runs afterwards in parallel.
         // A user material mixer is called in pair order on this thread instead.
         _deferWrite = Opt.MaterialMixer == null && _updateCount >= 64;
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Apply);
+#endif
         // 6. Apply serially in ascending pair order: this fixes the order constraints are added, which fixes their colors.
         var cs = world.Constraints;
         for (int i = 0; i < _updateCount; i++)

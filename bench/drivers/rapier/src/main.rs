@@ -144,12 +144,22 @@ fn main() {
         snapshot(&world, &mut d); write_frame(w, 0, &d);
     }
 
+    // Optional per-stage profile from the documented performance counters (they only measure in a build with the crate's `profiler` feature): the median of each timer over the measured steps, written when OP_PROFILE is set.
+    let profiling = std::env::var_os("OP_PROFILE").is_some();
+    if profiling { world.physics_pipeline.counters.enable(); }
+    const PROF_NAMES: [&str; 11] = ["step", "collision_detection", "broad_phase", "narrow_phase", "solver", "assembly", "velocity_resolution", "velocity_update", "ccd", "island_construction", "update"];
+    let mut prof: Vec<[f64; 11]> = Vec::new();
     let mut step_ns: Vec<u128> = Vec::with_capacity(s.steps);
     for step in 0..s.steps {
         if s.wakes.contains(&step) { for (b, h) in s.bodies.iter().zip(&handles) { if b.kind == 2 { world.bodies[*h].wake_up(true); } } }
         let t0 = Instant::now();
         pool.install(|| world.step());
         step_ns.push(t0.elapsed().as_nanos());
+        if profiling && step >= s.warmup {
+            let c = &world.physics_pipeline.counters;
+            prof.push([c.step_time_ms(), c.collision_detection_time_ms(), c.broad_phase_time_ms(), c.narrow_phase_time_ms(), c.solver_time_ms(), c.assembly_time_ms(),
+                c.velocity_resolution_time_ms(), c.velocity_update_time_ms(), c.ccd_time_ms(), c.island_construction_time_ms(), c.update_time_ms()]);
+        }
         if let Some(w) = dump.as_mut() {
             if (step + 1) % s.dump_every == 0 || step + 1 == s.steps { snapshot(&world, &mut d); write_frame(w, (step + 1) as u32, &d); }
         }
@@ -188,6 +198,13 @@ fn main() {
             }
         }
         for k in 0..3 { out += &format!("query_{}_ns={}\nquery_{}_count={}\nquery_{}_hits={}\n", names[k], ns[k], names[k], count[k], names[k], hits[k]); }
+    }
+    if profiling && !prof.is_empty() {
+        for (k, name) in PROF_NAMES.iter().enumerate() {
+            let mut col: Vec<f64> = prof.iter().map(|row| row[k]).collect();
+            col.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            out += &format!("prof_{}_ms={:.5}\n", name, col[col.len() / 2]);
+        }
     }
     std::fs::write(&result_path, out).unwrap();
 }
