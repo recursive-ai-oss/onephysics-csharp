@@ -54,7 +54,7 @@ public sealed partial class ManifoldGenerator3D
         Matrix3x3F r = bInA.Rotation.ToMatrix();
         float thick = margin + (1e-4f * (Extent(a) + Extent(b)));
         Extract(a, n, thick, _fa);
-        Extract(b, r.Transpose() * -n, thick, _fb);
+        Extract(b, r.Transposed() * -n, thick, _fb);
         _fb.Transform(r, bInA.Translation);
         SetHint(c, a, b);
         return FromFeatures(_fa, _fb, n, margin);

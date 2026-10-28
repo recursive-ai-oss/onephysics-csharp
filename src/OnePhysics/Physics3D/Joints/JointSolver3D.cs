@@ -134,7 +134,7 @@ internal sealed partial class Engine3D
     /// <summary>B's rotation relative to A in A's frame, with its sign chosen so the scalar part is not negative: the rotation vector is then about twice its vector part for small angles.</summary>
     private static QuaternionF Relative(in JGeo g)
     {
-        var q = g.FA.Conjugate() * g.FB;
+        var q = g.FA.Conjugated() * g.FB;
         return q.W < 0f ? new QuaternionF(-q.X, -q.Y, -q.Z, -q.W) : q;
     }
 
@@ -143,7 +143,7 @@ internal sealed partial class Engine3D
     {
         float n = float.Sqrt(q.X * q.X + q.W * q.W);
         QuaternionF twist = n > 1e-12f ? new QuaternionF(q.X / n, 0f, 0f, q.W / n) : QuaternionF.Identity;
-        swing = q * twist.Conjugate();
+        swing = q * twist.Conjugated();
         return (float)(2.0 * Math64.Atan2(twist.X, twist.W));
     }
 
@@ -427,7 +427,7 @@ internal sealed partial class Engine3D
         float denom = cc + h * kk;
         if (!(denom > 0f)) { return; }
         float gamma = 1f / (h * denom), rate = kk / denom;
-        var qe = rel * d.DriveTarget.Conjugate();
+        var qe = rel * d.DriveTarget.Conjugated();
         if (qe.W < 0f) { qe = new QuaternionF(-qe.X, -qe.Y, -qe.Z, -qe.W); }
         float c0 = 2f * qe.X, c1 = 2f * qe.Y, c2 = 2f * qe.Z;
         float a0 = p[JP.Drive], a1 = p[JP.Drive + 1], a2 = p[JP.Drive + 2];
@@ -592,7 +592,7 @@ internal sealed partial class Engine3D
         else if (d.Aux == 2)
         {
             var pf = PathSpline3D.FromBasis(t, nrm, bin);
-            var q = pf.Conjugate() * fb;
+            var q = pf.Conjugated() * fb;
             if (q.W < 0f) { q = new QuaternionF(-q.X, -q.Y, -q.Z, -q.W); }
             JRowBuf rr = default; JF3 cc = default;
             rr[0] = JointRow.Ang(t); rr[1] = JointRow.Ang(nrm); rr[2] = JointRow.Ang(bin);

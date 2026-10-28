@@ -14,7 +14,7 @@ public class NarrowphaseTests
     private static QuaternionF AxisAngle(Vector3F axis, double angle)
     {
         axis = axis.Normalized();
-        return QuaternionF.FromAxisSinCos(axis, (float)Math.Sin(angle / 2), (float)Math.Cos(angle / 2));
+        return QuaternionF.CreateFromAxisSinCos(axis, (float)Math.Sin(angle / 2), (float)Math.Cos(angle / 2));
     }
 
     private static void Near(double expected, double actual, double tol, string what = "")
@@ -88,15 +88,15 @@ public class NarrowphaseTests
         ConvexShape3D rotatedBox = box;
         // Express B in A's frame: B's world = (R_y(45 deg), (d,0,0)); A's world = (R_z(45 deg), 0).
         QuaternionF qa = ra.Rotation, qb = AxisAngle(Vector3F.UnitY, Math.PI / 4);
-        QuaternionF rel = qa.Conjugate() * qb;
+        QuaternionF rel = qa.Conjugated() * qb;
         float dist = (float)(2 * r2 + 0.4);
-        var bInA = new RigidTransformF(rel, qa.Conjugate().Rotate(new Vector3F(dist, 0, 0)));
+        var bInA = new RigidTransformF(rel, qa.Conjugated().Rotate(new Vector3F(dist, 0, 0)));
         ConvexDistance3D ed = Gjk3D.Distance(rotatedBox, box, bInA);
         Near(0.4, ed.Distance, 5e-6, "edge-edge distance");
         // Normal A->B in world is +x.
         NearV(Vector3F.UnitX, qa.Rotate(ed.Normal), 5e-6, "edge normal");
         dist = (float)(2 * r2 - 0.3);
-        bInA = new RigidTransformF(rel, qa.Conjugate().Rotate(new Vector3F(dist, 0, 0)));
+        bInA = new RigidTransformF(rel, qa.Conjugated().Rotate(new Vector3F(dist, 0, 0)));
         c = Epa.Collide(rotatedBox, box, bInA);
         Near(-0.3, c.Separation, 5e-5, "edge-edge depth");
         NearV(Vector3F.UnitX, qa.Rotate(c.Normal), 5e-4, "edge-edge penetration normal");
@@ -272,7 +272,7 @@ public class NarrowphaseTests
             ConvexShape3D a = Collision3DHash.RandomShape(rng, hulls), b = Collision3DHash.RandomShape(rng, hulls);
             var xf = new RigidTransformF(rng.Rotation(), rng.InBall(rng.Range(0.2f, 3f)));
             ConvexContact3D ab = Epa.Collide(a, b, xf);
-            ConvexContact3D ba = Epa.Collide(b, a, xf.Inverse());
+            ConvexContact3D ba = Epa.Collide(b, a, xf.Inverted());
             Assert.True(float.IsFinite(ab.Separation) && float.IsFinite(ba.Separation));
             bool polyhedral = a.Kind is ConvexShapeKind3D.Box or ConvexShapeKind3D.Hull && b.Kind is ConvexShapeKind3D.Box or ConvexShapeKind3D.Hull;
             // Polytope expansion is exact for polyhedra; for smooth shapes it is limited by the vertex budget (about 0.5% worst case).

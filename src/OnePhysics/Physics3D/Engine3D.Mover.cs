@@ -158,7 +158,7 @@ internal sealed partial class Engine3D
         {
             int s = _mvCand[i];
             ShapeFrame(s, out double ox, out double oy, out double oz, out QuaternionF rs);
-            var inv = rs.Conjugate();
+            var inv = rs.Conjugated();
             var lo = inv.Rotate(new Vector3F((float)(p.X - ox), (float)(p.Y - oy), (float)(p.Z - oz)));
             var rel = new RigidTransformF(inv * c.Rot, lo);
             var g = Geoms[GeomOf[s]]!;

@@ -371,7 +371,7 @@ internal sealed partial class Engine3D
     private static void PreparePath(ref JointData3D j, Span<float> s, QuaternionF qA, Vector3F lcA, Vector3F d, Vector3F rB)
     {
         // The follower's anchor in A's origin frame: the vector from A's origin to it, in A's axes.
-        var anchor = qA.Conjugate().Rotate(d + qA.Rotate(lcA) + rB);
+        var anchor = qA.Conjugated().Rotate(d + qA.Rotate(lcA) + rB);
         PathSpline3D.Closest(j.Path!, (j.Flags & JointData3D.FlagLoop) != 0, anchor, out float t, out var pos, out var tangent);
         var up = new Vector3F(j.UpX, j.UpY, j.UpZ);
         PathSpline3D.Frame(tangent, up, out var tn, out var nn, out var bn);

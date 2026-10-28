@@ -141,7 +141,7 @@ public class CompoundBruteTests
         Vector3F motion = rng.Next(4) == 0 ? rng.InBall(3f) : (Center(c, SomeLive(c, rng)) - pose.Translation) * rng.Range(0.8f, 1.5f);
         bool got = c.ShapeCast(shape, pose, motion, out CompoundCastHit3D hit);
 
-        RigidTransformF inverse = pose.Inverse();
+        RigidTransformF inverse = pose.Inverted();
         Vector3F inShape = inverse.Rotation.Rotate(motion);
         bool want = false;
         ConvexCastHit3D best = default;
@@ -262,7 +262,7 @@ public class CompoundBruteTests
             for (int k = 0; k < c.SlotCount; k++)
             {
                 PlacedShape3D p = c.GetChild(k);
-                ConvexDistance3D d = Gjk3D.Distance(probe, p.Shape, pose.Inverse() * p.Local);
+                ConvexDistance3D d = Gjk3D.Distance(probe, p.Shape, pose.Inverted() * p.Local);
                 if (d.Overlapping || d.Distance <= margin)
                 {
                     touching++;

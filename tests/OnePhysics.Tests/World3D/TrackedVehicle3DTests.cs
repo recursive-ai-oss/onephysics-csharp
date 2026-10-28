@@ -83,7 +83,7 @@ public class TrackedVehicle3DTests
         Floor(w);
         // A slab rising towards +Z from z = 14 m at the given grade.
         float ang = MathF.Atan(grade);
-        var rot = QuaternionF.FromAxisSinCos(new Vector3F(1f, 0f, 0f), MathF.Sin(-0.5f * ang), MathF.Cos(-0.5f * ang));
+        var rot = QuaternionF.CreateFromAxisSinCos(new Vector3F(1f, 0f, 0f), MathF.Sin(-0.5f * ang), MathF.Cos(-0.5f * ang));
         float len = 60f, th = 1f;
         // Centre of the slab so that its top surface starts at z = 14, y = 0.
         float cz = 14f + 0.5f * len * MathF.Cos(ang) + 0.5f * th * MathF.Sin(ang), cy = 0.5f * len * MathF.Sin(ang) - 0.5f * th * MathF.Cos(ang);
@@ -107,7 +107,7 @@ public class TrackedVehicle3DTests
         var w = NewWorld();
         Floor(w);
         float ang = MathF.Atan(0.3f);
-        var rot = QuaternionF.FromAxisSinCos(new Vector3F(1f, 0f, 0f), MathF.Sin(-0.5f * ang), MathF.Cos(-0.5f * ang));
+        var rot = QuaternionF.CreateFromAxisSinCos(new Vector3F(1f, 0f, 0f), MathF.Sin(-0.5f * ang), MathF.Cos(-0.5f * ang));
         float len = 60f, th = 1f;
         float cz = 14f + 0.5f * len * MathF.Cos(ang) + 0.5f * th * MathF.Sin(ang), cy = 0.5f * len * MathF.Sin(ang) - 0.5f * th * MathF.Cos(ang);
         w.AddBox(new Vector3F(30f, th, len), at: new Vector3D(0, cy, cz), rotation: rot, type: BodyType.Static, material: new Material3D(0.8f, 0f, 0f));

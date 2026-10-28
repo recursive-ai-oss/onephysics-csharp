@@ -15,7 +15,7 @@ public class CompoundTests
     private static QuaternionF AxisAngle(Vector3F axis, double angle)
     {
         axis = axis.Normalized();
-        return QuaternionF.FromAxisSinCos(axis, (float)Math.Sin(angle / 2), (float)Math.Cos(angle / 2));
+        return QuaternionF.CreateFromAxisSinCos(axis, (float)Math.Sin(angle / 2), (float)Math.Cos(angle / 2));
     }
 
     private static void Near(double expected, double actual, double tol, string what = "") =>
@@ -364,7 +364,7 @@ public class CompoundTests
             bool got = c.RayCast(o, d, 2f, out CompoundRayHit3D h);
 
             // Slab test in the box frame, in double, for the box itself and for the box grown by a margin.
-            Vector3F lo = local.Inverse().TransformPoint(o), ld = local.Inverse().TransformVector(d);
+            Vector3F lo = local.Inverted().TransformPoint(o), ld = local.Inverted().TransformVector(d);
             double[] oo = { lo.X, lo.Y, lo.Z }, dd = { ld.X, ld.Y, ld.Z }, hh = { he.X, he.Y, he.Z };
             (bool hit, double t0, int axis) Slab(double grow)
             {
