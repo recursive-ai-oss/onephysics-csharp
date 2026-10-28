@@ -184,19 +184,26 @@ public sealed class ConstraintStore
         _edgeNext = new int[cap * 2]; _edgePrev = new int[cap * 2];
     }
 
+    /// <summary>Makes room for at least <paramref name="count"/> constraints at once, so a step that is about to add many does not grow every array by doubling several times.</summary>
+    internal void Reserve(int count)
+    {
+        if (count > Capacity) { Resize(count); }
+    }
+
+    private void Resize(int cap)
+    {
+        Array.Resize(ref _kind, cap); Array.Resize(ref _bodyA, cap); Array.Resize(ref _bodyB, cap);
+        Array.Resize(ref _shapeA, cap); Array.Resize(ref _shapeAGen, cap); Array.Resize(ref _shapeB, cap); Array.Resize(ref _shapeBGen, cap);
+        Array.Resize(ref _subA, cap); Array.Resize(ref _subB, cap); Array.Resize(ref _flags, cap); Array.Resize(ref _color, cap); Array.Resize(ref _points, cap);
+        Array.Resize(ref _feature, cap * _layout.MaxManifoldPoints); Array.Resize(ref _breakValue, cap);
+        Array.Resize(ref _payload, cap * _layout.PayloadFloats);
+        Array.Resize(ref _edgeNext, cap * 2); Array.Resize(ref _edgePrev, cap * 2);
+    }
+
     internal int AllocateSlot()
     {
         int c = Handles.Allocate();
-        if (c >= Capacity)
-        {
-            int cap = Capacity * 2;
-            Array.Resize(ref _kind, cap); Array.Resize(ref _bodyA, cap); Array.Resize(ref _bodyB, cap);
-            Array.Resize(ref _shapeA, cap); Array.Resize(ref _shapeAGen, cap); Array.Resize(ref _shapeB, cap); Array.Resize(ref _shapeBGen, cap);
-            Array.Resize(ref _subA, cap); Array.Resize(ref _subB, cap); Array.Resize(ref _flags, cap); Array.Resize(ref _color, cap); Array.Resize(ref _points, cap);
-            Array.Resize(ref _feature, cap * _layout.MaxManifoldPoints); Array.Resize(ref _breakValue, cap);
-            Array.Resize(ref _payload, cap * _layout.PayloadFloats);
-            Array.Resize(ref _edgeNext, cap * 2); Array.Resize(ref _edgePrev, cap * 2);
-        }
+        if (c >= Capacity) { Resize(Capacity * 2); }
 
         return c;
     }

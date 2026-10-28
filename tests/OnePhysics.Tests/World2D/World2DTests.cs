@@ -411,6 +411,82 @@ public class World2DTests
         w.Step(Dt);
     }
 
+    private static PhysicsWorld2D StackScene()
+    {
+        var w = NewWorld();
+        w.AddBox(new Vector2F(40f, 1f), at: new Vector2D(0, -0.5), type: BodyType.Static);
+        for (int i = 0; i < 6; i++) { w.AddBox(new Vector2F(1f, 1f), at: new Vector2D(0.02 * i, 0.5 + 1.001 * i)); }
+        w.AddCircle(0.5f, new Vector2D(3, 0.5));
+        return w;
+    }
+
+    [Fact]
+    public void RecycledManifoldsStayCloseToFreshOnesAndAreActuallyUsed()
+    {
+        var recycled = StackScene();
+        var fresh = StackScene();
+        fresh.Engine.RecycleManifolds = false;
+        int used = 0;
+        for (int i = 0; i < 240; i++)
+        {
+            recycled.Step(Dt); fresh.Step(Dt);
+            { used += recycled.Engine.RecycledCount; Assert.Equal(0, fresh.Engine.RecycledCount); }
+        }
+
+        Assert.True(used > 0, "no manifold was recycled while the stack settled");
+        var pa = recycled.Core.Bodies.Position; var pb = fresh.Core.Bodies.Position;
+        double worst = 0;
+        for (int b = 0; b < recycled.Core.Bodies.HighWater; b++)
+        {
+            if (!recycled.Core.Bodies.IsLive(b)) { continue; }
+            worst = Math.Max(worst, Math.Max(Math.Abs(pa[2 * b] - pb[2 * b]), Math.Abs(pa[2 * b + 1] - pb[2 * b + 1])));
+        }
+
+        Assert.True(worst < 0.01, "recycled and fresh worlds differ by " + worst);
+    }
+
+    [Fact]
+    public void AMaterialChangeReachesARecycledManifold()
+    {
+        var w = NewWorld();
+        w.AddBox(new Vector2F(40f, 1f), at: new Vector2D(0, -0.5), type: BodyType.Static);
+        var box = w.AddBox(new Vector2F(1f, 1f), at: new Vector2D(0, 0.5));
+        for (int i = 0; i < 8; i++) { w.Step(Dt); }
+        box.GetShapes()[0].Friction = 0.123f;
+        w.Step(Dt);
+        Assert.True(w.Engine.RecycledCount > 0, "the resting contact was not recycled");
+        var cs = w.Core.Constraints;
+        int c = 0;
+        while (!cs.IsLive(c)) { c++; }
+        Assert.Equal(float.Sqrt(0.123f * 0.6f), cs.Payload(c)[ManifoldLayout.Friction], 4);
+    }
+
+    [Fact]
+    public void ASnapshotFromBeforeRecyclingOrWithGarbageInTheCacheSlotsStillSteps()
+    {
+        var w = StackScene();
+        for (int i = 0; i < 120; i++) { w.Step(Dt); }
+        // Zero the cache slots of every contact, as an older snapshot would have them, then fill them with huge finite values (the reader refuses NaN).
+        var cs = w.Core.Constraints;
+        int[] slots = [2, 7, 8, 11, 14, 18, 20, 23, 26, 32, 33, 34, 35, 36, 37, 38, 39];
+        for (int pass = 0; pass < 2; pass++)
+        {
+            for (int c = 0; c < cs.HighWater; c++)
+            {
+                if (!cs.IsLive(c)) { continue; }
+                var pl = cs.Payload(c);
+                foreach (int s in slots) { pl[s] = pass == 0 ? 0f : 1e30f; }
+            }
+
+            byte[] snap = w.Snapshot();
+            var w2 = new PhysicsWorld2D(new WorldOptions2D { WorldId = 5 });
+            w2.Restore(snap);
+            for (int i = 0; i < 30; i++) { w2.Step(Dt); }
+            var top = w2.Core.Bodies.Position;
+            for (int b = 0; b < w2.Core.Bodies.HighWater; b++) { if (w2.Core.Bodies.IsLive(b)) { Assert.True(double.IsFinite(top[2 * b + 1]) && Math.Abs(top[2 * b + 1]) < 20); } }
+        }
+    }
+
     [Fact]
     public void ShiftingTheOriginKeepsHostCoordinatesAndTheSimulationRunning()
     {
