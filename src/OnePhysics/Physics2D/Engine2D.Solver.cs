@@ -34,11 +34,12 @@ internal sealed partial class Engine2D
         var core = Core;
         var bodies = core.Bodies;
         int nb = bodies.HighWater;
+        GroupSinglePointFirst();
         if (BodyState.Length < (nb + 1) * BS2D.Stride) { BodyState = new float[Math.Max(nb + 1, BodyState.Length / BS2D.Stride * 2) * BS2D.Stride]; }
         if (Wide.Length < batches * W2D.GroupFloats)
         {
             int cap = Math.Max(batches, Wide.Length / W2D.GroupFloats * 2);
-            Wide = new float[cap * W2D.GroupFloats]; WideIdx = new int[cap * W2D.IdxPerGroup]; WideCons = new int[cap * W2D.Lanes]; GroupRestitution = new byte[cap]; GroupRolling = new byte[cap];
+            Wide = new float[cap * W2D.GroupFloats]; WideIdx = new int[cap * W2D.IdxPerGroup]; WideCons = new int[cap * W2D.Lanes]; GroupRestitution = new byte[cap]; GroupRolling = new byte[cap]; GroupPoints = new byte[cap];
         }
 
         if (JWide.Length < batches * J2D.GroupFloats && LiveJointCount() > 0)
@@ -59,6 +60,45 @@ internal sealed partial class Engine2D
             int o = (b + 1) * BS2D.Stride;
             st[o + BS2D.Vx] = lin[2 * b]; st[o + BS2D.Vy] = lin[2 * b + 1]; st[o + BS2D.W] = ang[b];
             st[o + BS2D.Dpx] = 0f; st[o + BS2D.Dpy] = 0f; st[o + BS2D.DqC] = 1f; st[o + BS2D.DqS] = 0f;
+        }
+    }
+
+    private int[] _partScratch = new int[64];
+
+    /// <summary>
+    /// Inside each color, puts the contacts with one manifold point before those with two (each keeping its order). The constraints of a color share no dynamic body, so which of them
+    /// share a group of lanes cannot change any result; it only lets a group of single-point contacts skip the second point's arithmetic. A color holding a joint is left alone.
+    /// </summary>
+    private void GroupSinglePointFirst()
+    {
+        var coloring = Core.Coloring;
+        var cs = Core.Constraints;
+        ReadOnlySpan<byte> points = cs.PointCount;
+        for (int g = 0; g < ConstraintColoring.ColorCount; g++)
+        {
+            var color = coloring.Color(g);
+            int n = color.Length;
+            if (n <= W2D.Lanes) { continue; }
+            int two = 0;
+            bool joint = false;
+            for (int i = 0; i < n; i++)
+            {
+                int c = color[i];
+                if (cs.KindOf(c) == ConstraintKind.Joint) { joint = true; break; }
+                if (points[c] > 1) { two++; }
+            }
+
+            if (joint || two == 0 || two == n) { continue; }
+            if (_partScratch.Length < n) { _partScratch = new int[Math.Max(n, _partScratch.Length * 2)]; }
+            var list = coloring.ListArray.AsSpan(coloring.ColorStart(g), n);
+            int one = 0, t = 0;
+            for (int i = 0; i < n; i++)
+            {
+                int c = list[i];
+                if (points[c] > 1) { _partScratch[t++] = c; } else { list[one++] = c; }
+            }
+
+            _partScratch.AsSpan(0, t).CopyTo(list.Slice(one));
         }
     }
 
@@ -95,7 +135,7 @@ internal sealed partial class Engine2D
         for (int l = 0; l < W2D.Lanes; l++) { idx[l] = 0; idx[8 + l] = 0; idx[16 + l] = -1; idx[24 + l] = -1; ids[l] = -1; }
         int lane = 0;
         int jlane = 0;
-        byte anyRestitution = 0, anyRolling = 0;
+        byte anyRestitution = 0, anyRolling = 0, maxPoints = 1;
         var jw = JWide.Length >= (group + 1) * J2D.GroupFloats ? JWide.AsSpan(group * J2D.GroupFloats, J2D.GroupFloats) : default;
         var jidx = JIdx.Length >= (group + 1) * W2D.IdxPerGroup ? JIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup) : default;
         if (jidx.Length != 0)
@@ -150,6 +190,7 @@ internal sealed partial class Engine2D
 
             float vAx = lin[2 * a], vAy = lin[2 * a + 1], wA = ang[a], vBx = lin[2 * b], vBy = lin[2 * b + 1], wB = ang[b];
             int count = cs.PointCount[c];
+            if (count > 1) { maxPoints = 2; }
             for (int i = 0; i < count; i++)
             {
                 float rAx = Mem.At(pl, ManifoldLayout.AnchorA(i)), rAy = Mem.At(pl, ManifoldLayout.AnchorA(i) + 1);
@@ -191,6 +232,7 @@ internal sealed partial class Engine2D
 
         GroupRestitution[group] = anyRestitution;
         GroupRolling[group] = anyRolling;
+        GroupPoints[group] = maxPoints;
 
         // Remembered on the batch's first constraint so the solve passes can pick the wide path without looking at every constraint: contacts only, not the overflow set.
         if (constraints.Length > 0)
