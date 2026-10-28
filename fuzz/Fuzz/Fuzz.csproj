@@ -1,16 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Fuzz harness: runs a named target over files or a seeded random stream. Coverage-guided drivers attach here later. -->
+  <!-- Fuzz harness: runs a named target over files or a seeded random stream. Coverage-guided mode runs the same targets over an assembly instrumented by SharpFuzz (a tool and build-time dependency of this project only). -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <AssemblyName>Fuzz</AssemblyName>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="SharpFuzz" Version="2.3.0" />
     <ProjectReference Include="../../src/OnePhysics/OnePhysics.csproj" />
+    <InternalsVisibleTo Include="RecursiveAI.OnePhysics.Tests" />
   </ItemGroup>
 
 </Project>

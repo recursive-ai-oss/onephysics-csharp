@@ -18,6 +18,11 @@
     <Compile Include="../Common/Ragdolls3DScene.cs" LinkBase="Common" />
   </ItemGroup>
 
+  <!-- Minimised inputs that once made a fuzz target fail; FuzzRegressionTests replays them. -->
+  <ItemGroup>
+    <Content Include="../../testdata/fuzz/**" Link="fuzz-regress/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="xunit.v3" Version="4.0.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
@@ -26,6 +31,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/OnePhysics/OnePhysics.csproj" />
+    <ProjectReference Include="../../fuzz/Fuzz/Fuzz.csproj" />
   </ItemGroup>
 
 </Project>

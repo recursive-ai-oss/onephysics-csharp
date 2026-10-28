@@ -122,7 +122,8 @@ internal static class Fuzz3D
         }
 
         float nl = m.Normal.LengthSquared();
-        if (!(nl > 0.98f && nl < 1.02f))
+        // A pose rotation may be off by 1% in squared length (documented), and the normal is rotated by it, so its squared length can be off by about 2% plus rounding.
+        if (!(nl > 0.97f && nl < 1.03f))
         {
             throw new InvalidOperationException("normal " + m.Normal + " is not a unit vector for " + what);
         }

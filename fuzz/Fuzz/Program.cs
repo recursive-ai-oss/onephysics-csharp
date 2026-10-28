@@ -8,9 +8,12 @@ using RecursiveAI.OnePhysics.Core.Reference;
 
 // Usage: Fuzz <target> <file>...   runs the target once per file (a crash or an unexpected exception is a finding)
 //        Fuzz <target> --random <seed> <count> [bytes]   runs it over a seeded pseudo-random byte stream (default 64 bytes per input)
+//        Fuzz <target> --guided <seconds> --corpus <dir> --crashes <dir> [--seed n] [--maxlen n] [--hang s] [--stats file]   coverage-guided (see Guided.cs, tools/fuzz.sh)
+//        Fuzz <target> --minimize <input> <output>   shrinks a failing input
+//        Fuzz --seeds <dir>   writes the seed corpus of every target under <dir>/<target>/
 internal static class Program
 {
-    private static readonly Dictionary<string, Action<byte[]>> Targets = new(StringComparer.Ordinal)
+    internal static readonly Dictionary<string, Action<byte[]>> Targets = new(StringComparer.Ordinal)
     {
         ["mesh"] = FuzzMesh.MeshTarget,
         ["heightfield"] = FuzzMesh.HeightFieldTarget,
@@ -48,10 +51,27 @@ internal static class Program
 
     private static int Main(string[] args)
     {
+        // An instrumented library writes to the edge map on every branch, so the map exists before any target or seed code runs.
+        Guided.InstallMap();
+        if (args.Length == 2 && args[0] == "--seeds")
+        {
+            return Seeds.Write(args[1]);
+        }
+
         if (args.Length < 2 || !Targets.TryGetValue(args[0], out var target))
         {
             Console.Error.WriteLine("usage: Fuzz <target> <file>... | Fuzz <target> --random <seed> <count>; targets: " + string.Join(", ", Targets.Keys));
             return 2;
+        }
+
+        if (args[1] == "--guided")
+        {
+            return Guided.Run(args[0], target, args);
+        }
+
+        if (args[1] == "--minimize" && args.Length == 4)
+        {
+            return Guided.Minimize(args[0], target, args[2], args[3]);
         }
 
         if (args[1] == "--random" && (args.Length == 4 || args.Length == 5))
@@ -292,6 +312,8 @@ internal static class Program
 
     private static byte[]? s_base;
     private static int s_accepted;
+
+    internal static byte[] BaseSnapshot() => Base();
 
     private static byte[] Base()
     {
