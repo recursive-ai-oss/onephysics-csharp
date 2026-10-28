@@ -38,7 +38,12 @@ internal static class SmokeProgram
         ulong w1 = World2D(1, false), w3 = World2D(3, false), wr = World2D(1, true);
         bool w2Same = w1 == w3 && w1 == wr;
         Console.WriteLine((w2Same ? "OK world2d " : "FAIL world2d ") + w1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
-        return ok && same && bpSame && w2Same ? 0 : 1;
+
+        // The 3D world: one and three threads, and a restore halfway, must all end in the same state.
+        ulong v1 = World3D(1, false), v3 = World3D(3, false), vr = World3D(1, true);
+        bool w3Same = v1 == v3 && v1 == vr;
+        Console.WriteLine((w3Same ? "OK world3d " : "FAIL world3d ") + v1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        return ok && same && bpSame && w2Same && w3Same ? 0 : 1;
     }
 
     private static ulong World2D(int threads, bool restoreHalfway)
@@ -57,6 +62,38 @@ internal static class SmokeProgram
             {
                 byte[] snap = w.Snapshot();
                 w = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new RecursiveAI.OnePhysics.Physics2D.WorldOptions2D { WorldId = 3 });
+                w.Restore(snap);
+            }
+
+            w.Step(1f / 60f);
+        }
+
+        return w.ComputeHash();
+    }
+
+    private static ulong World3D(int threads, bool restoreHalfway)
+    {
+        var w = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new RecursiveAI.OnePhysics.Physics3D.WorldOptions3D { ThreadCount = threads, WorldId = 4 });
+        w.AddBox(new RecursiveAI.OneMath.Vector3F(40f, 1f, 40f), new RecursiveAI.OneMath.Vector3D(0, -0.5, 0), type: BodyType.Static);
+        RecursiveAI.OneMath.Vector3F[] tetra = [new(0.5f, 0.5f, 0.5f), new(-0.5f, -0.5f, 0.5f), new(-0.5f, 0.5f, -0.5f), new(0.5f, -0.5f, -0.5f)];
+        for (int i = 0; i < 30; i++)
+        {
+            var at = new RecursiveAI.OneMath.Vector3D(-4 + (i % 6) * 1.3, 1 + (i / 6) * 1.2, (i % 3) * 0.4);
+            switch (i % 4)
+            {
+                case 0: w.AddBox(new RecursiveAI.OneMath.Vector3F(1f, 1f, 1f), at); break;
+                case 1: w.AddSphere(0.45f, at); break;
+                case 2: w.AddCapsule(0.3f, 0.25f, at); break;
+                default: w.AddConvexHull(tetra, at); break;
+            }
+        }
+
+        for (int i = 0; i < 120; i++)
+        {
+            if (restoreHalfway && i == 60)
+            {
+                byte[] snap = w.Snapshot();
+                w = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new RecursiveAI.OnePhysics.Physics3D.WorldOptions3D { WorldId = 4 });
                 w.Restore(snap);
             }
 

@@ -526,9 +526,9 @@ internal sealed partial class Engine3D
         var rot = bodies.RotationOf(b);
         double cx = StartPos[3 * b], cy = StartPos[3 * b + 1], cz = StartPos[3 * b + 2];
         var m = new Vector3F((float)(pos[0] - cx), (float)(pos[1] - cy), (float)(pos[2] - cz));
-        var q1 = new QuaternionF(StartRot[4 * b], StartRot[4 * b + 1], StartRot[4 * b + 2], StartRot[4 * b + 3]);
-        var q2 = new QuaternionF(rot[0], rot[1], rot[2], rot[3]);
-        var rel = q1.Conjugate() * q2;
+        var qStart = new QuaternionF(StartRot[4 * b], StartRot[4 * b + 1], StartRot[4 * b + 2], StartRot[4 * b + 3]);
+        var qEnd = new QuaternionF(rot[0], rot[1], rot[2], rot[3]);
+        var rel = qStart.Conjugate() * qEnd;
         float spin = 2f * float.Sqrt(rel.X * rel.X + rel.Y * rel.Y + rel.Z * rel.Z) * MaxExtent[b];
         float len = float.Sqrt(m.X * m.X + m.Y * m.Y + m.Z * m.Z);
         if (!float.IsFinite(len + spin) || !(len + spin > 0.5f * MinExtent[b]) || !(len > 0f)) { return; } // non-finite motion is reported by the bounds check, not cast
@@ -541,8 +541,8 @@ internal sealed partial class Engine3D
             if (g.Soup != null) { continue; }
             var l = Local[s];
             // Box of the whole sweep: the shape's bounds at the start and at the end.
-            var startPose = new RigidTransformF(q1 * l.Rotation, q1.Rotate(l.Translation - lc));
-            var endPose = new RigidTransformF(q2 * l.Rotation, q2.Rotate(l.Translation - lc));
+            var startPose = new RigidTransformF(qStart * l.Rotation, qStart.Rotate(l.Translation - lc));
+            var endPose = new RigidTransformF(qEnd * l.Rotation, qEnd.Rotate(l.Translation - lc));
             Vector3F a0, a1, c0, c1;
             if (g.IsConvex) { ShapeBounds3D.Compute(g.Convex, startPose, out a0, out a1); ShapeBounds3D.Compute(g.Convex, endPose, out c0, out c1); }
             else { BoundsOfBox(g.LocalBounds, startPose, out a0, out a1); BoundsOfBox(g.LocalBounds, endPose, out c0, out c1); }
@@ -576,9 +576,9 @@ internal sealed partial class Engine3D
         if (t < 0f) { t = 0f; }
         pos[0] = cx + (double)(t * m.X); pos[1] = cy + (double)(t * m.Y); pos[2] = cz + (double)(t * m.Z);
         // Normalised lerp along the shorter arc.
-        float dot = q1.X * q2.X + q1.Y * q2.Y + q1.Z * q2.Z + q1.W * q2.W;
+        float dot = qStart.X * qEnd.X + qStart.Y * qEnd.Y + qStart.Z * qEnd.Z + qStart.W * qEnd.W;
         float sgn = dot < 0f ? -1f : 1f;
-        float nx = (1f - t) * q1.X + t * sgn * q2.X, ny = (1f - t) * q1.Y + t * sgn * q2.Y, nz = (1f - t) * q1.Z + t * sgn * q2.Z, nw = (1f - t) * q1.W + t * sgn * q2.W;
+        float nx = (1f - t) * qStart.X + t * sgn * qEnd.X, ny = (1f - t) * qStart.Y + t * sgn * qEnd.Y, nz = (1f - t) * qStart.Z + t * sgn * qEnd.Z, nw = (1f - t) * qStart.W + t * sgn * qEnd.W;
         float mag = float.Sqrt(nx * nx + ny * ny + nz * nz + nw * nw);
         if (mag > 0f) { rot[0] = nx / mag; rot[1] = ny / mag; rot[2] = nz / mag; rot[3] = nw / mag; }
         Dp[3 * b] = (float)(pos[0] - cx); Dp[3 * b + 1] = (float)(pos[1] - cy); Dp[3 * b + 2] = (float)(pos[2] - cz);
