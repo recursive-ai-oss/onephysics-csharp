@@ -38,7 +38,7 @@ public class HostHooks3DTests
 
     private static byte[] Warm(PhysicsWorld3D w)
     {
-        for (int i = 0; i < 50; i++) { w.Step(Dt); }
+        for (int i = 0; i < 700; i++) { w.Step(Dt); }
         var buffer = new byte[w.GetSnapshotSize() * 2 + 64];
         for (int i = 0; i < 3; i++)
         {
