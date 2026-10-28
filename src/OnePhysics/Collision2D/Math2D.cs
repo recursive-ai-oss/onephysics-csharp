@@ -163,6 +163,7 @@ public readonly struct Transform2
     public Vec2 ApplyInverse(Vec2 p) => Q.InverseRotate(p - P);
 
     /// <summary>The pose of <paramref name="b"/> in the frame of <paramref name="a"/> (<c>a⁻¹ ∘ b</c>). The caller forms the translation difference of two body positions in double first, then converts to float32, so large worlds keep their precision (the coordinate rule).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Transform2 InvMul(Transform2 a, Transform2 b) => new(a.Q.InverseRotate(b.P - a.P), Rot2.InvMul(a.Q, b.Q));
 
     /// <summary>True when the translation is finite and the rotation is finite.</summary>
