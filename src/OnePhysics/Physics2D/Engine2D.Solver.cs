@@ -190,8 +190,8 @@ internal sealed partial class Engine2D
             BatchSimple[constraints[0]] = (byte)(overflowSet ? 0 : !anyJoint ? 1 : jlane == constraints.Length && jidx.Length != 0 ? 2 : 0);
         }
 
-        // Unused lanes of a short group read as zeros.
-        for (int l = lane; l < W2D.Lanes; l++)
+        // Unused lanes of a short group read as zeros. A batch with no contacts never reads its contact group.
+        for (int l = lane > 0 ? lane : W2D.Lanes; l < W2D.Lanes; l++)
         {
             for (int f = 0; f < W2D.Fields; f++) { w[f * 8 + l] = 0f; }
         }
