@@ -531,7 +531,7 @@ internal sealed partial class Engine3D
         var rel = q1.Conjugate() * q2;
         float spin = 2f * float.Sqrt(rel.X * rel.X + rel.Y * rel.Y + rel.Z * rel.Z) * MaxExtent[b];
         float len = float.Sqrt(m.X * m.X + m.Y * m.Y + m.Z * m.Z);
-        if (!(len + spin > 0.5f * MinExtent[b]) || !(len > 0f)) { return; }
+        if (!float.IsFinite(len + spin) || !(len + spin > 0.5f * MinExtent[b]) || !(len > 0f)) { return; } // non-finite motion is reported by the bounds check, not cast
 
         var lc = LocalCenterOf(b);
         float best = 1f;

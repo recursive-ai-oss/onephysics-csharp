@@ -632,7 +632,7 @@ internal sealed partial class Engine3D : ISnapshotSection
             geoms[geomOf[s]]!.Refs++;
             float qx = r.ReadSingle(), qy = r.ReadSingle(), qz = r.ReadSingle(), qw = r.ReadSingle(), tx = r.ReadSingle(), ty = r.ReadSingle(), tz = r.ReadSingle();
             float ql = qx * qx + qy * qy + qz * qz + qw * qw;
-            if (!float.IsFinite(ql + tx + ty + tz) || !(ql >= 0.99f && ql <= 1.01f) || Math.Abs(tx) > PlacedShape3D.MaxLocalOffset || Math.Abs(ty) > PlacedShape3D.MaxLocalOffset || Math.Abs(tz) > PlacedShape3D.MaxLocalOffset)
+            if (!float.IsFinite(ql + tx + ty + tz) || !(ql >= 0.999f && ql <= 1.001f) || Math.Abs(tx) > PlacedShape3D.MaxLocalOffset || Math.Abs(ty) > PlacedShape3D.MaxLocalOffset || Math.Abs(tz) > PlacedShape3D.MaxLocalOffset)
             {
                 throw r.Error("invalid shape placement");
             }
@@ -745,7 +745,7 @@ internal sealed partial class Engine3D : ISnapshotSection
             // A body's rotation is a unit quaternion (the integrator keeps it so); anything else would break the narrowphase's input contract.
             var q = bodies.RotationOf(b);
             float ql = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
-            if (!(ql >= 0.99f && ql <= 1.01f)) { return false; }
+            if (!(ql >= 0.999f && ql <= 1.001f)) { return false; }
             int count = 0;
             for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
             {
