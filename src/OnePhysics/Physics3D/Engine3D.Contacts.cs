@@ -730,10 +730,30 @@ internal sealed partial class Engine3D
     private static bool IsGhostRegion(Vector3F pointInSoup, in SoupTriangle3D tri)
     {
         int region = ClosestRegion(pointInSoup, tri.V0, tri.V1, tri.V2);
-        if (region == 0) { return false; }
+        if (region == 0)
+        {
+            // A point on a seam is a hair inside the face as often as a hair outside it, and which one float rounding picks depends on the exact pose (a spinning sphere crosses the same seam at
+            // different phases). Within 5 mm of an inactive edge (the contact point sits midway between the surfaces, so a penetrating shape puts it off the edge by about half its depth) it counts as being on that edge.
+            return NearInactiveEdge(pointInSoup, in tri, 0, tri.V0, tri.V1) || NearInactiveEdge(pointInSoup, in tri, 1, tri.V1, tri.V2) || NearInactiveEdge(pointInSoup, in tri, 2, tri.V2, tri.V0);
+        }
+
         if (region <= 3) { return !tri.IsEdgeActive(region - 1); }
         int v = region - 4;
         return !tri.IsEdgeActive((v + 2) % 3) && !tri.IsEdgeActive(v);
+    }
+
+    private const float SeamTolerance = 5e-3f;
+
+    private static bool NearInactiveEdge(Vector3F p, in SoupTriangle3D tri, int edge, Vector3F a, Vector3F b)
+    {
+        if (tri.IsEdgeActive(edge)) { return false; }
+        // Distance from the point to the segment (Ericson 5.1.2).
+        Vector3F ab = b - a, ap = p - a;
+        float len2 = Vector3F.Dot(ab, ab);
+        float t = len2 > 0f ? Vector3F.Dot(ap, ab) / len2 : 0f;
+        t = t < 0f ? 0f : t > 1f ? 1f : t;
+        Vector3F d = ap - ab * t;
+        return Vector3F.Dot(d, d) <= SeamTolerance * SeamTolerance;
     }
 
     /// <summary>Which feature of a triangle is nearest to a point (Ericson, Real-Time Collision Detection, 5.1.5): 0 face, 1..3 edge 0..2, 4..6 vertex 0..2.</summary>
