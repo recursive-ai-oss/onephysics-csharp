@@ -157,23 +157,27 @@ public sealed partial class ManifoldGenerator3D
         PolyData pa = _pa, pb = _pb;
         bool boxes = a.Kind == ConvexShapeKind3D.Box && b.Kind == ConvexShapeKind3D.Box;
         Vector3F tB = bInA.Translation;
+        // The radii and the distance between centres are kept in locals: the cached polyhedron of A must not be touched by a pair that never loads it.
+        float radA, radB, centreGap;
         float sepA, sepB;
         int faceA, faceB;
         if (boxes)
         {
             // Two boxes: the face axes come from the boxes' half extents and the relative rotation; neither box is expanded into vertices unless the test finds a contact to build.
             BoxFaces(a.CoreSize, b.CoreSize, r, tB, out sepA, out faceA, out sepB, out faceB);
-            pa.Radius = ConvexShape3D.Sqrt(a.CoreSize.LengthSquared()); pb.Radius = ConvexShape3D.Sqrt(b.CoreSize.LengthSquared());
-            pa.Center = default; pb.Center = tB;
+            radA = ConvexShape3D.Sqrt(a.CoreSize.LengthSquared()); radB = ConvexShape3D.Sqrt(b.CoreSize.LengthSquared());
+            centreGap = tB.Length();
         }
         else
         {
             LoadPair(a, b, r, tB);
             sepA = float.NaN; sepB = float.NaN; faceA = 0; faceB = 0;
+            radA = pa.Radius; radB = pb.Radius;
+            centreGap = (pb.Center - pa.Center).Length();
         }
 
-        float scale = pa.Radius + pb.Radius + Math.Max(1e-20f, (pb.Center - pa.Center).Length());
-        float tol = 5e-4f * (pa.Radius + pb.Radius);
+        float scale = radA + radB + Math.Max(1e-20f, centreGap);
+        float tol = 5e-4f * (radA + radB);
         float limit = rr + margin;
 
         if (!boxes) { sepA = FaceQuery(pa, pb, out faceA); }
@@ -196,7 +200,7 @@ public sealed partial class ManifoldGenerator3D
         Vector3F axisE;
         // The edge search is skipped while the relative motion since the last full query (translation plus rotation times the shapes' radii) stays below an eighth of the margin by which
         // the face axes led; an edge axis moves with the pose about as fast as the pose itself, so it cannot close that margin unnoticed.
-        bool skipEdges = _edgeHint.Gap > 0f && _edgeHint.Gap > EdgeSkipSafety * _edgeHint.PoseChange(bInA, pa.Radius + pb.Radius);
+        bool skipEdges = _edgeHint.Gap > 0f && _edgeHint.Gap > EdgeSkipSafety * _edgeHint.PoseChange(bInA, radA + radB);
         if (skipEdges)
         {
             sepE = float.NegativeInfinity; edgeA = -1; edgeB = -1; axisE = default;
@@ -215,7 +219,7 @@ public sealed partial class ManifoldGenerator3D
         {
             // How far the best edge axis is below the threshold at which it would be used. With no edge pair spanning a face of the Minkowski difference there is no edge axis to measure, but a turn
             // of the shapes can create one, so the margin is capped at the shapes' size: no edge axis can sit farther from the face axes than that.
-            float reach = pa.Radius + pb.Radius;
+            float reach = radA + radB;
             float gap = edgeA < 0 ? reach : Math.Min(reach, bestFace + (0.02f * Math.Abs(bestFace)) + tol - sepE);
             if (gap > 0f) { HintOut = new EdgeHint3D(gap, bInA); }
         }
