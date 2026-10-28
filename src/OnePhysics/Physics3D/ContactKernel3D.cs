@@ -36,6 +36,9 @@ internal static class W3D
 /// The constraints of a batch touch disjoint dynamic bodies, so lanes never depend on each other; static and kinematic bodies are only read. A lane with fewer than four points masks the
 /// unused points out with selects, so it computes exactly what a loop over its own points would.
 /// </summary>
+// The kernels' locals are large vector structs (a batch's bodies and points, several kilobytes of frame); clearing them at every call cost about a twelfth of a step. Every local is assigned before it is read
+// (the compiler checks that for ordinary locals), and the one stack buffer, the gather offsets, is written for every lane before it is read, so nothing depends on what the stack held.
+[System.Runtime.CompilerServices.SkipLocalsInit]
 internal static class ContactKernel3D
 {
     private struct V3<T> where T : struct, ILane<T>

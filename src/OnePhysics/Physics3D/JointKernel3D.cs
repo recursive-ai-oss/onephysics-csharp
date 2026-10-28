@@ -35,6 +35,7 @@ internal readonly struct JointKernelParams
 /// the same operations in the same order at every width and scattered back. The three rows (the anchors coincide) are solved together as one 3×3 block through the closed-form inverse of
 /// K = (mA + mB)·1 + [rA]ᵀ·IA·[rA] + [rB]ᵀ·IB·[rB], where [r] is the cross-product matrix. The joints of a batch touch disjoint dynamic bodies, so lanes never depend on each other.
 /// </summary>
+[System.Runtime.CompilerServices.SkipLocalsInit]
 internal static class JointKernel3D
 {
     private struct V3<T> where T : struct, ILane<T>
