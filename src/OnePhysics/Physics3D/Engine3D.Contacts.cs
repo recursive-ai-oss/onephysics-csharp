@@ -68,6 +68,8 @@ internal struct ContactOut
     public int SubA, SubB, Count;
     /// <summary>The constraint that carries this contact once the pair has been applied, and the pair's shape slots; the payload is written afterwards, in parallel.</summary>
     public int Cons, ShapeA, ShapeB;
+    /// <summary>What the polyhedron test wants to keep for the pair's next step (see <see cref="EdgeHint3D"/>), written to the tail of the payload.</summary>
+    public EdgeHint3D Hint;
     public float Nx, Ny, Nz;
     public PointBuffer P; // per point: rA (3), rB (3), separation
     public IdBuffer Id;
@@ -425,8 +427,15 @@ internal sealed partial class Engine3D
         else if (gb.Soup != null) { SoupAgainst(sc, in f, gb.Soup, false, ga, in la, in bInA, spec); }
         else if (ga.IsConvex && gb.IsConvex)
         {
-            var m = NarrowScratch.Gen.Collide(ga.Convex, gb.Convex, bInA, spec);
+            // Temporal coherence: the hint from the pair's contact of the last step, if it has one, goes in; what the test learned this time goes out with the new manifold.
+            var gen = NarrowScratch.Gen;
+            int oldCons = PairCons[p];
+            var cstore = Core.Constraints;
+            gen.HintIn = oldCons >= 0 && cstore.PointCount[oldCons] > 0 ? new EdgeHint3D(cstore.Payload(oldCons).Slice(ManifoldLayout.HintOffset, 7)) : default;
+            var m = gen.Collide(ga.Convex, gb.Convex, bInA, spec);
+            int before = sc.OutCount;
             Emit(sc, in f, 0, 0, in m, default, false, default, false, default);
+            if (sc.OutCount > before) { sc.Out[before].Hint = gen.HintOut; }
         }
         else
         {
@@ -529,7 +538,7 @@ internal sealed partial class Engine3D
         }
 
         ref ContactOut o = ref sc.Next();
-        o.SubA = subA; o.SubB = subB;
+        o.SubA = subA; o.SubB = subB; o.Hint = default;
         Vector3F nw = f.Rwa.Rotate(n);
         o.Nx = nw.X; o.Ny = nw.Y; o.Nz = nw.Z;
         for (int k = 0; k < count; k++)
@@ -621,6 +630,7 @@ internal sealed partial class Engine3D
             ids[k] = res.Id[k];
         }
 
+        res.Hint.CopyTo(pl.Slice(ManifoldLayout.HintOffset, 7));
         for (int k = res.Count; k < ids.Length; k++) { ids[k] = 0; }
         cs.PointCount[c] = (byte)res.Count;
     }

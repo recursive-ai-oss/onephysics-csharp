@@ -82,6 +82,8 @@ public sealed partial class ManifoldGenerator3D
         }
     }
 
+    private const float EdgeSkipSafety = 8f;
+
     private readonly PolyData _pa = new();
     private readonly PolyData _pb = new();
 
@@ -110,11 +112,34 @@ public sealed partial class ManifoldGenerator3D
             return Empty;
         }
 
-        float sepE = EdgeQuery(pa, pb, out int edgeA, out int edgeB, out Vector3F axisE);
+        float sepE;
+        int edgeA, edgeB;
+        Vector3F axisE;
+        // The edge search is skipped while the relative motion since the last full query (translation plus rotation times the shapes' radii) stays below an eighth of the margin by which
+        // the face axes led; an edge axis moves with the pose about as fast as the pose itself, so it cannot close that margin unnoticed.
+        bool skipEdges = _edgeHint.Gap > 0f && _edgeHint.Gap > EdgeSkipSafety * _edgeHint.PoseChange(bInA, pa.Radius + pb.Radius);
+        if (skipEdges)
+        {
+            sepE = float.NegativeInfinity; edgeA = -1; edgeB = -1; axisE = default;
+            HintOut = _edgeHint;
+        }
+        else
+        {
+            sepE = EdgeQuery(pa, pb, out edgeA, out edgeB, out axisE);
+            HintOut = default;
+        }
 
         bool useB = sepB > sepA + (0.005f * Math.Abs(sepA)) + (0.2f * tol);
         float bestFace = useB ? sepB : sepA;
         bool useEdge = edgeA >= 0 && sepE > bestFace + (0.02f * Math.Abs(bestFace)) + tol;
+        if (!skipEdges && !useEdge)
+        {
+            // How far the best edge axis is below the threshold at which it would be used. With no edge pair spanning a face of the Minkowski difference there is no edge axis to measure, but a turn
+            // of the shapes can create one, so the margin is capped at the shapes' size: no edge axis can sit farther from the face axes than that.
+            float reach = pa.Radius + pb.Radius;
+            float gap = edgeA < 0 ? reach : Math.Min(reach, bestFace + (0.02f * Math.Abs(bestFace)) + tol - sepE);
+            if (gap > 0f) { HintOut = new EdgeHint3D(gap, bInA); }
+        }
         float best = useEdge ? sepE : bestFace;
         if (best > limit)
         {

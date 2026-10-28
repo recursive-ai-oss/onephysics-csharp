@@ -42,6 +42,15 @@ public sealed partial class ManifoldGenerator3D
     private readonly int[] _sel = new int[4];
 
     /// <summary>
+    /// Temporal coherence for the polyhedron separating-axis test (Gregorius, "Robust Contact Creation for Physics Simulations", GDC 2015, on caching the separating feature between frames;
+    /// Catto, "Contact Manifolds", GDC 2007 and "Solver2D" on persistent contacts). The caller passes what the last full query found about the pair in <see cref="HintIn"/> and reads what to keep in
+    /// <see cref="HintOut"/>: the margin by which the face axes beat every edge-pair axis and the pose of B in A at the last full query. While the pose has moved so little since then that no edge pair can
+    /// have closed that margin, the edge-pair search is skipped.
+    /// </summary>
+    internal EdgeHint3D HintIn, HintOut;
+    private EdgeHint3D _edgeHint;
+
+    /// <summary>
     /// Builds the manifold of two shapes. Everything is in the frame of A; the normal points from A to B and separations are surface distances (negative when overlapping).
     /// </summary>
     /// <param name="a">Shape A, in its own frame.</param>
@@ -66,6 +75,8 @@ public sealed partial class ManifoldGenerator3D
         }
 
         _count = 0;
+        _edgeHint = HintIn; HintIn = default; // a hint applies to one call only, so a leftover cannot reach another pair that happens to run on this thread next
+        HintOut = default; // nothing to keep unless the polyhedron test sets it; a value left by the previous pair would depend on which thread ran it
         ConvexShapeKind3D ka = a.Kind, kb = b.Kind;
         bool segA = IsSegmentLike(ka), segB = IsSegmentLike(kb);
         bool polyA = IsPoly(ka), polyB = IsPoly(kb);
