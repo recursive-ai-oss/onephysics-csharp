@@ -20,9 +20,10 @@ public static class Program
                 foreach (var kv in Metrics.Compute(s, opts.Pos(1))) Console.WriteLine($"{kv.Key}={kv.Value.ToString("R", CultureInfo.InvariantCulture)}");
                 return 0;
             }
-            case "selftest": return Metrics.SelfTest() + Metrics3.SelfTest() + Robust.SelfTest() + ProfileReport.SelfTest();
+            case "selftest": return Metrics.SelfTest() + Metrics3.SelfTest() + Robust.SelfTest() + ProfileReport.SelfTest() + Verdict.SelfTest();
             case "run": return Runner.Run(opts);
             case "summarize": Runner.Summarize(opts.Pos(0)); return 0;
+            case "verdict": return Verdict.Run(opts);
             case "box2dnet-driver": return Box2DNetDriver.Run(opts);
             case "bepu-driver": return BepuDriver.Run(opts);
             case "jitter2-driver": return Jitter2Driver.Run(opts);
@@ -40,6 +41,7 @@ public static class Program
                            [--scene-dir DIR] [--state DIR] [--out DIR] [--repeat N] [--job-id ID] [--lock-held] [--force-engines]
                    bar run --mode profile [--scenes ...] [--engines box2d,rapier2d,rapier3d,onephysics] [--threads 1] [--lock-held]   per-stage times beside ours (see docs/bench.md)
                    bar summarize RESULT_DIR
+                   bar verdict --timing DIR[,DIR...] [--metrics FILE[,FILE...]] [--out DIR]   bar verdict against the fastest stable managed engine (see docs/bench.md)
             """);
         return 2;
     }
@@ -205,19 +207,26 @@ static class Runner
                 double t = double.Parse(qn, CultureInfo.InvariantCulture) / 1e9, c = double.Parse(kv[$"query_{k}_count"], CultureInfo.InvariantCulture);
                 row.Query[$"{k}_qps"] = t > 0 ? c / t : 0; row.Query[$"{k}_hits"] = double.Parse(kv[$"query_{k}_hits"], CultureInfo.InvariantCulture);
             }
+        // Engines with a batch query path (ours) also report it; the figure is the best repetition, since a batch is one parallel call and the first calls wake the workers.
+        foreach (var k in new[] { "ray", "overlap", "cast" })
+            if (kv.TryGetValue($"query_{k}_batch_best_ns", out var bn))
+            {
+                double t = double.Parse(bn, CultureInfo.InvariantCulture) / 1e9, c = double.Parse(kv[$"query_{k}_batch_best_count"], CultureInfo.InvariantCulture);
+                row.Query[$"{k}_batch_qps"] = t > 0 ? c / t : 0;
+            }
         return row;
     }
 
     static void WriteCsv(string dir, List<Row> rows, List<(string scene, string engine, int threads, string key, double v)> metrics)
     {
-        var sb = new StringBuilder("scene,engine,version,threads,bodies,steps_measured,median_ms,p90_ms,p99_ms,min_ms,max_ms,mean_ms,peak_rss_mb,wall_s,ray_qps,overlap_qps,cast_qps,ray_hits,overlap_hits,cast_hits,config\n");
+        var sb = new StringBuilder("scene,engine,version,threads,bodies,steps_measured,median_ms,p90_ms,p99_ms,min_ms,max_ms,mean_ms,peak_rss_mb,wall_s,ray_qps,overlap_qps,cast_qps,ray_hits,overlap_hits,cast_hits,config,ray_batch_qps,overlap_batch_qps,cast_batch_qps\n");
         string F(double v) => v.ToString("R", CultureInfo.InvariantCulture);
         foreach (var r in rows)
         {
             double Q(string k) => r.Query.TryGetValue(k, out var v) ? v : double.NaN;
             sb.Append($"{r.Scene},{r.Engine},{r.Version},{r.Threads},{r.Bodies},{r.Measured},{F(r.Median)},{F(r.P90)},{F(r.P99)},{F(r.Min)},{F(r.Max)},{F(r.Mean)},{F(r.PeakRssMb)},{F(r.WallSec)},");
             sb.Append($"{(r.Query.Count > 0 ? F(Q("ray_qps")) : "")},{(r.Query.Count > 0 ? F(Q("overlap_qps")) : "")},{(r.Query.Count > 0 ? F(Q("cast_qps")) : "")},");
-            sb.Append($"{(r.Query.Count > 0 ? F(Q("ray_hits")) : "")},{(r.Query.Count > 0 ? F(Q("overlap_hits")) : "")},{(r.Query.Count > 0 ? F(Q("cast_hits")) : "")},\"{r.Config}\"\n");
+            sb.Append($"{(r.Query.Count > 0 ? F(Q("ray_hits")) : "")},{(r.Query.Count > 0 ? F(Q("overlap_hits")) : "")},{(r.Query.Count > 0 ? F(Q("cast_hits")) : "")},\"{r.Config}\",{(r.Query.ContainsKey("ray_batch_qps") ? F(Q("ray_batch_qps")) : "")},{(r.Query.ContainsKey("overlap_batch_qps") ? F(Q("overlap_batch_qps")) : "")},{(r.Query.ContainsKey("cast_batch_qps") ? F(Q("cast_batch_qps")) : "")}\n");
         }
         File.WriteAllText(Path.Combine(dir, "timing.csv"), sb.ToString());
         if (metrics.Count > 0)
@@ -235,11 +244,12 @@ static class Runner
             var lines = File.ReadAllLines(timing).Skip(1).Select(CsvSplit).ToList();
             sb.AppendLine("## Step time (ms, warm-up excluded)\n\n| scene | engine | version | threads | bodies | median | mean | p90 | p99 | max | peak RSS MB |\n|---|---|---|---|---|---|---|---|---|---|---|");
             foreach (var c in lines) sb.AppendLine($"| {c[0]} | {c[1]} | {c[2]} | {c[3]} | {c[4]} | {Fmt(c[6])} | {Fmt(c[11])} | {Fmt(c[7])} | {Fmt(c[8])} | {Fmt(c[10])} | {Fmt(c[12], 0)} |");
-            var q = lines.Where(c => c[14] != "").ToList();
+            var q = lines.Where(c => c.Length > 19 && c[14] != "").ToList();
             if (q.Count > 0)
             {
-                sb.AppendLine("\n## Query throughput (queries/s)\n\n| scene | engine | threads | ray | overlap | shape cast | hits ray/overlap/cast |\n|---|---|---|---|---|---|---|");
-                foreach (var c in q) sb.AppendLine($"| {c[0]} | {c[1]} | {c[3]} | {Fmt(c[14], 0)} | {Fmt(c[15], 0)} | {Fmt(c[16], 0)} | {c[17]}/{c[18]}/{c[19]} |");
+                sb.AppendLine("\n## Query throughput (queries/s; the query phase is timed apart from the settle steps above)\n\n| scene | engine | threads | ray | overlap | shape cast | hits ray/overlap/cast | batch ray | batch overlap | batch cast |\n|---|---|---|---|---|---|---|---|---|---|");
+                string B(string[] c, int i) => c.Length > i && c[i] != "" ? Fmt(c[i], 0) : "-";
+                foreach (var c in q) sb.AppendLine($"| {c[0]} | {c[1]} | {c[3]} | {Fmt(c[14], 0)} | {Fmt(c[15], 0)} | {Fmt(c[16], 0)} | {c[17]}/{c[18]}/{c[19]} | {B(c, 21)} | {B(c, 22)} | {B(c, 23)} |");
             }
         }
         var mp = Path.Combine(dir, "metrics.csv");
@@ -256,12 +266,19 @@ static class Runner
                 sb.AppendLine();
             }
         }
+        // The verdict against the managed engines, when this run measured our engine beside any of them.
+        if (File.Exists(timing) && File.ReadLines(timing).Any(l => l.Contains(",onephysics,", StringComparison.Ordinal)))
+        {
+            var md = Verdict.Render([dir], [mp], out var vcsv);
+            sb.AppendLine("\n" + md);
+            File.WriteAllText(Path.Combine(dir, "verdict.csv"), vcsv);
+        }
         File.WriteAllText(Path.Combine(dir, "summary.md"), sb.ToString());
     }
 
     static string Fmt(string s, int d = 3) => double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v.ToString("F" + d, CultureInfo.InvariantCulture) : s;
 
-    static string[] CsvSplit(string line)
+    internal static string[] CsvSplit(string line)
     {
         var r = new List<string>(); var sb = new StringBuilder(); bool q = false;
         foreach (var ch in line) { if (ch == '"') q = !q; else if (ch == ',' && !q) { r.Add(sb.ToString()); sb.Clear(); } else sb.Append(ch); }

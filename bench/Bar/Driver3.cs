@@ -28,6 +28,7 @@ static class Driver3
     public static int Run(Opts o, ISim3 sim)
     {
         var s = Scene.Load(o.Get("scene", ""));
+        if (int.TryParse(Environment.GetEnvironmentVariable("BAR_QUERY_REPS"), out int qreps) && qreps > 0) s.QueryReps = qreps; // more repetitions for profiling the query phase
         bool timing = o.Get("mode", "stability") == "timing";
         int threads = int.Parse(o.Get("threads", "1"), CultureInfo.InvariantCulture);
         sim.Build(s, threads);

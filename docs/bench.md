@@ -49,6 +49,22 @@ tools/bench/run.sh profile-locked [same options]
 
 Observed hierarchy in Box2D 3.2.0 (large-pile, one thread): `constraints` is about the sum of the solver leaves and `solve` is about `constraints` plus `transforms`, which is why `transforms` is counted under finalize and `solve` and `constraints` are not summed. The buckets are for aiming optimisation work, not an exact accounting: engines draw their stage borders differently (for example, where body-pose updates and contact preparation fall), and the ratios are most reliable at bucket level.
 
+## Bar verdict
+
+```
+bar verdict --timing DIR[,DIR...] [--metrics FILE[,FILE...]] [--out DIR]
+```
+
+`bar run` writes the same table (`verdict.csv` and a section of `summary.md`) after every run that measured this library; `bar verdict` builds it from any pulled result directories. Several `--timing` directories are merged in the order given (a later directory replaces an earlier row for the same scene, engine and thread count, so a pinned 8-thread run is listed after the unpinned one it replaces). Per scene and thread count it shows:
+
+- **Binding reference:** the fastest of Bepu, Jitter2 and Box2D.NET that is stable on the scene. Box2D.NET is single-threaded, so its 1-thread row is its row at every thread count. An engine is stable when its metrics (`--metrics`, a `metrics.csv` of a stability run) are within the scene's limits (`bench/Bar/Verdict.cs`, the table in `docs/scenes.md`: maximum speed, penetration, joint error and the robust jitter, rest energy and final penetration; `nan`, `escapes` and `tunnelled` must be 0). An engine with no metrics in the supplied files takes the recorded verdict of the stability sweeps (marked `recorded`; engines the sweeps never ran are marked `assumed` stable). No stable managed engine: **no binding row**, and the scene is judged on stability alone.
+- **Ratio and verdict:** our median step time over the binding reference's. `PASS` at 1.15 or less, `MISS` above it.
+- **Asleep rows:** a reference median under 0.01 ms is a run in which its bodies are asleep. It is marked **asleep**, its mean is shown beside its median, and a ratio above 1.15 against it is a **SLEEP-GAP**, a sleep-timing gap and not a speed loss (the fastest awake stable managed engine's ratio is added in the verdict cell).
+- **Fastest native engine** (Box2D v3, Rapier, Jolt, Box3D) as information only, with its ratio; empty when the supplied directories hold no native rows. `timing.csv` and the old summary tables are unchanged, so the earlier columns stay available.
+- A thread count at which no managed row was measured has no verdict (`no managed row`).
+
+**Query scenes.** In `queries` and `queries-3d` the step time is the settle phase (the pile settling before the queries); the queries run after it and are timed apart, so the step-time rows measure only the pile. The query phase is reported in its own table: throughput per kind (rays, sphere overlaps, sphere casts, per second) for every engine whose driver issues the same queries (Box2D v3, Rapier, Box2D.NET in 2D; Jolt, Box3D, Rapier3D in 3D; Bepu and Jitter2 are not driven for queries), and for this library also the batch forms of `PhysicsQuery3D` (`batch ray`, `batch overlap`, `batch cast`) that spread the same queries over the run's threads. Single queries run on one thread at every thread count; the batch figures use the run's thread count and the best repetition. `BAR_QUERY_REPS` raises the repetitions of this library's 3D driver (default 10, the first untimed), and the result file carries a `query_digest` over every query result (shape, point, normal, fraction, distance, sub-shape, overlapped shapes in order) so two builds can be compared bit for bit.
+
 ## Method
 
 - **Step time**: wall time of the engine's step call only, one sample per step, steady clock, in-process, with tiered compilation off (`Bar.csproj`) so that every managed engine, ours and the in-process references, runs optimised code from its first call; with it on, small scenes finish before the hot methods are promoted and measure the JIT instead. The first `warmup` steps of the scene are dropped; median, mean, p90, p99, min and max are reported over the rest. With `--repeat N` the whole process is run N times and the run with the lowest median is kept.

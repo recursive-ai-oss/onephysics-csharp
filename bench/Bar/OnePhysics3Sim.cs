@@ -102,10 +102,56 @@ sealed class OnePhysics3Sim : ISim3
         }
     }
 
+    // A hash of every query's full result (shape, point, normal, fraction, distance, sub-shape; every overlapped shape in order), so two builds can be compared bit for bit on the scene's queries.
+    ulong QueryDigest(Scene s)
+    {
+        ulong h = 14695981039346656037UL;
+        void Mix(ulong v) { h = (h ^ v) * 1099511628211UL; }
+        void MixHit(in P3.QueryHit3D x)
+        {
+            Mix(x.IsHit ? 1UL : 0UL);
+            if (!x.IsHit) return;
+            Mix((ulong)x.Shape.RawHandle.Index); Mix((ulong)BitConverter.DoubleToInt64Bits(x.Point.X)); Mix((ulong)BitConverter.DoubleToInt64Bits(x.Point.Y)); Mix((ulong)BitConverter.DoubleToInt64Bits(x.Point.Z));
+            Mix((uint)BitConverter.SingleToInt32Bits(x.Normal.X)); Mix((uint)BitConverter.SingleToInt32Bits(x.Normal.Y)); Mix((uint)BitConverter.SingleToInt32Bits(x.Normal.Z));
+            Mix((uint)BitConverter.SingleToInt32Bits(x.Fraction)); Mix((uint)BitConverter.SingleToInt32Bits(x.Distance)); Mix((ulong)x.SubShapeId);
+        }
+
+        var buffer = new P3.QueryHit3D[4096];
+        foreach (var q in s.Queries)
+        {
+            var P = q.P;
+            if (q.Kind == "ray")
+            {
+                bool hit = world.Raycast(new Vector3D(P[0], P[1], P[2]), new Vector3F((float)P[3], (float)P[4], (float)P[5]), out var x, (float)P[6]);
+                MixHit(hit ? x : default);
+            }
+            else if (q.Kind == "overlap")
+            {
+                int n = world.OverlapSphereAll(new Vector3D(P[0], P[1], P[2]), (float)P[3], buffer);
+                Mix((ulong)n);
+                for (int i = 0; i < n; i++) MixHit(buffer[i]);
+                bool near = world.OverlapSphere(new Vector3D(P[0], P[1], P[2]), (float)P[3], out var y);
+                MixHit(near ? y : default);
+            }
+            else
+            {
+                float tx = (float)P[4], ty = (float)P[5], tz = (float)P[6];
+                bool hit = world.SphereCast(new Vector3D(P[0], P[1], P[2]), (float)P[3], new Vector3F(tx, ty, tz), out var x, float.Sqrt(tx * tx + ty * ty + tz * tz));
+                MixHit(hit ? x : default);
+                int n = world.SphereCastAll(new Vector3D(P[0], P[1], P[2]), (float)P[3], new Vector3F(tx, ty, tz), buffer, float.Sqrt(tx * tx + ty * ty + tz * tz));
+                Mix((ulong)n);
+                for (int i = 0; i < n; i++) MixHit(buffer[i]);
+            }
+        }
+
+        return h;
+    }
+
     // The same protocol as the reference drivers; the first repetition is untimed when there are several.
     public void Queries(Scene s, StringBuilder sb)
     {
-        var ns = new double[3]; var count = new int[3]; var hits = new long[3];
+        sb.Append(CultureInfo.InvariantCulture, $"query_digest={QueryDigest(s):x16}\n");
+        var ns = new double[3]; var count = new int[3]; var hits = new long[3]; var best = new double[] { double.MaxValue, double.MaxValue, double.MaxValue };
         double nsPerTick = 1e9 / Stopwatch.Frequency;
         var buffer = new P3.QueryHit3D[256];
         string[] names = ["ray", "overlap", "cast"];
@@ -135,9 +181,41 @@ sealed class OnePhysics3Sim : ISim3
                         if (world.SphereCast(new Vector3D(P[0], P[1], P[2]), (float)P[3], new Vector3F(tx, ty, tz), out _, len)) h++;
                     }
                 }
-                if (measure) { ns[kind] += (Stopwatch.GetTimestamp() - t0) * nsPerTick; count[kind] += c; hits[kind] = h; }
+                if (measure) { double el = (Stopwatch.GetTimestamp() - t0) * nsPerTick; ns[kind] += el; count[kind] += c; hits[kind] = h; if (el < best[kind]) best[kind] = el; }
             }
         }
-        for (int k = 0; k < 3; k++) sb.Append(CultureInfo.InvariantCulture, $"query_{names[k]}_ns={ns[k]:F0}\nquery_{names[k]}_count={count[k]}\nquery_{names[k]}_hits={hits[k]}\n");
+        // The same queries through the batch forms of the query object, which spread them over the world's worker threads (the thread count of this run).
+        var qo = new P3.PhysicsQuery3D(world);
+        var rays = new List<P3.RayInput3D>(); var overlaps = new List<P3.SphereInput3D>(); var casts = new List<P3.SphereInput3D>();
+        foreach (var q in s.Queries)
+        {
+            var P = q.P;
+            if (q.Kind == "ray") rays.Add(new P3.RayInput3D(new Vector3D(P[0], P[1], P[2]), new Vector3F((float)P[3], (float)P[4], (float)P[5]), (float)P[6]));
+            else if (q.Kind == "overlap") overlaps.Add(new P3.SphereInput3D(new Vector3D(P[0], P[1], P[2]), (float)P[3]));
+            else if (q.Kind == "cast")
+            {
+                float tx = (float)P[4], ty = (float)P[5], tz = (float)P[6];
+                casts.Add(new P3.SphereInput3D(new Vector3D(P[0], P[1], P[2]), (float)P[3], new Vector3F(tx, ty, tz), float.Sqrt(tx * tx + ty * ty + tz * tz)));
+            }
+        }
+
+        var rayArr = rays.ToArray(); var ovArr = overlaps.ToArray(); var castArr = casts.ToArray();
+        var rayHits = new P3.QueryHit3D[rayArr.Length]; var castHits = new P3.QueryHit3D[castArr.Length]; var counts = new int[ovArr.Length];
+        var bns = new double[3]; var bcount = new int[3]; var bhits = new long[3]; var bbest = new double[] { double.MaxValue, double.MaxValue, double.MaxValue };
+        for (int rep = 0; rep < s.QueryReps; rep++)
+        {
+            bool measure = s.QueryReps == 1 || rep > 0;
+            for (int kind = 0; kind < 3; kind++)
+            {
+                long t0 = Stopwatch.GetTimestamp(); long h = 0; int c;
+                if (kind == 0) { h = qo.RaycastBatch(rayArr, rayHits); c = rayArr.Length; }
+                else if (kind == 1) { qo.OverlapSphereCountBatch(ovArr, counts); foreach (int n in counts) h += n; c = ovArr.Length; }
+                else { h = qo.SphereCastBatch(castArr, castHits); c = castArr.Length; }
+                if (measure) { double el = (Stopwatch.GetTimestamp() - t0) * nsPerTick; bns[kind] += el; bcount[kind] += c; bhits[kind] = h; if (el < bbest[kind]) bbest[kind] = el; }
+            }
+        }
+
+        for (int k = 0; k < 3; k++) sb.Append(CultureInfo.InvariantCulture, $"query_{names[k]}_batch_ns={bns[k]:F0}\nquery_{names[k]}_batch_count={bcount[k]}\nquery_{names[k]}_batch_hits={bhits[k]}\nquery_{names[k]}_batch_best_ns={bbest[k]:F0}\nquery_{names[k]}_batch_best_count={bcount[k] / Math.Max(1, s.QueryReps > 1 ? s.QueryReps - 1 : 1)}\n");
+        for (int k = 0; k < 3; k++) sb.Append(CultureInfo.InvariantCulture, $"query_{names[k]}_ns={ns[k]:F0}\nquery_{names[k]}_count={count[k]}\nquery_{names[k]}_hits={hits[k]}\nquery_{names[k]}_best_ns={best[k]:F0}\nquery_{names[k]}_best_count={count[k] / Math.Max(1, s.QueryReps > 1 ? s.QueryReps - 1 : 1)}\n");
     }
 }

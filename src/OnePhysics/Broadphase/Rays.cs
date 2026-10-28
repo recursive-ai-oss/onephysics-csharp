@@ -67,6 +67,7 @@ public readonly struct Ray2D : IRay<Aabb2D>
 public readonly struct Ray3D : IRay<Aabb3D>
 {
     private readonly double _ox, _oy, _oz, _dx, _dy, _dz, _ix, _iy, _iz;
+    private readonly bool _parallel; // some axis cannot be inverted (a zero or tiny direction component)
 
     /// <summary>Creates a ray. Throws <see cref="ArgumentOutOfRangeException"/> if any component is not finite. A zero direction is a point query.</summary>
     public Ray3D(double originX, double originY, double originZ, double directionX, double directionY, double directionZ)
@@ -86,17 +87,38 @@ public readonly struct Ray3D : IRay<Aabb3D>
         _ix = 1.0 / directionX;
         _iy = 1.0 / directionY;
         _iz = 1.0 / directionZ;
+        _parallel = !double.IsFinite(_ix) || directionX == 0.0 || !double.IsFinite(_iy) || directionY == 0.0 || !double.IsFinite(_iz) || directionZ == 0.0;
     }
 
     /// <inheritdoc/>
     public bool Hit(in Aabb3D box, double maxFraction, out double enter)
     {
         double t0 = 0.0, t1 = maxFraction;
-        bool hit = Slab.Clip(_ox, _dx, _ix, box.MinX, box.MaxX, ref t0, ref t1)
-            && Slab.Clip(_oy, _dy, _iy, box.MinY, box.MaxY, ref t0, ref t1)
-            && Slab.Clip(_oz, _dz, _iz, box.MinZ, box.MaxZ, ref t0, ref t1);
+        if (_parallel)
+        {
+            bool hit = Slab.Clip(_ox, _dx, _ix, box.MinX, box.MaxX, ref t0, ref t1)
+                && Slab.Clip(_oy, _dy, _iy, box.MinY, box.MaxY, ref t0, ref t1)
+                && Slab.Clip(_oz, _dz, _iz, box.MinZ, box.MaxZ, ref t0, ref t1);
+            enter = t0;
+            return hit;
+        }
+
+        // Every axis has a finite inverse, so the slab test is straight-line code (the same arithmetic as Slab.Clip, which t0 only grows and t1 only shrinks through, so one comparison at the end
+        // decides what Clip decides after each axis). Kay and Kajiya 1986; Williams et al. 2005 for the branch-light form.
+        double a = (box.MinX - _ox) * _ix, b = (box.MaxX - _ox) * _ix;
+        double lo = a < b ? a : b, hi = a < b ? b : a;
+        if (lo > t0) { t0 = lo; }
+        if (hi < t1) { t1 = hi; }
+        a = (box.MinY - _oy) * _iy; b = (box.MaxY - _oy) * _iy;
+        lo = a < b ? a : b; hi = a < b ? b : a;
+        if (lo > t0) { t0 = lo; }
+        if (hi < t1) { t1 = hi; }
+        a = (box.MinZ - _oz) * _iz; b = (box.MaxZ - _oz) * _iz;
+        lo = a < b ? a : b; hi = a < b ? b : a;
+        if (lo > t0) { t0 = lo; }
+        if (hi < t1) { t1 = hi; }
         enter = t0;
-        return hit;
+        return t0 <= t1;
     }
 }
 
