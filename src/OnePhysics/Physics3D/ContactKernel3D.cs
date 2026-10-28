@@ -199,11 +199,22 @@ internal static class ContactKernel3D
         V3<T> rA = Vec<T>(wide, f + W3D.ArmA, l0), rB = Vec<T>(wide, f + W3D.ArmB, l0);
         T sep = Field<T>(wide, f + W3D.AdjustedSeparation, l0);
         (sep - V3<T>.Dot(rB - rA, n)).StoreAt(wide, (f + W3D.AdjustedSeparation) * 8 + l0);
-        EffectiveMass(mA, mB, iA, iB, rA, rB, n, zero, one).StoreAt(wide, (f + W3D.NormalMass) * 8 + l0);
-        EffectiveMass(mA, mB, iA, iB, rA, rB, t1, zero, one).StoreAt(wide, (f + W3D.Tangent1Mass) * 8 + l0);
-        EffectiveMass(mA, mB, iA, iB, rA, rB, t2, zero, one).StoreAt(wide, (f + W3D.Tangent2Mass) * 8 + l0);
+        // One method per direction keeps each under the JIT's inlining budget, so the lane operations inline instead of becoming calls.
+        EffectiveMassAt(wide, (f + W3D.NormalMass) * 8 + l0, mA, mB, iA, iB, rA, rB, n, zero, one);
+        EffectiveMassAt(wide, (f + W3D.Tangent1Mass) * 8 + l0, mA, mB, iA, iB, rA, rB, t1, zero, one);
+        EffectiveMassAt(wide, (f + W3D.Tangent2Mass) * 8 + l0, mA, mB, iA, iB, rA, rB, t2, zero, one);
+        RelativeNormalVelocity(wide, (f + W3D.RelativeVelocity) * 8 + l0, vA, wA, vB, wB, rA, rB, n);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void EffectiveMassAt<T>(Span<float> wide, int at, T mA, T mB, Sym<T> iA, Sym<T> iB, V3<T> rA, V3<T> rB, V3<T> d, T zero, T one) where T : struct, ILane<T> =>
+        EffectiveMass(mA, mB, iA, iB, rA, rB, d, zero, one).StoreAt(wide, at);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void RelativeNormalVelocity<T>(Span<float> wide, int at, V3<T> vA, V3<T> wA, V3<T> vB, V3<T> wB, V3<T> rA, V3<T> rB, V3<T> n) where T : struct, ILane<T>
+    {
         var dv = (vB + V3<T>.Cross(wB, rB)) - (vA + V3<T>.Cross(wA, rA));
-        V3<T>.Dot(dv, n).StoreAt(wide, (f + W3D.RelativeVelocity) * 8 + l0);
+        V3<T>.Dot(dv, n).StoreAt(wide, at);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
