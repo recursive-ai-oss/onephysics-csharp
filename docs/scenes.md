@@ -46,7 +46,7 @@ Same records and the same rules; `dim 3` changes the arities:
 |---|---|
 | `gravity` | gx gy gz |
 | `body` | type x y z qx qy qz qw vx vy vz wx wy wz flags (unit quaternion; angular velocity in world axes) |
-| `joint` | `point` a b ax ay az bx by bz: a ball-and-socket joint; the anchors are body-local points (measured from the body origin) that coincide in the initial pose; bodies joined by a joint do not collide. `hinge` a b ax ay az bx by bz ux uy uz [limit lo hi] is reserved for the joint stage and not used by any scene yet |
+| `joint` | `point` a b ax ay az bx by bz: a ball-and-socket joint; the anchors are body-local points (measured from the body origin) that coincide in the initial pose; bodies joined by a joint do not collide. `hinge` a b ax ay az bx by bz ux uy uz [limit lo hi] is reserved for the joint stage and not used by any scene yet. `swingtwist` a b ax ay az bx by bz ux uy uz [limit lo hi] [swing sy sz] [drive k c max ax ay az amp period]: a ball joint with a twist axis; the joint frame is the shortest-arc rotation taking the x axis to `u`; `limit` bounds the twist angle, `swing` the two swing half-angles; `drive` (axis `a` in the joint frame) pulls B toward a target rotation about that axis with stiffness `k` (N m/rad), damping `c` (N m s/rad) and torque cap `max` (N m); the target angle is `amp` times a triangle wave 0 to 1 to 0 over `period` steps, evaluated at the index of the step about to run |
 | `query` | `ray ox oy oz dx dy dz len` (unit direction, closest hit); `overlap cx cy cz r` (sphere, counts shapes); `cast cx cy cz r tx ty tz` (sphere sweep by t, closest hit) |
 
 Shape kinds (3D, local to the body; `radius` is the skin radius where one applies):
@@ -92,7 +92,9 @@ The `character` record applies in 3D too: the last `body` must be a single y-ali
 
 **`car` preset** (also `VehicleDef.Car`): four wheels, 0.8 m either side of the centre and 1.3 m ahead and behind, at the chassis origin's height; radius 0.34 m, width 0.25 m; suspension 0.05 to 0.5 m at 1.5 Hz and damping ratio 0.6; front wheels steer to 0.5 rad; handbrake torque 4000 N m on the rear wheels, brake torque 3000 N m on all; wheel inertia 1 kg m^2, angular damping 0.2; engine 400 N m between 1000 and 6500 rpm, inertia 0.5; six-speed automatic with ratios 3.5, 2.2, 1.5, 1.1, 0.85, 0.7 and reverse 3.2; one rear differential of ratio 3.4; anti-roll bars of 20 kN/m on both axles. Everything else keeps each engine's defaults (tyre curves, torque curve, clutch), so the two engines differ where their defaults do. The Jolt driver builds this with `VehicleConstraint` and `WheeledVehicleController` and cuts the 61 x 241 height field into four square tiles (Jolt's height field is square) in a static compound.
 
-Ragdolls with joint limits and soft bodies are defined when their stages arrive.
+| `ragdoll-powered-3d` | 661 | 600 | 50 powered humanoids of thirteen parts (swing-twist joints with limits, pose drive on the hips and shoulders tracking a looping pose) standing on a ground slab, substeps 8; every fifth is hit by a 1.56 kg box at 6 m/s | poseErrorP95, fallen, jointError, maxSpeed, nan, escapes |
+
+Soft bodies are defined when their stage arrives.
 
 ## Step-state dump
 
@@ -125,6 +127,8 @@ Computed by `bar metrics SCENE DUMP` from the dump and the scene alone, so every
 | `wheelThroughGround` | vehicles: wheel samples (summed over all dumps) whose centre is lower than half a wheel radius above the terrain (`param terrainHf x0 z0`, `terrainMesh`: bilinear on the generator's grid) beneath it |
 | `rollovers` | vehicles: cars whose body up axis has a y component under 0.2 in any dump (`param cars first count`) |
 | `suspensionJitter` | vehicles: for cars slower than 0.2 m/s in the last dump, the largest change of a wheel centre's height above the body centre between the last two dumps, metres |
+| `poseErrorP95` | powered ragdolls: 95th percentile, over all driven joints and all dumped frames from step 60, of the angle between the joint's current and target rotation, radians |
+| `fallen` | powered ragdolls: humanoids (`param heads`) whose head centre is below half its initial height in the final frame |
 | `jointError` | largest distance between the two world positions of any joint's anchors, metres |
 | `asleepBeforeWake` | dynamic bodies asleep in the frame at the first `event` step (scenes create them asleep) |
 | `awakeFinal` | dynamic bodies awake in the final frame |
