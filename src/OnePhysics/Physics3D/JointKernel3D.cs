@@ -7,13 +7,13 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>
 /// Layout of one group of up to eight point (ball-socket) joints in <see cref="Engine3D.WideJ"/>: fields of eight floats (one per lane) so every field loads as one vector.
-/// Per joint: the two anchors from the centres of mass and the centre-of-mass offset at the start of the step, both inverse masses, and the accumulated impulse and the inverse of the 3×3 block K (six entries, computed once per step); then the gathered body state and the
+/// Per joint: the two anchors from the centres of mass and the centre-of-mass offset at the start of the step, both inverse masses, and the accumulated impulse; then the gathered body state and the
 /// velocities on their way out, as for contacts (<see cref="W3D"/>).
 /// </summary>
 internal static class J3D
 {
-    public const int RA = 0, RB = 3, D = 6, InvMassA = 9, InvMassB = 10, Impulse = 11, InvK = 14;
-    public const int Fields = 20;
+    public const int RA = 0, RB = 3, D = 6, InvMassA = 9, InvMassB = 10, Impulse = 11;
+    public const int Fields = 14;
     public const int Lanes = 8;
     public const int StageOffset = Fields * Lanes, StageFloats = 38 * 8, OutOffset = StageOffset + StageFloats, OutFloats = 12 * 8;
     public const int GroupFloats = OutOffset + OutFloats;
@@ -135,45 +135,6 @@ internal static class JointKernel3D
     }
 
     /// <summary>
-    /// Once per step, after a batch's lanes are filled: the inverse of K = (mA + mB)·1 + [rA]ᵀ·IA·[rA] + [rB]ᵀ·IB·[rB] at the start-of-step anchors, with the inverse inertias of the bodies at that time. A singular block (no dynamic mass) gets a zero inverse.
-    /// </summary>
-    public static void Prepare<T>(Engine3D e, int group, int n) where T : struct, ILane<T>
-    {
-        int width = T.Count;
-        var wide = e.WideJ.AsSpan(group * J3D.GroupFloats, J3D.GroupFloats);
-        var idx = e.WideJIdx.AsSpan(group * J3D.IdxPerGroup, J3D.IdxPerGroup);
-        ReadOnlySpan<float> winv = e.WInvI;
-        Span<float> stage = e.WideJ.AsSpan(group * J3D.GroupFloats + J3D.StageOffset, J3D.StageFloats);
-        T zero = T.Zero;
-        for (int l0 = 0; l0 < n; l0 += width)
-        {
-            for (int l = 0; l < width; l++)
-            {
-                for (int side = 0; side < 2; side++)
-                {
-                    int b = idx[8 * side + l0 + l];
-                    for (int k = 0; k < 6; k++) { stage[(6 * side + k) * width + l] = winv[6 * b + k]; }
-                }
-            }
-
-            var ia = new Sym<T> { M0 = Stage<T>(stage, 0), M1 = Stage<T>(stage, 1), M2 = Stage<T>(stage, 2), M3 = Stage<T>(stage, 3), M4 = Stage<T>(stage, 4), M5 = Stage<T>(stage, 5) };
-            var ib = new Sym<T> { M0 = Stage<T>(stage, 6), M1 = Stage<T>(stage, 7), M2 = Stage<T>(stage, 8), M3 = Stage<T>(stage, 9), M4 = Stage<T>(stage, 10), M5 = Stage<T>(stage, 11) };
-            var rA = Vec<T>(wide, J3D.RA, l0);
-            var rB = Vec<T>(wide, J3D.RB, l0);
-            T k00 = Field<T>(wide, J3D.InvMassA, l0) + Field<T>(wide, J3D.InvMassB, l0), k11 = k00, k22 = k00, k01 = zero, k02 = zero, k12 = zero;
-            AddInertiaTerm(ia, rA, ref k00, ref k01, ref k02, ref k11, ref k12, ref k22);
-            AddInertiaTerm(ib, rB, ref k00, ref k01, ref k02, ref k11, ref k12, ref k22);
-            T c00 = k11 * k22 - k12 * k12, c01 = k02 * k12 - k01 * k22, c02 = k01 * k12 - k02 * k11;
-            T det = k00 * c00 + k01 * c01 + k02 * c02;
-            T nonZero = Lane.Or(T.GreaterThan(det, zero), T.GreaterThan(zero, det));
-            T inv = T.Select(nonZero, T.Broadcast(1f) / det, zero);
-            T c11 = k00 * k22 - k02 * k02, c12 = k01 * k02 - k00 * k12, c22 = k00 * k11 - k01 * k01;
-            (inv * c00).Store(wide.Slice((J3D.InvK + 0) * 8 + l0, width)); (inv * c01).Store(wide.Slice((J3D.InvK + 1) * 8 + l0, width)); (inv * c02).Store(wide.Slice((J3D.InvK + 2) * 8 + l0, width));
-            (inv * c11).Store(wide.Slice((J3D.InvK + 3) * 8 + l0, width)); (inv * c12).Store(wide.Slice((J3D.InvK + 4) * 8 + l0, width)); (inv * c22).Store(wide.Slice((J3D.InvK + 5) * 8 + l0, width));
-        }
-    }
-
-    /// <summary>
     /// Runs lanes <paramref name="lane0"/> to <paramref name="lane0"/> + <paramref name="n"/> - 1 of a group, <c>T.Count</c> at a time. Lanes past the end of the batch compute on whatever the group holds and are never written back.
     /// The restitution pass does nothing for joints.
     /// </summary>
@@ -225,14 +186,19 @@ internal static class JointKernel3D
             {
                 var d = Vec<T>(wide, J3D.D, l0) + (b2.Dp - a.Dp);
                 var c = (d + rB) - rA;
-                // The block K is that of the start of the step (Catto, "Soft Step Solver": effective masses are prepared once per step); only the anchors follow the bodies' rotation.
-                T i00 = Field<T>(wide, J3D.InvK, l0), i01 = Field<T>(wide, J3D.InvK + 1, l0), i02 = Field<T>(wide, J3D.InvK + 2, l0);
-                T i11 = Field<T>(wide, J3D.InvK + 3, l0), i12 = Field<T>(wide, J3D.InvK + 4, l0), i22 = Field<T>(wide, J3D.InvK + 5, l0);
+                T k00 = a.InvMass + b2.InvMass, k11 = k00, k22 = k00, k01 = zero, k02 = zero, k12 = zero;
+                AddInertiaTerm(a.I, rA, ref k00, ref k01, ref k02, ref k11, ref k12, ref k22);
+                AddInertiaTerm(b2.I, rB, ref k00, ref k01, ref k02, ref k11, ref k12, ref k22);
+                T c00 = k11 * k22 - k12 * k12, c01 = k02 * k12 - k01 * k22, c02 = k01 * k12 - k02 * k11;
+                T det = k00 * c00 + k01 * c01 + k02 * c02;
+                T nonZero = Lane.Or(T.GreaterThan(det, zero), T.GreaterThan(zero, det));
+                T inv = T.Select(nonZero, T.Broadcast(1f) / det, zero);
+                T c11 = k00 * k22 - k02 * k02, c12 = k01 * k02 - k00 * k12, c22 = k00 * k11 - k01 * k01;
                 var dv = (b2.V + V3<T>.Cross(b2.W, rB)) - (a.V + V3<T>.Cross(a.W, rA));
                 T r0 = ms * dv.X + kk * c.X, r1 = ms * dv.Y + kk * c.Y, r2 = ms * dv.Z + kk * c.Z;
-                T x0 = i00 * r0 + i01 * r1 + i02 * r2;
-                T x1 = i01 * r0 + i11 * r1 + i12 * r2;
-                T x2 = i02 * r0 + i12 * r1 + i22 * r2;
+                T x0 = inv * (c00 * r0 + c01 * r1 + c02 * r2);
+                T x1 = inv * (c01 * r0 + c11 * r1 + c12 * r2);
+                T x2 = inv * (c02 * r0 + c12 * r1 + c22 * r2);
                 var step = new V3<T>(T.Negate(x0) - isc * imp.X, T.Negate(x1) - isc * imp.Y, T.Negate(x2) - isc * imp.Z);
                 imp = imp + step;
                 Apply(ref a, ref b2, rA, rB, step);

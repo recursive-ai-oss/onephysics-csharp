@@ -220,12 +220,6 @@ internal sealed partial class Engine3D
         }
 
         idx[W3D.MaxPointsSlot] = maxPoints;
-        if (jlane > 0)
-        {
-            if (KernelWidth == 1) { JointKernel3D.Prepare<Lanes1>(this, group, jlane); }
-            else if (KernelWidth == 4) { JointKernel3D.Prepare<Lanes128>(this, group, jlane); }
-            else { JointKernel3D.Prepare<Lanes256>(this, group, jlane); }
-        }
     }
 
     /// <summary>The joint types whose three-row point block (always their last rows) is solved by <see cref="JointKernel3D"/>; their other rows stay in <see cref="SolveJoint"/>.</summary>
