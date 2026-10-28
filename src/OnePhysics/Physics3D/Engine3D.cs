@@ -481,6 +481,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         }
 
         PairA[p] = a; PairB[p] = b; PairCons[p] = -1; PairLive[p] = true;
+        if (p < _skip.Length) { _skip[p].Clear = 0f; }
         PairMap.Add(PairKey(a, b), p);
         return p;
     }
@@ -790,6 +791,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         Joints = joints ?? new JointData3D[16];
         JointForce = new float[Joints.Length]; JointTorque = new float[Joints.Length];
         _needBind = true;
+        _skip = new SkipFrame3[8];
         PairMap.Clear();
         for (int p = 0; p < np; p++)
         {

@@ -118,6 +118,8 @@ internal sealed partial class Engine3D
         MakeSoft(hertz, Opt.ContactDampingRatio, ctx.SubstepDt, out _dynBias, out _dynMass, out _dynImpulse);
         MakeSoft(2f * hertz, Opt.ContactDampingRatio, ctx.SubstepDt, out _stBias, out _stMass, out _stImpulse);
 
+        GroupColorsByPointCount();
+
         // Point joints solve in their own wide groups, one per batch, only when the world has joints.
         EnsureBound();
         if (_trackedJoints > 0 && WideJ.Length < batches * J3D.GroupFloats)
@@ -130,6 +132,38 @@ internal sealed partial class Engine3D
         MakeSoft(jh, Opt.JointDampingRatio, ctx.SubstepDt, out float jbias, out float jmass, out float jimp);
         _jointParams = new JointKernelParams(jmass, jmass * jbias, jimp);
     }
+
+    private int[] _sortTmp = new int[64];
+
+    /// <summary>
+    /// Reorders each color's constraints, stably, by contact point count (most points first, joints last), so the contacts of a batch have similar point counts: a group runs as many point passes as its
+    /// largest lane needs, and a pile is mostly one-point contacts with a few four-point ones that would otherwise stretch every batch they land in. The constraints of a color share no dynamic body,
+    /// so the order they are solved in cannot change a result; the new order depends only on the data.
+    /// </summary>
+    private void GroupColorsByPointCount()
+    {
+        var coloring = Core.Coloring;
+        var list = coloring.ListArray;
+        var cs = Core.Constraints;
+        ReadOnlySpan<byte> points = cs.PointCount;
+        Span<int> start = stackalloc int[W3D.MaxPoints + 3];
+        for (int g = 0; g < ConstraintColoring.ColorCount; g++)
+        {
+            int n = coloring.Color(g).Length;
+            if (n <= ConstraintColoring.Lanes) { continue; }
+            int off = coloring.ColorStart(g);
+            // Bucket 0 holds four points, 1 three, 2 two, 3 one, 4 none, 5 joints (and any other kind).
+            start.Clear();
+            for (int i = 0; i < n; i++) { start[1 + Bucket(cs, points, list[off + i])]++; }
+            if (start[1 + 5] == n || start[1] == n || start[1 + 3] == n) { continue; }
+            for (int k = 1; k < start.Length; k++) { start[k] += start[k - 1]; }
+            if (_sortTmp.Length < n) { _sortTmp = new int[Math.Max(n, _sortTmp.Length * 2)]; }
+            for (int i = 0; i < n; i++) { int c = list[off + i]; _sortTmp[start[Bucket(cs, points, c)]++] = c; }
+            Array.Copy(_sortTmp, 0, list, off, n);
+        }
+    }
+
+    private static int Bucket(ConstraintStore cs, ReadOnlySpan<byte> points, int c) => cs.KindOf(c) == ConstraintKind.Contact ? W3D.MaxPoints - Math.Min((int)points[c], W3D.MaxPoints) : 5;
 
     /// <summary>
     /// Once per step: effective masses, adjusted separations, relative velocities for restitution and soft coefficients of the contacts of one batch, from the manifolds stored in the payloads, into one wide group.
@@ -146,7 +180,7 @@ internal sealed partial class Engine3D
         var w = Wide.AsSpan(group * W3D.GroupFloats, W3D.GroupFloats);
         var idx = WideIdx.AsSpan(group * W3D.IdxPerGroup, W3D.IdxPerGroup);
         for (int l = 0; l < W3D.Lanes; l++) { idx[l] = 0; idx[8 + l] = 0; idx[16 + l] = -1; idx[24 + l] = -1; }
-        int maxPoints = 1;
+        int maxPoints = 1, anyRolling = 0;
         float allOnes = BitConverter.Int32BitsToSingle(-1);
         int lane = 0, jlane = 0;
         Span<float> rm = stackalloc float[6];
@@ -183,7 +217,7 @@ internal sealed partial class Engine3D
             w[W3D.InvMassA * 8 + lane] = mA; w[W3D.InvMassB * 8 + lane] = mB;
             if (mA == 0f || mB == 0f) { w[W3D.BiasRate * 8 + lane] = _stBias; w[W3D.MassScale * 8 + lane] = _stMass; w[W3D.ImpulseScale * 8 + lane] = _stImpulse; }
             else { w[W3D.BiasRate * 8 + lane] = _dynBias; w[W3D.MassScale * 8 + lane] = _dynMass; w[W3D.ImpulseScale * 8 + lane] = _dynImpulse; }
-            if (rolling > 0f) { RollingMass(iA, iB, rm); for (int k = 0; k < 6; k++) { w[(W3D.RollMass + k) * 8 + lane] = rm[k]; } }
+            if (rolling > 0f) { anyRolling = 1; RollingMass(iA, iB, rm); for (int k = 0; k < 6; k++) { w[(W3D.RollMass + k) * 8 + lane] = rm[k]; } }
             Put3(w, W3D.RollImpulse, lane, V(pl, ManifoldLayout.RollingImpulse));
 
             Vector3F vA = V(lin, 3 * a), wA = V(ang, 3 * a), vB = V(lin, 3 * b), wB = V(ang, 3 * b);
@@ -219,7 +253,7 @@ internal sealed partial class Engine3D
             lane++;
         }
 
-        idx[W3D.MaxPointsSlot] = maxPoints;
+        idx[W3D.MaxPointsSlot] = maxPoints; idx[W3D.AnyRollingSlot] = anyRolling;
     }
 
     /// <summary>The joint types whose three-row point block (always their last rows) is solved by <see cref="JointKernel3D"/>; their other rows stay in <see cref="SolveJoint"/>.</summary>

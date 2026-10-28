@@ -27,7 +27,7 @@ internal static class W3D
     public const int GroupFloats = OutOffset + OutFloats;
 
     /// <summary>Integers per group in <see cref="Engine3D.WideIdx"/>: body rows of A and B, then the same rows for bodies the kernel writes (or -1), eight lanes each, then the largest point count in the group (points past it are skipped for every lane).</summary>
-    public const int IdxPerGroup = 33, MaxPointsSlot = 32;
+    public const int IdxPerGroup = 34, MaxPointsSlot = 32, AnyRollingSlot = 33;
 }
 
 /// <summary>
@@ -91,7 +91,7 @@ internal static class ContactKernel3D
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static T Field<T>(ReadOnlySpan<float> wide, int f, int lane0) where T : struct, ILane<T> => T.Load(wide.Slice(f * 8 + lane0, T.Count));
+    private static T Field<T>(ReadOnlySpan<float> wide, int f, int lane0) where T : struct, ILane<T> => T.LoadAt(wide, f * 8 + lane0);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static V3<T> Vec<T>(ReadOnlySpan<float> wide, int f, int lane0) where T : struct, ILane<T> => new(Field<T>(wide, f, lane0), Field<T>(wide, f + 1, lane0), Field<T>(wide, f + 2, lane0));
@@ -102,13 +102,29 @@ internal static class ContactKernel3D
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static V3<T> StageVec<T>(ReadOnlySpan<float> stage, int f) where T : struct, ILane<T> => new(Stage<T>(stage, f), Stage<T>(stage, f + 1), Stage<T>(stage, f + 2));
 
-    private static BodyLanes<T> LoadBody<T>(ReadOnlySpan<float> stage, int f0, T invMass) where T : struct, ILane<T> => new()
+    /// <summary>
+    /// The state of the bodies on one side of a batch, one body per lane, by whole-row loads and a transpose: velocities from the velocity arrays (three floats a body, read through an eight-float window whose
+    /// first three are the ones used), displacement, accumulated rotation and world inverse inertia from the packed rows (<see cref="Engine3D.Pk"/>).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void GatherBody<T>(out BodyLanes<T> r, ReadOnlySpan<float> lin, ReadOnlySpan<float> ang, ReadOnlySpan<float> pk, ReadOnlySpan<int> bodyIds, Span<int> offs, T invMass) where T : struct, ILane<T>
     {
-        V = StageVec<T>(stage, f0), W = StageVec<T>(stage, f0 + 3), Dp = StageVec<T>(stage, f0 + 6),
-        Qx = Stage<T>(stage, f0 + 9), Qy = Stage<T>(stage, f0 + 10), Qz = Stage<T>(stage, f0 + 11), Qw = Stage<T>(stage, f0 + 12),
-        I = new Sym<T> { M0 = Stage<T>(stage, f0 + 13), M1 = Stage<T>(stage, f0 + 14), M2 = Stage<T>(stage, f0 + 15), M3 = Stage<T>(stage, f0 + 16), M4 = Stage<T>(stage, f0 + 17), M5 = Stage<T>(stage, f0 + 18) },
-        InvMass = invMass,
-    };
+        int width = T.Count;
+        for (int l = 0; l < width; l++) { offs[l] = 3 * bodyIds[l]; }
+        var v = T.GatherRows(lin, offs);
+        var w = T.GatherRows(ang, offs);
+        for (int l = 0; l < width; l++) { offs[l] = 16 * bodyIds[l]; }
+        var g0 = T.GatherRows(pk, offs);
+        for (int l = 0; l < width; l++) { offs[l] += 8; }
+        var g1 = T.GatherRows(pk, offs);
+        r = new BodyLanes<T>
+        {
+            V = new V3<T>(v.R0, v.R1, v.R2), W = new V3<T>(w.R0, w.R1, w.R2), Dp = new V3<T>(g0.R0, g0.R1, g0.R2),
+            Qx = g0.R3, Qy = g0.R4, Qz = g0.R5, Qw = g0.R6,
+            I = new Sym<T> { M0 = g0.R7, M1 = g1.R0, M2 = g1.R1, M3 = g1.R2, M4 = g1.R3, M5 = g1.R4 },
+            InvMass = invMass,
+        };
+    }
 
     /// <summary>q v q⁻¹ for a unit quaternion: v + w·t + u × t with t = 2 u × v.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -134,11 +150,11 @@ internal static class ContactKernel3D
     private static V3<T> RelativeVelocity<T>(in BodyLanes<T> a, in BodyLanes<T> b, V3<T> rA, V3<T> rB) where T : struct, ILane<T> =>
         (b.V + V3<T>.Cross(b.W, rB)) - (a.V + V3<T>.Cross(a.W, rA));
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static PointLanes<T> LoadPoint<T>(ReadOnlySpan<float> wide, int i, int lane0) where T : struct, ILane<T>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void LoadPoint<T>(out PointLanes<T> p, ReadOnlySpan<float> wide, int i, int lane0) where T : struct, ILane<T>
     {
         int f = W3D.Point0 + i * W3D.PointStride;
-        return new PointLanes<T>
+        p = new PointLanes<T>
         {
             RA = Vec<T>(wide, f + W3D.ArmA, lane0), RB = Vec<T>(wide, f + W3D.ArmB, lane0),
             AdjSep = Field<T>(wide, f + W3D.AdjustedSeparation, lane0), NMass = Field<T>(wide, f + W3D.NormalMass, lane0),
@@ -160,38 +176,27 @@ internal static class ContactKernel3D
         var wide = e.Wide.AsSpan(group * W3D.GroupFloats, W3D.GroupFloats);
         var idx = e.WideIdx.AsSpan(group * W3D.IdxPerGroup, W3D.IdxPerGroup);
         var bodies = e.Core.Bodies;
-        ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
+        ReadOnlySpan<float> lin = bodies.LinearVelocityPadded, ang = bodies.AngularVelocityPadded;
         ReadOnlySpan<float> pk = e.Pk;
+        Span<int> offs = stackalloc int[8];
         Span<float> linW = bodies.LinearVelocity, angW = bodies.AngularVelocity;
-        Span<float> stage = e.Wide.AsSpan(group * W3D.GroupFloats + W3D.StageOffset, W3D.StageFloats);
         Span<float> os = e.Wide.AsSpan(group * W3D.GroupFloats + W3D.OutOffset, W3D.OutFloats);
         T two = T.Broadcast(2f), zero = T.Zero;
 
         for (int l0 = lane0; l0 < lane0 + n; l0 += width)
         {
-            // Gather the bodies of each lane into field-major rows (a transpose done with scalar loads).
-            for (int l = 0; l < width; l++)
-            {
-                for (int side = 0; side < 2; side++)
-                {
-                    int b = idx[8 * side + l0 + l];
-                    int f = 19 * side;
-                    stage[(f + 0) * width + l] = lin[3 * b]; stage[(f + 1) * width + l] = lin[3 * b + 1]; stage[(f + 2) * width + l] = lin[3 * b + 2];
-                    stage[(f + 3) * width + l] = ang[3 * b]; stage[(f + 4) * width + l] = ang[3 * b + 1]; stage[(f + 5) * width + l] = ang[3 * b + 2];
-                    // Displacement, accumulated rotation and world inverse inertia come from one packed row.
-                    var row = pk.Slice(16 * b, 13);
-                    for (int k = 0; k < 13; k++) { stage[(f + 6 + k) * width + l] = row[k]; }
-                }
-            }
-
-            var a = LoadBody<T>(stage, 0, Field<T>(wide, W3D.InvMassA, l0));
-            var b2 = LoadBody<T>(stage, 19, Field<T>(wide, W3D.InvMassB, l0));
+            GatherBody<T>(out var a, lin, ang, pk, idx.Slice(l0, width), offs, Field<T>(wide, W3D.InvMassA, l0));
+            GatherBody<T>(out var b2, lin, ang, pk, idx.Slice(8 + l0, width), offs, Field<T>(wide, W3D.InvMassB, l0));
             var nrm = Vec<T>(wide, W3D.N, l0);
             var t1 = Vec<T>(wide, W3D.T1, l0);
             var t2 = Vec<T>(wide, W3D.T2, l0);
             V3<T> roll = Vec<T>(wide, W3D.RollImpulse, l0);
             int maxPts = idx[W3D.MaxPointsSlot];
-            var pts0 = LoadPoint<T>(wide, 0, l0); var pts1 = maxPts > 1 ? LoadPoint<T>(wide, 1, l0) : default; var pts2 = maxPts > 2 ? LoadPoint<T>(wide, 2, l0) : default; var pts3 = maxPts > 3 ? LoadPoint<T>(wide, 3, l0) : default;
+            LoadPoint<T>(out var pts0, wide, 0, l0);
+            PointLanes<T> pts1 = default, pts2 = default, pts3 = default;
+            if (maxPts > 1) { LoadPoint<T>(out pts1, wide, 1, l0); }
+            if (maxPts > 2) { LoadPoint<T>(out pts2, wide, 2, l0); }
+            if (maxPts > 3) { LoadPoint<T>(out pts3, wide, 3, l0); }
 
             if (phase == SolvePhase.WarmStart)
             {
@@ -219,25 +224,8 @@ internal static class ContactKernel3D
                 T friction = Field<T>(wide, W3D.Friction, l0), rolling = Field<T>(wide, W3D.Rolling, l0);
 
                 // Rolling resistance first, then friction, then non-penetration last: the last constraint solved wins the argument, and keeping bodies apart matters most.
-                T rollMask = T.GreaterThan(rolling, zero);
-                T total = zero + pts0.NImp + pts1.NImp + pts2.NImp + pts3.NImp;
-                T maxRoll = rolling * total;
-                var dw = b2.W - a.W;
-                dw = dw - nrm * V3<T>.Dot(dw, nrm);
-                var rm = new Sym<T> { M0 = Field<T>(wide, W3D.RollMass, l0), M1 = Field<T>(wide, W3D.RollMass + 1, l0), M2 = Field<T>(wide, W3D.RollMass + 2, l0), M3 = Field<T>(wide, W3D.RollMass + 3, l0), M4 = Field<T>(wide, W3D.RollMass + 4, l0), M5 = Field<T>(wide, W3D.RollMass + 5, l0) };
-                var lam = V3<T>.Neg(rm.Apply(dw));
-                lam = lam - nrm * V3<T>.Dot(lam, nrm);
-                var newR = roll + lam;
-                T len2 = V3<T>.Dot(newR, newR);
-                T over = T.GreaterThan(len2, maxRoll * maxRoll);
-                var scaled = newR * (maxRoll / T.Sqrt(len2));
-                newR = V3<T>.Select(over, scaled, newR);
-                lam = newR - roll;
-                var aW = a.W - a.I.Apply(lam);
-                var bW = b2.W + b2.I.Apply(lam);
-                roll = V3<T>.Select(rollMask, newR, roll);
-                a.W = V3<T>.Select(rollMask, aW, a.W);
-                b2.W = V3<T>.Select(rollMask, bW, b2.W);
+                // A group with no rolling resistance in any lane would leave every lane unchanged (the selects keep the old bits), so it skips the work.
+                if (idx[W3D.AnyRollingSlot] != 0) { RollingResistance(ref a, ref b2, nrm, ref roll, wide, l0, rolling, T.Zero + pts0.NImp + pts1.NImp + pts2.NImp + pts3.NImp); }
 
                 FrictionPoint(ref a, ref b2, ref pts0, t1, t2, friction);
                 if (maxPts > 1) { FrictionPoint(ref a, ref b2, ref pts1, t1, t2, friction); }
@@ -252,26 +240,17 @@ internal static class ContactKernel3D
             }
 
             // Velocities back out.
-            a.V.X.Store(os.Slice(0 * width, width)); a.V.Y.Store(os.Slice(1 * width, width)); a.V.Z.Store(os.Slice(2 * width, width));
-            a.W.X.Store(os.Slice(3 * width, width)); a.W.Y.Store(os.Slice(4 * width, width)); a.W.Z.Store(os.Slice(5 * width, width));
-            b2.V.X.Store(os.Slice(6 * width, width)); b2.V.Y.Store(os.Slice(7 * width, width)); b2.V.Z.Store(os.Slice(8 * width, width));
-            b2.W.X.Store(os.Slice(9 * width, width)); b2.W.Y.Store(os.Slice(10 * width, width)); b2.W.Z.Store(os.Slice(11 * width, width));
+            a.V.X.StoreAt(os, 0 * width); a.V.Y.StoreAt(os, 1 * width); a.V.Z.StoreAt(os, 2 * width);
+            a.W.X.StoreAt(os, 3 * width); a.W.Y.StoreAt(os, 4 * width); a.W.Z.StoreAt(os, 5 * width);
+            b2.V.X.StoreAt(os, 6 * width); b2.V.Y.StoreAt(os, 7 * width); b2.V.Z.StoreAt(os, 8 * width);
+            b2.W.X.StoreAt(os, 9 * width); b2.W.Y.StoreAt(os, 10 * width); b2.W.Z.StoreAt(os, 11 * width);
             for (int l = 0; l < width && l0 + l < lane0 + n; l++)
             {
                 // Scatter offsets are body indices of dynamic bodies, or -1 for a body that keeps its velocity.
                 int ia = idx[16 + l0 + l];
-                if (ia >= 0)
-                {
-                    linW[3 * ia] = os[l]; linW[3 * ia + 1] = os[width + l]; linW[3 * ia + 2] = os[2 * width + l];
-                    angW[3 * ia] = os[3 * width + l]; angW[3 * ia + 1] = os[4 * width + l]; angW[3 * ia + 2] = os[5 * width + l];
-                }
-
+                if (ia >= 0) { ScatterBody(linW, angW, os, 3 * ia, l, width); }
                 int ib = idx[24 + l0 + l];
-                if (ib >= 0)
-                {
-                    linW[3 * ib] = os[6 * width + l]; linW[3 * ib + 1] = os[7 * width + l]; linW[3 * ib + 2] = os[8 * width + l];
-                    angW[3 * ib] = os[9 * width + l]; angW[3 * ib + 1] = os[10 * width + l]; angW[3 * ib + 2] = os[11 * width + l];
-                }
+                if (ib >= 0) { ScatterBody(linW, angW, os, 3 * ib, l + 6 * width, width); }
             }
 
             if (phase == SolvePhase.WarmStart) { continue; }
@@ -282,28 +261,62 @@ internal static class ContactKernel3D
             if (maxPts > 3) { StorePoint(wide, 3, l0, in pts3, phase); }
             if (phase != SolvePhase.Restitution)
             {
-                roll.X.Store(wide.Slice((W3D.RollImpulse + 0) * 8 + l0, width)); roll.Y.Store(wide.Slice((W3D.RollImpulse + 1) * 8 + l0, width)); roll.Z.Store(wide.Slice((W3D.RollImpulse + 2) * 8 + l0, width));
+                roll.X.StoreAt(wide, (W3D.RollImpulse + 0) * 8 + l0); roll.Y.StoreAt(wide, (W3D.RollImpulse + 1) * 8 + l0); roll.Z.StoreAt(wide, (W3D.RollImpulse + 2) * 8 + l0);
             }
         }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void RollingResistance<T>(ref BodyLanes<T> a, ref BodyLanes<T> b2, V3<T> nrm, ref V3<T> roll, ReadOnlySpan<float> wide, int l0, T rolling, T total) where T : struct, ILane<T>
+    {
+        T zero = T.Zero;
+        T rollMask = T.GreaterThan(rolling, zero);
+        T maxRoll = rolling * total;
+        var dw = b2.W - a.W;
+        dw = dw - nrm * V3<T>.Dot(dw, nrm);
+        var rm = new Sym<T> { M0 = Field<T>(wide, W3D.RollMass, l0), M1 = Field<T>(wide, W3D.RollMass + 1, l0), M2 = Field<T>(wide, W3D.RollMass + 2, l0), M3 = Field<T>(wide, W3D.RollMass + 3, l0), M4 = Field<T>(wide, W3D.RollMass + 4, l0), M5 = Field<T>(wide, W3D.RollMass + 5, l0) };
+        var lam = V3<T>.Neg(rm.Apply(dw));
+        lam = lam - nrm * V3<T>.Dot(lam, nrm);
+        var newR = roll + lam;
+        T len2 = V3<T>.Dot(newR, newR);
+        T over = T.GreaterThan(len2, maxRoll * maxRoll);
+        var scaled = newR * (maxRoll / T.Sqrt(len2));
+        newR = V3<T>.Select(over, scaled, newR);
+        lam = newR - roll;
+        var aW = a.W - a.I.Apply(lam);
+        var bW = b2.W + b2.I.Apply(lam);
+        roll = V3<T>.Select(rollMask, newR, roll);
+        a.W = V3<T>.Select(rollMask, aW, a.W);
+        b2.W = V3<T>.Select(rollMask, bW, b2.W);
+    }
+
+    /// <summary>Writes the velocities of one lane from the staged rows (<paramref name="first"/> is the lane's slot in the linear rows; the angular rows follow three rows later) to a body's three-float slots. The offset is a live dynamic body's, set when the batch was prepared.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ScatterBody(Span<float> lin, Span<float> ang, ReadOnlySpan<float> os, int at, int first, int width)
+    {
+        lin[at] = os[first]; lin[at + 1] = os[first + width]; lin[at + 2] = os[first + 2 * width];
+        ang[at] = os[first + 3 * width]; ang[at + 1] = os[first + 4 * width]; ang[at + 2] = os[first + 5 * width];
     }
 
     private static void StorePoint<T>(Span<float> wide, int i, int l0, in PointLanes<T> p, SolvePhase phase) where T : struct, ILane<T>
     {
         int f = W3D.Point0 + i * W3D.PointStride;
         int w = T.Count;
-        p.NImp.Store(wide.Slice((f + W3D.NormalImpulse) * 8 + l0, w)); p.MaxN.Store(wide.Slice((f + W3D.MaxNormalImpulse) * 8 + l0, w));
+        p.NImp.StoreAt(wide, (f + W3D.NormalImpulse) * 8 + l0); p.MaxN.StoreAt(wide, (f + W3D.MaxNormalImpulse) * 8 + l0);
         if (phase != SolvePhase.Restitution)
         {
-            p.T1Imp.Store(wide.Slice((f + W3D.Tangent1Impulse) * 8 + l0, w)); p.T2Imp.Store(wide.Slice((f + W3D.Tangent2Impulse) * 8 + l0, w));
+            p.T1Imp.StoreAt(wide, (f + W3D.Tangent1Impulse) * 8 + l0); p.T2Imp.StoreAt(wide, (f + W3D.Tangent2Impulse) * 8 + l0);
         }
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static void WarmPoint<T>(ref BodyLanes<T> a, ref BodyLanes<T> b, in PointLanes<T> p, V3<T> n, V3<T> t1, V3<T> t2) where T : struct, ILane<T>
     {
         var imp = n * p.NImp + t1 * p.T1Imp + t2 * p.T2Imp;
         ApplyImpulse(ref a, ref b, p.RA, p.RB, imp, p.Mask);
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static void Restitute<T>(ref BodyLanes<T> a, ref BodyLanes<T> b, ref PointLanes<T> p, V3<T> n, T e, T laneMask, T negThreshold, T zero) where T : struct, ILane<T>
     {
         var dv = RelativeVelocity(in a, in b, p.RA, p.RB);
@@ -318,6 +331,7 @@ internal static class ContactKernel3D
         ApplyImpulse(ref a, ref b, p.RA, p.RB, n * lambda, mask);
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static void FrictionPoint<T>(ref BodyLanes<T> a, ref BodyLanes<T> b, ref PointLanes<T> p, V3<T> t1, V3<T> t2, T friction) where T : struct, ILane<T>
     {
         var dv = RelativeVelocity(in a, in b, p.RA, p.RB);
@@ -335,6 +349,7 @@ internal static class ContactKernel3D
         ApplyImpulse(ref a, ref b, p.RA, p.RB, imp, p.Mask);
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static void NormalPoint<T>(ref BodyLanes<T> a, ref BodyLanes<T> b, ref PointLanes<T> p, V3<T> n, bool useBias, T biasRate, T massScale, T impulseScale, T invH, T slop, T negPush, T zero, T two) where T : struct, ILane<T>
     {
         // Current separation: the anchors move with their bodies' accumulated translation and rotation.
