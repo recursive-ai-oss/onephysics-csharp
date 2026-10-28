@@ -58,15 +58,6 @@ internal static class BS2D
 /// </summary>
 internal static class ContactKernel2D
 {
-        private const int Out = 6;
-    private const int MaxLanes = 8;
-
-    [InlineArray(Out * MaxLanes)]
-    private struct OutStage
-    {
-        private float _e;
-    }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static T W<T>(ReadOnlySpan<float> wide, int f, int lane0) where T : struct, ILane<T> => T.LoadAt(wide, f * 8 + lane0);
 
@@ -283,28 +274,11 @@ internal static class ContactKernel2D
 
 
     // Writes the solved velocities back. Scatter offsets are body rows the preparation wrote (a body index plus one, times the row stride), or -1 for a body that keeps its velocity.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Scatter<T>(Span<float> state, ReadOnlySpan<int> idx, int l0, T vAx, T vAy, T wA, T vBx, T vBy, T wB) where T : struct, ILane<T>
     {
         int width = T.Count;
-        Mem.SkipInit(out OutStage outs);
-        Span<float> os = outs;
-        vAx.StoreAt(os, 0 * width); vAy.StoreAt(os, 1 * width); wA.StoreAt(os, 2 * width);
-        vBx.StoreAt(os, 3 * width); vBy.StoreAt(os, 4 * width); wB.StoreAt(os, 5 * width);
-        for (int l = 0; l < width; l++)
-        {
-            int oa = idx[16 + l0 + l];
-            if (oa >= 0)
-            {
-                Mem.Range(state, oa, BS2D.W + 1);
-                Mem.At(state, oa + BS2D.Vx) = os[l]; Mem.At(state, oa + BS2D.Vy) = os[width + l]; Mem.At(state, oa + BS2D.W) = os[2 * width + l];
-            }
-
-            int ob = idx[24 + l0 + l];
-            if (ob >= 0)
-            {
-                Mem.Range(state, ob, BS2D.W + 1);
-                Mem.At(state, ob + BS2D.Vx) = os[3 * width + l]; Mem.At(state, ob + BS2D.Vy) = os[4 * width + l]; Mem.At(state, ob + BS2D.W) = os[5 * width + l];
-            }
-        }
+        T.Scatter3(state, idx.Slice(16 + l0, width), vAx, vAy, wA);
+        T.Scatter3(state, idx.Slice(24 + l0, width), vBx, vBy, wB);
     }
 }

@@ -32,6 +32,12 @@ internal interface ILane<T> where T : struct, ILane<T>
     /// <summary>Lane i takes the eight floats at <c>source[offsets[i]..]</c>; field k of every lane comes back together as <c>Rk</c> (a transpose: the rows are loaded whole, not float by float).</summary>
     static abstract Rows8<T> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> offsets);
 
+    /// <summary>
+    /// Lane i writes its three values to <c>destination[offsets[i]..+3]</c>, unless the offset is negative (a body that keeps its velocity). Slot 3 of a row is padding and may be overwritten with zero.
+    /// The offsets of different lanes name different rows (the lanes of a batch touch different bodies).
+    /// </summary>
+    static abstract void Scatter3(Span<float> destination, ReadOnlySpan<int> offsets, T a, T b, T c);
+
     static abstract T operator +(T a, T b);
 
     static abstract T operator -(T a, T b);
@@ -75,6 +81,17 @@ internal struct Rows8<T> where T : struct, ILane<T>
 }
 
 /// <summary>One lane: the scalar twin of the vector kernels.</summary>
+internal static class ScatterRow
+{
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Put(Span<float> destination, int offset, float a, float b, float c)
+    {
+        if (offset < 0) { return; }
+        Mem.Range(destination, offset, 3);
+        Mem.At(destination, offset) = a; Mem.At(destination, offset + 1) = b; Mem.At(destination, offset + 2) = c;
+    }
+}
+
 internal readonly struct Lanes1 : ILane<Lanes1>
 {
     private readonly float _v;
@@ -108,6 +125,9 @@ internal readonly struct Lanes1 : ILane<Lanes1>
         Mem.At(destination, offset) = _v;
     }
 
+    public static void Scatter3(Span<float> destination, ReadOnlySpan<int> offsets, Lanes1 a, Lanes1 b, Lanes1 c) => ScatterRow.Put(destination, offsets[0], a._v, b._v, c._v);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Rows8<Lanes1> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> offsets)
     {
         var r = source.Slice(offsets[0], 8);
@@ -171,6 +191,15 @@ internal readonly struct Lanes128 : ILane<Lanes128>
         _v.StoreUnsafe(ref Mem.At(destination, offset));
     }
 
+    public static void Scatter3(Span<float> destination, ReadOnlySpan<int> offsets, Lanes128 a, Lanes128 b, Lanes128 c)
+    {
+        ScatterRow.Put(destination, offsets[0], a._v.GetElement(0), b._v.GetElement(0), c._v.GetElement(0));
+        ScatterRow.Put(destination, offsets[1], a._v.GetElement(1), b._v.GetElement(1), c._v.GetElement(1));
+        ScatterRow.Put(destination, offsets[2], a._v.GetElement(2), b._v.GetElement(2), c._v.GetElement(2));
+        ScatterRow.Put(destination, offsets[3], a._v.GetElement(3), b._v.GetElement(3), c._v.GetElement(3));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Rows8<Lanes128> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> offsets)
     {
         var a = source.Slice(offsets[0], 8); var b = source.Slice(offsets[1], 8); var c = source.Slice(offsets[2], 8); var d = source.Slice(offsets[3], 8);
@@ -238,6 +267,40 @@ internal readonly struct Lanes256 : ILane<Lanes256>
         _v.StoreUnsafe(ref Mem.At(destination, offset));
     }
 
+    public static void Scatter3(Span<float> destination, ReadOnlySpan<int> offsets, Lanes256 a, Lanes256 b, Lanes256 c)
+    {
+        if (Avx.IsSupported)
+        {
+            // The transpose of GatherRows for three fields: lane i's (a, b, c, 0) becomes one 16-byte row. Pure data movement. Slot 3 of a row is padding, so writing the zero there is harmless.
+            var ab0 = Avx.UnpackLow(a._v, b._v); var ab1 = Avx.UnpackHigh(a._v, b._v);
+            var c0 = Avx.UnpackLow(c._v, Vector256<float>.Zero); var c1 = Avx.UnpackHigh(c._v, Vector256<float>.Zero);
+            var r0 = Avx.Shuffle(ab0, c0, 0x44); var r1 = Avx.Shuffle(ab0, c0, 0xEE); var r2 = Avx.Shuffle(ab1, c1, 0x44); var r3 = Avx.Shuffle(ab1, c1, 0xEE);
+            StoreRow(destination, offsets[0], r0.GetLower()); StoreRow(destination, offsets[1], r1.GetLower());
+            StoreRow(destination, offsets[2], r2.GetLower()); StoreRow(destination, offsets[3], r3.GetLower());
+            StoreRow(destination, offsets[4], r0.GetUpper()); StoreRow(destination, offsets[5], r1.GetUpper());
+            StoreRow(destination, offsets[6], r2.GetUpper()); StoreRow(destination, offsets[7], r3.GetUpper());
+            return;
+        }
+
+        ScatterRow.Put(destination, offsets[0], a._v.GetElement(0), b._v.GetElement(0), c._v.GetElement(0));
+        ScatterRow.Put(destination, offsets[1], a._v.GetElement(1), b._v.GetElement(1), c._v.GetElement(1));
+        ScatterRow.Put(destination, offsets[2], a._v.GetElement(2), b._v.GetElement(2), c._v.GetElement(2));
+        ScatterRow.Put(destination, offsets[3], a._v.GetElement(3), b._v.GetElement(3), c._v.GetElement(3));
+        ScatterRow.Put(destination, offsets[4], a._v.GetElement(4), b._v.GetElement(4), c._v.GetElement(4));
+        ScatterRow.Put(destination, offsets[5], a._v.GetElement(5), b._v.GetElement(5), c._v.GetElement(5));
+        ScatterRow.Put(destination, offsets[6], a._v.GetElement(6), b._v.GetElement(6), c._v.GetElement(6));
+        ScatterRow.Put(destination, offsets[7], a._v.GetElement(7), b._v.GetElement(7), c._v.GetElement(7));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void StoreRow(Span<float> destination, int offset, Vector128<float> row)
+    {
+        if (offset < 0) { return; }
+        Mem.Range(destination, offset, 4);
+        row.StoreUnsafe(ref Mem.At(destination, offset));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Rows8<Lanes256> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> offsets)
     {
         if (Avx.IsSupported)
