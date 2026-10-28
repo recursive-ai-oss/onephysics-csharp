@@ -537,6 +537,7 @@ public sealed class WorldCore
 
     // ------------------------------------------------------------------ the step
 
+
     /// <summary>
     /// Advances the world by <paramref name="dt"/> seconds. The step has no clock: given the same state, options and <paramref name="dt"/> it produces the same bits on every platform and thread count.
     /// Events raised during the step and since the previous one are delivered sorted in <see cref="Events"/> when it returns.
@@ -636,43 +637,48 @@ public sealed class WorldCore
         }
     }
 
+    // Batch table for PrepareBatches: for each group of batches (the overflow set, then each color) where its constraints start in the list, how many there are and the number of its first batch.
+    private int[] _pbStart = new int[ConstraintColoring.ColorCount + 2];
+    private int[] _pbCount = new int[ConstraintColoring.ColorCount + 2];
+    private int[] _pbFirst = new int[ConstraintColoring.ColorCount + 3];
+
     private void PrepareBatches<TStages>(TStages stages, in StepContext ctx) where TStages : IWorldStages
     {
         var list = _coloring.ListArray;
-        int os = _coloring.OverflowStart;
-        int on = _coloring.Overflow.Length;
-        int batches = (on + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
-        for (int color = 0; color < ConstraintColoring.ColorCount; color++) { batches += (_coloring.Color(color).Length + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes; }
-        stages.BeginSolve(this, batches, in ctx);
-        int batch = 0;
-        for (int lo = 0; lo < on; lo += ConstraintColoring.Lanes)
+        int groups = 0, batches = 0;
+        // Overflow first, then the colors in order: the same batch numbers as always, so the layout of the groups does not change.
+        for (int g = -1; g < ConstraintColoring.ColorCount; g++)
         {
-            stages.PrepareBatch(this, list.AsSpan(os + lo, Math.Min(ConstraintColoring.Lanes, on - lo)), batch++, in ctx);
+            int n = g < 0 ? _coloring.Overflow.Length : _coloring.Color(g).Length;
+            if (n == 0) { continue; }
+            _pbStart[groups] = g < 0 ? _coloring.OverflowStart : _coloring.ColorStart(g);
+            _pbCount[groups] = n;
+            _pbFirst[groups] = batches;
+            batches += (n + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
+            groups++;
         }
 
-        for (int color = 0; color < ConstraintColoring.ColorCount; color++)
-        {
-            int n = _coloring.Color(color).Length;
-            if (n == 0) { continue; }
-            int count = (n + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
-            int tasks = (count + ConstraintColoring.BatchesPerTask - 1) / ConstraintColoring.BatchesPerTask;
-            Executor.For(tasks, new PrepareBatchTask<TStages>(this, stages, list, _coloring.ColorStart(color), n, batch, ctx));
-            batch += count;
-        }
+        _pbFirst[groups] = batches;
+        stages.BeginSolve(this, batches, in ctx);
+        // One parallel call for every batch of every color: a call per color pays a fork and join for each of up to 24 small colors.
+        int tasks = (batches + ConstraintColoring.BatchesPerTask - 1) / ConstraintColoring.BatchesPerTask;
+        Executor.For(tasks, new PrepareBatchTask<TStages>(this, stages, list, groups, batches, ctx));
     }
 
     private readonly struct PrepareBatchTask<TStages> : IParallelBody where TStages : IWorldStages
     {
-        private readonly WorldCore _w; private readonly TStages _s; private readonly int[] _list; private readonly int _start, _count, _firstBatch; private readonly StepContext _ctx;
-        public PrepareBatchTask(WorldCore w, TStages s, int[] list, int start, int count, int firstBatch, StepContext ctx) { _w = w; _s = s; _list = list; _start = start; _count = count; _firstBatch = firstBatch; _ctx = ctx; }
+        private readonly WorldCore _w; private readonly TStages _s; private readonly int[] _list; private readonly int _groups, _batches; private readonly StepContext _ctx;
+        public PrepareBatchTask(WorldCore w, TStages s, int[] list, int groups, int batches, StepContext ctx) { _w = w; _s = s; _list = list; _groups = groups; _batches = batches; _ctx = ctx; }
         public void Run(int task)
         {
             int first = task * ConstraintColoring.BatchesPerTask;
-            for (int bt = first; bt < first + ConstraintColoring.BatchesPerTask; bt++)
+            int g = 0;
+            for (int bt = first; bt < first + ConstraintColoring.BatchesPerTask && bt < _batches; bt++)
             {
-                int lo = bt * ConstraintColoring.Lanes;
-                if (lo >= _count) { break; }
-                _s.PrepareBatch(_w, _list.AsSpan(_start + lo, Math.Min(ConstraintColoring.Lanes, _count - lo)), _firstBatch + bt, in _ctx);
+                while (_w._pbFirst[g + 1] <= bt) { g++; }
+                int lo = (bt - _w._pbFirst[g]) * ConstraintColoring.Lanes;
+                int n = _w._pbCount[g];
+                _s.PrepareBatch(_w, _list.AsSpan(_w._pbStart[g] + lo, Math.Min(ConstraintColoring.Lanes, n - lo)), bt, in _ctx);
             }
         }
     }

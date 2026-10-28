@@ -66,6 +66,8 @@ internal struct IdBuffer
 internal struct ContactOut
 {
     public int SubA, SubB, Count;
+    /// <summary>The constraint that carries this contact once the pair has been applied, and the pair's shape slots; the payload is written afterwards, in parallel.</summary>
+    public int Cons, ShapeA, ShapeB;
     public float Nx, Ny, Nz;
     public PointBuffer P; // per point: rA (3), rB (3), separation
     public IdBuffer Id;
@@ -195,6 +197,9 @@ internal sealed partial class Engine3D
         for (int i = 0; i < chunks; i++) { _scratch[i].OutCount = 0; }
         world.Executor.For(chunks, new CollideTask(this));
 
+        // The serial pass only adds, matches and removes constraints (their order fixes the colors); writing the manifolds into the payloads is independent per constraint and runs afterwards in parallel.
+        // A user material mixer is called in pair order on this thread instead.
+        _deferWrite = Opt.MaterialMixer == null && _updateCount >= 64;
         // 6. Apply serially in ascending pair order: this fixes the order constraints are added, which fixes their colors.
         var cs = world.Constraints;
         for (int i = 0; i < _updateCount; i++)
@@ -217,6 +222,7 @@ internal sealed partial class Engine3D
             ApplyPair(world, p, _scratch[i >> 6], _resFirst[i], _resCount[i], owner);
         }
 
+        if (_deferWrite) { world.Executor.For(chunks, new WriteTask(this, cs)); }
         int ch = cs.HighWater;
         Grow(ref ConsNext, ch);
         SizeJointStorage();
@@ -276,7 +282,8 @@ internal sealed partial class Engine3D
                 if (bodies.IsDynamic(bb) && !bodies.IsAwake(bb)) { world.WakeIsland(bodies.Island[bb]); }
             }
 
-            WriteManifold(world.Constraints, c, sa, sb, in sc.Out[first + j]);
+            if (_deferWrite) { ref ContactOut o = ref sc.Out[first + j]; o.Cons = c; o.ShapeA = sa; o.ShapeB = sb; }
+            else { WriteManifold(world.Constraints, c, sa, sb, in sc.Out[first + j]); }
             j++;
             ConsNext[c] = -1;
             if (tail >= 0) { ConsNext[tail] = c; } else { head = c; }
@@ -295,6 +302,34 @@ internal sealed partial class Engine3D
         var lin = bodies.LinearVelocityOf(b);
         var ang = bodies.AngularVelocityOf(b);
         return lin[0] != 0f || lin[1] != 0f || lin[2] != 0f || ang[0] != 0f || ang[1] != 0f || ang[2] != 0f;
+    }
+
+    private bool _deferWrite;
+
+    private readonly struct WriteTask : IParallelBody
+    {
+        private readonly Engine3D _e;
+        private readonly ConstraintStore _cs;
+
+        public WriteTask(Engine3D e, ConstraintStore cs) { _e = e; _cs = cs; }
+
+        public void Run(int task)
+        {
+            int lo = task * 64, hi = Math.Min(lo + 64, _e._updateCount);
+            var sc = _e._scratch[task];
+            for (int i = lo; i < hi; i++)
+            {
+                if (_e._resStatus[i] != 1) { continue; }
+                int p = _e._updateList[i];
+                if (_e.IsSensor(_e.PairA[p]) || _e.IsSensor(_e.PairB[p])) { continue; }
+                int first = _e._resFirst[i];
+                for (int j = 0; j < _e._resCount[i]; j++)
+                {
+                    ref ContactOut o = ref sc.Out[first + j];
+                    _e.WriteManifold(_cs, o.Cons, o.ShapeA, o.ShapeB, in o);
+                }
+            }
+        }
     }
 
     private readonly struct CollideTask : IParallelBody
