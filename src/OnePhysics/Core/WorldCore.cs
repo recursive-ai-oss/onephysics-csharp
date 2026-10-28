@@ -638,6 +638,12 @@ public sealed class WorldCore
         }
     }
 
+    /// <summary>
+    /// When set, an island that has lost constraints is split as soon as any of its bodies has rested long enough, instead of only when every body has; the resting part then sleeps while the rest keeps moving.
+    /// Off by default (a fixed property of the engine, not saved), so engines that do not set it keep their exact behavior.
+    /// </summary>
+    public bool SplitWhenAnyBodyRests { get; set; }
+
     /// <summary>When set, the relax pass sweeps the colors in the opposite order (and the serial overflow last), so the sequential bias of one sweep is cancelled by the next.</summary>
     public bool SymmetricSweep { get; set; }
     private bool _flipSweep;
@@ -762,13 +768,14 @@ public sealed class WorldCore
         if (!enabled) { return; }
         float limit = _options.TimeToSleep;
 
-        // Split the one island that is about to sleep and has lost constraints, the one that has rested longest (lowest id on ties).
+        // Split the one island that has lost constraints and is about to sleep (every body rested, or with SplitWhenAnyBodyRests any body), the one that has rested longest (lowest id on ties).
+        // With the option, one moving body does not keep a whole pile awake: the split separates the resting part, which then sleeps by itself (Catto, "Simulation Islands").
         int candidate = -1;
         float best = 0f;
         for (int i = 0; i < _islands.HighWater; i++)
         {
             if (!_islands.IsLive(i) || _islands.IsAsleep(i) || _islands.RemovedConstraints(i) == 0) { continue; }
-            float m = MinSleepTime(i);
+            float m = SplitWhenAnyBodyRests ? MaxSleepTime(i) : MinSleepTime(i);
             if (m >= limit && (candidate < 0 || m > best)) { candidate = i; best = m; }
         }
 
@@ -779,6 +786,14 @@ public sealed class WorldCore
             if (!_islands.IsLive(i) || _islands.IsAsleep(i) || _islands.RemovedConstraints(i) != 0) { continue; }
             if (MinSleepTime(i) >= limit) { SleepIsland(i); }
         }
+    }
+
+    private float MaxSleepTime(int island)
+    {
+        float m = 0f;
+        var sleep = _bodies.SleepTime;
+        foreach (int b in _islands.Bodies(island)) { if (sleep[b] > m) { m = sleep[b]; } }
+        return m;
     }
 
     private float MinSleepTime(int island)
