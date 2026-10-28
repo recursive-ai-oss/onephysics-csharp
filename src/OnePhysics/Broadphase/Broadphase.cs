@@ -124,6 +124,12 @@ public interface IPairFilter
 {
     /// <summary>True to keep the pair of proxies with these user ids.</summary>
     bool ShouldCollide(int userIdA, int userIdB);
+
+    /// <summary>
+    /// True if the proxy with this user id is a sensor. Two proxies that are both static or kinematic are paired only when one of them is a sensor and they are not both static,
+    /// so a body that moves by script (a kinematic body or a character) still enters and leaves a sensor.
+    /// </summary>
+    bool IsSensor(int userId);
 }
 
 /// <summary>A filter that keeps every pair.</summary>
@@ -131,6 +137,9 @@ public readonly struct AcceptAllPairs : IPairFilter
 {
     /// <inheritdoc/>
     public bool ShouldCollide(int userIdA, int userIdB) => true;
+
+    /// <inheritdoc/>
+    public bool IsSensor(int userId) => false;
 }
 
 /// <summary>
@@ -393,6 +402,7 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
         public int Tag;
         public int QueryKey;
         public int QueryUser;
+        public bool BothNonDynamic;
 
         public bool Report(int node, int userId)
         {
@@ -400,6 +410,7 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
             if (other == QueryKey) { return true; }
             // Both moved: only the smaller key reports, so the pair appears once.
             if ((Tree.GetFlags(node) & DynamicTree<TBox>.MovedFlag) != 0 && QueryKey > other) { return true; }
+            if (BothNonDynamic && !Filter.IsSensor(QueryUser) && !Filter.IsSensor(userId)) { return true; }
             if (!Filter.ShouldCollide(QueryUser, userId)) { return true; }
             bool queryFirst = QueryUser < userId || (QueryUser == userId && QueryKey < other);
             Chunk.Add(queryFirst ? new ProxyPair(QueryKey, other, QueryUser, userId) : new ProxyPair(other, QueryKey, userId, QueryUser));
@@ -434,9 +445,11 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
                 TBox box = own.GetBounds(node);
                 c.QueryKey = key;
                 c.QueryUser = own.GetUserId(node);
-                // A dynamic proxy meets every tree; a static or kinematic one meets only the dynamic tree.
-                for (int t = type == 2 ? 0 : 2; t < 3; t++)
+                // A dynamic proxy meets every tree; a static or kinematic one meets the dynamic tree and, for sensor pairs only, the other non-dynamic trees (never static against static).
+                for (int t = 0; t < 3; t++)
                 {
+                    if (type != 2 && t != 2 && type == 0 && t == 0) { continue; }
+                    c.BothNonDynamic = type != 2 && t != 2;
                     c.Tag = t;
                     c.Tree = _bp._trees[t];
                     c.Tree.Query(box, ref c);

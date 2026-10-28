@@ -27,6 +27,7 @@ internal static class BroadphaseHash
     private struct Even : IPairFilter
     {
         public bool ShouldCollide(int a, int b) => ((a + b) & 7) != 0;
+        public bool IsSensor(int userId) => false;
     }
 
     private static ulong Fold(ulong h, ulong v) => (h ^ v) * 1099511628211UL;

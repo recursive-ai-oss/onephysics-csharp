@@ -126,6 +126,8 @@ internal sealed partial class Engine3D
 
         public PairFilter(Engine3D e) => _e = e;
 
+        public bool IsSensor(int shape) => _e.IsSensor(shape);
+
         public bool ShouldCollide(int shapeA, int shapeB)
         {
             var owner = _e.Core.Shapes.Owner;
