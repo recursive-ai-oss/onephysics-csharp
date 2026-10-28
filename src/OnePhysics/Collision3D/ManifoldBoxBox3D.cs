@@ -1,7 +1,7 @@
 using System;
 using RecursiveAI.OneMath;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 public sealed partial class ManifoldGenerator3D
 {
