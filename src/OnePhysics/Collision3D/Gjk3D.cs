@@ -108,6 +108,9 @@ public static class Gjk3D
     private const float OverlapTol = 2e-5f;
     private const int MaxIterations = 48;
 
+    // Distance from the ray's origin to the shape beyond which a ray cast clips against the shape's bounds first.
+    private const float FarRayDistance = 1024f;
+
     /// <summary>Distance and closest points between two convex shapes.</summary>
     /// <param name="a">Shape A, in its own frame.</param>
     /// <param name="b">Shape B, in its own frame.</param>
@@ -391,16 +394,45 @@ public static class Gjk3D
             throw new ArgumentOutOfRangeException(nameof(maxFraction), maxFraction, $"maxFraction is {maxFraction}; a finite positive value is expected.");
         }
 
-        var rel = new RigidTransformF(shapeInRay.Rotation, shapeInRay.Translation - origin);
+        // A shape far from the origin makes the cast's tolerances (relative to the largest coordinate it sees) coarser than the shape's own features, so a ray passing well outside the
+        // shape could report a hit. Such a ray is first clipped to the shape's padded bounds (the same test the compound trees use) and the cast starts where it enters them.
+        double startFraction = 0.0;
+        Vector3F castOrigin = origin;
+        float castMax = maxFraction;
+        Vector3F far = shapeInRay.Translation - origin;
+        if (far.LengthSquared() > FarRayDistance * FarRayDistance)
+        {
+            ShapeBounds3D.Compute(shape, shapeInRay, out Vector3F lo, out Vector3F hi);
+            var clip = new Broadphase.Ray3D(origin.X, origin.Y, origin.Z, direction.X, direction.Y, direction.Z);
+            if (!clip.Hit(new Broadphase.Aabb3D(lo.X, lo.Y, lo.Z, hi.X, hi.Y, hi.Z), maxFraction, out double enter))
+            {
+                hit = default;
+                return false;
+            }
+
+            if (enter > 0.0)
+            {
+                startFraction = enter;
+                castOrigin = new Vector3F((float)(origin.X + (direction.X * enter)), (float)(origin.Y + (direction.Y * enter)), (float)(origin.Z + (direction.Z * enter)));
+                castMax = (float)(maxFraction - enter);
+                if (!(castMax > 0f))
+                {
+                    castMax = float.Epsilon;
+                }
+            }
+        }
+
+        var rel = new RigidTransformF(shapeInRay.Rotation, shapeInRay.Translation - castOrigin);
         ConvexShape3D point = ConvexShape3D.Point;
-        if (!ShapeCast(point, shape, rel, direction * maxFraction, out ConvexCastHit3D h))
+        if (!ShapeCast(point, shape, rel, direction * castMax, out ConvexCastHit3D h))
         {
             hit = default;
             return false;
         }
 
         // The cast normal points from the point towards the shape; the surface normal is the opposite.
-        hit = new ConvexCastHit3D(h.Fraction * maxFraction, -h.Normal, origin + h.PointA, origin + h.PointB, h.StartsOverlapping);
+        float fraction = startFraction > 0.0 ? (float)(startFraction + (h.Fraction * (double)castMax)) : h.Fraction * maxFraction;
+        hit = new ConvexCastHit3D(fraction, -h.Normal, castOrigin + h.PointA, castOrigin + h.PointB, startFraction <= 0.0 && h.StartsOverlapping);
         return true;
     }
 }
