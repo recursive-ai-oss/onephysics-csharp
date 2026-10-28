@@ -127,7 +127,8 @@ internal sealed partial class Engine2D
         }
         // 4. Pairs that need a fresh manifold: at least one body awake (or a kinematic body in motion).
         int need = (PairHigh + 1023) / 1024 * 1024;
-        if (_updateList.Length < need) { _updateList = new int[Math.Max(need, _updateList.Length * 2)]; _results = new PairResult[_updateList.Length]; }
+        if (_updateList.Length < need) { _updateList = new int[Math.Max(need, _updateList.Length * 2)]; _results = new PairResult[_updateList.Length]; _actItems = new int[_updateList.Length]; }
+        if (_actCounts.Length < need / 64) { _actCounts = new int[Math.Max(need / 64, _actCounts.Length * 2)]; _recycledCounts = new int[_actCounts.Length]; }
         var owner = world.Shapes.Owner;
         int listBlocks = (PairHigh + 1023) / 1024;
         if (_blockCounts.Length < listBlocks) { _blockCounts = new int[Math.Max(listBlocks, _blockCounts.Length * 2)]; }
@@ -146,10 +147,14 @@ internal sealed partial class Engine2D
         // 5. Manifolds, in parallel; each task writes only its own results.
         int chunks = (_updateCount + 63) / 64;
         world.Executor.For(chunks, new CollideTask(this));
+        for (int t = 0; t < chunks; t++) { RecycledCount += _recycledCounts[t]; }
         // 6. Apply serially in ascending pair order: this fixes the order constraints are added, which fixes their colors. Writing the manifolds into existing constraints happens afterwards, in parallel.
         var cs = world.Constraints;
-        for (int i = 0; i < _updateCount; i++)
+        // Only the pairs the collide stage listed need the serial stage (a constraint to add or remove, a pair to drop, a sensor, a sleeping body to wake); the rest are final already.
+        for (int t = 0; t < chunks; t++)
+        for (int k = 0, an = _actCounts[t]; k < an; k++)
         {
+            int i = _actItems[t * 64 + k];
             int p = _updateList[i];
             ref PairResult res = ref _results[i];
             if (res.Status == 2)
@@ -205,8 +210,7 @@ internal sealed partial class Engine2D
                 if (bodies.IsDynamic(bb) && !bodies.IsAwake(bb)) { world.WakeIsland(bodies.Island[bb]); }
             }
 
-            if (res.Recycled) { RecycledCount++; }
-            res.Status = 3; // a manifold to write into the pair's constraint
+            if (res.Status != 4) { res.Status = 3; } // 3: a manifold to write into the pair's constraint; 4: a recycled one already written
         }
         if (Opt.MaterialMixer != null) { new WriteTask(this).RunAll(); } // a user mixer runs serially, in pair order
         else { world.Executor.For((_updateCount + 63) / 64, new WriteTask(this)); }
@@ -235,10 +239,42 @@ internal sealed partial class Engine2D
             ReadOnlySpan<double> pos = e.Core.Bodies.Position;
             ReadOnlySpan<float> rot = e.Core.Bodies.Rotation;
             ReadOnlySpan<int> owner = e.Core.Shapes.Owner;
-            for (int i = lo; i < hi; i++) { e.Collide(i, pos, rot, owner); }
+            var bodies = e.Core.Bodies;
+            int acts = 0, recycled = 0;
+            for (int i = lo; i < hi; i++)
+            {
+                e.Collide(i, pos, rot, owner);
+                ref PairResult res = ref e._results[i];
+                int p = e._updateList[i];
+                int c = e.PairCons[p];
+                bool act;
+                if (res.Status == 2) { act = true; }
+                else if (res.Count == 0) { act = c >= 0; }
+                else
+                {
+                    int sa = e.PairA[p], sb = e.PairB[p];
+                    int ba = owner[sa], bb = owner[sb];
+                    // A sleeping body in a touching pair must wake; the serial stage looks again, since an earlier pair may have woken it already.
+                    bool sensor = e.IsSensor(sa) || e.IsSensor(sb);
+                    act = c < 0 || sensor || (bodies.IsDynamic(ba) && !bodies.IsAwake(ba)) || (bodies.IsDynamic(bb) && !bodies.IsAwake(bb));
+                    if (!sensor)
+                    {
+                        if (res.Recycled) { recycled++; }
+                        if (res.Status == 1) { res.Status = 3; } // a fresh manifold to write into the pair's constraint (the serial stage sets the same for the pairs it handles)
+                    }
+                }
+
+                if (act) { e._actItems[task * 64 + acts++] = i; }
+            }
+
+            e._actCounts[task] = acts;
+            e._recycledCounts[task] = recycled;
         }
     }
 
+    private int[] _actItems = new int[64];
+    private int[] _actCounts = new int[1];
+    private int[] _recycledCounts = new int[1];
     private int[][] _moverLists = [];
     private int[] _moverCounts = [];
     private int[] _blockCounts = new int[4];
@@ -386,6 +422,9 @@ internal sealed partial class Engine2D
         int existing = PairCons[p];
         if (RecycleManifolds && existing >= 0 && TryRecycle(existing, sa, sb, bb, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy), ref res))
         {
+            // A recycled manifold only rewrites the pair's own payload, and nothing in the serial stage can remove it, so it is written here, in parallel, instead of going through the result list.
+            // A user mixer runs serially in pair order, and a pair with a sensor shape never writes a contact payload.
+            if (Opt.MaterialMixer == null && !IsSensor(sa) && !IsSensor(sb)) { WriteRecycled(Core.Constraints, existing, sa, sb, in res); res.Status = 4; }
             return;
         }
 

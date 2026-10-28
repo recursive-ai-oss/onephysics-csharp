@@ -56,6 +56,8 @@ internal sealed partial class Engine2D : ISnapshotSection
 
     /// <summary>Per group: whether any contact in it has rolling resistance or a stored rolling impulse; without either the rolling step of the solver changes nothing.</summary>
     public byte[] GroupRolling = new byte[1];
+    /// <summary>Per group: 1 when no contact in it has a second manifold point, else 2 (the kernel then skips the second point).</summary>
+    public byte[] GroupPoints = new byte[1];
 
     /// <summary>Per constraint: its group times eight plus its lane, for the contacts of the current step.</summary>
     public int[] SlotOf = new int[8];
