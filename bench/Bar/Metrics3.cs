@@ -436,6 +436,21 @@ public static class Metrics3
             var f = frames.FirstOrDefault(x => x.step == s.Events[0].Step);
             r["asleepBeforeWake"] = f.d == null ? -1 : dyn.Count(i => f.d[i * St + 13] < 0.5);
         }
+        if (want.Contains("equilibriumDepthError") && s.Params.ContainsKey("floatY"))
+        {
+            // Floaters (params floatY: pairs of body index and the height of its centre once afloat, from Archimedes): the 95th percentile of the distance of the final height from it.
+            var fy = s.Params["floatY"]; var errs = new List<double>();
+            for (int q = 0; q + 1 < fy.Length; q += 2) errs.Add(Math.Abs(last.d[int.Parse(fy[q], CultureInfo.InvariantCulture) * St + 1] - P("floatY", q + 1)));
+            errs.Sort();
+            r["equilibriumDepthError"] = errs.Count == 0 ? 0 : errs[Math.Min(errs.Count - 1, (int)Math.Ceiling(0.95 * errs.Count) - 1)];
+        }
+        if (want.Contains("sinkersAfloat") && s.Params.ContainsKey("sinkers"))
+        {
+            // Bodies denser than the fluid (params sinkers) that are more than 1 m above the pool floor (params poolFloor) at the end.
+            double top = P("poolFloor") + 1.0; int up = 0;
+            foreach (var t in s.Params["sinkers"]) if (last.d[int.Parse(t, CultureInfo.InvariantCulture) * St + 1] > top) up++;
+            r["sinkersAfloat"] = up;
+        }
         if (want.Contains("awakeFinal")) r["awakeFinal"] = dyn.Count(i => last.d[i * St + 13] > 0.5);
         if (want.Contains("escapes") && s.Params.ContainsKey("container"))
         {

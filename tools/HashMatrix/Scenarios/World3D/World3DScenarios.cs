@@ -24,6 +24,7 @@ internal static class World3DScenarios
         Scenarios.Register("world3d/characters", ctx => Characters3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
         Scenarios.Register("world3d/vehicles", ctx => Vehicles3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
         Scenarios.Register("world3d/ragdolls", ctx => Ragdolls3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
+        Scenarios.Register("world3d/buoyancy", RunBuoyancy);
         Scenarios.Register("world3d/services", ctx => Services3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
     }
 
@@ -51,6 +52,24 @@ internal static class World3DScenarios
             if (i == 30) { snap = world.Snapshot(); ctx.Write(snap); }
             if (i == 45) { world.Restore(snap!); }
             if (i == 60) { world.ShiftOrigin(new Vector3D(32.0, -8.0, 16.0)); }
+            world.Step(dt);
+            ctx.Write((long)world.ComputeHash());
+            ctx.EndStep();
+        }
+    }
+
+    /// <summary>The buoyancy pool (500 floating and sinking bodies in a current): snapshotted at step 40, restored at 70, the origin shifted at 100, hashed every step for 150 steps.</summary>
+    private static void RunBuoyancy(ScenarioContext ctx)
+    {
+        var scene = Gen.All().First(s => s.Name == "buoyancy-3d");
+        var (world, _, _) = SceneBuilder3D.Build(scene, ctx.Threads);
+        float dt = (float)scene.Dt;
+        byte[]? snap = null;
+        for (int i = 0; i < 150; i++)
+        {
+            if (i == 40) { snap = world.Snapshot(); ctx.Write(snap); }
+            if (i == 70) { world.Restore(snap!); }
+            if (i == 100) { world.ShiftOrigin(new Vector3D(32.0, -8.0, 16.0)); }
             world.Step(dt);
             ctx.Write((long)world.ComputeHash());
             ctx.EndStep();

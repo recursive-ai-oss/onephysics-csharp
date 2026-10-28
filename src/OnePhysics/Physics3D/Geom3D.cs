@@ -104,6 +104,7 @@ internal sealed class Geom3D
     public MassPropertiesF UnitMass;      // unit density, in the geometry's own frame (convex and compound only)
     public Bounds3F LocalBounds;          // the geometry's bounds in its own frame (convex shapes use ShapeBounds3D instead)
     public int Refs;
+    public BuoyancyCache? Buoyancy;       // polyhedra for fluid cutting, built on first use (derived, never saved)
 
     public bool IsConvex => Kind == GeomKind.Convex;
 

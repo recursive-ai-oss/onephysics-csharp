@@ -18,6 +18,7 @@ typedef struct {
     int nMat; double* friction; double* restitution;
     int nBody; Op3Body* bodies; int nShape; Op3Shape* shapes;
     int nJoint; Op3Joint* joints; int nQuery; Op3Query* queries; int nWake; Op3Wake* wakes;
+    int hasFluid; double fluidY, fluidDensity, fluidFlow[3]; /* param fluid <surface y> <density> <flow x y z> (docs/scenes.md): water filling everything below y */
 } Op3Scene;
 
 #define OP3_GROW(T, arr, n, cap) do { if ((n) >= (cap)) { (cap) = (cap) ? (cap) * 2 : 64; (arr) = (T*)realloc((arr), (size_t)(cap) * sizeof(T)); } } while (0)
@@ -104,6 +105,11 @@ static int op3_load_scene(const char* path, Op3Scene* s)
             int i = 0; char* tok; while ((tok = NEXT()) && i < 8) q->p[i++] = strtod(tok, NULL);
         }
         else if (!strcmp(t, "event")) { OP3_GROW(Op3Wake, s->wakes, s->nWake, capW); s->wakes[s->nWake++].step = INT(); }
+        else if (!strcmp(t, "param"))
+        {
+            char* k = NEXT();
+            if (k && !strcmp(k, "fluid")) { s->hasFluid = 1; s->fluidY = NUM(); s->fluidDensity = NUM(); s->fluidFlow[0] = NUM(); s->fluidFlow[1] = NUM(); s->fluidFlow[2] = NUM(); }
+        }
     }
     free(line); fclose(f);
     return 1;

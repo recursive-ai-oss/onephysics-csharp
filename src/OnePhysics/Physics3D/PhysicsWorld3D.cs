@@ -62,6 +62,7 @@ public sealed partial class PhysicsWorld3D
         _engine.CheckBounds();
         SyncCoreOptions();
         _engine.StepVehicles(this, dt);
+        _engine.StepFluids(dt);
         _core.Step(new Stages3D(_engine), dt);
         _engine.ReconcileJoints();
         InvalidateQueryPad();
@@ -137,6 +138,7 @@ public sealed partial class PhysicsWorld3D
     {
         _core.ShiftOrigin([offset.X, offset.Y, offset.Z]);
         _engine.ShiftJoints([offset.X, offset.Y, offset.Z]);
+        _engine.ShiftFluids(offset.X, offset.Y, offset.Z);
         _engine.RebuildProxies();
         InvalidateQueryPad();
     }
