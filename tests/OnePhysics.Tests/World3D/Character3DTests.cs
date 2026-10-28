@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics.Core;
 using RecursiveAI.OnePhysics.Physics3D;
@@ -622,5 +623,30 @@ public class Character3DTests
         w.GetDebugGeometry(RecursiveAI.OnePhysics.Debug.DebugContent.Characters, g);
         Assert.Single(g.Characters.ToArray());
         Assert.True(g.Characters[0].IsGrounded);
+    }
+
+    [Fact]
+    public void CharacterAndDefinitionExposeTheSameMembersAs2DExceptTheListedOnes()
+    {
+        static HashSet<string> Names(Type t) => t.GetMembers(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.DeclaredOnly)
+            .Where(m => m.MemberType != System.Reflection.MemberTypes.Constructor).Select(m => m.Name.StartsWith("get_", StringComparison.Ordinal) || m.Name.StartsWith("set_", StringComparison.Ordinal) ? m.Name[4..] : m.Name).ToHashSet();
+        // Dimension-intrinsic, 3D only: the up direction and the rigid kind (2D is always upright in y and has no rigid variant here).
+        // Pending in 2D (the 2D character gets them in a later unit): mass, the push force limit and the steep-slope ground state.
+        string[] only3 = ["Up", "Kind", "RigidHumanoid", "Mass", "MaxPushForce", "Ground"];
+        foreach (var (two, three) in new[] { (typeof(RecursiveAI.OnePhysics.Physics2D.Character), typeof(Character)), (typeof(RecursiveAI.OnePhysics.Physics2D.CharacterDef), typeof(CharacterDef)) })
+        {
+            var a = Names(two); var b = Names(three);
+            Assert.Empty(a.Except(b));
+            Assert.Empty(b.Except(a).Except(only3));
+        }
+    }
+
+    [Fact]
+    public void TheSharedCharactersSceneIsThreadAndRestoreIndependent()
+    {
+        // The scene the hash matrix and smoke apps run: every path must end in the same hash.
+        ulong a = Characters3DScene.Run(1, false), b = Characters3DScene.Run(4, false), c = Characters3DScene.Run(1, true);
+        Assert.Equal(a, b);
+        Assert.Equal(a, c);
     }
 }
