@@ -15,7 +15,7 @@ internal readonly struct Stages2D : IWorldStages
 
     public void UpdateContacts(WorldCore world) => _e.UpdateContacts(world);
 
-    public void BeginSolve(WorldCore world, int batches, in StepContext context) => _e.BeginSolve(batches);
+    public void BeginSolve(WorldCore world, int batches, in StepContext context) => _e.BeginSolve(batches, in context);
 
     public void PrepareBatch(WorldCore world, ReadOnlySpan<int> constraints, int batch, in StepContext context) => _e.PrepareBatch(constraints, batch, in context);
 
@@ -626,9 +626,9 @@ internal sealed partial class Engine2D
     /// <summary>How many manifolds the last step reused.</summary>
     public int RecycledCount;
 
-    private const float RecycleTol = 0.003f;
+    private const float RecycleTol = 0.01f;
     private const float RoundContactMinRadius = 0.02f;
-    private const float RecycleDepth = 0.03f;
+    private const float RecycleDepth = 0.05f;
 
     // Payload slots the 2D contact does not use (third components, the second tangent, the trailing floats). Offsets in floats.
     private static class Rc
