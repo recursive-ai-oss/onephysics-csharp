@@ -276,6 +276,8 @@ internal static class WorkerPool
                 int c = baseIndex + (owner * CounterStride);
                 while (true)
                 {
+                    // A plain read first: a block that is already fully claimed costs a shared read instead of an atomic add on a line other threads are writing.
+                    if (k != 0 && Volatile.Read(ref counters[c]) >= count) { break; }
                     long i = Interlocked.Increment(ref counters[c]) - 1;
                     if (i >= count) { break; }
                     try

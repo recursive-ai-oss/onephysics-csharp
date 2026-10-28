@@ -351,41 +351,49 @@ internal sealed partial class Engine2D
     {
         var pl = cs.Payload(c);
         var ids = cs.FeatureIdsOf(c);
+        // Offsets below are all under Header + 2 * PointStride (+ the trailing floats), which the payload layout of the planar world always holds.
+        const int Needed = ManifoldLayout.Header + 2 * ManifoldLayout.PointStride;
+        if (pl.Length < Needed || ids.Length < 2) { throw new InvalidOperationException("the 2D payload layout is smaller than a two-point manifold"); }
         int oldCount = cs.PointCount[c];
+        int count = res.Count;
+
+        // Warm-start impulses of the points that keep their feature id (at most two points on either side).
         float oldN0 = 0f, oldN1 = 0f, oldT0 = 0f, oldT1 = 0f;
-        for (int k = 0; k < res.Count; k++)
+        if (oldCount > 0)
         {
-            uint id = k == 0 ? res.Id0 : res.Id1;
-            for (int j = 0; j < oldCount; j++)
+            uint id0 = res.Id0, id1 = res.Id1;
+            uint o0 = ids[0], o1 = oldCount > 1 ? ids[1] : 0xFFFFFFFFu;
+            // Feature ids are never 0xFFFFFFFF (two bytes), so the sentinel cannot match.
+            if (o0 == id0) { oldN0 = Mem.At(pl, ManifoldLayout.NormalImpulse(0)); oldT0 = Mem.At(pl, ManifoldLayout.Tangent1Impulse(0)); }
+            else if (o1 == id0) { oldN0 = Mem.At(pl, ManifoldLayout.NormalImpulse(1)); oldT0 = Mem.At(pl, ManifoldLayout.Tangent1Impulse(1)); }
+            if (count > 1)
             {
-                if (ids[j] != id) { continue; }
-                if (k == 0) { oldN0 = pl[ManifoldLayout.NormalImpulse(j)]; oldT0 = pl[ManifoldLayout.Tangent1Impulse(j)]; }
-                else { oldN1 = pl[ManifoldLayout.NormalImpulse(j)]; oldT1 = pl[ManifoldLayout.Tangent1Impulse(j)]; }
-                break;
+                if (o0 == id1) { oldN1 = Mem.At(pl, ManifoldLayout.NormalImpulse(0)); oldT1 = Mem.At(pl, ManifoldLayout.Tangent1Impulse(0)); }
+                else if (o1 == id1) { oldN1 = Mem.At(pl, ManifoldLayout.NormalImpulse(1)); oldT1 = Mem.At(pl, ManifoldLayout.Tangent1Impulse(1)); }
             }
         }
 
-        float rolling = oldCount > 0 ? pl[ManifoldLayout.RollingImpulse] : 0f;
+        float rolling = oldCount > 0 ? Mem.At(pl, ManifoldLayout.RollingImpulse) : 0f;
         pl.Clear();
         var mixed = Mix(sa, sb);
-        pl[ManifoldLayout.Normal] = res.Nx; pl[ManifoldLayout.Normal + 1] = res.Ny;
-        pl[ManifoldLayout.Friction] = mixed.Friction;
-        pl[ManifoldLayout.Restitution] = mixed.Restitution;
-        pl[ManifoldLayout.RollingResistance] = mixed.RollingResistance;
-        pl[ManifoldLayout.RollingImpulse] = rolling;
-        for (int k = 0; k < res.Count; k++)
+        Mem.At(pl, ManifoldLayout.Normal) = res.Nx; Mem.At(pl, ManifoldLayout.Normal + 1) = res.Ny;
+        Mem.At(pl, ManifoldLayout.Friction) = mixed.Friction;
+        Mem.At(pl, ManifoldLayout.Restitution) = mixed.Restitution;
+        Mem.At(pl, ManifoldLayout.RollingResistance) = mixed.RollingResistance;
+        Mem.At(pl, ManifoldLayout.RollingImpulse) = rolling;
+        for (int k = 0; k < count; k++)
         {
             float rax = k == 0 ? res.RAx0 : res.RAx1, ray = k == 0 ? res.RAy0 : res.RAy1, rbx = k == 0 ? res.RBx0 : res.RBx1, rby = k == 0 ? res.RBy0 : res.RBy1;
-            pl[ManifoldLayout.AnchorA(k)] = rax; pl[ManifoldLayout.AnchorA(k) + 1] = ray;
-            pl[ManifoldLayout.AnchorB(k)] = rbx; pl[ManifoldLayout.AnchorB(k) + 1] = rby;
-            pl[ManifoldLayout.Separation(k)] = k == 0 ? res.Sep0 : res.Sep1;
-            pl[ManifoldLayout.NormalImpulse(k)] = k == 0 ? oldN0 : oldN1;
-            pl[ManifoldLayout.Tangent1Impulse(k)] = k == 0 ? oldT0 : oldT1;
+            Mem.At(pl, ManifoldLayout.AnchorA(k)) = rax; Mem.At(pl, ManifoldLayout.AnchorA(k) + 1) = ray;
+            Mem.At(pl, ManifoldLayout.AnchorB(k)) = rbx; Mem.At(pl, ManifoldLayout.AnchorB(k) + 1) = rby;
+            Mem.At(pl, ManifoldLayout.Separation(k)) = k == 0 ? res.Sep0 : res.Sep1;
+            Mem.At(pl, ManifoldLayout.NormalImpulse(k)) = k == 0 ? oldN0 : oldN1;
+            Mem.At(pl, ManifoldLayout.Tangent1Impulse(k)) = k == 0 ? oldT0 : oldT1;
             ids[k] = k == 0 ? res.Id0 : res.Id1;
         }
 
-        for (int k = res.Count; k < ids.Length; k++) { ids[k] = 0; }
-        cs.PointCount[c] = (byte)res.Count;
+        for (int k = count; k < ids.Length; k++) { ids[k] = 0; }
+        cs.PointCount[c] = (byte)count;
     }
 
     private Material2D Mix(int sa, int sb)

@@ -271,7 +271,7 @@ public static class Collide2D
         if (best - rT > margin) { return default; }
 
         bool flip = pa.N < 2 || (!forceReferenceA && pb.N >= 2 && sepB > sepA + FlipTolerance);
-        return flip ? Face(in pb, in pa, edgeB, true, margin) : Face(in pa, in pb, edgeA, false, margin);
+        return flip ? Face(in pb, in pa, edgeB, sepB, true, margin) : Face(in pa, in pb, edgeA, sepA, false, margin);
     }
 
     // Closest points of two segments (Ericson 5.1.9); s and t are exactly 0 or 1 when the closest point is an endpoint.
@@ -302,7 +302,8 @@ public static class Collide2D
     private static float Clamp01(float x) => x < 0f ? 0f : x > 1f ? 1f : x;
 
     // Manifold with reference face i of R and the most anti-parallel face of I as the incident edge. Everything is in A's frame; flip says that R is shape B.
-    private static Manifold2D Face(in Poly r, in Poly inc, int i, bool flip, float margin)
+    // coreSep is the smallest distance from the reference face to the incident core's vertices, which the separating-axis search has just computed for this very face.
+    private static Manifold2D Face(in Poly r, in Poly inc, int i, float coreSep, bool flip, float margin)
     {
         int n = r.N;
         int i2 = i + 1 == n ? 0 : i + 1;
@@ -326,13 +327,6 @@ public static class Collide2D
         }
 
         Vec2 w1 = inc.V[j1], w2 = inc.V[j2];
-        float coreSep = float.MaxValue;
-        for (int k = 0; k < ni; k++)
-        {
-            float s = Vec2.Dot(nrm, inc.V[k] - v1);
-            if (s < coreSep) { coreSep = s; }
-        }
-
         Vec2 outNormal = flip ? -nrm : nrm;
 
         float lower = Vec2.Dot(v1, tan), upper = Vec2.Dot(v2, tan);

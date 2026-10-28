@@ -121,6 +121,7 @@ internal sealed partial class Engine2D
             }
 
             var pl = cs.Payload(c);
+            if (pl.Length < ManifoldLayout.Header + 2 * ManifoldLayout.PointStride) { throw new InvalidOperationException("the 2D payload layout is smaller than a two-point manifold"); }
             int a = bodyA[c], b = bodyB[c];
             ids[lane] = c;
             SlotOf[c] = group * W2D.Lanes + lane;
@@ -128,51 +129,51 @@ internal sealed partial class Engine2D
             idx[16 + lane] = type[a] == (byte)BodyType.Dynamic ? (a + 1) * BS2D.Stride : -1;
             idx[24 + lane] = type[b] == (byte)BodyType.Dynamic ? (b + 1) * BS2D.Stride : -1;
             float mA = invMass[a], iA = invI[a], mB = invMass[b], iB = invI[b];
-            float nx = pl[ManifoldLayout.Normal], ny = pl[ManifoldLayout.Normal + 1];
+            float nx = Mem.At(pl, ManifoldLayout.Normal), ny = Mem.At(pl, ManifoldLayout.Normal + 1);
             float tx = ny, ty = -nx;
-            w[W2D.NormalX * 8 + lane] = nx; w[W2D.NormalY * 8 + lane] = ny;
-            w[W2D.Friction * 8 + lane] = pl[ManifoldLayout.Friction];
-            w[W2D.Restitution * 8 + lane] = pl[ManifoldLayout.Restitution];
-            w[W2D.Rolling * 8 + lane] = pl[ManifoldLayout.RollingResistance];
+            Mem.At(w, W2D.NormalX * 8 + lane) = nx; Mem.At(w, W2D.NormalY * 8 + lane) = ny;
+            Mem.At(w, W2D.Friction * 8 + lane) = Mem.At(pl, ManifoldLayout.Friction);
+            Mem.At(w, W2D.Restitution * 8 + lane) = Mem.At(pl, ManifoldLayout.Restitution);
+            Mem.At(w, W2D.Rolling * 8 + lane) = Mem.At(pl, ManifoldLayout.RollingResistance);
             float k = iA + iB;
-            w[W2D.RollingMass * 8 + lane] = k > 0f ? 1f / k : 0f;
-            w[W2D.InvMassA * 8 + lane] = mA; w[W2D.InvInertiaA * 8 + lane] = iA; w[W2D.InvMassB * 8 + lane] = mB; w[W2D.InvInertiaB * 8 + lane] = iB;
-            if (mA == 0f || mB == 0f) { w[W2D.BiasRate * 8 + lane] = stBias; w[W2D.MassScale * 8 + lane] = stMass; w[W2D.ImpulseScale * 8 + lane] = stImpulse; }
-            else { w[W2D.BiasRate * 8 + lane] = dynBias; w[W2D.MassScale * 8 + lane] = dynMass; w[W2D.ImpulseScale * 8 + lane] = dynImpulse; }
-            w[W2D.Roll * 8 + lane] = pl[ManifoldLayout.RollingImpulse];
-            w[(W2D.Impulse0 + 2) * 8 + lane] = 0f; w[(W2D.Impulse1 + 2) * 8 + lane] = 0f; // the largest normal impulse of the step starts at zero
+            Mem.At(w, W2D.RollingMass * 8 + lane) = k > 0f ? 1f / k : 0f;
+            Mem.At(w, W2D.InvMassA * 8 + lane) = mA; Mem.At(w, W2D.InvInertiaA * 8 + lane) = iA; Mem.At(w, W2D.InvMassB * 8 + lane) = mB; Mem.At(w, W2D.InvInertiaB * 8 + lane) = iB;
+            if (mA == 0f || mB == 0f) { Mem.At(w, W2D.BiasRate * 8 + lane) = stBias; Mem.At(w, W2D.MassScale * 8 + lane) = stMass; Mem.At(w, W2D.ImpulseScale * 8 + lane) = stImpulse; }
+            else { Mem.At(w, W2D.BiasRate * 8 + lane) = dynBias; Mem.At(w, W2D.MassScale * 8 + lane) = dynMass; Mem.At(w, W2D.ImpulseScale * 8 + lane) = dynImpulse; }
+            Mem.At(w, W2D.Roll * 8 + lane) = Mem.At(pl, ManifoldLayout.RollingImpulse);
+            Mem.At(w, (W2D.Impulse0 + 2) * 8 + lane) = 0f; Mem.At(w, (W2D.Impulse1 + 2) * 8 + lane) = 0f; // the largest normal impulse of the step starts at zero
 
             float vAx = lin[2 * a], vAy = lin[2 * a + 1], wA = ang[a], vBx = lin[2 * b], vBy = lin[2 * b + 1], wB = ang[b];
             int count = cs.PointCount[c];
             for (int i = 0; i < count; i++)
             {
-                float rAx = pl[ManifoldLayout.AnchorA(i)], rAy = pl[ManifoldLayout.AnchorA(i) + 1];
-                float rBx = pl[ManifoldLayout.AnchorB(i)], rBy = pl[ManifoldLayout.AnchorB(i) + 1];
-                float sep = pl[ManifoldLayout.Separation(i)];
+                float rAx = Mem.At(pl, ManifoldLayout.AnchorA(i)), rAy = Mem.At(pl, ManifoldLayout.AnchorA(i) + 1);
+                float rBx = Mem.At(pl, ManifoldLayout.AnchorB(i)), rBy = Mem.At(pl, ManifoldLayout.AnchorB(i) + 1);
+                float sep = Mem.At(pl, ManifoldLayout.Separation(i));
                 int o = W2D.Point0 + i * W2D.PointStride;
-                w[(o + W2D.AnchorAX) * 8 + lane] = rAx; w[(o + W2D.AnchorAY) * 8 + lane] = rAy; w[(o + W2D.AnchorBX) * 8 + lane] = rBx; w[(o + W2D.AnchorBY) * 8 + lane] = rBy;
-                w[(o + W2D.AdjustedSeparation) * 8 + lane] = sep - ((rBx - rAx) * nx + (rBy - rAy) * ny);
+                Mem.At(w, (o + W2D.AnchorAX) * 8 + lane) = rAx; Mem.At(w, (o + W2D.AnchorAY) * 8 + lane) = rAy; Mem.At(w, (o + W2D.AnchorBX) * 8 + lane) = rBx; Mem.At(w, (o + W2D.AnchorBY) * 8 + lane) = rBy;
+                Mem.At(w, (o + W2D.AdjustedSeparation) * 8 + lane) = sep - ((rBx - rAx) * nx + (rBy - rAy) * ny);
                 float rnA = rAx * ny - rAy * nx, rnB = rBx * ny - rBy * nx;
                 float kn = mA + mB + iA * rnA * rnA + iB * rnB * rnB;
-                w[(o + W2D.NormalMass) * 8 + lane] = kn > 0f ? 1f / kn : 0f;
+                Mem.At(w, (o + W2D.NormalMass) * 8 + lane) = kn > 0f ? 1f / kn : 0f;
                 float rtA = rAx * ty - rAy * tx, rtB = rBx * ty - rBy * tx;
                 float kt = mA + mB + iA * rtA * rtA + iB * rtB * rtB;
-                w[(o + W2D.TangentMass) * 8 + lane] = kt > 0f ? 1f / kt : 0f;
+                Mem.At(w, (o + W2D.TangentMass) * 8 + lane) = kt > 0f ? 1f / kt : 0f;
                 float dvx = (vBx - wB * rBy) - (vAx - wA * rAy);
                 float dvy = (vBy + wB * rBx) - (vAy + wA * rAx);
-                w[(o + W2D.RelativeVelocity) * 8 + lane] = dvx * nx + dvy * ny;
+                Mem.At(w, (o + W2D.RelativeVelocity) * 8 + lane) = dvx * nx + dvy * ny;
                 int ib = i == 0 ? W2D.Impulse0 : W2D.Impulse1;
-                w[ib * 8 + lane] = pl[ManifoldLayout.NormalImpulse(i)];
-                w[(ib + 1) * 8 + lane] = pl[ManifoldLayout.Tangent1Impulse(i)];
+                Mem.At(w, ib * 8 + lane) = Mem.At(pl, ManifoldLayout.NormalImpulse(i));
+                Mem.At(w, (ib + 1) * 8 + lane) = Mem.At(pl, ManifoldLayout.Tangent1Impulse(i));
             }
 
             // A manifold with one point leaves the second point's fields zero.
             for (int i = count; i < 2; i++)
             {
                 int o = W2D.Point0 + i * W2D.PointStride;
-                for (int f = 0; f < W2D.PointStride; f++) { w[(o + f) * 8 + lane] = 0f; }
+                for (int f = 0; f < W2D.PointStride; f++) { Mem.At(w, (o + f) * 8 + lane) = 0f; }
                 int ib = i == 0 ? W2D.Impulse0 : W2D.Impulse1;
-                w[ib * 8 + lane] = 0f; w[(ib + 1) * 8 + lane] = 0f; w[(ib + 2) * 8 + lane] = 0f;
+                Mem.At(w, ib * 8 + lane) = 0f; Mem.At(w, (ib + 1) * 8 + lane) = 0f; Mem.At(w, (ib + 2) * 8 + lane) = 0f;
             }
 
             lane++;
@@ -193,7 +194,7 @@ internal sealed partial class Engine2D
         // Unused lanes of a short group read as zeros. A batch with no contacts never reads its contact group.
         for (int l = lane > 0 ? lane : W2D.Lanes; l < W2D.Lanes; l++)
         {
-            for (int f = 0; f < W2D.Fields; f++) { w[f * 8 + l] = 0f; }
+            for (int f = 0; f < W2D.Fields; f++) { Mem.At(w, f * 8 + l) = 0f; }
         }
     }
 
