@@ -23,6 +23,7 @@
 #include <Jolt/Physics/Constraints/PointConstraint.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyActivationListener.h>
+#include <Jolt/Physics/Character/CharacterVirtual.h>
 
 #include <cmath>
 #include <unordered_set>
@@ -119,10 +120,20 @@ static ShapeRefC MakeShape(const Op3Shape& sh)
     return shape;
 }
 
-static void snapshot(BodyInterface& bi, const std::vector<BodyID>& ids, double* d)
+// Scripted characters are Jolt CharacterVirtual objects (documented class); their dump rows hold the position and the displacement per second of the last step.
+struct CharState { Ref<CharacterVirtual> ch; RVec3 prev; Vec3 vel; float vy; };
+
+static void snapshot(BodyInterface& bi, const std::vector<BodyID>& ids, double* d, const std::vector<int>& charOf, const std::vector<CharState>& chars)
 {
     for (size_t i = 0; i < ids.size(); i++)
     {
+        if (charOf[i] >= 0)
+        {
+            const CharState& c = chars[(size_t)charOf[i]]; RVec3 p = c.ch->GetPosition(); double* o = d + i * 14;
+            o[0] = p.GetX(); o[1] = p.GetY(); o[2] = p.GetZ(); o[3] = o[4] = o[5] = 0; o[6] = 1;
+            o[7] = c.vel.GetX(); o[8] = c.vel.GetY(); o[9] = c.vel.GetZ(); o[10] = o[11] = o[12] = 0; o[13] = 1;
+            continue;
+        }
         RVec3 p = bi.GetPosition(ids[i]); Quat q = bi.GetRotation(ids[i]); Vec3 v = bi.GetLinearVelocity(ids[i]), w = bi.GetAngularVelocity(ids[i]);
         double* o = d + i * 14;
         o[0] = p.GetX(); o[1] = p.GetY(); o[2] = p.GetZ(); o[3] = q.GetX(); o[4] = q.GetY(); o[5] = q.GetZ(); o[6] = q.GetW();
@@ -159,9 +170,28 @@ int main(int argc, char** argv)
     }
 
     std::vector<BodyID> ids((size_t)s.nBody);
+    std::vector<int> charOf((size_t)s.nBody, -1);
+    std::vector<CharState> chars;
     for (int i = 0; i < s.nBody; i++)
     {
         const Op3Body& ob = s.bodies[i];
+        if (ob.isChar)
+        {
+            // A capsule of the scene's size, centred on the character's position; 45 degree slope limit, 0.3 m steps, as the other engines' default humanoid.
+            const Op3Shape& cap = s.shapes[ob.shape0];
+            float radius = (float)cap.radius, halfCyl = 0.5f * (float)(cap.p[4] - cap.p[1]);
+            CharacterVirtualSettings cvs;
+            cvs.mShape = new CapsuleShape(halfCyl, radius);
+            cvs.mUp = Vec3::sAxisY();
+            cvs.mSupportingVolume = Plane(Vec3::sAxisY(), -radius);
+            cvs.mMaxSlopeAngle = DegreesToRadians(45.0f);
+            cvs.mMass = 70.0f;
+            cvs.mMaxStrength = ob.cPush > 0 ? 500.0f : 0.0f;
+            CharState cs; cs.ch = new CharacterVirtual(&cvs, RVec3((float)ob.pos[0], (float)ob.pos[1], (float)ob.pos[2]), Quat::sIdentity(), 0, &physics);
+            cs.prev = cs.ch->GetPosition(); cs.vel = Vec3::sZero(); cs.vy = 0.0f;
+            charOf[(size_t)i] = (int)chars.size(); chars.push_back(cs);
+            continue;
+        }
         ShapeRefC shape;
         if (ob.shapeN == 0) shape = new SphereShape(0.01f); // shapeless anchor bodies get a tiny sphere; their joints disable its collisions
         else if (ob.shapeN == 1) shape = MakeShape(s.shapes[ob.shape0]);
@@ -185,6 +215,7 @@ int main(int argc, char** argv)
     for (int i = 0; i < s.nJoint; i++)
     {
         const Op3Joint& oj = s.joints[i];
+        if (charOf[(size_t)oj.a] >= 0 || charOf[(size_t)oj.b] >= 0) continue;
         if (s.bodies[oj.a].type != 2 && s.bodies[oj.b].type != 2) continue;
         PointConstraintSettings ps; ps.mSpace = EConstraintSpace::LocalToBodyCOM; // bodies in the scenes have their centre of mass at the origin
         ps.mPoint1 = RVec3((float)oj.pa[0], (float)oj.pa[1], (float)oj.pa[2]); ps.mPoint2 = RVec3((float)oj.pb[0], (float)oj.pb[1], (float)oj.pb[2]);
@@ -195,17 +226,44 @@ int main(int argc, char** argv)
     double* d = (double*)malloc((size_t)s.nBody * 14 * sizeof(double));
     double* stepNs = (double*)malloc((size_t)(s.steps + 1) * sizeof(double));
     FILE* dump = args.timing ? NULL : op3_dump_open(args.dump, s.nBody);
-    if (dump) { snapshot(bi, ids, d); op3_dump_frame(dump, 0, d, s.nBody); }
+    if (dump) { snapshot(bi, ids, d, charOf, chars); op3_dump_frame(dump, 0, d, s.nBody); }
 
     const int collisionSteps = s.substeps > 0 ? s.substeps : 1; // the documented default: one collision step per update
     for (int step = 0; step < s.steps; step++)
     {
         for (int w = 0; w < s.nWake; w++)
-            if (s.wakes[w].step == step) for (int i = 0; i < s.nBody; i++) if (s.bodies[i].type == 2) bi.ActivateBody(ids[i]);
+            if (s.wakes[w].step == step) for (int i = 0; i < s.nBody; i++) if (s.bodies[i].type == 2 && charOf[(size_t)i] < 0) bi.ActivateBody(ids[i]);
         double t0 = op3_now_ns();
+        // Scripted input as in the other drivers: walk along +x at the script's speed, reversing every period steps, jump every so many steps, stand still from the stop step; gravity is integrated
+        // into a vertical speed held at a small downward value while supported. The character's own update then slides, steps and sticks to the floor.
+        const float dtf = (float)s.dt;
+        {
+            size_t k = 0;
+            for (int i = 0; i < s.nBody; i++)
+            {
+                if (charOf[(size_t)i] < 0) continue;
+                const Op3Body& ob = s.bodies[i]; CharState& c = chars[k++];
+                bool active = step < (int)ob.cStop;
+                float walk = active ? (float)ob.cSpeed * ((((step / (int)ob.cPeriod) & 1) == 0) ? 1.0f : -1.0f) : 0.0f;
+                bool grounded = c.ch->GetGroundState() == CharacterBase::EGroundState::OnGround;
+                if (grounded && c.vy <= 0.0f) c.vy = (active && ob.cJump > 0 && step > 0 && (step + (int)(k - 1)) % (int)ob.cJump == 0) ? 5.0f : -1.0f;
+                else c.vy -= (float)(-s.g[1]) * dtf;
+                // Standing on a moving or turning body, the character is carried by its velocity (documented GetGroundVelocity).
+                Vec3 ground = grounded ? c.ch->GetGroundVelocity() : Vec3::sZero();
+                c.ch->SetLinearVelocity(ground + Vec3(walk, c.vy, 0.0f));
+                CharacterVirtual::ExtendedUpdateSettings eus;
+                eus.mStickToFloorStepDown = Vec3(0, -0.3f, 0);
+                eus.mWalkStairsStepUp = Vec3(0, 0.3f, 0);
+                c.prev = c.ch->GetPosition();
+                c.ch->ExtendedUpdate(dtf, physics.GetGravity(), eus,
+                    physics.GetDefaultBroadPhaseLayerFilter(Layers::MOVING), physics.GetDefaultLayerFilter(Layers::MOVING), BodyFilter(), ShapeFilter(), temp);
+                RVec3 np = c.ch->GetPosition();
+                c.vel = Vec3((float)((np.GetX() - c.prev.GetX()) / s.dt), (float)((np.GetY() - c.prev.GetY()) / s.dt), (float)((np.GetZ() - c.prev.GetZ()) / s.dt));
+            }
+        }
         physics.Update((float)s.dt, collisionSteps, &temp, &job);
         stepNs[step] = op3_now_ns() - t0;
-        if (dump && ((step + 1) % s.dumpEvery == 0 || step + 1 == s.steps)) { snapshot(bi, ids, d); op3_dump_frame(dump, step + 1, d, s.nBody); }
+        if (dump && ((step + 1) % s.dumpEvery == 0 || step + 1 == s.steps)) { snapshot(bi, ids, d, charOf, chars); op3_dump_frame(dump, step + 1, d, s.nBody); }
     }
     if (dump) fclose(dump);
 
