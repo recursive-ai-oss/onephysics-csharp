@@ -2,6 +2,8 @@
 # One command for scene x engine x thread-count runs.
 #   tools/bench/run.sh stability [bar run options]   stability metrics (nice, <= 8 cores, no lock needed; refuses while the bench lock exists)
 #   tools/bench/run.sh timing    [bar run options]   step-time rows at 1, 8 and all threads (takes the shared bench lock itself)
+#   tools/bench/run.sh profile   [bar run options]   per-stage times of ours beside the references' own stage timers, one thread; niced, no lock, NOT timing-grade
+#   tools/bench/run.sh profile-locked [options]      the same, holding the shared bench lock (timing-grade)
 # Environment: ONEPHYSICS_STATE (default ~/onephysics) holds reference builds, results and the lock-free scratch;
 #              BENCH_LOCK (default ~/WORKER-BENCH.lock); BAR_JOB_ID is recorded in the results.
 # Options after the mode go to `bar run` (e.g. --scenes pyramid-20,tumbler --engines box2d --threads 1,8 --repeat 3 --out DIR).
@@ -18,11 +20,13 @@ export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 export ONEPHYSICS_ARTIFACTS="${ONEPHYSICS_ARTIFACTS:-$state/artifacts}"
 
 mkdir -p "$state"
-for target in all all3d; do # incremental: only changed drivers rebuild
+targets="all all3d"; config=Release
+case "$mode" in profile|profile-locked) targets="all all3d profile"; config=Profile ;; esac
+for target in $targets; do # incremental: only changed drivers rebuild
   "$repo/tools/refs/setup.sh" "$state" "$target" >"$state/setup-$target.log" 2>&1 || { tail -30 "$state/setup-$target.log"; exit 1; }
 done
-dotnet build "$repo/bench/Bar/Bar.csproj" -c Release -v quiet -clp:NoSummary
-bar="$ONEPHYSICS_ARTIFACTS/bin/Bar/release/Bar.dll"
+dotnet build "$repo/bench/Bar/Bar.csproj" -c "$config" -v quiet -clp:NoSummary
+bar="$ONEPHYSICS_ARTIFACTS/bin/Bar/$(echo "$config" | tr A-Z a-z)/Bar.dll"
 
 scenes="$state/scenes"
 if [ ! -f "$scenes/SHA256SUMS" ] || ! cmp -s "$scenes/SHA256SUMS" "$repo/scenes/SHA256SUMS"; then
@@ -34,11 +38,14 @@ case "$mode" in
   stability)
     if [ -e "$lock" ]; then echo "bench lock exists ($(cat "$lock")); not running" >&2; exit 3; fi
     exec nice -n 10 dotnet "$bar" run --mode stability --scene-dir "$scenes" --state "$state" "$@" ;;
-  timing)
+  profile)
+    if [ -e "$lock" ]; then echo "bench lock exists ($(cat "$lock")); not running" >&2; exit 3; fi
+    exec nice -n 10 dotnet "$bar" run --mode profile --scene-dir "$scenes" --state "$state" "$@" ;;
+  timing|profile-locked)
     set -o noclobber
     echo "onephysics timing sweep $(date +%Y-%m-%dT%H:%M:%S%z) expected 1h" > "$lock" || { echo "bench lock is held: $(cat "$lock")" >&2; exit 3; }
     trap 'rm -f "$lock"' EXIT
     set +o noclobber
-    dotnet "$bar" run --mode timing --lock-held --scene-dir "$scenes" --state "$state" "$@" ;;
+    dotnet "$bar" run --mode "${mode%-locked}" --lock-held --scene-dir "$scenes" --state "$state" "$@" ;;
   *) echo "unknown mode $mode" >&2; exit 2 ;;
 esac

@@ -548,9 +548,15 @@ public sealed class WorldCore
         if (!(dt > 0f) || !float.IsFinite(dt)) { throw new ArgumentOutOfRangeException(nameof(dt), dt, "dt must be finite and positive."); }
         _options.Validate();
         _events.ClearDelivered();
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Boxes);
+#endif
         BuildAwakeBodies();
         stages.UpdateContacts(this);
         BuildAwakeBodies();
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Coloring);
+#endif
         _coloring.EnsureBodies(_bodies.HighWater);
         _coloring.BuildActive(_bodies, _constraints, Executor, _awakeCount > 0);
         var ctx = new StepContext(dt, _options.Substeps);
@@ -559,11 +565,17 @@ public sealed class WorldCore
         _events.EnsureSlots(1 + storeChunks);
         var list = _coloring.ListArray;
 
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Prepare);
+#endif
         Executor.For(storeChunks, new PrepareTask<TStages>(this, stages, list, 0, active, ctx));
         PrepareBatches(stages, ctx);
 
         int bodyChunks = (_awakeCount + ChunkSize - 1) / ChunkSize;
 
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Solve);
+#endif
         // All substeps run as one staged call: the stage boundaries (integrate, then each color of each pass) are crossed by polling inside the executor instead of one fork and join per stage.
         _stageCount = 0;
         _stageMostTasks = 0;
@@ -579,14 +591,29 @@ public sealed class WorldCore
 
         AddSolvePass(SolvePhase.Restitution);
         Executor.ForStages(_stageCount, new SolveProgram<TStages>(this, stages, list, ctx), _stageMostTasks);
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Finalize);
+#endif
         Executor.For(bodyChunks, new FinalizeTask<TStages>(this, stages, _awake, _awakeCount, ctx));
         stages.AfterFinalize(this, ctx);
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Store);
+#endif
         Executor.For(storeChunks, new StoreTask<TStages>(this, stages, list, active, ctx));
 
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Sleep);
+#endif
         ProcessBreaks();
         UpdateSleep(stages, dt);
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Events);
+#endif
         EmitPersist();
         _events.Deliver();
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.End);
+#endif
         _stepCount++;
     }
 

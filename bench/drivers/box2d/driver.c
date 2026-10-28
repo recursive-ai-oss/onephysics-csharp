@@ -67,6 +67,17 @@ static void create_shapes(b2BodyId body, const OpScene* s, const OpBody* ob)
     }
 }
 
+static int cmp_float(const void* a, const void* b) { float x = *(const float*)a, y = *(const float*)b; return (x > y) - (x < y); }
+
+/* Median of column k of a rows x width table. */
+static double column_median(const float* table, int rows, int width, int k)
+{
+    float* col = malloc((size_t)rows * sizeof(float));
+    for (int i = 0; i < rows; i++) col[i] = table[i * width + k];
+    qsort(col, (size_t)rows, sizeof(float), cmp_float);
+    double m = col[rows / 2]; free(col); return m;
+}
+
 static void snapshot(const b2BodyId* ids, int n, double* d)
 {
     for (int i = 0; i < n; i++)
@@ -127,9 +138,10 @@ int main(int argc, char** argv)
     FILE* dump = args.timing ? NULL : op_dump_open(args.dump, s.nBody);
     if (dump) { snapshot(ids, s.nBody, d); op_dump_frame(dump, 0, d, s.nBody); }
 
-    // Optional per-stage profile (b2World_GetProfile) and counters (b2World_GetCounters), averaged over the measured steps; written only when OP_PROFILE is set.
+    // Optional per-stage profile (b2World_GetProfile) and counters (b2World_GetCounters): the median of every field over the measured steps; written only when OP_PROFILE is set.
     int profiling = getenv("OP_PROFILE") != NULL;
-    double prof[23] = { 0 }, cnt[6] = { 0 };
+    float* prof = profiling ? malloc((size_t)(s.steps + 1) * 23 * sizeof(float)) : NULL;
+    float* cnt = profiling ? malloc((size_t)(s.steps + 1) * 6 * sizeof(float)) : NULL;
     int profSteps = 0;
     for (int step = 0; step < s.steps; step++)
     {
@@ -142,9 +154,10 @@ int main(int argc, char** argv)
         {
             b2Profile p = b2World_GetProfile(world); b2Counters c = b2World_GetCounters(world);
             float v[23] = { p.step, p.pairs, p.collide, p.solve, p.solverSetup, p.constraints, p.prepareConstraints, p.integrateVelocities, p.warmStart, p.solveImpulses, p.integratePositions, p.relaxImpulses, p.restitution, p.storeImpulses, p.splitIslands, p.transforms, p.hitEvents, p.refit, p.bullets, p.sleepIslands, p.sensors, p.sensorHits, p.jointEvents };
-            for (int k = 0; k < 23; k++) prof[k] += v[k];
+            for (int k = 0; k < 23; k++) prof[profSteps * 23 + k] = v[k];
             int touching = 0; for (int k = 0; k < 24; k++) touching += c.colorCounts[k];
-            cnt[0] += c.contactCount; cnt[1] += c.awakeContactCount; cnt[2] += c.recycledContactCount; cnt[3] += touching; cnt[4] += c.bodyCount; cnt[5] += c.islandCount;
+            float cv[6] = { (float)c.contactCount, (float)c.awakeContactCount, (float)c.recycledContactCount, (float)touching, (float)c.bodyCount, (float)c.islandCount };
+            for (int k = 0; k < 6; k++) cnt[profSteps * 6 + k] = cv[k];
             profSteps++;
         }
         if (dump && ((step + 1) % s.dumpEvery == 0 || step + 1 == s.steps)) { snapshot(ids, s.nBody, d); op_dump_frame(dump, step + 1, d, s.nBody); }
@@ -197,9 +210,9 @@ int main(int argc, char** argv)
     if (profiling && profSteps > 0)
     {
         const char* pn[23] = { "step", "pairs", "collide", "solve", "solverSetup", "constraints", "prepareConstraints", "integrateVelocities", "warmStart", "solveImpulses", "integratePositions", "relaxImpulses", "restitution", "storeImpulses", "splitIslands", "transforms", "hitEvents", "refit", "bullets", "sleepIslands", "sensors", "sensorHits", "jointEvents" };
-        for (int k = 0; k < 23; k++) fprintf(r, "prof_%s_ms=%.4f\n", pn[k], prof[k] / profSteps);
+        for (int k = 0; k < 23; k++) fprintf(r, "prof_%s_ms=%.5f\n", pn[k], column_median(prof, profSteps, 23, k));
         const char* cn[6] = { "contactCount", "awakeContactCount", "recycledContactCount", "touchingConstraints", "bodyCount", "islandCount" };
-        for (int k = 0; k < 6; k++) fprintf(r, "count_%s=%.1f\n", cn[k], cnt[k] / profSteps);
+        for (int k = 0; k < 6; k++) fprintf(r, "count_%s=%.1f\n", cn[k], column_median(cnt, profSteps, 6, k));
     }
     fclose(r);
     b2DestroyWorld(world);

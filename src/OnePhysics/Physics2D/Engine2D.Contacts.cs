@@ -110,6 +110,9 @@ internal sealed partial class Engine2D
         }
         // 2. Start-of-step pose and zero accumulated motion for every body (sleeping bodies may wake during the stage). Bodies are independent, so this runs in blocks.
         world.Executor.For((nb + 1023) / 1024, new StartPoseTask(this, nb));
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Pairs);
+#endif
         // 3. New pairs from the broadphase, in its sorted order.
         var found = Bp.UpdatePairs(new PairFilter(this), world.Executor);
         bool anyFresh = false;
@@ -125,6 +128,9 @@ internal sealed partial class Engine2D
             _fresh[np] = IsSensor(a) || IsSensor(b);
             anyFresh |= _fresh[np];
         }
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Narrowphase);
+#endif
         // 4. Pairs that need a fresh manifold: at least one body awake (or a kinematic body in motion).
         int need = (PairHigh + 1023) / 1024 * 1024;
         if (_updateList.Length < need) { _updateList = new int[Math.Max(need, _updateList.Length * 2)]; _results = new PairResult[_updateList.Length]; _actItems = new int[_updateList.Length]; }
@@ -149,6 +155,9 @@ internal sealed partial class Engine2D
         int chunks = (_updateCount + 63) / 64;
         world.Executor.For(chunks, new CollideTask(this));
         for (int t = 0; t < chunks; t++) { RecycledCount += _recycledCounts[t]; }
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Apply);
+#endif
         // 6. Apply serially in ascending pair order: this fixes the order constraints are added, which fixes their colors. Writing the manifolds into existing constraints happens afterwards, in parallel.
         var cs = world.Constraints;
         // Only the pairs the collide stage listed need the serial stage (a constraint to add or remove, a pair to drop, a sensor, a sleeping body to wake); the rest are final already.

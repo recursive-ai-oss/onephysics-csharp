@@ -23,7 +23,7 @@
     <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(ContinuousIntegrationBuild)' == ''">true</ContinuousIntegrationBuild>
-    <Configurations>Debug;Release;Checked</Configurations>
+    <Configurations>Debug;Release;Checked;Profile</Configurations>
     <InvariantGlobalization>true</InvariantGlobalization>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Floating-point results must never depend on the JIT's choices. -->
@@ -48,6 +48,11 @@
     <Optimize>true</Optimize>
     <DebugType>portable</DebugType>
     <DefineConstants>$(DefineConstants);CHECKED</DefineConstants>
+  </PropertyGroup>
+  <!-- Profile: Release plus the stage boundaries of a step (STAGE_TIMERS), for the benchmark runner's per-stage tables. Never packed. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Profile'">
+    <Optimize>true</Optimize>
+    <DefineConstants>$(DefineConstants);STAGE_TIMERS</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <Optimize>true</Optimize>

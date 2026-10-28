@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Fetches, verifies and builds the reference drivers under a state directory (default ~/onephysics).
-# Usage: tools/refs/setup.sh [STATE_DIR] [box2d|rapier|rapier3d|jolt|box3d|all|all3d]
+# Usage: tools/refs/setup.sh [STATE_DIR] [box2d|rapier|rapier3d|jolt|box3d|all|all3d|profile]
+# `profile` builds the Rapier drivers with the crate's profiler feature (rapier-driver-profile, rapier3d-driver-profile); they are used only by the per-stage profile mode.
 # Needs a C compiler and, for Rapier, cargo. CMake is downloaded (pinned) into STATE_DIR/tools when missing.
 # Nothing it fetches or builds is ever read; drivers only link against the installed libraries.
 set -euo pipefail
@@ -64,8 +65,8 @@ build_jolt() {
   echo "built $state/bin/jolt-driver (Jolt $JOLT_VERSION, Distribution)"
 }
 
-build_rapier() { # build_rapier 2d|3d
-  local dim="${1:-2}"; local crate=rapier; [ "$dim" = 3 ] && crate=rapier3d
+build_rapier() { # build_rapier 2|3 [profile]
+  local dim="${1:-2}"; local variant="${2:-}"; local crate=rapier; [ "$dim" = 3 ] && crate=rapier3d
   local mdir="$repo/bench/drivers/$crate"
   command -v cargo >/dev/null || export PATH="$HOME/.cargo/bin:$PATH"
   if ! command -v cargo >/dev/null; then # user-local Rust toolchain, installed once under the state directory
@@ -76,8 +77,13 @@ build_rapier() { # build_rapier 2d|3d
     fi
     export PATH="$CARGO_HOME/bin:$PATH"
   fi
-  CARGO_TARGET_DIR="$state/refs/$crate-target" cargo build --release $( [ -f "$mdir/Cargo.lock" ] && echo --locked ) --manifest-path "$mdir/Cargo.toml"
   local exe=rapier-driver; [ "$dim" = 3 ] && exe=rapier3d-driver
+  if [ "$variant" = profile ]; then
+    CARGO_TARGET_DIR="$state/refs/$crate-target-profile" cargo build --release --features profile $( [ -f "$mdir/Cargo.lock" ] && echo --locked ) --manifest-path "$mdir/Cargo.toml"
+    cp "$state/refs/$crate-target-profile/release/$exe" "$state/bin/$exe-profile"
+    echo "built $state/bin/$exe-profile"; return
+  fi
+  CARGO_TARGET_DIR="$state/refs/$crate-target" cargo build --release $( [ -f "$mdir/Cargo.lock" ] && echo --locked ) --manifest-path "$mdir/Cargo.toml"
   cp "$state/refs/$crate-target/release/$exe" "$state/bin/$exe"
   echo "built $state/bin/$exe"
 }
@@ -90,5 +96,6 @@ case "$what" in
   box3d) build_box3d ;;
   all) build_box2d; build_rapier 2 ;;
   all3d) build_jolt; build_box3d; build_rapier 3 ;;
+  profile) build_rapier 2 profile; build_rapier 3 profile ;;
   *) echo "unknown target $what" >&2; exit 2 ;;
 esac
