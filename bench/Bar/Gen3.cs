@@ -1,3 +1,4 @@
+using System.Globalization;
 namespace Bar;
 
 /// <summary>Deterministic 3D scene generators; same rules as the 2D ones (seeded, IEEE-exact arithmetic, no trigonometry).</summary>
@@ -555,5 +556,83 @@ public static class Gen3
         return s;
     }
 
-    public static List<Scene> All() => [Pyramid(10), Pyramid(30), LargePile(), JointChains(), JointGrid(), RagdollPile(), RagdollPowered(), TerrainScene(false), TerrainScene(true), SleepWake(), Queries(), Characters3(), Vehicles3()];
+    // ---- buoyancy-3d ----
+
+    // Height of the centre of a sphere of radius r and density ratio f (body density over fluid density) floating with its centre at height c above the surface: the cap below the surface holds f of the sphere.
+    static double FloatingSphereCentre(double r, double f)
+    {
+        double lo = 0, hi = 2 * r;   // depth of the lowest point below the surface
+        for (int i = 0; i < 80; i++)
+        {
+            double h = 0.5 * (lo + hi), v = Math.PI * h * h * (3 * r - h) / 3;
+            if (v < f * 4.0 / 3.0 * Math.PI * r * r * r) lo = h; else hi = h;
+        }
+        return r - 0.5 * (lo + hi);
+    }
+
+    // 500 bodies dropped into a 52 x 42 m pool of water 4 m deep (surface at y = 0, a current of (0.2, 0, 0.1) m/s), on a 25 x 20 grid 2 m apart: spheres of density 500, flat boxes of 600 and
+    // hexagonal prisms of 600 (they float, each at a depth known from Archimedes), capsules and octahedra of 2500 (they sink to the floor). Shapes of the same fluid density ratio cannot tip over:
+    // the boxes are twice as wide as tall, the prisms wider than tall.
+    static Scene Buoyancy()
+    {
+        var s = Base3("buoyancy-3d", 600, "equilibriumDepthError", "sinkersAfloat", "maxSpeed", "nan", "escapes", "restKE");
+        s.DumpEvery = 60;
+        const double W = 27, Z = 22, FloorTop = -4;
+        Box3(Add3(s, "static", 0, FloorTop - 1, 0), W + 2, 1, Z + 2);
+        Box3(Add3(s, "static", -W - 1, 2, 0), 1, 6, Z + 2); Box3(Add3(s, "static", W + 1, 2, 0), 1, 6, Z + 2);
+        Box3(Add3(s, "static", 0, 2, -Z - 1), W + 2, 6, 1); Box3(Add3(s, "static", 0, 2, Z + 1), W + 2, 6, 1);
+        var hex = new double[18];
+        for (int k = 0; k < 6; k++)
+        {
+            double a = k * Math.PI / 3, x = 0.6 * Math.Cos(a), z = 0.6 * Math.Sin(a);
+            hex[3 * k] = x; hex[3 * k + 1] = -0.2; hex[3 * k + 2] = z;
+        }
+        var prism = new List<double>();
+        for (int k = 0; k < 6; k++) prism.AddRange([hex[3 * k], 0.2, hex[3 * k + 2]]);
+        prism.InsertRange(0, hex);
+        var rng = new Gen.Rng(61);
+        var floatY = new List<string>(); var sinkers = new List<string>();
+        const double surface = 0;
+        for (int iz = 0; iz < 20; iz++)
+            for (int ix = 0; ix < 25; ix++)
+            {
+                int idx = s.Bodies.Count;
+                double x = (ix - 12) * 2.0 + rng.Range(-0.1, 0.1), z = (iz - 9.5) * 2.0 + rng.Range(-0.1, 0.1);
+                int kind = (ix + iz) % 5;
+                var b = Add3(s, "dynamic", x, 1.0 + rng.Range(0, 0.6), z);
+                switch (kind)
+                {
+                    case 0:
+                        Sh(b, "sphere", 500, 0.45, 0, 0, 0);
+                        floatY.AddRange([idx.ToString(), (surface + FloatingSphereCentre(0.45, 0.5)).ToString("R", CultureInfo.InvariantCulture)]);
+                        break;
+                    case 1:
+                        Box3(b, 0.5, 0.25, 0.5, 0, 0, 0, 600);
+                        floatY.AddRange([idx.ToString(), (surface - 0.6 * 0.5 + 0.25).ToString("R", CultureInfo.InvariantCulture)]);
+                        break;
+                    case 2:
+                        Sh(b, "hull", 600, 0, prism.ToArray());
+                        floatY.AddRange([idx.ToString(), (surface - 0.6 * 0.4 + 0.2).ToString("R", CultureInfo.InvariantCulture)]);
+                        break;
+                    case 3:
+                        Sh(b, "capsule", 2500, 0.25, 0, -0.3, 0, 0, 0.3, 0);
+                        sinkers.Add(idx.ToString());
+                        break;
+                    default:
+                        Sh(b, "hull", 2500, 0, Octahedron);
+                        sinkers.Add(idx.ToString());
+                        break;
+                }
+            }
+        s.Params["fluid"] = [surface.ToString("R", CultureInfo.InvariantCulture), "1000", "0.2", "0", "0.1"];
+        s.Params["floatY"] = floatY.ToArray();
+        s.Params["sinkers"] = sinkers.ToArray();
+        s.Params["poolFloor"] = [FloorTop.ToString("R", CultureInfo.InvariantCulture)];
+        s.Params["engines"] = ["onephysics", "jolt"];
+        s.Params["container"] = ["-" + (W + 3), (FloorTop - 2).ToString(CultureInfo.InvariantCulture), (W + 3).ToString(CultureInfo.InvariantCulture), "10"];
+        s.Params["floor"] = [(FloorTop - 2).ToString(CultureInfo.InvariantCulture)];
+        return s;
+    }
+
+    public static List<Scene> All() => [Pyramid(10), Pyramid(30), LargePile(), JointChains(), JointGrid(), RagdollPile(), RagdollPowered(), TerrainScene(false), TerrainScene(true), SleepWake(), Queries(), Characters3(), Vehicles3(), Buoyancy()];
 }

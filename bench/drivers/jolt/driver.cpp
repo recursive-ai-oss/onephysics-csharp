@@ -319,6 +319,18 @@ int main(int argc, char** argv)
             c.ctrl->SetDriverInput(throttle, steer, brake, 0.0f);
             if (throttle != 0.0f || brake != 0.0f) bi.ActivateBody(ids[(size_t)c.body]);
         }
+        // Water: Jolt's buoyancy takes a factor (1 = neutral), not a density, so each dynamic body gets fluid density / its own density, with the documented typical drags (0.5 linear, 0.01 angular).
+        if (s.hasFluid)
+        {
+            for (int i = 0; i < s.nBody; i++)
+            {
+                const Op3Body& ob = s.bodies[i];
+                if (ob.type != 2 || ob.shapeN == 0 || !bi.IsActive(ids[(size_t)i])) continue;
+                double bodyDensity = s.shapes[ob.shape0].density;
+                bi.ApplyBuoyancyImpulse(ids[(size_t)i], RVec3(0, s.fluidY, 0), Vec3(0, 1, 0), (float)(s.fluidDensity / bodyDensity), 0.5f, 0.01f,
+                    Vec3((float)s.fluidFlow[0], (float)s.fluidFlow[1], (float)s.fluidFlow[2]), physics.GetGravity(), (float)s.dt);
+            }
+        }
         double t0 = op3_now_ns();
         // Scripted input as in the other drivers: walk along +x at the script's speed, reversing every period steps, jump every so many steps, stand still from the stop step; gravity is integrated
         // into a vertical speed held at a small downward value while supported. The character's own update then slides, steps and sticks to the floor.

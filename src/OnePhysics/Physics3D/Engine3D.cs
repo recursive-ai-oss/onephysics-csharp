@@ -186,7 +186,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         EnsureBodies(b + 1);
         for (int k = 0; k < 3; k++) { LocalCenter[3 * b + k] = 0f; Force[3 * b + k] = 0f; Torque[3 * b + k] = 0f; Dp[3 * b + k] = 0f; }
         for (int k = 0; k < 6; k++) { Inertia[6 * b + k] = 0f; }
-        Mass[b] = 0f; MaxExtent[b] = 0f; MinExtent[b] = float.MaxValue;
+        Mass[b] = 0f; MaxExtent[b] = 0f; MinExtent[b] = float.MaxValue; ResetBuoyancy(b);
         LinearDamping[b] = d.LinearDamping; AngularDamping[b] = d.AngularDamping; GravityScale[b] = d.GravityScale;
         BodyFlags[b] = (byte)(d.FixedRotation ? 1 : 0);
         ShapeHead[b] = -1; ShapeTail[b] = -1;
@@ -234,6 +234,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         DropCharacterOfBody(b);
         DropVehicleOfBody(b);
         DropRagdollOfBody(b);
+        ResetBuoyancy(b);
         Core.DestroyBody(handle);
         ReconcileJoints();
         ShapeHead[b] = -1; ShapeTail[b] = -1;
@@ -536,7 +537,8 @@ internal sealed partial class Engine3D : ISnapshotSection
         bool chars = HasCharacters;
         bool vehs = HasVehicles;
         bool rags = HasRagdolls;
-        w.WriteUInt32(joints || services || chars || vehs || rags ? VersionJoints : Version);
+        bool fluids = HasFluidState();
+        w.WriteUInt32(joints || services || chars || vehs || rags || fluids ? VersionJoints : Version);
         w.WriteSingle(Opt.ContactHertz); w.WriteSingle(Opt.ContactDampingRatio); w.WriteSingle(Opt.PushOutVelocity); w.WriteSingle(Opt.RestitutionThreshold);
         w.WriteSingle(Opt.MaxLinearSpeed); w.WriteSingle(Opt.MaxRotationPerSubstep); w.WriteBool(Opt.ContinuousEnabled); w.WriteSingle(Opt.ContactSlop);
         w.WriteSingle(Opt.SpeculativeDistance);
@@ -590,15 +592,16 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         w.WriteInt32(PairFreeCount);
         w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
-        if (joints || services || chars || vehs || rags)
+        if (joints || services || chars || vehs || rags || fluids)
         {
             // Version 2: a presence-flags word, then the flagged blocks in a fixed order: joints, services (layers, filters, sensors), characters.
-            w.WriteUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u) | (chars ? BlockCharacters : 0u) | (vehs ? BlockVehicles : 0u) | (rags ? BlockRagdolls : 0u));
+            w.WriteUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u) | (chars ? BlockCharacters : 0u) | (vehs ? BlockVehicles : 0u) | (rags ? BlockRagdolls : 0u) | (fluids ? BlockFluids : 0u));
             if (joints) { WriteJoints(w); }
             if (services) { WriteServices(w, ns); }
             if (chars) { WriteCharacters(w); }
             if (vehs) { WriteVehicles(w); }
             if (rags) { WriteRagdolls(w); }
+            if (fluids) { WriteFluids(w); }
         }
     }
 
@@ -714,10 +717,11 @@ internal sealed partial class Engine3D : ISnapshotSection
         CharacterBlock? characters = null;
         VehicleBlock? vehicles = null;
         RagdollBlock? ragdolls = null;
+        FluidBlock? fluidBlock = null;
         if (v == VersionJoints)
         {
             uint flags = r.ReadUInt32();
-            if (flags == 0 || (flags & ~(BlockJoints | BlockServices | BlockCharacters | BlockVehicles | BlockRagdolls)) != 0) { throw r.Error("invalid 3D section block flags " + flags.ToString(CultureInfo.InvariantCulture)); }
+            if (flags == 0 || (flags & ~(BlockJoints | BlockServices | BlockCharacters | BlockVehicles | BlockRagdolls | BlockFluids)) != 0) { throw r.Error("invalid 3D section block flags " + flags.ToString(CultureInfo.InvariantCulture)); }
             if ((flags & BlockJoints) != 0) { joints = ReadJoints(r); }
             if ((flags & BlockServices) != 0)
             {
@@ -742,6 +746,8 @@ internal sealed partial class Engine3D : ISnapshotSection
                 ragdolls = ReadRagdolls(r, nb);
                 if (ragdolls.Handles.Count == 0) { throw r.Error("a ragdolls block holding no ragdolls"); }
             }
+
+            if ((flags & BlockFluids) != 0) { fluidBlock = ReadFluids(r, nb); }
         }
 
         // A constraint belongs to at most one chain, once (a repeated id would make a cycle that the writer and the solver would walk forever).
@@ -787,6 +793,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         CommitCharacters(characters);
         CommitVehicles(vehicles);
         CommitRagdolls(ragdolls);
+        CommitFluids(fluidBlock);
         if (joints != null) { Opt.JointHertz = _pendingJointHertz; Opt.JointDampingRatio = _pendingJointDamping; }
         Joints = joints ?? new JointData3D[16];
         JointForce = new float[Joints.Length]; JointTorque = new float[Joints.Length];
@@ -806,7 +813,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || GeomOf.Length < shapes.HighWater) { return false; }
         var cons = Core.Constraints;
-        if (!JointsConsistentWithCore() || !CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent()) { return false; }
+        if (!JointsConsistentWithCore() || !CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent() || !FluidsConsistent()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)
         {
             if (!shapes.Handles.IsLive(s)) { continue; }

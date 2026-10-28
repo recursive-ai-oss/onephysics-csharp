@@ -42,6 +42,8 @@ internal static class Program
         ["world3d-vehicle-snapshot"] = FuzzVehicles3D.SnapshotTarget,
         ["world3d-ragdolls"] = FuzzRagdolls3D.Run,
         ["world3d-ragdoll-snapshot"] = FuzzRagdolls3D.SnapshotTarget,
+        ["world3d-fluids"] = FuzzFluids3D.Run,
+        ["world3d-fluid-snapshot"] = FuzzFluids3D.SnapshotTarget,
     };
 
     private static int Main(string[] args)

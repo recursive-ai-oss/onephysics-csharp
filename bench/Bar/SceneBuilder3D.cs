@@ -70,6 +70,12 @@ public static class SceneBuilder3D
                 vehicles.Add((world.AddVehicle(bodies[i], P3.VehicleDef.Car), ob.Vehicle, i));
             }
         }
+        // param fluid <surface y> <density> <flow x y z>: water filling everything below y.
+        if (s.Params.TryGetValue("fluid", out var fl))
+        {
+            double D(int k) => double.Parse(fl[k], System.Globalization.CultureInfo.InvariantCulture);
+            world.AddWater(D(0), (float)D(1), new Vector3F((float)D(2), (float)D(3), (float)D(4)));
+        }
         drives = new List<(P3.Joint, JointDef)>();
         foreach (var j in s.Joints)
         {
