@@ -187,7 +187,8 @@ public sealed class ConstraintStore
     /// <summary>Makes room for at least <paramref name="count"/> constraints at once, so a step that is about to add many does not grow every array by doubling several times.</summary>
     internal void Reserve(int count)
     {
-        if (count > Capacity) { Resize(count); }
+        // Grows by at least half again: growing to exactly the requested size copied every array (the payloads are tens of megabytes in a big pile) each time the pair count rose by one.
+        if (count > Capacity) { Resize(Math.Max(count, Capacity + (Capacity >> 1))); }
     }
 
     private void Resize(int cap)
