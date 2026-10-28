@@ -141,7 +141,16 @@ public static class Collide2D
     /// <param name="speculativeDistance">Points whose surfaces are farther apart than this are dropped (default <see cref="Constants2D.SpeculativeDistance"/>).</param>
     /// <returns>The manifold in A's frame, normal from A to B; empty when the shapes are farther apart than the speculative distance.</returns>
     public static Manifold2D Collide(in Shape2D a, in Shape2D b, Transform2 xfBInA, float speculativeDistance = Constants2D.SpeculativeDistance)
+        => Collide(in a, in b, xfBInA, speculativeDistance, out _);
+
+    /// <summary>
+    /// The same, also reporting how far from touching an empty result is: when the manifold has no points, <paramref name="clearance"/> is a proven lower bound on
+    /// (the distance between the two shapes minus the speculative distance), or 0 when no bound is known; it is 0 whenever the manifold has points. The caller may skip the
+    /// narrowphase for a pair until the shapes have moved relative to each other by that much, since no point can appear before then.
+    /// </summary>
+    internal static Manifold2D Collide(in Shape2D a, in Shape2D b, Transform2 xfBInA, float speculativeDistance, out float clearance)
     {
+        clearance = 0f;
         if (a._count == 0 || b._count == 0 || !xfBInA.IsFinite || !(speculativeDistance >= 0f) || !float.IsFinite(speculativeDistance)) { return default; }
         if (a._kind == ShapeKind2D.ChainSegment)
         {
@@ -168,7 +177,7 @@ public static class Collide2D
             float len = d.Length;
             Vec2 n = len > 1e-12f ? d * (1f / len) : new Vec2(0f, 1f);
             float sep = len - (a._radius + b._radius);
-            if (sep > speculativeDistance) { return default; }
+            if (sep > speculativeDistance) { clearance = sep - speculativeDistance; return default; }
             Vec2 mid = 0.5f * ((ca + a._radius * n) + (cb - b._radius * n));
             return new Manifold2D(n, 1, new ManifoldPoint2D(mid, sep, 0), default);
         }
@@ -177,7 +186,7 @@ public static class Collide2D
         Poly.LoadTransformed(ref pb, in b, xfBInA);
         var va = new PolyView(in a);
         var vb = new PolyView(in pb);
-        return Convex(in va, in vb, speculativeDistance, false);
+        return Convex(in va, in vb, speculativeDistance, false, false, out clearance);
     }
 
     private static uint SwapId(uint id) => ((id & 0xFFu) << 8) | ((id >> 8) & 0xFFu);
@@ -189,8 +198,9 @@ public static class Collide2D
     // Largest over the reference faces of the smallest distance from the face plane to the other core's vertices; ties go to the lowest face index.
     // A face that already separates the shapes by more than the radii plus the margin settles the pair: the answer is then +infinity, which the caller reads as "too far apart".
     // The caller's own test is best - rT > margin and best is at least this face's value, so stopping early cannot change a result.
-    private static float FindMaxSeparation(in PolyView r, in PolyView o, int faces, float rT, float margin, out int edge)
+    private static float FindMaxSeparation(in PolyView r, in PolyView o, int faces, float rT, float margin, out int edge, out float bound)
     {
+        bound = 0f;
         float best = -float.MaxValue;
         edge = 0;
         ReadOnlySpan<Vec2> rv = r.V, rn = r.Nm;
@@ -210,11 +220,11 @@ public static class Collide2D
                     if (s < min) { min = s; }
                 }
 
-                if (min - rT > margin) { return float.PositiveInfinity; }
+                if (min - rT > margin) { bound = min; return float.PositiveInfinity; }
                 if (min > best) { best = min; edge = i; }
             }
 
-            return best;
+            bound = best; return best;
         }
 
         // The other core's points as x and y lanes, four per vector; lanes past the count are masked out of the minimum. Every lane computes
@@ -265,15 +275,16 @@ public static class Collide2D
             m = Vector128.ConditionalSelect(Vector128.LessThan(sw, m), sw, m);
             float min = m.ToScalar();
 
-            if (min - rT > margin) { return float.PositiveInfinity; }
+            if (min - rT > margin) { bound = min; return float.PositiveInfinity; }
             if (min > best) { best = min; edge = i; }
         }
 
-        return best;
+        bound = best; return best;
     }
 
-    private static Manifold2D Convex(in PolyView pa, in PolyView pb, float margin, bool onlyFace0OfA, bool forceReferenceA = false)
+    private static Manifold2D Convex(in PolyView pa, in PolyView pb, float margin, bool onlyFace0OfA, bool forceReferenceA, out float clearance)
     {
+        clearance = 0f;
         float rT = pa.R + pb.R;
         if (pa.N == 1 && pb.N == 1)
         {
@@ -281,18 +292,20 @@ public static class Collide2D
             float len = d.Length;
             Vec2 n = len > 1e-12f ? d * (1f / len) : new Vec2(0f, 1f);
             float sep = len - rT;
-            if (sep > margin) { return default; }
+            if (sep > margin) { clearance = sep - margin; return default; }
             Vec2 mid = 0.5f * ((pa.V[0] + pa.R * n) + (pb.V[0] - pb.R * n));
             return new Manifold2D(n, 1, new ManifoldPoint2D(mid, sep, 0), default);
         }
 
-        float sepA = -float.MaxValue, sepB = -float.MaxValue;
+        // A face value is the distance from the face plane to the nearest point of the other core, so (value - radii) bounds the gap between the shapes from below once it is positive.
+        float sepA = -float.MaxValue, sepB = -float.MaxValue, boundA = 0f, boundB = 0f;
         int edgeA = 0, edgeB = 0;
-        if (pa.N >= 2) { sepA = FindMaxSeparation(in pa, in pb, onlyFace0OfA ? 1 : pa.N, rT, margin, out edgeA); }
-        if (float.IsPositiveInfinity(sepA)) { return default; }
-        if (pb.N >= 2) { sepB = FindMaxSeparation(in pb, in pa, pb.N, rT, margin, out edgeB); }
+        if (pa.N >= 2) { sepA = FindMaxSeparation(in pa, in pb, onlyFace0OfA ? 1 : pa.N, rT, margin, out edgeA, out boundA); }
+        if (float.IsPositiveInfinity(sepA)) { clearance = boundA - rT - margin; return default; }
+        if (pb.N >= 2) { sepB = FindMaxSeparation(in pb, in pa, pb.N, rT, margin, out edgeB, out boundB); }
+        if (float.IsPositiveInfinity(sepB)) { clearance = boundB - rT - margin; return default; }
         float best = sepA > sepB ? sepA : sepB;
-        if (best - rT > margin) { return default; }
+        if (best - rT > margin) { clearance = best - rT - margin; return default; }
 
         bool flip = pa.N < 2 || (!forceReferenceA && pb.N >= 2 && sepB > sepA + FlipTolerance);
         return flip ? Face(in pb, in pa, edgeB, sepB, true, margin) : Face(in pa, in pb, edgeA, sepA, false, margin);
@@ -455,7 +468,7 @@ public static class Collide2D
         pa.Nm[1] = -n;
         var pb = Poly.From(in other, xf);
         var va = new PolyView(in pa); var vb = new PolyView(in pb);
-        Manifold2D m = Convex(in va, in vb, margin, true);
+        Manifold2D m = Convex(in va, in vb, margin, true, false, out _);
         if (m.PointCount == 0) { return m; }
         Manifold2D f = FilterGhosts(in m, p1, p2, g2, has1, has2, n);
         if (f.PointCount == 0)
@@ -463,7 +476,7 @@ public static class Collide2D
             // The other shape's own face was the minimum-translation axis, but it only touches the segment's end vertices with a normal a smooth surface
             // could not produce (a tilted body whose corner has sunk through the line of the segment, with the joint poking into its face).
             // Resolve it against the segment's face instead.
-            Manifold2D alt = Convex(in va, in vb, margin, true, true);
+            Manifold2D alt = Convex(in va, in vb, margin, true, true, out _);
             if (alt.PointCount > 0) { f = FilterGhosts(in alt, p1, p2, g2, has1, has2, n); }
         }
 

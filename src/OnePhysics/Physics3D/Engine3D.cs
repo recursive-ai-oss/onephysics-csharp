@@ -49,6 +49,8 @@ internal sealed partial class Engine3D : ISnapshotSection
     public float[] WInvI = new float[48];         // inverse inertia in world axes, refreshed whenever a body turns
     public float[] Wide = Array.Empty<float>();   // contact solver groups, one per batch (see W3D)
     public int[] WideIdx = Array.Empty<int>();
+    public float[] WideJ = Array.Empty<float>();   // point-joint solver groups, one per batch (see J3D)
+    public int[] WideJIdx = Array.Empty<int>();
     public int[] SlotOf = Array.Empty<int>();     // constraint -> group * 8 + lane for this step, -1 when not in a group
     public int KernelWidth = KernelWidthChoice.Default; // lanes per kernel run; results are the same at every width
 
@@ -478,6 +480,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         }
 
         PairA[p] = a; PairB[p] = b; PairCons[p] = -1; PairLive[p] = true;
+        if (p < _skip.Length) { _skip[p].Clear = 0f; }
         PairMap.Add(PairKey(a, b), p);
         return p;
     }
@@ -777,6 +780,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         Joints = joints ?? new JointData3D[16];
         JointForce = new float[Joints.Length]; JointTorque = new float[Joints.Length];
         _needBind = true;
+        _skip = new SkipFrame3[8];
         PairMap.Clear();
         for (int p = 0; p < np; p++)
         {

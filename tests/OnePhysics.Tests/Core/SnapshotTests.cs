@@ -191,5 +191,5 @@ public class SnapshotTests
         Assert.Equal(GoldenHash, scene.World.ComputeHash());
     }
 
-    private const ulong GoldenHash = 11996105962752397070UL;
+    private const ulong GoldenHash = 918517127736045633UL;
 }

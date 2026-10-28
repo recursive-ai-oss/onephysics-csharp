@@ -128,6 +128,7 @@ internal sealed partial class Engine2D
         // 4. Pairs that need a fresh manifold: at least one body awake (or a kinematic body in motion).
         int need = (PairHigh + 1023) / 1024 * 1024;
         if (_updateList.Length < need) { _updateList = new int[Math.Max(need, _updateList.Length * 2)]; _results = new PairResult[_updateList.Length]; _actItems = new int[_updateList.Length]; }
+        if (_skip.Length < PairHigh) { Array.Resize(ref _skip, Math.Max(PairHigh, _skip.Length * 2)); }
         if (_actCounts.Length < need / 64) { _actCounts = new int[Math.Max(need / 64, _actCounts.Length * 2)]; _recycledCounts = new int[_actCounts.Length]; }
         var owner = world.Shapes.Owner;
         int listBlocks = (PairHigh + 1023) / 1024;
@@ -420,6 +421,9 @@ internal sealed partial class Engine2D
         var lcA = new Vec2(LocalCenter[2 * ba], LocalCenter[2 * ba + 1]); var lcB = new Vec2(LocalCenter[2 * bb], LocalCenter[2 * bb + 1]);
         double pAx = pos[2 * ba], pAy = pos[2 * ba + 1], pBx = pos[2 * bb], pBy = pos[2 * bb + 1];
         int existing = PairCons[p];
+        // A pair without a manifold whose last narrowphase proved the shapes apart by more than the speculative distance stays empty until they have moved that far toward each other.
+        ref SkipFrame skip = ref _skip[p];
+        if (existing < 0 && skip.Clear > 0f && StillApart(in skip, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy), LocalCenter[2 * bb], LocalCenter[2 * bb + 1], MaxExtent[bb])) { return; }
         if (RecycleManifolds && existing >= 0 && TryRecycle(existing, sa, sb, bb, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy), ref res))
         {
             // A recycled manifold only rewrites the pair's own payload, and nothing in the serial stage can remove it, so it is written here, in parallel, instead of going through the result list.
@@ -433,9 +437,24 @@ internal sealed partial class Engine2D
         double dx = (pBx - (double)wB.X) - (pAx - (double)wA.X);
         double dy = (pBy - (double)wB.Y) - (pAy - (double)wA.Y);
         var xf = Transform2.InvMul(new Transform2(default, qA), new Transform2(new Vec2((float)dx, (float)dy), qB));
-        var m = Collide2D.Collide(in Geom[sa], in Geom[sb], xf, Constants2D.SpeculativeDistance);
+        var m = Collide2D.Collide(in Geom[sa], in Geom[sb], xf, Constants2D.SpeculativeDistance, out float clearance);
         res.Count = m.PointCount;
-        if (m.PointCount == 0) { return; }
+        if (m.PointCount == 0)
+        {
+            if (existing < 0 && clearance > 0f)
+            {
+                float cA = qA.C, sA = qA.S, cB = qB.C, sB = qB.S;
+                float fdx = (float)(pBx - pAx), fdy = (float)(pBy - pAy);
+                skip.X = cA * fdx + sA * fdy; skip.Y = cA * fdy - sA * fdx;
+                skip.C = cA * cB + sA * sB; skip.S = cA * sB - sA * cB;
+                skip.Clear = clearance;
+            }
+            else { skip.Clear = 0f; }
+
+            return;
+        }
+
+        skip.Clear = 0f;
 
         Vec2 n = qA.Rotate(m.Normal);
         res.Nx = n.X; res.Ny = n.Y;
@@ -449,6 +468,36 @@ internal sealed partial class Engine2D
             if (k == 0) { res.RAx0 = ra.X; res.RAy0 = ra.Y; res.RBx0 = rb.X; res.RBy0 = rb.Y; res.Sep0 = mp.Separation; res.Id0 = mp.Id; }
             else { res.RAx1 = ra.X; res.RAy1 = ra.Y; res.RBx1 = rb.X; res.RBy1 = rb.Y; res.Sep1 = mp.Separation; res.Id1 = mp.Id; }
         }
+
+        // A pair that already has its constraint writes the fresh manifold right here, while the payload is still in cache from the recycle test: the serial stage can only wake bodies for it,
+        // never remove or move it. Pairs without a constraint (and runs with a user mixer, and sensors) write after the serial stage.
+        if (existing >= 0 && Opt.MaterialMixer == null && !IsSensor(sa) && !IsSensor(sb))
+        {
+            WriteManifold(Core.Constraints, existing, sa, sb, in res);
+            res.Status = 4;
+        }
+    }
+
+    // The pose of B in A's frame when a pair last had no points, and how far apart (beyond the speculative distance) the shapes were proved to be then.
+    private struct SkipFrame
+    {
+        public float X, Y, C, S, Clear;
+    }
+
+    private SkipFrame[] _skip = new SkipFrame[8];
+
+    // Whether a pair recorded as apart still is. Every point of B's shape moves, relative to A, by at most the move of B's origin plus the chord of the turn times the point's distance from that origin
+    // (the turn's cosine is the product of the two stored and current rotations, so no angle is needed). The slack covers float rounding of the relative pose, which grows with its size.
+    private static bool StillApart(in SkipFrame f, Rot2 qA, Rot2 qB, float dx, float dy, float lcx, float lcy, float extent)
+    {
+        float cA = qA.C, sA = qA.S;
+        float ex = cA * dx + sA * dy - f.X, ey = cA * dy - sA * dx - f.Y;
+        float dc = (cA * qB.C + sA * qB.S) * f.C + (cA * qB.S - sA * qB.C) * f.S;
+        float turn = 2f * (1f - dc);
+        float radius = float.Sqrt(lcx * lcx + lcy * lcy) + extent;
+        float slack = 0.001f + 1e-6f * (float.Abs(dx) + float.Abs(dy) + radius);
+        float used = float.Sqrt(ex * ex + ey * ey) + float.Sqrt(turn > 0f ? turn : 0f) * radius + slack;
+        return used <= f.Clear; // false for NaN
     }
 
     private void WriteManifold(ConstraintStore cs, int c, int sa, int sb, in PairResult res)

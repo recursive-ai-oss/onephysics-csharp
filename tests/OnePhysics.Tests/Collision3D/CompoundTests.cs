@@ -706,4 +706,21 @@ public class CompoundTests
         c.WriteBvh(w);
         return w.ToArray();
     }
+
+    [Fact]
+    public void LongRayPassingBesideAFarSphereMissesLikeItsBounds()
+    {
+        // A ray 1.6 million long passing 0.12 outside a sphere 288 thousand away: the cast's tolerance scales with distance and used to report a hit the tree rightly skipped.
+        ConvexShape3D s = ConvexShape3D.Sphere(1.78125f);
+        RigidTransformF at = At(-1.59375f, 288184.75f, -2.65625f);
+        var origin = new Vector3F(1.1875f, -4.625f, -3.0625f);
+        var dir = new Vector3F(-4.9375f, 1619984.2f, 2.875f);
+        Assert.False(Gjk3D.RayCast(s, at, origin, dir, 0.6328125f, out _));
+        Assert.False(Compound3D.Create(new[] { new CompoundChild3D(s, at) }).RayCast(origin, dir, 0.6328125f, out _));
+
+        // The same ray aimed at the centre still hits, with the entry fraction of the exact answer.
+        Vector3F aim = new Vector3F(-1.59375f - 1.1875f, 288184.75f + 4.625f, -2.65625f + 3.0625f) / 0.17792f;
+        Assert.True(Gjk3D.RayCast(s, at, origin, aim, 0.6328125f, out ConvexCastHit3D hit));
+        Near(0.17792 - 1.78125 / aim.Length(), hit.Fraction, 1e-3);
+    }
 }
