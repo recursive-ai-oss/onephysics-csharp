@@ -128,7 +128,7 @@ internal static class Fuzz3DWorld
         }
     }
 
-    private static bool Allowed(Exception e) => e is ArgumentException || e is PhysicsException;
+    private static bool Allowed(Exception e) => e is ArgumentException || e is PhysicsException || e is RecursiveAI.OnePhysics.Collision3D.StaticOnlyShapeException;
 
     public static void DefsTarget(byte[] data)
     {
