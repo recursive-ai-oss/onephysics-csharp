@@ -101,7 +101,7 @@ internal sealed partial class Engine2D
 
     private int[] _updateList = new int[64];
     private PairResult[] _results = new PairResult[64];
-    private int _updateCount;
+    private int _collideBlocks;
 
     // ------------------------------------------------------------------ contact stage
 
@@ -167,24 +167,15 @@ internal sealed partial class Engine2D
         if (_updateList.Length < need) { _updateList = new int[Math.Max(need, _updateList.Length * 2)]; _results = new PairResult[_updateList.Length]; _actItems = new int[_updateList.Length]; }
         if (_actCounts.Length < need / 64) { _actCounts = new int[Math.Max(need / 64, _actCounts.Length * 2)]; _recycledCounts = new int[_actCounts.Length]; }
         var owner = world.Shapes.Owner;
-        int listBlocks = (PairHigh + 1023) / 1024;
-        if (_blockCounts.Length < listBlocks) { _blockCounts = new int[Math.Max(listBlocks, _blockCounts.Length * 2)]; }
-        world.Executor.For(listBlocks, new UpdateListTask(this, anyFresh));
-        // Each block wrote its pairs at the start of its own 1024 slots, in pair order; closing the gaps in block order gives the list a single serial loop would have built.
-        _updateCount = 0;
+        // 5. Manifolds, in parallel, in blocks of 64 pair slots: a block picks its pairs that need updating and computes them in the same pass, writing its own part of the lists and results
+        // (entry i of the sparse list is slot block * 64 + k for the block's k-th pair to update), so a pair's records are read once. Walking the blocks in order walks the pairs in pair order.
+        int chunks = (PairHigh + 63) / 64;
+        if (_blockCounts.Length < chunks) { _blockCounts = new int[Math.Max(chunks, _blockCounts.Length * 2)]; }
+        _collideBlocks = chunks;
+        world.Executor.For(chunks, new CollideTask(this, anyFresh));
         RecycledCount = 0;
-        for (int k = 0; k < listBlocks; k++)
-        {
-            int n = _blockCounts[k];
-            if (n > 0 && _updateCount != k * 1024) { Array.Copy(_updateList, k * 1024, _updateList, _updateCount, n); }
-            _updateCount += n;
-        }
-
-        if (anyFresh) { Array.Clear(_fresh, 0, Math.Min(PairHigh, _fresh.Length)); }
-        // 5. Manifolds, in parallel; each task writes only its own results.
-        int chunks = (_updateCount + 63) / 64;
-        world.Executor.For(chunks, new CollideTask(this));
         for (int t = 0; t < chunks; t++) { RecycledCount += _recycledCounts[t]; }
+        if (anyFresh) { Array.Clear(_fresh, 0, Math.Min(PairHigh, _fresh.Length)); }
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Apply);
 #endif
@@ -253,7 +244,7 @@ internal sealed partial class Engine2D
             if (res.Status != 4) { res.Status = 3; } // 3: a manifold to write into the pair's constraint; 4: a recycled one already written
         }
         if (Opt.MaterialMixer != null) { new WriteTask(this).RunAll(); } // a user mixer runs serially, in pair order
-        else { world.Executor.For((_updateCount + 63) / 64, new WriteTask(this)); }
+        else { world.Executor.For(_collideBlocks, new WriteTask(this)); }
     }
 
     private Shape WrapShape(int slot) => new(World!, Core.HandleOfShape(slot));
@@ -268,22 +259,26 @@ internal sealed partial class Engine2D
 
     private readonly struct CollideTask : IParallelBody
     {
-        private readonly Engine2D _e;
+        private readonly Engine2D _e; private readonly bool _anyFresh;
 
-        public CollideTask(Engine2D e) => _e = e;
+        public CollideTask(Engine2D e, bool anyFresh) { _e = e; _anyFresh = anyFresh; }
 
         public void Run(int task)
         {
             var e = _e;
-            int lo = task * 64, hi = Math.Min(lo + 64, e._updateCount);
+            int lo = task * 64, hi = Math.Min(lo + 64, e.PairHigh);
             ReadOnlySpan<BodyHot> hot = e.Hot;
-            int acts = 0, recycled = 0;
-            for (int i = lo; i < hi; i++)
+            int acts = 0, recycled = 0, listed = 0;
+            for (int p = lo; p < hi; p++)
             {
-                int p = e._updateList[i];
                 ref Pair2D pr = ref e.Pairs[p];
+                if (!pr.Live) { continue; }
                 e.Ready(ref pr);
                 int flags = hot[pr.BodyA].Flags | hot[pr.BodyB].Flags;
+                // A pair needs a fresh manifold when a body is awake (or a kinematic body is moving), or when it was just found and has a sensor.
+                if ((flags & BodyHot.Active) == 0 && !(_anyFresh && e._fresh[p])) { continue; }
+                int i = lo + listed++;
+                e._updateList[i] = p;
                 bool act;
                 if (e.Collide(i, ref pr, hot))
                 {
@@ -315,6 +310,7 @@ internal sealed partial class Engine2D
                 if (act) { e._actItems[task * 64 + acts++] = i; }
             }
 
+            e._blockCounts[task] = listed;
             e._actCounts[task] = acts;
             e._recycledCounts[task] = recycled;
         }
@@ -367,30 +363,6 @@ internal sealed partial class Engine2D
         }
     }
 
-    private readonly struct UpdateListTask : IParallelBody
-    {
-        private readonly Engine2D _e; private readonly bool _anyFresh;
-
-        public UpdateListTask(Engine2D e, bool anyFresh) { _e = e; _anyFresh = anyFresh; }
-
-        public void Run(int block)
-        {
-            var e = _e;
-            ReadOnlySpan<BodyHot> hot = e.Hot;
-            int lo = block * 1024, hi = Math.Min(lo + 1024, e.PairHigh);
-            int n = 0;
-            for (int p = lo; p < hi; p++)
-            {
-                ref Pair2D pr = ref e.Pairs[p];
-                if (!pr.Live) { continue; }
-                e.Ready(ref pr);
-                if (((hot[pr.BodyA].Flags | hot[pr.BodyB].Flags) & BodyHot.Active) != 0 || (_anyFresh && e._fresh[p])) { e._updateList[lo + n++] = p; }
-            }
-
-            e._blockCounts[block] = n;
-        }
-    }
-
     private readonly struct BoxTask : IParallelBody
     {
         private readonly Engine2D _e; private readonly int[] _list; private readonly int _count;
@@ -435,13 +407,13 @@ internal sealed partial class Engine2D
 
         public WriteTask(Engine2D e) => _e = e;
 
-        public void RunAll() { for (int t = 0; t < (_e._updateCount + 63) / 64; t++) { Run(t); } }
+        public void RunAll() { for (int t = 0; t < _e._collideBlocks; t++) { Run(t); } }
 
         public void Run(int task)
         {
             var e = _e;
             var cs = e.Core.Constraints;
-            int lo = task * 64, hi = Math.Min(lo + 64, e._updateCount);
+            int lo = task * 64, hi = lo + e._blockCounts[task];
             for (int i = lo; i < hi; i++)
             {
                 ref PairResult res = ref e._results[i];
