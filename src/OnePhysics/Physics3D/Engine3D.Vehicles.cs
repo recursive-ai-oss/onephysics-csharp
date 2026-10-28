@@ -12,6 +12,14 @@ internal sealed class VehicleState
     public int Body, BodyGen;
     public VehicleDef Def = new();
 
+    // Controller kind and its parameters (null for the kind that does not use them). A tracked vehicle's wheels are the left track's followed by the right track's.
+    public VehicleKind Kind;
+    public TrackedVehicleDef? Track;
+    public MotorcycleDef? Bike;
+    public int TrackLeft;
+    public float BrakeLeft, BrakeRight;   // tracked: brake input per track this step (not saved: set by the drive every step)
+    public float Lean, LeanTarget, LeanIntegral;   // motorcycle: measured and wanted lean, radians (positive to the right)
+
     // Inputs of the last Drive call.
     public float Forward, Right, Brake, Handbrake;
 
@@ -86,13 +94,15 @@ internal sealed partial class Engine3D
 
     private bool HasVehicles => VehHandles.Count > 0;
 
-    public int CreateVehicle(BodyHandle body, VehicleDef def)
+    public int CreateVehicle(BodyHandle body, VehicleDef def, TrackedVehicleDef? track = null, MotorcycleDef? bike = null)
     {
         int b = Core.Resolve(body);
         if (Core.Bodies.TypeOf(b) != BodyType.Dynamic) { throw new ArgumentException("A vehicle's chassis must be a dynamic body.", nameof(body)); }
         if (VehicleOfBody(b) >= 0) { throw new PhysicsException("The body already carries a vehicle."); }
         def.Validate();
         var s = new VehicleState { Body = body.Index, BodyGen = body.Generation, Def = def.Clone() };
+        if (track != null) { s.Kind = VehicleKind.Tracked; s.Track = track.Clone(); s.TrackLeft = track.LeftWheels.Length; }
+        else if (bike != null) { s.Kind = VehicleKind.Motorcycle; s.Bike = bike.Clone(); }
         s.Allocate();
         float mass = Mass[b];
         for (int i = 0; i < s.Wheels; i++)
@@ -231,13 +241,17 @@ internal sealed partial class Engine3D
         var fwdAxis = q.Rotate(def.Wheels[0].ForwardDirection);
         var lin0 = bodies.LinearVelocityOf(b);
         float forwardSpeed = lin0[0] * fwdAxis.X + lin0[1] * fwdAxis.Y + lin0[2] * fwdAxis.Z;
-        float brakeInput = DriveTrain(s, h, forwardSpeed);
+        float brakeInput = s.Kind == VehicleKind.Tracked ? TrackDrive(s, h) : DriveTrain(s, h, forwardSpeed);
+
+        // The balance assist reads the lean rate before the tyres kick the chassis this step, and acts before they do.
+        if (s.Kind == VehicleKind.Motorcycle) { BalanceBike(s, h, q, forwardSpeed); }
 
         // Phase 1: sweep every wheel.
         for (int i = 0; i < n; i++)
         {
             var wd = def.Wheels[i];
             float steer = s.Right * wd.MaxSteerAngle;
+            if (s.Kind == VehicleKind.Motorcycle) { steer = i == 0 ? s.Right * BikeSteerLimit(s, forwardSpeed) : 0f; }
             s.Steer[i] = steer;
             var rTop = q.Rotate(wd.Position - lc);
             var top = new Vector3D(px + rTop.X, py + rTop.Y, pz + rTop.Z);
@@ -286,15 +300,18 @@ internal sealed partial class Engine3D
         // Phase 2: forces.
         int substeps = Math.Max(1, Opt.Substeps);
         float gravityLead = h * (substeps - 1) / (2f * substeps);
-        for (int i = 0; i < n; i++)
+        for (int ii = 0; ii < n; ii++)
         {
+            // A tracked vehicle visits its wheels left, right, left, right ...: the impulses are applied one after the other, so a side-by-side order would favour one track.
+            int i = s.Kind == VehicleKind.Tracked ? InterleavedTrackWheel(s, ii) : ii;
             var wd = def.Wheels[i];
             float r = wd.Radius;
             float omega = s.Omega[i];
             float inv = 1f / wd.Inertia;
             // Wheel speed after the drive torque and the brakes; the tyre then acts on this speed (a split step that stays stable for any torque).
             float ws = omega + h * s.Torque[i] * inv;
-            float brakeT = brakeInput * wd.MaxBrakeTorque + s.Handbrake * wd.MaxHandbrakeTorque;
+            float bi = s.Kind == VehicleKind.Tracked ? (i < s.TrackLeft ? s.BrakeLeft : s.BrakeRight) : brakeInput;
+            float brakeT = bi * wd.MaxBrakeTorque + s.Handbrake * wd.MaxHandbrakeTorque;
             if (brakeT > 0f)
             {
                 float dwb = Math.Min(h * brakeT * inv, Math.Abs(ws));
@@ -381,6 +398,7 @@ internal sealed partial class Engine3D
                     if (u2 > 1f) { float iu = 1f / (float)Math.Sqrt(u2); gx *= iu; gy *= iu; }
                     float mu = (float)Math.Sqrt(tyre.Friction * Friction[groundShape]);
                     float fxw = mu * load * gx, fyw = mu * load * gy;
+                    if (s.Kind == VehicleKind.Tracked) { fyw *= s.Track!.LateralFriction; }   // a track slides sideways more easily than it grips along the belt (Wong, Theory of Ground Vehicles)
                     // Implicit limits: a force never reverses the slip velocity it acts on within the step.
                     float invL = EffInv(b, arm, ldir) + EffInv(gb, armG, ldir);
                     float invF = EffInv(b, arm, fdir) + EffInv(gb, armG, fdir);
@@ -388,6 +406,8 @@ internal sealed partial class Engine3D
                     if (Math.Abs(fyw) > maxY) { fyw = fyw < 0f ? -maxY : maxY; }
                     float maxX = Math.Abs(vsx) / (h * (invF + (locked ? 0f : r * r * inv)));
                     if (Math.Abs(fxw) > maxX) { fxw = fxw < 0f ? -maxX : maxX; }
+                    // A braked wheel passes at most what its brake can hold: a tyre force above brake torque over radius would spin the wheel forward. Cars keep the whole friction budget (a stand-in for the chassis' weight on the wheel).
+                    if (brakeT > 0f && s.Kind != VehicleKind.Wheeled) { float hold = brakeT / r; if (Math.Abs(fxw) > hold) { fxw = fxw < 0f ? -hold : hold; } }
                     s.Fx[i] = fxw; s.Fy[i] = fyw;
                     var jt = fdir * (h * fxw) + ldir * (h * fyw);
                     ApplyImpulseAtArm(b, arm, jt);
@@ -404,6 +424,8 @@ internal sealed partial class Engine3D
             s.Omega[i] = wheelOmegaAfter;
             s.Spin[i] = WrapAngle(s.Spin[i] + wheelOmegaAfter * h);
         }
+
+        if (s.Kind == VehicleKind.Tracked) { CoupleTracks(s); }
     }
 
     private static float WrapAngle(float a)

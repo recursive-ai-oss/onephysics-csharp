@@ -69,11 +69,15 @@ internal static class SmokeProgram
         ulong x1 = Vehicles3DScene.Run(1, false), x3 = Vehicles3DScene.Run(3, false), xr = Vehicles3DScene.Run(1, true);
         bool xSame = x1 == x3 && x1 == xr;
         Console.WriteLine((xSame ? "OK vehicles3d " : "FAIL vehicles3d ") + x1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        // 3D tracked vehicles and motorcycles (pivoting tank, tank on a ramp, bike in a turn, bike braking): same state on one and three threads and after a restore.
+        ulong vk1 = VehicleKinds3DScene.Run(1, false), vk3 = VehicleKinds3DScene.Run(3, false), vkr = VehicleKinds3DScene.Run(1, true);
+        bool kkSame = vk1 == vk3 && vk1 == vkr;
+        Console.WriteLine((kkSame ? "OK vehiclekinds3d " : "FAIL vehiclekinds3d ") + vk1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         // 3D ragdolls (powered at two strengths, limp, keyframed, thrown boxes): same state on one and three threads and after a restore.
         ulong d1 = Ragdolls3DScene.Run(1, false), d3 = Ragdolls3DScene.Run(3, false), dr = Ragdolls3DScene.Run(1, true);
         bool dSame = d1 == d3 && d1 == dr;
         Console.WriteLine((dSame ? "OK ragdolls3d " : "FAIL ragdolls3d ") + d1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
-        return ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && dSame ? 0 : 1;
+        return ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame ? 0 : 1;
     }
 
     private static ulong World2DJoints(int threads, bool restoreHalfway)

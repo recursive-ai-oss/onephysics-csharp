@@ -66,8 +66,14 @@ public static class SceneBuilder3D
             foreach (var sh in ob.Shapes) CreateShape(world, bodies[i], sh, s);
             if (ob.Vehicle != null)
             {
-                if (ob.Vehicle.Preset != "car") throw new InvalidDataException("unknown vehicle preset " + ob.Vehicle.Preset);
-                vehicles.Add((world.AddVehicle(bodies[i], P3.VehicleDef.Car), ob.Vehicle, i));
+                var vehicle = ob.Vehicle.Preset switch
+                {
+                    "car" => world.AddVehicle(bodies[i], P3.VehicleDef.Car),
+                    "tank" => world.AddVehicle(bodies[i], P3.TrackedVehicleDef.Tank),
+                    "bike" => world.AddVehicle(bodies[i], P3.MotorcycleDef.Road),
+                    _ => throw new InvalidDataException("unknown vehicle preset " + ob.Vehicle.Preset),
+                };
+                vehicles.Add((vehicle, ob.Vehicle, i));
             }
         }
         // param fluid <surface y> <density> <flow x y z>: water filling everything below y.

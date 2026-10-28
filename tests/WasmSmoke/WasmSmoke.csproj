@@ -16,6 +16,7 @@
     <Compile Include="../Common/Services3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Characters3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Vehicles3DScene.cs" LinkBase="Common" />
+    <Compile Include="../Common/VehicleKinds3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Ragdolls3DScene.cs" LinkBase="Common" />
     <Compile Include="../OnePhysics.Tests/Collision3D/Collision3DHash.cs" LinkBase="Common" />
     <Compile Include="../OnePhysics.Tests/Collision3D/TestRng.cs" LinkBase="Common" />
