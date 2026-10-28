@@ -78,11 +78,11 @@ public sealed class TaskExecutor
         int workers = ThreadCount - 1;
         if (workers > 0 && mostTasks >= MinParallelTasks)
         {
-            // Every thread crosses every stage boundary, so threads beyond what the stages can keep busy only add waiting: take as many as there are two tasks each in the average stage.
+            // Every thread crosses every stage boundary, so threads beyond what the stages can keep busy only add waiting: take as many as there is one task each in the average stage.
             // This looks at the stage sizes alone; which thread runs which task never reaches a result.
             long total = 0;
             for (int s = 0; s < stageCount; s++) { total += body.TaskCount(s); }
-            long useful = total / (2L * stageCount);
+            long useful = total / stageCount;
             if (useful - 1 < workers) { workers = (int)Math.Max(useful - 1, 0); }
         }
 

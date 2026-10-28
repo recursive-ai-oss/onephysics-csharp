@@ -821,7 +821,9 @@ public sealed class WorldCore
             int n = _coloring.Color(color).Length;
             if (n == 0) { continue; }
             int batches = (n + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
-            AddStage(StageColor, (int)phase | (color << 8), (batches + ConstraintColoring.BatchesPerTask - 1) / ConstraintColoring.BatchesPerTask);
+            // One task per batch: stages are short, and a stage cut into a few multi-batch tasks leaves most threads waiting at its boundary.
+            // Batches of a color are independent, so how they are shared out cannot change a result.
+            AddStage(StageColor, (int)phase | (color << 8), batches);
         }
 
         if (reverse && _coloring.Overflow.Length > 0) { AddStage(StageOverflow, (int)phase, 1); }
@@ -857,13 +859,8 @@ public sealed class WorldCore
             {
                 int color = arg >> 8;
                 int start = w._coloring.ColorStart(color), count = w._coloring.Color(color).Length;
-                int firstBatch = task * ConstraintColoring.BatchesPerTask;
-                for (int bt = firstBatch; bt < firstBatch + ConstraintColoring.BatchesPerTask; bt++)
-                {
-                    int lo = bt * ConstraintColoring.Lanes;
-                    if (lo >= count) { break; }
-                    _s.SolveBatch(w, _list.AsSpan(start + lo, Math.Min(ConstraintColoring.Lanes, count - lo)), (SolvePhase)(arg & 0xFF), in _ctx);
-                }
+                int lo = task * ConstraintColoring.Lanes;
+                _s.SolveBatch(w, _list.AsSpan(start + lo, Math.Min(ConstraintColoring.Lanes, count - lo)), (SolvePhase)(arg & 0xFF), in _ctx);
             }
         }
     }
