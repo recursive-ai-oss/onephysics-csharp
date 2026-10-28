@@ -173,25 +173,19 @@ internal sealed partial class Engine3D
         }
 
         // 2. Start-of-step pose, zero accumulated motion and world-axes inverse inertia for every body (sleeping bodies may wake during the stage).
-        var pos = bodies.Position;
         var rot = bodies.Rotation;
         var invI = bodies.InverseInertia;
         var invMass = bodies.InverseMass;
         if (_sleepers.Length < nb) { _sleepers = new int[Math.Max(nb, _sleepers.Length * 2)]; }
         _sleeperCount = 0;
         if (_active.Length < nb) { _active = new byte[Math.Max(nb, _active.Length * 2)]; }
+        if (_isSleeper.Length < _active.Length) { _isSleeper = new byte[_active.Length]; }
+        // Each body's start pose, zeroed motion and packed row depend on that body alone, so fixed chunks of bodies run in parallel; the sleepers are then listed in body order.
+        _initCount = nb;
+        world.Executor.For((nb + BodyInitChunk - 1) / BodyInitChunk, new BodyInitTask(this));
         for (int b = 0; b < nb; b++)
         {
-            if (!bodies.IsLive(b)) { _active[b] = 0; continue; }
-            _active[b] = IsActive(bodies, b) ? (byte)1 : (byte)0;
-            StartPos[3 * b] = pos[3 * b]; StartPos[3 * b + 1] = pos[3 * b + 1]; StartPos[3 * b + 2] = pos[3 * b + 2];
-            for (int k = 0; k < 4; k++) { StartRot[4 * b + k] = rot[4 * b + k]; }
-            Dp[3 * b] = 0f; Dp[3 * b + 1] = 0f; Dp[3 * b + 2] = 0f;
-            Dq[4 * b] = 0f; Dq[4 * b + 1] = 0f; Dq[4 * b + 2] = 0f; Dq[4 * b + 3] = 1f;
-            // A sleeping body's rotation has not changed since its inertia was last refreshed, so refreshing again would give the same bits; if the stage wakes it, it is refreshed below.
-            if (bodies.IsDynamic(b) && !bodies.IsAwake(b)) { _sleepers[_sleeperCount++] = b; continue; }
-            RefreshWorldInertia(b, invMass, invI, rot);
-            PackBody(b);
+            if (_isSleeper[b] != 0) { _sleepers[_sleeperCount++] = b; }
         }
 
 #if STAGE_TIMERS
@@ -200,6 +194,8 @@ internal sealed partial class Engine3D
         // 3. New pairs from the broadphase, in its sorted order.
         var found = Bp.UpdatePairs(new PairFilter(this), world.Executor);
         bool anyFresh = false;
+        // A burst of new pairs (a stack waking, a pile landing) would otherwise rehash the table again and again.
+        if (found.Length > 64) { PairMap.EnsureCapacity(PairMap.Count + found.Length); }
         for (int i = 0; i < found.Length; i++)
         {
             int a = found[i].UserA, b = found[i].UserB;
@@ -254,6 +250,8 @@ internal sealed partial class Engine3D
             for (int i = old; i < _scratch.Length; i++) { _scratch[i] = new NarrowScratch(); }
         }
 
+        if (_applyCount.Length < chunks) { _applyCount = new int[Math.Max(chunks, _applyCount.Length * 2)]; }
+        if (_applyIdx.Length < chunks * 64) { _applyIdx = new int[Math.Max(chunks * 64, _applyIdx.Length * 2)]; }
         for (int i = 0; i < chunks; i++) { _scratch[i].OutCount = 0; }
         world.Executor.For(chunks, new CollideTask(this));
 
@@ -265,26 +263,30 @@ internal sealed partial class Engine3D
 #endif
         // 6. Apply serially in ascending pair order: this fixes the order constraints are added, which fixes their colors.
         var cs = world.Constraints;
-        for (int i = 0; i < _updateCount; i++)
+        // Only the pairs the narrowphase tasks listed need the serial pass (a box pair that is still apart and has no constraint has nothing to add, match or remove); they are visited in ascending pair order.
+        for (int ck = 0; ck < chunks; ck++)
         {
-            int p = _updateList[i];
-            if (_resStatus[i] == 2)
+            int firstSlot = ck * 64, listed = _applyCount[ck];
+            for (int j = 0; j < listed; j++)
             {
-                for (int c = PairCons[p]; c >= 0;)
+                int i = _applyIdx[firstSlot + j];
+                int p = _updateList[i];
+                if (_resStatus[i] == 2)
                 {
-                    int nx = ConsNext[c];
-                    world.RemoveConstraint(c);
-                    c = nx;
+                    for (int c = PairCons[p]; c >= 0;)
+                    {
+                        int nx = ConsNext[c];
+                        world.RemoveConstraint(c);
+                        c = nx;
+                    }
+
+                    FreePair(p);
+                    continue;
                 }
 
-                FreePair(p);
-                continue;
+                if (IsSensor(PairA[p]) || IsSensor(PairB[p])) { ApplySensorPair(world, p, _scratch[ck], _resFirst[i], _resCount[i], owner); continue; }
+                ApplyPair(world, p, _scratch[ck], _resFirst[i], _resCount[i], owner);
             }
-
-            // A pair with no points and no constraint has nothing to add, match or remove (for a sensor pair too).
-            if (_resCount[i] == 0 && PairCons[p] < 0) { continue; }
-            if (IsSensor(PairA[p]) || IsSensor(PairB[p])) { ApplySensorPair(world, p, _scratch[i >> 6], _resFirst[i], _resCount[i], owner); continue; }
-            ApplyPair(world, p, _scratch[i >> 6], _resFirst[i], _resCount[i], owner);
         }
 
         if (_deferWrite) { world.Executor.For(chunks, new WriteTask(this, cs)); }
@@ -382,6 +384,42 @@ internal sealed partial class Engine3D
     private int[] _sleepers = new int[64];
     private int _sleeperCount;
 
+    private const int BodyInitChunk = 128;
+    private byte[] _isSleeper = new byte[8];
+    private int _initCount;
+
+    private readonly struct BodyInitTask : IParallelBody
+    {
+        private readonly Engine3D _e;
+
+        public BodyInitTask(Engine3D e) => _e = e;
+
+        public void Run(int task)
+        {
+            var e = _e;
+            var bodies = e.Core.Bodies;
+            var pos = bodies.Position;
+            var rot = bodies.Rotation;
+            var invI = bodies.InverseInertia;
+            var invMass = bodies.InverseMass;
+            int lo = task * BodyInitChunk, hi = Math.Min(lo + BodyInitChunk, e._initCount);
+            for (int b = lo; b < hi; b++)
+            {
+                if (!bodies.IsLive(b)) { e._active[b] = 0; e._isSleeper[b] = 0; continue; }
+                e._active[b] = IsActive(bodies, b) ? (byte)1 : (byte)0;
+                e.StartPos[3 * b] = pos[3 * b]; e.StartPos[3 * b + 1] = pos[3 * b + 1]; e.StartPos[3 * b + 2] = pos[3 * b + 2];
+                for (int k = 0; k < 4; k++) { e.StartRot[4 * b + k] = rot[4 * b + k]; }
+                e.Dp[3 * b] = 0f; e.Dp[3 * b + 1] = 0f; e.Dp[3 * b + 2] = 0f;
+                e.Dq[4 * b] = 0f; e.Dq[4 * b + 1] = 0f; e.Dq[4 * b + 2] = 0f; e.Dq[4 * b + 3] = 1f;
+                // A sleeping body's rotation has not changed since its inertia was last refreshed, so refreshing again would give the same bits; if the stage wakes it, it is refreshed below.
+                if (bodies.IsDynamic(b) && !bodies.IsAwake(b)) { e._isSleeper[b] = 1; continue; }
+                e._isSleeper[b] = 0;
+                e.RefreshWorldInertia(b, invMass, invI, rot);
+                e.PackBody(b);
+            }
+        }
+    }
+
     private const int BoxChunk = 32;
 
     private readonly struct TightBoxTask : IParallelBody
@@ -410,6 +448,9 @@ internal sealed partial class Engine3D
             }
         }
     }
+
+    private int[] _applyIdx = new int[64];
+    private int[] _applyCount = new int[1];
 
     private const int PairListChunk = 1024;
     private int[] _pairChunkCount = new int[8];
@@ -474,7 +515,16 @@ internal sealed partial class Engine3D
         {
             int lo = task * 64, hi = Math.Min(lo + 64, _e._updateCount);
             var sc = _e._scratch[task];
-            for (int i = lo; i < hi; i++) { _e.Collide(i, sc); }
+            var e = _e;
+            int listed = 0;
+            for (int i = lo; i < hi; i++)
+            {
+                e.Collide(i, sc);
+                // Worth the serial pass: the boxes no longer overlap (the pair goes), or the pair has points or a constraint to match.
+                if (e._resStatus[i] == 2 || e._resCount[i] != 0 || e.PairCons[e._updateList[i]] >= 0) { e._applyIdx[lo + listed++] = i; }
+            }
+
+            e._applyCount[task] = listed;
         }
     }
 
