@@ -106,7 +106,7 @@ internal sealed class NarrowScratch
     public static List<SoupTriangle3D> Tris => H.Tris;
     public static List<int> Ids => H.Ids;
     public static TriangleShapeBuffer3D TriBuf => H.TriBuf;
-    public ContactOut[] Out = new ContactOut[16];
+    public ContactOut[] Out = new ContactOut[128];
     public int OutCount;
 
     public ref ContactOut Next()

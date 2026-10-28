@@ -131,6 +131,17 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     /// <summary>Number of proxies (leaves).</summary>
     public int ProxyCount => _leafCount;
 
+    /// <summary>Sizes the scratch lists of the subtree rebuilds for a tree of up to <paramref name="proxies"/> proxies, so rebuilding it never allocates.</summary>
+    internal void ReserveScratch(int proxies)
+    {
+        int nodes = 2 * proxies + 1;
+        if (_rbWalk.Length < nodes) { Array.Resize(ref _rbWalk, nodes); }
+        if (_rbRegion.Length < nodes) { Array.Resize(ref _rbRegion, nodes); }
+        if (_rbItems.Length < nodes) { Array.Resize(ref _rbItems, nodes); }
+        if (_rbCentroids.Length < nodes * TBox.Axes) { Array.Resize(ref _rbCentroids, nodes * TBox.Axes); }
+        if (_rbStack.Length < nodes + 2) { Array.Resize(ref _rbStack, nodes + 2); }
+    }
+
     /// <summary>Number of node slots ever handed out; node indices are below this.</summary>
     public int NodeSlots => _used;
 

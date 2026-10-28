@@ -643,6 +643,27 @@ public sealed class WorldCore
     private const int AwakeBlock = 2048;
     private int[] _awakeBlockCounts = new int[4];
 
+    /// <summary>
+    /// Sizes the core's per-step storage for up to <paramref name="contacts"/> constraints, <paramref name="islands"/> islands and <paramref name="bodies"/> bodies, and starts the pool threads,
+    /// so that steps within those counts allocate nothing. Never changes a result. Serial.
+    /// </summary>
+    internal void Reserve(int contacts, int islands, int bodies)
+    {
+        _constraints.Reserve(contacts);
+        _scratch.EnsureCapacity(bodies);
+        _coloring.Reserve(contacts, bodies);
+        _islands.Reserve(islands, bodies);
+        int chunks = contacts / ChunkSize + 2;
+        _events.Reserve(2 * contacts + 16, 1 + chunks, 2 * ChunkSize);
+        int awake = (Math.Max((bodies + AwakeBlock - 1) / AwakeBlock, 1)) * AwakeBlock;
+        if (_awake.Length < awake) { Array.Resize(ref _awake, awake); }
+        // Stages of one step: per substep the two integrations and a pass over every color for warm starting, each solve and each relax pass (plus the restitution pass).
+        int passes = _options.VelocityIterations + _options.RelaxIterations + 2;
+        int stages = _options.Substeps * (3 + passes * (ConstraintColoring.ColorCount + 1)) + 8;
+        if (_stageKind.Length < stages) { Array.Resize(ref _stageKind, stages); Array.Resize(ref _stageArg, stages); Array.Resize(ref _stageTasks, stages); }
+        Executor.Reserve(stages);
+    }
+
     private void BuildAwakeBodies()
     {
         int n = _bodies.HighWater;

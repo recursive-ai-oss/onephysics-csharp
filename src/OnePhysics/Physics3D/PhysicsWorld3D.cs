@@ -28,6 +28,51 @@ public sealed partial class PhysicsWorld3D
         _engine = new Engine3D(_core, bp, o) { World = this };
         _core.AddSection(bp);
         _core.AddSection(_engine);
+        if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
+    }
+
+    // Sizes the storage to the capacity options, and to a multiple of the body count where an option is 0 and Warmup asked for a default.
+    private void ReserveCapacity(bool defaults = false)
+    {
+        var o = _engine.Opt;
+        int bodies = Math.Max(_core.Bodies.HighWater, 1), shapes = Math.Max(_core.Shapes.HighWater, 1);
+        int pairs = o.PairCapacity > 0 ? o.PairCapacity : defaults ? Math.Max(8 * bodies, 64) : 0;
+        int contacts = o.ContactCapacity > 0 ? o.ContactCapacity : defaults ? Math.Max(6 * bodies, 64) : 0;
+        int islands = o.IslandCapacity > 0 ? o.IslandCapacity : defaults ? Math.Max(bodies, 16) : 0;
+        // Pool threads started from here on prepare their narrowphase scratch before their first step.
+        WorkerPool.ThreadInit = Engine3D.PrepareThread;
+        _core.Reserve(contacts, islands, bodies);
+        _engine.Reserve(pairs, contacts, bodies, shapes);
+        // The public contact events are built from the core's every step.
+        _pairIndex.EnsureCapacity(contacts + 16);
+        if (_aggs.Length < contacts + 16) { Array.Resize(ref _aggs, contacts + 16); }
+        if (_publicEvents.Length < 2 * contacts + 16) { Array.Resize(ref _publicEvents, 2 * contacts + 16); }
+    }
+
+    /// <summary>
+    /// Gets the world ready for allocation-free steps: sizes the storage to <see cref="WorldOptions3D.PairCapacity"/>, <see cref="WorldOptions3D.ContactCapacity"/> and <see cref="WorldOptions3D.IslandCapacity"/>
+    /// (eight pairs, six contacts and one island per body where an option is 0, and never less than the world holds now), starts the worker threads, makes the calling thread's query scratch
+    /// (<see cref="WorldOptions3D.QueryScratchCapacity"/>), and runs the hash, snapshot and restore paths once. Call it after the bodies exist, from the thread that will run queries.
+    /// Steps, queries, <see cref="ComputeHash"/>, <see cref="TrySnapshot"/> and <see cref="Restore(ReadOnlySpan{byte})"/> then allocate nothing while the world stays within those counts and the calling thread does the querying.
+    /// The world's state, events and results are unchanged (the snapshot round trip restores exactly what it saved; no callback runs). Allocates.
+    /// </summary>
+    public void Warmup() => WarmupCore(true);
+
+    private void WarmupCore(bool prime)
+    {
+        if (prime) { PrimeProcess(_engine.Opt.ThreadCount); }
+        ReserveCapacity(true);
+        QueryScratch.Warm(_engine.Opt.QueryScratchCapacity > 0 ? _engine.Opt.QueryScratchCapacity : 64);
+        _core.ComputeHash();
+        var buffer = new byte[_core.GetSnapshotSize()];
+        // Restoring swaps the live storage with a spare, so two round trips size both.
+        for (int i = 0; i < 2; i++)
+        {
+            if (!TrySnapshot(buffer, out int n)) { break; }
+            Restore(buffer.AsSpan(0, n));
+        }
+
+        InvalidateQueryPad();
     }
 
     /// <summary>The live options. Changes apply from the next step (not <see cref="WorldOptions3D.BroadphaseMargin"/>, <see cref="WorldOptions3D.ThreadCount"/> or <see cref="WorldOptions3D.WorldId"/>).</summary>

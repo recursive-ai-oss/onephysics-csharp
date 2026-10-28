@@ -12,6 +12,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="../../CHANGELOG.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="RecursiveAI.OneMath" Version="0.1.0-preview.5" />
   </ItemGroup>
 

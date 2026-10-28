@@ -75,6 +75,25 @@ public sealed class IslandSet
 
     internal void SetAsleep(int island, bool asleep) => _asleep[island] = asleep;
 
+    /// <summary>Sizes the tables for up to <paramref name="islands"/> islands and <paramref name="bodies"/> bodies, and keeps a few body lists big enough for the biggest island in reserve.</summary>
+    internal void Reserve(int islands, int bodies)
+    {
+        _ids.Reserve(islands);
+        _stack.EnsureCapacity(bodies);
+        _component.EnsureCapacity(bodies);
+        if (_bodies.Length < islands)
+        {
+            Array.Resize(ref _bodies, islands); Array.Resize(ref _count, islands); Array.Resize(ref _asleep, islands); Array.Resize(ref _removed, islands);
+        }
+
+        if (_countsScratch.Length < islands) { Array.Resize(ref _countsScratch, islands); }
+        if (_scratchVisited.Length < bodies) { Array.Resize(ref _scratchVisited, bodies); }
+        if (_snapshot.Length < bodies) { Array.Resize(ref _snapshot, bodies); }
+        int big = 0;
+        foreach (var spare in _spare) { if (spare.Length >= bodies) { big++; } }
+        for (; big < 4 && _spare.Count < MaxSpare; big++) { _spare.Add(new int[Math.Max(bodies, 4)]); }
+    }
+
     private int NewId()
     {
         int id = _ids.Allocate();

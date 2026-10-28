@@ -132,6 +132,13 @@ public sealed class HandleTable
     /// <summary>Number of live slots.</summary>
     public int Count => _liveCount;
 
+    /// <summary>Makes room for slots up to <paramref name="capacity"/> (and as many free slots to reuse) so that allocating and freeing below it never grows an array.</summary>
+    internal void Reserve(int capacity)
+    {
+        if (_generation.Length < capacity) { Array.Resize(ref _generation, capacity); Array.Resize(ref _live, capacity); }
+        if (_heap.Length < capacity) { Array.Resize(ref _heap, capacity); }
+    }
+
     /// <summary>One more than the highest slot index ever allocated; arrays indexed by slot are valid below this.</summary>
     public int HighWater => _highWater;
 
