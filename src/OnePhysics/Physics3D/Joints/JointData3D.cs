@@ -35,7 +35,7 @@ internal struct SixDofData
 /// </summary>
 internal struct JointData3D
 {
-    public const byte FlagLimit = 1, FlagMotor = 2, FlagSpring = 4, FlagCollide = 8, FlagLoop = 16;
+    public const byte FlagLimit = 1, FlagMotor = 2, FlagSpring = 4, FlagCollide = 8, FlagLoop = 16, FlagDrive = 32;
     public const float MaxLocal = 2097152f;
     public const int MaxPathPoints = 256;
 
@@ -52,6 +52,7 @@ internal struct JointData3D
     public double FxA, FyA, FzA, FxB, FyB, FzB;   // pulley fixed points, world coordinates relative to the world origin
     public float UpX, UpY, UpZ;           // path: up vector in A's frame
     public Vector3F[]? Path;              // path points in A's origin frame; never mutated once set
+    public QuaternionF DriveTarget;       // swing-twist pose drive (FlagDrive): the wanted rotation of frame B relative to frame A; Length and Ratio are the drive's torque stiffness (N m/rad) and damping (N m s/rad), MaxMotor its torque limit
     public SixDofData Six;
     public float BreakForce, BreakTorque;
 
@@ -62,6 +63,7 @@ internal struct JointData3D
     public readonly bool Limit => (Flags & FlagLimit) != 0;
     public readonly bool Motor => (Flags & FlagMotor) != 0;
     public readonly bool Spring => (Flags & FlagSpring) != 0;
+    public readonly bool Drive => (Flags & FlagDrive) != 0;
 
     public static string Name(JointType3D t) => t switch
     {
@@ -118,6 +120,13 @@ internal struct JointData3D
         Local(LBx, LBy, LBz, "LocalFrameB.Position", t);
         if (!UsableQuaternion(QA)) { throw new ArgumentOutOfRangeException("LocalFrameA.Rotation", QA, Name(t) + " joint: LocalFrameA.Rotation must be a finite, non-zero quaternion."); }
         if (!UsableQuaternion(QB)) { throw new ArgumentOutOfRangeException("LocalFrameB.Rotation", QB, Name(t) + " joint: LocalFrameB.Rotation must be a finite, non-zero quaternion."); }
+        if ((Flags & FlagDrive) != 0)
+        {
+            if (t != JointType3D.SwingTwist) { throw new InvalidJointException(Name(t) + " joint: only a swing-twist joint has a pose drive."); }
+            AtLeastZero(Length, "DriveStiffness", t); AtLeastZero(Ratio, "DriveDamping", t); AtLeastZero(MaxMotor, "DriveMaxTorque", t);
+            if (!UsableQuaternion(DriveTarget)) { throw new ArgumentOutOfRangeException("DriveTarget", DriveTarget, "swing-twist joint: DriveTarget must be a finite, non-zero quaternion."); }
+        }
+
         switch (t)
         {
             case JointType3D.Fixed:
@@ -214,6 +223,8 @@ internal struct JointData3D
             if (!(l2 > 1e-30f)) { UpX = 0f; UpY = 1f; UpZ = 0f; }
             else { float inv = 1f / float.Sqrt(l2); UpX *= inv; UpY *= inv; UpZ *= inv; }
         }
+
+        if ((Flags & FlagDrive) != 0) { DriveTarget = Engine3D.Normalize(DriveTarget, "DriveTarget"); }
     }
 
     // ---- snapshot ----
@@ -244,13 +255,15 @@ internal struct JointData3D
         int n = Path?.Length ?? 0;
         w.WriteInt32(n);
         for (int i = 0; i < n; i++) { w.WriteSingle(Path![i].X); w.WriteSingle(Path[i].Y); w.WriteSingle(Path[i].Z); }
+        // The pose drive's target follows only when the flag is set, so a joint without one keeps its bytes.
+        if ((Flags & FlagDrive) != 0) { w.WriteSingle(DriveTarget.X); w.WriteSingle(DriveTarget.Y); w.WriteSingle(DriveTarget.Z); w.WriteSingle(DriveTarget.W); }
     }
 
     public static JointData3D Read(StateReader r)
     {
         var d = default(JointData3D);
         d.Type = r.ReadByte(); d.Flags = r.ReadByte(); d.Aux = r.ReadByte();
-        if ((d.Flags & ~(FlagLimit | FlagMotor | FlagSpring | FlagCollide | FlagLoop)) != 0) { throw r.Error("invalid joint flags"); }
+        if ((d.Flags & ~(FlagLimit | FlagMotor | FlagSpring | FlagCollide | FlagLoop | FlagDrive)) != 0) { throw r.Error("invalid joint flags"); }
         d.LAx = r.ReadSingle(); d.LAy = r.ReadSingle(); d.LAz = r.ReadSingle(); d.LBx = r.ReadSingle(); d.LBy = r.ReadSingle(); d.LBz = r.ReadSingle();
         d.QA = new QuaternionF(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
         d.QB = new QuaternionF(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
@@ -276,11 +289,14 @@ internal struct JointData3D
             for (int i = 0; i < n; i++) { d.Path[i] = new Vector3F(r.ReadSingle(), r.ReadSingle(), r.ReadSingle()); }
         }
 
+        if ((d.Flags & FlagDrive) != 0) { d.DriveTarget = new QuaternionF(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle()); }
+
         try
         {
             d.Validate();
             float la = d.QA.LengthSquared(), lb = d.QB.LengthSquared();
             if (!(Math.Abs(la - 1f) <= 1e-3f) || !(Math.Abs(lb - 1f) <= 1e-3f)) { throw new InvalidJointException("frame rotation is not a unit quaternion"); }
+            if (d.Drive && !(Math.Abs(d.DriveTarget.LengthSquared() - 1f) <= 1e-3f)) { throw new InvalidJointException("drive target is not a unit quaternion"); }
             if ((JointType3D)d.Type == JointType3D.Path && Math.Abs(d.UpX * d.UpX + d.UpY * d.UpY + d.UpZ * d.UpZ - 1f) > 1e-3f) { throw new InvalidJointException("path up vector is not a unit vector"); }
         }
         catch (Exception e) when (e is ArgumentException or PhysicsException)
