@@ -1,9 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
 using System;
+using System.Globalization;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Broadphase;
-using RecursiveAI.OnePhysics.Collision3D;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 
@@ -89,6 +90,7 @@ public sealed partial class PhysicsWorld3D
     public Vector3D Origin => new(_core.Origin[0], _core.Origin[1], _core.Origin[2]);
 
     /// <summary>The shared core (raw tier): bodies, shapes, constraints, islands, coloring, events.</summary>
+    [Experimental("OPHYS0001")]
     public WorldCore Core => _core;
 
     /// <summary>The events of the last step in the core's deterministic order, with contact and hit events collapsed to one per pair of shapes (see docs/world3d.md). Valid until the next <see cref="Step"/>.</summary>
@@ -252,10 +254,18 @@ public sealed partial class PhysicsWorld3D
     public Body CreateBody(in BodyDef def) => new(this, _engine.CreateBody(in def));
 
     /// <summary>Creates a body with just a type, position and orientation.</summary>
-    public Body CreateBody(BodyType type, Vector3D position, QuaternionF rotation = default)
+    public Body CreateBody(BodyType type, Vector3D position, QuaternionF rotation = default) => CreateBody(type, position, rotation, nameof(position));
+
+    // positionParam names the caller's parameter in the error: the happy-path methods call this with their own "at".
+    private Body CreateBody(BodyType type, Vector3D position, QuaternionF rotation, string positionParam)
     {
+        if (!double.IsFinite(position.X) || !double.IsFinite(position.Y) || !double.IsFinite(position.Z)) { throw new ArgumentOutOfRangeException(positionParam, position, "Body position must be finite."); }
         var d = new BodyDef { Type = type, Position = position, Rotation = rotation.LengthSquared() == 0f ? QuaternionF.Identity : rotation };
-        return CreateBody(in d);
+        try { return CreateBody(in d); }
+        catch (ArgumentOutOfRangeException e) when (e.ParamName == "def" && e.Message.Contains("osition", StringComparison.Ordinal))
+        {
+            throw new ArgumentOutOfRangeException(positionParam, position, e.Message);
+        }
     }
 
     /// <summary>Attaches a convex shape described by a <see cref="ShapeSpec3D"/>.</summary>
@@ -307,8 +317,17 @@ public sealed partial class PhysicsWorld3D
     // ------------------------------------------------------------------ happy path
 
     /// <summary>Adds a box. <paramref name="size"/> is the full size.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="at"/> is not finite or beyond +-2^21 from the origin, or a side of <paramref name="size"/> is not finite, not positive or larger than twice <see cref="ConvexShape3D.MaxDimension"/>.</exception>
     public Body AddBox(Vector3F size, Vector3D at = default, QuaternionF rotation = default, BodyType type = BodyType.Dynamic, Material3D? material = null, float density = 1f)
-        => AddOne(type, at, rotation, ShapeSpec3D.Box(new Vector3F(0.5f * size.X, 0.5f * size.Y, 0.5f * size.Z)), material, density);
+    {
+        float max = 2f * ConvexShape3D.MaxDimension;
+        if (!(float.IsFinite(size.X) && float.IsFinite(size.Y) && float.IsFinite(size.Z) && size.X > 0f && size.Y > 0f && size.Z > 0f && size.X <= max && size.Y <= max && size.Z <= max))
+        {
+            throw new ArgumentOutOfRangeException(nameof(size), size, "Each side of the box must be finite and within (0, " + max.ToString("R", CultureInfo.InvariantCulture) + "].");
+        }
+
+        return AddOne(type, at, rotation, ShapeSpec3D.Box(new Vector3F(0.5f * size.X, 0.5f * size.Y, 0.5f * size.Z)), material, density);
+    }
 
     /// <summary>Adds a sphere.</summary>
     public Body AddSphere(float radius, Vector3D at = default, BodyType type = BodyType.Dynamic, Material3D? material = null, float density = 1f)
@@ -329,7 +348,7 @@ public sealed partial class PhysicsWorld3D
     /// <summary>Adds a compound of convex parts as one body.</summary>
     public Body AddCompound(ReadOnlySpan<CompoundPart> parts, Vector3D at = default, QuaternionF rotation = default, BodyType type = BodyType.Dynamic, Material3D? material = null, float density = 1f)
     {
-        var body = CreateBody(type, at, rotation);
+        var body = CreateBody(type, at, rotation, nameof(at));
         try { AddShape(body, Geom3D.CompoundRecipe(parts), ShapeFor(material, density)); }
         catch (Exception) { body.Destroy(); throw; }
         return body;
@@ -338,7 +357,7 @@ public sealed partial class PhysicsWorld3D
     /// <summary>Adds a static triangle mesh.</summary>
     public Body AddMesh(ReadOnlySpan<Vector3F> vertices, ReadOnlySpan<int> indices, Vector3D at = default, QuaternionF rotation = default, Material3D? material = null)
     {
-        var body = CreateBody(BodyType.Static, at, rotation);
+        var body = CreateBody(BodyType.Static, at, rotation, nameof(at));
         try { CreateMesh(body, vertices, indices, ShapeFor(material, 0f)); }
         catch (Exception) { body.Destroy(); throw; }
         return body;
@@ -347,7 +366,7 @@ public sealed partial class PhysicsWorld3D
     /// <summary>Adds a static height field.</summary>
     public Body AddHeightField(ReadOnlySpan<float> heights, int samplesX, int samplesZ, Vector3F scale, Vector3D at = default, QuaternionF rotation = default, Material3D? material = null, ReadOnlySpan<bool> holes = default)
     {
-        var body = CreateBody(BodyType.Static, at, rotation);
+        var body = CreateBody(BodyType.Static, at, rotation, nameof(at));
         try { CreateHeightField(body, heights, samplesX, samplesZ, scale, holes, ShapeFor(material, 0f)); }
         catch (Exception) { body.Destroy(); throw; }
         return body;
@@ -355,7 +374,7 @@ public sealed partial class PhysicsWorld3D
 
     private Body AddOne(BodyType type, Vector3D at, QuaternionF rotation, ShapeSpec3D spec, Material3D? material, float density)
     {
-        var body = CreateBody(type, at, rotation);
+        var body = CreateBody(type, at, rotation, nameof(at));
         try { CreateShape(body, spec, ShapeFor(material, density)); }
         catch (Exception) { body.Destroy(); throw; }
         return body;

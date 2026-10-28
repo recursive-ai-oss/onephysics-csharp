@@ -1,11 +1,13 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// A compound of convex children fixed at construction. The children keep the ids <c>0 .. Count-1</c> in the order given, and the tree is built once by a binned surface-area-heuristic
-/// rebuild (<see cref="Broadphase.DynamicTree{TBox}.Rebuild"/>) over the children inserted in id order, so the same children give the same tree bytes (<see cref="CompoundShape3D.WriteBvh"/>) on every platform.
+/// rebuild (<see cref="DynamicTree{TBox}.Rebuild"/>) over the children inserted in id order, so the same children give the same tree bytes (<see cref="CompoundShape3D.WriteBvh"/>) on every platform.
 /// </summary>
+[Experimental("OPHYS0001")]
 public sealed class Compound3D : CompoundShape3D
 {
     private Compound3D()

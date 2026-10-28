@@ -1,7 +1,8 @@
 using System;
 using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Core;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// Writes world state in the canonical order, either into a byte buffer (a snapshot, little-endian) or into a running 64-bit hash (the per-step world hash).
@@ -12,6 +13,7 @@ namespace RecursiveAI.OnePhysics.Core;
 /// (bytes and 32-bit values zero-extended, floats and doubles by their IEEE bit patterns) and folded as
 /// h = (h xor w) * 0x9E3779B97F4A7C15, then h = h xor (h >> 32).
 /// </remarks>
+[Experimental("OPHYS0001")]
 public sealed class StateWriter
 {
     private const ulong HashSeed = 0xCBF29CE484222325UL;
@@ -228,6 +230,7 @@ public sealed class StateWriter
 }
 
 /// <summary>Reads world state written by <see cref="StateWriter"/>. Every read is bounds-checked and failures raise <see cref="SnapshotFormatException"/>.</summary>
+[Experimental("OPHYS0001")]
 public sealed class StateReader
 {
     private byte[] _data;
@@ -388,6 +391,7 @@ public sealed class StateReader
 /// A named block of extra state (for example shape geometry or joint parameters owned by an engine) saved and hashed after the core's own state.
 /// Sections are written in registration order, each with its id and byte length so a reader can skip nothing and detect a mismatch.
 /// </summary>
+[Experimental("OPHYS0001")]
 public interface ISnapshotSection
 {
     /// <summary>Stable identifier of the section; unique within a world.</summary>

@@ -1,7 +1,7 @@
 using System;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Collision2D;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics2D;
 
@@ -153,7 +153,7 @@ public readonly partial struct Body : IEquatable<Body>
     {
         var (w, b) = Resolve();
         RequireDynamic(w, b);
-        RequireFinite(force);
+        RequireFinite(force, nameof(force));
         w.Engine.Force[2 * b] += force.X; w.Engine.Force[2 * b + 1] += force.Y;
         WakeBody(w, b);
     }
@@ -163,7 +163,7 @@ public readonly partial struct Body : IEquatable<Body>
     {
         var (w, b) = Resolve();
         RequireDynamic(w, b);
-        RequireFinite(force);
+        RequireFinite(force, nameof(force));
         var p = w.Core.Bodies.PositionOf(b);
         float rx = (float)(worldPoint.X - p[0]), ry = (float)(worldPoint.Y - p[1]);
         w.Engine.Force[2 * b] += force.X; w.Engine.Force[2 * b + 1] += force.Y;
@@ -186,7 +186,7 @@ public readonly partial struct Body : IEquatable<Body>
     {
         var (w, b) = Resolve();
         RequireDynamic(w, b);
-        RequireFinite(impulse);
+        RequireFinite(impulse, nameof(impulse));
         var bodies = w.Core.Bodies;
         var v = bodies.LinearVelocityOf(b);
         float m = bodies.InverseMass[b];
@@ -199,7 +199,7 @@ public readonly partial struct Body : IEquatable<Body>
     {
         var (w, b) = Resolve();
         RequireDynamic(w, b);
-        RequireFinite(impulse);
+        RequireFinite(impulse, nameof(impulse));
         var bodies = w.Core.Bodies;
         var p = bodies.PositionOf(b);
         float rx = (float)(worldPoint.X - p[0]), ry = (float)(worldPoint.Y - p[1]);
@@ -215,9 +215,9 @@ public readonly partial struct Body : IEquatable<Body>
         if (w.Core.Bodies.TypeOf(b) != BodyType.Dynamic) { throw new BodyTypeException(operation, w.Core.HandleOfBody(b), w.Core.Bodies.TypeOf(b), true); }
     }
 
-    private static void RequireFinite(Vector2F v)
+    private static void RequireFinite(Vector2F v, string name)
     {
-        if (!float.IsFinite(v.X) || !float.IsFinite(v.Y)) { throw new ArgumentOutOfRangeException(nameof(v), v, "A force or impulse must be finite."); }
+        if (!float.IsFinite(v.X) || !float.IsFinite(v.Y)) { throw new ArgumentOutOfRangeException(name, v, "A force or impulse must be finite."); }
     }
 
     /// <summary>Wakes the body's island.</summary>

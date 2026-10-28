@@ -43,6 +43,11 @@
     <RestoreAdditionalProjectSources>$(MSBuildThisFileDirectory).localfeed</RestoreAdditionalProjectSources>
   </PropertyGroup>
 
+  <!-- The raw tier (RecursiveAI.OnePhysics.LowLevel) is marked [Experimental("OPHYS0001")] for consumers. Our own tests, benchmarks and tools use it on purpose; the package itself and the README examples do not suppress it. -->
+  <PropertyGroup Condition="'$(MSBuildProjectName)' != 'OnePhysics' And '$(MSBuildProjectName)' != 'ReadmeExamples'">
+    <NoWarn>$(NoWarn);OPHYS0001</NoWarn>
+  </PropertyGroup>
+
   <!-- Checked: Release optimisations plus bounds-checked internal accessors (CHECKED). -->
   <PropertyGroup Condition="'$(Configuration)' == 'Checked'">
     <Optimize>true</Optimize>

@@ -1,6 +1,7 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Core;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// Deterministic graph coloring of the constraint graph. Two constraints that share a dynamic body never share a color, so all constraints of one color can be solved in any order, or in parallel,
@@ -13,6 +14,7 @@ namespace RecursiveAI.OnePhysics.Core;
 /// A constraint that finds no free color goes to the overflow set, solved serially before the colors.
 /// Nothing here refers to thread count or vector width: <see cref="Lanes"/> only says how many consecutive constraints of one color form a batch, and kernels of any hardware width process a batch.
 /// </remarks>
+[Experimental("OPHYS0001")]
 public sealed class ConstraintColoring
 {
     /// <summary>Number of colors before constraints overflow.</summary>

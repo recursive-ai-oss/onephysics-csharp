@@ -1,6 +1,6 @@
 using System;
-using RecursiveAI.OnePhysics.Broadphase;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// A fixed broadphase scenario in 2D and 3D (creates, moves, destroys, pair updates on 1 and several threads, rays, a snapshot round trip),

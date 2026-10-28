@@ -1,13 +1,15 @@
 using System;
 using RecursiveAI.OneMath;
 using RecursiveAI.OneMath.Physics;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// Padded axis-aligned bounds of a convex shape under a rigid transform, found from six support points (Ericson, <i>Real-Time Collision Detection</i>, 4.2.6 style: the box of a
 /// support-mapped shape along the axes), so they are tight for every shape kind, offset cores and hulls included.
 /// </summary>
+[Experimental("OPHYS0001")]
 public static class ShapeBounds3D
 {
     // Each side is grown by 2^-16 of (|lo| + |hi| + hi - lo): float32 rounding in the transform and the tolerance of the GJK casts (a few 1e-6 of the shape's size)
@@ -89,6 +91,7 @@ public static class ShapeBounds3D
 /// (<c>bInShapeA = localA^-1 * otherInThis * localB</c>), so GJK, EPA, casts and the manifold generator run on the shapes' own frames and see nothing new.
 /// A default value is invalid; make one with <see cref="Create(in ConvexShape3D, in RigidTransformF)"/>.
 /// </summary>
+[Experimental("OPHYS0001")]
 public readonly struct PlacedShape3D
 {
     /// <summary>Largest translation component of a local transform, 2^20; with a shape of up to 2^21 the bounds stay within what the broadphase trees accept.</summary>

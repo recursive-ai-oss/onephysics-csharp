@@ -1,22 +1,11 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Core;
-
-/// <summary>How a body takes part in the simulation.</summary>
-public enum BodyType : byte
-{
-    /// <summary>Never moves, has no inverse mass, joins no island and no color.</summary>
-    Static = 0,
-
-    /// <summary>Moves under user control, has no inverse mass, never sleeps, joins no island and no color.</summary>
-    Kinematic = 1,
-
-    /// <summary>Moves under forces and constraints; belongs to an island.</summary>
-    Dynamic = 2,
-}
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>Per-body flag bits.</summary>
 [Flags]
+[Experimental("OPHYS0001")]
 public enum BodyBits : byte
 {
     /// <summary>No flags.</summary>
@@ -41,6 +30,7 @@ public enum BodyBits : byte
 /// Soft-body particles are meant to live here too: a particle is a Dynamic body that uses only the position, linear velocity and inverse mass lanes, so it joins islands, colors and sleep exactly like a rigid body;
 /// its edge, bend and volume constraints are constraints of their own kinds referencing particle slots.
 /// </remarks>
+[Experimental("OPHYS0001")]
 public sealed class BodyStore
 {
     private readonly DimensionLayout _layout;

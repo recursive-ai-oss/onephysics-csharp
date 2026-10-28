@@ -1,5 +1,6 @@
 using System;
-using RecursiveAI.OnePhysics.Collision2D;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 // Fuzz targets for the 2D collision code. The bytes are read as shape parameters: most values are small numbers, some are NaN, infinities, huge or tiny,
 // so hostile input reaches the constructors. The only exception allowed is InvalidShapeException from a constructor; every number that comes out must be finite.

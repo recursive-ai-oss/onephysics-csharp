@@ -2,46 +2,9 @@ using System;
 using RecursiveAI.OneMath;
 using RecursiveAI.OneMath.Physics;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+using RecursiveAI.OnePhysics.LowLevel;
 
-/// <summary>Why a convex hull could not be built.</summary>
-public enum HullBuildError
-{
-    /// <summary>Fewer than four points were given.</summary>
-    TooFewPoints,
-
-    /// <summary>More than <see cref="ConvexHull3D.MaxInputPoints"/> points were given.</summary>
-    TooManyPoints,
-
-    /// <summary>A coordinate is NaN or infinite.</summary>
-    NonFinite,
-
-    /// <summary>A coordinate's magnitude exceeds <see cref="ConvexHull3D.MaxCoordinate"/>.</summary>
-    OutOfRange,
-
-    /// <summary>The points do not span a volume: they are coincident, collinear or coplanar within the tolerance.</summary>
-    Degenerate,
-
-    /// <summary>The options are invalid (for example a vertex limit below four).</summary>
-    InvalidOptions,
-}
-
-/// <summary>Thrown by <see cref="ConvexHull3D.Build"/> when the input cannot make a convex hull. The message names the input and what was expected.</summary>
-public sealed class HullBuildException : ArgumentException
-{
-    /// <summary>Creates the exception.</summary>
-    /// <param name="error">The kind of failure.</param>
-    /// <param name="message">What was wrong and what was expected.</param>
-    /// <param name="paramName">The offending parameter.</param>
-    public HullBuildException(HullBuildError error, string message, string? paramName = null)
-        : base(message, paramName)
-    {
-        Error = error;
-    }
-
-    /// <summary>The kind of failure.</summary>
-    public HullBuildError Error { get; }
-}
+namespace RecursiveAI.OnePhysics;
 
 /// <summary>Options for <see cref="ConvexHull3D.Build"/>. The default value (all zeros) means no limits and an automatic tolerance.</summary>
 public readonly struct HullBuildOptions

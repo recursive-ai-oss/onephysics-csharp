@@ -1,9 +1,12 @@
 using System;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Broadphase;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>The dynamic AABB tree for 2D: <see cref="Aabb2D"/> boxes, perimeter as the SAH measure.</summary>
+[Experimental("OPHYS0001")]
 public sealed class DynamicTree2D : DynamicTree<Aabb2D>
 {
     /// <summary>Creates an empty tree.</summary>
@@ -14,6 +17,7 @@ public sealed class DynamicTree2D : DynamicTree<Aabb2D>
 }
 
 /// <summary>The dynamic AABB tree for 3D: <see cref="Aabb3D"/> boxes, surface area as the SAH measure.</summary>
+[Experimental("OPHYS0001")]
 public sealed class DynamicTree3D : DynamicTree<Aabb3D>
 {
     /// <summary>Creates an empty tree.</summary>
@@ -24,6 +28,7 @@ public sealed class DynamicTree3D : DynamicTree<Aabb3D>
 }
 
 /// <summary>The 2D broadphase: three <see cref="Aabb2D"/> trees, the move buffer and pair finding. See <see cref="Broadphase{TBox}"/>.</summary>
+[Experimental("OPHYS0001")]
 public sealed class Broadphase2D : Broadphase<Aabb2D>
 {
     /// <summary>Snapshot section id used when none is given.</summary>
@@ -46,6 +51,7 @@ public sealed class Broadphase2D : Broadphase<Aabb2D>
 }
 
 /// <summary>The 3D broadphase: three <see cref="Aabb3D"/> trees, the move buffer and pair finding. See <see cref="Broadphase{TBox}"/>.</summary>
+[Experimental("OPHYS0001")]
 public sealed class Broadphase3D : Broadphase<Aabb3D>
 {
     /// <summary>Snapshot section id used when none is given.</summary>

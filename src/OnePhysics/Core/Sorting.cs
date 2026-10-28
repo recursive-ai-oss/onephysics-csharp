@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace RecursiveAI.OnePhysics.Core;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// Sorting by a struct comparer without allocating: <c>Span.Sort</c> and <c>Array.Sort</c> with a comparer wrap it in a new delegate on every call, which shows up as garbage in every step.

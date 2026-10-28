@@ -1,14 +1,14 @@
 using System;
 using System.Collections.Generic;
 
-namespace RecursiveAI.OnePhysics.Core.Reference;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// A deliberately small 3D engine on top of <see cref="WorldCore"/>: round particles that fall under gravity onto a floor, push each other apart
 /// through contact constraints found with a sorted grid, and can be tied together with distance joints. It exists to exercise the scheduler, islands, sleeping, events,
 /// snapshots and hashes end to end without a real collision engine, and as a worked example of the stage interface. It is not a physics solver to build games on.
 /// </summary>
-public sealed class ParticleScene
+internal sealed class ParticleScene
 {
     /// <summary>The world (layout <see cref="DimensionLayout.Spatial"/>).</summary>
     public WorldCore World { get; }
@@ -111,7 +111,7 @@ public sealed class ParticleScene
 }
 
 /// <summary>A small seeded generator (SplitMix64) so that scenes and tests never depend on a platform random source.</summary>
-public struct SplitMix64
+internal struct SplitMix64
 {
     private ulong _state;
 
@@ -132,7 +132,7 @@ public struct SplitMix64
 }
 
 /// <summary>The <see cref="IWorldStages"/> of <see cref="ParticleScene"/>.</summary>
-public readonly struct ParticleStages : IWorldStages
+internal readonly struct ParticleStages : IWorldStages
 {
     /// <summary>Payload offset of a joint's accumulated impulse.</summary>
     public const int JointImpulse = 0;

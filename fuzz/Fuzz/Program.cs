@@ -2,9 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Collision3D;
-using RecursiveAI.OnePhysics.Core;
-using RecursiveAI.OnePhysics.Core.Reference;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 // Usage: Fuzz <target> <file>...   runs the target once per file (a crash or an unexpected exception is a finding)
 //        Fuzz <target> --random <seed> <count> [bytes]   runs it over a seeded pseudo-random byte stream (default 64 bytes per input)

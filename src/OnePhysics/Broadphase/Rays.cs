@@ -1,7 +1,8 @@
 using System;
 using System.Globalization;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Broadphase;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 internal static class Slab
 {
@@ -31,6 +32,7 @@ internal static class Slab
 }
 
 /// <summary>A 2D ray: the points <c>origin + t * direction</c> for t in [0, maxFraction]. The direction need not be a unit vector; fractions are in units of the direction.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct Ray2D : IRay<Aabb2D>
 {
     private readonly double _ox, _oy, _dx, _dy, _ix, _iy;
@@ -61,6 +63,7 @@ public readonly struct Ray2D : IRay<Aabb2D>
 }
 
 /// <summary>A 3D ray: the points <c>origin + t * direction</c> for t in [0, maxFraction]. The direction need not be a unit vector.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct Ray3D : IRay<Aabb3D>
 {
     private readonly double _ox, _oy, _oz, _dx, _dy, _dz, _ix, _iy, _iz;
@@ -101,6 +104,7 @@ public readonly struct Ray3D : IRay<Aabb3D>
 /// A 2D box swept along a translation (a shape cast's broadphase test): the start box's centre travels along the translation and every tree box is grown by the start box's half extents
 /// (the Minkowski sum), so the sweep reduces to a ray test. The fraction is in units of the translation.
 /// </summary>
+[Experimental("OPHYS0001")]
 public readonly struct BoxCast2D : IRay<Aabb2D>
 {
     private readonly Ray2D _ray;
@@ -121,6 +125,7 @@ public readonly struct BoxCast2D : IRay<Aabb2D>
 }
 
 /// <summary>A 3D box swept along a translation; see <see cref="BoxCast2D"/>.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct BoxCast3D : IRay<Aabb3D>
 {
     private readonly Ray3D _ray;

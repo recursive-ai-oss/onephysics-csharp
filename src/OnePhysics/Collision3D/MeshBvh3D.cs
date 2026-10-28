@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Buffers.Binary;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>A node of the mesh BVH: bounds, and either a leaf range or the right child (the left child is always the next node).</summary>
 internal struct BvhNode

@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using RecursiveAI.OnePhysics.Broadphase;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using Xunit;
 
 namespace RecursiveAI.OnePhysics.Tests.Broadphase;

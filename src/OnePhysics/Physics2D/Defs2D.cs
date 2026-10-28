@@ -1,6 +1,7 @@
 using System;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics2D;
 
@@ -203,16 +204,10 @@ public sealed class WorldOptions2D
 /// <summary>Creation parameters of a body. All fields have defaults: a dynamic body at the origin, at rest, awake.</summary>
 public struct BodyDef
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public BodyDef()
-    {
-        Type = BodyType.Dynamic;
-        GravityScale = 1f;
-        AllowSleep = true;
-    }
-
     /// <summary>Static (never moves), kinematic (moves at its velocity, not pushed) or dynamic. Default dynamic.</summary>
-    public BodyType Type { get; set; }
+    public BodyType Type { readonly get => (BodyType)(_type ^ (byte)(BodyType.Dynamic)); set => _type = (byte)((byte)value ^ (byte)(BodyType.Dynamic)); }
+
+    private byte _type;
 
     /// <summary>Position of the body origin, metres, within +-2^21 of the world origin. Default (0, 0).</summary>
     public Vector2D Position { get; set; }
@@ -233,7 +228,9 @@ public struct BodyDef
     public float AngularDamping { get; set; }
 
     /// <summary>Multiplier on world gravity for this body. Default 1.</summary>
-    public float GravityScale { get; set; }
+    public float GravityScale { readonly get => ZeroDefault.Get(_gravityScale, 1f); set => _gravityScale = ZeroDefault.Set(value, 1f); }
+
+    private uint _gravityScale;
 
     /// <summary>When true the body never rotates (infinite rotational inertia). Default false.</summary>
     public bool FixedRotation { get; set; }
@@ -242,7 +239,9 @@ public struct BodyDef
     public bool IsBullet { get; set; }
 
     /// <summary>When false the body keeps its island awake forever. Default true.</summary>
-    public bool AllowSleep { get; set; }
+    public bool AllowSleep { readonly get => !_allowSleepOff; set => _allowSleepOff = !value; }
+
+    private bool _allowSleepOff;
 
     /// <summary>Create the body asleep; it wakes when touched or woken. Ignored for static and kinematic bodies. Default false.</summary>
     public bool StartAsleep { get; set; }
@@ -251,20 +250,15 @@ public struct BodyDef
 /// <summary>Creation parameters of a shape. Defaults: density 1 kg/m², friction 0.6, restitution 0, collides with everything.</summary>
 public struct ShapeDef
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public ShapeDef()
-    {
-        Density = 1f;
-        Friction = 0.6f;
-        CategoryBits = 1u;
-        MaskBits = uint.MaxValue;
-    }
-
     /// <summary>Mass per area, kg/m². At least 0; a body whose shapes all have density 0 gets unit mass and inertia. Default 1. A dynamic body's total mass, and its inertia when not zero, must lie within 1e-18..1e30 so every inverse stays finite; a shape that would take the body outside that range is refused with an <see cref="ArgumentOutOfRangeException"/> naming the mass and inertia, and the body is unchanged.</summary>
-    public float Density { get; set; }
+    public float Density { readonly get => ZeroDefault.Get(_density, 1f); set => _density = ZeroDefault.Set(value, 1f); }
+
+    private uint _density;
 
     /// <summary>Friction coefficient, 0 to 1e15. Default 0.6.</summary>
-    public float Friction { get; set; }
+    public float Friction { readonly get => ZeroDefault.Get(_friction, 0.6f); set => _friction = ZeroDefault.Set(value, 0.6f); }
+
+    private uint _friction;
 
     /// <summary>Restitution within 0..1. Default 0.</summary>
     public float Restitution { get; set; }
@@ -273,10 +267,14 @@ public struct ShapeDef
     public float RollingResistance { get; set; }
 
     /// <summary>Which categories this shape belongs to (bit set). Default 1.</summary>
-    public uint CategoryBits { get; set; }
+    public uint CategoryBits { readonly get => _categoryBits ^ (1u); set => _categoryBits = value ^ (1u); }
+
+    private uint _categoryBits;
 
     /// <summary>Which categories this shape collides with. Two shapes collide when each one's mask includes the other's category. Default all.</summary>
-    public uint MaskBits { get; set; }
+    public uint MaskBits { readonly get => _maskBits ^ (uint.MaxValue); set => _maskBits = value ^ (uint.MaxValue); }
+
+    private uint _maskBits;
 
     /// <summary>Shapes with the same non-zero group always collide when the group is positive and never when it is negative, overriding category and mask. Default 0.</summary>
     public int GroupIndex { get; set; }
@@ -419,9 +417,9 @@ public readonly struct Trigger
 /// </summary>
 public sealed class BodyOutOfBoundsException : PhysicsException
 {
-    /// <summary>The offending body.</summary>
-    public BodyHandle Body { get; }
+    /// <summary>The offending body; destroy it or move it back, then step again.</summary>
+    public Body Body { get; }
 
     /// <summary>Creates the exception for <paramref name="body"/>; the message gives its position.</summary>
-    public BodyOutOfBoundsException(BodyHandle body, string message) : base(message) { Body = body; }
+    public BodyOutOfBoundsException(Body body, string message) : base(message) { Body = body; }
 }

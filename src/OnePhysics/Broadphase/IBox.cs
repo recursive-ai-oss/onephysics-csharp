@@ -1,13 +1,16 @@
 using System;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Broadphase;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// An axis-aligned box in world space, in double precision. The tree algorithms are written once over this interface and the JIT specialises them per box type,
 /// so the 2D and 3D trees run box-specific code with no virtual calls.
 /// </summary>
 /// <typeparam name="TSelf">The implementing box type.</typeparam>
+[Experimental("OPHYS0001")]
 public interface IBox<TSelf> where TSelf : struct, IBox<TSelf>
 {
     /// <summary>Number of axes: 2 or 3.</summary>
@@ -48,6 +51,7 @@ public interface IBox<TSelf> where TSelf : struct, IBox<TSelf>
 }
 
 /// <summary>Limits on box coordinates.</summary>
+[Experimental("OPHYS0001")]
 public static class BoxLimits
 {
     /// <summary>

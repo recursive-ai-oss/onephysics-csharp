@@ -1,9 +1,11 @@
 using System;
 using RecursiveAI.OneMath;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>One point of a 3D contact manifold.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct ManifoldPoint3D
 {
     /// <summary>Creates a point.</summary>
@@ -36,6 +38,7 @@ public readonly struct ManifoldPoint3D
 /// are not included, so an empty manifold means "not close enough to matter". The manifold fits the shared core's 3D contact layout
 /// (<c>DimensionLayout.Spatial.MaxManifoldPoints</c> = 4) as is: normal, then per point the position, separation and feature id.
 /// </summary>
+[Experimental("OPHYS0001")]
 public readonly struct Manifold3D
 {
     private readonly ManifoldPoint3D _p0, _p1, _p2, _p3;

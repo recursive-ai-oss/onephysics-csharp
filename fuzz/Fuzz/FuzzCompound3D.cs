@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Collision3D;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 // Fuzz target: the input bytes are a program of compound operations (add, remove, move, scale, queries, optimise, static build, manifolds) with hostile numbers
 // (NaN, infinities, huge and tiny values, stale handles). The documented argument errors are fine; any other exception, a broken tree invariant or a query that disagrees

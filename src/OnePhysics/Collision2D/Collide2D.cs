@@ -1,10 +1,12 @@
 using System;
 using System.Runtime.Intrinsics;
 using RecursiveAI.OnePhysics.Physics2D;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision2D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>One point of a contact manifold.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct ManifoldPoint2D
 {
     /// <summary>The contact point, midway between the two surfaces, in the frame of shape A.</summary>
@@ -33,6 +35,7 @@ public readonly struct ManifoldPoint2D
 /// Contact manifold of two convex shapes: a unit normal and up to two points, all in the frame of shape A. Points whose surfaces are
 /// farther apart than the speculative distance are not included, so an empty manifold means "not close enough to matter".
 /// </summary>
+[Experimental("OPHYS0001")]
 public readonly struct Manifold2D
 {
     /// <summary>Unit normal pointing from shape A to shape B, in A's frame. Zero when there are no points.</summary>
@@ -123,6 +126,7 @@ internal readonly ref struct PolyView
 /// (Gregorius, GDC 2013, "The Separating Axis Test between Convex Polyhedra"; Catto, GDC 2007 and 2010, contact manifolds; Ericson, Real-Time Collision Detection ch. 5).
 /// A circle is a one-point core, a capsule or segment a two-point core, so every pair of shapes goes through the same code; rounded cores add their radii to the separation.
 /// </summary>
+[Experimental("OPHYS0001")]
 public static class Collide2D
 {
     // Reference faces change from A to B only when B's separation is better by this much, which keeps feature ids from flickering.

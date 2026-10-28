@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Collision3D;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using RecursiveAI.OnePhysics.Physics3D;
 
 // Fuzz targets for 3D fluids and buoyancy.
@@ -72,7 +72,7 @@ internal static class FuzzFluids3D
     private static void StepTolerant(PhysicsWorld3D w)
     {
         try { w.Step(1f / 60f); s_steps++; }
-        catch (BodyOutOfBoundsException e) { w.GetBody(e.Body).Destroy(); }
+        catch (BodyOutOfBoundsException e) { e.Body.Destroy(); }
     }
 
     private static PhysicsWorld3D NewWorld() => new(new WorldOptions3D { WorldId = 11 });

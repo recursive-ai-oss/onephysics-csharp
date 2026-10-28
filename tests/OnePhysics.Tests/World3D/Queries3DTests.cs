@@ -1,8 +1,8 @@
 using System;
 using System.Linq;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Collision3D;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using RecursiveAI.OnePhysics.Physics3D;
 using RecursiveAI.OnePhysics.Tests.Collision3D;
 using Xunit;

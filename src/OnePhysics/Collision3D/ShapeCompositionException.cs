@@ -1,6 +1,8 @@
 using System;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+using RecursiveAI.OnePhysics.LowLevel;
+
+namespace RecursiveAI.OnePhysics;
 
 /// <summary>What was wrong with the input to a shape decorator or a compound.</summary>
 public enum ShapeCompositionError

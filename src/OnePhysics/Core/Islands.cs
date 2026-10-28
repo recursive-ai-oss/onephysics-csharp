@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Core;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// Persistent simulation islands: sets of dynamic bodies connected through contacts and joints, which sleep and wake together.
@@ -14,6 +15,7 @@ namespace RecursiveAI.OnePhysics.Core;
 /// and the rest take the lowest free ids in that order. Each island's body list is always ascending. The saved state is only the island table (id liveness, sleep flag, removal count) and each body's island id;
 /// the lists are rebuilt in ascending body order on restore, so they never depend on history.
 /// </remarks>
+[Experimental("OPHYS0001")]
 public sealed class IslandSet
 {
     private HandleTable _ids = new();

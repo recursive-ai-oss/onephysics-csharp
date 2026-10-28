@@ -1,6 +1,7 @@
 using System;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using RecursiveAI.OnePhysics.Physics2D;
 
 // Fuzz targets for 2D joints. "world2d-joints" turns bytes into a program: bodies, hostile joint definitions (NaN, infinity, huge, tiny, negative, the same body twice, default and destroyed handles),
@@ -73,7 +74,7 @@ internal static class FuzzJoints2D
         try { w.Step(1f / 60f); s_steps++; }
         catch (BodyOutOfBoundsException e)
         {
-            w.GetBody(e.Body).Destroy();
+            e.Body.Destroy();
         }
     }
 

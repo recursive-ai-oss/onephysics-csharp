@@ -1,7 +1,8 @@
 using System;
 using System.Globalization;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 
@@ -76,39 +77,35 @@ public struct CollisionPlane3D
 /// </summary>
 public struct CharacterDef
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public CharacterDef()
-    {
-        Radius = 0.3f;
-        Height = 1.8f;
-        SlopeLimit = 45f;
-        StepOffset = 0.3f;
-        Skin = 0.01f;
-        LayerMask = uint.MaxValue;
-        CategoryBits = 1u;
-        MaskBits = uint.MaxValue;
-        Up = new Vector3F(0f, 1f, 0f);
-        Mass = 70f;
-        MaxPushForce = 500f;
-    }
-
     /// <summary>Radius of the capsule, metres, within (0, 1000]. Default 0.3.</summary>
-    public float Radius { get; set; }
+    public float Radius { readonly get => ZeroDefault.Get(_radius, 0.3f); set => _radius = ZeroDefault.Set(value, 0.3f); }
+
+    private uint _radius;
 
     /// <summary>Total height including both rounded ends, metres, at least twice the radius, at most 10000. Default 1.8.</summary>
-    public float Height { get; set; }
+    public float Height { readonly get => ZeroDefault.Get(_height, 1.8f); set => _height = ZeroDefault.Set(value, 1.8f); }
+
+    private uint _height;
 
     /// <summary>Steepest ground the character can stand on, degrees within [0, 90]. Steeper surfaces are walls: the character slides down them. Default 45.</summary>
-    public float SlopeLimit { get; set; }
+    public float SlopeLimit { readonly get => ZeroDefault.Get(_slopeLimit, 45f); set => _slopeLimit = ZeroDefault.Set(value, 45f); }
+
+    private uint _slopeLimit;
 
     /// <summary>Tallest step the character climbs when walking into it, metres, at least 0 (0 turns stepping off), at most <see cref="Height"/>. It is also how far a virtual character snaps down to stay on the ground when walking down a slope or stairs. Default 0.3.</summary>
-    public float StepOffset { get; set; }
+    public float StepOffset { readonly get => ZeroDefault.Get(_stepOffset, 0.3f); set => _stepOffset = ZeroDefault.Set(value, 0.3f); }
+
+    private uint _stepOffset;
 
     /// <summary>Distance the character keeps from walls, metres, within [0.0001, Radius / 2]. A larger skin is more forgiving, a smaller one hugs the geometry. Default 0.01.</summary>
-    public float Skin { get; set; }
+    public float Skin { readonly get => ZeroDefault.Get(_skin, 0.01f); set => _skin = ZeroDefault.Set(value, 0.01f); }
+
+    private uint _skin;
 
     /// <summary>Bit i set: the character collides with shapes on layer i (the same layers as <see cref="ShapeDef.Layer"/>). Default all layers. This is the mover's own filter; for a rigid character the world's layer matrix and the shape's category and mask decide what it does in the simulation.</summary>
-    public uint LayerMask { get; set; }
+    public uint LayerMask { readonly get => _layerMask ^ (uint.MaxValue); set => _layerMask = value ^ (uint.MaxValue); }
+
+    private uint _layerMask;
 
     /// <summary>How hard the character pushes dynamic bodies it walks into: 0 does not push (they just block), 1 brings the body up to the character's walking speed along the push direction, limited by <see cref="MaxPushForce"/>. Default 0.</summary>
     public float PushStrength { get; set; }
@@ -117,22 +114,32 @@ public struct CharacterDef
     public int Layer { get; set; }
 
     /// <summary>Category bits of the body's shape (see <see cref="ShapeDef.CategoryBits"/>). Default 1.</summary>
-    public uint CategoryBits { get; set; }
+    public uint CategoryBits { readonly get => _categoryBits ^ (1u); set => _categoryBits = value ^ (1u); }
+
+    private uint _categoryBits;
 
     /// <summary>Mask bits of the body's shape (see <see cref="ShapeDef.MaskBits"/>). Default all.</summary>
-    public uint MaskBits { get; set; }
+    public uint MaskBits { readonly get => _maskBits ^ (uint.MaxValue); set => _maskBits = value ^ (uint.MaxValue); }
+
+    private uint _maskBits;
 
     /// <summary>The direction the capsule stands in and that slopes and steps are measured against; finite and non-zero (normalised on creation). Default (0, 1, 0).</summary>
-    public Vector3F Up { get; set; }
+    public Vector3F Up { readonly get => _up.Get(new Vector3F(0f, 1f, 0f)); set => _up.Set(value, new Vector3F(0f, 1f, 0f)); }
+
+    private ZeroDefault3 _up;
 
     /// <summary>Virtual (default) or rigid.</summary>
     public CharacterKind Kind { get; set; }
 
     /// <summary>Mass in kg, positive and at most 1e6. A rigid character's body has this mass; a virtual character presses this weight on a dynamic body it stands on. Default 70.</summary>
-    public float Mass { get; set; }
+    public float Mass { readonly get => ZeroDefault.Get(_mass, 70f); set => _mass = ZeroDefault.Set(value, 70f); }
+
+    private uint _mass;
 
     /// <summary>The most force, in newtons, a virtual character pushes a dynamic body with (impulse per move is at most this times dt), within [0, 1e9]. Default 500.</summary>
-    public float MaxPushForce { get; set; }
+    public float MaxPushForce { readonly get => ZeroDefault.Get(_maxPushForce, 500f); set => _maxPushForce = ZeroDefault.Set(value, 500f); }
+
+    private uint _maxPushForce;
 
     internal readonly void Validate()
     {

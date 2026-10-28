@@ -2,11 +2,13 @@
 
 Deterministic 2D and 3D rigid-body physics for .NET, written from first principles: the same world state, bit for bit, on every platform, CPU and thread count. Package `RecursiveAI.OnePhysics` (name provisional), built on [onemath](https://github.com/recursive-ai-oss/onemath-csharp) for its deterministic math.
 
-**Status: preview (0.1).** The 2D engine (circles, capsules, rounded polygons, segments and chains; revolute, prismatic, weld, wheel, distance, motor and mouse joints; bullets and continuous collision; a character mover; layers, filters, sensors, events and queries; byte-exact snapshot and restore; per-step world hashes; debug geometry) is complete and deterministic across x64, arm64 and browser WebAssembly, at any vector width and thread count. The 3D engine is in progress. Speed is not yet at parity with the fastest native engines, and the shared core (storage, scheduler, snapshot format) may still change before the 3D release.
+**Status: preview (0.1).** The 2D engine (circles, capsules, rounded polygons, segments and chains; revolute, prismatic, weld, wheel, distance, motor and mouse joints; bullets and continuous collision; a character mover; layers, filters, sensors, events and queries; byte-exact snapshot and restore; per-step world hashes; debug geometry) is complete and deterministic across x64, arm64 and browser WebAssembly, at any vector width and thread count. The 3D engine is in progress. Speed is not yet at parity with the fastest native engines, and the raw tier (`RecursiveAI.OnePhysics.LowLevel`) may still change.
 
 ```csharp
+using System;
 using RecursiveAI.OneMath;               // Vector2F, Vector2D
-using RecursiveAI.OnePhysics.Physics2D;
+using RecursiveAI.OnePhysics;            // BodyType, events, exceptions
+using RecursiveAI.OnePhysics.Physics2D;  // PhysicsWorld2D, Body, Character
 
 var world = new PhysicsWorld2D();
 world.AddBox(new Vector2F(20, 1), at: new Vector2D(0, -1), type: BodyType.Static);
@@ -24,6 +26,33 @@ if (world.Raycast(new Vector2D(0, 10), new Vector2F(0, -1), out var hit)) Consol
 byte[] saved = world.Snapshot();                // byte-exact; Restore(saved) continues bit for bit
 ulong hash = world.ComputeHash();               // the same on every platform
 ```
+
+The 3D world has the same members with 3D math types:
+
+```csharp
+using System;
+using RecursiveAI.OneMath;               // Vector3F, Vector3D
+using RecursiveAI.OnePhysics;            // BodyType, events, exceptions
+using RecursiveAI.OnePhysics.Physics3D;  // PhysicsWorld3D, Body, Character
+
+var world = new PhysicsWorld3D();
+world.AddBox(new Vector3F(20, 1, 20), at: new Vector3D(0, -1, 0), type: BodyType.Static);
+var ball = world.AddSphere(0.5f, at: new Vector3D(0, 5, 0));
+ball.OnCollisionEnter += c => Console.WriteLine($"hit {c.Other} along {c.Normal}");
+
+for (int i = 0; i < 300; i++) world.Step(1f / 60);
+if (world.Raycast(new Vector3D(0, 10, 0), new Vector3F(0, -1, 0), out var hit)) Console.WriteLine(hit.Point);
+
+byte[] saved = world.Snapshot();
+ulong hash = world.ComputeHash();
+```
+
+## Namespaces
+
+- `RecursiveAI.OnePhysics`: what game code names everywhere: `BodyType`, `EventKind`, `EventMask`, `PhysicsEvent`, the handles (`BodyHandle`, `ShapeHandle`, `JointHandle`) and the exceptions.
+- `RecursiveAI.OnePhysics.Physics2D` and `RecursiveAI.OnePhysics.Physics3D`: the world, `Body`, `Shape`, `Joint`, `Character`, the definitions (`BodyDef`, `ShapeDef`, the joint definitions, `CharacterDef`; each is valid at its zero value and then means its documented defaults), queries and options. The two namespaces have the same member names; with both imported, alias the ones you use (`using Body3D = RecursiveAI.OnePhysics.Physics3D.Body;`).
+- `RecursiveAI.OnePhysics.Debug`: debug geometry as plain data.
+- `RecursiveAI.OnePhysics.LowLevel`: the raw tier (storage, scheduler, broadphase trees, narrowphase and manifold routines, snapshot readers and writers). Marked `[Experimental("OPHYS0001")]`: using it needs `<NoWarn>$(NoWarn);OPHYS0001</NoWarn>`, and it may change between previews.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) to build.
 

@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Broadphase;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>Tunables of the broadphase.</summary>
+[Experimental("OPHYS0001")]
 public sealed class BroadphaseOptions
 {
     /// <summary>How far dynamic and kinematic proxies' stored boxes extend past their tight boxes on every side, in world units. Default 0.1. A larger margin means fewer tree updates and more candidate pairs.</summary>
@@ -45,6 +48,7 @@ public sealed class BroadphaseOptions
 
 /// <summary>Which of the three trees a query visits.</summary>
 [Flags]
+[Experimental("OPHYS0001")]
 public enum BodyTypeMask
 {
     /// <summary>No tree.</summary>
@@ -64,6 +68,7 @@ public enum BodyTypeMask
 }
 
 /// <summary>A proxy key packs the proxy's tree (the body type, 2 bits) and its node index in that tree.</summary>
+[Experimental("OPHYS0001")]
 public static class ProxyKey
 {
     /// <summary>Packs a tree (0 static, 1 kinematic, 2 dynamic) and a node index.</summary>
@@ -79,6 +84,7 @@ public static class ProxyKey
 /// <summary>
 /// A pair of proxies whose stored boxes overlap. The pair is oriented so that (UserA, ProxyA) sorts before (UserB, ProxyB), user id first.
 /// </summary>
+[Experimental("OPHYS0001")]
 public readonly struct ProxyPair : IEquatable<ProxyPair>
 {
     /// <summary>Creates a pair.</summary>
@@ -125,6 +131,7 @@ public readonly struct ProxyPair : IEquatable<ProxyPair>
 /// Decides whether two overlapping proxies become a pair. This is the seam for layer and group filtering and for skipping pairs of one body's own shapes.
 /// It runs on worker threads when the pair search is parallel, so it must be a pure function of its arguments.
 /// </summary>
+[Experimental("OPHYS0001")]
 public interface IPairFilter
 {
     /// <summary>True to keep the pair of proxies with these user ids.</summary>
@@ -138,6 +145,7 @@ public interface IPairFilter
 }
 
 /// <summary>A filter that keeps every pair.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct AcceptAllPairs : IPairFilter
 {
     /// <inheritdoc/>
@@ -159,6 +167,7 @@ public readonly struct AcceptAllPairs : IPairFilter
 /// The whole state, tree structures and the move buffer included, is a snapshot section; see docs/broadphase.md.
 /// </remarks>
 /// <typeparam name="TBox">The box type: <see cref="Aabb2D"/> or <see cref="Aabb3D"/>.</typeparam>
+[Experimental("OPHYS0001")]
 public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
 {
     private const int ChunkSize = 16;

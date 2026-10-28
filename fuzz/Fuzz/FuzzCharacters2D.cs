@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using RecursiveAI.OnePhysics.Physics2D;
 
 // Fuzz targets for the 2D bullets and character mover.
@@ -73,7 +74,7 @@ internal static class FuzzCharacters2D
     private static void StepTolerant(PhysicsWorld2D w)
     {
         try { w.Step(1f / 60f); s_steps++; }
-        catch (BodyOutOfBoundsException e) { w.GetBody(e.Body).Destroy(); }
+        catch (BodyOutOfBoundsException e) { e.Body.Destroy(); }
     }
 
     private static PhysicsWorld2D Scene(out Body[] bodies)

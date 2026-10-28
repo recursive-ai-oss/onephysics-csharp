@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using Xunit;
 
 namespace RecursiveAI.OnePhysics.Tests.Core;
