@@ -147,6 +147,19 @@ A **handle table** is: high-water mark (i32); generation per slot (i32); live pe
 
 Registered sections (`ISnapshotSection`) let an engine save its own state (shape geometry, joint parameters) in the same file and hash; a world restoring a snapshot must register the same sections in the same order.
 
+## Host hooks: snapshot, restore and hash without allocation
+
+A deterministic host drives these from its own per-tick loop. All of them work on caller-owned spans and allocate nothing once the world's internal buffers have grown to the sizes the scene needs.
+
+* `GetSnapshotSize()` returns the exact byte count the next `TrySnapshot` writes (the state of the world as it is now; it can change from step to step).
+* `TrySnapshot(Span<byte> destination, out int written)` writes the snapshot of the format above. If the destination is smaller than `GetSnapshotSize()` it returns false, writes nothing and sets `written` to the size needed; otherwise it returns true with `written` equal to that size. The bytes equal what `Snapshot()` (the `byte[]` form) returns.
+* `Restore(ReadOnlySpan<byte>)` (and `Restore(byte[])`, a thin wrapper) validates and applies a snapshot. The input is first copied into a world-owned buffer, so the caller may reuse its span. The new state is read into spare stores and swapped in only when every check has passed; a failure after the swap (an engine section or option out of range) puts back the state saved at the start of the call. A bad snapshot always throws `SnapshotFormatException` and leaves the world unchanged.
+* `ComputeHash()` is the world hash with a reused writer: no allocation.
+* `Step` allocates nothing in the steady state. Buffers grow geometrically while the scene reaches its largest pair, island and event counts, so "steady" means after the scene has run through its normal range of activity.
+* Restore does not yet reuse buffers for worlds that contain vehicles, ragdolls or fluids; those blocks allocate per call. The bytes and the hash are the same either way.
+* `Character.Index` and `Character.Generation` identify a character as `Body.RawHandle` does a body; `GetCharacter(index, generation)` turns them back into a `Character`. `IsBodyAlive`, `IsShapeAlive`, `IsJointAlive` (handles) and `IsCharacterAlive(index, generation)` answer without throwing for null, foreign, stale and wrongly-kinded handles.
+* A velocity set on a static body, or a force, impulse or buoyancy on a body that is not dynamic, throws `BodyTypeException` (a `PhysicsException`) naming the operation, the body handle and the body's type.
+
 ## Origin and coordinates
 
 Body positions are double and relative to the world origin; the public boundary takes them as double, exact within ±2^21 (a 31.32 fixed-point value converts exactly there), and rejects a component beyond it. Rotations, velocities and solver math are float32. `ShiftOrigin(offset)` subtracts a double offset (finite, a multiple of 2^-31, magnitude ≤ 2^22, one value per position lane) from every body position and adds it to the saved origin, so `origin + position` is unchanged; positions on the 2^-31 grid shift exactly. The host calls it between steps, on every peer at the same step. Engines shift whatever they keep in world coordinates themselves. The origin is part of the snapshot and the hash.
