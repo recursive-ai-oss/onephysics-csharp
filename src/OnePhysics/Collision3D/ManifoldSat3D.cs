@@ -16,6 +16,30 @@ public sealed partial class ManifoldGenerator3D
         public Vector3F Center;
         public float Radius;
 
+        // Per edge pair (one entry for each pair of half-edges) of this polyhedron when it is the second argument of EdgeQuery: the negated face normals, their cross product, the first vertex, the direction and its squared length.
+        public Vector3F[] EC = new Vector3F[24], ED = new Vector3F[24], EDxC = new Vector3F[24], EQ0 = new Vector3F[24], EDir = new Vector3F[24];
+        public float[] EDir2 = new float[24];
+
+        public void PrepareEdges()
+        {
+            ReadOnlySpan<HullEdge3D> e = Hull.Edges;
+            int n = e.Length >> 1;
+            if (EC.Length < n)
+            {
+                EC = new Vector3F[n]; ED = new Vector3F[n]; EDxC = new Vector3F[n]; EQ0 = new Vector3F[n]; EDir = new Vector3F[n]; EDir2 = new float[n];
+            }
+
+            for (int j = 0; j < n; j++)
+            {
+                Vector3F c = -N[e[2 * j].Face], d = -N[e[2 * j + 1].Face];
+                EC[j] = c; ED[j] = d; EDxC[j] = Vector3F.Cross(d, c);
+                Vector3F q0 = V[e[2 * j].Origin];
+                EQ0[j] = q0;
+                Vector3F dir = V[e[2 * j + 1].Origin] - q0;
+                EDir[j] = dir; EDir2[j] = dir.LengthSquared();
+            }
+        }
+
         public void Load(in ConvexShape3D s, bool transform, in Matrix3x3F r, Vector3F t)
         {
             Hull = HullOf(s);
@@ -236,7 +260,9 @@ public sealed partial class ManifoldGenerator3D
         edgeQ = -1;
         axis = default;
         float best = float.NegativeInfinity;
-        ReadOnlySpan<HullEdge3D> ep = p.Hull.Edges, eq = q.Hull.Edges;
+        ReadOnlySpan<HullEdge3D> ep = p.Hull.Edges;
+        int nq = q.Hull.Edges.Length >> 1;
+        q.PrepareEdges();
         for (int i = 0; i < ep.Length; i += 2)
         {
             Vector3F a = p.N[ep[i].Face], b = p.N[ep[i + 1].Face];
@@ -244,10 +270,10 @@ public sealed partial class ManifoldGenerator3D
             Vector3F pi0 = p.V[ep[i].Origin];
             Vector3F dirP = p.V[ep[i + 1].Origin] - pi0;
             float lenP2 = dirP.LengthSquared();
-            for (int j = 0; j < eq.Length; j += 2)
+            for (int j = 0; j < nq; j++)
             {
-                Vector3F c = -q.N[eq[j].Face], d = -q.N[eq[j + 1].Face];
-                Vector3F dxc = Vector3F.Cross(d, c);
+                Vector3F c = q.EC[j], d = q.ED[j];
+                Vector3F dxc = q.EDxC[j];
                 float adc = Vector3F.Dot(a, dxc), bdc = Vector3F.Dot(b, dxc);
                 float cba = Vector3F.Dot(c, bxa), dba = Vector3F.Dot(d, bxa);
                 if (!(cba * dba < 0f && adc * bdc < 0f))
@@ -264,11 +290,10 @@ public sealed partial class ManifoldGenerator3D
                     continue;
                 }
 
-                Vector3F qj0 = q.V[eq[j].Origin];
-                Vector3F dirQ = q.V[eq[j + 1].Origin] - qj0;
-                Vector3F ax = Vector3F.Cross(dirP, dirQ);
+                Vector3F qj0 = q.EQ0[j];
+                Vector3F ax = Vector3F.Cross(dirP, q.EDir[j]);
                 float l2 = ax.LengthSquared();
-                if (!(l2 > 1e-10f * lenP2 * dirQ.LengthSquared()))
+                if (!(l2 > 1e-10f * lenP2 * q.EDir2[j]))
                 {
                     continue;
                 }
@@ -284,7 +309,7 @@ public sealed partial class ManifoldGenerator3D
                 {
                     best = sep;
                     edgeP = i;
-                    edgeQ = j;
+                    edgeQ = 2 * j;
                     axis = ax;
                 }
             }
