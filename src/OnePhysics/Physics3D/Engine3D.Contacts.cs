@@ -728,24 +728,28 @@ internal sealed partial class Engine3D
     private static void SoupVsConvex(NarrowScratch sc, in PairFrame f, TriangleSoup3D soup, bool soupIsA, in ConvexShape3D shape, in RigidTransformF shapeLocal, bool hasChild,
         in RigidTransformF shapeInSoup, in RigidTransformF soupFromA, float spec, int child)
     {
-        NarrowScratch.Tris.Clear();
-        soup.GetCandidates(shape, shapeInSoup, spec, NarrowScratch.Tris, NarrowScratch.Ids);
+        // The per-thread buffers are looked up once, not once per triangle.
+        var tris = NarrowScratch.Tris;
+        var triBuf = NarrowScratch.TriBuf;
+        var gen = NarrowScratch.Gen;
+        tris.Clear();
+        soup.GetCandidates(shape, shapeInSoup, spec, tris, NarrowScratch.Ids);
         // For a child of a compound the manifold comes back in the child's frame; mapToA moves it into the compound's frame (only when the compound is shape A).
-        for (int t = 0; t < NarrowScratch.Tris.Count; t++)
+        for (int t = 0; t < tris.Count; t++)
         {
-            var tri = NarrowScratch.Tris[t];
-            var tshape = NarrowScratch.TriBuf.Set(tri.V0, tri.V1, tri.V2);
+            var tri = tris[t];
+            var tshape = triBuf.Set(tri.V0, tri.V1, tri.V2);
             Manifold3D m;
             int subA, subB;
             bool map = hasChild && !soupIsA;
             if (soupIsA)
             {
-                m = NarrowScratch.Gen.Collide(tshape, shape, shapeInSoup, spec);
+                m = gen.Collide(tshape, shape, shapeInSoup, spec);
                 subA = tri.Id; subB = child < 0 ? 0 : child;
             }
             else
             {
-                m = NarrowScratch.Gen.Collide(shape, tshape, shapeInSoup.Inverted(), spec);
+                m = gen.Collide(shape, tshape, shapeInSoup.Inverted(), spec);
                 subA = child < 0 ? 0 : child; subB = tri.Id;
             }
 

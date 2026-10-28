@@ -170,14 +170,20 @@ internal static class JointKernel3D
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void SolveBlock<T>(ref BodyLanes<T> a, ref BodyLanes<T> b2, ReadOnlySpan<float> wide, int l0, ref V3<T> imp, T ms, T kk, T isc, T two) where T : struct, ILane<T>
     {
-        // The anchors turn with their bodies' rotation accumulated this step; the separation of the anchors follows from the bodies' displacements.
-        var rA = Rotate(a.Qx, a.Qy, a.Qz, a.Qw, Vec<T>(wide, J3D.RA, l0), two);
-        var rB = Rotate(b2.Qx, b2.Qy, b2.Qz, b2.Qw, Vec<T>(wide, J3D.RB, l0), two);
-        var d = Vec<T>(wide, J3D.D, l0) + (b2.Dp - a.Dp);
-        var c = (d + rB) - rA;
-        var dv = (b2.V + V3<T>.Cross(b2.W, rB)) - (a.V + V3<T>.Cross(a.W, rA));
+        Anchors(in a, in b2, wide, l0, two, out var rA, out var rB, out var c, out var dv);
         Block(a.InvMass + b2.InvMass, a.I, b2.I, rA, rB, c, dv, ms, kk, isc, ref imp, out var step);
         Apply(ref a, ref b2, rA, rB, step);
+    }
+
+    /// <summary>The anchors turned with their bodies' rotation accumulated this step, the anchors' separation that follows from the bodies' displacements, and their relative velocity.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void Anchors<T>(in BodyLanes<T> a, in BodyLanes<T> b2, ReadOnlySpan<float> wide, int l0, T two, out V3<T> rA, out V3<T> rB, out V3<T> c, out V3<T> dv) where T : struct, ILane<T>
+    {
+        rA = Rotate(a.Qx, a.Qy, a.Qz, a.Qw, Vec<T>(wide, J3D.RA, l0), two);
+        rB = Rotate(b2.Qx, b2.Qy, b2.Qz, b2.Qw, Vec<T>(wide, J3D.RB, l0), two);
+        var d = Vec<T>(wide, J3D.D, l0) + (b2.Dp - a.Dp);
+        c = (d + rB) - rA;
+        dv = (b2.V + V3<T>.Cross(b2.W, rB)) - (a.V + V3<T>.Cross(a.W, rA));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
