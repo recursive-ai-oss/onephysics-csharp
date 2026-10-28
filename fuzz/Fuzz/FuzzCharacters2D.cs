@@ -87,7 +87,7 @@ internal static class FuzzCharacters2D
         };
         for (int i = 0; i < 4; i++) { list.Add(w.AddBox(new Vector2F(0.8f, 0.8f), new Vector2D(-3 + 1.5 * i, 0.4))); }
         var kin = w.CreateBody(new BodyDef { Type = BodyType.Kinematic, Position = new Vector2D(-6, 2), LinearVelocity = new Vector2F(1f, 0f) });
-        w.CreateBox(kin, 2f, 0.2f);
+        w.CreateBox(kin, new Vector2F(2f, 0.2f));
         list.Add(kin);
         var bullet = w.CreateBody(new BodyDef { Type = BodyType.Dynamic, Position = new Vector2D(-12, 2), IsBullet = true, GravityScale = 0f });
         w.CreateCircle(bullet, 0.1f);
@@ -101,9 +101,9 @@ internal static class FuzzCharacters2D
     {
         switch (r.Byte() % 5)
         {
-            case 0: return Character.Humanoid;
-            case 1: return Character.Child;
-            case 2: return Character.Giant;
+            case 0: return CharacterDef.Humanoid;
+            case 1: return CharacterDef.Child;
+            case 2: return CharacterDef.Giant;
             default:
                 return new CharacterDef
                 {
@@ -236,7 +236,7 @@ internal static class FuzzCharacters2D
 
         for (int i = 0; i < 3; i++)
         {
-            var def = i == 1 ? Character.Child : Character.Humanoid;
+            var def = i == 1 ? CharacterDef.Child : CharacterDef.Humanoid;
             def.PushStrength = i * 0.5f;
             w.AddCharacter(new Vector2D(-3 + 2 * i, 1.2), def);
         }

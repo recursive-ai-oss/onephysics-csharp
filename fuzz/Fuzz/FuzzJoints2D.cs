@@ -93,7 +93,7 @@ internal static class FuzzJoints2D
             w.AddBox(new Vector2F(40f, 1f), new Vector2D(0, -0.5), type: BodyType.Static),
             w.AddCircle(0.2f, new Vector2D(0, 8), BodyType.Static),
         };
-        for (int i = 0; i < 5; i++) { list.Add(w.AddBox(new Vector2F(1f, 0.6f), new Vector2D(-4 + 2 * i, 3 + 0.2 * i), angle: 0.1f * i)); }
+        for (int i = 0; i < 5; i++) { list.Add(w.AddBox(new Vector2F(1f, 0.6f), new Vector2D(-4 + 2 * i, 3 + 0.2 * i), angleRadians: 0.1f * i)); }
         list.Add(w.AddCircle(0.5f, new Vector2D(1, 6)));
         bodies = list.ToArray();
         return w;
@@ -183,12 +183,12 @@ internal static class FuzzJoints2D
         {
             switch (r.Byte() % 16)
             {
-                case 0: j.LimitEnabled = r.Bool(); break;
+                case 0: j.EnableLimit = r.Bool(); break;
                 case 1: j.SetLimits(r.Float(), r.Float()); break;
-                case 2: j.MotorEnabled = r.Bool(); break;
+                case 2: j.EnableMotor = r.Bool(); break;
                 case 3: j.MotorSpeed = r.Float(); break;
                 case 4: j.MaxMotorForce = r.Float(); break;
-                case 5: j.SpringEnabled = r.Bool(); break;
+                case 5: j.EnableSpring = r.Bool(); break;
                 case 6: j.SpringHertz = r.Float(); break;
                 case 7: j.SpringDampingRatio = r.Float(); break;
                 case 8: j.Length = r.Float(); break;
@@ -215,13 +215,13 @@ internal static class FuzzJoints2D
         {
             w.IgnoreLayerCollision(2, 5);
             var sensor = w.CreateBody(BodyType.Static, new Vector2D(0, 2));
-            w.CreateBox(sensor, 1f, 1f, default, 0f, 0f, new ShapeDef { IsSensor = true, Layer = 2 });
+            w.CreateBox(sensor, new Vector2F(1f, 1f), default, 0f, 0f, new ShapeDef { IsSensor = true, Layer = 2 });
         }
         w.AddHinge(b[0], b[2], new Vector2D(-4, 3)).SetLimits(-0.5f, 0.5f);
         w.AddSlider(b[1], b[3], new Vector2D(-2, 3.2), new Vector2F(1, 0));
         w.AddFixed(b[2], b[4], new Vector2D(0, 3.4));
         var wheel = w.AddWheel(b[4], b[6], new Vector2D(1, 6), new Vector2F(0, 1));
-        wheel.MotorEnabled = true; wheel.MaxMotorForce = 5f;
+        wheel.EnableMotor = true; wheel.MaxMotorTorque = 5f;
         w.AddSpring(b[1], b[5], new Vector2D(0, 8), new Vector2D(2, 3.8), 2f, 0.3f);
         w.AddDistance(b[5], b[6], new Vector2D(2, 3.8), new Vector2D(1, 6));
         var mouse = w.AddTarget(b[0], b[6], new Vector2D(1, 6));

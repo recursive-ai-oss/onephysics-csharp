@@ -52,16 +52,16 @@ internal static class HostProbeScenarios3D
     private static void Build(PhysicsWorld3D w)
     {
         ulong s = 424242;
-        w.CreateBox(w.CreateBody(BodyType.Static, new Vector3D(0, -0.5, 0)), new Vector3F(30f, 0.5f, 30f));
-        w.CreateBox(w.CreateBody(BodyType.Static, new Vector3D(-30, 8, 0)), new Vector3F(0.5f, 9f, 30f));
-        w.CreateBox(w.CreateBody(BodyType.Static, new Vector3D(30, 8, 0)), new Vector3F(0.5f, 9f, 30f));
+        w.CreateBox(w.CreateBody(BodyType.Static, new Vector3D(0, -0.5, 0)), new Vector3F(60f, 1f, 60f));
+        w.CreateBox(w.CreateBody(BodyType.Static, new Vector3D(-30, 8, 0)), new Vector3F(1f, 18f, 60f));
+        w.CreateBox(w.CreateBody(BodyType.Static, new Vector3D(30, 8, 0)), new Vector3F(1f, 18f, 60f));
         // A static sensor zone over the floor, a sliding kinematic platform carrying a kinematic sensor, and a spinning kinematic bar.
-        w.CreateBox(w.CreateBody(BodyType.Static, new Vector3D(-10, 1.5, 0)), new Vector3F(2.5f, 1.5f, 2.5f), 0f, new ShapeDef { IsSensor = true });
+        w.CreateBox(w.CreateBody(BodyType.Static, new Vector3D(-10, 1.5, 0)), new Vector3F(5f, 3f, 5f), 0f, new ShapeDef { IsSensor = true });
         var slider = w.CreateBody(new BodyDef { Type = BodyType.Kinematic, Position = new Vector3D(-18, 2.5, 0), LinearVelocity = new Vector3F(2f, 0f, 0f) });
-        w.CreateBox(slider, new Vector3F(3f, 0.25f, 2f));
-        w.CreateBox(slider, new Vector3F(3f, 1.5f, 2f), 0f, new ShapeDef { IsSensor = true, LocalPosition = new Vector3F(0, 1.75f, 0) });
+        w.CreateBox(slider, new Vector3F(6f, 0.5f, 4f));
+        w.CreateBox(slider, new Vector3F(6f, 3f, 4f), 0f, new ShapeDef { IsSensor = true, LocalPosition = new Vector3F(0, 1.75f, 0) });
         var spinner = w.CreateBody(new BodyDef { Type = BodyType.Kinematic, Position = new Vector3D(8, 2.2, 0), AngularVelocity = new Vector3F(0.4f, 1.2f, 0.3f) });
-        w.CreateBox(spinner, new Vector3F(3.5f, 0.2f, 0.4f));
+        w.CreateBox(spinner, new Vector3F(7f, 0.4f, 0.8f));
         w.CreateCapsule(spinner, 1.5f, 0.15f);
         // A pile of mixed shapes; every seventh body has a dynamic sensor shape as well.
         for (int i = 0; i < 70; i++)
@@ -70,7 +70,7 @@ internal static class HostProbeScenarios3D
             switch (i % 5)
             {
                 case 0: w.CreateSphere(b, 0.3f + 0.05f * (i % 3)); break;
-                case 1: w.CreateBox(b, new Vector3F(0.4f, 0.3f, 0.35f)); break;
+                case 1: w.CreateBox(b, new Vector3F(0.8f, 0.6f, 0.7f)); break;
                 case 2: w.CreateCapsule(b, 0.4f, 0.22f); break;
                 case 3: w.CreateCylinder(b, 0.3f, 0.3f); break;
                 default: w.CreateConvexHull(b, [new Vector3F(0, 0.5f, 0), new Vector3F(-0.45f, -0.3f, -0.3f), new Vector3F(0.45f, -0.3f, -0.3f), new Vector3F(0f, -0.3f, 0.5f)], 0.02f); break;
@@ -83,16 +83,16 @@ internal static class HostProbeScenarios3D
         for (int i = 0; i < 6; i++)
         {
             var t = w.CreateBody(new BodyDef { Type = BodyType.Dynamic, Position = new Vector3D(-26 + 8 * i, 2.5 + 0.4 * (i % 3), 0.5 * i - 1), LinearVelocity = new Vector3F(i % 2 == 0 ? 6f : -6f, 3f, 0f), AngularVelocity = new Vector3F(i % 2 == 0 ? 14f : -17f, 3f, 9f) });
-            w.CreateBox(t, new Vector3F(0.9f, 0.12f, 0.5f));
+            w.CreateBox(t, new Vector3F(1.8f, 0.24f, 1f));
         }
 
         var late = w.CreateBody(new BodyDef { Type = BodyType.Kinematic, Position = new Vector3D(-4, 1.8, 0), AngularVelocity = new Vector3F(0.3f, 0.9f, 0.2f) });
-        w.CreateBox(late, new Vector3F(0.15f, 0.15f, 0.15f));
-        w.CreateBox(late, new Vector3F(2.5f, 0.12f, 0.5f), 0f, new ShapeDef { LocalPosition = new Vector3F(2.6f, 0f, 0f) });
+        w.CreateBox(late, new Vector3F(0.3f, 0.3f, 0.3f));
+        w.CreateBox(late, new Vector3F(5f, 0.24f, 1f), 0f, new ShapeDef { LocalPosition = new Vector3F(2.6f, 0f, 0f) });
 
         for (int i = 0; i < 5; i++)
         {
-            var def = i % 2 == 0 ? Character.Humanoid : Character.Child;
+            var def = i % 2 == 0 ? CharacterDef.Humanoid : CharacterDef.Child;
             def.PushStrength = i % 3 == 0 ? 0.5f : 0f;
             w.AddCharacter(new Vector3D(-24 + 5 * i, 1.4, Range(ref s, -3, 3)), def);
         }

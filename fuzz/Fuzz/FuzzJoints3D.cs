@@ -234,12 +234,12 @@ internal static class FuzzJoints3D
         {
             switch (r.Byte() % 18)
             {
-                case 0: j.LimitEnabled = r.Bool(); break;
+                case 0: j.EnableLimit = r.Bool(); break;
                 case 1: j.SetLimits(r.Float(), r.Float()); break;
-                case 2: j.MotorEnabled = r.Bool(); break;
+                case 2: j.EnableMotor = r.Bool(); break;
                 case 3: j.MotorSpeed = r.Float(); break;
                 case 4: j.MaxMotorForce = r.Float(); break;
-                case 5: j.SpringEnabled = r.Bool(); break;
+                case 5: j.EnableSpring = r.Bool(); break;
                 case 6: j.SpringHertz = r.Float(); break;
                 case 7: j.SpringDampingRatio = r.Float(); break;
                 case 8: j.Length = r.Float(); break;
@@ -263,7 +263,7 @@ internal static class FuzzJoints3D
         if (s_base != null) { return s_base; }
         var w = Scene(4, out var b);
         w.AddHinge(b[0], b[2], new Vector3D(-4, 3, 0), new Vector3F(0, 0, 1)).SetLimits(-0.5f, 0.5f);
-        w.AddSlider(b[1], b[3], new Vector3D(-2, 3.2, 0), new Vector3F(1, 0, 0)).SpringEnabled = true;
+        w.AddSlider(b[1], b[3], new Vector3D(-2, 3.2, 0), new Vector3F(1, 0, 0)).EnableSpring = true;
         w.AddFixed(b[2], b[4], new Vector3D(0, 3.4, 0));
         w.AddCharacterJoint(b[4], b[5], new Vector3D(3, 3.6, 0), new Vector3F(1, 0, 0));
         w.AddCone(b[5], b[6], new Vector3D(4.5, 6, 0), new Vector3F(1, 0, 0), 0.6f);
@@ -275,7 +275,7 @@ internal static class FuzzJoints3D
         w.AddRackAndPinion(b[2], b[4], new Vector3F(0, 0, 1), new Vector3F(1, 0, 0), 0.5f);
         w.AddPulley(b[3], b[4], b[3].Position, b[4].Position, new Vector3D(-2, 12, 0), new Vector3D(2, 12, 0));
         var path = w.AddPath(b[0], b[6], [new Vector3D(1, 6, 0), new Vector3D(2, 6, 1), new Vector3D(3, 6.5, 2)]);
-        path.MotorEnabled = true; path.MotorSpeed = 1f; path.MaxMotorForce = 50f;
+        path.EnableMotor = true; path.MotorSpeed = 1f; path.MaxMotorForce = 50f;
         for (int i = 0; i < 20; i++) { w.Step(1f / 60f); }
         s_base = w.Snapshot();
         return s_base;

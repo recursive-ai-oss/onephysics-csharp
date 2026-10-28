@@ -108,7 +108,7 @@ internal static class Fuzz2DServices
         {
             var b = w.CreateBody(i % 4 == 3 ? BodyType.Kinematic : BodyType.Dynamic, new Vector2D(-3 + i * 0.7, 0.5 + (i % 3) * 0.5));
             var def = new ShapeDef { Layer = r.Byte() % 4, IsSensor = (r.Byte() & 7) == 0, CategoryBits = (uint)(1 << (r.Byte() % 3)), MaskBits = r.Byte() < 40 ? 3u : uint.MaxValue };
-            if (i % 2 == 0) { w.CreateCircle(b, 0.4f, default, def); } else { w.CreateBox(b, 0.4f, 0.3f, default, 0f, 0f, def); }
+            if (i % 2 == 0) { w.CreateCircle(b, 0.4f, default, def); } else { w.CreateBox(b, new Vector2F(0.4f, 0.3f), default, 0f, 0f, def); }
             b.OnTriggerEnter += _ => s_triggers++;
             b.OnTriggerExit += _ => s_triggers++;
             bodies[made++] = b;
