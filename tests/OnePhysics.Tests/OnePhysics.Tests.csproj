@@ -14,6 +14,7 @@
     <Compile Include="../Common/Services3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Characters3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Vehicles3DScene.cs" LinkBase="Common" />
+    <Compile Include="../Common/Ragdolls3DScene.cs" LinkBase="Common" />
   </ItemGroup>
 
   <ItemGroup>

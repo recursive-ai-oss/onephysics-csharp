@@ -248,6 +248,14 @@ public class Ragdoll3DTests
     }
 
     [Fact]
+    public void SharedSceneIsTheSameOnOneAndThreeThreadsAndAfterARestore()
+    {
+        ulong a = Ragdolls3DScene.Run(1, false), b = Ragdolls3DScene.Run(3, false), c = Ragdolls3DScene.Run(1, true);
+        Assert.Equal(a, b);
+        Assert.Equal(a, c);
+    }
+
+    [Fact]
     public void CorruptedRagdollSnapshotsAreRejectedOrReserializeIdentically()
     {
         var (w, r) = Standing();

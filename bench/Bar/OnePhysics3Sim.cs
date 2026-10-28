@@ -15,6 +15,7 @@ sealed class OnePhysics3Sim : ISim3
     int threads;
     List<(P3.Character Character, CharacterScript Script, int Body)> characters = [];
     List<(P3.Vehicle Vehicle, VehicleScript Script, int Body)> vehicles = [];
+    List<(P3.Joint Joint, JointDef Def)> drives = [];
     float[] vy = [];
     float gravity;
     int stepNo;
@@ -26,7 +27,7 @@ sealed class OnePhysics3Sim : ISim3
     public void Build(Scene s, int threads)
     {
         this.threads = threads;
-        (world, bodies, _) = SceneBuilder3D.Build(s, threads, out characters, out vehicles);
+        (world, bodies, _) = SceneBuilder3D.Build(s, threads, out characters, out vehicles, out drives);
         vy = new float[characters.Count]; gravity = (float)-s.Gy; stepNo = 0;
     }
 
@@ -34,6 +35,7 @@ sealed class OnePhysics3Sim : ISim3
     {
         MoveCharacters((float)dt);
         DriveVehicles();
+        DriveJoints();
         world.Step((float)dt);
         stepNo++;
     }
@@ -50,6 +52,17 @@ sealed class OnePhysics3Sim : ISim3
             if (ch.IsGrounded && vy[i] <= 0f) vy[i] = active && sc.Jump > 0 && stepNo > 0 && (stepNo + i) % sc.Jump == 0 ? 5f : -1f;
             else vy[i] -= gravity * dt;
             ch.Move(new Vector3F(walk * dt, vy[i] * dt, 0f), dt);
+        }
+    }
+
+    // Pose drives: every driven swing-twist joint is retargeted each step to a rotation about its drive axis (joint frame) by amplitude times a triangle wave 0..1..0 of the given period in steps.
+    void DriveJoints()
+    {
+        foreach (var (joint, d) in drives)
+        {
+            double angle = d.DriveAmp * Metrics3.Tri01(stepNo, d.DrivePeriod), h = 0.5 * angle;
+            float sn = (float)Math64.Sin(h), cs = (float)Math64.Cos(h);
+            joint.SetPoseDrive(new QuaternionF((float)d.DriveAx * sn, (float)d.DriveAy * sn, (float)d.DriveAz * sn, cs), (float)d.DriveK, (float)d.DriveC, (float)d.DriveMax);
         }
     }
 
