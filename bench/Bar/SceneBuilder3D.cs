@@ -10,7 +10,11 @@ public static class SceneBuilder3D
     public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads) => Build(s, threads, out _);
 
     /// <summary>Builds the scene; bodies with a <c>character</c> script become virtual characters (their bodies are in the array), returned with their scripts in body order.</summary>
-    public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads, out List<(P3.Character Character, CharacterScript Script, int Body)> characters)
+    public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads, out List<(P3.Character Character, CharacterScript Script, int Body)> characters) =>
+        Build(s, threads, out characters, out _);
+
+    /// <summary>As above, and bodies with a <c>vehicle</c> script get a vehicle built from the named preset (see docs/scenes.md); they are returned with their scripts in body order.</summary>
+    public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads, out List<(P3.Character Character, CharacterScript Script, int Body)> characters, out List<(P3.Vehicle Vehicle, VehicleScript Script, int Body)> vehicles)
     {
         var opt = new P3.WorldOptions3D { Gravity = new Vector3F((float)s.Gx, (float)s.Gy, (float)s.Gz), ThreadCount = threads };
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
@@ -19,6 +23,7 @@ public static class SceneBuilder3D
         if (s.Bodies.Exists(b => b.Script != null)) world.SetLayerCollision(1, 1, false); // characters pass through each other (layer 1); the world and the crates are layer 0
         var bodies = new P3.Body[s.Bodies.Count];
         characters = new List<(P3.Character, CharacterScript, int)>();
+        vehicles = new List<(P3.Vehicle, VehicleScript, int)>();
         for (int i = 0; i < bodies.Length; i++)
         {
             var ob = s.Bodies[i];
@@ -43,6 +48,11 @@ public static class SceneBuilder3D
             };
             bodies[i] = world.CreateBody(in bd);
             foreach (var sh in ob.Shapes) CreateShape(world, bodies[i], sh, s);
+            if (ob.Vehicle != null)
+            {
+                if (ob.Vehicle.Preset != "car") throw new InvalidDataException("unknown vehicle preset " + ob.Vehicle.Preset);
+                vehicles.Add((world.AddVehicle(bodies[i], P3.VehicleDef.Car), ob.Vehicle, i));
+            }
         }
         foreach (var j in s.Joints)
         {

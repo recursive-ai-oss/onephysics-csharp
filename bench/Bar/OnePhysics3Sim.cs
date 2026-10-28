@@ -14,6 +14,7 @@ sealed class OnePhysics3Sim : ISim3
     P3.Body[] bodies = [];
     int threads;
     List<(P3.Character Character, CharacterScript Script, int Body)> characters = [];
+    List<(P3.Vehicle Vehicle, VehicleScript Script, int Body)> vehicles = [];
     float[] vy = [];
     float gravity;
     int stepNo;
@@ -25,13 +26,14 @@ sealed class OnePhysics3Sim : ISim3
     public void Build(Scene s, int threads)
     {
         this.threads = threads;
-        (world, bodies, _) = SceneBuilder3D.Build(s, threads, out characters);
+        (world, bodies, _) = SceneBuilder3D.Build(s, threads, out characters, out vehicles);
         vy = new float[characters.Count]; gravity = (float)-s.Gy; stepNo = 0;
     }
 
     public void Step(double dt)
     {
         MoveCharacters((float)dt);
+        DriveVehicles();
         world.Step((float)dt);
         stepNo++;
     }
@@ -49,6 +51,24 @@ sealed class OnePhysics3Sim : ISim3
             else vy[i] -= gravity * dt;
             ch.Move(new Vector3F(walk * dt, vy[i] * dt, 0f), dt);
         }
+    }
+
+    void DriveVehicles()
+    {
+        foreach (var (car, sc, _) in vehicles)
+        {
+            var (throttle, steer, brake) = sc.At(stepNo);
+            car.Drive((float)throttle, (float)steer, (float)brake);
+        }
+    }
+
+    public int WheelDoubles => vehicles.Count == 0 ? 0 : 12 * vehicles.Count;
+
+    public void Wheels(double[] d)
+    {
+        int k = 0;
+        foreach (var (car, _, _) in vehicles)
+            for (int w = 0; w < 4; w++) { var c = car.GetWheel(w).Center; d[k++] = c.X; d[k++] = c.Y; d[k++] = c.Z; }
     }
 
     public void WakeAll(Scene s)

@@ -9,7 +9,7 @@
 #include <time.h>
 
 typedef struct { char kind[16]; int material; double density, radius; int np; double* p; } Op3Shape;
-typedef struct { int type; /* 0 static 1 kinematic 2 dynamic */ double pos[3], q[4], v[3], w[3]; int bullet, asleep; int shape0, shapeN; int isChar; double cSpeed, cPeriod, cJump, cStop, cPush; /* scripted character (docs/scenes.md): walk speed, reversal period, jump interval, stop step, push strength */ } Op3Body;
+typedef struct { int type; /* 0 static 1 kinematic 2 dynamic */ double pos[3], q[4], v[3], w[3]; int bullet, asleep; int shape0, shapeN; int isChar; double cSpeed, cPeriod, cJump, cStop, cPush; /* scripted character (docs/scenes.md): walk speed, reversal period, jump interval, stop step, push strength */ int isVeh; double vThrottle, vSteer, vPeriod, vSteerFrom, vBrakeFrom; /* scripted car (docs/scenes.md): throttle, steering amplitude, steering period, first steering step, first braking step */ } Op3Body;
 typedef struct { char kind[8]; int a, b; double pa[3], pb[3], axis[3]; int hasLimit; double lower, upper; } Op3Joint;
 typedef struct { int kind; /* 0 ray 1 overlap 2 cast */ double p[8]; } Op3Query;
 typedef struct { int step; } Op3Wake;
@@ -69,6 +69,12 @@ static int op3_load_scene(const char* path, Op3Scene* s)
         {
             Op3Body* b = &s->bodies[s->nBody - 1]; b->isChar = 1;
             b->cSpeed = NUM(); b->cPeriod = NUM(); b->cJump = NUM(); b->cStop = NUM(); b->cPush = NUM();
+        }
+        else if (!strcmp(t, "vehicle"))
+        {
+            Op3Body* b = &s->bodies[s->nBody - 1]; b->isVeh = 1;
+            NEXT(); // preset name: only "car" exists
+            b->vThrottle = NUM(); b->vSteer = NUM(); b->vPeriod = NUM(); b->vSteerFrom = NUM(); b->vBrakeFrom = NUM();
         }
         else if (!strcmp(t, "shape"))
         {
@@ -134,12 +140,16 @@ static FILE* op3_dump_open(const char* path, int n)
     return f;
 }
 
-static void op3_dump_frame(FILE* f, int step, const double* d, int n)
+// A frame: the step, the number of extra doubles (wheel centres of the scene's vehicles), the body rows, then the extra doubles.
+static void op3_dump_frame_x(FILE* f, int step, const double* d, int n, const double* extra, int m)
 {
     if (!f) return;
-    uint32_t h[2] = { (uint32_t)step, 0 };
+    uint32_t h[2] = { (uint32_t)step, (uint32_t)m };
     fwrite(h, 4, 2, f); fwrite(d, sizeof(double), (size_t)n * 14, f);
+    if (m > 0) fwrite(extra, sizeof(double), (size_t)m, f);
 }
+
+static void op3_dump_frame(FILE* f, int step, const double* d, int n) { op3_dump_frame_x(f, step, d, n, NULL, 0); }
 
 typedef struct { double ns[3]; long hits[3]; int count[3]; } Op3QueryTimes;
 

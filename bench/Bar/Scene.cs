@@ -20,8 +20,24 @@ public sealed class CharacterScript
     public int Period, Jump, Stop;
 }
 
+/// <summary>The scripted drive of a vehicle chassis: throttle held until step <c>BrakeFrom</c>, then full brake; steering follows a triangle wave of amplitude <c>SteerAmp</c> (fraction of full lock) and period <c>SteerPeriod</c> steps that starts at its peak (a cosine-like slalom: the car's sideways offset stays on one side, bounded) between <c>SteerFrom</c> and <c>BrakeFrom</c>.</summary>
+public sealed class VehicleScript
+{
+    public string Preset = "car";
+    public double Throttle, SteerAmp;
+    public int SteerPeriod, SteerFrom, BrakeFrom;
+
+    /// <summary>Triangle wave with period 1 and amplitude 1, starting at 0 and rising (a quarter period later it peaks).</summary>
+    static double Tri(double p) { double f = p - Math.Floor(p); return f < 0.25 ? 4 * f : f < 0.75 ? 2 - 4 * f : 4 * f - 4; }
+
+    /// <summary>Inputs for a step: throttle, steer, brake.</summary>
+    public (double Throttle, double Steer, double Brake) At(int step) =>
+        step >= BrakeFrom ? (0, 0, 1) : (Throttle, step >= SteerFrom ? SteerAmp * Tri((step - SteerFrom) / (double)SteerPeriod + 0.25) : 0, 0);
+}
+
 public sealed class BodyDef
 {
+    public VehicleScript? Vehicle;    // set on a dynamic box body that a vehicle-aware driver turns into a car; other drivers see a plain box
     public CharacterScript? Script;   // set on a body (a capsule) that a character-aware driver moves as a character; other drivers see a plain dynamic capsule
     public string Type = "dynamic"; // static, kinematic, dynamic
     public double X, Y, Angle, Vx, Vy, W;   // 2D: W is the angular velocity
@@ -119,6 +135,10 @@ public sealed class Scene
                     if (cur == null) throw new InvalidDataException("character before body");
                     cur.Script = new CharacterScript { Speed = D(t[1]), Period = I(t[2]), Jump = I(t[3]), Stop = I(t[4]), Push = D(t[5]) };
                     break;
+                case "vehicle":
+                    if (cur == null) throw new InvalidDataException("vehicle before body");
+                    cur.Vehicle = new VehicleScript { Preset = t[1], Throttle = D(t[2]), SteerAmp = D(t[3]), SteerPeriod = I(t[4]), SteerFrom = I(t[5]), BrakeFrom = I(t[6]) };
+                    break;
                 case "joint":
                     var j = new JointDef { Kind = t[1], A = I(t[2]), B = I(t[3]), Ax = D(t[4]), Ay = D(t[5]), Bx = D(t[6]), By = D(t[7]) };
                     int k0 = 8;
@@ -171,6 +191,7 @@ public sealed class Scene
                 foreach (var v in sh.P) sb.Append(' ').Append(F(v));
                 sb.Append('\n');
             }
+            if (b.Vehicle != null) sb.Append("vehicle ").Append(b.Vehicle.Preset).Append(' ').Append(F(b.Vehicle.Throttle)).Append(' ').Append(F(b.Vehicle.SteerAmp)).Append(' ').Append(b.Vehicle.SteerPeriod).Append(' ').Append(b.Vehicle.SteerFrom).Append(' ').Append(b.Vehicle.BrakeFrom).Append('\n');
             if (b.Script != null) sb.Append("character ").Append(F(b.Script.Speed)).Append(' ').Append(b.Script.Period).Append(' ').Append(b.Script.Jump).Append(' ').Append(b.Script.Stop).Append(' ').Append(F(b.Script.Push)).Append('\n');
         }
         foreach (var j in Joints)

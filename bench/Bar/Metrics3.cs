@@ -248,12 +248,90 @@ public static class Metrics3
         return bad;
     }
 
+    // Terrain grids of the vehicles scene: (origin x, origin z, cell, columns, rows, heights) of the height field and the mesh, read back from the shapes the generator wrote.
+    static List<(double Ox, double Oz, double Cell, int Nx, int Nz, double[] H)> VehicleGrids(Scene s)
+    {
+        var grids = new List<(double, double, double, int, int, double[])>();
+        foreach (var b in s.Bodies.Where(b => b.Type == "static"))
+            foreach (var sh in b.Shapes)
+            {
+                var p = sh.P;
+                if (sh.Kind == "heightfield") { int nx = (int)p[0], nz = (int)p[1]; grids.Add((p[3], p[5], p[2], nx, nz, p.Skip(6).Take(nx * nz).ToArray())); }
+                else if (sh.Kind == "mesh")
+                {
+                    int nv = (int)p[0]; var h = new double[nv]; for (int i = 0; i < nv; i++) h[i] = p[3 + 3 * i];
+                    grids.Add((p[2], p[4], 1.0, 61, 241, h));
+                }
+            }
+        return grids;
+    }
+
+    static double GridHeight(List<(double Ox, double Oz, double Cell, int Nx, int Nz, double[] H)> grids, double x, double z)
+    {
+        foreach (var g in grids)
+        {
+            double u = (x - g.Ox) / g.Cell, v = (z - g.Oz) / g.Cell;
+            if (u < 0 || v < 0 || u > g.Nx - 1 || v > g.Nz - 1) continue;
+            int i = Math.Min((int)u, g.Nx - 2), j = Math.Min((int)v, g.Nz - 2); double fu = u - i, fv = v - j;
+            return (g.H[j * g.Nx + i] * (1 - fu) + g.H[j * g.Nx + i + 1] * fu) * (1 - fv) + (g.H[(j + 1) * g.Nx + i] * (1 - fu) + g.H[(j + 1) * g.Nx + i + 1] * fu) * fv;
+        }
+        return double.NaN;
+    }
+
+    // Vehicle metrics from the wheel centres the drivers dump (three doubles per wheel, four wheels per car, cars in body order):
+    //  wheelThroughGround: wheel samples whose centre is lower than half a wheel radius above the terrain (bilinear on the generator's grid) under it, summed over all dumps;
+    //  rollovers: cars whose body up axis points below the horizon (y component under 0.2) in any dump;
+    //  suspensionJitter: for cars at rest (speed under 0.2 m/s) in the last dump, the largest change of a wheel centre's height above the body centre between the last dumps (m).
+    static void VehicleMetrics(Scene s, List<(int step, double[] d)> frames, List<double[]> wheelFrames, HashSet<string> want, SortedDictionary<string, double> r)
+    {
+        int first = int.Parse(s.Params["cars"][0], CultureInfo.InvariantCulture), count = int.Parse(s.Params["cars"][1], CultureInfo.InvariantCulture);
+        double radius = double.Parse(s.Params["wheelRadius"][0], CultureInfo.InvariantCulture);
+        if (wheelFrames.Count == 0 || wheelFrames[^1].Length != 12 * count) { return; } // engines without wheel data report nothing for these
+        var grids = VehicleGrids(s);
+        long through = 0; var rolled = new HashSet<int>();
+        for (int f = 0; f < frames.Count; f++)
+        {
+            var d = frames[f].d; var w = wheelFrames[f];
+            for (int c = 0; c < count; c++)
+            {
+                int b = first + c;
+                double qx = d[b * St + 3], qy = d[b * St + 4], qz = d[b * St + 5], qw = d[b * St + 6];
+                double upY = 1 - 2 * (qx * qx + qz * qz);
+                if (upY < 0.2) rolled.Add(c);
+                for (int k = 0; k < 4; k++)
+                {
+                    int o = 12 * c + 3 * k;
+                    double ground = GridHeight(grids, w[o], w[o + 2]);
+                    if (!double.IsNaN(ground) && w[o + 1] < ground + 0.5 * radius) through++;
+                }
+            }
+        }
+        if (want.Contains("wheelThroughGround")) r["wheelThroughGround"] = through;
+        if (want.Contains("rollovers")) r["rollovers"] = rolled.Count;
+        if (want.Contains("suspensionJitter") && frames.Count >= 3)
+        {
+            double worst = 0; var a = frames[^2].d; var z = frames[^1].d; var wa = wheelFrames[^2]; var wz = wheelFrames[^1];
+            for (int c = 0; c < count; c++)
+            {
+                int b = first + c;
+                if (Math.Sqrt(new V(z[b * St + 7], z[b * St + 8], z[b * St + 9]).Len2) > 0.2) continue;
+                for (int k = 0; k < 4; k++)
+                {
+                    int o = 12 * c + 3 * k;
+                    worst = Math.Max(worst, Math.Abs((wz[o + 1] - z[b * St + 1]) - (wa[o + 1] - a[b * St + 1])));
+                }
+            }
+            r["suspensionJitter"] = worst;
+        }
+    }
+
     // ---- metrics ----
 
     public static SortedDictionary<string, double> Compute(Scene s, string dumpPath)
     {
         int n = s.Bodies.Count;
         var frames = new List<(int step, double[] d)>();
+        var wheelFrames = new List<double[]>();
         using (var f = File.OpenRead(dumpPath))
         using (var rd = new BinaryReader(f))
         {
@@ -262,9 +340,10 @@ public static class Metrics3
             if (rd.ReadUInt32() != 3) throw new InvalidDataException("not a 3D dump");
             while (f.Position < f.Length)
             {
-                int step = (int)rd.ReadUInt32(); rd.ReadUInt32();
+                int step = (int)rd.ReadUInt32(); int extra = (int)rd.ReadUInt32();
                 var d = new double[n * St]; for (int i = 0; i < d.Length; i++) d[i] = rd.ReadDouble();
-                frames.Add((step, d));
+                var wh = new double[extra]; for (int i = 0; i < wh.Length; i++) wh[i] = rd.ReadDouble();
+                frames.Add((step, d)); wheelFrames.Add(wh);
             }
         }
         var r = new SortedDictionary<string, double>(StringComparer.Ordinal);
@@ -373,6 +452,7 @@ public static class Metrics3
             }
             r["tunnelled"] = worst;
         }
+        if (s.Params.ContainsKey("cars")) VehicleMetrics(s, frames, wheelFrames, want, r);
         if (want.Contains("collapse") && s.Params.ContainsKey("top"))
         {
             int t = (int)P("top");

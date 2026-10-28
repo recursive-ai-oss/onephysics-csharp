@@ -65,7 +65,11 @@ internal static class SmokeProgram
         ulong h1 = Characters3DScene.Run(1, false), h3 = Characters3DScene.Run(3, false), hr = Characters3DScene.Run(1, true);
         bool hSame = h1 == h3 && h1 == hr;
         Console.WriteLine((hSame ? "OK characters3d " : "FAIL characters3d ") + h1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
-        return ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame ? 0 : 1;
+        // 3D vehicles (height field, ramp mesh, dynamic slab, car, limited-slip car, truck, kart): same state on one and three threads and after a restore.
+        ulong x1 = Vehicles3DScene.Run(1, false), x3 = Vehicles3DScene.Run(3, false), xr = Vehicles3DScene.Run(1, true);
+        bool xSame = x1 == x3 && x1 == xr;
+        Console.WriteLine((xSame ? "OK vehicles3d " : "FAIL vehicles3d ") + x1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        return ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame ? 0 : 1;
     }
 
     private static ulong World2DJoints(int threads, bool restoreHalfway)

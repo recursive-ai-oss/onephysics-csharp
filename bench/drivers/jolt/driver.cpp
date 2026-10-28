@@ -24,6 +24,8 @@
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyActivationListener.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
+#include <Jolt/Physics/Vehicle/VehicleConstraint.h>
+#include <Jolt/Physics/Vehicle/WheeledVehicleController.h>
 
 #include <cmath>
 #include <unordered_set>
@@ -142,6 +144,47 @@ static void snapshot(BodyInterface& bi, const std::vector<BodyID>& ids, double* 
     }
 }
 
+// Scripted cars are Jolt VehicleConstraint objects with a WheeledVehicleController (documented classes), built with the "car" preset of docs/scenes.md: four wheels of 0.34 m radius 0.8 m either side and 1.3 m ahead and
+// behind the centre, suspension 0.05 to 0.5 m at 1.5 Hz and damping 0.6, front wheels steering to 0.5 rad, rear handbrake, 400 N m engine between 1000 and 6500 rpm, six-speed automatic, one rear differential of ratio 3.4,
+// anti-roll bars of 20 kN/m. Everything the preset does not name keeps the library's default (tyre curves, torque curve, clutch).
+struct CarState { Ref<VehicleConstraint> vc; WheeledVehicleController* ctrl; int body; };
+
+static CarState MakeCar(PhysicsSystem& physics, BodyInterface& bi, BodyID id)
+{
+    VehicleConstraintSettings vcs;
+    vcs.mUp = Vec3::sAxisY(); vcs.mForward = Vec3::sAxisZ();
+    const float xs[4] = { -0.8f, 0.8f, -0.8f, 0.8f }, zs[4] = { 1.3f, 1.3f, -1.3f, -1.3f };
+    for (int k = 0; k < 4; k++)
+    {
+        WheelSettingsWV* w = new WheelSettingsWV;
+        w->mPosition = Vec3(xs[k], 0.0f, zs[k]);
+        w->mSuspensionDirection = Vec3(0, -1, 0); w->mSteeringAxis = Vec3(0, 1, 0); w->mWheelUp = Vec3(0, 1, 0); w->mWheelForward = Vec3(0, 0, 1);
+        w->mSuspensionMinLength = 0.05f; w->mSuspensionMaxLength = 0.5f;
+        w->mSuspensionSpring.mFrequency = 1.5f; w->mSuspensionSpring.mDamping = 0.6f;
+        w->mRadius = 0.34f; w->mWidth = 0.25f;
+        w->mMaxSteerAngle = k < 2 ? 0.5f : 0.0f;
+        w->mMaxBrakeTorque = 3000.0f; w->mMaxHandBrakeTorque = k < 2 ? 0.0f : 4000.0f;
+        w->mInertia = 1.0f; w->mAngularDamping = 0.2f;
+        vcs.mWheels.push_back(w);
+    }
+    for (int a = 0; a < 2; a++) { VehicleAntiRollBar bar; bar.mLeftWheel = 2 * a; bar.mRightWheel = 2 * a + 1; bar.mStiffness = 20000.0f; vcs.mAntiRollBars.push_back(bar); }
+    WheeledVehicleControllerSettings* cs = new WheeledVehicleControllerSettings;
+    cs->mEngine.mMaxTorque = 400.0f; cs->mEngine.mMinRPM = 1000.0f; cs->mEngine.mMaxRPM = 6500.0f; cs->mEngine.mInertia = 0.5f;
+    cs->mTransmission.mMode = ETransmissionMode::Auto;
+    cs->mTransmission.mGearRatios = { 3.5f, 2.2f, 1.5f, 1.1f, 0.85f, 0.7f };
+    cs->mTransmission.mReverseGearRatios = { -3.2f };
+    cs->mDifferentials.resize(1);
+    cs->mDifferentials[0].mLeftWheel = 2; cs->mDifferentials[0].mRightWheel = 3; cs->mDifferentials[0].mDifferentialRatio = 3.4f; cs->mDifferentials[0].mEngineTorqueRatio = 1.0f;
+    vcs.mController = cs;
+    CarState c; c.vc = new VehicleConstraint(*bi.TryGetBody(id), vcs);
+    c.vc->SetVehicleCollisionTester(new VehicleCollisionTesterCastCylinder(Layers::MOVING));
+    physics.AddConstraint(c.vc);
+    physics.AddStepListener(c.vc);
+    c.ctrl = static_cast<WheeledVehicleController*>(c.vc->GetController());
+    c.body = 0;
+    return c;
+}
+
 int main(int argc, char** argv)
 {
     Op3Args args; Op3Scene s;
@@ -221,18 +264,43 @@ int main(int argc, char** argv)
         ps.mPoint1 = RVec3((float)oj.pa[0], (float)oj.pa[1], (float)oj.pa[2]); ps.mPoint2 = RVec3((float)oj.pb[0], (float)oj.pb[1], (float)oj.pb[2]);
         physics.AddConstraint(bi.CreateConstraint(&ps, ids[oj.a], ids[oj.b]));
     }
+    std::vector<CarState> cars;
+    for (int i = 0; i < s.nBody; i++)
+        if (s.bodies[i].isVeh) { CarState c = MakeCar(physics, bi, ids[(size_t)i]); c.body = i; cars.push_back(c); }
     physics.OptimizeBroadPhase();
+
+    // Wheel centres of every car, four wheels each, three doubles per wheel.
+    std::vector<double> wheelRows(cars.size() * 12);
+    auto wheels = [&]() { size_t k = 0; for (CarState& c : cars) for (uint w = 0; w < 4; w++) { RMat44 m = c.vc->GetWheelWorldTransform(w, Vec3::sAxisX(), Vec3::sAxisY()); RVec3 p = m.GetTranslation(); wheelRows[k++] = p.GetX(); wheelRows[k++] = p.GetY(); wheelRows[k++] = p.GetZ(); } };
 
     double* d = (double*)malloc((size_t)s.nBody * 14 * sizeof(double));
     double* stepNs = (double*)malloc((size_t)(s.steps + 1) * sizeof(double));
     FILE* dump = args.timing ? NULL : op3_dump_open(args.dump, s.nBody);
-    if (dump) { snapshot(bi, ids, d, charOf, chars); op3_dump_frame(dump, 0, d, s.nBody); }
+    if (dump) { snapshot(bi, ids, d, charOf, chars); wheels(); op3_dump_frame_x(dump, 0, d, s.nBody, wheelRows.data(), (int)wheelRows.size()); }
 
     const int collisionSteps = s.substeps > 0 ? s.substeps : 1; // the documented default: one collision step per update
     for (int step = 0; step < s.steps; step++)
     {
         for (int w = 0; w < s.nWake; w++)
             if (s.wakes[w].step == step) for (int i = 0; i < s.nBody; i++) if (s.bodies[i].type == 2 && charOf[(size_t)i] < 0) bi.ActivateBody(ids[i]);
+        // Scripted drive as in the other drivers: throttle until the braking step, then full brake; a cosine-like triangle-wave slalom between the steering step and the braking step (docs/scenes.md).
+        for (CarState& c : cars)
+        {
+            const Op3Body& ob = s.bodies[c.body];
+            float throttle = 0.0f, steer = 0.0f, brake = 0.0f;
+            if (step >= (int)ob.vBrakeFrom) brake = 1.0f;
+            else
+            {
+                throttle = (float)ob.vThrottle;
+                if (step >= (int)ob.vSteerFrom)
+                {
+                    double p = (step - ob.vSteerFrom) / ob.vPeriod + 0.25, f = p - std::floor(p);
+                    steer = (float)(ob.vSteer * (f < 0.25 ? 4 * f : f < 0.75 ? 2 - 4 * f : 4 * f - 4));
+                }
+            }
+            c.ctrl->SetDriverInput(throttle, steer, brake, 0.0f);
+            if (throttle != 0.0f || brake != 0.0f) bi.ActivateBody(ids[(size_t)c.body]);
+        }
         double t0 = op3_now_ns();
         // Scripted input as in the other drivers: walk along +x at the script's speed, reversing every period steps, jump every so many steps, stand still from the stop step; gravity is integrated
         // into a vertical speed held at a small downward value while supported. The character's own update then slides, steps and sticks to the floor.
@@ -263,7 +331,7 @@ int main(int argc, char** argv)
         }
         physics.Update((float)s.dt, collisionSteps, &temp, &job);
         stepNs[step] = op3_now_ns() - t0;
-        if (dump && ((step + 1) % s.dumpEvery == 0 || step + 1 == s.steps)) { snapshot(bi, ids, d, charOf, chars); op3_dump_frame(dump, step + 1, d, s.nBody); }
+        if (dump && ((step + 1) % s.dumpEvery == 0 || step + 1 == s.steps)) { snapshot(bi, ids, d, charOf, chars); wheels(); op3_dump_frame_x(dump, step + 1, d, s.nBody, wheelRows.data(), (int)wheelRows.size()); }
     }
     if (dump) fclose(dump);
 
