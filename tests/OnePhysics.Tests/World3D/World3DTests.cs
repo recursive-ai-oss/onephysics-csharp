@@ -393,7 +393,7 @@ public class World3DTests
         var b = w.AddSphere(0.5f);
         Assert.Throws<ArgumentOutOfRangeException>(() => b.LinearVelocity = new Vector3F(float.NaN, 0, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => b.ApplyForce(new Vector3F(0, float.NaN, 0)));
-        Assert.Throws<InvalidOperationException>(() => w.AddSphere(1f, type: BodyType.Static).LinearVelocity = new Vector3F(1, 0, 0));
+        Assert.Throws<BodyTypeException>(() => w.AddSphere(1f, type: BodyType.Static).LinearVelocity = new Vector3F(1, 0, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => w.Step(0f));
         Assert.Throws<ArgumentOutOfRangeException>(() => w.Step(float.NaN));
         // Nothing above left a half-built body behind.

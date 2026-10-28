@@ -188,4 +188,37 @@ public class HostHooks3DTests
         Assert.Equal(before, w.Snapshot());
         Assert.Throws<ArgumentNullException>(() => w.Restore((byte[])null!));
     }
+
+    [Fact]
+    public void LivenessQueriesCharacterHandlesAndTypedErrorsForStaticBodies()
+    {
+        var w = Build(1);
+        var stat = w.CreateBody(BodyType.Static, new Vector3D(50, 0, 0));
+        var box = w.AddBox(new Vector3F(1f, 1f, 1f), new Vector3D(20, 3, 0));
+        var shape = box.GetShapes()[0];
+        var ch = w.AddCharacter(new Vector3D(30, 1, 0));
+        Assert.True(w.IsBodyAlive(box.RawHandle));
+        Assert.True(w.IsShapeAlive(shape.RawHandle));
+        Assert.True(w.IsCharacterAlive(ch.Index, ch.Generation));
+        Assert.False(w.IsBodyAlive(default));
+        Assert.False(w.IsShapeAlive(default));
+        Assert.False(w.IsJointAlive(default));
+        Assert.False(w.IsBodyAlive(new BodyHandle(w.Id + 1, box.RawHandle.Index, box.RawHandle.Generation)));
+        Assert.False(w.IsJointAlive(new JointHandle(w.Id, 0, 12345)));
+        var other = w.AddBox(new Vector3F(1f, 1f, 1f), new Vector3D(22, 3, 0));
+        var j = w.CreateJoint(new PointJointDef { BodyA = box, BodyB = other });
+        Assert.True(w.IsJointAlive(j.RawHandle));
+        j.Destroy();
+        Assert.False(w.IsJointAlive(j.RawHandle));
+
+        var e = Assert.Throws<BodyTypeException>(() => stat.LinearVelocity = new Vector3F(1, 0, 0));
+        Assert.Equal(stat.RawHandle, e.Body);
+        Assert.Contains("LinearVelocity", e.Message);
+        Assert.Throws<BodyTypeException>(() => stat.ApplyForce(new Vector3F(1, 0, 0)));
+        Assert.Throws<BodyTypeException>(() => w.ApplyBuoyancy(stat, new FluidDef(), Dt));
+
+        box.Destroy();
+        Assert.False(w.IsBodyAlive(box.RawHandle));
+        Assert.False(w.IsShapeAlive(shape.RawHandle));
+    }
 }

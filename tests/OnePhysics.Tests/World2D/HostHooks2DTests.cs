@@ -188,4 +188,38 @@ public class HostHooks2DTests
         Assert.Equal(before, w.Snapshot());
         Assert.Throws<ArgumentNullException>(() => w.Restore((byte[])null!));
     }
+
+    [Fact]
+    public void LivenessQueriesCharacterHandlesAndTypedErrorsForStaticBodies()
+    {
+        var w = Build(1);
+        var stat = w.CreateBody(BodyType.Static, new Vector2D(50, 0));
+        var box = w.AddBox(new Vector2F(1f, 1f), new Vector2D(20, 3));
+        var shape = box.GetShapes()[0];
+        var ch = w.AddCharacter(new Vector2D(30, 1));
+        Assert.True(w.IsBodyAlive(box.RawHandle));
+        Assert.True(w.IsShapeAlive(shape.RawHandle));
+        Assert.True(w.IsCharacterAlive(ch.Index, ch.Generation));
+        Assert.Same(w, w.GetCharacter(ch.Index, ch.Generation).Body.World);
+        Assert.False(w.IsBodyAlive(default));
+        Assert.False(w.IsShapeAlive(default));
+        Assert.False(w.IsJointAlive(default));
+        Assert.False(w.IsBodyAlive(new BodyHandle(w.Id + 1, box.RawHandle.Index, box.RawHandle.Generation)));
+        Assert.False(w.IsJointAlive(new JointHandle(w.Id, 0, 12345)));
+        var other = w.AddBox(new Vector2F(1f, 1f), new Vector2D(22, 3));
+        var j = w.AddHinge(box, other, new Vector2D(21, 3));
+        Assert.True(w.IsJointAlive(j.RawHandle));
+        j.Destroy();
+        Assert.False(w.IsJointAlive(j.RawHandle));
+
+        var e = Assert.Throws<BodyTypeException>(() => stat.LinearVelocity = new Vector2F(1, 0));
+        Assert.Equal(stat.RawHandle, e.Body);
+        Assert.Contains("LinearVelocity", e.Message);
+        Assert.Throws<BodyTypeException>(() => stat.ApplyForce(new Vector2F(1, 0)));
+        Assert.Throws<BodyTypeException>(() => w.GetCharacters()[0].Body.ApplyForce(new Vector2F(1, 0)));
+
+        box.Destroy();
+        Assert.False(w.IsBodyAlive(box.RawHandle));
+        Assert.False(w.IsShapeAlive(shape.RawHandle));
+    }
 }

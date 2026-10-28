@@ -42,3 +42,25 @@ public sealed class SnapshotFormatException : PhysicsException
         Offset = offset;
     }
 }
+
+/// <summary>An operation that does not apply to the body's type: a velocity or teleport on a static body, a force, impulse or buoyancy on a body that is not dynamic.</summary>
+public sealed class BodyTypeException : PhysicsException
+{
+    /// <summary>The body the operation was called on.</summary>
+    public BodyHandle Body { get; }
+
+    /// <summary>The type the body has.</summary>
+    public BodyType Actual { get; }
+
+    /// <summary>True if the operation needs a dynamic body; false if it accepts dynamic and kinematic bodies.</summary>
+    public bool RequiresDynamic { get; }
+
+    /// <summary>Creates the exception for <paramref name="operation"/> called on <paramref name="body"/>, which is <paramref name="actual"/>.</summary>
+    public BodyTypeException(string operation, BodyHandle body, BodyType actual, bool requiresDynamic)
+        : base(operation + " needs a " + (requiresDynamic ? "dynamic" : "dynamic or kinematic") + " body, but body #" + body.Index.ToString(System.Globalization.CultureInfo.InvariantCulture) + " (generation " + body.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture) + ") is " + actual.ToString().ToLowerInvariant() + ".")
+    {
+        Body = body;
+        Actual = actual;
+        RequiresDynamic = requiresDynamic;
+    }
+}

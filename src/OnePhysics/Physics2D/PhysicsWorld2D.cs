@@ -177,6 +177,18 @@ public sealed partial class PhysicsWorld2D
 
     // ------------------------------------------------------------------ middle tier: bodies and shapes
 
+    /// <summary>True while the body exists in this world. False for null handles, handles of another world and destroyed bodies (never throws). Allocates nothing.</summary>
+    public bool IsBodyAlive(BodyHandle handle) => !handle.IsNull && handle.World == Id && _core.Bodies.Handles.IsAlive(handle.Index, handle.Generation);
+
+    /// <summary>True while the shape exists in this world. False for null handles, handles of another world and destroyed shapes (never throws). Allocates nothing.</summary>
+    public bool IsShapeAlive(ShapeHandle handle) => !handle.IsNull && handle.World == Id && _core.Shapes.Handles.IsAlive(handle.Index, handle.Generation);
+
+    /// <summary>True while the joint exists in this world. False for null handles, handles of another world, destroyed joints and constraints that are not joints (never throws). Allocates nothing.</summary>
+    public bool IsJointAlive(JointHandle handle) => !handle.IsNull && handle.World == Id && _core.Constraints.Handles.IsAlive(handle.Index, handle.Generation) && _core.Constraints.KindOf(handle.Index) == ConstraintKind.Joint;
+
+    /// <summary>True while the character with this slot index and generation (see <see cref="Character.Index"/> and <see cref="Character.Generation"/>) exists. Never throws. Allocates nothing.</summary>
+    public bool IsCharacterAlive(int index, int generation) => _engine.CharHandles.IsAlive(index, generation);
+
     /// <summary>The <see cref="Body"/> for a raw handle (from an event, an exception or the raw tier).</summary>
     /// <exception cref="InvalidHandleException">The handle is null, belongs to another world or refers to a destroyed body.</exception>
     public Body GetBody(BodyHandle handle)

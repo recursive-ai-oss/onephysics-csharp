@@ -70,7 +70,7 @@ public readonly partial struct Body : IEquatable<Body>
     /// <summary>The rotation angle in radians within (-pi, pi].</summary>
     public float Angle { get { var r = Rotation; return (float)RecursiveAI.OneMath.Math64.Atan2(r.S, r.C); } }
 
-    /// <summary>Velocity of the centre of mass, metres per second. Setting it wakes the body; static bodies refuse (<see cref="InvalidOperationException"/>).</summary>
+    /// <summary>Velocity of the centre of mass, metres per second. Setting it wakes the body; static bodies refuse (<see cref="BodyTypeException"/>).</summary>
     public Vector2F LinearVelocity
     {
         get { var (w, b) = Resolve(); var v = w.Core.Bodies.LinearVelocityOf(b); return new Vector2F(v[0], v[1]); }
@@ -108,9 +108,9 @@ public readonly partial struct Body : IEquatable<Body>
     /// <summary>The centre of mass in world coordinates.</summary>
     public Vector2D WorldCenterOfMass { get { var (w, b) = Resolve(); var p = w.Core.Bodies.PositionOf(b); return new Vector2D(p[0], p[1]); } }
 
-    private static void RequireMovable(PhysicsWorld2D w, int b)
+    private static void RequireMovable(PhysicsWorld2D w, int b, [System.Runtime.CompilerServices.CallerMemberName] string operation = "")
     {
-        if (w.Core.Bodies.TypeOf(b) == BodyType.Static) { throw new InvalidOperationException("A static body cannot move; create it as kinematic or dynamic."); }
+        if (w.Core.Bodies.TypeOf(b) == BodyType.Static) { throw new BodyTypeException(operation, w.Core.HandleOfBody(b), BodyType.Static, false); }
     }
 
     private static void WakeBody(PhysicsWorld2D w, int b)
@@ -210,9 +210,9 @@ public readonly partial struct Body : IEquatable<Body>
         WakeBody(w, b);
     }
 
-    private static void RequireDynamic(PhysicsWorld2D w, int b)
+    private static void RequireDynamic(PhysicsWorld2D w, int b, [System.Runtime.CompilerServices.CallerMemberName] string operation = "")
     {
-        if (w.Core.Bodies.TypeOf(b) != BodyType.Dynamic) { throw new InvalidOperationException("Forces and impulses apply to dynamic bodies only."); }
+        if (w.Core.Bodies.TypeOf(b) != BodyType.Dynamic) { throw new BodyTypeException(operation, w.Core.HandleOfBody(b), w.Core.Bodies.TypeOf(b), true); }
     }
 
     private static void RequireFinite(Vector2F v)
