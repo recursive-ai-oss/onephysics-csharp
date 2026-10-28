@@ -157,16 +157,18 @@ internal sealed partial class Engine3D
         if (_boxStamp.Length < shapeHigh) { int cap = Math.Max(shapeHigh, _boxStamp.Length * 2); _boxes = new double[cap * 6]; _boxStamp = new int[cap]; }
         _stamp++;
         // 1. Broadphase boxes of every body that moved last step. The displacement stretches the box ahead of the motion.
-        foreach (int b in world.AwakeBodies)
+        // The tight boxes are pure functions of body state and are computed in parallel over fixed chunks of the awake list; the tree is then updated serially in list order.
+        var awakeList = world.AwakeBodies;
+        int boxChunks = (awakeList.Length + BoxChunk - 1) / BoxChunk;
+        world.Executor.For(boxChunks, new TightBoxTask(this, boxChunks));
+        foreach (int b in awakeList)
         {
             if (!bodies.IsLive(b)) { continue; }
             for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
             {
-                var tight = TightBox(b, s);
-                Bp.MoveProxy(Proxy[s], tight, Dp[3 * b], Dp[3 * b + 1], Dp[3 * b + 2]);
                 int o = 6 * s;
-                _boxes[o] = tight.MinX; _boxes[o + 1] = tight.MinY; _boxes[o + 2] = tight.MinZ; _boxes[o + 3] = tight.MaxX; _boxes[o + 4] = tight.MaxY; _boxes[o + 5] = tight.MaxZ;
-                _boxStamp[s] = _stamp;
+                var tight = new Aabb3D(_boxes[o], _boxes[o + 1], _boxes[o + 2], _boxes[o + 3], _boxes[o + 4], _boxes[o + 5]);
+                Bp.MoveProxy(Proxy[s], tight, Dp[3 * b], Dp[3 * b + 1], Dp[3 * b + 2]);
             }
         }
 
@@ -368,6 +370,35 @@ internal sealed partial class Engine3D
     private bool _deferWrite;
     private int[] _sleepers = new int[64];
     private int _sleeperCount;
+
+    private const int BoxChunk = 32;
+
+    private readonly struct TightBoxTask : IParallelBody
+    {
+        private readonly Engine3D _e;
+
+        public TightBoxTask(Engine3D e, int chunks) { _e = e; }
+
+        public void Run(int task)
+        {
+            var e = _e;
+            var list = e.Core.AwakeBodies;
+            var bodies = e.Core.Bodies;
+            int lo = task * BoxChunk, hi = Math.Min(lo + BoxChunk, list.Length);
+            for (int i = lo; i < hi; i++)
+            {
+                int b = list[i];
+                if (!bodies.IsLive(b)) { continue; }
+                for (int s = e.ShapeHead[b]; s >= 0; s = e.NextShape[s])
+                {
+                    var tight = e.TightBox(b, s);
+                    int o = 6 * s;
+                    e._boxes[o] = tight.MinX; e._boxes[o + 1] = tight.MinY; e._boxes[o + 2] = tight.MinZ; e._boxes[o + 3] = tight.MaxX; e._boxes[o + 4] = tight.MaxY; e._boxes[o + 5] = tight.MaxZ;
+                    e._boxStamp[s] = e._stamp;
+                }
+            }
+        }
+    }
 
     private const int PairListChunk = 1024;
     private int[] _pairChunkCount = new int[8];

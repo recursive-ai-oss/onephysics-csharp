@@ -220,22 +220,19 @@ internal sealed partial class Engine3D
             if (rolling > 0f) { anyRolling = 1; RollingMass(iA, iB, rm); for (int k = 0; k < 6; k++) { w[(W3D.RollMass + k) * 8 + lane] = rm[k]; } }
             Put3(w, W3D.RollImpulse, lane, V(pl, ManifoldLayout.RollingImpulse));
 
-            Vector3F vA = V(lin, 3 * a), wA = V(ang, 3 * a), vB = V(lin, 3 * b), wB = V(ang, 3 * b);
+            // The effective masses, adjusted separations and relative velocities are computed for the whole group at once afterwards (ContactKernel3D.PrepareMasses); the inputs wait in the group's scratch rows.
+            int st = W3D.StageOffset;
+            for (int k = 0; k < 6; k++) { w[st + k * 8 + lane] = iA[k]; w[st + (6 + k) * 8 + lane] = iB[k]; }
+            Put3(w, st / 8 + 12, lane, V(lin, 3 * a)); Put3(w, st / 8 + 15, lane, V(ang, 3 * a)); Put3(w, st / 8 + 18, lane, V(lin, 3 * b)); Put3(w, st / 8 + 21, lane, V(ang, 3 * b));
             int count = cs.PointCount[c];
             if (count > maxPoints) { maxPoints = count; }
             for (int i = 0; i < count; i++)
             {
                 var rA = V(pl, ManifoldLayout.AnchorA(i));
                 var rB = V(pl, ManifoldLayout.AnchorB(i));
-                float sep = pl[ManifoldLayout.Separation(i)];
                 int f = W3D.Point0 + i * W3D.PointStride;
                 Put3(w, f + W3D.ArmA, lane, rA); Put3(w, f + W3D.ArmB, lane, rB);
-                w[(f + W3D.AdjustedSeparation) * 8 + lane] = sep - Vector3F.Dot(rB - rA, n);
-                w[(f + W3D.NormalMass) * 8 + lane] = EffectiveMass(mA, mB, iA, iB, rA, rB, n);
-                w[(f + W3D.Tangent1Mass) * 8 + lane] = EffectiveMass(mA, mB, iA, iB, rA, rB, t1);
-                w[(f + W3D.Tangent2Mass) * 8 + lane] = EffectiveMass(mA, mB, iA, iB, rA, rB, t2);
-                var dv = (vB + Vector3F.Cross(wB, rB)) - (vA + Vector3F.Cross(wA, rA));
-                w[(f + W3D.RelativeVelocity) * 8 + lane] = Vector3F.Dot(dv, n);
+                w[(f + W3D.AdjustedSeparation) * 8 + lane] = pl[ManifoldLayout.Separation(i)];
                 w[(f + W3D.NormalImpulse) * 8 + lane] = pl[ManifoldLayout.NormalImpulse(i)];
                 w[(f + W3D.Tangent1Impulse) * 8 + lane] = pl[ManifoldLayout.Tangent1Impulse(i)];
                 w[(f + W3D.Tangent2Impulse) * 8 + lane] = pl[ManifoldLayout.Tangent2Impulse(i)];
@@ -251,6 +248,13 @@ internal sealed partial class Engine3D
             }
 
             lane++;
+        }
+
+        if (lane > 0)
+        {
+            if (KernelWidth == 1) { ContactKernel3D.PrepareMasses<Lanes1>(w, maxPoints); }
+            else if (KernelWidth == 4) { ContactKernel3D.PrepareMasses<Lanes128>(w, maxPoints); }
+            else { ContactKernel3D.PrepareMasses<Lanes256>(w, maxPoints); }
         }
 
         idx[W3D.MaxPointsSlot] = maxPoints; idx[W3D.AnyRollingSlot] = anyRolling;

@@ -168,6 +168,47 @@ internal static class ContactKernel3D
     private static T Clamp0<T>(T x) where T : struct, ILane<T> => T.Select(T.GreaterThan(x, T.Zero), x, T.Zero);
 
     /// <summary>
+    /// The per-point quantities of a freshly prepared group, for all eight lanes at once: the separation adjusted for the anchors' offset along the normal, the effective masses along the normal and both
+    /// tangents, and the relative normal velocity. The scalar preparation stages its inputs in the group's scratch rows (<see cref="W3D.StageOffset"/>): the six inverse-inertia entries of body A and of body B,
+    /// then the linear and angular velocities of A and of B; the separation as made sits in the adjusted-separation row. Every lane does what one scalar lane does, in the same order.
+    /// </summary>
+    public static void PrepareMasses<T>(Span<float> wide, int maxPoints) where T : struct, ILane<T>
+    {
+        int width = T.Count;
+        T zero = T.Zero, one = T.Broadcast(1f);
+        for (int l0 = 0; l0 < W3D.Lanes; l0 += width)
+        {
+            int s = W3D.StageOffset / 8;
+            var iA = new Sym<T> { M0 = Field<T>(wide, s, l0), M1 = Field<T>(wide, s + 1, l0), M2 = Field<T>(wide, s + 2, l0), M3 = Field<T>(wide, s + 3, l0), M4 = Field<T>(wide, s + 4, l0), M5 = Field<T>(wide, s + 5, l0) };
+            var iB = new Sym<T> { M0 = Field<T>(wide, s + 6, l0), M1 = Field<T>(wide, s + 7, l0), M2 = Field<T>(wide, s + 8, l0), M3 = Field<T>(wide, s + 9, l0), M4 = Field<T>(wide, s + 10, l0), M5 = Field<T>(wide, s + 11, l0) };
+            V3<T> vA = Vec<T>(wide, s + 12, l0), wA = Vec<T>(wide, s + 15, l0), vB = Vec<T>(wide, s + 18, l0), wB = Vec<T>(wide, s + 21, l0);
+            T mA = Field<T>(wide, W3D.InvMassA, l0), mB = Field<T>(wide, W3D.InvMassB, l0);
+            V3<T> n = Vec<T>(wide, W3D.N, l0), t1 = Vec<T>(wide, W3D.T1, l0), t2 = Vec<T>(wide, W3D.T2, l0);
+            for (int i = 0; i < maxPoints; i++)
+            {
+                int f = W3D.Point0 + i * W3D.PointStride;
+                V3<T> rA = Vec<T>(wide, f + W3D.ArmA, l0), rB = Vec<T>(wide, f + W3D.ArmB, l0);
+                T sep = Field<T>(wide, f + W3D.AdjustedSeparation, l0);
+                (sep - V3<T>.Dot(rB - rA, n)).StoreAt(wide, (f + W3D.AdjustedSeparation) * 8 + l0);
+                EffectiveMass(mA, mB, iA, iB, rA, rB, n, zero, one).StoreAt(wide, (f + W3D.NormalMass) * 8 + l0);
+                EffectiveMass(mA, mB, iA, iB, rA, rB, t1, zero, one).StoreAt(wide, (f + W3D.Tangent1Mass) * 8 + l0);
+                EffectiveMass(mA, mB, iA, iB, rA, rB, t2, zero, one).StoreAt(wide, (f + W3D.Tangent2Mass) * 8 + l0);
+                var dv = (vB + V3<T>.Cross(wB, rB)) - (vA + V3<T>.Cross(wA, rA));
+                V3<T>.Dot(dv, n).StoreAt(wide, (f + W3D.RelativeVelocity) * 8 + l0);
+            }
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static T EffectiveMass<T>(T mA, T mB, Sym<T> iA, Sym<T> iB, V3<T> rA, V3<T> rB, V3<T> d, T zero, T one) where T : struct, ILane<T>
+    {
+        var rnA = V3<T>.Cross(rA, d);
+        var rnB = V3<T>.Cross(rB, d);
+        T k = mA + mB + V3<T>.Dot(rnA, iA.Apply(rnA)) + V3<T>.Dot(rnB, iB.Apply(rnB));
+        return T.Select(T.GreaterThan(k, zero), one / k, zero);
+    }
+
+    /// <summary>
     /// Runs lanes <paramref name="lane0"/> to <paramref name="lane0"/> + <paramref name="n"/> - 1 of a group, <c>T.Count</c> at a time. Lanes past the end of the batch compute on whatever the group holds and are never written back.
     /// </summary>
     public static void Run<T>(Engine3D e, int group, int lane0, int n, SolvePhase phase, in KernelParams kp) where T : struct, ILane<T>
