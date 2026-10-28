@@ -115,6 +115,7 @@ internal sealed partial class Engine3D
 
         foreach (int c in constraints)
         {
+            if (cs.KindOf(c) == ConstraintKind.Joint) { PrepareJoint(c, in ctx); continue; }
             var pl = cs.Payload(c);
             int a = bodyA[c], b = bodyB[c];
             float mA = invMass[a], mB = invMass[b];
@@ -200,6 +201,7 @@ internal sealed partial class Engine3D
 
         foreach (int c in constraints)
         {
+            if (cs.KindOf(c) == ConstraintKind.Joint) { SolveJoint(c, phase, in ctx); continue; }
             int a = bodyA[c], b = bodyB[c];
             var s = Scratch.AsSpan(c * Stride3D.Constraint, Stride3D.Constraint);
             var pl = payload.Slice(c * pf, pf);

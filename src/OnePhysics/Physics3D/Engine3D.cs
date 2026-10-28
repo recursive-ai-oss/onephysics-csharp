@@ -226,6 +226,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         }
 
         Core.DestroyBody(handle);
+        ReconcileJoints();
         ShapeHead[b] = -1; ShapeTail[b] = -1;
         Mass[b] = 0f;
         for (int k = 0; k < 6; k++) { Inertia[6 * b + k] = 0f; }
@@ -523,7 +524,8 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     public void Write(StateWriter w)
     {
-        w.WriteUInt32(Version);
+        bool joints = LiveJointCount() > 0;
+        w.WriteUInt32(joints ? VersionJoints : Version);
         w.WriteSingle(Opt.ContactHertz); w.WriteSingle(Opt.ContactDampingRatio); w.WriteSingle(Opt.PushOutVelocity); w.WriteSingle(Opt.RestitutionThreshold);
         w.WriteSingle(Opt.MaxLinearSpeed); w.WriteSingle(Opt.MaxRotationPerSubstep); w.WriteBool(Opt.ContinuousEnabled); w.WriteSingle(Opt.ContactSlop);
         w.WriteSingle(Opt.SpeculativeDistance);
@@ -577,12 +579,18 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         w.WriteInt32(PairFreeCount);
         w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
+        if (joints)
+        {
+            // Version 2: a presence-flags word, then the flagged blocks in a fixed order (only joints so far).
+            w.WriteUInt32(BlockJoints);
+            WriteJoints(w);
+        }
     }
 
     public void Read(StateReader r)
     {
         uint v = r.ReadUInt32();
-        if (v != Version) { throw r.Error("unsupported 3D engine section version " + v.ToString(CultureInfo.InvariantCulture)); }
+        if (v != Version && v != VersionJoints) { throw r.Error("unsupported 3D engine section version " + v.ToString(CultureInfo.InvariantCulture)); }
         float hertz = r.ReadSingle(), zeta = r.ReadSingle(), push = r.ReadSingle(), thr = r.ReadSingle(), maxSpeed = r.ReadSingle(), maxRot = r.ReadSingle();
         bool continuous = r.ReadBool();
         float slop = r.ReadSingle(), spec = r.ReadSingle();
@@ -686,6 +694,14 @@ internal sealed partial class Engine3D : ISnapshotSection
             if (free[i] < 0 || free[i] >= np || pl[free[i]]) { throw r.Error("invalid free pair"); }
         }
 
+        JointData3D[]? joints = null;
+        if (v == VersionJoints)
+        {
+            uint flags = r.ReadUInt32();
+            if (flags != BlockJoints) { throw r.Error("invalid 3D section block flags " + flags.ToString(CultureInfo.InvariantCulture)); }
+            joints = ReadJoints(r);
+        }
+
         // A constraint belongs to at most one chain, once (a repeated id would make a cycle that the writer and the solver would walk forever).
         var inChain = new bool[maxCons];
         foreach (int c in chains)
@@ -725,6 +741,10 @@ internal sealed partial class Engine3D : ISnapshotSection
         GeomOf = geomOf; Local = local; Proxy = proxy; Friction = fr; Restitution = re; Rolling = ro; Density = de; Category = cat; Mask = mask; Group = grp; NextShape = next;
         EnsureShapes(Math.Max(ns, 1));
         PairA = pa; PairB = pb; PairCons = pc; PairLive = pl; PairHigh = np; PairFree = free; PairFreeCount = nf; ConsNext = consNext;
+        if (joints != null) { Opt.JointHertz = _pendingJointHertz; Opt.JointDampingRatio = _pendingJointDamping; }
+        Joints = joints ?? new JointData3D[16];
+        JointForce = new float[Joints.Length]; JointTorque = new float[Joints.Length];
+        _needBind = true;
         PairMap.Clear();
         for (int p = 0; p < np; p++)
         {
@@ -739,6 +759,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || GeomOf.Length < shapes.HighWater) { return false; }
         var cons = Core.Constraints;
+        if (!JointsConsistentWithCore()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)
         {
             if (!shapes.Handles.IsLive(s)) { continue; }

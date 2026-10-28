@@ -27,7 +27,8 @@ internal readonly struct Stages3D : IWorldStages
 
     public void StoreResults(WorldCore world, ReadOnlySpan<int> constraints, int eventSlot, in StepContext context)
     {
-        // Impulses are updated in place in each constraint's payload, so there is nothing to copy back.
+        // Contact impulses are updated in place in each constraint's payload, so there is nothing to copy back; joints work out their reaction and may ask to break.
+        _e.StoreJointResults(constraints, in context);
     }
 
     public float BodyMotion(WorldCore world, int body) => _e.BodyMotion(body);
@@ -93,7 +94,7 @@ internal sealed partial class Engine3D
         public bool ShouldCollide(int shapeA, int shapeB)
         {
             var owner = _e.Core.Shapes.Owner;
-            return owner[shapeA] != owner[shapeB] && _e.CanCollide(shapeA, shapeB);
+            return owner[shapeA] != owner[shapeB] && _e.CanCollide(shapeA, shapeB) && !_e.JointsPreventCollision(owner[shapeA], owner[shapeB]);
         }
     }
 
@@ -111,6 +112,7 @@ internal sealed partial class Engine3D
         var bodies = world.Bodies;
         int nb = bodies.HighWater;
         EnsureBodies(nb);
+        ReconcileJoints();
 
         // 1. Broadphase boxes of every body that moved last step. The displacement stretches the box ahead of the motion.
         foreach (int b in world.AwakeBodies)
@@ -200,6 +202,7 @@ internal sealed partial class Engine3D
         int ch = cs.HighWater;
         Grow(ref ConsNext, ch);
         if (Scratch.Length < ch * Stride3D.Constraint) { Scratch = new float[Math.Max(ch, Scratch.Length / Stride3D.Constraint * 2) * Stride3D.Constraint]; }
+        SizeJointStorage();
     }
 
     private void ApplyPair(WorldCore world, int p, NarrowScratch sc, int first, int count, ReadOnlySpan<int> owner)
