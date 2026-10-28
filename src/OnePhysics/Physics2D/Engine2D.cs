@@ -204,7 +204,17 @@ internal sealed partial class Engine2D : ISnapshotSection
         if (ShapeTail[b] >= 0) { NextShape[ShapeTail[b]] = s; } else { ShapeHead[b] = s; }
         ShapeTail[b] = s;
         Proxy[s] = Bp.CreateProxy(type, tight, s);
-        if (type == BodyType.Dynamic) { UpdateMass(b); }
+        if (type == BodyType.Dynamic)
+        {
+            try { UpdateMass(b, strict: true); }
+            catch (ArgumentOutOfRangeException)
+            {
+                // The body keeps its previous mass properties (strict mode writes nothing before it throws); take the new shape back out.
+                DestroyShape(sh);
+                throw;
+            }
+        }
+
         return sh;
     }
 
@@ -238,6 +248,13 @@ internal sealed partial class Engine2D : ISnapshotSection
 
     private const double SafeBound = 524288.0;
 
+    private bool VelocityFinite(int b)
+    {
+        var v = Core.Bodies.LinearVelocityOf(b);
+        var w = Core.Bodies.AngularVelocityOf(b);
+        return float.IsFinite(v[0] + v[1] + w[0]);
+    }
+
     /// <summary>Finds the first body (lowest slot) whose bounds, as the broadphase would store them, are not valid.</summary>
     public bool FindOutOfBounds(bool includeStatic, out BodyHandle handle, out string message)
     {
@@ -246,6 +263,16 @@ internal sealed partial class Engine2D : ISnapshotSection
         for (int b = 0; b < nb; b++)
         {
             if (!bodies.IsLive(b) || (!includeStatic && bodies.TypeOf(b) == BodyType.Static)) { continue; }
+
+            // A body whose velocity went non-finite (an extreme joint or contact error in the previous step) would turn its position to NaN in this one; refuse before anything changes.
+            if (bodies.TypeOf(b) == BodyType.Dynamic && !VelocityFinite(b))
+            {
+                handle = Core.HandleOfBody(b);
+                var vp = bodies.PositionOf(b);
+                var vci = System.Globalization.CultureInfo.InvariantCulture;
+                message = "Body " + handle + " at (" + vp[0].ToString("R", vci) + ", " + vp[1].ToString("R", vci) + ") has a non-finite velocity, so the simulation diverged. Destroy it or reset its velocity.";
+                return true;
+            }
 
             // A dynamic body well inside the range whose shapes and motion are small cannot have an invalid box: its fat box reaches at most 5 * 2^19 < the limit of 2^22.
             // (Extents are measured from the centre of mass and include the radius; the box is stretched by at most twice the last displacement and widened by the margin.)
@@ -308,8 +335,14 @@ internal sealed partial class Engine2D : ISnapshotSection
         return maxExt;
     }
 
+    /// <summary>Smallest mass or (non-zero) inertia a dynamic body may have; the inverse is then at most 1e18.</summary>
+    public const double MinMassProperty = 1e-18;
+
+    /// <summary>Largest mass or inertia a dynamic body may have.</summary>
+    public const double MaxMassProperty = 1e30;
+
     /// <summary>Recomputes mass, centre of mass, inertia and extents of a dynamic body from its shapes, moving the stored centre-of-mass position so the body origin stays put.</summary>
-    public void UpdateMass(int b)
+    public void UpdateMass(int b, bool strict = false)
     {
         double m = 0, cx = 0, cy = 0;
         for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
@@ -333,9 +366,16 @@ internal sealed partial class Engine2D : ISnapshotSection
             }
         }
 
+        // Mass limits (documented on ShapeDef.Density): mass and inertia each within [MinMassProperty, MaxMassProperty], so every inverse is finite and
+        // the solver's products of inverse inertia and squared lever arms cannot overflow float32.
+        if (strict && m > 0 && !(m >= MinMassProperty && m <= MaxMassProperty && (inertia == 0 || (inertia >= MinMassProperty && inertia <= MaxMassProperty))))
+        {
+            throw new ArgumentOutOfRangeException(paramName: null, "The body's shapes give mass " + m.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " and inertia " + inertia.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "; each must lie within " + MinMassProperty.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ".." + MaxMassProperty.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " (raise the density or the shape size).");
+        }
+
         var bodies = Core.Bodies;
         float invMass, invI;
-        if (m > 0 && float.IsFinite((float)m) && (float)m > 0f)
+        if (m >= MinMassProperty && m <= MaxMassProperty && (inertia == 0 || (inertia >= MinMassProperty && inertia <= MaxMassProperty)))
         {
             Mass[b] = (float)m;
             Inertia[b] = (float)inertia;

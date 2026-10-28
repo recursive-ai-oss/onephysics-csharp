@@ -266,7 +266,7 @@ public struct ShapeDef
         LocalRotation = QuaternionF.Identity;
     }
 
-    /// <summary>Density in kg/m³; 0 adds no mass. Default 1.</summary>
+    /// <summary>Density in kg/m³; 0 adds no mass. Default 1. A dynamic body's total mass and each diagonal entry of its inertia tensor must lie within 1e-18..1e30, and the tensor must be invertible; a shape that would break that is refused with an <see cref="ArgumentOutOfRangeException"/> naming the mass and inertia, and the body is unchanged.</summary>
     public float Density { get; set; }
 
     /// <summary>Friction coefficient. Default 0.6.</summary>

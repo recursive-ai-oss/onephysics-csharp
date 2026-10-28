@@ -288,7 +288,17 @@ internal sealed partial class Engine3D : ISnapshotSection
         if (ShapeTail[b] >= 0) { NextShape[ShapeTail[b]] = s; } else { ShapeHead[b] = s; }
         ShapeTail[b] = s;
         Proxy[s] = Bp.CreateProxy(type, tight, s);
-        if (type == BodyType.Dynamic) { UpdateMass(b); }
+        if (type == BodyType.Dynamic)
+        {
+            try { UpdateMass(b, strict: true); }
+            catch (ArgumentOutOfRangeException)
+            {
+                // Strict mode writes nothing before it throws, so the body keeps its previous mass properties; take the new shape back out.
+                DestroyShape(sh);
+                throw;
+            }
+        }
+
         return sh;
     }
 
@@ -320,6 +330,13 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     private readonly double[] _dp3 = new double[3];
 
+    private bool VelocityFinite(int b)
+    {
+        var v = Core.Bodies.LinearVelocityOf(b);
+        var w = Core.Bodies.AngularVelocityOf(b);
+        return float.IsFinite(v[0] + v[1] + v[2] + w[0] + w[1] + w[2]);
+    }
+
     /// <summary>Finds the first body (lowest slot) whose bounds, as the broadphase would store them, are not valid. With <paramref name="movingOnly"/>, sleeping bodies are skipped.</summary>
     public bool FindOutOfBounds(bool includeStatic, out BodyHandle handle, out string message, bool movingOnly = false)
     {
@@ -330,6 +347,15 @@ internal sealed partial class Engine3D : ISnapshotSection
             if (!bodies.IsLive(b) || (!includeStatic && bodies.TypeOf(b) == BodyType.Static)) { continue; }
             // A sleeping body has not moved since it was last checked (teleporting wakes it), and building the box of thousands of resting bodies every step is most of the cost of a sleeping world.
             if (movingOnly && bodies.IsDynamic(b) && !bodies.IsAwake(b)) { continue; }
+            if (bodies.TypeOf(b) == BodyType.Dynamic && !VelocityFinite(b))
+            {
+                handle = Core.HandleOfBody(b);
+                var vp = bodies.PositionOf(b);
+                var vci = CultureInfo.InvariantCulture;
+                message = "Body " + handle + " at (" + vp[0].ToString("R", vci) + ", " + vp[1].ToString("R", vci) + ", " + vp[2].ToString("R", vci) + ") has a non-finite velocity, so the simulation diverged. Destroy it or reset its velocity.";
+                return true;
+            }
+
             for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
             {
                 var box = TightBox(b, s);
@@ -397,8 +423,14 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     private readonly List<MassPropertiesF> _parts = new();
 
+    /// <summary>Smallest mass or inertia diagonal entry a dynamic body may have; the inverses are then at most 1e18 in the diagonal.</summary>
+    public const double MinMassProperty = 1e-18;
+
+    /// <summary>Largest mass or inertia diagonal entry a dynamic body may have.</summary>
+    public const double MaxMassProperty = 1e30;
+
     /// <summary>Recomputes mass, centre of mass, inertia and extents of a dynamic body from its shapes, moving the stored centre-of-mass position so the body origin stays put.</summary>
-    public void UpdateMass(int b)
+    public void UpdateMass(int b, bool strict = false)
     {
         _parts.Clear();
         for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
@@ -422,11 +454,20 @@ internal sealed partial class Engine3D : ISnapshotSection
         if (_parts.Count > 0)
         {
             var total = InertiaF.Combine(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_parts));
-            if (total.Mass > 0f && float.IsFinite(total.Mass) && total.Inertia.TryInvert(out var iv)
+            if (total.Mass >= MinMassProperty && total.Mass <= MaxMassProperty
+                && total.Inertia.M11 >= MinMassProperty && total.Inertia.M22 >= MinMassProperty && total.Inertia.M33 >= MinMassProperty
+                && total.Inertia.M11 <= MaxMassProperty && total.Inertia.M22 <= MaxMassProperty && total.Inertia.M33 <= MaxMassProperty
+                && total.Inertia.TryInvert(out var iv)
                 && float.IsFinite(iv.M11 + iv.M12 + iv.M13 + iv.M22 + iv.M23 + iv.M33) && iv.M11 > 0f && iv.M22 > 0f && iv.M33 > 0f)
             {
                 mass = total.Mass; newLc = total.Center; tensor = total.Inertia; inv = iv; ok = true;
             }
+        }
+
+        if (strict && _parts.Count > 0 && !ok)
+        {
+            var total = InertiaF.Combine(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_parts));
+            throw new ArgumentOutOfRangeException(paramName: null, "The body's shapes give mass " + total.Mass.ToString("R", CultureInfo.InvariantCulture) + " and inertia diagonal (" + total.Inertia.M11.ToString("R", CultureInfo.InvariantCulture) + ", " + total.Inertia.M22.ToString("R", CultureInfo.InvariantCulture) + ", " + total.Inertia.M33.ToString("R", CultureInfo.InvariantCulture) + "); mass and every inertia diagonal entry must lie within " + MinMassProperty.ToString("R", CultureInfo.InvariantCulture) + ".." + MaxMassProperty.ToString("R", CultureInfo.InvariantCulture) + " and the tensor must be invertible (raise the density or the shape size).");
         }
 
         bool fixedRot = (BodyFlags[b] & 1) != 0;

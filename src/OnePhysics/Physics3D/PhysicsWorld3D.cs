@@ -55,7 +55,7 @@ public sealed partial class PhysicsWorld3D
     /// <summary>Advances the world by a fixed time. Collision callbacks run after the step, in event order.</summary>
     /// <param name="dt">Seconds; finite and positive. Use the same value every step for reproducible results.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="dt"/> is invalid or an option is out of range.</exception>
-    /// <exception cref="BodyOutOfBoundsException">A moving body is outside the supported range; the world is unchanged. Move, destroy it or call <see cref="ShiftOrigin"/>.</exception>
+    /// <exception cref="BodyOutOfBoundsException">A moving body is outside the supported range or has a non-finite velocity; the world is unchanged. Move, destroy it or call <see cref="ShiftOrigin"/>.</exception>
     public void Step(float dt)
     {
         _engine.Opt.Validate();

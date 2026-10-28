@@ -57,7 +57,7 @@ public sealed partial class PhysicsWorld2D
     /// collision callbacks registered on bodies run in event order (kind, then the bodies' slots) and <see cref="Events"/> holds the same list for polling.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="dt"/> is not finite and positive, or an option is out of range.</exception>
-    /// <exception cref="BodyOutOfBoundsException">A moving body's bounds are beyond ±2^22 or not finite; nothing was changed.</exception>
+    /// <exception cref="BodyOutOfBoundsException">A moving body's bounds are beyond ±2^22 or not finite, or its velocity is not finite; nothing was changed.</exception>
     public void Step(float dt)
     {
         _engine.Opt.Validate();

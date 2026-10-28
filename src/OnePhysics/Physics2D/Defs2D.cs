@@ -242,7 +242,7 @@ public struct ShapeDef
         MaskBits = uint.MaxValue;
     }
 
-    /// <summary>Mass per area, kg/m². At least 0; a body whose shapes all have density 0 gets unit mass and inertia. Default 1.</summary>
+    /// <summary>Mass per area, kg/m². At least 0; a body whose shapes all have density 0 gets unit mass and inertia. Default 1. A dynamic body's total mass, and its inertia when not zero, must lie within 1e-18..1e30 so every inverse stays finite; a shape that would take the body outside that range is refused with an <see cref="ArgumentOutOfRangeException"/> naming the mass and inertia, and the body is unchanged.</summary>
     public float Density { get; set; }
 
     /// <summary>Friction coefficient, at least 0. Default 0.6.</summary>
