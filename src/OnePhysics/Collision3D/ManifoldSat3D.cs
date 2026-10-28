@@ -103,12 +103,15 @@ public sealed partial class ManifoldGenerator3D
         float sepA = FaceQuery(pa, pb, out int faceA);
         if (sepA > limit)
         {
+            // The face plane separates the cores by sepA, so the shapes are at least this far apart whatever the edges say.
+            ClearanceOut = sepA - limit;
             return Empty;
         }
 
         float sepB = FaceQuery(pb, pa, out int faceB);
         if (sepB > limit)
         {
+            ClearanceOut = sepB - limit;
             return Empty;
         }
 

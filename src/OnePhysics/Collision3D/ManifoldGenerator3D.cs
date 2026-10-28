@@ -51,6 +51,12 @@ public sealed partial class ManifoldGenerator3D
     private EdgeHint3D _edgeHint;
 
     /// <summary>
+    /// Set by the convex Collide query: when the manifold is empty because the shapes are farther apart than the speculative distance and the query could say by how much, a lower bound on how much farther
+    /// (beyond the speculative distance, shape surfaces included); otherwise zero. A caller that knows the shapes' relative motion can skip the next queries until that motion has used the bound up.
+    /// </summary>
+    internal float ClearanceOut;
+
+    /// <summary>
     /// Builds the manifold of two shapes. Everything is in the frame of A; the normal points from A to B and separations are surface distances (negative when overlapping).
     /// </summary>
     /// <param name="a">Shape A, in its own frame.</param>
@@ -76,6 +82,7 @@ public sealed partial class ManifoldGenerator3D
 
         _count = 0;
         _edgeHint = HintIn; HintIn = default; // a hint applies to one call only, so a leftover cannot reach another pair that happens to run on this thread next
+        ClearanceOut = 0f;
         HintOut = default; // nothing to keep unless the polyhedron test sets it; a value left by the previous pair would depend on which thread ran it
         ConvexShapeKind3D ka = a.Kind, kb = b.Kind;
         bool segA = IsSegmentLike(ka), segB = IsSegmentLike(kb);
@@ -99,8 +106,10 @@ public sealed partial class ManifoldGenerator3D
         {
             // Bounding spheres around the shape origins: when they are farther apart than the speculative distance, so are the shapes. Most broadphase pairs in a pile end here.
             float reach = Extent(a) + Extent(b) + speculativeDistance;
-            if (t.LengthSquared() > reach * reach)
+            float t2 = t.LengthSquared();
+            if (t2 > reach * reach)
             {
+                ClearanceOut = ConvexShape3D.Sqrt(t2) - reach;
                 return Empty;
             }
 
