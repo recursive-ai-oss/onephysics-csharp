@@ -123,6 +123,9 @@ internal sealed partial class Engine3D
 
         public bool ShouldCollide(int shapeA, int shapeB)
         {
+            // A pair that already has a table entry is not new, so it is dropped here instead of being sorted with the new ones and dropped after.
+            // The table is only read while pairs are searched; it changes in the serial stage that follows.
+            if (_e.PairMap.ContainsKey(shapeA < shapeB ? PairKey(shapeA, shapeB) : PairKey(shapeB, shapeA))) { return false; }
             var owner = _e.Core.Shapes.Owner;
             return owner[shapeA] != owner[shapeB] && _e.CanCollide(shapeA, shapeB) && !_e.JointsPreventCollision(owner[shapeA], owner[shapeB]);
         }
@@ -194,13 +197,11 @@ internal sealed partial class Engine3D
         // 3. New pairs from the broadphase, in its sorted order.
         var found = Bp.UpdatePairs(new PairFilter(this), world.Executor);
         bool anyFresh = false;
-        // A burst of new pairs (a stack waking, a pile landing) would otherwise rehash the table again and again.
-        if (found.Length > 64) { PairMap.EnsureCapacity(PairMap.Count + found.Length); }
         for (int i = 0; i < found.Length; i++)
         {
             int a = found[i].UserA, b = found[i].UserB;
             if (a > b) { (a, b) = (b, a); }
-            if (PairMap.ContainsKey(PairKey(a, b))) { continue; }
+            // The pair filter already dropped every pair with a table entry, and the broadphase reports each pair of shapes once, so none of these is in the table yet.
             if (!PairAllowed(a, b)) { continue; }
             int np = AllocatePair(a, b);
             if (_fresh.Length < PairHigh) { Array.Resize(ref _fresh, Math.Max(PairHigh, _fresh.Length * 2)); }

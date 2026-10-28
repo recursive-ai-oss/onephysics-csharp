@@ -188,19 +188,22 @@ internal static class ContactKernel3D
             V3<T> vA = ba.V, wA = ba.W, vB = bb.V, wB = bb.W;
             T mA = Field<T>(wide, W3D.InvMassA, l0), mB = Field<T>(wide, W3D.InvMassB, l0);
             V3<T> n = Vec<T>(wide, W3D.N, l0), t1 = Vec<T>(wide, W3D.T1, l0), t2 = Vec<T>(wide, W3D.T2, l0);
-            for (int i = 0; i < maxPoints; i++)
-            {
-                int f = W3D.Point0 + i * W3D.PointStride;
-                V3<T> rA = Vec<T>(wide, f + W3D.ArmA, l0), rB = Vec<T>(wide, f + W3D.ArmB, l0);
-                T sep = Field<T>(wide, f + W3D.AdjustedSeparation, l0);
-                (sep - V3<T>.Dot(rB - rA, n)).StoreAt(wide, (f + W3D.AdjustedSeparation) * 8 + l0);
-                EffectiveMass(mA, mB, iA, iB, rA, rB, n, zero, one).StoreAt(wide, (f + W3D.NormalMass) * 8 + l0);
-                EffectiveMass(mA, mB, iA, iB, rA, rB, t1, zero, one).StoreAt(wide, (f + W3D.Tangent1Mass) * 8 + l0);
-                EffectiveMass(mA, mB, iA, iB, rA, rB, t2, zero, one).StoreAt(wide, (f + W3D.Tangent2Mass) * 8 + l0);
-                var dv = (vB + V3<T>.Cross(wB, rB)) - (vA + V3<T>.Cross(wA, rA));
-                V3<T>.Dot(dv, n).StoreAt(wide, (f + W3D.RelativeVelocity) * 8 + l0);
-            }
+            for (int i = 0; i < maxPoints; i++) { PreparePoint(wide, W3D.Point0 + i * W3D.PointStride, l0, mA, mB, iA, iB, vA, wA, vB, wB, n, t1, t2, zero, one); }
         }
+    }
+
+    /// <summary>One point's adjusted separation, effective masses and relative normal velocity for the lanes of a group (see <see cref="PrepareMasses{T}"/>).</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void PreparePoint<T>(Span<float> wide, int f, int l0, T mA, T mB, Sym<T> iA, Sym<T> iB, V3<T> vA, V3<T> wA, V3<T> vB, V3<T> wB, V3<T> n, V3<T> t1, V3<T> t2, T zero, T one) where T : struct, ILane<T>
+    {
+        V3<T> rA = Vec<T>(wide, f + W3D.ArmA, l0), rB = Vec<T>(wide, f + W3D.ArmB, l0);
+        T sep = Field<T>(wide, f + W3D.AdjustedSeparation, l0);
+        (sep - V3<T>.Dot(rB - rA, n)).StoreAt(wide, (f + W3D.AdjustedSeparation) * 8 + l0);
+        EffectiveMass(mA, mB, iA, iB, rA, rB, n, zero, one).StoreAt(wide, (f + W3D.NormalMass) * 8 + l0);
+        EffectiveMass(mA, mB, iA, iB, rA, rB, t1, zero, one).StoreAt(wide, (f + W3D.Tangent1Mass) * 8 + l0);
+        EffectiveMass(mA, mB, iA, iB, rA, rB, t2, zero, one).StoreAt(wide, (f + W3D.Tangent2Mass) * 8 + l0);
+        var dv = (vB + V3<T>.Cross(wB, rB)) - (vA + V3<T>.Cross(wA, rA));
+        V3<T>.Dot(dv, n).StoreAt(wide, (f + W3D.RelativeVelocity) * 8 + l0);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -383,6 +386,14 @@ internal static class ContactKernel3D
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void FrictionPoint<T>(ref BodyLanes<T> a, ref BodyLanes<T> b, ref PointLanes<T> p, V3<T> t1, V3<T> t2, T friction) where T : struct, ILane<T>
     {
+        var imp = FrictionImpulse(in a, in b, ref p, t1, t2, friction);
+        ApplyImpulse(ref a, ref b, p.RA, p.RB, imp, p.Mask);
+    }
+
+    /// <summary>Accumulates the two tangent impulses of a point, clamped to the friction cone, and returns the change as an impulse.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static V3<T> FrictionImpulse<T>(in BodyLanes<T> a, in BodyLanes<T> b, ref PointLanes<T> p, V3<T> t1, V3<T> t2, T friction) where T : struct, ILane<T>
+    {
         var dv = RelativeVelocity(in a, in b, p.RA, p.RB);
         T l1 = p.T1Imp, l2 = p.T2Imp;
         T n1 = l1 - p.T1Mass * V3<T>.Dot(dv, t1);
@@ -394,16 +405,31 @@ internal static class ContactKernel3D
         n1 = T.Select(clamp, n1 * k, n1);
         n2 = T.Select(clamp, n2 * k, n2);
         p.T1Imp = T.Select(p.Mask, n1, l1); p.T2Imp = T.Select(p.Mask, n2, l2);
-        var imp = t1 * (n1 - l1) + t2 * (n2 - l2);
-        ApplyImpulse(ref a, ref b, p.RA, p.RB, imp, p.Mask);
+        return t1 * (n1 - l1) + t2 * (n2 - l2);
+    }
+
+    // The runtime inlines at most a few hundred calls into one method and then leaves every remaining vector operation as a call that returns its result through memory, so the larger pieces of the
+    // kernel are methods of their own.
+
+    /// <summary>Current separation: the anchors move with their bodies' accumulated translation and rotation.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static T Separation<T>(in BodyLanes<T> a, in BodyLanes<T> b, in PointLanes<T> p, V3<T> n, T two) where T : struct, ILane<T>
+    {
+        var sepVec = (b.Dp - a.Dp) + (Rotate(b.Qx, b.Qy, b.Qz, b.Qw, p.RB, two) - Rotate(a.Qx, a.Qy, a.Qz, a.Qw, p.RA, two));
+        return V3<T>.Dot(sepVec, n) + p.AdjSep;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void NormalPoint<T>(ref BodyLanes<T> a, ref BodyLanes<T> b, ref PointLanes<T> p, V3<T> n, bool useBias, T biasRate, T massScale, T impulseScale, T invH, T slop, T negPush, T zero, T two) where T : struct, ILane<T>
     {
-        // Current separation: the anchors move with their bodies' accumulated translation and rotation.
-        var sepVec = (b.Dp - a.Dp) + (Rotate(b.Qx, b.Qy, b.Qz, b.Qw, p.RB, two) - Rotate(a.Qx, a.Qy, a.Qz, a.Qw, p.RA, two));
-        T sep = V3<T>.Dot(sepVec, n) + p.AdjSep;
+        T lambda = NormalImpulse(in a, in b, ref p, n, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, zero, two);
+        ApplyImpulse(ref a, ref b, p.RA, p.RB, n * lambda, p.Mask);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static T NormalImpulse<T>(in BodyLanes<T> a, in BodyLanes<T> b, ref PointLanes<T> p, V3<T> n, bool useBias, T biasRate, T massScale, T impulseScale, T invH, T slop, T negPush, T zero, T two) where T : struct, ILane<T>
+    {
+        T sep = Separation(in a, in b, in p, n, two);
         T apart = T.GreaterThan(sep, zero);
         T one = T.Broadcast(1f);
         T bias, ms, isc;
@@ -433,6 +459,6 @@ internal static class ContactKernel3D
         lambda = nw - old;
         p.NImp = T.Select(p.Mask, nw, old);
         p.MaxN = T.Select(Lane.And(p.Mask, T.GreaterThan(nw, p.MaxN)), nw, p.MaxN);
-        ApplyImpulse(ref a, ref b, p.RA, p.RB, n * lambda, p.Mask);
+        return lambda;
     }
 }

@@ -6,6 +6,7 @@ using RecursiveAI.OneMath.Physics;
 using RecursiveAI.OnePhysics.Broadphase;
 using RecursiveAI.OnePhysics.Collision3D;
 using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics.Physics2D;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 
@@ -79,7 +80,7 @@ internal sealed partial class Engine3D : ISnapshotSection
     public int PairHigh;
     public int[] PairFree = new int[8];
     public int PairFreeCount;
-    public readonly Dictionary<long, int> PairMap = new();
+    public readonly PairTable PairMap = new();
     public int[] ConsNext = new int[8];           // next constraint in the pair's chain, indexed by constraint slot
 
     public Engine3D(WorldCore core, Broadphase3D bp, WorldOptions3D opt)
@@ -497,7 +498,7 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         PairA[p] = a; PairB[p] = b; PairCons[p] = -1; PairLive[p] = true;
         if (p < _skip.Length) { _skip[p].Clear = 0f; }
-        PairMap.Add(PairKey(a, b), p);
+        PairMap.Set(PairKey(a, b), p);
         return p;
     }
 
@@ -823,7 +824,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         PairMap.Clear();
         for (int p = 0; p < np; p++)
         {
-            if (PairLive[p]) { PairMap[PairKey(PairA[p], PairB[p])] = p; }
+            if (PairLive[p]) { PairMap.Set(PairKey(PairA[p], PairB[p]), p); }
         }
     }
 
