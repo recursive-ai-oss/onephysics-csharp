@@ -435,6 +435,18 @@ public static class Gjk3D
             return false;
         }
 
+        // On a shape that is huge in one direction and thin in another the cast's float tolerances can exceed the thin dimension and report a hit beside the shape. A real hit has the ray point on the surface,
+        // so inside the padded bounds; one outside them is a miss, which is also what the compound trees (which prune by the same bounds) conclude.
+        {
+            ShapeBounds3D.Compute(shape, shapeInRay, out Vector3F blo, out Vector3F bhi);
+            Vector3F hp = castOrigin + h.PointA;
+            if (hp.X < blo.X || hp.X > bhi.X || hp.Y < blo.Y || hp.Y > bhi.Y || hp.Z < blo.Z || hp.Z > bhi.Z)
+            {
+                hit = default;
+                return false;
+            }
+        }
+
         // The cast normal points from the point towards the shape; the surface normal is the opposite.
         float fraction = startFraction > 0.0 ? (float)(startFraction + (h.Fraction * (double)castMax)) : h.Fraction * maxFraction;
         hit = new ConvexCastHit3D(fraction, -h.Normal, castOrigin + h.PointA, castOrigin + h.PointB, startFraction <= 0.0 && h.StartsOverlapping);
