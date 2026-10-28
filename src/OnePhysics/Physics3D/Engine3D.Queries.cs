@@ -31,6 +31,7 @@ internal sealed class QueryScratch
     public readonly List<SoupTriangle3D> Tris = new();
     public readonly List<int> Ids = new();
     public readonly TriangleShapeBuffer3D TriBuf = new();
+    internal readonly Engine3D.QueryState State = new();
     private bool _inUse;
 
     /// <summary>Creates the calling thread's scratch with room for <paramref name="capacity"/> hits, so its first queries allocate nothing.</summary>
@@ -51,7 +52,11 @@ internal sealed class QueryScratch
         return s;
     }
 
-    public void Release() => _inUse = false;
+    public void Release()
+    {
+        State.Filter = default; // do not keep a caller's predicate alive
+        _inUse = false;
+    }
 
     /// <summary>Keeps the best <see cref="Capacity"/> hits ordered by (key, slot).</summary>
     public void Insert(in RawHit h)
@@ -96,6 +101,9 @@ internal sealed partial class Engine3D
 
     /// <summary>Test hook: visit every shape instead of using the trees (same narrow phase and ordering).</summary>
     internal bool BruteQueries;
+
+    /// <summary>Test hook: false sends every candidate to the exact test, so tests can check the closed-form shortcuts and box rejections change no result.</summary>
+    internal bool QuickRejects = true;
 
     private double _queryPad;
     private bool _queryPadValid;
@@ -235,6 +243,97 @@ internal sealed partial class Engine3D
         return true;
     }
 
+    // Cheap rejection of a convex candidate before the exact test. Every shape lies inside its padded local box (Geom3D.ConvexMin/ConvexMax), so a ray, sweep or shape whose reach misses that box grown by a
+    // slack well above the narrow phase's float32 error cannot touch the shape, and the exact test would have said no. Anything that might touch goes on to the exact test unchanged, so results are the same.
+    private static float RejectSlack(float scale) => 1e-3f + (scale * (1f / 4096f));
+
+    private static float Extent(Vector3F a) => Math.Max(Math.Abs(a.X), Math.Max(Math.Abs(a.Y), Math.Abs(a.Z)));
+
+    // True when the segment o + t d (t in [0,1]) cannot reach the box [bmin, bmax] grown by e.
+    private static bool SegmentMisses(Vector3F o, Vector3F d, Vector3F bmin, Vector3F bmax, float e)
+    {
+        double t0 = 0.0, t1 = 1.0;
+        return !(Slab.Clip(o.X, d.X, 1.0 / d.X, (double)bmin.X - e, (double)bmax.X + e, ref t0, ref t1)
+            && Slab.Clip(o.Y, d.Y, 1.0 / d.Y, (double)bmin.Y - e, (double)bmax.Y + e, ref t0, ref t1)
+            && Slab.Clip(o.Z, d.Z, 1.0 / d.Z, (double)bmin.Z - e, (double)bmax.Z + e, ref t0, ref t1));
+    }
+
+    // The mover's box in the shape's frame, when that is cheap (not for hulls and tapered capsules).
+    private static bool MoverBox(in ConvexShape3D mover, in RigidTransformF rel, out Vector3F min, out Vector3F max)
+    {
+        switch (mover.Kind)
+        {
+            case ConvexShapeKind3D.Sphere:
+            {
+                float r = mover.ConvexRadius; var c = rel.Translation;
+                min = new Vector3F(c.X - r, c.Y - r, c.Z - r); max = new Vector3F(c.X + r, c.Y + r, c.Z + r);
+                return true;
+            }
+            case ConvexShapeKind3D.Box:
+            case ConvexShapeKind3D.Capsule:
+            case ConvexShapeKind3D.Cylinder:
+                ShapeBounds3D.Compute(in mover, in rel, out min, out max);
+                return true;
+            default:
+                min = default; max = default;
+                return false;
+        }
+    }
+
+    // Sphere against a sphere, box or capsule, decided in closed form when the answer is clear. The distance between the sphere's centre (lo, in the shape's frame) and the shape's core, less both radii, is
+    // negative when they overlap; GJK reports overlap for such a pair too. Within the slack of the exact test the answer is left to GJK, so the overlap set is the one GJK alone would give.
+    // Closest-point formulas: Ericson, Real-Time Collision Detection, 5.1.
+    private static bool TryDecideSphereOverlap(in ConvexShape3D shape, float moverRadius, Vector3F lo, float slack, out bool overlaps)
+    {
+        float gap; // distance from the centre to the shape's surface, less the mover's radius
+        float r = shape.ConvexRadius;
+        switch (shape.Kind)
+        {
+            case ConvexShapeKind3D.Sphere:
+                gap = float.Sqrt(lo.X * lo.X + lo.Y * lo.Y + lo.Z * lo.Z) - r - moverRadius;
+                break;
+            case ConvexShapeKind3D.Box:
+            {
+                var h = shape.CoreSize;
+                float dx = Math.Max(Math.Abs(lo.X) - h.X, 0f), dy = Math.Max(Math.Abs(lo.Y) - h.Y, 0f), dz = Math.Max(Math.Abs(lo.Z) - h.Z, 0f);
+                gap = float.Sqrt(dx * dx + dy * dy + dz * dz) - r - moverRadius;
+                break;
+            }
+            case ConvexShapeKind3D.Capsule:
+            {
+                float hy = shape.CoreSize.Y;
+                float dy = lo.Y - Math.Min(Math.Max(lo.Y, -hy), hy);
+                gap = float.Sqrt(lo.X * lo.X + dy * dy + lo.Z * lo.Z) - r - moverRadius;
+                break;
+            }
+            case ConvexShapeKind3D.Hull:
+            {
+                // Past a face plane the centre is at least that far from the hull; inside every plane it is inside the hull. In between (near an edge or corner) GJK decides.
+                float s = float.NegativeInfinity;
+                foreach (var f in shape.Hull!.Faces)
+                {
+                    float d = lo.X * f.Normal.X + lo.Y * f.Normal.Y + lo.Z * f.Normal.Z - f.Offset;
+                    if (d > s) { s = d; }
+                }
+
+                if (s <= -slack) { overlaps = true; return true; }
+                gap = s - r - moverRadius;
+                if (gap >= slack) { overlaps = false; return true; }
+                overlaps = false;
+                return false;
+            }
+
+            default:
+                overlaps = false;
+                return false;
+        }
+
+        if (gap <= -slack) { overlaps = true; return true; }
+        if (gap >= slack) { overlaps = false; return true; }
+        overlaps = false;
+        return false;
+    }
+
     /// <summary>The narrow phase for one candidate shape. All of it is float arithmetic in the shape's own frame after one double subtraction, like the contact stage.</summary>
     private bool Narrow(in QueryParams q, QueryMode mode, int s, QueryScratch sc, out RawHit h)
     {
@@ -252,6 +351,7 @@ internal sealed partial class Engine3D
                 float f; Vector3F n; int sub = 0;
                 if (g.IsConvex)
                 {
+                    if (QuickRejects && SegmentMisses(lo, lt, g.ConvexMin, g.ConvexMax, RejectSlack(Math.Max(Extent(lo) + Extent(lt), Math.Max(Extent(g.ConvexMin), Extent(g.ConvexMax)))))) { return false; }
                     if (!Gjk3D.RayCast(g.Convex, RigidTransformF.Identity, lo, lt, 1f, out var hit)) { return false; }
                     f = hit.Fraction; n = hit.Normal;
                 }
@@ -281,6 +381,14 @@ internal sealed partial class Engine3D
                 float f; Vector3F n, p; int sub = 0; bool startsOverlapping;
                 if (g.IsConvex)
                 {
+                    if (QuickRejects && MoverBox(in q.Mover, in rel, out var mmin, out var mmax))
+                    {
+                        // The mover's centre travels the motion; the shape's box grows by the mover's half sizes (Minkowski sum), which makes the sweep a segment test.
+                        var half = (mmax - mmin) * 0.5f; var centre = (mmax + mmin) * 0.5f;
+                        float e = RejectSlack(Math.Max(Extent(centre) + Extent(motion) + Extent(half), Math.Max(Extent(g.ConvexMin), Extent(g.ConvexMax))));
+                        if (SegmentMisses(centre, motion, g.ConvexMin - half, g.ConvexMax + half, e)) { return false; }
+                    }
+
                     if (!Gjk3D.ShapeCast(g.Convex, q.Mover, rel, -motion, out var hit)) { return false; }
                     f = hit.Fraction; n = hit.Normal; p = hit.PointB + motion * f; startsOverlapping = hit.StartsOverlapping;
                 }
@@ -307,7 +415,18 @@ internal sealed partial class Engine3D
             case QueryKind.Overlap:
             {
                 var rel = new RigidTransformF(inv * q.MoverRot, lo);
-                if (!(MinDistance(g, q.Mover, rel, 0f, sc, out _, out _, out _) <= 0f)) { return false; }
+                if (QuickRejects && g.IsConvex && MoverBox(in q.Mover, in rel, out var omin, out var omax))
+                {
+                    float e = RejectSlack(Math.Max(Math.Max(Extent(omin), Extent(omax)), Math.Max(Extent(g.ConvexMin), Extent(g.ConvexMax))));
+                    if (omin.X > g.ConvexMax.X + e || omax.X < g.ConvexMin.X - e || omin.Y > g.ConvexMax.Y + e || omax.Y < g.ConvexMin.Y - e || omin.Z > g.ConvexMax.Z + e || omax.Z < g.ConvexMin.Z - e) { return false; }
+                }
+
+                if (QuickRejects && g.IsConvex && q.Mover.Kind == ConvexShapeKind3D.Sphere
+                    && TryDecideSphereOverlap(in g.Convex, q.Mover.ConvexRadius, lo, RejectSlack(Math.Max(Extent(lo), Math.Max(Extent(g.ConvexMin), Extent(g.ConvexMax)))), out bool touching))
+                {
+                    if (!touching) { return false; }
+                }
+                else if (!(MinDistance(g, q.Mover, rel, 0f, sc, out _, out _, out _) <= 0f)) { return false; }
                 h.Sub = -1;
                 if (mode != QueryMode.Closest) { h.Key = s; return true; }
                 // Closest overlap: the shape whose surface is nearest the query shape's centre (0 when the centre is inside it).
@@ -339,13 +458,25 @@ internal sealed partial class Engine3D
         }
     }
 
-    private struct Visitor : IRayCallback, IOverlapCallback
+    /// <summary>What one running query needs, kept in the thread's scratch so the callbacks the trees copy around are one reference (a struct of this size copied with its references costs a write-barriered block copy per tree).</summary>
+    internal sealed class QueryState
     {
-        public Engine3D E;
+        public Engine3D E = null!;
         public QueryParams Q;
         public QueryFilter3D Filter;
         public QueryMode Mode;
-        public QueryScratch S;
+        public QueryScratch S = null!;
+    }
+
+    private struct Visitor : IRayCallback, IOverlapCallback
+    {
+        public QueryState St;
+
+        public readonly Engine3D E => St.E;
+        public readonly ref readonly QueryParams Q => ref St.Q;
+        public readonly ref readonly QueryFilter3D Filter => ref St.Filter;
+        public readonly QueryMode Mode => St.Mode;
+        public readonly QueryScratch S => St.S;
 
         private bool Visit(int slot)
         {
@@ -383,7 +514,9 @@ internal sealed partial class Engine3D
         try
         {
             if (capacity == 0) { return scratch; }
-            var v = new Visitor { E = this, Q = q, Filter = filter, Mode = mode, S = scratch };
+            var st = scratch.State;
+            st.E = this; st.Q = q; st.Filter = filter; st.Mode = mode; st.S = scratch;
+            var v = new Visitor { St = st };
             if (BruteQueries) { Brute(ref v); }
             else if (q.Kind == QueryKind.Closest) { ClosestSearch(ref v); }
             else { Trees(ref v); }

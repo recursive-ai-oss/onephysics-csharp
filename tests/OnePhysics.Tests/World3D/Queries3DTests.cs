@@ -196,6 +196,58 @@ public class Queries3DTests
         Assert.True(hits > Count / 10, "too few queries hit anything: " + hits);
     }
 
+    // The box rejections and the closed-form sphere overlaps skip the exact test only when its answer is clear; with them off every candidate goes to the exact test, and nothing may differ.
+    [Fact]
+    public void QuickRejectsChangeNoResult()
+    {
+        var w = MixedWorld();
+        var rng = new TestRng(5);
+        int hits = 0, touching = 0;
+        var buf1 = new QueryHit3D[64];
+        var buf2 = new QueryHit3D[64];
+        for (int i = 0; i < 40_000; i++)
+        {
+            var o = new Vector3D(rng.Range(-40, 40), rng.Range(-5, 25), rng.Range(-40, 40));
+            var d = rng.OnSphere();
+            var rot = rng.Rotation();
+            float p0 = rng.Range(0.2f, 4), p1 = rng.Range(0.2f, 3), p2 = rng.Range(0.2f, 3);
+            float max = rng.Range(1, 40);
+            // Sphere radii that graze the nearest shape: its distance plus or minus a few thousandths.
+            float radius = p0;
+            if (i % 3 == 0 && w.ClosestPoint(o, out var near, 12f))
+            {
+                float[] deltas = [-2e-3f, -1e-3f, -1e-4f, -1e-5f, 0f, 1e-5f, 1e-4f, 1e-3f, 2e-3f];
+                radius = Math.Max(0f, near.Distance + deltas[(i / 3) % deltas.Length]);
+                touching++;
+            }
+
+            (int, bool, QueryHit3D, bool, QueryHit3D, bool, QueryHit3D, int) Run(bool quick)
+            {
+                w.QuickRejects = quick;
+                var buf = quick ? buf1 : buf2;
+                bool ray = w.Raycast(o, d, out var hr, max);
+                bool sph = w.OverlapSphere(o, radius, out var hs);
+                int n = w.OverlapSphereAll(o, radius, buf);
+                bool cast = i % 2 == 0 ? w.SphereCast(o, p1 * 0.4f, d, out var hc, max) : w.BoxCast(o, new Vector3F(p0, p1, p2), rot, d, out hc, max);
+                return (n, ray, hr, sph, hs, cast, hc, n);
+            }
+
+            var a = Run(true);
+            var b = Run(false);
+            w.QuickRejects = true;
+            Assert.Equal(b.Item2, a.Item2);
+            if (a.Item2) { hits++; SameHit(a.Item3, b.Item3, "ray"); }
+            Assert.Equal(b.Item4, a.Item4);
+            if (a.Item4) { SameHit(a.Item5, b.Item5, "overlap"); }
+            Assert.Equal(b.Item1, a.Item1);
+            for (int k = 0; k < a.Item1; k++) { SameHit(buf1[k], buf2[k], "overlap all"); }
+            Assert.Equal(b.Item6, a.Item6);
+            if (a.Item6) { SameHit(a.Item7, b.Item7, "cast"); }
+        }
+
+        Assert.True(hits > 300 && touching > 1000, hits + " rays hit, " + touching + " grazing queries");
+    }
+
     [Fact]
     public void KnownAnswers()
     {
