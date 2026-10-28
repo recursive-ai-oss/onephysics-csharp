@@ -37,12 +37,14 @@ static class Driver3
         }
         void Frame(int step) { sim.Snapshot(d); dump!.Write((uint)step); dump.Write((uint)0); foreach (var v in d) dump.Write(v); }
         if (dump != null) Frame(0);
-        var stepNs = new double[s.Steps]; double nsPerTick = 1e9 / Stopwatch.Frequency;
+        var stepNs = new double[s.Steps]; var allocB = new long[s.Steps]; double nsPerTick = 1e9 / Stopwatch.Frequency;
         for (int step = 0; step < s.Steps; step++)
         {
             if (s.Events.Any(e => e.Step == step)) sim.WakeAll(s);
             long t0 = Stopwatch.GetTimestamp();
+            long a0 = GC.GetAllocatedBytesForCurrentThread();
             sim.Step(s.Dt);
+            allocB[step] = GC.GetAllocatedBytesForCurrentThread() - a0;
             stepNs[step] = (Stopwatch.GetTimestamp() - t0) * nsPerTick;
             if (dump != null && ((step + 1) % s.DumpEvery == 0 || step + 1 == s.Steps)) Frame(step + 1);
         }
@@ -51,6 +53,7 @@ static class Driver3
         if (timing && s.Queries.Count > 0) sim.Queries(s, sb);
         sb.Append(CultureInfo.InvariantCulture, $"engine={sim.Name}\nversion={sim.Version}\nconfig={sim.Config}\nscene={s.Name}\nthreads={threads}\nsteps={s.Steps}\nwarmup={s.Warmup}\nbodies={n}\n");
         sb.Append("step_ns=").Append(string.Join(',', stepNs.Select(v => v.ToString("F0", CultureInfo.InvariantCulture)))).Append('\n');
+        sb.Append("alloc_bytes=").Append(string.Join(',', allocB)).Append('\n');
         File.WriteAllText(o.Get("result", ""), sb.ToString());
         return 0;
     }

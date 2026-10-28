@@ -23,6 +23,35 @@ public sealed class IslandSet
     private int[] _removed = new int[16];
     private bool[] _scratchVisited = new bool[64];
     private int[] _snapshot = new int[16];
+
+    // Body lists that were outgrown. A list that has to grow takes the smallest spare that is big enough before allocating, so lists traded between islands by merges and splits
+    // stop allocating once the biggest island has been seen. Contents are never read from a spare.
+    private readonly List<int[]> _spare = new();
+    private const int MaxSpare = 64;
+
+    private int[] Grow(int[] old, int used, int need)
+    {
+        int best = -1;
+        for (int i = 0; i < _spare.Count; i++)
+        {
+            if (_spare[i].Length >= need && (best < 0 || _spare[i].Length < _spare[best].Length)) { best = i; }
+        }
+
+        int[] grown;
+        if (best >= 0)
+        {
+            grown = _spare[best];
+            _spare[best] = old;
+        }
+        else
+        {
+            grown = new int[Math.Max(need, old.Length * 2)];
+            if (_spare.Count < MaxSpare) { _spare.Add(old); }
+        }
+
+        Array.Copy(old, grown, used);
+        return grown;
+    }
     private readonly List<int> _stack = new();
     private readonly List<int> _component = new();
 
@@ -109,9 +138,7 @@ public sealed class IslandSet
         int total = nx + ny;
         if (x.Length < total)
         {
-            var grown = new int[Math.Max(total, x.Length * 2)];
-            Array.Copy(x, grown, nx);
-            x = grown;
+            x = Grow(x, nx, total);
         }
 
         int ix = nx - 1, iy = ny - 1, k = total - 1;
@@ -176,7 +203,7 @@ public sealed class IslandSet
             int id = components == 0 ? island : NewId();
             components++;
             int cn = _component.Count;
-            if (_bodies[id].Length < cn) { _bodies[id] = new int[Math.Max(cn, _bodies[id].Length * 2)]; }
+            if (_bodies[id].Length < cn) { _bodies[id] = Grow(_bodies[id], 0, cn); }
             var arr = _bodies[id];
             for (int k = 0; k < cn; k++) { arr[k] = _component[k]; isl[arr[k]] = id; }
             _count[id] = cn; _removed[id] = 0; _asleep[id] = asleep;
