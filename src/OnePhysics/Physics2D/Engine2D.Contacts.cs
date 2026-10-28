@@ -149,7 +149,7 @@ internal sealed partial class Engine2D
         {
             int a = found[i].UserA, b = found[i].UserB;
             if (a > b) { (a, b) = (b, a); }
-            if (PairMap.ContainsKey(PairKey(a, b))) { continue; }
+            // The pair filter already dropped every pair with a table entry, and the broadphase reports each pair of shapes once, so none of these is in the table yet.
             if (!PairAllowed(a, b)) { continue; }
             int np = AllocatePair(a, b);
             if (_fresh.Length < PairHigh) { Array.Resize(ref _fresh, Math.Max(PairHigh, _fresh.Length * 2)); }
@@ -411,7 +411,7 @@ internal sealed partial class Engine2D
                     var box = e.TightBox(b, in e.Geom[s]);
                     e._boxes[4 * s] = box.MinX; e._boxes[4 * s + 1] = box.MinY; e._boxes[4 * s + 2] = box.MaxX; e._boxes[4 * s + 3] = box.MaxY;
                     e._boxStamp[s] = e._stamp;
-                    bool stays = Aabb2D.Contains(e.Bp.GetFatBounds(e.Proxy[s]), box);
+                    bool stays = Aabb2D.Contains(e.Bp.FatBoundsOfLive(e.Proxy[s]), box); // every shape has a live proxy
                     if (!stays)
                     {
                         if (moved == movers.Length) { Array.Resize(ref movers, moved * 2); e._moverLists[task] = movers; }

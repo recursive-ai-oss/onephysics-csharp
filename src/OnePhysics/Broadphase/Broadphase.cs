@@ -394,6 +394,38 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
         }
     }
 
+    // Sorts _pairs[0, total) by (user id A, user id B, proxy A, proxy B). User ids are shape or body indices, so the order is almost always decided by the first two: they are packed into one long and sorted
+    // by key (a plain integer sort is several times cheaper than a four-field comparer), then the rare runs of equal keys are ordered by the proxies. The order is total, so it is the same for any sort.
+    private void SortPairs(int total)
+    {
+        if (total < 2) { return; }
+        if (_sortKeys.Length < total) { _sortKeys = new long[Math.Max(total, _sortKeys.Length * 2)]; }
+        var keys = _sortKeys;
+        var pairs = _pairs;
+        for (int i = 0; i < total; i++)
+        {
+            if (pairs[i].UserA < 0 || pairs[i].UserB < 0)
+            {
+                // Negative user ids do not pack into an order-preserving key.
+                Sorting.Sort(_pairs.AsSpan(0, total), new PairComparer());
+                return;
+            }
+
+            keys[i] = ((long)pairs[i].UserA << 32) | (uint)pairs[i].UserB;
+        }
+
+        Array.Sort(keys, pairs, 0, total);
+        for (int i = 1; i < total; i++)
+        {
+            if (keys[i] != keys[i - 1]) { continue; }
+            int begin = i - 1;
+            while (i < total && keys[i] == keys[begin]) { i++; }
+            Sorting.Sort(_pairs.AsSpan(begin, i - begin), new PairComparer());
+        }
+    }
+
+    private long[] _sortKeys = new long[256];
+
     private struct PairCollector<TFilter> : IOverlapCallback where TFilter : IPairFilter
     {
         public DynamicTree<TBox> Tree;
@@ -498,7 +530,7 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
         }
 
         _pairCount = total;
-        Sorting.Sort(_pairs.AsSpan(0, total), new PairComparer());
+        SortPairs(total);
 
         for (int i = 0; i < _movedCount; i++)
         {
