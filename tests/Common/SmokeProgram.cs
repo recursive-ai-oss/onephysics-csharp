@@ -69,7 +69,11 @@ internal static class SmokeProgram
         ulong x1 = Vehicles3DScene.Run(1, false), x3 = Vehicles3DScene.Run(3, false), xr = Vehicles3DScene.Run(1, true);
         bool xSame = x1 == x3 && x1 == xr;
         Console.WriteLine((xSame ? "OK vehicles3d " : "FAIL vehicles3d ") + x1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
-        return ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame ? 0 : 1;
+        // 3D ragdolls (powered at two strengths, limp, keyframed, thrown boxes): same state on one and three threads and after a restore.
+        ulong d1 = Ragdolls3DScene.Run(1, false), d3 = Ragdolls3DScene.Run(3, false), dr = Ragdolls3DScene.Run(1, true);
+        bool dSame = d1 == d3 && d1 == dr;
+        Console.WriteLine((dSame ? "OK ragdolls3d " : "FAIL ragdolls3d ") + d1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        return ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && dSame ? 0 : 1;
     }
 
     private static ulong World2DJoints(int threads, bool restoreHalfway)

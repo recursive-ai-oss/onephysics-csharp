@@ -485,6 +485,12 @@ public static class Metrics3
                 }
             r["jointError"] = worst;
         }
+        if (want.Contains("fallen") && s.Params.TryGetValue("heads", out var heads))
+        {
+            // Heads (params heads: body indices) that end below half of their starting height.
+            r["fallen"] = heads.Select(h => int.Parse(h, CultureInfo.InvariantCulture)).Count(h => last.d[h * St + 1] < 0.5 * s.Bodies[h].Y);
+        }
+        if (want.Contains("poseErrorP95")) r["poseErrorP95"] = PoseErrorP95(s, frames);
         if (want.Contains("maxPenetration") || want.Contains("finalPenetration"))
         {
             var pen = Penetration(s, (want.Contains("maxPenetration") ? frames : frames.TakeLast(Robust.Window).ToList()).Select(x => x.d).ToList(), out _);
@@ -496,6 +502,54 @@ public static class Metrics3
             }
         }
         return r;
+    }
+
+    /// <summary>Triangle wave from 0 up to 1 and back to 0 over <paramref name="period"/> steps (exact arithmetic).</summary>
+    public static double Tri01(int step, int period)
+    {
+        int phase = step % period; double half = period / 2.0;
+        return phase < half ? phase / half : (period - phase) / half;
+    }
+
+    static (double X, double Y, double Z, double W) QMul((double X, double Y, double Z, double W) a, (double X, double Y, double Z, double W) b) =>
+        (a.W * b.X + a.X * b.W + a.Y * b.Z - a.Z * b.Y, a.W * b.Y - a.X * b.Z + a.Y * b.W + a.Z * b.X, a.W * b.Z + a.X * b.Y - a.Y * b.X + a.Z * b.W, a.W * b.W - a.X * b.X - a.Y * b.Y - a.Z * b.Z);
+
+    static (double X, double Y, double Z, double W) QConj((double X, double Y, double Z, double W) a) => (-a.X, -a.Y, -a.Z, a.W);
+
+    /// <summary>The pose error of the driven swing-twist joints: for every dumped frame from step 60 on, the angle between each joint's relative rotation (frame B in frame A, frames being the bodies' orientations times the joint frame) and its drive target, collected over all joints and frames; returns the 95th percentile (docs/scenes.md).</summary>
+    static double PoseErrorP95(Scene s, List<(int step, double[] d)> frames)
+    {
+        var errs = new List<double>();
+        var joints = s.Joints.Where(j => j.Kind == "swingtwist" && j.HasDrive).ToList();
+        var fr = new List<(double X, double Y, double Z, double W)>();
+        foreach (var j in joints)
+        {
+            double w = 1 + j.Ux;
+            if (w < 1e-9) { fr.Add((0.0, 1.0, 0.0, 0.0)); continue; }
+            double n = Math.Sqrt(j.Uz * j.Uz + j.Uy * j.Uy + w * w);
+            fr.Add((0.0, -j.Uz / n, j.Uy / n, w / n));
+        }
+
+        foreach (var (step, d) in frames)
+        {
+            if (step < 60) continue;
+            for (int k = 0; k < joints.Count; k++)
+            {
+                var j = joints[k]; var f = fr[k];
+                var qa = (X: d[j.A * St + 3], Y: d[j.A * St + 4], Z: d[j.A * St + 5], W: d[j.A * St + 6]);
+                var qb = (X: d[j.B * St + 3], Y: d[j.B * St + 4], Z: d[j.B * St + 5], W: d[j.B * St + 6]);
+                var rel = QMul(QConj(QMul(qa, f)), QMul(qb, f));
+                double h = 0.5 * j.DriveAmp * Tri01(step - 1, j.DrivePeriod), sn = Math.Sin(h);
+                var t = (X: j.DriveAx * sn, Y: j.DriveAy * sn, Z: j.DriveAz * sn, W: Math.Cos(h));
+                var e = QMul(rel, QConj(t));
+                double ang = 2 * Math.Atan2(Math.Sqrt(e.X * e.X + e.Y * e.Y + e.Z * e.Z), Math.Abs(e.W));
+                errs.Add(double.IsFinite(ang) ? ang : double.PositiveInfinity);
+            }
+        }
+
+        if (errs.Count == 0) return 0;
+        errs.Sort();
+        return errs[(int)Math.Ceiling(0.95 * errs.Count) - 1];
     }
 
     static V World(double[] d, int b, V local) => new V(d[b * St], d[b * St + 1], d[b * St + 2]) + Rot(d[b * St + 3], d[b * St + 4], d[b * St + 5], d[b * St + 6], local);

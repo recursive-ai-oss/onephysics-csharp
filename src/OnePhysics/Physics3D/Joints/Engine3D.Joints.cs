@@ -421,7 +421,7 @@ internal sealed partial class Engine3D
             case JointType3D.Hinge: lin = Mag(p[0], p[1], p[2]); ang = Mag(p[3], p[4], axial); break;
             case JointType3D.Slider: lin = Mag(p[0], p[1], axial); ang = Mag(p[3], p[4], p[5]); break;
             case JointType3D.Cone: lin = Mag(p[0], p[1], p[2]); ang = p[JP.Lower] < 0f ? -p[JP.Lower] : p[JP.Lower]; break;
-            case JointType3D.SwingTwist: lin = Mag(p[0], p[1], p[2]); ang = Mag(p[JP.Lower] - p[JP.Upper], p[JP.Swing], 0f); break;
+            case JointType3D.SwingTwist: lin = Mag(p[0], p[1], p[2]); ang = Mag(p[JP.Lower] - p[JP.Upper], p[JP.Swing], j.Drive ? Mag(p[JP.Drive], p[JP.Drive + 1], p[JP.Drive + 2]) : 0f); break;
             case JointType3D.SixDof:
             {
                 float lx = SixAxial(p, 0), ly = SixAxial(p, 1), lz = SixAxial(p, 2);

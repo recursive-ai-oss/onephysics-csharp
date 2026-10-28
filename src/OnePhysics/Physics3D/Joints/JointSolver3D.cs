@@ -9,6 +9,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 internal static class JP
 {
     public const int Spring = 10, Motor = 11, Lower = 12, Upper = 13, Swing = 14;
+    public const int Drive = 3;     // swing-twist pose drive: three slots (3..5), the accumulated angular impulse along frame A's axes
     public const int SixAxis = 6;   // six-dof: per axis four slots (motor, spring, upper, lower); the locked axes' block impulses are compact in slots 0..2 (translation) and 3..5 (rotation)
 }
 
@@ -403,10 +404,58 @@ internal sealed partial class Engine3D
         return g.FA.Rotate(new Vector3F(1f, (q.W * q.Z + q.X * q.Y) * inv, (q.X * q.Z - q.W * q.Y) * inv));
     }
 
+    /// <summary>
+    /// The pose drive of a swing-twist joint: an angular spring-damper of absolute stiffness k (N·m/rad) and damping c (N·m·s/rad) between frame B and its target relative to frame A, as three angular rows along A's axes solved as one block.
+    /// It is Catto's soft constraint (GDC 2011, "Soft Constraints") with the spring and damper integrated implicitly over the substep h: softness γ = 1 / (h (c + h k)), bias rate k / (c + h k), and the block solves
+    /// (K + γ I) x = Cdot + k / (c + h k) · C + γ · accumulated, impulse = -x. Because k is a torque stiffness and not a frequency, a joint holds the same load whatever the masses around it.
+    /// The accumulated impulse vector is capped at the torque limit times the substep. The error is the vector part of qe = rel · target⁻¹, doubled (the convention of locking a rotation), taken with the sign that makes it the short way round.
+    /// Like a spring it acts once per substep, in the biased pass.
+    /// </summary>
+    private static void DriveRotation(ref JS3 j, in JGeo g, in JointData3D d, QuaternionF rel, ReadOnlySpan<float> s, Span<float> p, bool useBias, bool warm, float invH)
+    {
+        JRowBuf rows = default;
+        rows[0] = JointRow.Ang(g.AxA); rows[1] = JointRow.Ang(g.AyA); rows[2] = JointRow.Ang(g.AzA);
+        ReadOnlySpan<JointRow> r = rows;
+        if (warm)
+        {
+            for (int i = 0; i < 3; i++) { j.Apply(r[i], p[JP.Drive + i]); }
+            return;
+        }
+
+        if (!useBias) { return; }
+        float h = 1f / invH, kk = d.Length, cc = d.Ratio;
+        float denom = cc + h * kk;
+        if (!(denom > 0f)) { return; }
+        float gamma = 1f / (h * denom), rate = kk / denom;
+        var qe = rel * d.DriveTarget.Conjugate();
+        if (qe.W < 0f) { qe = new QuaternionF(-qe.X, -qe.Y, -qe.Z, -qe.W); }
+        float c0 = 2f * qe.X, c1 = 2f * qe.Y, c2 = 2f * qe.Z;
+        float a0 = p[JP.Drive], a1 = p[JP.Drive + 1], a2 = p[JP.Drive + 2];
+        float rhs0 = j.Cdot(r[0]) + rate * c0 + gamma * a0, rhs1 = j.Cdot(r[1]) + rate * c1 + gamma * a1, rhs2 = j.Cdot(r[2]) + rate * c2 + gamma * a2;
+        float k00 = j.K(r[0], r[0]) + gamma, k01 = j.K(r[0], r[1]), k02 = j.K(r[0], r[2]), k11 = j.K(r[1], r[1]) + gamma, k12 = j.K(r[1], r[2]), k22 = j.K(r[2], r[2]) + gamma;
+        float c00 = k11 * k22 - k12 * k12, c01 = k02 * k12 - k01 * k22, c02 = k01 * k12 - k02 * k11;
+        float det = k00 * c00 + k01 * c01 + k02 * c02;
+        if (det != 0f) { det = 1f / det; }
+        float c11 = k00 * k22 - k02 * k02, c12 = k01 * k02 - k00 * k12, c22 = k00 * k11 - k01 * k01;
+        float n0 = a0 - det * (c00 * rhs0 + c01 * rhs1 + c02 * rhs2);
+        float n1 = a1 - det * (c01 * rhs0 + c11 * rhs1 + c12 * rhs2);
+        float n2 = a2 - det * (c02 * rhs0 + c12 * rhs1 + c22 * rhs2);
+        float cap = s[JRow3.MaxMotorImp], l2 = n0 * n0 + n1 * n1 + n2 * n2;
+        if (l2 > cap * cap)
+        {
+            float sc = cap / float.Sqrt(l2);
+            n0 *= sc; n1 *= sc; n2 *= sc;
+        }
+
+        p[JP.Drive] = n0; p[JP.Drive + 1] = n1; p[JP.Drive + 2] = n2;
+        j.Apply(r[0], n0 - a0); j.Apply(r[1], n1 - a1); j.Apply(r[2], n2 - a2);
+    }
+
     private static void SolveSwingTwist(ref JS3 j, in JGeo g, ref JointData3D d, ReadOnlySpan<float> s, Span<float> p, Soft rigid, bool useBias, float invH, bool warm)
     {
         float jb = s[JRow3.JBias], jm = s[JRow3.JMass], ji = s[JRow3.JImp];
         var rel = Relative(in g);
+        if (d.Drive) { DriveRotation(ref j, in g, in d, rel, s, p, useBias, warm, invH); }
         float twist = SwingTwist(rel, out var swing);
         var twistRow = JointRow.Ang(TwistGradient(in g, rel));
         LimitRow(ref j, p, JP.Lower, twistRow, twist - d.Lower, useBias, jb, jm, ji, invH, warm);

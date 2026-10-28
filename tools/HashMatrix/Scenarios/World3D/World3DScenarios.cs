@@ -23,6 +23,7 @@ internal static class World3DScenarios
         Scenarios.Register("world3d/joints", RunJoints);
         Scenarios.Register("world3d/characters", ctx => Characters3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
         Scenarios.Register("world3d/vehicles", ctx => Vehicles3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
+        Scenarios.Register("world3d/ragdolls", ctx => Ragdolls3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
         Scenarios.Register("world3d/services", ctx => Services3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
     }
 

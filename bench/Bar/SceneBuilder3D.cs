@@ -17,7 +17,19 @@ public static class SceneBuilder3D
         Build(s, threads, out characters, out _);
 
     /// <summary>As above, and bodies with a <c>vehicle</c> script get a vehicle built from the named preset (see docs/scenes.md); they are returned with their scripts in body order.</summary>
-    public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads, out List<(P3.Character Character, CharacterScript Script, int Body)> characters, out List<(P3.Vehicle Vehicle, VehicleScript Script, int Body)> vehicles)
+    public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads, out List<(P3.Character Character, CharacterScript Script, int Body)> characters, out List<(P3.Vehicle Vehicle, VehicleScript Script, int Body)> vehicles) =>
+        Build(s, threads, out characters, out vehicles, out _);
+
+    /// <summary>The unit quaternion that turns +x onto the unit vector (ux, uy, uz) by the shortest arc: the frame of a swing-twist joint whose twist axis is that vector (docs/scenes.md).</summary>
+    public static QuaternionF JointFrame(double ux, double uy, double uz)
+    {
+        if (1 + ux < 1e-9) return new QuaternionF(0, 1, 0, 0);
+        double w = 1 + ux, n = Math.Sqrt(uz * uz + uy * uy + w * w);
+        return new QuaternionF(0, (float)(-uz / n), (float)(uy / n), (float)(w / n));
+    }
+
+    /// <summary>As above, and swing-twist joints with a <c>drive</c> are returned with their definitions in joint order, for the caller to retarget every step.</summary>
+    public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads, out List<(P3.Character Character, CharacterScript Script, int Body)> characters, out List<(P3.Vehicle Vehicle, VehicleScript Script, int Body)> vehicles, out List<(P3.Joint Joint, JointDef Def)> drives)
     {
         var opt = new P3.WorldOptions3D { Gravity = new Vector3F((float)s.Gx, (float)s.Gy, (float)s.Gz), ThreadCount = threads };
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
@@ -58,8 +70,27 @@ public static class SceneBuilder3D
                 vehicles.Add((world.AddVehicle(bodies[i], P3.VehicleDef.Car), ob.Vehicle, i));
             }
         }
+        drives = new List<(P3.Joint, JointDef)>();
         foreach (var j in s.Joints)
         {
+            if (j.Kind == "swingtwist")
+            {
+                var f = JointFrame(j.Ux, j.Uy, j.Uz);
+                var qa = new QuaternionF((float)s.Bodies[j.A].Qx, (float)s.Bodies[j.A].Qy, (float)s.Bodies[j.A].Qz, (float)s.Bodies[j.A].Qw);
+                var qb = new QuaternionF((float)s.Bodies[j.B].Qx, (float)s.Bodies[j.B].Qy, (float)s.Bodies[j.B].Qz, (float)s.Bodies[j.B].Qw);
+                var sd = new P3.SwingTwistJointDef
+                {
+                    BodyA = bodies[j.A], BodyB = bodies[j.B],
+                    LocalFrameA = new P3.JointFrame3D(new Vector3F((float)j.Ax, (float)j.Ay, (float)j.Az), qa.Conjugate() * f),
+                    LocalFrameB = new P3.JointFrame3D(new Vector3F((float)j.Bx, (float)j.By, (float)j.Bz), qb.Conjugate() * f),
+                    LowerTwist = j.HasLimit ? (float)j.Lower : -3.1415927f, UpperTwist = j.HasLimit ? (float)j.Upper : 3.1415927f,
+                    SwingYHalfAngle = j.HasSwing ? (float)j.SwingY : 3.1415927f, SwingZHalfAngle = j.HasSwing ? (float)j.SwingZ : 3.1415927f,
+                };
+                var sj = world.CreateJoint(in sd);
+                if (j.HasDrive) drives.Add((sj, j));
+                continue;
+            }
+
             if (j.Kind != "point") throw new InvalidDataException("3D joint kind not supported by the builder: " + j.Kind);
             var jd = new P3.PointJointDef
             {

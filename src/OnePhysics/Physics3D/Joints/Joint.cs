@@ -291,6 +291,52 @@ public readonly struct Joint : IEquatable<Joint>
         if (!enabled) { w.Core.Constraints.Payload(c)[JP.SixAxis + 4 * i + 1] = 0f; }
     }
 
+    /// <summary>
+    /// Swing-twist joint: drives frame B towards a rotation relative to frame A with an angular spring-damper of absolute stiffness and damping and a torque limit (the joint of a powered ragdoll). The torque is
+    /// <c>-stiffness · error - damping · relative angular velocity</c>, integrated implicitly over the substep, so any stiffness is stable, and capped at <paramref name="maxTorque"/>. The drive acts beside the joint's limits, which still hold.
+    /// </summary>
+    /// <param name="target">Wanted rotation of frame B relative to frame A (a unit quaternion; it is normalized). The identity is the pose in which the two frames coincide.</param>
+    /// <param name="stiffness">Torque per radian of error, N·m/rad, finite and at least 0.</param>
+    /// <param name="damping">Torque per rad/s of relative angular velocity, N·m·s/rad, finite and at least 0.</param>
+    /// <param name="maxTorque">Largest torque the drive may apply, N·m, finite and at least 0. 0 makes the joint limp (the drive is removed).</param>
+    /// <exception cref="InvalidJointException">The joint is not a swing-twist joint.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A value is not finite or out of range; the joint is unchanged.</exception>
+    public void SetPoseDrive(QuaternionF target, float stiffness, float damping, float maxTorque)
+    {
+        ref var d = ref Rec(out var w, out int c);
+        Need(in d, "pose drive", 1u << (int)JointType3D.SwingTwist);
+        var e = d;
+        e.Flags |= JointData3D.FlagDrive;
+        e.DriveTarget = target; e.Length = stiffness; e.Ratio = damping; e.MaxMotor = maxTorque;
+        e.Validate();
+        if (!(maxTorque > 0f)) { ClearPoseDrive(); return; }
+        e.DriveTarget = Engine3D.Normalize(target, "target");
+        if (d.Drive && SameQuaternion(d.DriveTarget, e.DriveTarget) && d.Length == e.Length && d.Ratio == e.Ratio && d.MaxMotor == e.MaxMotor) { return; }
+        Commit(w, c, ref d, in e);
+    }
+
+    private static bool SameQuaternion(QuaternionF a, QuaternionF b) => a.X == b.X && a.Y == b.Y && a.Z == b.Z && a.W == b.W;
+
+    /// <summary>Swing-twist joint: removes the pose drive (the joint is limp inside its limits). Does nothing when there is none.</summary>
+    public void ClearPoseDrive()
+    {
+        ref var d = ref Rec(out var w, out int c);
+        Need(in d, "pose drive", 1u << (int)JointType3D.SwingTwist);
+        if (!d.Drive) { return; }
+        var e = d;
+        e.Flags = (byte)(e.Flags & ~JointData3D.FlagDrive);
+        e.DriveTarget = default; e.Length = 0f; e.Ratio = 0f; e.MaxMotor = 0f;
+        Commit(w, c, ref d, in e);
+        var p = w.Core.Constraints.Payload(c);
+        p[JP.Drive] = 0f; p[JP.Drive + 1] = 0f; p[JP.Drive + 2] = 0f;
+    }
+
+    /// <summary>True when the joint has a pose drive (<see cref="SetPoseDrive"/>).</summary>
+    public bool IsPoseDriven { get { ref var d = ref Rec(out _, out _); return d.Drive; } }
+
+    /// <summary>The drive's target rotation of frame B relative to frame A; the identity when there is no drive.</summary>
+    public QuaternionF PoseDriveTarget { get { ref var d = ref Rec(out _, out _); return d.Drive ? d.DriveTarget : QuaternionF.Identity; } }
+
     // ---- breaking and readouts ----
 
     /// <summary>Reaction force above which the joint breaks at the end of a step, newtons; infinity (the default) never breaks.</summary>

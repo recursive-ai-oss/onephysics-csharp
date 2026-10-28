@@ -54,6 +54,8 @@ public sealed class JointDef
     public double Az, Bz, Ux, Uy, Uz; // 3D: third anchor components and the hinge axis (local to both bodies)
     public bool HasLimit; public double Lower, Upper;
     public bool HasMotor; public double MotorSpeed, MaxTorque;
+    public bool HasSwing; public double SwingY, SwingZ;                                    // swingtwist: half angles about the frame y and z axes
+    public bool HasDrive; public double DriveK, DriveC, DriveMax, DriveAx, DriveAy, DriveAz, DriveAmp; public int DrivePeriod;   // swingtwist pose drive, see docs/scenes.md
 }
 
 public sealed class QueryDef
@@ -145,12 +147,18 @@ public sealed class Scene
                     if (s.Dim == 3)
                     {
                         j.Az = D(t[6]); j.Bx = D(t[7]); j.By = D(t[8]); j.Bz = D(t[9]); k0 = 10;
-                        if (j.Kind == "hinge") { j.Ux = D(t[10]); j.Uy = D(t[11]); j.Uz = D(t[12]); k0 = 13; }
+                        if (j.Kind == "hinge" || j.Kind == "swingtwist") { j.Ux = D(t[10]); j.Uy = D(t[11]); j.Uz = D(t[12]); k0 = 13; }
                     }
                     for (int k = k0; k < t.Length;)
                     {
                         if (t[k] == "limit") { j.HasLimit = true; j.Lower = D(t[k + 1]); j.Upper = D(t[k + 2]); k += 3; }
                         else if (t[k] == "motor") { j.HasMotor = true; j.MotorSpeed = D(t[k + 1]); j.MaxTorque = D(t[k + 2]); k += 3; }
+                        else if (t[k] == "swing") { j.HasSwing = true; j.SwingY = D(t[k + 1]); j.SwingZ = D(t[k + 2]); k += 3; }
+                        else if (t[k] == "drive")
+                        {
+                            j.HasDrive = true; j.DriveK = D(t[k + 1]); j.DriveC = D(t[k + 2]); j.DriveMax = D(t[k + 3]);
+                            j.DriveAx = D(t[k + 4]); j.DriveAy = D(t[k + 5]); j.DriveAz = D(t[k + 6]); j.DriveAmp = D(t[k + 7]); j.DrivePeriod = I(t[k + 8]); k += 9;
+                        }
                         else throw new InvalidDataException("unknown joint option " + t[k]);
                     }
                     s.Joints.Add(j); break;
@@ -200,11 +208,13 @@ public sealed class Scene
             if (Dim == 3)
             {
                 sb.Append(F(j.Ax)).Append(' ').Append(F(j.Ay)).Append(' ').Append(F(j.Az)).Append(' ').Append(F(j.Bx)).Append(' ').Append(F(j.By)).Append(' ').Append(F(j.Bz));
-                if (j.Kind == "hinge") sb.Append(' ').Append(F(j.Ux)).Append(' ').Append(F(j.Uy)).Append(' ').Append(F(j.Uz));
+                if (j.Kind == "hinge" || j.Kind == "swingtwist") sb.Append(' ').Append(F(j.Ux)).Append(' ').Append(F(j.Uy)).Append(' ').Append(F(j.Uz));
             }
             else sb.Append(F(j.Ax)).Append(' ').Append(F(j.Ay)).Append(' ').Append(F(j.Bx)).Append(' ').Append(F(j.By));
             if (j.HasLimit) sb.Append(" limit ").Append(F(j.Lower)).Append(' ').Append(F(j.Upper));
             if (j.HasMotor) sb.Append(" motor ").Append(F(j.MotorSpeed)).Append(' ').Append(F(j.MaxTorque));
+            if (j.HasSwing) sb.Append(" swing ").Append(F(j.SwingY)).Append(' ').Append(F(j.SwingZ));
+            if (j.HasDrive) sb.Append(" drive ").Append(F(j.DriveK)).Append(' ').Append(F(j.DriveC)).Append(' ').Append(F(j.DriveMax)).Append(' ').Append(F(j.DriveAx)).Append(' ').Append(F(j.DriveAy)).Append(' ').Append(F(j.DriveAz)).Append(' ').Append(F(j.DriveAmp)).Append(' ').Append(j.DrivePeriod);
             sb.Append('\n');
         }
         foreach (var q in Queries) { sb.Append("query ").Append(q.Kind); foreach (var v in q.P) sb.Append(' ').Append(F(v)); sb.Append('\n'); }

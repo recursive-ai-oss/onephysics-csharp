@@ -233,6 +233,7 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         DropCharacterOfBody(b);
         DropVehicleOfBody(b);
+        DropRagdollOfBody(b);
         Core.DestroyBody(handle);
         ReconcileJoints();
         ShapeHead[b] = -1; ShapeTail[b] = -1;
@@ -534,7 +535,8 @@ internal sealed partial class Engine3D : ISnapshotSection
         bool services = HasServiceState();
         bool chars = HasCharacters;
         bool vehs = HasVehicles;
-        w.WriteUInt32(joints || services || chars || vehs ? VersionJoints : Version);
+        bool rags = HasRagdolls;
+        w.WriteUInt32(joints || services || chars || vehs || rags ? VersionJoints : Version);
         w.WriteSingle(Opt.ContactHertz); w.WriteSingle(Opt.ContactDampingRatio); w.WriteSingle(Opt.PushOutVelocity); w.WriteSingle(Opt.RestitutionThreshold);
         w.WriteSingle(Opt.MaxLinearSpeed); w.WriteSingle(Opt.MaxRotationPerSubstep); w.WriteBool(Opt.ContinuousEnabled); w.WriteSingle(Opt.ContactSlop);
         w.WriteSingle(Opt.SpeculativeDistance);
@@ -588,14 +590,15 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         w.WriteInt32(PairFreeCount);
         w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
-        if (joints || services || chars || vehs)
+        if (joints || services || chars || vehs || rags)
         {
             // Version 2: a presence-flags word, then the flagged blocks in a fixed order: joints, services (layers, filters, sensors), characters.
-            w.WriteUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u) | (chars ? BlockCharacters : 0u) | (vehs ? BlockVehicles : 0u));
+            w.WriteUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u) | (chars ? BlockCharacters : 0u) | (vehs ? BlockVehicles : 0u) | (rags ? BlockRagdolls : 0u));
             if (joints) { WriteJoints(w); }
             if (services) { WriteServices(w, ns); }
             if (chars) { WriteCharacters(w); }
             if (vehs) { WriteVehicles(w); }
+            if (rags) { WriteRagdolls(w); }
         }
     }
 
@@ -710,10 +713,11 @@ internal sealed partial class Engine3D : ISnapshotSection
         ServiceBlock? services = null;
         CharacterBlock? characters = null;
         VehicleBlock? vehicles = null;
+        RagdollBlock? ragdolls = null;
         if (v == VersionJoints)
         {
             uint flags = r.ReadUInt32();
-            if (flags == 0 || (flags & ~(BlockJoints | BlockServices | BlockCharacters | BlockVehicles)) != 0) { throw r.Error("invalid 3D section block flags " + flags.ToString(CultureInfo.InvariantCulture)); }
+            if (flags == 0 || (flags & ~(BlockJoints | BlockServices | BlockCharacters | BlockVehicles | BlockRagdolls)) != 0) { throw r.Error("invalid 3D section block flags " + flags.ToString(CultureInfo.InvariantCulture)); }
             if ((flags & BlockJoints) != 0) { joints = ReadJoints(r); }
             if ((flags & BlockServices) != 0)
             {
@@ -731,6 +735,12 @@ internal sealed partial class Engine3D : ISnapshotSection
             {
                 vehicles = ReadVehicles(r, nb);
                 if (vehicles.Handles.Count == 0) { throw r.Error("a vehicles block holding no vehicles"); }
+            }
+
+            if ((flags & BlockRagdolls) != 0)
+            {
+                ragdolls = ReadRagdolls(r, nb);
+                if (ragdolls.Handles.Count == 0) { throw r.Error("a ragdolls block holding no ragdolls"); }
             }
         }
 
@@ -776,6 +786,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         CommitServices(services, ns);
         CommitCharacters(characters);
         CommitVehicles(vehicles);
+        CommitRagdolls(ragdolls);
         if (joints != null) { Opt.JointHertz = _pendingJointHertz; Opt.JointDampingRatio = _pendingJointDamping; }
         Joints = joints ?? new JointData3D[16];
         JointForce = new float[Joints.Length]; JointTorque = new float[Joints.Length];
@@ -795,7 +806,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || GeomOf.Length < shapes.HighWater) { return false; }
         var cons = Core.Constraints;
-        if (!JointsConsistentWithCore() || !CharactersConsistent() || !VehiclesConsistent()) { return false; }
+        if (!JointsConsistentWithCore() || !CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)
         {
             if (!shapes.Handles.IsLive(s)) { continue; }

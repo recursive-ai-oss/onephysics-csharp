@@ -167,6 +167,80 @@ public static class Gen3
         return s;
     }
 
+    // A thirteen-part humanoid (1.8 m, 75 kg) per person: name, parent, shape (box: half extents; capsule: half length and radius; sphere: radius), centre, mass, joint position, twist limit, swing limits, drive gains.
+    // The numbers are those of the library's humanoid preset; joint frames have their twist axis along +y.
+    static readonly (int Parent, char Shape, double A, double B, double C, double X, double Y, double Z, double Mass, double Jx, double Jy, double Jz, double Twist, double SwingY, double SwingZ, double K, double Damp, double Max)[] Person =
+    [
+        (-1, 'b', 0.15, 0.08, 0.09, 0, 0.98, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 'b', 0.17, 0.18, 0.10, 0, 1.24, 0, 25, 0, 1.06, 0, 0.4, 0.5, 0.5, 6000, 400, 900),
+        (1, 's', 0.11, 0, 0, 0, 1.55, 0, 5, 0, 1.44, 0, 0.6, 0.6, 0.6, 600, 40, 150),
+        (1, 'c', 0.11, 0.045, 0, 0.22, 1.225, 0, 2.5, 0.22, 1.38, 0, 1.0, 1.6, 1.6, 800, 60, 200),
+        (3, 'c', 0.095, 0.04, 0, 0.22, 0.935, 0, 1.5, 0.22, 1.07, 0, 0.3, 2.4, 0.1, 500, 40, 120),
+        (1, 'c', 0.11, 0.045, 0, -0.22, 1.225, 0, 2.5, -0.22, 1.38, 0, 1.0, 1.6, 1.6, 800, 60, 200),
+        (5, 'c', 0.095, 0.04, 0, -0.22, 0.935, 0, 1.5, -0.22, 1.07, 0, 0.3, 2.4, 0.1, 500, 40, 120),
+        (0, 'c', 0.13, 0.08, 0, 0.10, 0.71, 0, 8, 0.10, 0.92, 0, 0.6, 1.2, 1.0, 12000, 800, 1500),
+        (7, 'c', 0.15, 0.06, 0, 0.10, 0.29, 0, 4, 0.10, 0.50, 0, 0.1, 2.3, 0.08, 9000, 600, 1200),
+        (8, 'b', 0.06, 0.04, 0.15, 0.10, 0.04, 0.05, 1.2, 0.10, 0.08, 0, 0.3, 0.6, 0.4, 5000, 300, 600),
+        (0, 'c', 0.13, 0.08, 0, -0.10, 0.71, 0, 8, -0.10, 0.92, 0, 0.6, 1.2, 1.0, 12000, 800, 1500),
+        (10, 'c', 0.15, 0.06, 0, -0.10, 0.29, 0, 4, -0.10, 0.50, 0, 0.1, 2.3, 0.08, 9000, 600, 1200),
+        (11, 'b', 0.06, 0.04, 0.15, -0.10, 0.04, 0.05, 1.2, -0.10, 0.08, 0, 0.3, 0.6, 0.4, 5000, 300, 600),
+    ];
+
+    // Fifty powered humanoids on a floor, each driven to a looping pose (the left arm swings out, the elbow bends, the head and torso turn; triangle wave, period 120/140/160 steps), every fifth hit from behind by a thrown box.
+    // Drive axes are in the joint frame (x = the twist axis = +y of the body): world z is joint z, world x is joint -y.
+    static Scene RagdollPowered()
+    {
+        var s = Base3("ragdoll-powered-3d", 600, "poseErrorP95", "fallen", "jointError", "maxSpeed", "nan", "escapes");
+        s.DumpEvery = 10; s.Substeps = 8;
+        Box3(Add3(s, "static", 0, -1, 0), 40, 1, 40);
+        var heads = new List<string>();
+        for (int k = 0; k < 50; k++)
+        {
+            double ox = (k % 10 - 4.5) * 2.5, oz = (k / 10) * 2.5 - 5;
+            int first = s.Bodies.Count;
+            heads.Add((first + 2).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            foreach (var p in Person)
+            {
+                var b = Add3(s, "dynamic", ox + p.X, p.Y + 0.002, oz + p.Z);
+                switch (p.Shape)
+                {
+                    case 'b': Box3(b, p.A, p.B, p.C, 0, 0, 0, p.Mass / (8 * p.A * p.B * p.C)); break;
+                    case 's': Sh(b, "sphere", p.Mass / (4.0 / 3 * Math.PI * p.A * p.A * p.A), p.A, 0, 0, 0); break;
+                    default: Sh(b, "capsule", p.Mass / (Math.PI * p.B * p.B * 2 * p.A + 4.0 / 3 * Math.PI * p.B * p.B * p.B), p.B, 0, -p.A, 0, 0, p.A, 0); break;
+                }
+            }
+
+            int period = 120 + 20 * (k % 3);
+            for (int i = 1; i < Person.Length; i++)
+            {
+                var c = Person[i]; var par = Person[c.Parent];
+                var j = new JointDef
+                {
+                    Kind = "swingtwist", A = first + c.Parent, B = first + i,
+                    Ax = c.Jx - par.X, Ay = c.Jy - par.Y, Az = c.Jz - par.Z, Bx = c.Jx - c.X, By = c.Jy - c.Y, Bz = c.Jz - c.Z, Ux = 0, Uy = 1, Uz = 0,
+                    HasLimit = true, Lower = -c.Twist, Upper = c.Twist, HasSwing = true, SwingY = c.SwingY, SwingZ = c.SwingZ,
+                    HasDrive = true, DriveK = c.K, DriveC = c.Damp, DriveMax = c.Max, DriveAx = 0, DriveAy = 0, DriveAz = 1, DriveAmp = 0, DrivePeriod = period,
+                };
+                if (i == 3) j.DriveAmp = 1.0;                                    // left upper arm: out sideways by up to a radian about world z
+                if (i == 4) { j.DriveAy = 1; j.DriveAz = 0; j.DriveAmp = 0.8; }  // left elbow: bends about world x
+                if (i == 2) { j.DriveAx = 1; j.DriveAz = 0; j.DriveAmp = 0.5; }  // head: turns about the vertical (the twist axis)
+                if (i == 1) { j.DriveAx = 1; j.DriveAz = 0; j.DriveAmp = 0.2; }  // torso: twists about the vertical
+                s.Joints.Add(j);
+            }
+
+            if (k % 5 == 0)
+            {
+                var box = Add3(s, "dynamic", ox, 1.5, oz - 2.5);
+                box.Vz = 6;
+                Box3(box, 0.125, 0.125, 0.125, 0, 0, 0, 100);
+            }
+        }
+
+        s.Params["container"] = ["-40", "-5", "40", "30"];
+        s.Params["heads"] = heads.ToArray();
+        return s;
+    }
+
     static (double[] h, int n, double cell) Terrain()
     {
         var r = new Gen.Rng(11);
@@ -481,5 +555,5 @@ public static class Gen3
         return s;
     }
 
-    public static List<Scene> All() => [Pyramid(10), Pyramid(30), LargePile(), JointChains(), JointGrid(), RagdollPile(), TerrainScene(false), TerrainScene(true), SleepWake(), Queries(), Characters3(), Vehicles3()];
+    public static List<Scene> All() => [Pyramid(10), Pyramid(30), LargePile(), JointChains(), JointGrid(), RagdollPile(), RagdollPowered(), TerrainScene(false), TerrainScene(true), SleepWake(), Queries(), Characters3(), Vehicles3()];
 }
