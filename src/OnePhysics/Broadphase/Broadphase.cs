@@ -17,11 +17,16 @@ public sealed class BroadphaseOptions
     /// <summary>How many steps of motion a moving proxy's box is stretched ahead of it (Catto, GDC 2019). Default 2; 0 disables the prediction.</summary>
     public double DisplacementMultiplier { get; init; } = 2.0;
 
+    // The top of a tree whose boxes were enlarged is rebuilt once more than 8 + proxies >> shift of its nodes are affected. Smaller shifts rebuild less often; the rebuild is serial, so an engine whose steps
+    // are short enough for it to show up in the parallel speed-up raises the limit. Not saved: it changes when queries get faster, never which pairs are found.
+    internal int EnlargedRebuildShift { get; init; } = 3;
+
     internal void Validate()
     {
         CheckRange(Margin, nameof(Margin), 1048576.0);
         CheckRange(StaticMargin, nameof(StaticMargin), 1048576.0);
         CheckRange(DisplacementMultiplier, nameof(DisplacementMultiplier), 64.0);
+        if (EnlargedRebuildShift < 0 || EnlargedRebuildShift > 30) { throw new ArgumentOutOfRangeException(nameof(EnlargedRebuildShift), EnlargedRebuildShift, "EnlargedRebuildShift must be in [0, 30]."); }
     }
 
     private static void CheckRange(double v, string name, double max)
@@ -363,7 +368,7 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
         }
     }
 
-    private static int RebuildThreshold(DynamicTree<TBox> tree) => 8 + (tree.ProxyCount >> 3);
+    private int RebuildThreshold(DynamicTree<TBox> tree) => 8 + (tree.ProxyCount >> _options.EnlargedRebuildShift);
 
     // ---- pairs ----------------------------------------------------------------------------------------------------
 

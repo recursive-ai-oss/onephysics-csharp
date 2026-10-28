@@ -24,7 +24,7 @@ public sealed partial class PhysicsWorld2D
         o.Validate();
         _core = new WorldCore(o.ToCore());
         o.WorldId = _core.Id;
-        var bp = new Broadphase2D(new BroadphaseOptions { Margin = o.BroadphaseMargin });
+        var bp = new Broadphase2D(new BroadphaseOptions { Margin = o.BroadphaseMargin, EnlargedRebuildShift = 1 });
         _engine = new Engine2D(_core, bp, o) { World = this };
         _core.AddSection(bp);
         _core.AddSection(_engine);
