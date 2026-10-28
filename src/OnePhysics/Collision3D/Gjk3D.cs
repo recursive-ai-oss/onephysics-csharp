@@ -79,7 +79,7 @@ internal readonly struct ConvexPair
         A = a;
         B = b;
         R = bInA.Rotation.ToMatrix();
-        Rt = R.Transpose();
+        Rt = R.Transposed();
         T = bInA.Translation;
     }
 

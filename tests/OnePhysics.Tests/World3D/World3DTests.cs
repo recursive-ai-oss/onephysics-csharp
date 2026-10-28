@@ -153,7 +153,7 @@ public class World3DTests
         {
             var q = body.Rotation;
             var I = body.Inertia;
-            var wl = q.Conjugate().Rotate(body.AngularVelocity);
+            var wl = q.Conjugated().Rotate(body.AngularVelocity);
             return q.Rotate(I * wl);
         }
 

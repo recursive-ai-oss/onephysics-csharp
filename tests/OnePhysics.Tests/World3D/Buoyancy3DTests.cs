@@ -56,7 +56,7 @@ public class Buoyancy3DTests
         double cell = Math.Pow(2.0 * reach / G, 3);
         double sx = 0, sy = 0, sz = 0;
         long count = 0;
-        var inv = pose.Rotation.Conjugate();
+        var inv = pose.Rotation.Conjugated();
         for (int i = 0; i < G; i++)
         {
             for (int j = 0; j < G; j++)

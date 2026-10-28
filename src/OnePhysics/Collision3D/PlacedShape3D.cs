@@ -155,7 +155,7 @@ public readonly struct PlacedShape3D
     public Vector3F Support(Vector3F direction)
     {
         Require();
-        Vector3F inShape = Local.Rotation.Conjugate().Rotate(direction);
+        Vector3F inShape = Local.Rotation.Conjugated().Rotate(direction);
         return Local.TransformPoint(Shape.Support(inShape));
     }
 
@@ -175,7 +175,7 @@ public readonly struct PlacedShape3D
     }
 
     // Placement of the other shape's own frame in this shape's own frame.
-    internal RigidTransformF ToOwnFrame(in PlacedShape3D other, in RigidTransformF otherInThis) => Local.Inverse() * otherInThis * other.Local;
+    internal RigidTransformF ToOwnFrame(in PlacedShape3D other, in RigidTransformF otherInThis) => Local.Inverted() * otherInThis * other.Local;
 
     /// <summary>Distance and closest points to another placed shape (<see cref="Gjk3D.Distance"/>), in this holder's frame.</summary>
     /// <param name="other">The other shape.</param>
@@ -215,7 +215,7 @@ public readonly struct PlacedShape3D
     {
         Require();
         other.Require();
-        Vector3F inOwn = Local.Rotation.Conjugate().Rotate(motion);
+        Vector3F inOwn = Local.Rotation.Conjugated().Rotate(motion);
         if (!Gjk3D.ShapeCast(Shape, other.Shape, ToOwnFrame(other, otherInThis), inOwn, out ConvexCastHit3D h))
         {
             hit = default;

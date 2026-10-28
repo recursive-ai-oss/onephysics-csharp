@@ -15,7 +15,7 @@ internal static class VehicleKinds3DScene
 
         // A 25 % ramp for the second tank.
         float ang = Math32.Atan(0.25f), len = 40f, th = 1f;
-        var rot = QuaternionF.FromAxisSinCos(new Vector3F(1f, 0f, 0f), Math32.Sin(-0.5f * ang), Math32.Cos(-0.5f * ang));
+        var rot = QuaternionF.CreateFromAxisSinCos(new Vector3F(1f, 0f, 0f), Math32.Sin(-0.5f * ang), Math32.Cos(-0.5f * ang));
         w.AddBox(new Vector3F(20f, th, len), new Vector3D(30, 0.5f * len * Math32.Sin(ang) - 0.5f * th * Math32.Cos(ang), 10f + 0.5f * len * Math32.Cos(ang) + 0.5f * th * Math32.Sin(ang)), rot, BodyType.Static, new Material3D(0.8f, 0f, 0f));
 
         w.AddTank(new Vector3D(0, 0, 0));

@@ -14,13 +14,13 @@ public class ManifoldTests
     private static QuaternionF AxisAngle(Vector3F axis, double angle)
     {
         axis = axis.Normalized();
-        return QuaternionF.FromAxisSinCos(axis, (float)Math.Sin(angle / 2), (float)Math.Cos(angle / 2));
+        return QuaternionF.CreateFromAxisSinCos(axis, (float)Math.Sin(angle / 2), (float)Math.Cos(angle / 2));
     }
 
     // B's pose in A's frame from two world poses.
     private static RigidTransformF Rel(QuaternionF qa, Vector3F pa, QuaternionF qb, Vector3F pb)
     {
-        QuaternionF c = qa.Conjugate();
+        QuaternionF c = qa.Conjugated();
         return new RigidTransformF(c * qb, c.Rotate(pb - pa));
     }
 
@@ -127,7 +127,7 @@ public class ManifoldTests
         Manifold3D m = g.Collide(Box(1, 1, 1), Box(1, 1, 1), xf);
         Assert.Equal(1, m.PointCount);
         // Normal: world +Y seen from A's frame.
-        NearV(qa.Conjugate().Rotate(Vector3F.UnitY), m.Normal, 1e-4);
+        NearV(qa.Conjugated().Rotate(Vector3F.UnitY), m.Normal, 1e-4);
         Near(-0.01, m[0].Separation, 2e-4);
         uint id = m[0].Id;
         Assert.Equal(1u, id >> 30);

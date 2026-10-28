@@ -93,8 +93,8 @@ public static class SceneBuilder3D
                 var sd = new P3.SwingTwistJointDef
                 {
                     BodyA = bodies[j.A], BodyB = bodies[j.B],
-                    LocalFrameA = new P3.JointFrame3D(new Vector3F((float)j.Ax, (float)j.Ay, (float)j.Az), qa.Conjugate() * f),
-                    LocalFrameB = new P3.JointFrame3D(new Vector3F((float)j.Bx, (float)j.By, (float)j.Bz), qb.Conjugate() * f),
+                    LocalFrameA = new P3.JointFrame3D(new Vector3F((float)j.Ax, (float)j.Ay, (float)j.Az), qa.Conjugated() * f),
+                    LocalFrameB = new P3.JointFrame3D(new Vector3F((float)j.Bx, (float)j.By, (float)j.Bz), qb.Conjugated() * f),
                     LowerTwist = j.HasLimit ? (float)j.Lower : -3.1415927f, UpperTwist = j.HasLimit ? (float)j.Upper : 3.1415927f,
                     SwingYHalfAngle = j.HasSwing ? (float)j.SwingY : 3.1415927f, SwingZHalfAngle = j.HasSwing ? (float)j.SwingZ : 3.1415927f,
                 };
