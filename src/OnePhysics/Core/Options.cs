@@ -92,6 +92,9 @@ public static class ManifoldLayout
     /// <summary>Offset of the normal.</summary>
     public const int Normal = 0;
 
+    /// <summary>Offset of the seven spare floats after four points in a 3D payload; the 3D narrowphase keeps per-pair search hints there between steps. Nothing else reads them.</summary>
+    public const int HintOffset = Header + 4 * PointStride;
+
     /// <summary>Offset of the mixed friction coefficient.</summary>
     public const int Friction = 3;
 
