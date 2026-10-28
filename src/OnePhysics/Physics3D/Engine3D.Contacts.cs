@@ -189,6 +189,8 @@ internal sealed partial class Engine3D
             anyFresh |= _fresh[np];
         }
 
+        // Most pairs end up with one constraint; making room for them (and half as many again) at once saves the repeated doubling when thousands of pairs appear in one step.
+        world.Constraints.Reserve(PairHigh + (PairHigh >> 1));
         // 4. Pairs that need fresh manifolds: at least one body awake (or a kinematic body in motion). Soup-against-soup pairs never collide.
         if (_updateList.Length < PairHigh)
         {
