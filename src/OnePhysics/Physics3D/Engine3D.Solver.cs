@@ -98,6 +98,7 @@ internal sealed partial class Engine3D
     // ------------------------------------------------------------------ prepare
 
     private float _dynBias, _dynMass, _dynImpulse, _stBias, _stMass, _stImpulse;
+    private JointKernelParams _jointParams;
 
     /// <summary>Once per step before anything is prepared: sizes the wide groups (one per batch) and the constraint-to-lane map, and computes the soft-constraint coefficients.</summary>
     public void BeginSolve(int batches, in StepContext ctx)
@@ -116,6 +117,18 @@ internal sealed partial class Engine3D
         if (hertz > cap2) { hertz = cap2; }
         MakeSoft(hertz, Opt.ContactDampingRatio, ctx.SubstepDt, out _dynBias, out _dynMass, out _dynImpulse);
         MakeSoft(2f * hertz, Opt.ContactDampingRatio, ctx.SubstepDt, out _stBias, out _stMass, out _stImpulse);
+
+        // Point joints solve in their own wide groups, one per batch, only when the world has joints.
+        EnsureBound();
+        if (_trackedJoints > 0 && WideJ.Length < batches * J3D.GroupFloats)
+        {
+            int jcap = Math.Max(batches, WideJ.Length / J3D.GroupFloats * 2);
+            WideJ = new float[jcap * J3D.GroupFloats]; WideJIdx = new int[jcap * J3D.IdxPerGroup];
+        }
+
+        float jh = Opt.JointHertz > cap2 ? cap2 : Opt.JointHertz;
+        MakeSoft(jh, Opt.JointDampingRatio, ctx.SubstepDt, out float jbias, out float jmass, out float jimp);
+        _jointParams = new JointKernelParams(jmass, jmass * jbias, jimp);
     }
 
     /// <summary>
@@ -135,11 +148,22 @@ internal sealed partial class Engine3D
         for (int l = 0; l < W3D.Lanes; l++) { idx[l] = 0; idx[8 + l] = 0; idx[16 + l] = -1; idx[24 + l] = -1; }
         int maxPoints = 1;
         float allOnes = BitConverter.Int32BitsToSingle(-1);
-        int lane = 0;
+        int lane = 0, jlane = 0;
         Span<float> rm = stackalloc float[6];
         foreach (int c in constraints)
         {
-            if (cs.KindOf(c) == ConstraintKind.Joint) { PrepareJoint(c, in ctx); continue; }
+            if (cs.KindOf(c) == ConstraintKind.Joint)
+            {
+                if (Joints[c].Type == (byte)JointType3D.Point)
+                {
+                    if (jlane == 0) { ClearJointIdx(group); }
+                    PreparePointJoint(c, group, jlane++);
+                }
+                else { PrepareJoint(c, in ctx); }
+
+                continue;
+            }
+
             var pl = cs.Payload(c);
             int a = bodyA[c], b = bodyB[c];
             SlotOf[c] = group * W3D.Lanes + lane;
@@ -194,6 +218,12 @@ internal sealed partial class Engine3D
         }
 
         idx[W3D.MaxPointsSlot] = maxPoints;
+        if (jlane > 0)
+        {
+            if (KernelWidth == 1) { JointKernel3D.Prepare<Lanes1>(this, group, jlane); }
+            else if (KernelWidth == 4) { JointKernel3D.Prepare<Lanes128>(this, group, jlane); }
+            else { JointKernel3D.Prepare<Lanes256>(this, group, jlane); }
+        }
     }
 
     private static void Put3(Span<float> w, int field, int lane, Vector3F v) { w[field * 8 + lane] = v.X; w[(field + 1) * 8 + lane] = v.Y; w[(field + 2) * 8 + lane] = v.Z; }
@@ -206,6 +236,14 @@ internal sealed partial class Engine3D
         {
             int slot = SlotOf[c];
             if (slot < 0) { continue; }
+            if (cs.KindOf(c) == ConstraintKind.Joint)
+            {
+                var jw = WideJ.AsSpan((slot >> 3) * J3D.GroupFloats, J3D.GroupFloats);
+                var jp = cs.Payload(c);
+                for (int k = 0; k < 3; k++) { jp[k] = jw[(J3D.Impulse + k) * 8 + (slot & 7)]; }
+                continue;
+            }
+
             var w = Wide.AsSpan((slot >> 3) * W3D.GroupFloats, W3D.GroupFloats);
             int lane = slot & 7;
             var pl = cs.Payload(c);
@@ -267,21 +305,44 @@ internal sealed partial class Engine3D
             {
                 int c = constraints[i];
                 int slot = SlotOf[c];
-                if (slot >= 0) { ContactKernel3D.Run<Lanes1>(this, slot >> 3, slot & 7, 1, phase, in kp); }
-                else if (cons.KindOf(c) == ConstraintKind.Joint) { SolveJoint(c, phase, in ctx); }
+                if (cons.KindOf(c) == ConstraintKind.Joint)
+                {
+                    if (slot >= 0) { JointKernel3D.Run<Lanes1>(this, slot >> 3, slot & 7, 1, phase, in _jointParams); }
+                    else { SolveJoint(c, phase, in ctx); }
+                }
+                else if (slot >= 0) { ContactKernel3D.Run<Lanes1>(this, slot >> 3, slot & 7, 1, phase, in kp); }
             }
 
             return;
         }
 
         // Contacts were packed into the first lanes of the batch's group in list order; joints (which share no dynamic body with anything else in the batch) solve one by one.
-        int first = -1, count = 0;
+        int first = -1, count = 0, jfirst = -1, jcount = 0;
         for (int i = 0; i < constraints.Length; i++)
         {
             int c = constraints[i];
-            if (cons.KindOf(c) == ConstraintKind.Joint) { SolveJoint(c, phase, in ctx); continue; }
+            if (cons.KindOf(c) == ConstraintKind.Joint)
+            {
+                if (SlotOf[c] >= 0)
+                {
+                    if (jcount == 0) { jfirst = SlotOf[c]; }
+                    jcount++;
+                }
+                else { SolveJoint(c, phase, in ctx); }
+
+                continue;
+            }
+
             if (count == 0) { first = SlotOf[c]; }
             count++;
+        }
+
+        if (jcount > 0)
+        {
+            int jgroup = jfirst >> 3;
+            if (KernelWidth == 1) { JointKernel3D.Run<Lanes1>(this, jgroup, 0, jcount, phase, in _jointParams); }
+            else if (KernelWidth == 4) { JointKernel3D.Run<Lanes128>(this, jgroup, 0, jcount, phase, in _jointParams); }
+            else { JointKernel3D.Run<Lanes256>(this, jgroup, 0, jcount, phase, in _jointParams); }
         }
 
         if (count == 0 || first < 0) { return; }
