@@ -4,3 +4,5 @@
 # Speed-only choices between code that computes the same lanes: the default kernel width and the way the separating-axis search loads shape B's points (docs/world2d.md, Performance).
 ^src/OnePhysics/Core/KernelWidthChoice\.cs:.*IsHardwareAccelerated
 ^src/OnePhysics/Collision2D/Collide2D\.cs:[0-9]+:\s*if \(Vector256\.IsHardwareAccelerated\)
+# Speed-only choice of kernel width (results are identical at every width; covered by the hash matrix with AVX2 off).
+^src/OnePhysics/Physics3D/Engine3D\.cs:[0-9]+:.*KernelWidth = System\.Runtime\.Intrinsics\.Vector256\.IsHardwareAccelerated

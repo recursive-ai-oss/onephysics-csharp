@@ -274,9 +274,15 @@ public sealed partial class ManifoldGenerator3D
             {
                 Vector3F c = q.EC[j], d = q.ED[j];
                 Vector3F dxc = q.EDxC[j];
-                float adc = Vector3F.Dot(a, dxc), bdc = Vector3F.Dot(b, dxc);
+                // Either test rejects most pairs, so the second pair of dot products is only computed for the ones that pass the first.
                 float cba = Vector3F.Dot(c, bxa), dba = Vector3F.Dot(d, bxa);
-                if (!(cba * dba < 0f && adc * bdc < 0f))
+                if (!(cba * dba < 0f))
+                {
+                    continue;
+                }
+
+                float adc = Vector3F.Dot(a, dxc), bdc = Vector3F.Dot(b, dxc);
+                if (!(adc * bdc < 0f))
                 {
                     continue;
                 }

@@ -153,7 +153,7 @@ internal sealed partial class Engine3D
     private void MvPlanes(Vector3D p, in MoverCtx c)
     {
         _mvPlaneCount = 0;
-        var gen = _mvScratch.Gen;
+        var gen = NarrowScratch.Gen;
         for (int i = 0; i < _mvCandCount; i++)
         {
             int s = _mvCand[i];
@@ -169,9 +169,9 @@ internal sealed partial class Engine3D
             }
             else if (g.Compound != null)
             {
-                _mvScratch.Children.Clear();
-                gen.CollideCompoundConvex(g.Compound, c.Capsule, rel, _mvScratch.Children, c.Range);
-                foreach (var cc in _mvScratch.Children)
+                NarrowScratch.Children.Clear();
+                gen.CollideCompoundConvex(g.Compound, c.Capsule, rel, NarrowScratch.Children, c.Range);
+                foreach (var cc in NarrowScratch.Children)
                 {
                     var m = cc.Manifold;
                     MvManifoldPlane(in m, ox, oy, oz, rs, s, in c);
@@ -179,12 +179,12 @@ internal sealed partial class Engine3D
             }
             else
             {
-                _mvScratch.Tris.Clear();
-                g.Soup!.GetCandidates(c.Capsule, rel, c.Range, _mvScratch.Tris, _mvScratch.Ids);
-                for (int t = 0; t < _mvScratch.Tris.Count; t++)
+                NarrowScratch.Tris.Clear();
+                g.Soup!.GetCandidates(c.Capsule, rel, c.Range, NarrowScratch.Tris, NarrowScratch.Ids);
+                for (int t = 0; t < NarrowScratch.Tris.Count; t++)
                 {
-                    var tri = _mvScratch.Tris[t];
-                    var tshape = _mvScratch.TriBuf.Set(tri.V0, tri.V1, tri.V2);
+                    var tri = NarrowScratch.Tris[t];
+                    var tshape = NarrowScratch.TriBuf.Set(tri.V0, tri.V1, tri.V2);
                     var m = gen.Collide(tshape, c.Capsule, rel, c.Range);
                     if (m.PointCount == 0) { continue; }
                     // The same internal-edge rule as the contact stage: a contact on a seam between flat neighbours whose normal leans away from the face is the neighbour's job.

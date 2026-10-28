@@ -22,6 +22,16 @@ internal sealed partial class Engine3D
 
     private static void Put(Span<float> a, int i, Vector3F v) { a[i] = v.X; a[i + 1] = v.Y; a[i + 2] = v.Z; }
 
+    /// <summary>Copies the displacement, accumulated rotation and world inverse inertia of a body into its packed row (see <see cref="Pk"/>).</summary>
+    public void PackBody(int b)
+    {
+        var r = Pk.AsSpan(16 * b, 16);
+        r[0] = Dp[3 * b]; r[1] = Dp[3 * b + 1]; r[2] = Dp[3 * b + 2];
+        r[3] = Dq[4 * b]; r[4] = Dq[4 * b + 1]; r[5] = Dq[4 * b + 2]; r[6] = Dq[4 * b + 3];
+        var w = WInvI.AsSpan(6 * b, 6);
+        r[7] = w[0]; r[8] = w[1]; r[9] = w[2]; r[10] = w[3]; r[11] = w[4]; r[12] = w[5];
+    }
+
     /// <summary>Refreshes one body's world-axes inverse inertia from the current rotation (for impulses applied between steps).</summary>
     public void RefreshWorldInertia(int b)
     {
@@ -389,6 +399,8 @@ internal sealed partial class Engine3D
                 IntegrateRotation(rot, 4 * b, w, h);
                 RefreshWorldInertia(b, invMass, invI, rot);
             }
+
+            PackBody(b);
         }
     }
 

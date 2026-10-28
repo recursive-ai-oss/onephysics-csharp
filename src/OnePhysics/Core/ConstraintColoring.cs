@@ -107,9 +107,11 @@ public sealed class ConstraintColoring
     }
 
     /// <summary>Buckets the active constraints (not sensors, not uncolored, at least one awake dynamic body) by color, each bucket in ascending constraint index.</summary>
-    internal void BuildActive(BodyStore bodies, ConstraintStore cons, TaskExecutor? executor = null)
+    internal void BuildActive(BodyStore bodies, ConstraintStore cons, TaskExecutor? executor = null, bool anyAwake = true)
     {
         Array.Clear(_start);
+        // A constraint is active only through an awake dynamic body; with no awake or kinematic body at all (a world that has fallen asleep) nothing is, and the scan can be skipped.
+        if (!anyAwake) { return; }
         int n = cons.HighWater;
         if (_bucketOf.Length < n) { _bucketOf = new byte[Math.Max(n, _bucketOf.Length * 2)]; }
         var bucketOf = _bucketOf;

@@ -66,6 +66,8 @@ internal struct IdBuffer
 internal struct ContactOut
 {
     public int SubA, SubB, Count;
+    /// <summary>The constraint that carries this contact once the pair has been applied, and the pair's shape slots; the payload is written afterwards, in parallel.</summary>
+    public int Cons, ShapeA, ShapeB;
     public float Nx, Ny, Nz;
     public PointBuffer P; // per point: rA (3), rB (3), separation
     public IdBuffer Id;
@@ -74,11 +76,27 @@ internal struct ContactOut
 /// <summary>Working storage of one chunk of narrowphase work. Results never depend on which thread runs a chunk or on what an instance did before.</summary>
 internal sealed class NarrowScratch
 {
-    public readonly ManifoldGenerator3D Gen = new();
-    public readonly List<ChildContact3D> Children = new();
-    public readonly List<SoupTriangle3D> Tris = new();
-    public readonly List<int> Ids = new();
-    public readonly TriangleShapeBuffer3D TriBuf = new();
+    // The generator and its buffers are large (hundreds of kilobytes) and hold nothing between calls, so one set per thread serves every chunk that thread runs; a set per chunk cost 300 MB
+    // on a scene with thousands of pairs. Only the results (Out) belong to the chunk.
+    private sealed class Heavy
+    {
+        public readonly ManifoldGenerator3D Gen = new();
+        public readonly List<ChildContact3D> Children = new();
+        public readonly List<SoupTriangle3D> Tris = new();
+        public readonly List<int> Ids = new();
+        public readonly TriangleShapeBuffer3D TriBuf = new();
+    }
+
+    [ThreadStatic]
+    private static Heavy? t_heavy;
+
+    private static Heavy H => t_heavy ??= new Heavy();
+
+    public static ManifoldGenerator3D Gen => H.Gen;
+    public static List<ChildContact3D> Children => H.Children;
+    public static List<SoupTriangle3D> Tris => H.Tris;
+    public static List<int> Ids => H.Ids;
+    public static TriangleShapeBuffer3D TriBuf => H.TriBuf;
     public ContactOut[] Out = new ContactOut[16];
     public int OutCount;
 
@@ -140,6 +158,8 @@ internal sealed partial class Engine3D
         var rot = bodies.Rotation;
         var invI = bodies.InverseInertia;
         var invMass = bodies.InverseMass;
+        if (_sleepers.Length < nb) { _sleepers = new int[Math.Max(nb, _sleepers.Length * 2)]; }
+        _sleeperCount = 0;
         for (int b = 0; b < nb; b++)
         {
             if (!bodies.IsLive(b)) { continue; }
@@ -147,7 +167,10 @@ internal sealed partial class Engine3D
             for (int k = 0; k < 4; k++) { StartRot[4 * b + k] = rot[4 * b + k]; }
             Dp[3 * b] = 0f; Dp[3 * b + 1] = 0f; Dp[3 * b + 2] = 0f;
             Dq[4 * b] = 0f; Dq[4 * b + 1] = 0f; Dq[4 * b + 2] = 0f; Dq[4 * b + 3] = 1f;
+            // A sleeping body's rotation has not changed since its inertia was last refreshed, so refreshing again would give the same bits; if the stage wakes it, it is refreshed below.
+            if (bodies.IsDynamic(b) && !bodies.IsAwake(b)) { _sleepers[_sleeperCount++] = b; continue; }
             RefreshWorldInertia(b, invMass, invI, rot);
+            PackBody(b);
         }
 
         // 3. New pairs from the broadphase, in its sorted order.
@@ -175,7 +198,9 @@ internal sealed partial class Engine3D
 
         _updateCount = 0;
         var owner = world.Shapes.Owner;
-        for (int p = 0; p < PairHigh; p++)
+        // With no awake dynamic body and no kinematic body, only a freshly found sensor pair can need work.
+        bool anyAwake = world.AwakeBodies.Length > 0;
+        for (int p = 0; p < PairHigh && (anyAwake || anyFresh); p++)
         {
             if (!PairLive[p]) { continue; }
             if (IsActive(bodies, owner[PairA[p]]) || IsActive(bodies, owner[PairB[p]]) || (anyFresh && p < _fresh.Length && _fresh[p])) { _updateList[_updateCount++] = p; }
@@ -195,6 +220,9 @@ internal sealed partial class Engine3D
         for (int i = 0; i < chunks; i++) { _scratch[i].OutCount = 0; }
         world.Executor.For(chunks, new CollideTask(this));
 
+        // The serial pass only adds, matches and removes constraints (their order fixes the colors); writing the manifolds into the payloads is independent per constraint and runs afterwards in parallel.
+        // A user material mixer is called in pair order on this thread instead.
+        _deferWrite = Opt.MaterialMixer == null && _updateCount >= 64;
         // 6. Apply serially in ascending pair order: this fixes the order constraints are added, which fixes their colors.
         var cs = world.Constraints;
         for (int i = 0; i < _updateCount; i++)
@@ -215,6 +243,16 @@ internal sealed partial class Engine3D
 
             if (IsSensor(PairA[p]) || IsSensor(PairB[p])) { ApplySensorPair(world, p, _scratch[i >> 6], _resFirst[i], _resCount[i], owner); continue; }
             ApplyPair(world, p, _scratch[i >> 6], _resFirst[i], _resCount[i], owner);
+        }
+
+        if (_deferWrite) { world.Executor.For(chunks, new WriteTask(this, cs)); }
+        // Bodies that were asleep when the stage began and have been woken by it start the step like any other.
+        for (int i = 0; i < _sleeperCount; i++)
+        {
+            int b = _sleepers[i];
+            if (!bodies.IsAwake(b)) { continue; }
+            RefreshWorldInertia(b, invMass, invI, rot);
+            PackBody(b);
         }
 
         int ch = cs.HighWater;
@@ -276,7 +314,8 @@ internal sealed partial class Engine3D
                 if (bodies.IsDynamic(bb) && !bodies.IsAwake(bb)) { world.WakeIsland(bodies.Island[bb]); }
             }
 
-            WriteManifold(world.Constraints, c, sa, sb, in sc.Out[first + j]);
+            if (_deferWrite) { ref ContactOut o = ref sc.Out[first + j]; o.Cons = c; o.ShapeA = sa; o.ShapeB = sb; }
+            else { WriteManifold(world.Constraints, c, sa, sb, in sc.Out[first + j]); }
             j++;
             ConsNext[c] = -1;
             if (tail >= 0) { ConsNext[tail] = c; } else { head = c; }
@@ -295,6 +334,36 @@ internal sealed partial class Engine3D
         var lin = bodies.LinearVelocityOf(b);
         var ang = bodies.AngularVelocityOf(b);
         return lin[0] != 0f || lin[1] != 0f || lin[2] != 0f || ang[0] != 0f || ang[1] != 0f || ang[2] != 0f;
+    }
+
+    private bool _deferWrite;
+    private int[] _sleepers = new int[64];
+    private int _sleeperCount;
+
+    private readonly struct WriteTask : IParallelBody
+    {
+        private readonly Engine3D _e;
+        private readonly ConstraintStore _cs;
+
+        public WriteTask(Engine3D e, ConstraintStore cs) { _e = e; _cs = cs; }
+
+        public void Run(int task)
+        {
+            int lo = task * 64, hi = Math.Min(lo + 64, _e._updateCount);
+            var sc = _e._scratch[task];
+            for (int i = lo; i < hi; i++)
+            {
+                if (_e._resStatus[i] != 1) { continue; }
+                int p = _e._updateList[i];
+                if (_e.IsSensor(_e.PairA[p]) || _e.IsSensor(_e.PairB[p])) { continue; }
+                int first = _e._resFirst[i];
+                for (int j = 0; j < _e._resCount[i]; j++)
+                {
+                    ref ContactOut o = ref sc.Out[first + j];
+                    _e.WriteManifold(_cs, o.Cons, o.ShapeA, o.ShapeB, in o);
+                }
+            }
+        }
     }
 
     private readonly struct CollideTask : IParallelBody
@@ -354,16 +423,16 @@ internal sealed partial class Engine3D
         else if (gb.Soup != null) { SoupAgainst(sc, in f, gb.Soup, false, ga, in la, in bInA, spec); }
         else if (ga.IsConvex && gb.IsConvex)
         {
-            var m = sc.Gen.Collide(ga.Convex, gb.Convex, bInA, spec);
+            var m = NarrowScratch.Gen.Collide(ga.Convex, gb.Convex, bInA, spec);
             Emit(sc, in f, 0, 0, in m, default, false, default, false, default);
         }
         else
         {
-            sc.Children.Clear();
-            if (ga.Compound != null && gb.IsConvex) { sc.Gen.CollideCompoundConvex(ga.Compound, gb.Convex, bInA, sc.Children, spec); }
-            else if (ga.IsConvex && gb.Compound != null) { sc.Gen.CollideConvexCompound(ga.Convex, gb.Compound, bInA, sc.Children, spec); }
-            else { sc.Gen.CollideCompoundCompound(ga.Compound!, gb.Compound!, bInA, sc.Children, spec); }
-            foreach (var cc in sc.Children)
+            NarrowScratch.Children.Clear();
+            if (ga.Compound != null && gb.IsConvex) { NarrowScratch.Gen.CollideCompoundConvex(ga.Compound, gb.Convex, bInA, NarrowScratch.Children, spec); }
+            else if (ga.IsConvex && gb.Compound != null) { NarrowScratch.Gen.CollideConvexCompound(ga.Convex, gb.Compound, bInA, NarrowScratch.Children, spec); }
+            else { NarrowScratch.Gen.CollideCompoundCompound(ga.Compound!, gb.Compound!, bInA, NarrowScratch.Children, spec); }
+            foreach (var cc in NarrowScratch.Children)
             {
                 var m = cc.Manifold;
                 Emit(sc, in f, cc.SubShapeA, cc.SubShapeB, in m, default, false, default, false, default);
@@ -407,24 +476,24 @@ internal sealed partial class Engine3D
     private static void SoupVsConvex(NarrowScratch sc, in PairFrame f, TriangleSoup3D soup, bool soupIsA, in ConvexShape3D shape, in RigidTransformF shapeLocal, bool hasChild,
         in RigidTransformF shapeInSoup, in RigidTransformF soupFromA, float spec, int child)
     {
-        sc.Tris.Clear();
-        soup.GetCandidates(shape, shapeInSoup, spec, sc.Tris, sc.Ids);
+        NarrowScratch.Tris.Clear();
+        soup.GetCandidates(shape, shapeInSoup, spec, NarrowScratch.Tris, NarrowScratch.Ids);
         // For a child of a compound the manifold comes back in the child's frame; mapToA moves it into the compound's frame (only when the compound is shape A).
-        for (int t = 0; t < sc.Tris.Count; t++)
+        for (int t = 0; t < NarrowScratch.Tris.Count; t++)
         {
-            var tri = sc.Tris[t];
-            var tshape = sc.TriBuf.Set(tri.V0, tri.V1, tri.V2);
+            var tri = NarrowScratch.Tris[t];
+            var tshape = NarrowScratch.TriBuf.Set(tri.V0, tri.V1, tri.V2);
             Manifold3D m;
             int subA, subB;
             bool map = hasChild && !soupIsA;
             if (soupIsA)
             {
-                m = sc.Gen.Collide(tshape, shape, shapeInSoup, spec);
+                m = NarrowScratch.Gen.Collide(tshape, shape, shapeInSoup, spec);
                 subA = tri.Id; subB = child < 0 ? 0 : child;
             }
             else
             {
-                m = sc.Gen.Collide(shape, tshape, shapeInSoup.Inverse(), spec);
+                m = NarrowScratch.Gen.Collide(shape, tshape, shapeInSoup.Inverse(), spec);
                 subA = child < 0 ? 0 : child; subB = tri.Id;
             }
 
