@@ -68,7 +68,7 @@ public readonly partial struct Body : IEquatable<Body>
     }
 
     /// <summary>Linear velocity of the centre of mass, m/s.</summary>
-    /// <exception cref="InvalidOperationException">Setting it on a static body.</exception>
+    /// <exception cref="BodyTypeException">Setting it on a static body.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A component is not finite.</exception>
     public Vector3F LinearVelocity
     {
@@ -85,7 +85,7 @@ public readonly partial struct Body : IEquatable<Body>
     }
 
     /// <summary>Angular velocity in world axes, rad/s.</summary>
-    /// <exception cref="InvalidOperationException">Setting it on a static body.</exception>
+    /// <exception cref="BodyTypeException">Setting it on a static body.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A component is not finite.</exception>
     public Vector3F AngularVelocity
     {
@@ -122,9 +122,9 @@ public readonly partial struct Body : IEquatable<Body>
 
     private static Vector3F Vec(ReadOnlySpan<float> v) => new(v[0], v[1], v[2]);
 
-    private static void RequireMovable(PhysicsWorld3D w, int b)
+    private static void RequireMovable(PhysicsWorld3D w, int b, [System.Runtime.CompilerServices.CallerMemberName] string operation = "")
     {
-        if (w.Core.Bodies.TypeOf(b) == BodyType.Static) { throw new InvalidOperationException("A static body cannot move; create it as kinematic or dynamic."); }
+        if (w.Core.Bodies.TypeOf(b) == BodyType.Static) { throw new BodyTypeException(operation, w.Core.HandleOfBody(b), BodyType.Static, false); }
     }
 
     private static void WakeBody(PhysicsWorld3D w, int b)
@@ -162,7 +162,7 @@ public readonly partial struct Body : IEquatable<Body>
     }
 
     /// <summary>Adds a force through the centre of mass for the next step (cleared after it), N.</summary>
-    /// <exception cref="InvalidOperationException">The body is not dynamic.</exception>
+    /// <exception cref="BodyTypeException">The body is not dynamic.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A component is not finite.</exception>
     public void ApplyForce(Vector3F force)
     {
@@ -249,9 +249,9 @@ public readonly partial struct Body : IEquatable<Body>
         av[0] += dw.X; av[1] += dw.Y; av[2] += dw.Z;
     }
 
-    private static void RequireDynamic(PhysicsWorld3D w, int b)
+    private static void RequireDynamic(PhysicsWorld3D w, int b, [System.Runtime.CompilerServices.CallerMemberName] string operation = "")
     {
-        if (w.Core.Bodies.TypeOf(b) != BodyType.Dynamic) { throw new InvalidOperationException("Forces and impulses apply to dynamic bodies only."); }
+        if (w.Core.Bodies.TypeOf(b) != BodyType.Dynamic) { throw new BodyTypeException(operation, w.Core.HandleOfBody(b), w.Core.Bodies.TypeOf(b), true); }
     }
 
     private static void RequireFinite(Vector3F v, string name)

@@ -90,20 +90,53 @@ public sealed partial class PhysicsWorld3D
 
     // ------------------------------------------------------------------ hooks for a deterministic host
 
-    /// <summary>A 64-bit hash of the whole world state in the documented order; equal worlds give equal hashes on every platform.</summary>
+    private readonly List<int> _deadScratch = new();
+
+    /// <summary>The 64-bit hash of the whole simulation state (bodies, shapes, contacts with their warm-start impulses, islands, broadphase, options and origin; not pending callbacks). Equal states give equal hashes on every platform. Allocates nothing.</summary>
     public ulong ComputeHash() => _core.ComputeHash();
 
-    /// <summary>The whole world as bytes (snapshot format 1 plus the 3D section). Delegates are not saved.</summary>
+    /// <summary>The number of bytes <see cref="TrySnapshot"/> writes for the world as it is now. Allocates nothing.</summary>
+    public int GetSnapshotSize() => _core.GetSnapshotSize();
+
+    /// <summary>
+    /// Writes the snapshot into <paramref name="destination"/>: byte-exact, so restoring the bytes into a world made with the same options and continuing gives identical per-step hashes, events and snapshots. Layout in docs/architecture.md.
+    /// When it fits, returns true and <paramref name="written"/> is its length. When it does not, nothing is written, the result is false and <paramref name="written"/> is the length needed (see <see cref="GetSnapshotSize"/>).
+    /// Allocates nothing once the world's internal buffer has grown to the snapshot's size.
+    /// </summary>
+    public bool TrySnapshot(Span<byte> destination, out int written) => _core.TrySnapshot(destination, out written);
+
+    /// <summary>The same bytes as <see cref="TrySnapshot"/> in a new array. Delegates and collision callbacks are not saved.</summary>
     public byte[] Snapshot() => _core.Snapshot();
 
-    /// <summary>Replaces the world's state with a snapshot taken from a world with the same layout. Atomic: on failure the world is unchanged.</summary>
-    /// <exception cref="SnapshotFormatException">The bytes are not a valid snapshot of a 3D world.</exception>
+    /// <summary>The same as <see cref="Restore(ReadOnlySpan{byte})"/> for an array.</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
+    /// <exception cref="SnapshotFormatException">The bytes are not a valid snapshot of a 3D world; the world is unchanged.</exception>
     public void Restore(byte[] snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        byte[] backup = _core.Snapshot();
-        _core.Restore(snapshot);
+        Restore((ReadOnlySpan<byte>)snapshot);
+    }
+
+    /// <summary>
+    /// Replaces the world's state with a snapshot. The snapshot is validated first; on any problem a <see cref="SnapshotFormatException"/> is thrown and the world is unchanged.
+    /// Handles taken before the snapshot stay valid in a world with the same <see cref="Id"/> when the same bodies exist in it. Collision callbacks of bodies that no longer exist are dropped.
+    /// Allocates nothing once the world's internal buffers have grown to the snapshot's size.
+    /// </summary>
+    /// <exception cref="SnapshotFormatException">The bytes are not a valid snapshot of a 3D world; the world is unchanged.</exception>
+    public void Restore(ReadOnlySpan<byte> snapshot)
+    {
+        _core.BeginRestore(snapshot);
         string? problem = null;
+        try
+        {
+            _core.ApplyRestore();
+        }
+        catch
+        {
+            _core.RollbackRestore();
+            throw;
+        }
+
         if (!_engine.IsConsistentWithCore()) { problem = "the snapshot's 3D engine state does not match its bodies and shapes"; }
         else
         {
@@ -115,12 +148,13 @@ public sealed partial class PhysicsWorld3D
 
         if (problem != null)
         {
-            _core.Restore(backup);
+            _core.RollbackRestore();
             LoadOptionsFromCore();
             throw new SnapshotFormatException(problem, 0);
         }
 
-        var dead = new List<int>();
+        var dead = _deadScratch;
+        dead.Clear();
         foreach (var kv in _handlers)
         {
             if (!_core.Bodies.Handles.IsAlive(kv.Key, kv.Value.Generation)) { dead.Add(kv.Key); }
@@ -144,6 +178,18 @@ public sealed partial class PhysicsWorld3D
     }
 
     // ------------------------------------------------------------------ middle tier: bodies and shapes
+
+    /// <summary>True while the body exists in this world. False for null handles, handles of another world and destroyed bodies (never throws). Allocates nothing.</summary>
+    public bool IsBodyAlive(BodyHandle handle) => !handle.IsNull && handle.World == Id && _core.Bodies.Handles.IsAlive(handle.Index, handle.Generation);
+
+    /// <summary>True while the shape exists in this world. False for null handles, handles of another world and destroyed shapes (never throws). Allocates nothing.</summary>
+    public bool IsShapeAlive(ShapeHandle handle) => !handle.IsNull && handle.World == Id && _core.Shapes.Handles.IsAlive(handle.Index, handle.Generation);
+
+    /// <summary>True while the joint exists in this world. False for null handles, handles of another world, destroyed joints and constraints that are not joints (never throws). Allocates nothing.</summary>
+    public bool IsJointAlive(JointHandle handle) => !handle.IsNull && handle.World == Id && _core.Constraints.Handles.IsAlive(handle.Index, handle.Generation) && _core.Constraints.KindOf(handle.Index) == ConstraintKind.Joint;
+
+    /// <summary>True while the character with this slot index and generation (see <see cref="Character.Index"/> and <see cref="Character.Generation"/>) exists. Never throws. Allocates nothing.</summary>
+    public bool IsCharacterAlive(int index, int generation) => _engine.CharHandles.IsAlive(index, generation);
 
     /// <summary>Wraps a raw handle as a <see cref="Body"/>.</summary>
     /// <exception cref="InvalidHandleException">The handle is stale, null or from another world.</exception>

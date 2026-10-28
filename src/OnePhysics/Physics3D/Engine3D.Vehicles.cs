@@ -767,8 +767,8 @@ internal sealed partial class Engine3D
         Array.Fill(_vehOfBody, -1);
         if (b == null)
         {
-            VehHandles = new HandleTable();
-            Vehicles = new VehicleState?[4];
+            VehHandles.Reset();
+            Array.Clear(Vehicles);
             return;
         }
 

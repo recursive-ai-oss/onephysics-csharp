@@ -224,28 +224,31 @@ internal sealed partial class Engine3D
         public uint[] Matrix = NewMatrix();
         public float Hit = 1f;
         public bool Dirty;
-        public byte[] Flags = Array.Empty<byte>();
-        public byte[] Layers = Array.Empty<byte>();
+        public int Count;
+        public byte[] Flags = new byte[8];
+        public byte[] Layers = new byte[8];
 
         public bool IsDefault()
         {
             if (Dirty || Hit != 1f) { return false; }
             foreach (uint row in Matrix) { if (row != uint.MaxValue) { return false; } }
-            foreach (byte f in Flags) { if (f != 0) { return false; } }
-            foreach (byte l in Layers) { if (l != 0) { return false; } }
+            for (int i = 0; i < Count; i++) { if (Flags[i] != 0 || Layers[i] != 0) { return false; } }
             return true;
         }
     }
 
-    private static ServiceBlock ReadServices(StateReader r, int shapeCount, bool[] live)
+    private readonly ServiceBlock _svcStage = new();
+
+    // Reads into the engine's staging block (kept between restores, so nothing is allocated once it has grown).
+    private ServiceBlock ReadServices(StateReader r, int shapeCount, bool[] live)
     {
-        var b = new ServiceBlock();
+        var b = _svcStage;
         r.ReadUInt32s(b.Matrix);
         b.Hit = r.ReadSingle();
         if (!(b.Hit >= 0f) || !float.IsFinite(b.Hit)) { throw r.Error("invalid hit speed threshold"); }
         b.Dirty = r.ReadBool();
-        b.Flags = new byte[shapeCount];
-        b.Layers = new byte[shapeCount];
+        b.Count = shapeCount;
+        if (b.Flags.Length < shapeCount) { b.Flags = new byte[Math.Max(shapeCount, 8)]; b.Layers = new byte[Math.Max(shapeCount, 8)]; }
         for (int s = 0; s < shapeCount; s++)
         {
             b.Flags[s] = r.ReadByte();
@@ -259,21 +262,25 @@ internal sealed partial class Engine3D
 
     private void CommitServices(ServiceBlock? b, int shapeCount)
     {
+        int n = Math.Max(shapeCount, 1);
         if (b == null)
         {
-            LayerMatrix = NewMatrix();
+            Array.Fill(LayerMatrix, uint.MaxValue);
             Opt.HitSpeedThreshold = 1f;
             FilterDirty = false;
-            ShapeFlags = new byte[Math.Max(shapeCount, 1)];
-            ShapeLayer = new byte[Math.Max(shapeCount, 1)];
+            if (ShapeFlags.Length < n) { ShapeFlags = new byte[n]; ShapeLayer = new byte[n]; }
+            Array.Clear(ShapeFlags);
+            Array.Clear(ShapeLayer);
         }
         else
         {
-            LayerMatrix = b.Matrix;
+            (LayerMatrix, b.Matrix) = (b.Matrix, LayerMatrix);
             Opt.HitSpeedThreshold = b.Hit;
             FilterDirty = b.Dirty;
-            ShapeFlags = b.Flags.Length > 0 ? b.Flags : new byte[1];
-            ShapeLayer = b.Layers.Length > 0 ? b.Layers : new byte[1];
+            // Slots beyond the shape count hold older values; creating a shape sets its slot explicitly.
+            (ShapeFlags, b.Flags) = (b.Flags, ShapeFlags);
+            (ShapeLayer, b.Layers) = (b.Layers, ShapeLayer);
+            if (ShapeFlags.Length < n) { ShapeFlags = new byte[n]; ShapeLayer = new byte[n]; }
         }
 
         ResetSeenFilters();

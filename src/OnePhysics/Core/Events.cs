@@ -176,12 +176,13 @@ public sealed class EventCollector
         _slots[slot][n++] = e;
     }
 
-    internal void CopyFrom(EventCollector other)
+    /// <summary>Exchanges the collected and delivered events (and their storage) with another collector of the same world; used to commit a restore without copying.</summary>
+    internal void SwapWith(EventCollector other)
     {
-        _slots = other._slots;
-        _counts = other._counts;
-        _delivered = other._delivered;
-        _deliveredCount = other._deliveredCount;
+        (_slots, other._slots) = (other._slots, _slots);
+        (_counts, other._counts) = (other._counts, _counts);
+        (_delivered, other._delivered) = (other._delivered, _delivered);
+        (_deliveredCount, other._deliveredCount) = (other._deliveredCount, _deliveredCount);
     }
 
     internal void ClearDelivered() => _deliveredCount = 0;
@@ -214,20 +215,19 @@ public sealed class EventCollector
         }
     }
 
+    /// <summary>Replaces this collector's events with the saved ones, reusing its storage when it is big enough. Only a collector nobody uses (a spare) may be read into.</summary>
     internal void Read(StateReader r)
     {
         int d = r.ReadCount(PhysicsEvent.SnapshotBytes, "delivered events");
-        var delivered = new PhysicsEvent[Math.Max(d, 16)];
-        for (int i = 0; i < d; i++) { delivered[i] = PhysicsEvent.Read(r); }
+        if (_delivered.Length < Math.Max(d, 16)) { _delivered = new PhysicsEvent[Math.Max(d, 16)]; }
+        for (int i = 0; i < d; i++) { _delivered[i] = PhysicsEvent.Read(r); }
+        _deliveredCount = 0;
         int p = r.ReadCount(PhysicsEvent.SnapshotBytes, "pending events");
-        var pending = new PhysicsEvent[Math.Max(p, 16)];
-        for (int i = 0; i < p; i++) { pending[i] = PhysicsEvent.Read(r); }
-        _delivered = delivered;
-        _deliveredCount = d;
-        _slots = new PhysicsEvent[1][];
-        _slots[0] = pending;
-        _counts = new int[1];
+        if (_slots[0].Length < Math.Max(p, 16)) { _slots[0] = new PhysicsEvent[Math.Max(p, 16)]; }
+        Array.Clear(_counts);
+        for (int i = 0; i < p; i++) { _slots[0][i] = PhysicsEvent.Read(r); }
         _counts[0] = p;
+        _deliveredCount = d;
     }
 
     private readonly struct EventComparer : IComparer<PhysicsEvent>

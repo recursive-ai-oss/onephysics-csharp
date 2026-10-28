@@ -78,6 +78,8 @@ internal sealed partial class Engine2D
 
         public PairFilter(Engine2D e) => _e = e;
 
+        public bool IsSensor(int shape) => _e.IsSensor(shape);
+
         public bool ShouldCollide(int shapeA, int shapeB)
         {
             // A pair that already has a table entry is not new, so it is dropped here instead of being sorted with the new ones and dropped after.

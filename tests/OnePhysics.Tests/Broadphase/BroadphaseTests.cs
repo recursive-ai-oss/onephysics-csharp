@@ -151,6 +151,7 @@ public class BroadphaseTests
     private struct EveryOther : IPairFilter
     {
         public bool ShouldCollide(int a, int b) => ((a ^ b) & 1) == 0 || a == b;
+        public bool IsSensor(int userId) => false;
     }
 
     private static readonly double[] threeValues = { 1, 2, 3 };

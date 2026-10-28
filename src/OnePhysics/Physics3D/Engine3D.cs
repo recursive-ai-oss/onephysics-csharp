@@ -635,43 +635,51 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         int nb = r.ReadCount(105, "3D bodies") /* bytes written per body: 12+4+24+4+4+4+4+4+12+12+1+4+4+12 */;
         if (nb > 1 << 22) { throw r.Error("too many 3D bodies"); }
-        var lc = new float[3 * nb]; var mass = new float[nb]; var inertia = new float[6 * nb]; var maxE = new float[nb]; var minE = new float[nb];
-        var ld = new float[nb]; var ad = new float[nb]; var gs = new float[nb]; var force = new float[3 * nb]; var torque = new float[3 * nb];
-        var bf = new byte[nb]; var head = new int[nb]; var tail = new int[nb]; var dp = new float[3 * nb];
-        r.ReadSingles(lc, true, "local centres"); r.ReadSingles(mass, true, "masses"); r.ReadSingles(inertia, true, "inertias");
-        r.ReadSingles(maxE, true, "extents"); r.ReadSingles(minE, false, "extents");
-        r.ReadSingles(ld, true, "damping"); r.ReadSingles(ad, true, "damping"); r.ReadSingles(gs, true, "gravity scales");
-        r.ReadSingles(force, true, "forces"); r.ReadSingles(torque, true, "torques");
-        r.ReadBytes(bf); r.ReadInt32s(head); r.ReadInt32s(tail);
-        r.ReadSingles(dp, true, "displacements");
+        // Everything is read into staging arrays that the engine keeps between restores and swapped in at the end, so a restore allocates nothing once they have grown.
+        var lc = Fit(ref _sLc, 3 * nb); var mass = Fit(ref _sMass, nb); var inertia = Fit(ref _sInertia, 6 * nb); var maxE = Fit(ref _sMaxE, nb); var minE = Fit(ref _sMinE, nb);
+        var ld = Fit(ref _sLd, nb); var ad = Fit(ref _sAd, nb); var gs = Fit(ref _sGs, nb); var force = Fit(ref _sForce, 3 * nb); var torque = Fit(ref _sTorque, 3 * nb);
+        var bf = Fit(ref _sBf, nb); var head = Fit(ref _sHead, nb); var tail = Fit(ref _sTail, nb); var dp = Fit(ref _sDp, 3 * nb);
+        r.ReadSingles(lc.AsSpan(0, 3 * nb), true, "local centres"); r.ReadSingles(mass.AsSpan(0, nb), true, "masses"); r.ReadSingles(inertia.AsSpan(0, 6 * nb), true, "inertias");
+        r.ReadSingles(maxE.AsSpan(0, nb), true, "extents"); r.ReadSingles(minE.AsSpan(0, nb), false, "extents");
+        r.ReadSingles(ld.AsSpan(0, nb), true, "damping"); r.ReadSingles(ad.AsSpan(0, nb), true, "damping"); r.ReadSingles(gs.AsSpan(0, nb), true, "gravity scales");
+        r.ReadSingles(force.AsSpan(0, 3 * nb), true, "forces"); r.ReadSingles(torque.AsSpan(0, 3 * nb), true, "torques");
+        r.ReadBytes(bf.AsSpan(0, nb)); r.ReadInt32s(head.AsSpan(0, nb)); r.ReadInt32s(tail.AsSpan(0, nb));
+        r.ReadSingles(dp.AsSpan(0, 3 * nb), true, "displacements");
 
         int ng = r.ReadCount(1, "3D geometries");
         if (ng > 1 << 22) { throw r.Error("too many 3D geometries"); }
-        var geoms = new List<Geom3D?>(ng);
+        var geoms = _sGeoms;
+        geoms.Clear();
         for (int i = 0; i < ng; i++)
         {
             if (!r.ReadBool()) { geoms.Add(null); continue; }
             int len = r.ReadCount(1, "shape recipe");
-            var recipe = new byte[len];
-            r.ReadBytes(recipe);
-            try { geoms.Add(Geom3D.Build(recipe)); }
+            var buf = Fit(ref _sRecipe, len);
+            r.ReadBytes(buf.AsSpan(0, len));
+            // A geometry the world already holds with the same recipe is reused (it is immutable), which is what makes restoring the same world allocation-free.
+            if (i < Geoms.Count && Geoms[i] is { } old && old.Recipe.AsSpan().SequenceEqual(buf.AsSpan(0, len))) { geoms.Add(old); continue; }
+            try { geoms.Add(Geom3D.Build(buf.AsSpan(0, len).ToArray())); }
             catch (Exception e) when (e is ArgumentException || e is SnapshotFormatException || e is PhysicsException || e is NotSupportedException)
             {
                 throw r.Error("invalid shape recipe: " + e.Message);
             }
         }
 
+        // Reference counts are staged and given to the geometries only at the commit, since the objects may be shared with the live state.
+        var refs = Fit(ref _sRefs, ng);
+        Array.Clear(refs, 0, ng);
+
         int ns = r.ReadCount(1, "3D shapes");
         if (ns > 1 << 22) { throw r.Error("too many 3D shapes"); }
-        var geomOf = new int[ns]; var local = new RigidTransformF[ns]; var proxy = new int[ns]; var fr = new float[ns]; var re = new float[ns]; var ro = new float[ns]; var de = new float[ns];
-        var cat = new uint[ns]; var mask = new uint[ns]; var grp = new int[ns]; var next = new int[ns]; var live = new bool[ns];
+        var geomOf = Fit(ref _sGeomOf, ns); var local = Fit(ref _sLocal, ns); var proxy = Fit(ref _sProxy, ns); var fr = Fit(ref _sFr, ns); var re = Fit(ref _sRe, ns); var ro = Fit(ref _sRo, ns); var de = Fit(ref _sDe, ns);
+        var cat = Fit(ref _sCat, ns); var mask = Fit(ref _sMask, ns); var grp = Fit(ref _sGrp, ns); var next = Fit(ref _sNext, ns); var live = Fit(ref _sLive, ns);
         for (int s = 0; s < ns; s++)
         {
             live[s] = r.ReadBool();
             if (!live[s]) { continue; }
             geomOf[s] = r.ReadInt32();
             if (geomOf[s] < 0 || geomOf[s] >= ng || geoms[geomOf[s]] == null) { throw r.Error("shape refers to a missing geometry"); }
-            geoms[geomOf[s]]!.Refs++;
+            refs[geomOf[s]]++;
             float qx = r.ReadSingle(), qy = r.ReadSingle(), qz = r.ReadSingle(), qw = r.ReadSingle(), tx = r.ReadSingle(), ty = r.ReadSingle(), tz = r.ReadSingle();
             float ql = qx * qx + qy * qy + qz * qz + qw * qw;
             if (!float.IsFinite(ql + tx + ty + tz) || !(ql >= 0.999f && ql <= 1.001f) || Math.Abs(tx) > PlacedShape3D.MaxLocalOffset || Math.Abs(ty) > PlacedShape3D.MaxLocalOffset || Math.Abs(tz) > PlacedShape3D.MaxLocalOffset)
@@ -687,9 +695,9 @@ internal sealed partial class Engine3D : ISnapshotSection
             if (next[s] < -1 || next[s] >= ns || !Bp.IsProxy(proxy[s])) { throw r.Error("invalid shape link or proxy"); }
         }
 
-        foreach (var g in geoms)
+        for (int i = 0; i < ng; i++)
         {
-            if (g != null && g.Refs == 0) { throw r.Error("geometry without a shape"); }
+            if (geoms[i] != null && refs[i] == 0) { throw r.Error("geometry without a shape"); }
         }
 
         for (int b = 0; b < nb; b++)
@@ -699,9 +707,12 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         int np = r.ReadCount(1, "3D pairs");
         if (np > 1 << 24) { throw r.Error("too many 3D pairs"); }
-        var pa = new int[np]; var pb = new int[np]; var pc = new int[np]; var pl = new bool[np];
-        var chains = new List<int>();
-        var chainLen = new int[np];
+        var pa = Fit(ref _sPa, np); var pb = Fit(ref _sPb, np); var pc = Fit(ref _sPc, np); var pl = Fit(ref _sPl, np);
+        Array.Clear(pa, 0, np); Array.Clear(pb, 0, np); Array.Clear(pc, 0, np);
+        var chains = _sChains;
+        chains.Clear();
+        var chainLen = Fit(ref _sChainLen, np);
+        Array.Clear(chainLen, 0, np);
         int maxCons = Math.Max(Core.Constraints.HighWater, 8);
         for (int p = 0; p < np; p++)
         {
@@ -721,7 +732,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         }
 
         int nf = r.ReadCount(4, "free pairs");
-        var free = new int[Math.Max(nf, 1)];
+        var free = Fit(ref _sFree, nf);
         r.ReadInt32s(free.AsSpan(0, nf));
         for (int i = 0; i < nf; i++)
         {
@@ -773,7 +784,8 @@ internal sealed partial class Engine3D : ISnapshotSection
         }
 
         // A constraint belongs to at most one chain, once (a repeated id would make a cycle that the writer and the solver would walk forever).
-        var inChain = new bool[maxCons];
+        var inChain = Fit(ref _sInChain, maxCons);
+        Array.Clear(inChain, 0, maxCons);
         foreach (int c in chains)
         {
             if (inChain[c]) { throw r.Error("a constraint appears twice in the pair chains"); }
@@ -781,7 +793,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         }
 
         // Resolve chains: the first constraint heads the pair, the rest link through ConsNext. Constraint ids are checked against the core afterwards.
-        var consNext = new int[maxCons];
+        var consNext = Fit(ref _sConsNext, maxCons);
         Array.Fill(consNext, -1);
         int cursor = 0;
         for (int p = 0; p < np; p++)
@@ -796,10 +808,11 @@ internal sealed partial class Engine3D : ISnapshotSection
         // Commit.
         Opt.ContactHertz = hertz; Opt.ContactDampingRatio = zeta; Opt.PushOutVelocity = push; Opt.RestitutionThreshold = thr;
         Opt.MaxLinearSpeed = maxSpeed; Opt.MaxRotationPerSubstep = maxRot; Opt.ContinuousEnabled = continuous; Opt.ContactSlop = slop; Opt.SpeculativeDistance = spec;
-        LocalCenter = lc.Length > 0 ? lc : new float[3]; Mass = mass; Inertia = inertia.Length > 0 ? inertia : new float[6]; MaxExtent = maxE; MinExtent = minE;
-        LinearDamping = ld; AngularDamping = ad; GravityScale = gs; Force = force.Length > 0 ? force : new float[3]; Torque = torque.Length > 0 ? torque : new float[3];
-        BodyFlags = bf; ShapeHead = head; ShapeTail = tail; Dp = dp.Length > 0 ? dp : new float[3];
+        (LocalCenter, _sLc) = (_sLc, LocalCenter); (Mass, _sMass) = (_sMass, Mass); (Inertia, _sInertia) = (_sInertia, Inertia); (MaxExtent, _sMaxE) = (_sMaxE, MaxExtent); (MinExtent, _sMinE) = (_sMinE, MinExtent);
+        (LinearDamping, _sLd) = (_sLd, LinearDamping); (AngularDamping, _sAd) = (_sAd, AngularDamping); (GravityScale, _sGs) = (_sGs, GravityScale); (Force, _sForce) = (_sForce, Force); (Torque, _sTorque) = (_sTorque, Torque);
+        (BodyFlags, _sBf) = (_sBf, BodyFlags); (ShapeHead, _sHead) = (_sHead, ShapeHead); (ShapeTail, _sTail) = (_sTail, ShapeTail); (Dp, _sDp) = (_sDp, Dp);
         EnsureBodies(Math.Max(nb, 1));
+        for (int i = 0; i < ng; i++) { if (geoms[i] != null) { geoms[i]!.Refs = refs[i]; } }
         Geoms.Clear();
         Geoms.AddRange(geoms);
         _geomIndex.Clear();
@@ -808,24 +821,47 @@ internal sealed partial class Engine3D : ISnapshotSection
             if (Geoms[i] != null) { _geomIndex[new RecipeKey(Geoms[i]!.Recipe)] = i; }
         }
 
-        GeomOf = geomOf; Local = local; Proxy = proxy; Friction = fr; Restitution = re; Rolling = ro; Density = de; Category = cat; Mask = mask; Group = grp; NextShape = next;
+        (GeomOf, _sGeomOf) = (_sGeomOf, GeomOf); (Local, _sLocal) = (_sLocal, Local); (Proxy, _sProxy) = (_sProxy, Proxy); (Friction, _sFr) = (_sFr, Friction); (Restitution, _sRe) = (_sRe, Restitution);
+        (Rolling, _sRo) = (_sRo, Rolling); (Density, _sDe) = (_sDe, Density); (Category, _sCat) = (_sCat, Category); (Mask, _sMask) = (_sMask, Mask); (Group, _sGrp) = (_sGrp, Group); (NextShape, _sNext) = (_sNext, NextShape);
         EnsureShapes(Math.Max(ns, 1));
-        PairA = pa; PairB = pb; PairCons = pc; PairLive = pl; PairHigh = np; PairFree = free; PairFreeCount = nf; ConsNext = consNext;
+        (PairA, _sPa) = (_sPa, PairA); (PairB, _sPb) = (_sPb, PairB); (PairCons, _sPc) = (_sPc, PairCons); (PairLive, _sPl) = (_sPl, PairLive); PairHigh = np;
+        (PairFree, _sFree) = (_sFree, PairFree); PairFreeCount = nf; (ConsNext, _sConsNext) = (_sConsNext, ConsNext);
         CommitServices(services, ns);
         CommitCharacters(characters);
         CommitVehicles(vehicles);
         CommitRagdolls(ragdolls);
         CommitFluids(fluidBlock);
         if (joints != null) { Opt.JointHertz = _pendingJointHertz; Opt.JointDampingRatio = _pendingJointDamping; }
-        Joints = joints ?? new JointData3D[16];
-        JointForce = new float[Joints.Length]; JointTorque = new float[Joints.Length];
+        if (joints == null) { joints = _sJoints; Array.Clear(joints); }
+        (Joints, _sJoints) = (joints, Joints);
+        if (JointForce.Length < Joints.Length) { JointForce = new float[Joints.Length]; JointTorque = new float[Joints.Length]; }
+        Array.Clear(JointForce); Array.Clear(JointTorque);
         _needBind = true;
-        _skip = new SkipFrame3[8];
+        Array.Clear(_skip);
         PairMap.Clear();
         for (int p = 0; p < np; p++)
         {
             if (PairLive[p]) { PairMap.Set(PairKey(PairA[p], PairB[p]), p); }
         }
+    }
+
+    // Staging arrays of Read (see there).
+    private float[] _sLc = new float[24], _sMass = new float[8], _sInertia = new float[48], _sMaxE = new float[8], _sMinE = new float[8], _sLd = new float[8], _sAd = new float[8], _sGs = new float[8];
+    private float[] _sForce = new float[24], _sTorque = new float[24], _sDp = new float[24], _sFr = new float[8], _sRe = new float[8], _sRo = new float[8], _sDe = new float[8];
+    private byte[] _sBf = new byte[8], _sRecipe = new byte[64];
+    private int[] _sHead = new int[8], _sTail = new int[8], _sRefs = new int[8], _sGeomOf = new int[8], _sProxy = new int[8], _sGrp = new int[8], _sNext = new int[8];
+    private int[] _sPa = new int[8], _sPb = new int[8], _sPc = new int[8], _sFree = new int[8], _sChainLen = new int[8], _sConsNext = new int[8];
+    private uint[] _sCat = new uint[8], _sMask = new uint[8];
+    private bool[] _sLive = new bool[8], _sPl = new bool[8], _sInChain = new bool[8];
+    private RigidTransformF[] _sLocal = new RigidTransformF[8];
+    private JointData3D[] _sJoints = new JointData3D[16];
+    private readonly List<Geom3D?> _sGeoms = new();
+    private readonly List<int> _sChains = new();
+
+    private static T[] Fit<T>(ref T[] a, int n)
+    {
+        if (a.Length < n) { a = new T[Math.Max(n, 8)]; }
+        return a;
     }
 
     /// <summary>Checks the section against the core after a restore; false when the two disagree (a damaged snapshot that parsed).</summary>

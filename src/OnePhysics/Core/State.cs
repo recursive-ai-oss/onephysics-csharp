@@ -21,30 +21,51 @@ public sealed class StateWriter
     private int _length;
     private ulong _hash = HashSeed;
     private readonly bool _hashing;
+    private readonly bool _counting;
 
-    private StateWriter(bool hashing)
+    private StateWriter(bool hashing, bool counting)
     {
         _hashing = hashing;
-        _buffer = hashing ? Array.Empty<byte>() : new byte[4096];
+        _counting = counting;
+        _buffer = hashing || counting ? Array.Empty<byte>() : new byte[4096];
     }
 
     /// <summary>Creates a writer that produces snapshot bytes.</summary>
-    public static StateWriter ToBuffer() => new(false);
+    public static StateWriter ToBuffer() => new(false, false);
 
     /// <summary>Creates a writer that produces only the world hash.</summary>
-    public static StateWriter ForHash() => new(true);
+    public static StateWriter ForHash() => new(true, false);
+
+    /// <summary>Creates a writer that only counts the bytes a snapshot would take (<see cref="Length"/>) and stores nothing.</summary>
+    public static StateWriter ForCount() => new(false, true);
 
     /// <summary>True when this writer feeds the hash and produces no bytes.</summary>
     public bool IsHashing => _hashing;
 
+    /// <summary>True when this writer only counts bytes.</summary>
+    public bool IsCounting => _counting;
+
     /// <summary>The hash of everything written so far (hash mode only).</summary>
     public ulong Hash => _hash;
 
-    /// <summary>Number of bytes written so far (buffer mode).</summary>
+    /// <summary>Number of bytes written so far (buffer and count modes).</summary>
     public int Length => _length;
+
+    /// <summary>Starts over: an empty buffer (its storage is kept), a zero count, or the initial hash. Lets a world reuse one writer for every snapshot or hash.</summary>
+    public void Reset()
+    {
+        _length = 0;
+        _hash = HashSeed;
+    }
 
     /// <summary>Copies the bytes written so far (buffer mode).</summary>
     public byte[] ToArray() => _buffer.AsSpan(0, _length).ToArray();
+
+    /// <summary>The bytes written so far (buffer mode); valid until the next write or reset.</summary>
+    public ReadOnlySpan<byte> WrittenSpan => _buffer.AsSpan(0, _length);
+
+    /// <summary>The array behind <see cref="WrittenSpan"/>, for a reader over the same bytes.</summary>
+    internal byte[] Storage => _buffer;
 
     private void Mix(ulong w)
     {
@@ -64,10 +85,26 @@ public sealed class StateWriter
         return s;
     }
 
+    /// <summary>Writes a placeholder 32-bit integer and returns its position for <see cref="PatchInt32"/> (buffer and count modes; in hash mode nothing is written and the result is meaningless).</summary>
+    public int ReserveInt32()
+    {
+        int at = _length;
+        if (_hashing) { return at; }
+        if (_counting) { _length += 4; } else { Reserve(4).Clear(); }
+        return at;
+    }
+
+    /// <summary>Fills in a placeholder made by <see cref="ReserveInt32"/> (a no-op in hash and count modes).</summary>
+    public void PatchInt32(int at, int v)
+    {
+        if (_hashing || _counting) { return; }
+        BinaryPrimitives.WriteInt32LittleEndian(_buffer.AsSpan(at, 4), v);
+    }
+
     /// <summary>Writes one byte.</summary>
     public void WriteByte(byte v)
     {
-        if (_hashing) { Mix(v); } else { Reserve(1)[0] = v; }
+        if (_hashing) { Mix(v); } else if (_counting) { _length += 1; } else { Reserve(1)[0] = v; }
     }
 
     /// <summary>Writes a boolean as one byte, 0 or 1.</summary>
@@ -76,37 +113,37 @@ public sealed class StateWriter
     /// <summary>Writes a 32-bit integer.</summary>
     public void WriteInt32(int v)
     {
-        if (_hashing) { Mix((uint)v); } else { BinaryPrimitives.WriteInt32LittleEndian(Reserve(4), v); }
+        if (_hashing) { Mix((uint)v); } else if (_counting) { _length += 4; } else { BinaryPrimitives.WriteInt32LittleEndian(Reserve(4), v); }
     }
 
     /// <summary>Writes an unsigned 32-bit integer.</summary>
     public void WriteUInt32(uint v)
     {
-        if (_hashing) { Mix(v); } else { BinaryPrimitives.WriteUInt32LittleEndian(Reserve(4), v); }
+        if (_hashing) { Mix(v); } else if (_counting) { _length += 4; } else { BinaryPrimitives.WriteUInt32LittleEndian(Reserve(4), v); }
     }
 
     /// <summary>Writes a 64-bit integer.</summary>
     public void WriteInt64(long v)
     {
-        if (_hashing) { Mix((ulong)v); } else { BinaryPrimitives.WriteInt64LittleEndian(Reserve(8), v); }
+        if (_hashing) { Mix((ulong)v); } else if (_counting) { _length += 8; } else { BinaryPrimitives.WriteInt64LittleEndian(Reserve(8), v); }
     }
 
     /// <summary>Writes an unsigned 64-bit integer.</summary>
     public void WriteUInt64(ulong v)
     {
-        if (_hashing) { Mix(v); } else { BinaryPrimitives.WriteUInt64LittleEndian(Reserve(8), v); }
+        if (_hashing) { Mix(v); } else if (_counting) { _length += 8; } else { BinaryPrimitives.WriteUInt64LittleEndian(Reserve(8), v); }
     }
 
     /// <summary>Writes a float32 by its IEEE bit pattern.</summary>
     public void WriteSingle(float v)
     {
-        if (_hashing) { Mix(BitConverter.SingleToUInt32Bits(v)); } else { BinaryPrimitives.WriteUInt32LittleEndian(Reserve(4), BitConverter.SingleToUInt32Bits(v)); }
+        if (_hashing) { Mix(BitConverter.SingleToUInt32Bits(v)); } else if (_counting) { _length += 4; } else { BinaryPrimitives.WriteUInt32LittleEndian(Reserve(4), BitConverter.SingleToUInt32Bits(v)); }
     }
 
     /// <summary>Writes a double by its IEEE bit pattern.</summary>
     public void WriteDouble(double v)
     {
-        if (_hashing) { Mix(BitConverter.DoubleToUInt64Bits(v)); } else { BinaryPrimitives.WriteUInt64LittleEndian(Reserve(8), BitConverter.DoubleToUInt64Bits(v)); }
+        if (_hashing) { Mix(BitConverter.DoubleToUInt64Bits(v)); } else if (_counting) { _length += 8; } else { BinaryPrimitives.WriteUInt64LittleEndian(Reserve(8), BitConverter.DoubleToUInt64Bits(v)); }
     }
 
     /// <summary>Writes the floats in order, without a count.</summary>
@@ -116,6 +153,7 @@ public sealed class StateWriter
         {
             foreach (float f in v) { Mix(BitConverter.SingleToUInt32Bits(f)); }
         }
+        else if (_counting) { _length += v.Length * 4; }
         else
         {
             var s = Reserve(v.Length * 4);
@@ -130,6 +168,7 @@ public sealed class StateWriter
         {
             foreach (double d in v) { Mix(BitConverter.DoubleToUInt64Bits(d)); }
         }
+        else if (_counting) { _length += v.Length * 8; }
         else
         {
             var s = Reserve(v.Length * 8);
@@ -144,6 +183,7 @@ public sealed class StateWriter
         {
             foreach (int x in v) { Mix((uint)x); }
         }
+        else if (_counting) { _length += v.Length * 4; }
         else
         {
             var s = Reserve(v.Length * 4);
@@ -158,6 +198,7 @@ public sealed class StateWriter
         {
             foreach (uint x in v) { Mix(x); }
         }
+        else if (_counting) { _length += v.Length * 4; }
         else
         {
             var s = Reserve(v.Length * 4);
@@ -172,6 +213,7 @@ public sealed class StateWriter
         {
             foreach (byte x in v) { Mix(x); }
         }
+        else if (_counting) { _length += v.Length; }
         else
         {
             v.CopyTo(Reserve(v.Length));
@@ -182,7 +224,9 @@ public sealed class StateWriter
 /// <summary>Reads world state written by <see cref="StateWriter"/>. Every read is bounds-checked and failures raise <see cref="SnapshotFormatException"/>.</summary>
 public sealed class StateReader
 {
-    private readonly byte[] _data;
+    private byte[] _data;
+    private int _start;
+    private int _end;
     private int _pos;
 
     /// <summary>Creates a reader over <paramref name="data"/> (not copied).</summary>
@@ -190,20 +234,47 @@ public sealed class StateReader
     {
         ArgumentNullException.ThrowIfNull(data);
         _data = data;
+        _end = data.Length;
     }
 
-    /// <summary>Current byte offset.</summary>
-    public int Position => _pos;
+    /// <summary>Creates a reader over a part of <paramref name="data"/> (not copied).</summary>
+    public StateReader(byte[] data, int offset, int length)
+    {
+        _data = Array.Empty<byte>();
+        Reset(data, offset, length);
+    }
+
+    /// <summary>Points the reader at a part of <paramref name="data"/> and rewinds it, so one reader serves many snapshots without allocating.</summary>
+    internal void Reset(byte[] data, int offset, int length)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        if (offset < 0 || length < 0 || offset > data.Length - length) { throw new ArgumentOutOfRangeException(nameof(length), "The range is outside the data."); }
+        _data = data;
+        _start = offset;
+        _end = offset + length;
+        _pos = offset;
+    }
+
+    /// <summary>Current byte offset from the start of the range this reader covers.</summary>
+    public int Position => _pos - _start;
 
     /// <summary>Bytes not yet read.</summary>
-    public int Remaining => _data.Length - _pos;
+    public int Remaining => _end - _pos;
+
+    /// <summary>Skips <paramref name="n"/> bytes and returns the absolute offset (in the underlying array) where they start.</summary>
+    internal int Skip(int n)
+    {
+        int at = _pos;
+        Take(n);
+        return at;
+    }
 
     /// <summary>Raises a format error at the current offset.</summary>
-    public SnapshotFormatException Error(string message) => new(message, _pos);
+    public SnapshotFormatException Error(string message) => new(message, _pos - _start);
 
     private ReadOnlySpan<byte> Take(int n)
     {
-        if (n < 0 || n > _data.Length - _pos)
+        if (n < 0 || n > _end - _pos)
         {
             throw Error("truncated snapshot: " + n.ToString(System.Globalization.CultureInfo.InvariantCulture) + " bytes needed, " + Remaining.ToString(System.Globalization.CultureInfo.InvariantCulture) + " left");
         }
@@ -252,6 +323,19 @@ public sealed class StateReader
         return n;
     }
 
+    /// <summary>As <see cref="ReadCount(int, string)"/>, naming the element as <paramref name="what"/> plus <paramref name="suffix"/>; the name is only built when the count is rejected, so a successful read allocates nothing.</summary>
+    public int ReadCount(int perElementBytes, string what, string suffix)
+    {
+        int n = ReadInt32();
+        if (n < 0) { throw Error("negative count of " + what + suffix); }
+        if (perElementBytes > 0 && (long)n * perElementBytes > Remaining)
+        {
+            throw Error("count of " + what + suffix + " (" + n.ToString(System.Globalization.CultureInfo.InvariantCulture) + ") is larger than the remaining bytes can hold");
+        }
+
+        return n;
+    }
+
     /// <summary>Fills <paramref name="dest"/> with floats; non-finite values are an error when <paramref name="finiteOnly"/> is set.</summary>
     public void ReadSingles(Span<float> dest, bool finiteOnly, string what)
     {
@@ -259,7 +343,7 @@ public sealed class StateReader
         for (int i = 0; i < dest.Length; i++)
         {
             float f = BitConverter.UInt32BitsToSingle(BinaryPrimitives.ReadUInt32LittleEndian(s.Slice(i * 4, 4)));
-            if (finiteOnly && !float.IsFinite(f)) { throw new SnapshotFormatException("non-finite value in " + what, _pos - (dest.Length - i) * 4); }
+            if (finiteOnly && !float.IsFinite(f)) { throw new SnapshotFormatException("non-finite value in " + what, _pos - _start - (dest.Length - i) * 4); }
             dest[i] = f;
         }
     }
@@ -271,7 +355,7 @@ public sealed class StateReader
         for (int i = 0; i < dest.Length; i++)
         {
             double d = BitConverter.UInt64BitsToDouble(BinaryPrimitives.ReadUInt64LittleEndian(s.Slice(i * 8, 8)));
-            if (finiteOnly && !double.IsFinite(d)) { throw new SnapshotFormatException("non-finite value in " + what, _pos - (dest.Length - i) * 8); }
+            if (finiteOnly && !double.IsFinite(d)) { throw new SnapshotFormatException("non-finite value in " + what, _pos - _start - (dest.Length - i) * 8); }
             dest[i] = d;
         }
     }
