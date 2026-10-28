@@ -35,8 +35,11 @@ public enum DebugContent
     /// <summary>With <see cref="Shapes"/>: triangle meshes and height fields emit their triangles too (large; off by default). Ignored by 2D worlds.</summary>
     MeshTriangles = 128,
 
+    /// <summary>One entry per wheel of every vehicle (<see cref="DebugGeometry.Wheels"/>): suspension top, wheel centre, contact point and normal. Ignored by 2D worlds.</summary>
+    Vehicles = 256,
+
     /// <summary>Everything.</summary>
-    All = 255,
+    All = 511,
 }
 
 /// <summary>The kind of a <see cref="DebugShape"/>. The same enum serves 2D and 3D worlds; a 2D world emits the first five.</summary>
@@ -277,6 +280,46 @@ public readonly struct DebugJoint
     public Vector3D Axis { get; }
 }
 
+/// <summary>A vehicle wheel as plain data: where its suspension starts, where the wheel centre is, its size and axle, and what it touches.</summary>
+public readonly struct DebugWheel
+{
+    /// <summary>Creates an entry.</summary>
+    public DebugWheel(BodyHandle chassis, int wheel, Vector3D suspensionTop, Vector3D center, float radius, float width, Vector3F axle, bool isInContact, Vector3D contactPoint, Vector3F contactNormal)
+    {
+        Chassis = chassis; Wheel = wheel; SuspensionTop = suspensionTop; Center = center; Radius = radius; Width = width; Axle = axle; IsInContact = isInContact; ContactPoint = contactPoint; ContactNormal = contactNormal;
+    }
+
+    /// <summary>The vehicle's chassis body.</summary>
+    public BodyHandle Chassis { get; }
+
+    /// <summary>The wheel's index in its vehicle.</summary>
+    public int Wheel { get; }
+
+    /// <summary>The top of the suspension (the wheel centre at zero length), world coordinates.</summary>
+    public Vector3D SuspensionTop { get; }
+
+    /// <summary>The wheel centre.</summary>
+    public Vector3D Center { get; }
+
+    /// <summary>Wheel radius.</summary>
+    public float Radius { get; }
+
+    /// <summary>Wheel width.</summary>
+    public float Width { get; }
+
+    /// <summary>Unit axle direction in world space (steered).</summary>
+    public Vector3F Axle { get; }
+
+    /// <summary>True when the wheel touched ground in the last step.</summary>
+    public bool IsInContact { get; }
+
+    /// <summary>The contact point; zero when not in contact.</summary>
+    public Vector3D ContactPoint { get; }
+
+    /// <summary>The ground normal at the contact; zero when not in contact.</summary>
+    public Vector3F ContactNormal { get; }
+}
+
 /// <summary>A character as plain data: its capsule (vertical axis, centred on <see cref="Center"/>) and what it stands on.</summary>
 public readonly struct DebugCharacter
 {
@@ -322,9 +365,10 @@ public sealed class DebugGeometry
     private DebugBody[] _bodies = new DebugBody[16];
     private DebugJoint[] _joints = new DebugJoint[4];
     private DebugCharacter[] _characters = new DebugCharacter[4];
+    private DebugWheel[] _wheels = new DebugWheel[4];
     private int[] _indices = new int[64];
     private int _nIndices;
-    private int _nShapes, _nPoints, _nBounds, _nFat, _nContacts, _nBodies, _nJoints, _nCharacters;
+    private int _nShapes, _nPoints, _nBounds, _nFat, _nContacts, _nBodies, _nJoints, _nCharacters, _nWheels;
 
     /// <summary>The shapes in world space.</summary>
     public ReadOnlySpan<DebugShape> Shapes => _shapes.AsSpan(0, _nShapes);
@@ -353,8 +397,11 @@ public sealed class DebugGeometry
     /// <summary>Characters, by character slot.</summary>
     public ReadOnlySpan<DebugCharacter> Characters => _characters.AsSpan(0, _nCharacters);
 
+    /// <summary>Vehicle wheels, by vehicle slot then wheel index.</summary>
+    public ReadOnlySpan<DebugWheel> Wheels => _wheels.AsSpan(0, _nWheels);
+
     /// <summary>Empties every list (capacity is kept).</summary>
-    public void Clear() => _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = 0;
+    public void Clear() => _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = 0;
 
     private static void Push<T>(ref T[] a, ref int n, in T v)
     {
@@ -385,6 +432,9 @@ public sealed class DebugGeometry
 
     /// <summary>Appends a character entry.</summary>
     public void Add(in DebugCharacter c) => Push(ref _characters, ref _nCharacters, in c);
+
+    /// <summary>Appends a wheel entry.</summary>
+    public void Add(in DebugWheel w) => Push(ref _wheels, ref _nWheels, in w);
 
     /// <summary>Appends a joint entry.</summary>
     public void Add(in DebugJoint j) => Push(ref _joints, ref _nJoints, in j);

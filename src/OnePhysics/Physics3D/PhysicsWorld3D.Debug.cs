@@ -85,6 +85,7 @@ public sealed partial class PhysicsWorld3D
 
         if ((flags & DebugContent.Joints) != 0) { AddDebugJoints(geometry); }
         if ((flags & DebugContent.Characters) != 0) { _engine.AddDebugCharacters(geometry); }
+        if ((flags & DebugContent.Vehicles) != 0) { _engine.AddDebugVehicles(geometry); }
     }
 
     private void AddDebugJoints(DebugGeometry geometry)
