@@ -19,9 +19,9 @@ public readonly struct Material3D : IEquatable<Material3D>
     /// <exception cref="ArgumentOutOfRangeException">A value is outside its range.</exception>
     public Material3D(float friction, float restitution = 0f, float rollingResistance = DefaultRollingResistance)
     {
-        if (!(friction >= 0f) || !float.IsFinite(friction)) { throw new ArgumentOutOfRangeException(nameof(friction), friction, "Friction must be finite and at least 0."); }
+        if (!(friction >= 0f && friction <= MaterialLimits.MaxCoefficient)) { throw new ArgumentOutOfRangeException(nameof(friction), friction, "Friction must be within 0..1e15."); }
         if (!(restitution >= 0f && restitution <= 1f)) { throw new ArgumentOutOfRangeException(nameof(restitution), restitution, "Restitution must be within 0..1."); }
-        if (!(rollingResistance >= 0f) || !float.IsFinite(rollingResistance)) { throw new ArgumentOutOfRangeException(nameof(rollingResistance), rollingResistance, "Rolling resistance must be finite and at least 0."); }
+        if (!(rollingResistance >= 0f && rollingResistance <= MaterialLimits.MaxCoefficient)) { throw new ArgumentOutOfRangeException(nameof(rollingResistance), rollingResistance, "Rolling resistance must be within 0..1e15."); }
         Friction = friction;
         Restitution = restitution;
         RollingResistance = rollingResistance;

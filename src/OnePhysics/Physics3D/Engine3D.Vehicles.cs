@@ -742,7 +742,8 @@ internal sealed partial class Engine3D
             if (!(Math.Abs(s.Forward) <= 1f) || !(Math.Abs(s.Right) <= 1f) || !(s.Brake >= 0f && s.Brake <= 1f) || !(s.Handbrake >= 0f && s.Handbrake <= 1f)) { throw r.Error("invalid vehicle inputs"); }
             if (!float.IsFinite(s.EngineW) || s.EngineW < 0f || !float.IsFinite(s.ShiftTimer) || s.ShiftTimer < 0f) { throw r.Error("invalid engine state"); }
             if (s.Gear < -1 || s.Gear > s.Def.Transmission.Ratios.Length) { throw r.Error("invalid gear"); }
-            s.Allocate();
+            try { s.Allocate(); }
+            catch (ArgumentException e) { throw r.Error("invalid wheel dimensions: " + e.Message); }
             for (int i = 0; i < s.Wheels; i++)
             {
                 s.Sprung[i] = r.ReadSingle(); s.Omega[i] = r.ReadSingle(); s.Spin[i] = r.ReadSingle(); s.Steer[i] = r.ReadSingle(); s.Length[i] = r.ReadSingle();

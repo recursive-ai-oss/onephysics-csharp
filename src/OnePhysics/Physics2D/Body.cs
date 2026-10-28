@@ -327,7 +327,7 @@ public readonly partial struct Shape : IEquatable<Shape>
         set
         {
             int s = Resolve();
-            if (!(value >= 0f) || !float.IsFinite(value)) { throw new ArgumentOutOfRangeException(nameof(value), value, "Friction must be finite and at least 0."); }
+            if (!(value >= 0f && value <= MaterialLimits.MaxCoefficient)) { throw new ArgumentOutOfRangeException(nameof(value), value, "Friction must be within 0..1e15."); }
             _world!.Engine.Friction[s] = value;
             _world!.Engine.MaterialEpoch++;
         }

@@ -84,6 +84,12 @@ internal sealed partial class Engine3D
         double len = Math.Sqrt((double)n.X * n.X + (double)n.Y * n.Y + (double)n.Z * n.Z);
         d.SurfaceNormal = new Vector3F((float)(n.X / len), (float)(n.Y / len), (float)(n.Z / len));
         d.SurfaceOffset = d.SurfaceOffset / len;
+        // The offset is stored for a unit normal, so a very short normal scales it up; the snapshot reader holds the stored value to the same bound.
+        if (!double.IsFinite(d.SurfaceOffset) || Math.Abs(d.SurfaceOffset) > FluidDef.MaxCoordinate)
+        {
+            throw new ArgumentOutOfRangeException(nameof(def), def.SurfaceOffset, "SurfaceOffset " + def.SurfaceOffset.ToString("R", CultureInfo.InvariantCulture) + " divided by the length of SurfaceNormal " + len.ToString("R", CultureInfo.InvariantCulture) + " must be finite and within ±" + FluidDef.MaxCoordinate.ToString("R", CultureInfo.InvariantCulture) + ".");
+        }
+
         return d;
     }
 

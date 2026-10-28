@@ -11,9 +11,9 @@ public readonly struct Material2D : IEquatable<Material2D>
     /// <exception cref="ArgumentOutOfRangeException">A value is not finite or outside its range.</exception>
     public Material2D(float friction, float restitution = 0f, float rollingResistance = 0f)
     {
-        if (!(friction >= 0f) || !float.IsFinite(friction)) { throw new ArgumentOutOfRangeException(nameof(friction), friction, "Friction must be finite and at least 0."); }
+        if (!(friction >= 0f && friction <= MaterialLimits.MaxCoefficient)) { throw new ArgumentOutOfRangeException(nameof(friction), friction, "Friction must be within 0..1e15."); }
         if (!(restitution >= 0f && restitution <= 1f)) { throw new ArgumentOutOfRangeException(nameof(restitution), restitution, "Restitution must be within 0..1."); }
-        if (!(rollingResistance >= 0f) || !float.IsFinite(rollingResistance)) { throw new ArgumentOutOfRangeException(nameof(rollingResistance), rollingResistance, "Rolling resistance must be finite and at least 0."); }
+        if (!(rollingResistance >= 0f && rollingResistance <= MaterialLimits.MaxCoefficient)) { throw new ArgumentOutOfRangeException(nameof(rollingResistance), rollingResistance, "Rolling resistance must be within 0..1e15."); }
         Friction = friction;
         Restitution = restitution;
         RollingResistance = rollingResistance;
@@ -245,7 +245,7 @@ public struct ShapeDef
     /// <summary>Mass per area, kg/m². At least 0; a body whose shapes all have density 0 gets unit mass and inertia. Default 1. A dynamic body's total mass, and its inertia when not zero, must lie within 1e-18..1e30 so every inverse stays finite; a shape that would take the body outside that range is refused with an <see cref="ArgumentOutOfRangeException"/> naming the mass and inertia, and the body is unchanged.</summary>
     public float Density { get; set; }
 
-    /// <summary>Friction coefficient, at least 0. Default 0.6.</summary>
+    /// <summary>Friction coefficient, 0 to 1e15. Default 0.6.</summary>
     public float Friction { get; set; }
 
     /// <summary>Restitution within 0..1. Default 0.</summary>
