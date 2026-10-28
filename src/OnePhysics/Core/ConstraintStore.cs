@@ -275,10 +275,21 @@ public sealed class ConstraintStore
 
     internal static ConstraintStore Read(StateReader r, DimensionLayout layout)
     {
-        var handles = HandleTable.Read(r, "constraint");
+        var s = new ConstraintStore(layout, 1);
+        s.ReadInto(r);
+        return s;
+    }
+
+    /// <summary>Fills this store from a snapshot, reusing its arrays when they are big enough. Only a store nobody uses (a spare) may be read into: its contents are undefined after a failure.</summary>
+    internal void ReadInto(StateReader r)
+    {
+        var layout = _layout;
+        var handles = Handles;
+        handles.ReadInto(r, "constraint");
         int n = handles.HighWater;
         if ((long)n * BytesPerSlot(layout) > r.Remaining) { throw r.Error("constraint columns are longer than the remaining bytes"); }
-        var s = new ConstraintStore(layout, Math.Max(64, n)) { Handles = handles };
+        if (Capacity < Math.Max(64, n)) { Resize(Math.Max(64, n)); }
+        var s = this;
         r.ReadBytes(s._kind.AsSpan(0, n));
         r.ReadInt32s(s._bodyA.AsSpan(0, n)); r.ReadInt32s(s._bodyB.AsSpan(0, n));
         r.ReadInt32s(s._shapeA.AsSpan(0, n)); r.ReadInt32s(s._shapeAGen.AsSpan(0, n)); r.ReadInt32s(s._shapeB.AsSpan(0, n)); r.ReadInt32s(s._shapeBGen.AsSpan(0, n));
@@ -306,8 +317,6 @@ public sealed class ConstraintStore
             if (s._points[c] > layout.MaxManifoldPoints || (s._kind[c] != (byte)ConstraintKind.Contact && s._points[c] != 0)) { throw r.Error("invalid manifold point count"); }
             if (s._bodyA[c] == s._bodyB[c]) { throw r.Error("constraint joins a body to itself"); }
         }
-
-        return s;
     }
 }
 
@@ -352,11 +361,18 @@ public sealed class ShapeStore
 
     internal static ShapeStore Read(StateReader r)
     {
-        var handles = HandleTable.Read(r, "shape");
-        int n = handles.HighWater;
-        if ((long)n * 4 > r.Remaining) { throw r.Error("shape columns are longer than the remaining bytes"); }
-        var s = new ShapeStore { Handles = handles, _owner = new int[Math.Max(64, n)] };
-        r.ReadInt32s(s._owner.AsSpan(0, n));
+        var s = new ShapeStore();
+        s.ReadInto(r);
         return s;
+    }
+
+    /// <summary>Fills this store from a snapshot, reusing its array when it is big enough. Only a store nobody uses (a spare) may be read into.</summary>
+    internal void ReadInto(StateReader r)
+    {
+        Handles.ReadInto(r, "shape");
+        int n = Handles.HighWater;
+        if ((long)n * 4 > r.Remaining) { throw r.Error("shape columns are longer than the remaining bytes"); }
+        if (_owner.Length < Math.Max(64, n)) { _owner = new int[Math.Max(64, n)]; }
+        r.ReadInt32s(_owner.AsSpan(0, n));
     }
 }

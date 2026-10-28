@@ -89,23 +89,53 @@ public sealed partial class PhysicsWorld2D
 
     // ------------------------------------------------------------------ hooks for a deterministic host
 
-    /// <summary>The 64-bit hash of the whole simulation state (bodies, shapes, contacts with their warm-start impulses, islands, broadphase, options and origin; not pending callbacks). Equal states give equal hashes on every platform.</summary>
+    private readonly List<int> _deadScratch = new();
+
+    /// <summary>The 64-bit hash of the whole simulation state (bodies, shapes, contacts with their warm-start impulses, islands, broadphase, options and origin; not pending callbacks). Equal states give equal hashes on every platform. Allocates nothing.</summary>
     public ulong ComputeHash() => _core.ComputeHash();
 
-    /// <summary>Serializes the whole world, byte-exact: restoring the bytes into a world made with the same options and continuing gives identical per-step hashes, events and snapshots. Layout in docs/world2d.md.</summary>
+    /// <summary>The number of bytes <see cref="TrySnapshot"/> writes for the world as it is now. Allocates nothing.</summary>
+    public int GetSnapshotSize() => _core.GetSnapshotSize();
+
+    /// <summary>
+    /// Writes the snapshot into <paramref name="destination"/>: byte-exact, so restoring the bytes into a world made with the same options and continuing gives identical per-step hashes, events and snapshots. Layout in docs/architecture.md.
+    /// When it fits, returns true and <paramref name="written"/> is its length. When it does not, nothing is written, the result is false and <paramref name="written"/> is the length needed (see <see cref="GetSnapshotSize"/>).
+    /// Allocates nothing once the world's internal buffer has grown to the snapshot's size.
+    /// </summary>
+    public bool TrySnapshot(Span<byte> destination, out int written) => _core.TrySnapshot(destination, out written);
+
+    /// <summary>The same bytes as <see cref="TrySnapshot"/> in a new array. Delegates and collision callbacks are not saved.</summary>
     public byte[] Snapshot() => _core.Snapshot();
+
+    /// <summary>The same as <see cref="Restore(ReadOnlySpan{byte})"/> for an array.</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
+    /// <exception cref="SnapshotFormatException">The bytes are not a valid snapshot of a 2D world; the world is unchanged.</exception>
+    public void Restore(byte[] snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        Restore((ReadOnlySpan<byte>)snapshot);
+    }
 
     /// <summary>
     /// Replaces the world's state with a snapshot. The snapshot is validated first; on any problem a <see cref="SnapshotFormatException"/> is thrown and the world is unchanged.
     /// Handles taken before the snapshot stay valid in a world with the same <see cref="Id"/> when the same bodies exist in it. Collision callbacks of bodies that no longer exist are dropped.
+    /// Allocates nothing once the world's internal buffers have grown to the snapshot's size.
     /// </summary>
-    /// <exception cref="SnapshotFormatException">The bytes are not a valid snapshot of a 2D world.</exception>
-    public void Restore(byte[] snapshot)
+    /// <exception cref="SnapshotFormatException">The bytes are not a valid snapshot of a 2D world; the world is unchanged.</exception>
+    public void Restore(ReadOnlySpan<byte> snapshot)
     {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        byte[] backup = _core.Snapshot();
-        _core.Restore(snapshot);
+        _core.BeginRestore(snapshot);
         string? problem = null;
+        try
+        {
+            _core.ApplyRestore();
+        }
+        catch
+        {
+            _core.RollbackRestore();
+            throw;
+        }
+
         if (!_engine.IsConsistentWithCore()) { problem = _engine.ConsistencyProblem.Length > 0 ? _engine.ConsistencyProblem : "the snapshot's 2D engine state does not match its bodies and shapes"; }
         else
         {
@@ -117,13 +147,14 @@ public sealed partial class PhysicsWorld2D
 
         if (problem != null)
         {
-            _core.Restore(backup);
+            _core.RollbackRestore();
             LoadOptionsFromCore();
             throw new SnapshotFormatException(problem, 0);
         }
 
         InvalidateQueryPad();
-        var dead = new List<int>();
+        var dead = _deadScratch;
+        dead.Clear();
         foreach (var kv in _handlers)
         {
             if (!_core.Bodies.Handles.IsAlive(kv.Key, kv.Value.Generation)) { dead.Add(kv.Key); }

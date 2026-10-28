@@ -165,6 +165,7 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
     private readonly BroadphaseOptions _options;
     private DynamicTree<TBox>[] _trees;
     private readonly List<int> _moves = new();
+    private readonly List<int> _moveStage = new();
     private readonly List<PairChunk> _chunks = new();
     private int[] _moved = new int[64];
     private int _movedCount;
@@ -603,20 +604,20 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
             throw reader.Error("broadphase options in the snapshot differ from this broadphase's options");
         }
 
-        var trees = new[] { new DynamicTree<TBox>(), new DynamicTree<TBox>(), new DynamicTree<TBox>() };
-        foreach (var tree in trees) { tree.Read(reader); }
+        // Each tree reads into its own staging copy and the moves into a staging list; nothing live changes until everything validated.
+        foreach (var tree in _trees) { tree.ReadStaged(reader); }
         int count = reader.ReadCount(4, "move buffer");
-        var moves = new List<int>(count);
+        _moveStage.Clear();
         for (int i = 0; i < count; i++)
         {
             int key = reader.ReadInt32();
-            if (key < 0 || (key & 3) > 2 || (key >> 2) >= trees[key & 3].NodeSlots) { throw reader.Error("move buffer entry " + key.ToString(CultureInfo.InvariantCulture) + " names no node slot"); }
-            moves.Add(key);
+            if (key < 0 || (key & 3) > 2 || (key >> 2) >= _trees[key & 3].StagedNodeSlots) { throw reader.Error("move buffer entry " + key.ToString(CultureInfo.InvariantCulture) + " names no node slot"); }
+            _moveStage.Add(key);
         }
 
-        _trees = trees;
+        foreach (var tree in _trees) { tree.CommitStaged(); }
         _moves.Clear();
-        _moves.AddRange(moves);
+        _moves.AddRange(_moveStage);
         _pairCount = 0;
         _movedCount = 0;
     }

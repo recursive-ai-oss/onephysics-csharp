@@ -232,37 +232,65 @@ public sealed class HandleTable
     public static HandleTable Read(StateReader r, string what)
     {
         var t = new HandleTable();
-        int high = r.ReadCount(5, what + " slots");
-        t._generation = new int[Math.Max(16, high)];
-        t._live = new bool[t._generation.Length];
-        r.ReadInt32s(t._generation.AsSpan(0, high));
-        for (int i = 0; i < high; i++)
+        t.ReadInto(r, what);
+        return t;
+    }
+
+    private bool[] _seenScratch = Array.Empty<bool>();
+
+    /// <summary>Forgets every slot, as in a new table (storage is kept).</summary>
+    internal void Reset()
+    {
+        _liveCount = 0;
+        _heapCount = 0;
+        _highWater = 0;
+    }
+
+    /// <summary>
+    /// Like <see cref="Read"/> but fills this table, keeping its arrays when they are big enough, so a world restoring a snapshot into a spare table allocates nothing once warm.
+    /// The table's contents are undefined after a failure; only a table nobody uses (a spare) may be read into.
+    /// </summary>
+    internal void ReadInto(StateReader r, string what)
+    {
+        _liveCount = 0;
+        _heapCount = 0;
+        _highWater = 0;
+        int high = r.ReadCount(5, what, " slots");
+        if (_generation.Length < Math.Max(16, high))
         {
-            if (t._generation[i] < 1) { throw r.Error("invalid generation in " + what + " table"); }
-            t._live[i] = r.ReadBool();
-            if (t._live[i]) { t._liveCount++; }
+            int cap = Math.Max(16, high);
+            _generation = new int[cap];
+            _live = new bool[cap];
         }
 
-        t._highWater = high;
-        int free = r.ReadCount(4, what + " free list");
-        t._heap = new int[Math.Max(16, free)];
-        r.ReadInt32s(t._heap.AsSpan(0, free));
-        t._heapCount = free;
-        var seen = new bool[high];
+        r.ReadInt32s(_generation.AsSpan(0, high));
+        for (int i = 0; i < high; i++)
+        {
+            if (_generation[i] < 1) { throw r.Error("invalid generation in " + what + " table"); }
+            _live[i] = r.ReadBool();
+            if (_live[i]) { _liveCount++; }
+        }
+
+        _highWater = high;
+        int free = r.ReadCount(4, what, " free list");
+        if (_heap.Length < Math.Max(16, free)) { _heap = new int[Math.Max(16, free)]; }
+        r.ReadInt32s(_heap.AsSpan(0, free));
+        _heapCount = free;
+        if (_seenScratch.Length < high) { _seenScratch = new bool[Math.Max(high, _seenScratch.Length * 2)]; }
+        var seen = _seenScratch.AsSpan(0, high);
+        seen.Clear();
         for (int i = 0; i < free; i++)
         {
-            int v = t._heap[i];
-            if ((uint)v >= (uint)high || t._live[v] || seen[v]) { throw r.Error("invalid free-list entry in " + what + " table"); }
+            int v = _heap[i];
+            if ((uint)v >= (uint)high || _live[v] || seen[v]) { throw r.Error("invalid free-list entry in " + what + " table"); }
             seen[v] = true;
-            if (i > 0 && t._heap[(i - 1) >> 1] > v) { throw r.Error("free list of " + what + " table is not a heap"); }
+            if (i > 0 && _heap[(i - 1) >> 1] > v) { throw r.Error("free list of " + what + " table is not a heap"); }
         }
 
         for (int i = 0; i < high; i++)
         {
-            if (!t._live[i] && !seen[i] && t._generation[i] != int.MaxValue) { throw r.Error("dead slot missing from the free list of " + what + " table"); }
+            if (!_live[i] && !seen[i] && _generation[i] != int.MaxValue) { throw r.Error("dead slot missing from the free list of " + what + " table"); }
         }
-
-        return t;
     }
 
     /// <summary>Appends the indices of all live slots in ascending order to <paramref name="into"/>.</summary>

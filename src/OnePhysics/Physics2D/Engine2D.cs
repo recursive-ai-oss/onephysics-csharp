@@ -554,20 +554,21 @@ internal sealed partial class Engine2D : ISnapshotSection
 
         int nb = r.ReadCount(65, "2D bodies"); // 65 bytes of per-body arrays follow
         if (nb > 1 << 22) { throw r.Error("too many 2D bodies"); }
-        var lc = new float[2 * nb]; var mass = new float[nb]; var inertia = new float[nb]; var maxE = new float[nb]; var minE = new float[nb];
-        var ld = new float[nb]; var ad = new float[nb]; var gs = new float[nb]; var force = new float[2 * nb]; var torque = new float[nb];
-        var bf = new byte[nb]; var head = new int[nb]; var tail = new int[nb]; var dp = new float[2 * nb];
-        r.ReadSingles(lc, true, "local centres"); r.ReadSingles(mass, true, "masses"); r.ReadSingles(inertia, true, "inertias");
-        r.ReadSingles(maxE, true, "extents"); r.ReadSingles(minE, false, "extents");
-        r.ReadSingles(ld, true, "damping"); r.ReadSingles(ad, true, "damping"); r.ReadSingles(gs, true, "gravity scales");
-        r.ReadSingles(force, true, "forces"); r.ReadSingles(torque, true, "torques");
-        r.ReadBytes(bf); r.ReadInt32s(head); r.ReadInt32s(tail);
-        r.ReadSingles(dp, true, "displacements");
+        // Everything is read into staging arrays that the engine keeps between restores and swapped in at the end, so a restore allocates nothing once they have grown.
+        var lc = Fit(ref _sLc, 2 * nb); var mass = Fit(ref _sMass, nb); var inertia = Fit(ref _sInertia, nb); var maxE = Fit(ref _sMaxE, nb); var minE = Fit(ref _sMinE, nb);
+        var ld = Fit(ref _sLd, nb); var ad = Fit(ref _sAd, nb); var gs = Fit(ref _sGs, nb); var force = Fit(ref _sForce, 2 * nb); var torque = Fit(ref _sTorque, nb);
+        var bf = Fit(ref _sBf, nb); var head = Fit(ref _sHead, nb); var tail = Fit(ref _sTail, nb); var dp = Fit(ref _sDp, 2 * nb);
+        r.ReadSingles(lc.AsSpan(0, 2 * nb), true, "local centres"); r.ReadSingles(mass.AsSpan(0, nb), true, "masses"); r.ReadSingles(inertia.AsSpan(0, nb), true, "inertias");
+        r.ReadSingles(maxE.AsSpan(0, nb), true, "extents"); r.ReadSingles(minE.AsSpan(0, nb), false, "extents");
+        r.ReadSingles(ld.AsSpan(0, nb), true, "damping"); r.ReadSingles(ad.AsSpan(0, nb), true, "damping"); r.ReadSingles(gs.AsSpan(0, nb), true, "gravity scales");
+        r.ReadSingles(force.AsSpan(0, 2 * nb), true, "forces"); r.ReadSingles(torque.AsSpan(0, nb), true, "torques");
+        r.ReadBytes(bf.AsSpan(0, nb)); r.ReadInt32s(head.AsSpan(0, nb)); r.ReadInt32s(tail.AsSpan(0, nb));
+        r.ReadSingles(dp.AsSpan(0, 2 * nb), true, "displacements");
 
         int ns = r.ReadCount(1, "2D shapes");
         if (ns > 1 << 22) { throw r.Error("too many 2D shapes"); }
-        var geom = new Shape2D[ns]; var proxy = new int[ns]; var fr = new float[ns]; var re = new float[ns]; var ro = new float[ns]; var de = new float[ns];
-        var cat = new uint[ns]; var mask = new uint[ns]; var grp = new int[ns]; var next = new int[ns]; var live = new bool[ns];
+        var geom = Fit(ref _sGeom, ns); var proxy = Fit(ref _sProxy, ns); var fr = Fit(ref _sFr, ns); var re = Fit(ref _sRe, ns); var ro = Fit(ref _sRo, ns); var de = Fit(ref _sDe, ns);
+        var cat = Fit(ref _sCat, ns); var mask = Fit(ref _sMask, ns); var grp = Fit(ref _sGrp, ns); var next = Fit(ref _sNext, ns); var live = Fit(ref _sLive, ns);
         for (int s = 0; s < ns; s++)
         {
             live[s] = r.ReadBool();
@@ -586,7 +587,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         }
 
         int np = r.ReadCount(1, "pairs");
-        var pa = new int[Math.Max(np, 1)]; var pb = new int[Math.Max(np, 1)]; var pc = new int[Math.Max(np, 1)]; var pl = new bool[Math.Max(np, 1)];
+        var pa = Fit(ref _sPa, np); var pb = Fit(ref _sPb, np); var pc = Fit(ref _sPc, np); var pl = Fit(ref _sPl, np);
         for (int p = 0; p < np; p++)
         {
             pl[p] = r.ReadBool();
@@ -596,14 +597,15 @@ internal sealed partial class Engine2D : ISnapshotSection
         }
 
         int nf = r.ReadCount(4, "free pairs");
-        var free = new int[Math.Max(nf, 1)];
+        var free = Fit(ref _sFree, nf);
         r.ReadInt32s(free.AsSpan(0, nf));
         for (int i = 0; i < nf; i++)
         {
             if (free[i] < 0 || free[i] >= np || pl[free[i]]) { throw r.Error("invalid free pair"); }
         }
 
-        JointData2D[] joints = new JointData2D[16];
+        var joints = Fit(ref _sJoints, 16);
+        Array.Clear(joints);
         ServiceBlock? svc = null;
         CharacterBlock? chars = null;
         bool jointsRead = false;
@@ -618,7 +620,7 @@ internal sealed partial class Engine2D : ISnapshotSection
                 hasJoints = (flags & BlockJoints) != 0; hasServices = (flags & BlockServices) != 0; hasChars = true;
             }
 
-            if (hasJoints) { ReadJoints(r, out joints); jointsRead = true; }
+            if (hasJoints) { ReadJoints(r, ref _sJoints); joints = _sJoints; jointsRead = true; }
             if (hasServices)
             {
                 svc = ReadServices(r, ns, live);
@@ -637,20 +639,23 @@ internal sealed partial class Engine2D : ISnapshotSection
         }
         else if (v == Services) { svc = ReadServices(r, ns, live); }
 
-        // Commit.
+        // Commit: the staged arrays become the live ones and the old live ones become the next staging.
         Opt.ContactHertz = hertz; Opt.ContactDampingRatio = zeta; Opt.PushOutVelocity = push; Opt.RestitutionThreshold = thr;
         Opt.MaxLinearSpeed = maxSpeed; Opt.MaxRotationPerSubstep = maxRot; Opt.ContinuousEnabled = continuous; Opt.ContactSlop = slop;
-        LocalCenter = lc.Length > 0 ? lc : new float[2]; Mass = mass; Inertia = inertia; MaxExtent = maxE; MinExtent = minE;
-        LinearDamping = ld; AngularDamping = ad; GravityScale = gs; Force = force; Torque = torque; BodyFlags = bf; ShapeHead = head; ShapeTail = tail; Dp = dp;
+        (LocalCenter, _sLc) = (_sLc, LocalCenter); (Mass, _sMass) = (_sMass, Mass); (Inertia, _sInertia) = (_sInertia, Inertia); (MaxExtent, _sMaxE) = (_sMaxE, MaxExtent); (MinExtent, _sMinE) = (_sMinE, MinExtent);
+        (LinearDamping, _sLd) = (_sLd, LinearDamping); (AngularDamping, _sAd) = (_sAd, AngularDamping); (GravityScale, _sGs) = (_sGs, GravityScale); (Force, _sForce) = (_sForce, Force); (Torque, _sTorque) = (_sTorque, Torque);
+        (BodyFlags, _sBf) = (_sBf, BodyFlags); (ShapeHead, _sHead) = (_sHead, ShapeHead); (ShapeTail, _sTail) = (_sTail, ShapeTail); (Dp, _sDp) = (_sDp, Dp);
         EnsureBodies(Math.Max(nb, 1));
-        Geom = geom; Proxy = proxy; Friction = fr; Restitution = re; Rolling = ro; Density = de; Category = cat; Mask = mask; Group = grp; NextShape = next;
+        (Geom, _sGeom) = (_sGeom, Geom); (Proxy, _sProxy) = (_sProxy, Proxy); (Friction, _sFr) = (_sFr, Friction); (Restitution, _sRe) = (_sRe, Restitution); (Rolling, _sRo) = (_sRo, Rolling); (Density, _sDe) = (_sDe, Density);
+        (Category, _sCat) = (_sCat, Category); (Mask, _sMask) = (_sMask, Mask); (Group, _sGrp) = (_sGrp, Group); (NextShape, _sNext) = (_sNext, NextShape);
         EnsureShapes(Math.Max(ns, 1));
-        Pairs = new Pair2D[Math.Max(np, 1)];
+        Grow(ref Pairs, Math.Max(np, 1));
         for (int p = 0; p < np; p++) { Pairs[p] = new Pair2D { A = pa[p], B = pb[p], Cons = pc[p], Live = pl[p], BodyA = -1, BodyB = -1, MixEpoch = -1 }; }
-        PairHigh = np; PairFree = free; PairFreeCount = nf;
+        PairHigh = np; (PairFree, _sFree) = (_sFree, PairFree); PairFreeCount = nf;
         if (jointsRead) { Opt.JointHertz = _pendingJointHertz; Opt.JointDampingRatio = _pendingJointDamping; }
-        Joints = joints;
-        JointForce = new float[joints.Length]; JointTorque = new float[joints.Length];
+        (Joints, _sJoints) = (_sJoints, Joints);
+        Fit(ref JointForce, Joints.Length); Fit(ref JointTorque, Joints.Length);
+        Array.Clear(JointForce); Array.Clear(JointTorque);
         _needBind = true;
         PairMap.Clear();
         for (int p = 0; p < np; p++)
@@ -660,6 +665,22 @@ internal sealed partial class Engine2D : ISnapshotSection
 
         CommitServices(svc, ns);
         CommitCharacters(chars);
+    }
+
+    // Staging arrays of Read (see there).
+    private float[] _sLc = new float[16], _sMass = new float[8], _sInertia = new float[8], _sMaxE = new float[8], _sMinE = new float[8], _sLd = new float[8], _sAd = new float[8], _sGs = new float[8];
+    private float[] _sForce = new float[16], _sTorque = new float[8], _sDp = new float[16], _sFr = new float[8], _sRe = new float[8], _sRo = new float[8], _sDe = new float[8];
+    private byte[] _sBf = new byte[8];
+    private int[] _sHead = new int[8], _sTail = new int[8], _sProxy = new int[8], _sGrp = new int[8], _sNext = new int[8], _sPa = new int[8], _sPb = new int[8], _sPc = new int[8], _sFree = new int[8];
+    private Shape2D[] _sGeom = new Shape2D[8];
+    private uint[] _sCat = new uint[8], _sMask = new uint[8];
+    private bool[] _sLive = new bool[8], _sPl = new bool[8];
+    private JointData2D[] _sJoints = new JointData2D[16];
+
+    private static T[] Fit<T>(ref T[] a, int n)
+    {
+        if (a.Length < n) { a = new T[Math.Max(n, 8)]; }
+        return a;
     }
 
     /// <summary>Checks the section against the core after a restore; false when the two disagree (a damaged snapshot that parsed).</summary>

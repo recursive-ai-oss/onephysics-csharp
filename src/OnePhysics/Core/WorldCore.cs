@@ -171,16 +171,16 @@ public sealed class WorldCore
     /// <summary>The executor stages may use for their own parallel work.</summary>
     public TaskExecutor Executor { get; }
 
-    /// <summary>Body storage. Fetch again after <see cref="Restore"/>.</summary>
+    /// <summary>Body storage. Fetch again after <see cref="Restore(byte[])"/>.</summary>
     public BodyStore Bodies => _bodies;
 
-    /// <summary>Shape slots. Fetch again after <see cref="Restore"/>.</summary>
+    /// <summary>Shape slots. Fetch again after <see cref="Restore(byte[])"/>.</summary>
     public ShapeStore Shapes => _shapes;
 
-    /// <summary>Constraint storage. Fetch again after <see cref="Restore"/>.</summary>
+    /// <summary>Constraint storage. Fetch again after <see cref="Restore(byte[])"/>.</summary>
     public ConstraintStore Constraints => _constraints;
 
-    /// <summary>The islands. Fetch again after <see cref="Restore"/>.</summary>
+    /// <summary>The islands. Fetch again after <see cref="Restore(byte[])"/>.</summary>
     public IslandSet Islands => _islands;
 
     /// <summary>The coloring and the active constraint lists of the current step.</summary>
@@ -962,22 +962,68 @@ public sealed class WorldCore
 
     // ------------------------------------------------------------------ snapshot, restore, hash
 
-    /// <summary>The 64-bit world hash: the hash of the canonical state in snapshot order, without the format header and without events (see <see cref="StateWriter"/> for the function). Equal states give equal hashes on every platform.</summary>
+    // Everything a snapshot, restore or hash needs is owned by the world and reused, so none of them allocates once the buffers have grown to the world's size.
+    private StateWriter? _hashWriter, _snapWriter, _backupWriter, _countWriter;
+    private StateReader? _reader, _subReader;
+    private byte[] _inputBuffer = Array.Empty<byte>();
+    private int _inputLength;
+    private int[] _sectionRange = new int[16];
+
+    // A restore reads the snapshot into spare copies of the core's state and swaps them in only when everything validated; the replaced state becomes the next spare.
+    private BodyStore? _spBodies;
+    private ShapeStore? _spShapes;
+    private ConstraintStore? _spCons;
+    private IslandSet? _spIslands;
+    private EventCollector? _spEvents;
+    private ConstraintColoring? _spColoring;
+    private WorldOptions? _spOptions;
+    private double[]? _spOrigin;
+
+    /// <summary>The 64-bit world hash: the hash of the canonical state in snapshot order, without the format header and without events (see <see cref="StateWriter"/> for the function). Equal states give equal hashes on every platform. Allocates nothing.</summary>
     public ulong ComputeHash()
     {
-        var w = StateWriter.ForHash();
+        var w = _hashWriter ??= StateWriter.ForHash();
+        w.Reset();
         WriteState(w, false);
         return w.Hash;
     }
 
-    /// <summary>Serializes the whole world: options, step counter, origin, bodies, shapes, constraints (with warm-start payloads and colors), islands and sleep state, delivered and pending events, and registered sections. Layout in docs/architecture.md; format version 1.</summary>
-    public byte[] Snapshot()
+    private void WriteSnapshot(StateWriter w)
     {
-        var w = StateWriter.ToBuffer();
+        w.Reset();
         w.WriteUInt32(Magic);
         w.WriteUInt32(FormatVersion);
         WriteState(w, true);
+    }
+
+    /// <summary>Serializes the whole world: options, step counter, origin, bodies, shapes, constraints (with warm-start payloads and colors), islands and sleep state, delivered and pending events, and registered sections. Layout in docs/architecture.md; format version 1. Allocates the returned array only; <see cref="TrySnapshot"/> allocates nothing.</summary>
+    public byte[] Snapshot()
+    {
+        var w = _snapWriter ??= StateWriter.ToBuffer();
+        WriteSnapshot(w);
         return w.ToArray();
+    }
+
+    /// <summary>The number of bytes <see cref="TrySnapshot"/> would write for the world as it is now. Allocates nothing.</summary>
+    public int GetSnapshotSize()
+    {
+        var w = _countWriter ??= StateWriter.ForCount();
+        WriteSnapshot(w);
+        return w.Length;
+    }
+
+    /// <summary>
+    /// Writes the snapshot into <paramref name="destination"/>. When it fits, returns true and <paramref name="written"/> is its length. When it does not, nothing is written, the result is false and
+    /// <paramref name="written"/> is the length needed (the same as <see cref="GetSnapshotSize"/>). The bytes are the same as <see cref="Snapshot"/>'s. Allocates nothing once the world's internal buffer has grown to the snapshot's size.
+    /// </summary>
+    public bool TrySnapshot(Span<byte> destination, out int written)
+    {
+        var w = _snapWriter ??= StateWriter.ToBuffer();
+        WriteSnapshot(w);
+        written = w.Length;
+        if (w.Length > destination.Length) { return false; }
+        w.WrittenSpan.CopyTo(destination);
+        return true;
     }
 
     private void WriteState(StateWriter w, bool includeEvents)
@@ -1000,10 +1046,11 @@ public sealed class WorldCore
             }
             else
             {
-                var inner = StateWriter.ToBuffer();
-                s.Write(inner);
-                w.WriteInt32(inner.Length);
-                w.WriteBytes(inner.ToArray());
+                // The section's byte length comes first, so it is patched in after the section has been written.
+                int at = w.ReserveInt32();
+                int start = w.Length;
+                s.Write(w);
+                w.PatchInt32(at, w.Length - start);
             }
         }
     }
@@ -1011,40 +1058,72 @@ public sealed class WorldCore
     /// <summary>
     /// Replaces the world's state with a snapshot taken by <see cref="Snapshot"/> from a world with the same layout and sections. Everything is validated first; on any problem a
     /// <see cref="SnapshotFormatException"/> is thrown and the world is unchanged. Handles issued by the world that took the snapshot are valid only if this world has the same <see cref="Id"/>.
-    /// Re-read <see cref="Bodies"/>, <see cref="Constraints"/>, <see cref="Islands"/> afterwards: they are replaced objects.
+    /// Re-read <see cref="Bodies"/>, <see cref="Constraints"/>, <see cref="Islands"/> afterwards: they are replaced objects. Allocates nothing once the world's buffers have grown to the snapshot's size.
     /// </summary>
     public void Restore(byte[] snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        byte[]? backup = _sections.Count > 0 ? Snapshot() : null;
+        Restore((ReadOnlySpan<byte>)snapshot);
+    }
+
+    /// <summary>The same as <see cref="Restore(byte[])"/> for bytes in any memory (a stack buffer, a slice of a larger array).</summary>
+    public void Restore(ReadOnlySpan<byte> snapshot)
+    {
+        BeginRestore(snapshot);
         try
         {
-            RestoreCore(snapshot);
+            ApplyRestore();
         }
-        catch when (backup != null)
+        catch
         {
-            // A section may have been replaced before a later one failed; put the previous state back so a failed restore leaves the world as it was.
-            RestoreCore(backup);
+            RollbackRestore();
             throw;
         }
     }
 
-    private void RestoreCore(byte[] snapshot)
+    /// <summary>First step of a restore a caller wants to check further before keeping: copies the input into a world-owned buffer and saves the current state so <see cref="RollbackRestore"/> can put it back.</summary>
+    internal void BeginRestore(ReadOnlySpan<byte> snapshot)
     {
-        var r = new StateReader(snapshot);
+        if (_inputBuffer.Length < snapshot.Length) { _inputBuffer = new byte[Math.Max(snapshot.Length, _inputBuffer.Length * 2)]; }
+        snapshot.CopyTo(_inputBuffer);
+        _inputLength = snapshot.Length;
+        if (_sections.Count > 0)
+        {
+            // A section may have been replaced before a later one fails; the saved state is what a failed restore goes back to.
+            var b = _backupWriter ??= StateWriter.ToBuffer();
+            WriteSnapshot(b);
+        }
+    }
+
+    /// <summary>Restores the input given to <see cref="BeginRestore"/>; on failure the core is unchanged but sections may be half replaced (call <see cref="RollbackRestore"/>).</summary>
+    internal void ApplyRestore() => RestoreCore(_inputBuffer, 0, _inputLength);
+
+    /// <summary>Puts back the state saved by <see cref="BeginRestore"/>.</summary>
+    internal void RollbackRestore()
+    {
+        if (_sections.Count > 0 && _backupWriter != null) { RestoreCore(_backupWriter.Storage, 0, _backupWriter.Length); }
+    }
+
+    private void RestoreCore(byte[] data, int offset, int length)
+    {
+        var r = _reader ??= new StateReader(Array.Empty<byte>());
+        r.Reset(data, offset, length);
         if (r.ReadUInt32() != Magic) { throw r.Error("not a physics snapshot (bad magic)"); }
         uint version = r.ReadUInt32();
         if (version != FormatVersion) { throw r.Error("unsupported snapshot version " + version.ToString(CultureInfo.InvariantCulture)); }
-        var opts = WorldOptions.Read(r, _options);
+        var opts = WorldOptions.Read(r, _options, _spOptions ??= _options.Clone());
         if (opts.Layout != Layout) { throw r.Error("snapshot layout does not match this world's layout"); }
         long steps = r.ReadInt64();
         if (steps < 0) { throw r.Error("negative step count"); }
-        var origin = new double[Layout.PositionLanes];
+        var origin = _spOrigin ??= new double[Layout.PositionLanes];
         r.ReadDoubles(origin, true, "origin");
 
-        var bodies = BodyStore.Read(r, Layout);
-        var shapes = ShapeStore.Read(r);
-        var cons = ConstraintStore.Read(r, Layout);
+        var bodies = _spBodies ??= new BodyStore(Layout, 1);
+        bodies.ReadInto(r);
+        var shapes = _spShapes ??= new ShapeStore();
+        shapes.ReadInto(r);
+        var cons = _spCons ??= new ConstraintStore(Layout, 1);
+        cons.ReadInto(r);
         ValidateReferences(r, bodies, shapes, cons);
         for (int c = 0; c < cons.HighWater; c++)
         {
@@ -1053,7 +1132,7 @@ public sealed class WorldCore
             if (bodies.IsDynamic(cons.BodyB[c])) { cons.LinkEdge(bodies, c, 1); }
         }
 
-        var coloring = new ConstraintColoring();
+        var coloring = _spColoring ??= new ConstraintColoring();
         coloring.EnsureBodies(bodies.HighWater);
         for (int c = 0; c < cons.HighWater; c++)
         {
@@ -1064,41 +1143,42 @@ public sealed class WorldCore
         }
 
         if (!coloring.RebuildMasks(bodies, cons)) { throw r.Error("two constraints on one body share a color"); }
-        var islands = IslandSet.Read(r, bodies, cons);
-        var events = new EventCollector(_options);
+        var islands = _spIslands ??= new IslandSet();
+        islands.ReadInto(r, bodies, cons);
+        var events = _spEvents ??= new EventCollector(_options);
         events.Read(r);
 
         int sections = r.ReadInt32();
         if (sections != _sections.Count) { throw r.Error("snapshot has " + sections.ToString(CultureInfo.InvariantCulture) + " sections, this world registers " + _sections.Count.ToString(CultureInfo.InvariantCulture)); }
-        var blobs = new List<byte[]>();
-        foreach (var s in _sections)
+        if (_sectionRange.Length < 2 * sections) { _sectionRange = new int[2 * sections]; }
+        for (int i = 0; i < _sections.Count; i++)
         {
-            if (r.ReadInt32() != s.SectionId) { throw r.Error("section id mismatch"); }
+            if (r.ReadInt32() != _sections[i].SectionId) { throw r.Error("section id mismatch"); }
             int len = r.ReadCount(1, "section bytes");
-            var blob = new byte[len];
-            r.ReadBytes(blob);
-            blobs.Add(blob);
+            _sectionRange[2 * i] = r.Skip(len);
+            _sectionRange[2 * i + 1] = len;
         }
 
         if (r.Remaining != 0) { throw r.Error("trailing bytes after the snapshot"); }
 
         // Everything the core owns validated: now the sections (each all-or-nothing), then swap the core state in.
+        var sub = _subReader ??= new StateReader(Array.Empty<byte>());
         for (int i = 0; i < _sections.Count; i++)
         {
-            var sub = new StateReader(blobs[i]);
+            sub.Reset(data, _sectionRange[2 * i], _sectionRange[2 * i + 1]);
             _sections[i].Read(sub);
             if (sub.Remaining != 0) { throw new SnapshotFormatException("section " + _sections[i].SectionId.ToString(CultureInfo.InvariantCulture) + " left unread bytes", r.Position); }
         }
 
         _options.CopySimulationValuesFrom(opts);
         _stepCount = steps;
-        _origin = origin;
-        _bodies = bodies;
-        _shapes = shapes;
-        _constraints = cons;
-        _islands = islands;
+        _spOrigin = _origin; _origin = origin;
+        _spBodies = _bodies; _bodies = bodies;
+        _spShapes = _shapes; _shapes = shapes;
+        _spCons = _constraints; _constraints = cons;
+        _spIslands = _islands; _islands = islands;
         _coloring.CopyFrom(coloring);
-        _events.CopyFrom(events);
+        _events.SwapWith(events);
         _awakeCount = 0;
     }
 

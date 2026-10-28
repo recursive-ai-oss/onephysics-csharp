@@ -937,13 +937,17 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     /// </summary>
     public void Validate()
     {
-        var seen = new bool[_used];
+        // Scratch is kept on the tree so validating a restored snapshot allocates nothing once warm.
+        if (_valSeen.Length < _used) { _valSeen = new bool[Math.Max(_used, _valSeen.Length * 2)]; }
+        Array.Clear(_valSeen, 0, _used);
+        var seen = _valSeen;
         int leaves = 0;
         if (_root != NullNode)
         {
             if ((uint)_root >= (uint)_used) { throw Bad("root " + _root.ToString(CultureInfo.InvariantCulture) + " is out of range"); }
             if (_nodes[_root].Parent != NullNode) { throw Bad("root has a parent"); }
-            var order = new int[_used];
+            if (_valOrder.Length < _used) { _valOrder = new int[Math.Max(_used, _valOrder.Length * 2)]; }
+            var order = _valOrder;
             int top = 0;
             order[top++] = _root;
             int visited = 0;
@@ -1005,6 +1009,9 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
         if (freeNodes != freeCount) { throw Bad("free list length " + freeCount.ToString(CultureInfo.InvariantCulture) + " but " + freeNodes.ToString(CultureInfo.InvariantCulture) + " nodes are free"); }
     }
 
+    private bool[] _valSeen = Array.Empty<bool>();
+    private int[] _valOrder = Array.Empty<int>();
+
     private static InvalidOperationException Bad(string what) => new("Tree invariant violated: " + what + ".");
 
     // ---- snapshot -------------------------------------------------------------------------------------------------
@@ -1038,19 +1045,31 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     /// </summary>
     public void Read(StateReader reader)
     {
+        ReadStaged(reader);
+        CommitStaged();
+    }
+
+    private DynamicTree<TBox>? _staged;
+
+    /// <summary>Node slots of the tree read by the last <see cref="ReadStaged"/>.</summary>
+    internal int StagedNodeSlots => _staged!._used;
+
+    /// <summary>Reads and validates a snapshot into this tree's staging copy, leaving the tree itself untouched until <see cref="CommitStaged"/>.</summary>
+    internal void ReadStaged(StateReader reader)
+    {
         ArgumentNullException.ThrowIfNull(reader);
         int used = reader.ReadInt32();
         if (used < 0 || used > MaxNodes || used > reader.Remaining / 24) { throw reader.Error("tree slot count " + used.ToString(CultureInfo.InvariantCulture) + " is out of range"); }
-        var tree = new DynamicTree<TBox>(Math.Max(used, 1))
-        {
-            _used = used,
-            _root = reader.ReadInt32(),
-            _free = reader.ReadInt32(),
-        };
+        var tree = _staged ??= new DynamicTree<TBox>(1);
+        if (tree._nodes.Length < Math.Max(used, 1)) { tree._nodes = new Node[Math.Max(used, 1)]; }
+        tree._used = used;
+        tree._root = reader.ReadInt32();
+        tree._free = reader.ReadInt32();
         int leaves = 0;
         for (int i = 0; i < used; i++)
         {
             ref Node n = ref tree._nodes[i];
+            n = default;
             n.Height = reader.ReadInt32();
             n.Parent = reader.ReadInt32();
             n.Child1 = reader.ReadInt32();
@@ -1067,6 +1086,7 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
         }
 
         tree._leafCount = leaves;
+        tree._enlarged = 0;
         for (int i = 0; i < used; i++)
         {
             if (tree._nodes[i].Height > 0 && (tree._nodes[i].Flags & EnlargedFlag) != 0) { tree._enlarged++; }
@@ -1079,12 +1099,17 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
         {
             throw reader.Error(e.Message);
         }
+    }
 
-        _nodes = tree._nodes;
-        _used = tree._used;
-        _root = tree._root;
-        _free = tree._free;
-        _leafCount = tree._leafCount;
-        _enlarged = tree._enlarged;
+    /// <summary>Makes the tree read by <see cref="ReadStaged"/> the live one; the replaced structure becomes the next staging copy.</summary>
+    internal void CommitStaged()
+    {
+        var t = _staged!;
+        (_nodes, t._nodes) = (t._nodes, _nodes);
+        (_used, t._used) = (t._used, _used);
+        (_root, t._root) = (t._root, _root);
+        (_free, t._free) = (t._free, _free);
+        (_leafCount, t._leafCount) = (t._leafCount, _leafCount);
+        (_enlarged, t._enlarged) = (t._enlarged, _enlarged);
     }
 }

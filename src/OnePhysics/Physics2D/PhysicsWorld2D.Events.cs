@@ -203,7 +203,7 @@ public sealed partial class PhysicsWorld2D
     /// <summary>Unity's name for <c>SetLayerCollision(a, b, !ignore)</c>.</summary>
     public void IgnoreLayerCollision(int layerA, int layerB, bool ignore = true) => _engine.SetLayerCollision(layerA, layerB, !ignore);
 
-    /// <summary>Installs a struct contact filter (middle tier), replacing any earlier one. Pairs are re-evaluated at the next step. The filter is not saved in snapshots: install it again after <see cref="Restore"/>.</summary>
+    /// <summary>Installs a struct contact filter (middle tier), replacing any earlier one. Pairs are re-evaluated at the next step. The filter is not saved in snapshots: install it again after <see cref="Restore(byte[])"/>.</summary>
     public void SetContactFilter<TFilter>(TFilter filter) where TFilter : struct, IContactFilter
     {
         _engine.ContactFilter = new ContactFilterHolder<TFilter>(filter);

@@ -247,9 +247,19 @@ public sealed class WorldOptions
     }
 
     /// <summary>Reads the saved options into a copy of <paramref name="current"/> (keeping its thread count and world id) and validates them.</summary>
-    internal static WorldOptions Read(StateReader r, WorldOptions current)
+    internal static WorldOptions Read(StateReader r, WorldOptions current, WorldOptions? into = null)
     {
-        var o = current.Clone();
+        WorldOptions o;
+        if (into == null) { o = current.Clone(); }
+        else
+        {
+            // A spare object is reused so a restore allocates nothing.
+            o = into;
+            o.Layout = current.Layout; o.ThreadCount = current.ThreadCount; o.WorldId = current.WorldId; o.Gravity = current.Gravity;
+            o.Substeps = current.Substeps; o.VelocityIterations = current.VelocityIterations; o.RelaxIterations = current.RelaxIterations;
+            o.SleepEnabled = current.SleepEnabled; o.TimeToSleep = current.TimeToSleep; o.SleepThreshold = current.SleepThreshold; o.Events = current.Events;
+        }
+
         o.Layout = DimensionLayout.Read(r);
         o.Gravity = new Vector3F(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
         o.Substeps = r.ReadInt32(); o.VelocityIterations = r.ReadInt32(); o.RelaxIterations = r.ReadInt32();

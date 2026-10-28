@@ -331,8 +331,8 @@ internal sealed partial class Engine3D
         Array.Clear(_buoyBits);
         if (blk == null)
         {
-            FluidHandles = new HandleTable();
-            Fluids = new FluidDef?[4];
+            FluidHandles.Reset();
+            Array.Clear(Fluids);
             return;
         }
 

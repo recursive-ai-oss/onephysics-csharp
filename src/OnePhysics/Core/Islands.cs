@@ -226,20 +226,38 @@ public sealed class IslandSet
     /// <summary>Reads the island table and rebuilds the lists from the bodies' island ids; validates that islands are non-empty and consistent with body sleep state and with the constraints.</summary>
     internal static IslandSet Read(StateReader r, BodyStore bodies, ConstraintStore cons)
     {
-        var s = new IslandSet { _ids = HandleTable.Read(r, "island") };
+        var s = new IslandSet();
+        s.ReadInto(r, bodies, cons);
+        return s;
+    }
+
+    private int[] _countsScratch = new int[16];
+
+    /// <summary>Fills this set from a snapshot, reusing its arrays and body lists when they are big enough. Only a set nobody uses (a spare) may be read into.</summary>
+    internal void ReadInto(StateReader r, BodyStore bodies, ConstraintStore cons)
+    {
+        var s = this;
+        s._ids.ReadInto(r, "island");
         int n = s._ids.HighWater;
         if ((long)n * 5 > r.Remaining) { throw r.Error("island columns are longer than the remaining bytes"); }
         int cap = Math.Max(16, n);
-        s._bodies = new int[cap][]; s._count = new int[cap]; s._asleep = new bool[cap]; s._removed = new int[cap];
+        if (s._bodies.Length < cap)
+        {
+            Array.Resize(ref s._bodies, cap); Array.Resize(ref s._count, cap); Array.Resize(ref s._asleep, cap); Array.Resize(ref s._removed, cap);
+        }
+
         for (int i = 0; i < n; i++)
         {
+            s._count[i] = 0;
             s._asleep[i] = r.ReadBool();
             s._removed[i] = r.ReadInt32();
             if (s._removed[i] < 0) { throw r.Error("negative island removal count"); }
             if (!s._ids.IsLive(i) && (s._asleep[i] || s._removed[i] != 0)) { throw r.Error("dead island slot is not zeroed"); }
         }
 
-        var counts = new int[n];
+        if (_countsScratch.Length < n) { _countsScratch = new int[Math.Max(n, _countsScratch.Length * 2)]; }
+        var counts = _countsScratch;
+        Array.Clear(counts, 0, n);
         var islandOf = bodies.Island;
         for (int b = 0; b < bodies.HighWater; b++)
         {
@@ -256,7 +274,8 @@ public sealed class IslandSet
             if (s._ids.IsLive(i))
             {
                 if (counts[i] == 0) { throw r.Error("empty island"); }
-                s._bodies[i] = new int[Math.Max(4, counts[i])];
+                int need = Math.Max(4, counts[i]);
+                if (s._bodies[i] == null || s._bodies[i].Length < need) { s._bodies[i] = new int[need]; }
             }
         }
 
@@ -275,7 +294,5 @@ public sealed class IslandSet
             int a = cons.BodyA[c], b = cons.BodyB[c];
             if (bodies.IsDynamic(a) && bodies.IsDynamic(b) && islandOf[a] != islandOf[b]) { throw r.Error("constraint joins bodies of different islands"); }
         }
-
-        return s;
     }
 }

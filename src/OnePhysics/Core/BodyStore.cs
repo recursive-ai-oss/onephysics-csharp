@@ -215,10 +215,21 @@ public sealed class BodyStore
 
     internal static BodyStore Read(StateReader r, DimensionLayout layout)
     {
-        var handles = HandleTable.Read(r, "body");
+        var s = new BodyStore(layout, 1);
+        s.ReadInto(r);
+        return s;
+    }
+
+    /// <summary>Fills this store from a snapshot, reusing its arrays when they are big enough. Only a store nobody uses (a spare) may be read into: its contents are undefined after a failure.</summary>
+    internal void ReadInto(StateReader r)
+    {
+        var layout = _layout;
+        var handles = Handles;
+        handles.ReadInto(r, "body");
         int n = handles.HighWater;
         if ((long)n * BytesPerSlot(layout) > r.Remaining) { throw r.Error("body columns are longer than the remaining bytes"); }
-        var s = new BodyStore(layout, Math.Max(64, n)) { Handles = handles };
+        if (Capacity < Math.Max(64, n)) { Allocate(Math.Max(64, n)); }
+        var s = this;
         r.ReadDoubles(s.Position, true, "body positions");
         r.ReadSingles(s.Rotation, true, "body rotations");
         r.ReadSingles(s.LinearVelocity, true, "body linear velocities");
@@ -252,8 +263,6 @@ public sealed class BodyStore
                 if (s._invMass[b] != 0f || s._island[b] != -1 || (s._flags[b] & (byte)BodyBits.Awake) == 0) { throw r.Error("static or kinematic body with mass, island or sleeping"); }
             }
         }
-
-        return s;
     }
 
     private bool IsSlotNonZero(int b)

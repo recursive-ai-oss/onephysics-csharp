@@ -223,7 +223,8 @@ internal sealed partial class Engine3D
         if (!(hertz >= 0f && zeta >= 0f) || !float.IsFinite(hertz + zeta)) { throw r.Error("invalid joint tunables"); }
         int n = r.ReadCount(1, "joint slots");
         if (n > 1 << 24) { throw r.Error("too many joint slots"); }
-        var joints = new JointData3D[Math.Max(n, 16)];
+        var joints = _sJoints;
+        if (joints.Length < Math.Max(n, 16)) { joints = _sJoints = new JointData3D[Math.Max(n, 16)]; } else { Array.Clear(joints); }
         int live = 0;
         for (int c = 0; c < n; c++)
         {

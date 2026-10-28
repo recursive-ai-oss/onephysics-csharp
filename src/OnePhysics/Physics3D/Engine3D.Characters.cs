@@ -216,18 +216,33 @@ internal sealed partial class Engine3D
     private sealed class CharacterBlock
     {
         public HandleTable Handles = new();
-        public int[] Body = Array.Empty<int>(), BodyGen = Array.Empty<int>(), GroundBody = Array.Empty<int>(), GroundGen = Array.Empty<int>();
-        public CharacterDef[] Def = Array.Empty<CharacterDef>();
-        public GroundState[] Ground = Array.Empty<GroundState>();
-        public float[] Nx = Array.Empty<float>(), Ny = Array.Empty<float>(), Nz = Array.Empty<float>(), Vx = Array.Empty<float>(), Vy = Array.Empty<float>(), Vz = Array.Empty<float>();
+        public int[] Body = new int[8], BodyGen = new int[8], GroundBody = new int[8], GroundGen = new int[8];
+        public CharacterDef[] Def = new CharacterDef[8];
+        public GroundState[] Ground = new GroundState[8];
+        public float[] Nx = new float[8], Ny = new float[8], Nz = new float[8], Vx = new float[8], Vy = new float[8], Vz = new float[8];
     }
 
-    private static CharacterBlock ReadCharacters(StateReader r, int bodyCount)
+    private readonly CharacterBlock _charStage = new();
+
+    // Reads into the engine's staging block, which is kept between restores so nothing is allocated once it has grown.
+    private CharacterBlock ReadCharacters(StateReader r, int bodyCount)
     {
-        var b = new CharacterBlock { Handles = HandleTable.Read(r, "character") };
+        var b = _charStage;
+        b.Handles.ReadInto(r, "character");
         int n = b.Handles.HighWater;
-        b.Body = new int[n]; b.BodyGen = new int[n]; b.GroundBody = new int[n]; b.GroundGen = new int[n]; b.Def = new CharacterDef[n]; b.Ground = new GroundState[n];
-        b.Nx = new float[n]; b.Ny = new float[n]; b.Nz = new float[n]; b.Vx = new float[n]; b.Vy = new float[n]; b.Vz = new float[n];
+        if (b.Body.Length < n)
+        {
+            int cap = Math.Max(n, 8);
+            b.Body = new int[cap]; b.BodyGen = new int[cap]; b.GroundBody = new int[cap]; b.GroundGen = new int[cap]; b.Def = new CharacterDef[cap]; b.Ground = new GroundState[cap];
+            b.Nx = new float[cap]; b.Ny = new float[cap]; b.Nz = new float[cap]; b.Vx = new float[cap]; b.Vy = new float[cap]; b.Vz = new float[cap];
+        }
+        else
+        {
+            // Dead slots read back as zero, as in a freshly built block.
+            Array.Clear(b.Body, 0, n); Array.Clear(b.BodyGen, 0, n); Array.Clear(b.GroundBody, 0, n); Array.Clear(b.GroundGen, 0, n); Array.Clear(b.Def, 0, n); Array.Clear(b.Ground, 0, n);
+            Array.Clear(b.Nx, 0, n); Array.Clear(b.Ny, 0, n); Array.Clear(b.Nz, 0, n); Array.Clear(b.Vx, 0, n); Array.Clear(b.Vy, 0, n); Array.Clear(b.Vz, 0, n);
+        }
+
         for (int c = 0; c < n; c++)
         {
             if (!b.Handles.IsLive(c)) { continue; }
@@ -263,26 +278,31 @@ internal sealed partial class Engine3D
         Array.Fill(_charOfBody, -1);
         if (b == null)
         {
-            CharHandles = new HandleTable();
+            CharHandles.Reset();
             _virtualCharacters = 0;
             return;
         }
 
-        CharHandles = b.Handles;
-        int n = Math.Max(b.Handles.HighWater, 1);
-        CharBody = new int[n]; CharBodyGen = new int[n]; CharDef = new CharacterDef[n]; CharGround = new GroundState[n];
-        CharNx = new float[n]; CharNy = new float[n]; CharNz = new float[n]; CharGroundBody = new int[n]; CharGroundGen = new int[n];
-        CharVx = new float[n]; CharVy = new float[n]; CharVz = new float[n];
-        for (int c = 0; c < b.Handles.HighWater; c++)
+        (CharHandles, b.Handles) = (b.Handles, CharHandles);
+        int n = Math.Max(CharHandles.HighWater, 1);
+        if (CharBody.Length < n)
+        {
+            int cap = Math.Max(n, 8);
+            CharBody = new int[cap]; CharBodyGen = new int[cap]; CharDef = new CharacterDef[cap]; CharGround = new GroundState[cap];
+            CharNx = new float[cap]; CharNy = new float[cap]; CharNz = new float[cap]; CharGroundBody = new int[cap]; CharGroundGen = new int[cap];
+            CharVx = new float[cap]; CharVy = new float[cap]; CharVz = new float[cap];
+        }
+
+        for (int c = 0; c < CharHandles.HighWater; c++)
         {
             CharBody[c] = b.Body[c]; CharBodyGen[c] = b.BodyGen[c]; CharDef[c] = b.Def[c]; CharGround[c] = b.Ground[c];
             CharNx[c] = b.Nx[c]; CharNy[c] = b.Ny[c]; CharNz[c] = b.Nz[c]; CharGroundBody[c] = b.GroundBody[c]; CharGroundGen[c] = b.GroundGen[c];
             CharVx[c] = b.Vx[c]; CharVy[c] = b.Vy[c]; CharVz[c] = b.Vz[c];
         }
 
-        for (int c = 0; c < b.Handles.HighWater; c++)
+        for (int c = 0; c < CharHandles.HighWater; c++)
         {
-            if (b.Handles.IsLive(c)) { IndexCharacterBody(b.Body[c], c); }
+            if (CharHandles.IsLive(c)) { IndexCharacterBody(b.Body[c], c); }
         }
 
         RecountVirtual();
