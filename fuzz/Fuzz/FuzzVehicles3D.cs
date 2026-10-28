@@ -109,6 +109,41 @@ internal static class FuzzVehicles3D
         return def;
     }
 
+    private static TrackedVehicleDef TrackedDef(Reader r)
+    {
+        var d = TrackedVehicleDef.Tank;
+        if (r.Byte() < 140) { return d; }
+        if (r.Bool()) { d.SprocketRadius = r.Float(); }
+        if (r.Bool()) { d.MaxTrackSpeed = r.Float(); }
+        if (r.Bool()) { d.MaxDriveTorque = r.Float(); }
+        if (r.Bool()) { d.MaxBrakeTorque = r.Float(); }
+        if (r.Bool()) { d.LateralFriction = r.Float(); }
+        if (r.Bool()) { d.Grip = Tyre(r); }
+        if (r.Bool()) { d.LeftWheels = Array.Empty<WheelDef>(); }
+        else if (r.Bool()) { d.LeftWheels = new[] { Wheel(r, VehicleDef.Car, 0) }; }
+        if (r.Bool()) { d.RightWheels = new WheelDef[r.Byte() % 20]; for (int i = 0; i < d.RightWheels.Length; i++) { d.RightWheels[i] = Wheel(r, VehicleDef.Truck, i); } }
+        return d;
+    }
+
+    private static MotorcycleDef BikeDef(Reader r)
+    {
+        var d = MotorcycleDef.Road;
+        if (r.Byte() < 140) { return d; }
+        if (r.Bool()) { d.MaxSteerAngle = r.Float(); }
+        if (r.Bool()) { d.HighSpeedSteerAngle = r.Float(); }
+        if (r.Bool()) { d.SteerFadeStartSpeed = r.Float(); }
+        if (r.Bool()) { d.SteerFadeEndSpeed = r.Float(); }
+        if (r.Bool()) { d.MaxLeanAngle = r.Float(); }
+        if (r.Bool()) { d.FallAngle = r.Float(); }
+        if (r.Bool()) { d.LeanFrequency = r.Float(); }
+        if (r.Bool()) { d.LeanDamping = r.Float(); }
+        if (r.Bool()) { d.MaxLeanTorque = r.Float(); }
+        if (r.Bool()) { d.FinalDriveRatio = r.Float(); }
+        if (r.Bool()) { d.Front = Wheel(r, VehicleDef.Car, 0); }
+        if (r.Bool()) { d.Rear = Wheel(r, VehicleDef.Car, 2); }
+        return d;
+    }
+
     private static Vehicle Pick(List<Vehicle> vs, Reader r)
     {
         byte b = r.Byte();
@@ -143,7 +178,7 @@ internal static class FuzzVehicles3D
 
     private static void Op(PhysicsWorld3D w, List<Body> bodies, List<Vehicle> vs, Reader r)
     {
-        switch (r.Byte() % 10)
+        switch (r.Byte() % 12)
         {
             case 0:
             case 1:
@@ -152,6 +187,24 @@ internal static class FuzzVehicles3D
                     var chassis = w.AddBox(new Vector3F(1.8f, 0.6f, 4f), new Vector3D(r.Float() % 20f, 1.2, r.Float() % 20f));
                     bodies.Add(chassis);
                     vs.Add(w.AddVehicle(r.Byte() < 20 ? bodies[r.Byte() % bodies.Count] : chassis, def));
+                    s_vehicles++;
+                    break;
+                }
+            case 10:
+                {
+                    var def = TrackedDef(r);
+                    var chassis = w.AddBox(new Vector3F(3.2f, 1f, 6f), new Vector3D(r.Float() % 20f, 1.4, r.Float() % 20f), density: 400f);
+                    bodies.Add(chassis);
+                    vs.Add(w.AddVehicle(chassis, def));
+                    s_vehicles++;
+                    break;
+                }
+            case 11:
+                {
+                    var def = BikeDef(r);
+                    var chassis = w.AddBox(new Vector3F(0.3f, 0.5f, 1.6f), new Vector3D(r.Float() % 20f, 1.0, r.Float() % 20f), density: 1000f);
+                    bodies.Add(chassis);
+                    vs.Add(w.AddVehicle(chassis, def));
                     s_vehicles++;
                     break;
                 }
@@ -164,7 +217,7 @@ internal static class FuzzVehicles3D
             case 8:
                 {
                     var v = Pick(vs, r);
-                    if (v.IsValid) { int n = v.WheelCount; _ = v.GetWheel(r.Byte() % (n + 1)); _ = v.EngineRpm; _ = v.ForwardSpeed; _ = v.Gear; _ = v.Chassis.Position; }
+                    if (v.IsValid) { int n = v.WheelCount; _ = v.GetWheel(r.Byte() % (n + 1)); _ = v.EngineRpm; _ = v.ForwardSpeed; _ = v.Gear; _ = v.Chassis.Position; _ = v.Kind; if (v.Kind == VehicleKind.Tracked) { _ = v.GetTrackSpeed(r.Byte() % 2); } if (v.Kind == VehicleKind.Motorcycle) { _ = v.LeanAngle; _ = v.SteerLimit; } v.SetInput(Math.Clamp(r.Float(), -1f, 1f), Math.Clamp(r.Float(), -1f, 1f), Math.Clamp(Math.Abs(r.Float()), 0f, 1f)); }
                     else { _ = v.WheelCount; }
                     break;
                 }
@@ -192,6 +245,8 @@ internal static class FuzzVehicles3D
             v.Drive(0.7f, 0.2f * i);
         }
 
+        var tank = w.AddTank(new Vector3D(-20, 0, 10)); tank.SetInput(0.6f, 0.3f);
+        var bike = w.AddMotorcycle(new Vector3D(20, 0, 10)); bike.SetInput(0.5f, 0.2f);
         for (int s = 0; s < 40; s++) { w.Step(1f / 60f); }
         return s_base = w.Snapshot();
     }

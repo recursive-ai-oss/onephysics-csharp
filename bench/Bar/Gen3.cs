@@ -555,5 +555,64 @@ public static class Gen3
         return s;
     }
 
-    public static List<Scene> All() => [Pyramid(10), Pyramid(30), LargePile(), JointChains(), JointGrid(), RagdollPile(), RagdollPowered(), TerrainScene(false), TerrainScene(true), SleepWake(), Queries(), Characters3(), Vehicles3()];
+    // ---- tracked-3d and motorcycle-3d ----
+
+    // Tanks on the rough terrain of the vehicles scene (one height field over x 0 .. 60, z 0 .. 240): six lanes 9.5 m apart, four rows 55 m apart. Tanks of a lane share a throttle (0.25 + 0.04 lane), so they keep their spacing;
+    // steering starts at step 90 as a triangle wave of 0.15 and period 240, and everything brakes from step 450.
+    static Scene Tracked3()
+    {
+        var s = Base3("tracked-3d", 600, "maxPenetration", "maxSpeed", "nan", "escapes", "tunnelled", "wheelThroughGround", "rollovers", "suspensionJitter");
+        s.DumpEvery = 10;
+        s.Params["engines"] = ["onephysics"]; // the engines that have a tracked-vehicle driver
+        var hf = VehicleTerrain(41);
+        Sh(Add3(s, "static", 0, 0, 0), "heightfield", 0, 0, [61, 241, 1.0, 0, 0, 0, .. hf]);
+        s.Params["terrainHf"] = ["0", "0"];
+        s.Params["wheelRadius"] = ["0.45"];
+        s.Params["wheelsPerCar"] = ["10"];
+        int first = s.Bodies.Count;
+        for (int lane = 0; lane < 6; lane++)
+            for (int row = 0; row < 4; row++)
+            {
+                double lx = 5 + 9.5 * lane, z = 10 + 55 * row;
+                double ground = VehicleHeightAt(hf, lx, z);
+                var b = Add3(s, "dynamic", lx, ground + 0.45 + 0.4 - 0.05 + 0.2 + 0.2, z);
+                Box3(b, 1.6, 0.5, 3.0, 0, 0, 0, 20000.0 / 19.2);
+                b.Vehicle = new VehicleScript { Preset = "tank", Throttle = 0.25 + 0.04 * lane, SteerAmp = 0.15, SteerPeriod = 240, SteerFrom = 90, BrakeFrom = 450 };
+            }
+        s.Params["cars"] = [first.ToString(), (s.Bodies.Count - first).ToString()];
+        s.Params["container"] = ["-20", "-5", "280", "20"];
+        s.Params["floor"] = ["-15"];
+        return s;
+    }
+
+    // Motorcycles on the same terrain: five lanes 12 m apart, four rows 55 m apart. Bikes of a lane share a throttle (0.12 + 0.015 lane), steering starts at step 60 as a triangle wave of 0.25 and period 300 (a slalom;
+    // the lean controller follows it), and everything brakes from step 450.
+    static Scene Motorcycle3()
+    {
+        var s = Base3("motorcycle-3d", 600, "maxPenetration", "maxSpeed", "nan", "escapes", "tunnelled", "wheelThroughGround", "fallen", "leanError", "suspensionJitter");
+        s.DumpEvery = 10;
+        s.Params["engines"] = ["onephysics"]; // the engines that have a motorcycle driver
+        var hf = VehicleTerrain(42);
+        Sh(Add3(s, "static", 0, 0, 0), "heightfield", 0, 0, [61, 241, 1.0, 0, 0, 0, .. hf]);
+        s.Params["terrainHf"] = ["0", "0"];
+        s.Params["wheelRadius"] = ["0.32"];
+        s.Params["wheelsPerCar"] = ["2"];
+        int first = s.Bodies.Count;
+        for (int lane = 0; lane < 5; lane++)
+            for (int row = 0; row < 4; row++)
+            {
+                double lx = 6 + 12 * lane, z = 10 + 55 * row;
+                double ground = VehicleHeightAt(hf, lx, z);
+                var b = Add3(s, "dynamic", lx, ground + 0.32 + 0.35 - 0.1 + 0.05, z);
+                Box3(b, 0.15, 0.2, 0.8, 0, 0, 0, 250.0 / 0.192);
+                b.Vehicle = new VehicleScript { Preset = "bike", Throttle = 0.12 + 0.015 * lane, SteerAmp = 0.25, SteerPeriod = 300, SteerFrom = 60, BrakeFrom = 450 };
+            }
+        s.Params["cars"] = [first.ToString(), (s.Bodies.Count - first).ToString()];
+        s.Params["bikes"] = [first.ToString(), (s.Bodies.Count - first).ToString()];
+        s.Params["container"] = ["-20", "-5", "280", "20"];
+        s.Params["floor"] = ["-15"];
+        return s;
+    }
+
+    public static List<Scene> All() => [Pyramid(10), Pyramid(30), LargePile(), JointChains(), JointGrid(), RagdollPile(), RagdollPowered(), TerrainScene(false), TerrainScene(true), SleepWake(), Queries(), Characters3(), Vehicles3(), Tracked3(), Motorcycle3()];
 }

@@ -67,7 +67,7 @@ public readonly struct WheelState
 /// (its chassis body destroyed or <see cref="Destroy"/> called); the state lives in the world and in its snapshots.
 /// </summary>
 /// <example><c>var car = world.AddVehicle(chassis, VehicleDef.Car); car.Drive(throttle: 1f, steer: 0.2f); world.Step(1f / 60f);</c></example>
-public readonly struct Vehicle : IEquatable<Vehicle>
+public readonly partial struct Vehicle : IEquatable<Vehicle>
 {
     private readonly PhysicsWorld3D? _world;
     private readonly int _index;

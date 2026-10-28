@@ -75,13 +75,13 @@ sealed class OnePhysics3Sim : ISim3
         }
     }
 
-    public int WheelDoubles => vehicles.Count == 0 ? 0 : 12 * vehicles.Count;
+    public int WheelDoubles { get { int n = 0; foreach (var (car, _, _) in vehicles) n += 3 * car.WheelCount; return n; } }
 
     public void Wheels(double[] d)
     {
         int k = 0;
         foreach (var (car, _, _) in vehicles)
-            for (int w = 0; w < 4; w++) { var c = car.GetWheel(w).Center; d[k++] = c.X; d[k++] = c.Y; d[k++] = c.Z; }
+            for (int w = 0; w < car.WheelCount; w++) { var c = car.GetWheel(w).Center; d[k++] = c.X; d[k++] = c.Y; d[k++] = c.Z; }
     }
 
     public void WakeAll(Scene s)

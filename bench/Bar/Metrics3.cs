@@ -286,7 +286,8 @@ public static class Metrics3
     {
         int first = int.Parse(s.Params["cars"][0], CultureInfo.InvariantCulture), count = int.Parse(s.Params["cars"][1], CultureInfo.InvariantCulture);
         double radius = double.Parse(s.Params["wheelRadius"][0], CultureInfo.InvariantCulture);
-        if (wheelFrames.Count == 0 || wheelFrames[^1].Length != 12 * count) { return; } // engines without wheel data report nothing for these
+        int wpc = s.Params.TryGetValue("wheelsPerCar", out var wp) ? int.Parse(wp[0], CultureInfo.InvariantCulture) : 4;
+        if (wheelFrames.Count == 0 || wheelFrames[^1].Length != 3 * wpc * count) { return; } // engines without wheel data report nothing for these
         var grids = VehicleGrids(s);
         long through = 0; var rolled = new HashSet<int>();
         for (int f = 0; f < frames.Count; f++)
@@ -298,9 +299,9 @@ public static class Metrics3
                 double qx = d[b * St + 3], qy = d[b * St + 4], qz = d[b * St + 5], qw = d[b * St + 6];
                 double upY = 1 - 2 * (qx * qx + qz * qz);
                 if (upY < 0.2) rolled.Add(c);
-                for (int k = 0; k < 4; k++)
+                for (int k = 0; k < wpc; k++)
                 {
-                    int o = 12 * c + 3 * k;
+                    int o = 3 * wpc * c + 3 * k;
                     double ground = GridHeight(grids, w[o], w[o + 2]);
                     if (!double.IsNaN(ground) && w[o + 1] < ground + 0.5 * radius) through++;
                 }
@@ -315,14 +316,45 @@ public static class Metrics3
             {
                 int b = first + c;
                 if (Math.Sqrt(new V(z[b * St + 7], z[b * St + 8], z[b * St + 9]).Len2) > 0.2) continue;
-                for (int k = 0; k < 4; k++)
+                for (int k = 0; k < wpc; k++)
                 {
-                    int o = 12 * c + 3 * k;
+                    int o = 3 * wpc * c + 3 * k;
                     worst = Math.Max(worst, Math.Abs((wz[o + 1] - z[b * St + 1]) - (wa[o + 1] - a[b * St + 1])));
                 }
             }
             r["suspensionJitter"] = worst;
         }
+
+        if (s.Params.ContainsKey("bikes")) { BikeMetrics(s, frames, want, r, first, count); }
+    }
+
+    // Motorcycle metrics from the body poses (`param bikes first count`; the chassis' forward axis is its +z, up its +y, the lean is positive towards its +x):
+    //  fallen: bikes whose up axis is more than 1 rad from vertical (y component under 0.54) in any dump;
+    //  leanError: the median, over bikes and dumps from step 120 with a horizontal speed over 3 m/s, of |lean - atan(v w / g)|, the lean a steady turn at the bike's speed v and yaw rate w needs for gravity to balance it (rad).
+    static void BikeMetrics(Scene s, List<(int step, double[] d)> frames, HashSet<string> want, SortedDictionary<string, double> r, int first, int count)
+    {
+        var fallen = new HashSet<int>(); var errs = new List<double>();
+        foreach (var (step, d) in frames)
+            for (int c = 0; c < count; c++)
+            {
+                int b = first + c;
+                double qx = d[b * St + 3], qy = d[b * St + 4], qz = d[b * St + 5], qw = d[b * St + 6];
+                double upX = 2 * (qx * qy - qw * qz), upY = 1 - 2 * (qx * qx + qz * qz), upZ = 2 * (qy * qz + qw * qx);
+                double fx = 2 * (qx * qz + qw * qy), fy = 2 * (qy * qz - qw * qx), fz = 1 - 2 * (qx * qx + qy * qy);
+                if (upY < 0.54) fallen.Add(c);
+                double vx = d[b * St + 7], vz = d[b * St + 9], yaw = d[b * St + 11];
+                double speed = Math.Sqrt(vx * vx + vz * vz);
+                if (step < 120 || speed <= 3) continue;
+                double hx = fx, hz = fz, hl = Math.Sqrt(hx * hx + hz * hz);
+                if (hl < 1e-6) continue;
+                hx /= hl; hz /= hl;
+                // right = up x forward, horizontal: (hz, 0, -hx) for world up (0,1,0)... the chassis +x is cross(up, forward) = (hz, 0, -hx)
+                double lean = Math.Atan2(upX * hz - upZ * hx, upY);
+                double expected = Math.Atan(speed * yaw / 9.81);
+                errs.Add(Math.Abs(lean - expected));
+            }
+        if (want.Contains("fallen")) r["fallen"] = fallen.Count;
+        if (want.Contains("leanError")) { errs.Sort(); r["leanError"] = errs.Count == 0 ? 0 : errs[errs.Count / 2]; }
     }
 
     // ---- metrics ----

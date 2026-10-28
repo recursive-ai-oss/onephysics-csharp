@@ -593,11 +593,12 @@ internal sealed partial class Engine3D : ISnapshotSection
         if (joints || services || chars || vehs || rags)
         {
             // Version 2: a presence-flags word, then the flagged blocks in a fixed order: joints, services (layers, filters, sensors), characters.
-            w.WriteUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u) | (chars ? BlockCharacters : 0u) | (vehs ? BlockVehicles : 0u) | (rags ? BlockRagdolls : 0u));
+            w.WriteUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u) | (chars ? BlockCharacters : 0u) | (vehs ? BlockVehicles : 0u) | (vehs && HasVehicleKinds() ? BlockVehicleKinds : 0u) | (rags ? BlockRagdolls : 0u));
             if (joints) { WriteJoints(w); }
             if (services) { WriteServices(w, ns); }
             if (chars) { WriteCharacters(w); }
             if (vehs) { WriteVehicles(w); }
+            if (vehs && HasVehicleKinds()) { WriteVehicleKinds(w); }
             if (rags) { WriteRagdolls(w); }
         }
     }
@@ -717,7 +718,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         if (v == VersionJoints)
         {
             uint flags = r.ReadUInt32();
-            if (flags == 0 || (flags & ~(BlockJoints | BlockServices | BlockCharacters | BlockVehicles | BlockRagdolls)) != 0) { throw r.Error("invalid 3D section block flags " + flags.ToString(CultureInfo.InvariantCulture)); }
+            if (flags == 0 || (flags & ~(BlockJoints | BlockServices | BlockCharacters | BlockVehicles | BlockVehicleKinds | BlockRagdolls)) != 0) { throw r.Error("invalid 3D section block flags " + flags.ToString(CultureInfo.InvariantCulture)); }
             if ((flags & BlockJoints) != 0) { joints = ReadJoints(r); }
             if ((flags & BlockServices) != 0)
             {
@@ -735,6 +736,12 @@ internal sealed partial class Engine3D : ISnapshotSection
             {
                 vehicles = ReadVehicles(r, nb);
                 if (vehicles.Handles.Count == 0) { throw r.Error("a vehicles block holding no vehicles"); }
+            }
+
+            if ((flags & BlockVehicleKinds) != 0)
+            {
+                if (vehicles == null) { throw r.Error("a vehicle kinds block without a vehicles block"); }
+                ReadVehicleKinds(r, vehicles);
             }
 
             if ((flags & BlockRagdolls) != 0)
