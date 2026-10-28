@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.Intrinsics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -394,18 +395,18 @@ public struct Shape2D
     public readonly Aabb2 ComputeAabb(Transform2 xf)
     {
         if (_count == 0) { return new Aabb2(xf.P, xf.P); }
+        // The running minimum of (x, y, -x, -y) holds the lower corner and the negated upper corner. Compare and select keep the first of equal values, as the scalar `if (p.X < lx)` does,
+        // and negation is exact, so the bounds are bit for bit what four separate comparisons give; there are no branches for the data to mispredict.
         Vec2 p = xf.Apply(_v[0]);
-        float lx = p.X, ly = p.Y, ux = p.X, uy = p.Y;
+        Vector128<float> m = Vector128.Create(p.X, p.Y, -p.X, -p.Y);
         for (int i = 1; i < _count; i++)
         {
             p = xf.Apply(_v[i]);
-            if (p.X < lx) { lx = p.X; }
-            if (p.Y < ly) { ly = p.Y; }
-            if (p.X > ux) { ux = p.X; }
-            if (p.Y > uy) { uy = p.Y; }
+            Vector128<float> q = Vector128.Create(p.X, p.Y, -p.X, -p.Y);
+            m = Vector128.ConditionalSelect(Vector128.LessThan(q, m), q, m);
         }
 
-        return new Aabb2(new Vec2(lx - _radius, ly - _radius), new Vec2(ux + _radius, uy + _radius));
+        return new Aabb2(new Vec2(m.GetElement(0) - _radius, m.GetElement(1) - _radius), new Vec2(-m.GetElement(2) + _radius, -m.GetElement(3) + _radius));
     }
 
     /// <summary>The axis-aligned bounds in the body frame.</summary>

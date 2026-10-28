@@ -49,7 +49,7 @@ public sealed class TaskExecutor
     /// <summary>Runs <paramref name="body"/> for every task in <c>0..taskCount-1</c> and returns when all are done. Order of execution is unspecified; the result must not depend on it.</summary>
     public void For<TBody>(int taskCount, TBody body) where TBody : IParallelBody
     {
-        if (ThreadCount == 1 || taskCount <= 1 || !WorkerPool.TryRun(ThreadCount - 1, taskCount, in body))
+        if (ThreadCount == 1 || taskCount <= 1 || !WorkerPool.TryRun(Math.Min(ThreadCount - 1, taskCount - 1), taskCount, in body))
         {
             for (int i = 0; i < taskCount; i++) { body.Run(i); }
         }
@@ -65,7 +65,18 @@ public sealed class TaskExecutor
     public void ForStages<TBody>(int stageCount, TBody body, int mostTasks = int.MaxValue) where TBody : IStagedBody
     {
         if (stageCount <= 0) { return; }
-        if (ThreadCount == 1 || mostTasks < MinParallelTasks || !WorkerPool.TryRunStages(ThreadCount - 1, stageCount, in body))
+        int workers = ThreadCount - 1;
+        if (workers > 0 && mostTasks >= MinParallelTasks)
+        {
+            // Every thread crosses every stage boundary, so threads beyond what the stages can keep busy only add waiting: take as many as there are two tasks each in the average stage.
+            // This looks at the stage sizes alone; which thread runs which task never reaches a result.
+            long total = 0;
+            for (int s = 0; s < stageCount; s++) { total += body.TaskCount(s); }
+            long useful = total / (2L * stageCount);
+            if (useful - 1 < workers) { workers = (int)Math.Max(useful - 1, 0); }
+        }
+
+        if (workers == 0 || mostTasks < MinParallelTasks || !WorkerPool.TryRunStages(workers, stageCount, in body))
         {
             for (int s = 0; s < stageCount; s++)
             {
@@ -276,6 +287,8 @@ internal static class WorkerPool
                 int c = baseIndex + (owner * CounterStride);
                 while (true)
                 {
+                    // A plain read first: a block that is already fully claimed costs a shared read instead of an atomic add on a line other threads are writing.
+                    if (k != 0 && Volatile.Read(ref counters[c]) >= count) { break; }
                     long i = Interlocked.Increment(ref counters[c]) - 1;
                     if (i >= count) { break; }
                     try
