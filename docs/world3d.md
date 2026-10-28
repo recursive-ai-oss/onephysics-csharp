@@ -225,6 +225,18 @@ Not yet: wheel contact begin and end events, tracked and motorcycle vehicles, a 
 | queries-3d (settle) | 1 | 59.7 | 39.7 | 1.50 |
 | queries-3d (settle) | 8 | 13.7 | 11.6 | 1.19 |
 
+**Measured, joint solver** (local, load 6 to 10; median of three interleaved runs, ms per step; before = the world without the joint kernel and the continuous early-out, after = now; hashes of scenes with joints changed, all else equal):
+
+| scene | threads | before | after | speedup |
+|---|---|---|---|---|
+| joint-chains-3d | 1 | 3.33 | 1.26 | 2.6 |
+| joint-chains-3d | 8 | 1.63 | 0.87 | 1.9 |
+| ragdoll-pile-3d | 1 | 13.9 | 9.9 | 1.4 |
+| ragdoll-pile-3d | 8 | 5.9 | 4.3 | 1.4 |
+| joint-grid-3d (asleep) | 1 and 8 | 0.027 | 0.026 | 1.0 |
+
+In ragdoll-pile-3d the contact stage is more than half the step, so the joint kernel's gain is diluted.
+
 Sampled profile of large-pile-3d at one thread, before: solver 48 %, contacts 44 % (narrowphase 35 %, of which generic polyhedron pair 21 %). After: kernel about 31 %, narrowphase about 36 % (edge-pair axis test 11 %, polyhedron loading 5 %, GJK for separated cores 5 %, face axis test 4 %). Terrain after: kernel about 27 %, polyhedron loading 5 %, GJK 4 %, edge axes 3 %.
 
 **Allocation.** After warm-up a step allocates nothing on large-pile-3d and, apart from rare growth of reusable buffers, nothing on mesh-terrain-3d and heightfield-terrain-3d (median 0 bytes per step; it was 9.8 KB and 7 KB). The garbage came from handle checks that built their message text before testing (`Resolve`), a fresh options object per option check, `Span.Sort`/`Array.Sort` with a comparer (a delegate per call; pairs and events now use `Core/Sorting.cs`, whose orders are total so the result is unchanged), and the list a continuous-collision cast against a mesh allocated per call (now one per thread). Island body lists that outgrow their island go to a small spare pool that the next growth draws from. What is left is growth of narrowphase result buffers (one per 64-pair chunk, doubling) and island lists when a bigger contact set than before appears.
