@@ -383,6 +383,35 @@ public class World2DTests
     }
 
     [Fact]
+    public void ARestoreWhoseStoredExtentIsSmallerThanTheShapeIsRejectedAndLeavesTheWorldAlone()
+    {
+        // Fuzzing found snapshots whose stored per-body extent was tiny while the shape was huge: the bounds shortcut trusted it and the next step failed half way.
+        var w = NewWorld();
+        w.AddBox(new Vector2F(20f, 1f), at: new Vector2D(0, -0.5), type: BodyType.Static);
+        w.AddBox(new Vector2F(1f, 1f), at: new Vector2D(0, 3));
+        for (int i = 0; i < 5; i++) { w.Step(Dt); }
+        byte[] snap = w.Snapshot();
+        ulong h = w.ComputeHash();
+
+        byte[] needle = new byte[4];
+        System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(needle, float.Sqrt(0.5f));
+        byte[] tiny = new byte[4];
+        System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(tiny, 1e-3f);
+        var bad = (byte[])snap.Clone();
+        int patched = 0;
+        for (int i = 0; i + 4 <= bad.Length; i++)
+        {
+            if (bad.AsSpan(i, 4).SequenceEqual(needle)) { tiny.CopyTo(bad, i); patched++; }
+        }
+
+        Assert.True(patched > 0);
+        var e = Assert.Throws<SnapshotFormatException>(() => w.Restore(bad));
+        Assert.Contains("maximum extent", e.Message);
+        Assert.Equal(h, w.ComputeHash());
+        w.Step(Dt);
+    }
+
+    [Fact]
     public void ShiftingTheOriginKeepsHostCoordinatesAndTheSimulationRunning()
     {
         var w = NewWorld();

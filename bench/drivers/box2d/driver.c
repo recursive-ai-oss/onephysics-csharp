@@ -127,6 +127,10 @@ int main(int argc, char** argv)
     FILE* dump = args.timing ? NULL : op_dump_open(args.dump, s.nBody);
     if (dump) { snapshot(ids, s.nBody, d); op_dump_frame(dump, 0, d, s.nBody); }
 
+    // Optional per-stage profile (b2World_GetProfile) and counters (b2World_GetCounters), averaged over the measured steps; written only when OP_PROFILE is set.
+    int profiling = getenv("OP_PROFILE") != NULL;
+    double prof[23] = { 0 }, cnt[6] = { 0 };
+    int profSteps = 0;
     for (int step = 0; step < s.steps; step++)
     {
         for (int w = 0; w < s.nWake; w++)
@@ -134,6 +138,15 @@ int main(int argc, char** argv)
         double t0 = op_now_ns();
         b2World_Step(world, (float)s.dt, subSteps);
         stepNs[step] = op_now_ns() - t0;
+        if (profiling && step >= s.warmup)
+        {
+            b2Profile p = b2World_GetProfile(world); b2Counters c = b2World_GetCounters(world);
+            float v[23] = { p.step, p.pairs, p.collide, p.solve, p.solverSetup, p.constraints, p.prepareConstraints, p.integrateVelocities, p.warmStart, p.solveImpulses, p.integratePositions, p.relaxImpulses, p.restitution, p.storeImpulses, p.splitIslands, p.transforms, p.hitEvents, p.refit, p.bullets, p.sleepIslands, p.sensors, p.sensorHits, p.jointEvents };
+            for (int k = 0; k < 23; k++) prof[k] += v[k];
+            int touching = 0; for (int k = 0; k < 24; k++) touching += c.colorCounts[k];
+            cnt[0] += c.contactCount; cnt[1] += c.awakeContactCount; cnt[2] += c.recycledContactCount; cnt[3] += touching; cnt[4] += c.bodyCount; cnt[5] += c.islandCount;
+            profSteps++;
+        }
         if (dump && ((step + 1) % s.dumpEvery == 0 || step + 1 == s.steps)) { snapshot(ids, s.nBody, d); op_dump_frame(dump, step + 1, d, s.nBody); }
     }
     if (dump) fclose(dump);
@@ -181,6 +194,13 @@ int main(int argc, char** argv)
     fprintf(r, "step_ns="); for (int i = 0; i < s.steps; i++) fprintf(r, i ? ",%.0f" : "%.0f", stepNs[i]); fprintf(r, "\n");
     const char* names[3] = { "ray", "overlap", "cast" };
     for (int k = 0; k < 3 && s.nQuery > 0; k++) fprintf(r, "query_%s_ns=%.0f\nquery_%s_count=%d\nquery_%s_hits=%ld\n", names[k], qt.ns[k], names[k], qt.count[k], names[k], qt.hits[k]);
+    if (profiling && profSteps > 0)
+    {
+        const char* pn[23] = { "step", "pairs", "collide", "solve", "solverSetup", "constraints", "prepareConstraints", "integrateVelocities", "warmStart", "solveImpulses", "integratePositions", "relaxImpulses", "restitution", "storeImpulses", "splitIslands", "transforms", "hitEvents", "refit", "bullets", "sleepIslands", "sensors", "sensorHits", "jointEvents" };
+        for (int k = 0; k < 23; k++) fprintf(r, "prof_%s_ms=%.4f\n", pn[k], prof[k] / profSteps);
+        const char* cn[6] = { "contactCount", "awakeContactCount", "recycledContactCount", "touchingConstraints", "bodyCount", "islandCount" };
+        for (int k = 0; k < 6; k++) fprintf(r, "count_%s=%.1f\n", cn[k], cnt[k] / profSteps);
+    }
     fclose(r);
     b2DestroyWorld(world);
     return 0;
