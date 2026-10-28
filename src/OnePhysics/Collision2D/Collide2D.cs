@@ -1,4 +1,5 @@
 using System;
+using RecursiveAI.OnePhysics.Physics2D;
 
 namespace RecursiveAI.OnePhysics.Collision2D;
 
@@ -79,6 +80,21 @@ internal struct Poly
         return p;
     }
 
+    // Fill an existing, uncleared Poly in place. Building one by value and copying it out costs more than the transform: scalar stores followed by wide loads of the same bytes stall.
+    // Only the first N entries of V and Nm are set (Nm only when N >= 2); nothing reads past N.
+    public static void Load(ref Poly p, in Shape2D s)
+    {
+        p.N = s._count; p.R = s._radius; p.V = s._v; p.Nm = s._n;
+    }
+
+    public static void LoadTransformed(ref Poly p, in Shape2D s, Transform2 xf)
+    {
+        int n = s._count;
+        p.N = n; p.R = s._radius;
+        for (int i = 0; i < n; i++) { p.V[i] = xf.Apply(s._v[i]); }
+        if (n >= 2) { for (int i = 0; i < n; i++) { p.Nm[i] = xf.Q.Rotate(s._n[i]); } }
+    }
+
     public static Poly From(in Shape2D s, Transform2 xf)
     {
         var p = new Poly { N = s._count, R = s._radius };
@@ -130,8 +146,23 @@ public static class Collide2D
             return new Manifold2D(n, m.PointCount, p0, p1);
         }
 
-        var pa = Poly.From(in a);
-        var pb = Poly.From(in b, xfBInA);
+        if (a._count == 1 && b._count == 1)
+        {
+            // Two discs: the same arithmetic as Convex, without building polygons.
+            Vec2 ca = a._v[0], cb = xfBInA.Apply(b._v[0]);
+            Vec2 d = cb - ca;
+            float len = d.Length;
+            Vec2 n = len > 1e-12f ? d * (1f / len) : new Vec2(0f, 1f);
+            float sep = len - (a._radius + b._radius);
+            if (sep > speculativeDistance) { return default; }
+            Vec2 mid = 0.5f * ((ca + a._radius * n) + (cb - b._radius * n));
+            return new Manifold2D(n, 1, new ManifoldPoint2D(mid, sep, 0), default);
+        }
+
+        Mem.SkipInit(out Poly pa);
+        Mem.SkipInit(out Poly pb);
+        Poly.Load(ref pa, in a);
+        Poly.LoadTransformed(ref pb, in b, xfBInA);
         return Convex(in pa, in pb, speculativeDistance, false);
     }
 
