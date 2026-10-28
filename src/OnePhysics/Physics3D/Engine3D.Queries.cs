@@ -183,13 +183,13 @@ internal sealed partial class Engine3D
         float r = Math.Min(maxDist, 1f);
         for (;;)
         {
-            sc.Tris.Clear();
-            soup.GetCandidates(mover, moverInShape, r, sc.Tris, sc.Ids);
+            NarrowScratch.Tris.Clear();
+            soup.GetCandidates(mover, moverInShape, r, NarrowScratch.Tris, NarrowScratch.Ids);
             best = float.PositiveInfinity;
-            for (int i = 0; i < sc.Tris.Count; i++)
+            for (int i = 0; i < NarrowScratch.Tris.Count; i++)
             {
-                var tri = sc.Tris[i];
-                var d = Gjk3D.Distance(sc.TriBuf.Set(tri.V0, tri.V1, tri.V2), mover, moverInShape);
+                var tri = NarrowScratch.Tris[i];
+                var d = Gjk3D.Distance(NarrowScratch.TriBuf.Set(tri.V0, tri.V1, tri.V2), mover, moverInShape);
                 float dist = d.Overlapping ? 0f : d.Distance;
                 if (dist < best && dist <= maxDist) { best = dist; sub = tri.Id; point = d.PointA; normal = d.Normal; }
             }
@@ -286,7 +286,7 @@ internal sealed partial class Engine3D
                 }
                 else
                 {
-                    if (!g.Soup!.ShapeCast(q.Mover, rel, motion, out var hit, sc.Ids)) { return false; }
+                    if (!g.Soup!.ShapeCast(q.Mover, rel, motion, out var hit, NarrowScratch.Ids)) { return false; }
                     f = hit.Fraction; n = hit.Normal; p = hit.Point; sub = hit.TriangleId; startsOverlapping = hit.StartsOverlapping;
                 }
 

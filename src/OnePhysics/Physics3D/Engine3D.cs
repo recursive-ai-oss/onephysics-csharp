@@ -50,7 +50,8 @@ internal sealed partial class Engine3D : ISnapshotSection
     public float[] Wide = Array.Empty<float>();   // contact solver groups, one per batch (see W3D)
     public int[] WideIdx = Array.Empty<int>();
     public int[] SlotOf = Array.Empty<int>();     // constraint -> group * 8 + lane for this step, -1 when not in a group
-    public int KernelWidth = 8;                   // lanes per kernel run; results are the same at every width
+    // Lanes per kernel run; results are the same at every width, so this only picks the fast one: 256-bit vectors where the hardware has them (x64), pairs of 128-bit halves elsewhere (arm64, where Vector256 is emulated).
+    public int KernelWidth = System.Runtime.Intrinsics.Vector256.IsHardwareAccelerated ? 8 : 4;
 
     // Shapes (index = shape slot).
     public int[] GeomOf = new int[8];
@@ -310,19 +311,21 @@ internal sealed partial class Engine3D : ISnapshotSection
     /// <summary>Fails before a step when a moving body's bounds are outside what the broadphase accepts, so a step never stops half way. Lowest slot first.</summary>
     public void CheckBounds()
     {
-        if (FindOutOfBounds(false, out var h, out string message)) { throw new BodyOutOfBoundsException(h, message); }
+        if (FindOutOfBounds(false, out var h, out string message, true)) { throw new BodyOutOfBoundsException(h, message); }
     }
 
     private readonly double[] _dp3 = new double[3];
 
-    /// <summary>Finds the first body (lowest slot) whose bounds, as the broadphase would store them, are not valid.</summary>
-    public bool FindOutOfBounds(bool includeStatic, out BodyHandle handle, out string message)
+    /// <summary>Finds the first body (lowest slot) whose bounds, as the broadphase would store them, are not valid. With <paramref name="movingOnly"/>, sleeping bodies are skipped.</summary>
+    public bool FindOutOfBounds(bool includeStatic, out BodyHandle handle, out string message, bool movingOnly = false)
     {
         var bodies = Core.Bodies;
         int nb = bodies.HighWater;
         for (int b = 0; b < nb; b++)
         {
             if (!bodies.IsLive(b) || (!includeStatic && bodies.TypeOf(b) == BodyType.Static)) { continue; }
+            // A sleeping body has not moved since it was last checked (teleporting wakes it), and building the box of thousands of resting bodies every step is most of the cost of a sleeping world.
+            if (movingOnly && bodies.IsDynamic(b) && !bodies.IsAwake(b)) { continue; }
             for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
             {
                 var box = TightBox(b, s);

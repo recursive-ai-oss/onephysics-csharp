@@ -1,3 +1,5 @@
 # Allow-list for tools/check.sh. One extended regex per line, matched against grep's "path:line:text" output.
 # Lines starting with # and blank lines are ignored. A hit that matches here is not a failure. Keep it empty unless a hit is justified.
 ^src/OnePhysics/Physics2D/Mem\.cs:
+# Speed-only choice of kernel width (results are identical at every width; covered by the hash matrix with AVX2 off).
+^src/OnePhysics/Physics3D/Engine3D\.cs:[0-9]+:.*KernelWidth = System\.Runtime\.Intrinsics\.Vector256\.IsHardwareAccelerated

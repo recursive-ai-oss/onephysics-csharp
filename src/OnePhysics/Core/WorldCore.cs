@@ -552,7 +552,7 @@ public sealed class WorldCore
         stages.UpdateContacts(this);
         BuildAwakeBodies();
         _coloring.EnsureBodies(_bodies.HighWater);
-        _coloring.BuildActive(_bodies, _constraints, Executor);
+        _coloring.BuildActive(_bodies, _constraints, Executor, _awakeCount > 0);
         var ctx = new StepContext(dt, _options.Substeps);
         int active = _coloring.ActiveCount;
         int storeChunks = (active + ChunkSize - 1) / ChunkSize;
