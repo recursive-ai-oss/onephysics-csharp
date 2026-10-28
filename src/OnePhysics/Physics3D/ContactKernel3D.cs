@@ -161,7 +161,7 @@ internal static class ContactKernel3D
         var idx = e.WideIdx.AsSpan(group * W3D.IdxPerGroup, W3D.IdxPerGroup);
         var bodies = e.Core.Bodies;
         ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
-        ReadOnlySpan<float> dp = e.Dp, dq = e.Dq, winv = e.WInvI;
+        ReadOnlySpan<float> pk = e.Pk;
         Span<float> linW = bodies.LinearVelocity, angW = bodies.AngularVelocity;
         Span<float> stage = e.Wide.AsSpan(group * W3D.GroupFloats + W3D.StageOffset, W3D.StageFloats);
         Span<float> os = e.Wide.AsSpan(group * W3D.GroupFloats + W3D.OutOffset, W3D.OutFloats);
@@ -178,9 +178,9 @@ internal static class ContactKernel3D
                     int f = 19 * side;
                     stage[(f + 0) * width + l] = lin[3 * b]; stage[(f + 1) * width + l] = lin[3 * b + 1]; stage[(f + 2) * width + l] = lin[3 * b + 2];
                     stage[(f + 3) * width + l] = ang[3 * b]; stage[(f + 4) * width + l] = ang[3 * b + 1]; stage[(f + 5) * width + l] = ang[3 * b + 2];
-                    stage[(f + 6) * width + l] = dp[3 * b]; stage[(f + 7) * width + l] = dp[3 * b + 1]; stage[(f + 8) * width + l] = dp[3 * b + 2];
-                    stage[(f + 9) * width + l] = dq[4 * b]; stage[(f + 10) * width + l] = dq[4 * b + 1]; stage[(f + 11) * width + l] = dq[4 * b + 2]; stage[(f + 12) * width + l] = dq[4 * b + 3];
-                    for (int k = 0; k < 6; k++) { stage[(f + 13 + k) * width + l] = winv[6 * b + k]; }
+                    // Displacement, accumulated rotation and world inverse inertia come from one packed row.
+                    var row = pk.Slice(16 * b, 13);
+                    for (int k = 0; k < 13; k++) { stage[(f + 6 + k) * width + l] = row[k]; }
                 }
             }
 

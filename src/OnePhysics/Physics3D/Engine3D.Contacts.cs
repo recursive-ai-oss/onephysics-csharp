@@ -150,6 +150,7 @@ internal sealed partial class Engine3D
             Dp[3 * b] = 0f; Dp[3 * b + 1] = 0f; Dp[3 * b + 2] = 0f;
             Dq[4 * b] = 0f; Dq[4 * b + 1] = 0f; Dq[4 * b + 2] = 0f; Dq[4 * b + 3] = 1f;
             RefreshWorldInertia(b, invMass, invI, rot);
+            PackBody(b);
         }
 
         // 3. New pairs from the broadphase, in its sorted order.

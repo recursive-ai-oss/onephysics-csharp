@@ -45,6 +45,7 @@ internal sealed partial class Engine3D : ISnapshotSection
     public double[] StartPos = new double[24];
     public float[] StartRot = new float[32];
     public float[] Dq = new float[32];            // accumulated rotation over the step as a quaternion (x, y, z, w)
+    public float[] Pk = new float[16 * 8];        // per-step copy of Dp, Dq and WInvI side by side (16 floats a body) so the contact kernel reads one row per body; valid between the start of a step's contacts and its end
     public float[] WInvI = new float[48];         // inverse inertia in world axes, refreshed whenever a body turns
     public float[] Wide = Array.Empty<float>();   // contact solver groups, one per batch (see W3D)
     public int[] WideIdx = Array.Empty<int>();
@@ -100,7 +101,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         Grow(ref LocalCenter, 3 * n); Grow(ref Mass, n); Grow(ref Inertia, 6 * n); Grow(ref MaxExtent, n); Grow(ref MinExtent, n);
         Grow(ref LinearDamping, n); Grow(ref AngularDamping, n); Grow(ref GravityScale, n); Grow(ref Force, 3 * n); Grow(ref Torque, 3 * n);
         Grow(ref BodyFlags, n); Grow(ref ShapeHead, n); Grow(ref ShapeTail, n); Grow(ref Dp, 3 * n);
-        Grow(ref StartPos, 3 * n); Grow(ref StartRot, 4 * n); Grow(ref Dq, 4 * n); Grow(ref WInvI, 6 * n);
+        Grow(ref StartPos, 3 * n); Grow(ref StartRot, 4 * n); Grow(ref Dq, 4 * n); Grow(ref WInvI, 6 * n); Grow(ref Pk, 16 * n);
     }
 
     public void EnsureShapes(int n)
