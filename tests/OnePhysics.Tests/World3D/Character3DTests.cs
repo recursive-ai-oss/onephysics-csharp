@@ -631,8 +631,7 @@ public class Character3DTests
         static HashSet<string> Names(Type t) => t.GetMembers(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.DeclaredOnly)
             .Where(m => m.MemberType != System.Reflection.MemberTypes.Constructor).Select(m => m.Name.StartsWith("get_", StringComparison.Ordinal) || m.Name.StartsWith("set_", StringComparison.Ordinal) ? m.Name[4..] : m.Name).ToHashSet();
         // Dimension-intrinsic, 3D only: the up direction and the rigid kind (2D is always upright in y and has no rigid variant here).
-        // Pending in 2D (the 2D character gets them in a later unit): mass, the push force limit and the steep-slope ground state.
-        string[] only3 = ["Up", "Kind", "RigidHumanoid", "Mass", "MaxPushForce", "Ground"];
+        string[] only3 = ["Up", "Kind", "RigidHumanoid"];
         foreach (var (two, three) in new[] { (typeof(RecursiveAI.OnePhysics.Physics2D.Character), typeof(Character)), (typeof(RecursiveAI.OnePhysics.Physics2D.CharacterDef), typeof(CharacterDef)) })
         {
             var a = Names(two); var b = Names(three);

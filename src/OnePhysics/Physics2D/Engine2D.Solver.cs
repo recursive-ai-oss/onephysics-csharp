@@ -1,4 +1,6 @@
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics.Broadphase;
 using RecursiveAI.OnePhysics.Collision2D;
@@ -124,6 +126,14 @@ internal sealed partial class Engine2D
     /// <summary>Once per step: effective masses, adjusted separations, relative velocities for restitution and soft coefficients of the contacts of one batch, from the manifolds stored in the payloads, into one wide group.</summary>
     public void PrepareBatch(ReadOnlySpan<int> constraints, int group, in StepContext ctx)
     {
+        // A batch of contacts alone (nearly every batch) takes the lean path below; a batch holding a joint takes the general one.
+        {
+            var kinds = Core.Constraints.Kind;
+            bool joints = false;
+            foreach (int c in constraints) { if (kinds[c] == (byte)ConstraintKind.Joint) { joints = true; break; } }
+            if (!joints) { PrepareContactBatch(constraints, group); return; }
+        }
+
         var core = Core;
         var cs = core.Constraints;
         var bodies = core.Bodies;
@@ -249,6 +259,183 @@ internal sealed partial class Engine2D
         {
             for (int f = 0; f < W2D.Fields; f++) { Mem.At(w, f * 8 + l) = 0f; }
         }
+    }
+
+    /// <summary>
+    /// <see cref="PrepareBatch"/> for a batch with no joint: the same values in the same fields, written by three short passes over the (at most eight) contacts instead of one long one, which keeps
+    /// the working set in registers: which bodies, then the shared coefficients, then the points. Table and group accesses go through <see cref="Mem"/> with indices bounded by construction:
+    /// a lane is below the batch size (at most eight), a field is a constant, a body or constraint index comes from the constraint store.
+    /// </summary>
+    private void PrepareContactBatch(ReadOnlySpan<int> constraints, int group)
+    {
+        var core = Core;
+        var cs = core.Constraints;
+        var bodies = core.Bodies;
+        int n = constraints.Length;
+        if (n > W2D.Lanes) { throw new InvalidOperationException("a batch holds at most " + W2D.Lanes + " constraints"); }
+        ReadOnlySpan<int> bodyA = cs.BodyA, bodyB = cs.BodyB;
+        ReadOnlySpan<byte> type = bodies.Type;
+        ReadOnlySpan<byte> points = cs.PointCount;
+        ref float W = ref Mem.Base(Wide.AsSpan(group * W2D.GroupFloats, W2D.GroupFloats), W2D.GroupFloats);
+        ref int I = ref Mem.Base(WideIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup), W2D.IdxPerGroup);
+        ref int ids = ref Mem.Base(WideCons.AsSpan(group * W2D.Lanes, W2D.Lanes), W2D.Lanes);
+        var jidx = JIdx.Length >= (group + 1) * W2D.IdxPerGroup ? JIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup) : default;
+        if (jidx.Length != 0)
+        {
+            for (int l = 0; l < W2D.Lanes; l++) { jidx[l] = 0; jidx[8 + l] = 0; jidx[16 + l] = -1; jidx[24 + l] = -1; }
+        }
+
+        for (int l = n; l < W2D.Lanes; l++)
+        {
+            Mem.Lane(ref ids, l) = -1;
+            ref int il = ref Mem.Lane(ref I, l);
+            Mem.Lane(ref il, 0) = 0; Mem.Lane(ref il, 8) = 0; Mem.Lane(ref il, 16) = -1; Mem.Lane(ref il, 24) = -1;
+        }
+
+        // Pass 1: which bodies each lane touches and which of them the solve writes back (the dynamic ones), then what the two bodies and the manifold share, once per contact.
+        ReadOnlySpan<float> invMass = bodies.InverseMass, invI = bodies.InverseInertia;
+        float dynBias = _dynBias, dynMass = _dynMass, dynImpulse = _dynImpulse, stBias = _stBias, stMass = _stMass, stImpulse = _stImpulse;
+        byte anyRestitution = 0, anyRolling = 0;
+        for (int l = 0; l < n; l++)
+        {
+            int c = constraints[l];
+            var pl = cs.Payload(c);
+            if (pl.Length < ManifoldLayout.Header + 2 * ManifoldLayout.PointStride) { throw new InvalidOperationException("the 2D payload layout is smaller than a two-point manifold"); }
+            int a = Mem.At(bodyA, c), b = Mem.At(bodyB, c);
+            Mem.Lane(ref ids, l) = c;
+            SlotOf[c] = group * W2D.Lanes + l;
+            ref int il = ref Mem.Lane(ref I, l);
+            Mem.Lane(ref il, 0) = (a + 1) * BS2D.Stride; Mem.Lane(ref il, 8) = (b + 1) * BS2D.Stride;
+            Mem.Lane(ref il, 16) = Mem.At(type, a) == (byte)BodyType.Dynamic ? (a + 1) * BS2D.Stride : -1;
+            Mem.Lane(ref il, 24) = Mem.At(type, b) == (byte)BodyType.Dynamic ? (b + 1) * BS2D.Stride : -1;
+            float mA = Mem.At(invMass, a), iA = Mem.At(invI, a), mB = Mem.At(invMass, b), iB = Mem.At(invI, b);
+            ref float wl = ref Mem.Lane(ref W, l);
+            Mem.Field(ref wl, W2D.NormalX) = Mem.At(pl, ManifoldLayout.Normal); Mem.Field(ref wl, W2D.NormalY) = Mem.At(pl, ManifoldLayout.Normal + 1);
+            Mem.Field(ref wl, W2D.Friction) = Mem.At(pl, ManifoldLayout.Friction);
+            float restitution = Mem.At(pl, ManifoldLayout.Restitution);
+            Mem.Field(ref wl, W2D.Restitution) = restitution;
+            if (restitution > 0f) { anyRestitution = 1; }
+            float rolling = Mem.At(pl, ManifoldLayout.RollingResistance);
+            Mem.Field(ref wl, W2D.Rolling) = rolling;
+            float k = iA + iB;
+            Mem.Field(ref wl, W2D.RollingMass) = k; // inverted for the whole group below
+            Mem.Field(ref wl, W2D.InvMassA) = mA; Mem.Field(ref wl, W2D.InvInertiaA) = iA; Mem.Field(ref wl, W2D.InvMassB) = mB; Mem.Field(ref wl, W2D.InvInertiaB) = iB;
+            if (mA == 0f || mB == 0f) { Mem.Field(ref wl, W2D.BiasRate) = stBias; Mem.Field(ref wl, W2D.MassScale) = stMass; Mem.Field(ref wl, W2D.ImpulseScale) = stImpulse; }
+            else { Mem.Field(ref wl, W2D.BiasRate) = dynBias; Mem.Field(ref wl, W2D.MassScale) = dynMass; Mem.Field(ref wl, W2D.ImpulseScale) = dynImpulse; }
+            float rollImpulse = Mem.At(pl, ManifoldLayout.RollingImpulse);
+            Mem.Field(ref wl, W2D.Roll) = rollImpulse;
+            if (rolling > 0f || rollImpulse != 0f) { anyRolling = 1; }
+            Mem.Field(ref wl, W2D.Impulse0 + 2) = 0f; Mem.Field(ref wl, W2D.Impulse1 + 2) = 0f; // the largest normal impulse of the step starts at zero
+        }
+
+        // Pass 3: the points. The relative velocity is read by restitution and by hit events only, so it is computed only for contacts that have one of them.
+        ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
+        bool wantHits = core.Events.Wants(EventKind.ContactHit);
+        byte maxPoints = 1;
+        for (int l = 0; l < n; l++)
+        {
+            int c = constraints[l];
+            var pl = cs.Payload(c);
+            int a = Mem.At(bodyA, c), b = Mem.At(bodyB, c);
+            ref float wl = ref Mem.Lane(ref W, l);
+            float mA = Mem.Field(ref wl, W2D.InvMassA), iA = Mem.Field(ref wl, W2D.InvInertiaA), mB = Mem.Field(ref wl, W2D.InvMassB), iB = Mem.Field(ref wl, W2D.InvInertiaB);
+            float nx = Mem.Field(ref wl, W2D.NormalX), ny = Mem.Field(ref wl, W2D.NormalY);
+            bool wantRel = wantHits || Mem.Field(ref wl, W2D.Restitution) > 0f;
+            float vAx = 0f, vAy = 0f, wA = 0f, vBx = 0f, vBy = 0f, wB = 0f;
+            if (wantRel) { vAx = Mem.At(lin, 2 * a); vAy = Mem.At(lin, 2 * a + 1); wA = Mem.At(ang, a); vBx = Mem.At(lin, 2 * b); vBy = Mem.At(lin, 2 * b + 1); wB = Mem.At(ang, b); }
+            int count = Mem.At(points, c);
+            PreparePoint(0, pl, ref wl, nx, ny, mA, iA, mB, iB, wantRel, vAx, vAy, wA, vBx, vBy, wB);
+            if (count > 1)
+            {
+                maxPoints = 2;
+                PreparePoint(1, pl, ref wl, nx, ny, mA, iA, mB, iB, wantRel, vAx, vAy, wA, vBx, vBy, wB);
+            }
+            else
+            {
+                // The impulses of a missing second point are stored back with the others, so they read zero.
+                Mem.Field(ref wl, W2D.Impulse1) = 0f; Mem.Field(ref wl, W2D.Impulse1 + 1) = 0f; Mem.Field(ref wl, W2D.Impulse1 + 2) = 0f;
+            }
+        }
+
+        // A manifold with one point leaves the second point's geometry zero. A group whose manifolds all have one point never reads it, so only a group with a two-point manifold clears it.
+        if (maxPoints == 2)
+        {
+            for (int l = 0; l < n; l++)
+            {
+                if (Mem.At(points, constraints[l]) > 1) { continue; }
+                ref float wl = ref Mem.Lane(ref W, l);
+                for (int f = 0; f < W2D.PointStride; f++) { Mem.Field(ref wl, W2D.Point0 + W2D.PointStride + f) = 0f; }
+            }
+        }
+
+        GroupRestitution[group] = anyRestitution;
+        GroupRolling[group] = anyRolling;
+        GroupPoints[group] = maxPoints;
+        if (n > 0)
+        {
+            bool overflowSet = cs.Color[constraints[0]] == ConstraintStore.Overflow;
+            BatchSimple[constraints[0]] = (byte)(overflowSet ? 0 : 1);
+        }
+
+        // The effective masses were stored as the sums they invert. One divide per field for all eight lanes does what a scalar divide per contact did, with the same results:
+        // a positive sum becomes its reciprocal (an IEEE divide is exact in any width) and anything else, a zero or a NaN, becomes zero.
+        if (n > 0)
+        {
+            InvertLanes(ref W, W2D.RollingMass);
+            InvertLanes(ref W, W2D.Point0 + W2D.NormalMass);
+            InvertLanes(ref W, W2D.Point0 + W2D.TangentMass);
+            if (maxPoints == 2)
+            {
+                InvertLanes(ref W, W2D.Point0 + W2D.PointStride + W2D.NormalMass);
+                InvertLanes(ref W, W2D.Point0 + W2D.PointStride + W2D.TangentMass);
+            }
+        }
+
+        // Unused lanes of a short group read as zeros. A batch with no contacts never reads its contact group.
+        for (int l = n > 0 ? n : W2D.Lanes; l < W2D.Lanes; l++)
+        {
+            ref float wl = ref Mem.Lane(ref W, l);
+            for (int f = 0; f < W2D.Fields; f++) { Mem.Field(ref wl, f) = 0f; }
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void InvertLanes(ref float group, int field)
+    {
+        var k = Mem.LoadLanes(ref group, field);
+        var zero = Vector256<float>.Zero;
+        Mem.StoreLanes(ref group, field, Vector256.ConditionalSelect(Vector256.GreaterThan(k, zero), Vector256.Create(1f) / k, zero));
+    }
+
+    /// <summary>One manifold point of <see cref="PrepareContactBatch"/>: anchors, adjusted separation, effective masses, relative velocity and the warm-start impulses. <paramref name="i"/> is a constant at every call, so every offset folds.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void PreparePoint(int i, ReadOnlySpan<float> pl, ref float wl, float nx, float ny, float mA, float iA, float mB, float iB, bool wantRel, float vAx, float vAy, float wA, float vBx, float vBy, float wB)
+    {
+        float tx = ny, ty = -nx;
+        float rAx = Mem.At(pl, ManifoldLayout.AnchorA(i)), rAy = Mem.At(pl, ManifoldLayout.AnchorA(i) + 1);
+        float rBx = Mem.At(pl, ManifoldLayout.AnchorB(i)), rBy = Mem.At(pl, ManifoldLayout.AnchorB(i) + 1);
+        float sep = Mem.At(pl, ManifoldLayout.Separation(i));
+        int o = W2D.Point0 + i * W2D.PointStride;
+        Mem.Field(ref wl, o + W2D.AnchorAX) = rAx; Mem.Field(ref wl, o + W2D.AnchorAY) = rAy; Mem.Field(ref wl, o + W2D.AnchorBX) = rBx; Mem.Field(ref wl, o + W2D.AnchorBY) = rBy;
+        Mem.Field(ref wl, o + W2D.AdjustedSeparation) = sep - ((rBx - rAx) * nx + (rBy - rAy) * ny);
+        float rnA = rAx * ny - rAy * nx, rnB = rBx * ny - rBy * nx;
+        float kn = mA + mB + iA * rnA * rnA + iB * rnB * rnB;
+        Mem.Field(ref wl, o + W2D.NormalMass) = kn; // inverted for the whole group by InvertMasses
+        float rtA = rAx * ty - rAy * tx, rtB = rBx * ty - rBy * tx;
+        float kt = mA + mB + iA * rtA * rtA + iB * rtB * rtB;
+        Mem.Field(ref wl, o + W2D.TangentMass) = kt;
+        float rel = 0f;
+        if (wantRel)
+        {
+            float dvx = (vBx - wB * rBy) - (vAx - wA * rAy);
+            float dvy = (vBy + wB * rBx) - (vAy + wA * rAx);
+            rel = dvx * nx + dvy * ny;
+        }
+
+        Mem.Field(ref wl, o + W2D.RelativeVelocity) = rel;
+        int ib = i == 0 ? W2D.Impulse0 : W2D.Impulse1;
+        Mem.Field(ref wl, ib) = Mem.At(pl, ManifoldLayout.NormalImpulse(i));
+        Mem.Field(ref wl, ib + 1) = Mem.At(pl, ManifoldLayout.Tangent1Impulse(i));
     }
 
     /// <summary>A revolute joint with no spring, motor or limit, whose stored spring, motor and limit impulses are all zero: the wide kernel handles exactly this.</summary>

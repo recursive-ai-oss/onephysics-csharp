@@ -16,7 +16,7 @@ internal sealed partial class Engine2D
     public int[] CharBody = new int[8];          // body slot
     public int[] CharBodyGen = new int[8];
     public CharacterDef[] CharDef = new CharacterDef[8];
-    public bool[] CharGrounded = new bool[8];
+    public GroundState[] CharGround = new GroundState[8];
     public float[] CharNx = new float[8], CharNy = new float[8];
     public int[] CharGroundBody = new int[8];    // body slot, -1 none
     public int[] CharGroundGen = new int[8];
@@ -24,7 +24,7 @@ internal sealed partial class Engine2D
 
     private void EnsureCharacters(int n)
     {
-        Grow(ref CharBody, n); Grow(ref CharBodyGen, n); Grow(ref CharDef, n); Grow(ref CharGrounded, n);
+        Grow(ref CharBody, n); Grow(ref CharBodyGen, n); Grow(ref CharDef, n); Grow(ref CharGround, n);
         Grow(ref CharNx, n); Grow(ref CharNy, n); Grow(ref CharGroundBody, n); Grow(ref CharGroundGen, n); Grow(ref CharVx, n); Grow(ref CharVy, n);
     }
 
@@ -35,7 +35,7 @@ internal sealed partial class Engine2D
         CharBody[c] = body.Index; CharBodyGen[c] = body.Generation;
         CharDef[c] = def;
         IndexCharacterBody(body.Index, c);
-        CharGrounded[c] = false; CharNx[c] = 0f; CharNy[c] = 0f; CharGroundBody[c] = -1; CharGroundGen[c] = 0; CharVx[c] = 0f; CharVy[c] = 0f;
+        CharGround[c] = GroundState.InAir; CharNx[c] = 0f; CharNy[c] = 0f; CharGroundBody[c] = -1; CharGroundGen[c] = 0; CharVx[c] = 0f; CharVy[c] = 0f;
         return c;
     }
 
@@ -84,7 +84,7 @@ internal sealed partial class Engine2D
             if (!CharHandles.IsLive(c)) { continue; }
             int b = CharBody[c];
             var p = bodies.PositionOf(b);
-            bool gr = CharGrounded[c];
+            bool gr = CharGround[c] == GroundState.OnGround;
             var ground = gr && CharGroundBody[c] >= 0 && bodies.Handles.IsAlive(CharGroundBody[c], CharGroundGen[c]) ? Core.HandleOfBody(CharGroundBody[c]) : default;
             g.Add(new Debug.DebugCharacter(Core.HandleOfBody(b), new Vector3D(p[0], p[1], 0.0), CharDef[c].Radius, CharDef[c].Height, gr, gr ? new Vector3D(CharNx[c], CharNy[c], 0.0) : default, ground));
         }
@@ -102,7 +102,8 @@ internal sealed partial class Engine2D
             w.WriteInt32(CharBody[c]); w.WriteInt32(CharBodyGen[c]);
             w.WriteSingle(d.Radius); w.WriteSingle(d.Height); w.WriteSingle(d.SlopeLimit); w.WriteSingle(d.StepOffset); w.WriteSingle(d.Skin);
             w.WriteUInt32(d.LayerMask); w.WriteSingle(d.PushStrength); w.WriteInt32(d.Layer); w.WriteUInt32(d.CategoryBits); w.WriteUInt32(d.MaskBits);
-            w.WriteBool(CharGrounded[c]); w.WriteSingle(CharNx[c]); w.WriteSingle(CharNy[c]);
+            w.WriteSingle(d.Mass); w.WriteSingle(d.MaxPushForce);
+            w.WriteByte((byte)CharGround[c]); w.WriteSingle(CharNx[c]); w.WriteSingle(CharNy[c]);
             w.WriteInt32(CharGroundBody[c]); w.WriteInt32(CharGroundGen[c]);
             w.WriteSingle(CharVx[c]); w.WriteSingle(CharVy[c]);
         }
@@ -113,7 +114,7 @@ internal sealed partial class Engine2D
         public HandleTable Handles = new();
         public int[] Body = Array.Empty<int>(), BodyGen = Array.Empty<int>(), GroundBody = Array.Empty<int>(), GroundGen = Array.Empty<int>();
         public CharacterDef[] Def = Array.Empty<CharacterDef>();
-        public bool[] Grounded = Array.Empty<bool>();
+        public GroundState[] Ground = Array.Empty<GroundState>();
         public float[] Nx = Array.Empty<float>(), Ny = Array.Empty<float>(), Vx = Array.Empty<float>(), Vy = Array.Empty<float>();
     }
 
@@ -121,7 +122,7 @@ internal sealed partial class Engine2D
     {
         var b = new CharacterBlock { Handles = HandleTable.Read(r, "character") };
         int n = b.Handles.HighWater;
-        b.Body = new int[n]; b.BodyGen = new int[n]; b.GroundBody = new int[n]; b.GroundGen = new int[n]; b.Def = new CharacterDef[n]; b.Grounded = new bool[n];
+        b.Body = new int[n]; b.BodyGen = new int[n]; b.GroundBody = new int[n]; b.GroundGen = new int[n]; b.Def = new CharacterDef[n]; b.Ground = new GroundState[n];
         b.Nx = new float[n]; b.Ny = new float[n]; b.Vx = new float[n]; b.Vy = new float[n];
         for (int c = 0; c < n; c++)
         {
@@ -133,10 +134,15 @@ internal sealed partial class Engine2D
                 Radius = r.ReadSingle(), Height = r.ReadSingle(), SlopeLimit = r.ReadSingle(), StepOffset = r.ReadSingle(), Skin = r.ReadSingle(),
                 LayerMask = r.ReadUInt32(), PushStrength = r.ReadSingle(), Layer = r.ReadInt32(), CategoryBits = r.ReadUInt32(), MaskBits = r.ReadUInt32(),
             };
+            d.Mass = r.ReadSingle();
+            d.MaxPushForce = r.ReadSingle();
             try { d.Validate(); }
             catch (ArgumentOutOfRangeException e) { throw r.Error("invalid character definition: " + e.Message); }
             b.Def[c] = d;
-            b.Grounded[c] = r.ReadBool(); b.Nx[c] = r.ReadSingle(); b.Ny[c] = r.ReadSingle();
+            byte gs = r.ReadByte();
+            if (gs > (byte)GroundState.OnGround) { throw r.Error("invalid character ground state"); }
+            b.Ground[c] = (GroundState)gs;
+            b.Nx[c] = r.ReadSingle(); b.Ny[c] = r.ReadSingle();
             b.GroundBody[c] = r.ReadInt32(); b.GroundGen[c] = r.ReadInt32();
             b.Vx[c] = r.ReadSingle(); b.Vy[c] = r.ReadSingle();
             if (!float.IsFinite(b.Nx[c] + b.Ny[c] + b.Vx[c] + b.Vy[c])) { throw r.Error("non-finite character state"); }
@@ -158,11 +164,11 @@ internal sealed partial class Engine2D
         CharHandles = b.Handles;
         Array.Fill(_charOfBody, -1);
         int n = Math.Max(b.Handles.HighWater, 1);
-        CharBody = new int[n]; CharBodyGen = new int[n]; CharDef = new CharacterDef[n]; CharGrounded = new bool[n];
+        CharBody = new int[n]; CharBodyGen = new int[n]; CharDef = new CharacterDef[n]; CharGround = new GroundState[n];
         CharNx = new float[n]; CharNy = new float[n]; CharGroundBody = new int[n]; CharGroundGen = new int[n]; CharVx = new float[n]; CharVy = new float[n];
         for (int c = 0; c < b.Handles.HighWater; c++)
         {
-            CharBody[c] = b.Body[c]; CharBodyGen[c] = b.BodyGen[c]; CharDef[c] = b.Def[c]; CharGrounded[c] = b.Grounded[c];
+            CharBody[c] = b.Body[c]; CharBodyGen[c] = b.BodyGen[c]; CharDef[c] = b.Def[c]; CharGround[c] = b.Ground[c];
             if (b.Handles.IsLive(c)) { IndexCharacterBody(b.Body[c], c); }
             CharNx[c] = b.Nx[c]; CharNy[c] = b.Ny[c]; CharGroundBody[c] = b.GroundBody[c]; CharGroundGen[c] = b.GroundGen[c]; CharVx[c] = b.Vx[c]; CharVy[c] = b.Vy[c];
         }

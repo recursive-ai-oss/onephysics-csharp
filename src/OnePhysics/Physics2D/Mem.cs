@@ -36,6 +36,96 @@ internal static class Mem
         return ref Unsafe.Add(ref MemoryMarshal.GetReference(s), offset);
     }
 
+    /// <summary>A reference to the first float of a group of <paramref name="count"/> floats; <see cref="Lane(ref float, int)"/> and <see cref="Field"/> then address it. The group's length is checked once here (and in the Checked build on every lane and field).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref float Base(Span<float> s, int count)
+    {
+        if (s.Length < count) { throw new InvalidOperationException("kernel group of " + count + " floats outside " + s.Length); }
+        return ref MemoryMarshal.GetReference(s);
+    }
+
+    /// <summary>A reference to the first field of lane <paramref name="lane"/> of a wide group (fields sit eight floats apart); the caller keeps the lane below eight.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref float Lane(ref float group, int lane)
+    {
+        CheckSlot(0, lane);
+        return ref Unsafe.Add(ref group, lane);
+    }
+
+    /// <summary>A reference to field <paramref name="field"/> of the lane that <paramref name="lane"/> was taken from (see <see cref="Lane(ref float, int)"/>); the caller keeps the field below the group's field count.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref float Field(ref float lane, int field)
+    {
+        CheckSlot(field, 0);
+        return ref Unsafe.Add(ref lane, field * 8);
+    }
+
+    /// <summary>Loads the eight lanes of one field of a wide group.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Vector256<float> LoadLanes(ref float group, int field)
+    {
+        CheckSlot(field, 0);
+        return Vector256.LoadUnsafe(ref group, (nuint)(field * 8));
+    }
+
+    /// <summary>Stores the eight lanes of one field of a wide group.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void StoreLanes(ref float group, int field, Vector256<float> value)
+    {
+        CheckSlot(field, 0);
+        value.StoreUnsafe(ref group, (nuint)(field * 8));
+    }
+
+    /// <summary>A reference to element <paramref name="i"/> of an int table that starts at <paramref name="table"/>; the caller keeps the index inside the table's checked length.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref int Lane(ref int table, int i)
+    {
+        CheckItem(i);
+        return ref Unsafe.Add(ref table, i);
+    }
+
+    /// <summary>Element <paramref name="offset"/> of an int array without a bounds check; the caller has established the range.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref readonly int At(ReadOnlySpan<int> s, int offset)
+    {
+        RangeIndex(offset, s.Length);
+        return ref Unsafe.Add(ref MemoryMarshal.GetReference(s), offset);
+    }
+
+    /// <summary>Element <paramref name="offset"/> of a byte array without a bounds check; the caller has established the range.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref readonly byte At(ReadOnlySpan<byte> s, int offset)
+    {
+        RangeIndex(offset, s.Length);
+        return ref Unsafe.Add(ref MemoryMarshal.GetReference(s), offset);
+    }
+
+    [Conditional("CHECKED")]
+    private static void RangeIndex(int offset, int length)
+    {
+        if ((uint)offset >= (uint)length) { throw new InvalidOperationException("kernel access " + offset + " outside " + length); }
+    }
+
+    [Conditional("CHECKED")]
+    private static void CheckSlot(int field, int lane)
+    {
+        if ((uint)field >= 40u || (uint)lane >= 8u) { throw new InvalidOperationException("kernel slot " + field + "/" + lane + " outside a group"); }
+    }
+
+    /// <summary>A reference to the first int of a span of at least <paramref name="count"/> ints; <see cref="Lane(ref int, int)"/> then indexes it.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref int Base(Span<int> s, int count)
+    {
+        if (s.Length < count) { throw new InvalidOperationException("kernel table of " + count + " ints outside " + s.Length); }
+        return ref MemoryMarshal.GetReference(s);
+    }
+
+    [Conditional("CHECKED")]
+    private static void CheckItem(int i)
+    {
+        if ((uint)i >= 32u) { throw new InvalidOperationException("kernel table index " + i + " outside a group"); }
+    }
+
     /// <summary>Declares a scratch buffer without clearing it; the caller writes every element it reads.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void SkipInit<TBuffer>(out TBuffer buffer) => Unsafe.SkipInit(out buffer);

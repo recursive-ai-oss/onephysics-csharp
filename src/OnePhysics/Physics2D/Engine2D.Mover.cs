@@ -354,7 +354,6 @@ internal sealed partial class Engine2D
         }
 
         // Settle: undo any overlap with the skin zone the last movement ended in (and report those surfaces as hits), then find the ground: the best surface within the slope limit just under the capsule.
-        bool grounded = false;
         float gnx = 0f, gny = 0f;
         int gslot = -1;
         c.Range = 3f * c.Skin;
@@ -363,17 +362,31 @@ internal sealed partial class Engine2D
         var settle = Mover2D.Solve(_mvPlanes.AsSpan(0, _mvPlaneCount), 0f, 0f, 50, 1e-5f);
         MvRecordHits(in c);
         x += (double)settle.X; y += (double)settle.Y;
+        var ground = GroundState.InAir;
         if (!userUp)
         {
-            float best = c.CosSlope;
+            float best = c.CosSlope, bestSteep = 0f;
             for (int i = 0; i < _mvPlaneCount; i++)
             {
                 float ny = _mvPlanes[i].Normal.Y;
                 float sep = _mvPlanes[i].Separation + settle.X * _mvPlanes[i].Normal.X + settle.Y * ny;
-                if (ny < c.CosSlope || sep > 2f * c.Skin || IsCharacterBody(Core.Shapes.Owner[_mvMeta[i].Slot])) { continue; }
-                if (!grounded || ny > best) { best = ny; grounded = true; gnx = _mvPlanes[i].Normal.X; gny = ny; gslot = _mvMeta[i].Slot; }
+                bool isChar = IsCharacterBody(Core.Shapes.Owner[_mvMeta[i].Slot]);
+                if (isChar) { continue; }
+                if (ny >= c.CosSlope)
+                {
+                    if (sep > 2f * c.Skin) { continue; }
+                    if (ground != GroundState.OnGround || ny > best) { best = ny; ground = GroundState.OnGround; gnx = _mvPlanes[i].Normal.X; gny = ny; gslot = _mvMeta[i].Slot; }
+                }
+                else if (ground != GroundState.OnGround && ny > 0.01f)
+                {
+                    // Steep planes hold the skin distance: their separation already has it taken off.
+                    if (sep + c.Skin > 2f * c.Skin) { continue; }
+                    if (ground != GroundState.OnSteepGround || ny > bestSteep) { bestSteep = ny; ground = GroundState.OnSteepGround; gnx = _mvPlanes[i].Normal.X; gny = ny; gslot = _mvMeta[i].Slot; }
+                }
             }
         }
+
+        bool grounded = ground == GroundState.OnGround;
 
         var flags = CharacterContact.None;
         if (_mvWall) { flags |= CharacterContact.Sides; }
@@ -382,21 +395,31 @@ internal sealed partial class Engine2D
 
         // Pushes: a dynamic body the character walked into is brought up to the walking speed along the push direction.
         int n = _mvHitCount;
-        if (def.PushStrength > 0f)
+        if (def.PushStrength > 0f && def.MaxPushForce > 0f)
         {
             for (int i = 0; i < n; i++)
             {
                 ref MoverHitRec h = ref _mvHits[i];
                 int hb = Core.Shapes.Owner[h.Slot];
-                if (Core.Bodies.TypeOf(hb) != BodyType.Dynamic || h.Ny >= c.CosSlope) { continue; }
+                if (Core.Bodies.TypeOf(hb) != BodyType.Dynamic || IsCharacterBody(hb) || h.Ny >= c.CosSlope) { continue; }
                 float want = (displacement.X * -h.Nx + displacement.Y * -h.Ny) / dt;
                 var bv = Core.Bodies.LinearVelocityOf(hb);
                 float have = bv[0] * -h.Nx + bv[1] * -h.Ny;
                 float dv = (want - have) * def.PushStrength;
                 if (!(dv > 0f)) { continue; }
-                float mass = Mass[hb];
+                float impulse = Math.Min(dv * Mass[hb], def.MaxPushForce * dt);
                 var body = new Body(world, Core.HandleOfBody(hb));
-                body.ApplyImpulseAt(new Vector2F(-h.Nx * dv * mass, -h.Ny * dv * mass), new Vector2D(h.Px, h.Py));
+                body.ApplyImpulseAt(new Vector2F(-h.Nx * impulse, -h.Ny * impulse), new Vector2D(h.Px, h.Py));
+            }
+        }
+
+        // Standing on a dynamic body presses it down with the character's weight.
+        if (grounded && gslot >= 0)
+        {
+            int gb = Core.Shapes.Owner[gslot];
+            if (Core.Bodies.TypeOf(gb) == BodyType.Dynamic && Core.Bodies.IsAwake(gb) && !IsCharacterBody(gb))
+            {
+                new Body(world, Core.HandleOfBody(gb)).ApplyImpulse(Opt.Gravity * (def.Mass * dt));
             }
         }
 
@@ -408,8 +431,8 @@ internal sealed partial class Engine2D
         }
 
         state.Position = new Vector2D(x, y);
-        state.IsGrounded = grounded;
-        state.GroundNormal = grounded ? new Vector2F(gnx, gny) : default;
+        state.Ground = ground;
+        state.GroundNormal = ground != GroundState.InAir ? new Vector2F(gnx, gny) : default;
         state.GroundBody = grounded ? new Body(world, Core.HandleOfBody(Core.Shapes.Owner[gslot])) : default;
         return new MoveResult2D(flags, new Vector2F((float)(x - pos.X), (float)(y - pos.Y)), written);
     }
