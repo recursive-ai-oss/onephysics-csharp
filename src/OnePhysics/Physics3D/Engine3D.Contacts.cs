@@ -576,7 +576,7 @@ internal sealed partial class Engine3D
         var qA = RotationOfBody(ba); var qB = RotationOfBody(bb);
         // A pair without a constraint whose last query proved the shapes apart stays empty until their relative motion has used up the margin by which they were apart.
         int existingCons = PairCons[p];
-        if (existingCons < 0 && _skip[p].Clear > 0f && StillApart(in _skip[p], qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]), MaxExtent[bb])) { return; }
+        if (existingCons < 0 && _skip[p].Clear > 0f && StillApart(in _skip[p], qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))) { return; }
         // A touching convex pair that has barely moved reuses its manifold; this is tried before the shape frames are built, which the reuse does not need.
         if (RecycleManifolds && existingCons >= 0 && ga.Soup == null && gb.Soup == null && ga.IsConvex && gb.IsConvex
             && TryRecycle(sc, existingCons, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))))
@@ -629,7 +629,7 @@ internal sealed partial class Engine3D
                 var d = invA.Rotate(new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])));
                 var qr = invA * qB;
                 float sg = qr.W < 0f ? -1f : 1f;
-                _skip[p] = new SkipFrame3 { X = d.X, Y = d.Y, Z = d.Z, Qx = sg * qr.X, Qy = sg * qr.Y, Qz = sg * qr.Z, Qw = sg * qr.W, Clear = gen.ClearanceOut };
+                _skip[p] = new SkipFrame3 { X = d.X, Y = d.Y, Z = d.Z, Qx = sg * qr.X, Qy = sg * qr.Y, Qz = sg * qr.Z, Qw = sg * qr.W, Clear = gen.ClearanceOut, Reach = ReachOfShape(bb, sb) };
             }
             else { _skip[p].Clear = 0f; }
 
@@ -657,13 +657,25 @@ internal sealed partial class Engine3D
     private struct SkipFrame3
     {
         public float X, Y, Z, Qx, Qy, Qz, Qw, Clear;
+
+        /// <summary>Farthest point of B's shape from B's centre of mass; a kinematic or static body has no stored extent, so the bound comes from the shape.</summary>
+        public float Reach;
     }
 
     private SkipFrame3[] _skip = new SkipFrame3[8];
 
+    // The farthest point of a convex shape from its body's centre of mass, from the shape's bounds in the body frame.
+    private float ReachOfShape(int b, int s)
+    {
+        ShapeBounds3D.Compute(Geoms[GeomOf[s]]!.Convex, Local[s], out var mn, out var mx);
+        float cx = LocalCenter[3 * b], cy = LocalCenter[3 * b + 1], cz = LocalCenter[3 * b + 2];
+        float dx = Math.Max(Math.Abs(mn.X - cx), Math.Abs(mx.X - cx)), dy = Math.Max(Math.Abs(mn.Y - cy), Math.Abs(mx.Y - cy)), dz = Math.Max(Math.Abs(mn.Z - cz), Math.Abs(mx.Z - cz));
+        return float.Sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
     // Whether a pair recorded as apart still is. Every point of B's shape moves, relative to A, by at most the change of B's centre of mass in A's frame plus the chord of the relative turn times the point's distance
     // from that centre (chord = 2 sin(angle / 2) = twice the vector part of the relative rotation). The slack covers float rounding of the relative pose, which grows with its size.
-    private static bool StillApart(in SkipFrame3 f, QuaternionF qA, QuaternionF qB, float dx, float dy, float dz, float extent)
+    private static bool StillApart(in SkipFrame3 f, QuaternionF qA, QuaternionF qB, float dx, float dy, float dz)
     {
         var invA = qA.Conjugate();
         var d = invA.Rotate(new Vector3F(dx, dy, dz));
@@ -676,8 +688,8 @@ internal sealed partial class Engine3D
         float ry = w * -f.Qy + f.Qw * y + (z * -f.Qx - x * -f.Qz);
         float rz = w * -f.Qz + f.Qw * z + (x * -f.Qy - y * -f.Qx);
         float turn = 2f * float.Sqrt(rx * rx + ry * ry + rz * rz);
-        float slack = 0.001f + 1e-6f * (float.Abs(dx) + float.Abs(dy) + float.Abs(dz) + extent);
-        float used = float.Sqrt(ex * ex + ey * ey + ez * ez) + turn * extent + slack;
+        float slack = 0.001f + 1e-6f * (float.Abs(dx) + float.Abs(dy) + float.Abs(dz) + f.Reach);
+        float used = float.Sqrt(ex * ex + ey * ey + ez * ez) + turn * f.Reach + slack;
         return used <= f.Clear; // false for NaN
     }
 
