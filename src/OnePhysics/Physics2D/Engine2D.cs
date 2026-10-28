@@ -406,6 +406,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         }
 
         PairA[p] = a; PairB[p] = b; PairCons[p] = -1; PairLive[p] = true;
+        if (p < _skip.Length) { _skip[p].Clear = 0f; }
         PairMap.Set(PairKey(a, b), p);
         return p;
     }
@@ -648,6 +649,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         Geom = geom; Proxy = proxy; Friction = fr; Restitution = re; Rolling = ro; Density = de; Category = cat; Mask = mask; Group = grp; NextShape = next;
         EnsureShapes(Math.Max(ns, 1));
         PairA = pa; PairB = pb; PairCons = pc; PairLive = pl; PairHigh = np; PairFree = free; PairFreeCount = nf;
+        _skip = new SkipFrame[8];
         if (jointsRead) { Opt.JointHertz = _pendingJointHertz; Opt.JointDampingRatio = _pendingJointDamping; }
         Joints = joints;
         JointForce = new float[joints.Length]; JointTorque = new float[joints.Length];
