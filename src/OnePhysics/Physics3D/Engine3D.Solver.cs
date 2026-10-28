@@ -562,8 +562,10 @@ internal sealed partial class Engine3D
             }
             else if (other.Compound != null)
             {
-                if (!other.Compound.ShapeCast(Shape, rel, motion, out var hit) || hit.StartsOverlapping) { return true; }
-                t = hit.Fraction; approach = Vector3F.Dot(motion, hit.Normal);
+                // The compound refuses a sweep that leaves its coordinate range (a fast body far from the compound), so the sweep is cut to the range first, as the query path does.
+                if (!ClipToReach(rel.Translation, motion, out var co, out var cd, out float t0, out float t1)) { return true; }
+                if (!other.Compound.ShapeCast(Shape, new RigidTransformF(rel.Rotation, co), cd, out var hit) || hit.StartsOverlapping) { return true; }
+                t = t0 + (hit.Fraction * (t1 - t0)); approach = Vector3F.Dot(motion, hit.Normal);
             }
             else
             {

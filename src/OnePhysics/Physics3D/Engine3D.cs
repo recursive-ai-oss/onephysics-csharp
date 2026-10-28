@@ -217,6 +217,11 @@ internal sealed partial class Engine3D : ISnapshotSection
         if (!float.IsFinite(v.X) || !float.IsFinite(v.Y) || !float.IsFinite(v.Z)) { throw new ArgumentOutOfRangeException(name, v, name + " must be finite."); }
     }
 
+    private static void Coefficient(float v, string name)
+    {
+        if (!(v >= 0f && v <= MaterialLimits.MaxCoefficient)) { throw new ArgumentOutOfRangeException(name, v, name + " must be within 0..1e15."); }
+    }
+
     private static void Nonnegative(float v, string name)
     {
         if (!(v >= 0f) || !float.IsFinite(v)) { throw new ArgumentOutOfRangeException(name, v, name + " must be finite and at least 0."); }
@@ -241,6 +246,8 @@ internal sealed partial class Engine3D : ISnapshotSection
         ShapeHead[b] = -1; ShapeTail[b] = -1;
         Mass[b] = 0f;
         for (int k = 0; k < 6; k++) { Inertia[6 * b + k] = 0f; }
+        // The last step's displacement is saved for every slot; a body that diverged to NaN must not leave it behind.
+        Dp[3 * b] = 0f; Dp[3 * b + 1] = 0f; Dp[3 * b + 2] = 0f;
     }
 
     // ------------------------------------------------------------------ shapes
@@ -248,8 +255,8 @@ internal sealed partial class Engine3D : ISnapshotSection
     public ShapeHandle AddShape(BodyHandle body, byte[] recipe, in ShapeDef def)
     {
         Nonnegative(def.Density, "Density");
-        Nonnegative(def.Friction, "Friction");
-        Nonnegative(def.RollingResistance, "RollingResistance");
+        Coefficient(def.Friction, "Friction");
+        Coefficient(def.RollingResistance, "RollingResistance");
         if (!(def.Restitution >= 0f && def.Restitution <= 1f)) { throw new ArgumentOutOfRangeException(nameof(def), def.Restitution, "Restitution must be within 0..1."); }
         Finite3(def.LocalPosition, "LocalPosition");
         CheckLayer(def.Layer, "Layer");
@@ -289,7 +296,17 @@ internal sealed partial class Engine3D : ISnapshotSection
         if (ShapeTail[b] >= 0) { NextShape[ShapeTail[b]] = s; } else { ShapeHead[b] = s; }
         ShapeTail[b] = s;
         Proxy[s] = Bp.CreateProxy(type, tight, s);
-        if (type == BodyType.Dynamic) { UpdateMass(b); }
+        if (type == BodyType.Dynamic)
+        {
+            try { UpdateMass(b, strict: true); }
+            catch (ArgumentOutOfRangeException)
+            {
+                // Strict mode writes nothing before it throws, so the body keeps its previous mass properties; take the new shape back out.
+                DestroyShape(sh);
+                throw;
+            }
+        }
+
         return sh;
     }
 
@@ -321,6 +338,15 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     private readonly double[] _dp3 = new double[3];
 
+    private bool VelocityFinite(int b)
+    {
+        var v = Core.Bodies.LinearVelocityOf(b);
+        var w = Core.Bodies.AngularVelocityOf(b);
+        var q = Core.Bodies.RotationOf(b);
+        var p = Core.Bodies.PositionOf(b);
+        return float.IsFinite(v[0] + v[1] + v[2] + w[0] + w[1] + w[2] + q[0] + q[1] + q[2] + q[3]) && double.IsFinite(p[0] + p[1] + p[2]);
+    }
+
     /// <summary>Finds the first body (lowest slot) whose bounds, as the broadphase would store them, are not valid. With <paramref name="movingOnly"/>, sleeping bodies are skipped.</summary>
     public bool FindOutOfBounds(bool includeStatic, out BodyHandle handle, out string message, bool movingOnly = false)
     {
@@ -331,6 +357,15 @@ internal sealed partial class Engine3D : ISnapshotSection
             if (!bodies.IsLive(b) || (!includeStatic && bodies.TypeOf(b) == BodyType.Static)) { continue; }
             // A sleeping body has not moved since it was last checked (teleporting wakes it), and building the box of thousands of resting bodies every step is most of the cost of a sleeping world.
             if (movingOnly && bodies.IsDynamic(b) && !bodies.IsAwake(b)) { continue; }
+            if (bodies.TypeOf(b) == BodyType.Dynamic && !VelocityFinite(b))
+            {
+                handle = Core.HandleOfBody(b);
+                var vp = bodies.PositionOf(b);
+                var vci = CultureInfo.InvariantCulture;
+                message = "Body " + handle + " at (" + vp[0].ToString("R", vci) + ", " + vp[1].ToString("R", vci) + ", " + vp[2].ToString("R", vci) + ") has a non-finite position, velocity or rotation, so the simulation diverged. Destroy it or reset its velocity.";
+                return true;
+            }
+
             // A dynamic body well inside the range cannot have an invalid box: every point of its shapes is within MaxExtent (padded for rounding) of its centre of mass, and the fattening adds the margin and
             // twice the last displacement. The limits below leave a wide gap to the 2^22 box limit, and NaN or infinite values fail every comparison, so those bodies take the exact test.
             if (movingOnly && bodies.IsDynamic(b) && WellInsideRange(b)) { continue; }
@@ -412,8 +447,14 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     private readonly List<MassPropertiesF> _parts = new();
 
+    /// <summary>Smallest mass or inertia diagonal entry a dynamic body may have; the inverses are then at most 1e18 in the diagonal.</summary>
+    public const double MinMassProperty = 1e-18;
+
+    /// <summary>Largest mass or inertia diagonal entry a dynamic body may have.</summary>
+    public const double MaxMassProperty = 1e30;
+
     /// <summary>Recomputes mass, centre of mass, inertia and extents of a dynamic body from its shapes, moving the stored centre-of-mass position so the body origin stays put.</summary>
-    public void UpdateMass(int b)
+    public void UpdateMass(int b, bool strict = false)
     {
         _parts.Clear();
         for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
@@ -437,11 +478,20 @@ internal sealed partial class Engine3D : ISnapshotSection
         if (_parts.Count > 0)
         {
             var total = InertiaF.Combine(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_parts));
-            if (total.Mass > 0f && float.IsFinite(total.Mass) && total.Inertia.TryInvert(out var iv)
+            if (total.Mass >= MinMassProperty && total.Mass <= MaxMassProperty
+                && total.Inertia.M11 >= MinMassProperty && total.Inertia.M22 >= MinMassProperty && total.Inertia.M33 >= MinMassProperty
+                && total.Inertia.M11 <= MaxMassProperty && total.Inertia.M22 <= MaxMassProperty && total.Inertia.M33 <= MaxMassProperty
+                && total.Inertia.TryInvert(out var iv)
                 && float.IsFinite(iv.M11 + iv.M12 + iv.M13 + iv.M22 + iv.M23 + iv.M33) && iv.M11 > 0f && iv.M22 > 0f && iv.M33 > 0f)
             {
                 mass = total.Mass; newLc = total.Center; tensor = total.Inertia; inv = iv; ok = true;
             }
+        }
+
+        if (strict && _parts.Count > 0 && !ok)
+        {
+            var total = InertiaF.Combine(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_parts));
+            throw new ArgumentOutOfRangeException(paramName: null, "The body's shapes give mass " + total.Mass.ToString("R", CultureInfo.InvariantCulture) + " and inertia diagonal (" + total.Inertia.M11.ToString("R", CultureInfo.InvariantCulture) + ", " + total.Inertia.M22.ToString("R", CultureInfo.InvariantCulture) + ", " + total.Inertia.M33.ToString("R", CultureInfo.InvariantCulture) + "); mass and every inertia diagonal entry must lie within " + MinMassProperty.ToString("R", CultureInfo.InvariantCulture) + ".." + MaxMassProperty.ToString("R", CultureInfo.InvariantCulture) + " and the tensor must be invertible (raise the density or the shape size).");
         }
 
         bool fixedRot = (BodyFlags[b] & 1) != 0;
@@ -528,6 +578,27 @@ internal sealed partial class Engine3D : ISnapshotSection
     }
 
     // ------------------------------------------------------------------ origin shifting
+
+    /// <summary>
+    /// Fails, before anything changes, when shifting the origin by the offset would put a shape's bounds (or its broadphase box) outside what the broadphase accepts, or when one already is.
+    /// Rebuilding the proxies after a shift cannot then fail half way.
+    /// </summary>
+    public void CheckShift(ReadOnlySpan<double> offset)
+    {
+        var shapes = Core.Shapes;
+        for (int s = 0; s < shapes.HighWater; s++)
+        {
+            if (!shapes.Handles.IsLive(s)) { continue; }
+            int b = shapes.Owner[s];
+            var t = TightBox(b, s);
+            var moved = new Aabb3D(t.MinX - offset[0], t.MinY - offset[1], t.MinZ - offset[2], t.MaxX - offset[0], t.MaxY - offset[1], t.MaxZ - offset[2]);
+            string reason = "";
+            if (moved.IsValid(out reason) && moved.Fatten(Opt.BroadphaseMargin, ReadOnlySpan<double>.Empty, 2.0).IsValid(out reason)) { continue; }
+            var handle = Core.HandleOfBody(b);
+            var ci = CultureInfo.InvariantCulture;
+            throw new BodyOutOfBoundsException(handle, "Shifting the origin by (" + offset[0].ToString("R", ci) + ", " + offset[1].ToString("R", ci) + ", " + offset[2].ToString("R", ci) + ") would leave body " + handle + " outside the supported range: " + reason + " Nothing was changed.");
+        }
+    }
 
     /// <summary>After the core shifted the origin: rebuild every proxy, since the broadphase keeps boxes in origin-relative coordinates. Shapes are visited in ascending slot order.</summary>
     public void RebuildProxies()
@@ -691,7 +762,7 @@ internal sealed partial class Engine3D : ISnapshotSection
             proxy[s] = r.ReadInt32();
             fr[s] = r.ReadSingle(); re[s] = r.ReadSingle(); ro[s] = r.ReadSingle(); de[s] = r.ReadSingle();
             cat[s] = r.ReadUInt32(); mask[s] = r.ReadUInt32(); grp[s] = r.ReadInt32(); next[s] = r.ReadInt32();
-            if (!(fr[s] >= 0f && re[s] >= 0f && re[s] <= 1f && ro[s] >= 0f && de[s] >= 0f) || !float.IsFinite(fr[s] + ro[s] + de[s])) { throw r.Error("invalid shape material"); }
+            if (!(fr[s] >= 0f && re[s] >= 0f && re[s] <= 1f && ro[s] >= 0f && de[s] >= 0f) || !(fr[s] <= MaterialLimits.MaxCoefficient && ro[s] <= MaterialLimits.MaxCoefficient) || !float.IsFinite(de[s])) { throw r.Error("invalid shape material"); }
             if (next[s] < -1 || next[s] >= ns || !Bp.IsProxy(proxy[s])) { throw r.Error("invalid shape link or proxy"); }
         }
 
