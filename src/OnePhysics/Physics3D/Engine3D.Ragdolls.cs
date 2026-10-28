@@ -131,10 +131,10 @@ internal sealed partial class Engine3D
         ref JointData3D jd = ref Joints[c];
         var fa = RotationOfBody(cs.BodyA[c]) * jd.QA;
         var fb = RotationOfBody(cs.BodyB[c]) * jd.QB;
-        var rel = fa.Conjugate() * fb;
+        var rel = fa.Conjugated() * fb;
         var r = s.JointRot[part];
-        var tgt = r.Conjugate() * pose * r;
-        var qe = rel * tgt.Conjugate();
+        var tgt = r.Conjugated() * pose * r;
+        var qe = rel * tgt.Conjugated();
         float sn = float.Sqrt(qe.X * qe.X + qe.Y * qe.Y + qe.Z * qe.Z);
         float w = qe.W < 0f ? -qe.W : qe.W;
         return (float)(2.0 * Math64.Atan2(sn, w));

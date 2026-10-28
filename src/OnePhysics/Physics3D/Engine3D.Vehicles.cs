@@ -260,7 +260,7 @@ internal sealed partial class Engine3D
             if (steer != 0f)
             {
                 var sa = q.Rotate(wd.SteerAxis);
-                var qs = QuaternionF.FromAxisSinCos(sa, Math32.Sin(0.5f * steer), Math32.Cos(0.5f * steer));
+                var qs = QuaternionF.CreateFromAxisSinCos(sa, Math32.Sin(0.5f * steer), Math32.Cos(0.5f * steer));
                 axle = qs.Rotate(axle);
             }
 
@@ -441,7 +441,7 @@ internal sealed partial class Engine3D
         var f = q.Rotate(wd.ForwardDirection);
         if (steer == 0f) { return f; }
         var sa = q.Rotate(wd.SteerAxis);
-        var qs = QuaternionF.FromAxisSinCos(sa, Math32.Sin(0.5f * steer), Math32.Cos(0.5f * steer));
+        var qs = QuaternionF.CreateFromAxisSinCos(sa, Math32.Sin(0.5f * steer), Math32.Cos(0.5f * steer));
         return qs.Rotate(f);
     }
 

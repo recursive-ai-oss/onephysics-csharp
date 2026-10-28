@@ -639,7 +639,7 @@ public abstract class CompoundShape3D
             throw new ShapeCompositionException(ShapeCompositionError.InvalidQuery, $"The sweep of the shape from {shapeInCompound.Translation} by {motion} cannot be used: {e.Message}", nameof(shapeInCompound), e);
         }
 
-        RigidTransformF inverse = shapeInCompound.Inverse();
+        RigidTransformF inverse = shapeInCompound.Inverted();
         var v = new CastVisitor { Owner = this, Shape = shape, ShapeInCompound = shapeInCompound, Inverse = inverse, MotionInShape = inverse.Rotation.Rotate(motion) };
         _tree.RayCast(sweep, 1.0, ref v);
         if (!v.Found)
