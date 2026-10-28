@@ -252,7 +252,8 @@ internal sealed partial class Engine2D : ISnapshotSection
     {
         var v = Core.Bodies.LinearVelocityOf(b);
         var w = Core.Bodies.AngularVelocityOf(b);
-        return float.IsFinite(v[0] + v[1] + w[0]);
+        var q = Core.Bodies.RotationOf(b);
+        return float.IsFinite(v[0] + v[1] + w[0] + q[0] + q[1]);
     }
 
     /// <summary>Finds the first body (lowest slot) whose bounds, as the broadphase would store them, are not valid.</summary>
@@ -270,7 +271,7 @@ internal sealed partial class Engine2D : ISnapshotSection
                 handle = Core.HandleOfBody(b);
                 var vp = bodies.PositionOf(b);
                 var vci = System.Globalization.CultureInfo.InvariantCulture;
-                message = "Body " + handle + " at (" + vp[0].ToString("R", vci) + ", " + vp[1].ToString("R", vci) + ") has a non-finite velocity, so the simulation diverged. Destroy it or reset its velocity.";
+                message = "Body " + handle + " at (" + vp[0].ToString("R", vci) + ", " + vp[1].ToString("R", vci) + ") has a non-finite velocity or rotation, so the simulation diverged. Destroy it or reset its velocity.";
                 return true;
             }
 

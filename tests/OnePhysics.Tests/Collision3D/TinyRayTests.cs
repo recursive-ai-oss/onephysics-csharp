@@ -23,3 +23,23 @@ public class TinyRayTests
         Assert.Equal(0f, hit.Fraction);
     }
 }
+
+public class AspectRatioTests
+{
+    [Fact]
+    public void ShapesThinnerThanTheDocumentedRatioAreRefused()
+    {
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => ConvexShape3D.Box(new Vector3F(524288f, 1f, 0.0078125f)));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => ConvexShape3D.Cylinder(1.5e6f, 0.2f));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => ConvexShape3D.Capsule(1e6f, 0.5f));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => ConvexShape3D.TaperedCapsule(1e6f, 0.5f, 0.6f));
+    }
+
+    [Fact]
+    public void TheRatioLimitItselfIsAccepted()
+    {
+        _ = ConvexShape3D.Box(new Vector3F(1048576f, 1f, 1f));
+        _ = ConvexShape3D.Box(new Vector3F(1000f, 1f, 0.01f));
+        _ = ConvexShape3D.Capsule(1000f, 0.01f);
+    }
+}
