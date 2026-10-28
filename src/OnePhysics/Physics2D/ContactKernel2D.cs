@@ -73,237 +73,237 @@ internal static class ContactKernel2D
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static T Clamp<T>(T x, T lo, T hi) where T : struct, ILane<T> => Lane.Max(lo, Lane.Min(hi, x));
 
-    private struct Vel<T> where T : struct, ILane<T>
-    {
-        public T Ax, Ay, Wa, Bx, By, Wb;
-    }
-
-    private struct Con<T> where T : struct, ILane<T>
-    {
-        public T DpAx, DpAy, DqAc, DqAs, DpBx, DpBy, DqBc, DqBs;
-        public T Nx, Ny, Tx, Ty, Friction, Restitution, Rolling, RollingMass, MA, IA, MB, IB, BiasRate, MassScale, ImpulseScale;
-    }
-
-    private struct Pt<T> where T : struct, ILane<T>
-    {
-        public T RAx, RAy, RBx, RBy, AdjSep, NMass, TMass, RelVel, NImp, TImp, MaxN;
-    }
-
-    private static Pt<T> LoadPoint<T>(ReadOnlySpan<float> wide, int pbase, int ibase, int l0) where T : struct, ILane<T> => new()
-    {
-        RAx = W<T>(wide, pbase + W2D.AnchorAX, l0), RAy = W<T>(wide, pbase + W2D.AnchorAY, l0), RBx = W<T>(wide, pbase + W2D.AnchorBX, l0), RBy = W<T>(wide, pbase + W2D.AnchorBY, l0),
-        AdjSep = W<T>(wide, pbase + W2D.AdjustedSeparation, l0), NMass = W<T>(wide, pbase + W2D.NormalMass, l0), TMass = W<T>(wide, pbase + W2D.TangentMass, l0), RelVel = W<T>(wide, pbase + W2D.RelativeVelocity, l0),
-        NImp = W<T>(wide, ibase, l0), TImp = W<T>(wide, ibase + 1, l0), MaxN = W<T>(wide, ibase + 2, l0),
-    };
-
-    private static Pt<T> LoadWarm<T>(ReadOnlySpan<float> wide, int pbase, int ibase, int l0) where T : struct, ILane<T> => new()
-    {
-        RAx = W<T>(wide, pbase + W2D.AnchorAX, l0), RAy = W<T>(wide, pbase + W2D.AnchorAY, l0), RBx = W<T>(wide, pbase + W2D.AnchorBX, l0), RBy = W<T>(wide, pbase + W2D.AnchorBY, l0),
-        NImp = W<T>(wide, ibase, l0), TImp = W<T>(wide, ibase + 1, l0),
-    };
-
-    private static Pt<T> LoadRestitution<T>(ReadOnlySpan<float> wide, int pbase, int ibase, int l0) where T : struct, ILane<T> => new()
-    {
-        RAx = W<T>(wide, pbase + W2D.AnchorAX, l0), RAy = W<T>(wide, pbase + W2D.AnchorAY, l0), RBx = W<T>(wide, pbase + W2D.AnchorBX, l0), RBy = W<T>(wide, pbase + W2D.AnchorBY, l0),
-        NMass = W<T>(wide, pbase + W2D.NormalMass, l0), RelVel = W<T>(wide, pbase + W2D.RelativeVelocity, l0),
-        NImp = W<T>(wide, ibase, l0), MaxN = W<T>(wide, ibase + 2, l0),
-    };
+    // The solver works on plain local vectors rather than structs of vectors: the JIT keeps a struct with many fields in memory, so the same arithmetic runs several times slower.
+    // The two points of a manifold go through the same code in a loop of two; points are independent of each other except through the body velocities, which stay in locals.
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Apply<T>(ref Vel<T> v, in Con<T> k, in Pt<T> p, T px, T py) where T : struct, ILane<T>
+    private static void Apply<T>(ref T vAx, ref T vAy, ref T wA, ref T vBx, ref T vBy, ref T wB, T mA, T iA, T mB, T iB, T rAx, T rAy, T rBx, T rBy, T px, T py) where T : struct, ILane<T>
     {
-        v.Ax = v.Ax - k.MA * px; v.Ay = v.Ay - k.MA * py;
-        v.Wa = v.Wa - k.IA * (p.RAx * py - p.RAy * px);
-        v.Bx = v.Bx + k.MB * px; v.By = v.By + k.MB * py;
-        v.Wb = v.Wb + k.IB * (p.RBx * py - p.RBy * px);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void RelativeVelocity<T>(in Vel<T> v, in Pt<T> p, out T dvx, out T dvy) where T : struct, ILane<T>
-    {
-        dvx = (v.Bx - v.Wb * p.RBy) - (v.Ax - v.Wa * p.RAy);
-        dvy = (v.By + v.Wb * p.RBx) - (v.Ay + v.Wa * p.RAx);
-    }
-
-    private static void WarmStart<T>(ref Vel<T> v, in Con<T> k, in Pt<T> p) where T : struct, ILane<T>
-    {
-        T px = k.Nx * p.NImp + k.Tx * p.TImp;
-        T py = k.Ny * p.NImp + k.Ty * p.TImp;
-        Apply(ref v, in k, in p, px, py);
-    }
-
-    private static void Restitute<T>(ref Vel<T> v, in Con<T> k, ref Pt<T> p, T maskTrue, T negThreshold) where T : struct, ILane<T>
-    {
-        T zero = T.Zero;
-        RelativeVelocity(in v, in p, out T dvx, out T dvy);
-        T vn = dvx * k.Nx + dvy * k.Ny;
-        T notFast = T.Select(T.GreaterThan(p.RelVel, negThreshold), zero, maskTrue); // relVel <= -threshold
-        T mask = Lane.And(Lane.And(notFast, T.GreaterThan(p.MaxN, zero)), T.GreaterThan(k.Restitution, zero));
-        T raw = Lane.Neg(p.NMass * (vn + k.Restitution * p.RelVel));
-        T imp = T.Select(mask, raw, zero);
-        T newImp = Lane.Max(p.NImp + imp, zero);
-        imp = newImp - p.NImp;
-        p.NImp = newImp;
-        p.MaxN = Lane.Max(p.MaxN, newImp);
-        Apply(ref v, in k, in p, k.Nx * imp, k.Ny * imp);
-    }
-
-    private static void Friction<T>(ref Vel<T> v, in Con<T> k, ref Pt<T> p) where T : struct, ILane<T>
-    {
-        RelativeVelocity(in v, in p, out T dvx, out T dvy);
-        T vt = dvx * k.Tx + dvy * k.Ty;
-        T imp = Lane.Neg(p.TMass * vt);
-        T maxF = k.Friction * p.NImp;
-        T newT = Clamp(p.TImp + imp, Lane.Neg(maxF), maxF);
-        imp = newT - p.TImp;
-        p.TImp = newT;
-        Apply(ref v, in k, in p, k.Tx * imp, k.Ty * imp);
-    }
-
-    private static void Normal<T>(ref Vel<T> v, in Con<T> k, ref Pt<T> p, bool useBias, T slop, T invH, T negPush) where T : struct, ILane<T>
-    {
-        T zero = T.Zero, one = T.Broadcast(1f);
-        // Current separation from the accumulated body motion of this step: anchors turn with the bodies' delta rotations.
-        T prAx = k.DqAc * p.RAx - k.DqAs * p.RAy, prAy = k.DqAs * p.RAx + k.DqAc * p.RAy;
-        T prBx = k.DqBc * p.RBx - k.DqBs * p.RBy, prBy = k.DqBs * p.RBx + k.DqBc * p.RBy;
-        T dx = (k.DpBx - k.DpAx) + (prBx - prAx);
-        T dy = (k.DpBy - k.DpAy) + (prBy - prAy);
-        T s = (dx * k.Nx + dy * k.Ny) + p.AdjSep;
-        T sPos = T.GreaterThan(s, zero);
-        T bias, ms, isc;
-        if (useBias)
-        {
-            T soft = Lane.Max(k.BiasRate * Lane.Min(s + slop, zero), negPush);
-            bias = T.Select(sPos, s * invH, soft);
-            ms = T.Select(sPos, one, k.MassScale);
-            isc = T.Select(sPos, zero, k.ImpulseScale);
-        }
-        else
-        {
-            bias = T.Select(sPos, s * invH, zero);
-            ms = one;
-            isc = zero;
-        }
-
-        RelativeVelocity(in v, in p, out T dvx, out T dvy);
-        T vn = dvx * k.Nx + dvy * k.Ny;
-        T imp = Lane.Neg(p.NMass * ms * (vn + bias)) - isc * p.NImp;
-        T newImp = Lane.Max(p.NImp + imp, zero);
-        imp = newImp - p.NImp;
-        p.NImp = newImp;
-        p.MaxN = Lane.Max(p.MaxN, newImp);
-        Apply(ref v, in k, in p, k.Nx * imp, k.Ny * imp);
+        vAx = vAx - mA * px; vAy = vAy - mA * py;
+        wA = wA - iA * (rAx * py - rAy * px);
+        vBx = vBx + mB * px; vBy = vBy + mB * py;
+        wB = wB + iB * (rBx * py - rBy * px);
     }
 
     /// <summary>
     /// Solves lanes <paramref name="lane0"/>..<paramref name="lane0"/>+<paramref name="lanes"/>-1 of one group in <paramref name="phase"/>. Body velocities are gathered from <see cref="Engine2D.BodyState"/>
     /// and scattered back; static and kinematic bodies (and unused lanes) have no scatter offset, so they are only read.
+    /// Each phase has its own method: one method holding all three needs a large frame that is cleared on every call, which costs more than a group's arithmetic.
     /// </summary>
     public static void Run<T>(Engine2D e, int group, int lane0, int lanes, SolvePhase phase, in KernelParams kp) where T : struct, ILane<T>
     {
-        int width = T.Count;
         var wide = e.Wide.AsSpan(group * W2D.GroupFloats, W2D.GroupFloats);
         var idx = e.WideIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup);
-        Span<float> state = e.BodyState;
+        if (phase == SolvePhase.WarmStart) { RunWarm<T>(e.BodyState, wide, idx, lane0, lanes); }
+        else if (phase == SolvePhase.Restitution) { RunRestitution<T>(e.BodyState, wide, idx, lane0, lanes, in kp); }
+        else { RunSolve<T>(e.BodyState, wide, idx, lane0, lanes, phase == SolvePhase.Solve, in kp); }
+    }
 
-        OutStage outs = default;
-        Span<float> os = outs;
+    private static void RunWarm<T>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, int lane0, int lanes) where T : struct, ILane<T>
+    {
+        int width = T.Count;
+        for (int l0 = lane0; l0 < lane0 + lanes; l0 += width)
+        {
+            var ra = T.GatherRows(state, idx.Slice(l0, width));
+            var rb = T.GatherRows(state, idx.Slice(8 + l0, width));
+            T vAx = ra.R0, vAy = ra.R1, wA = ra.R2, vBx = rb.R0, vBy = rb.R1, wB = rb.R2;
+            T nx = W<T>(wide, W2D.NormalX, l0), ny = W<T>(wide, W2D.NormalY, l0);
+            T mA = W<T>(wide, W2D.InvMassA, l0), iA = W<T>(wide, W2D.InvInertiaA, l0), mB = W<T>(wide, W2D.InvMassB, l0), iB = W<T>(wide, W2D.InvInertiaB, l0);
+            T tx = ny, ty = Lane.Neg(nx); // the tangent is the normal turned clockwise
+            T rollImp = W<T>(wide, W2D.Roll, l0);
+            for (int pt = 0; pt < 2; pt++)
+            {
+                int pb = W2D.Point0 + pt * W2D.PointStride, ib = W2D.Impulse0 + 3 * pt;
+                T nImp = W<T>(wide, ib, l0), tImp = W<T>(wide, ib + 1, l0);
+                T px = nx * nImp + tx * tImp;
+                T py = ny * nImp + ty * tImp;
+                Apply(ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB, mA, iA, mB, iB,
+                    W<T>(wide, pb + W2D.AnchorAX, l0), W<T>(wide, pb + W2D.AnchorAY, l0), W<T>(wide, pb + W2D.AnchorBX, l0), W<T>(wide, pb + W2D.AnchorBY, l0), px, py);
+            }
+
+            wA = wA - iA * rollImp;
+            wB = wB + iB * rollImp;
+            Scatter(state, idx, l0, vAx, vAy, wA, vBx, vBy, wB);
+        }
+    }
+
+    private static void RunRestitution<T>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, int lane0, int lanes, in KernelParams kp) where T : struct, ILane<T>
+    {
+        int width = T.Count;
         T zero = T.Zero, one = T.Broadcast(1f);
         T maskTrue = T.GreaterThan(one, zero);
+        T negThreshold = T.Broadcast(-kp.RestitutionThreshold);
+        for (int l0 = lane0; l0 < lane0 + lanes; l0 += width)
+        {
+            var ra = T.GatherRows(state, idx.Slice(l0, width));
+            var rb = T.GatherRows(state, idx.Slice(8 + l0, width));
+            T vAx = ra.R0, vAy = ra.R1, wA = ra.R2, vBx = rb.R0, vBy = rb.R1, wB = rb.R2;
+            T nx = W<T>(wide, W2D.NormalX, l0), ny = W<T>(wide, W2D.NormalY, l0);
+            T mA = W<T>(wide, W2D.InvMassA, l0), iA = W<T>(wide, W2D.InvInertiaA, l0), mB = W<T>(wide, W2D.InvMassB, l0), iB = W<T>(wide, W2D.InvInertiaB, l0);
+            T restitution = W<T>(wide, W2D.Restitution, l0);
+            for (int pt = 0; pt < 2; pt++)
+            {
+                int pb = W2D.Point0 + pt * W2D.PointStride, ib = W2D.Impulse0 + 3 * pt;
+                T rAx = W<T>(wide, pb + W2D.AnchorAX, l0), rAy = W<T>(wide, pb + W2D.AnchorAY, l0), rBx = W<T>(wide, pb + W2D.AnchorBX, l0), rBy = W<T>(wide, pb + W2D.AnchorBY, l0);
+                T nMass = W<T>(wide, pb + W2D.NormalMass, l0), relVel = W<T>(wide, pb + W2D.RelativeVelocity, l0);
+                T nImp = W<T>(wide, ib, l0), maxN = W<T>(wide, ib + 2, l0);
+                T dvx = (vBx - wB * rBy) - (vAx - wA * rAy);
+                T dvy = (vBy + wB * rBx) - (vAy + wA * rAx);
+                T vn = dvx * nx + dvy * ny;
+                T notFast = T.Select(T.GreaterThan(relVel, negThreshold), zero, maskTrue); // relVel <= -threshold
+                T mask = Lane.And(Lane.And(notFast, T.GreaterThan(maxN, zero)), T.GreaterThan(restitution, zero));
+                T raw = Lane.Neg(nMass * (vn + restitution * relVel));
+                T imp = T.Select(mask, raw, zero);
+                T newImp = Lane.Max(nImp + imp, zero);
+                imp = newImp - nImp;
+                maxN = Lane.Max(maxN, newImp);
+                Apply(ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB, mA, iA, mB, iB, rAx, rAy, rBx, rBy, nx * imp, ny * imp);
+                // Restitution leaves the friction and rolling impulses alone.
+                newImp.StoreAt(wide, ib * 8 + l0); maxN.StoreAt(wide, (ib + 2) * 8 + l0);
+            }
+
+            Scatter(state, idx, l0, vAx, vAy, wA, vBx, vBy, wB);
+        }
+    }
+
+    private static void RunSolve<T>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, int lane0, int lanes, bool useBias, in KernelParams kp) where T : struct, ILane<T>
+    {
+        int width = T.Count;
+        for (int l0 = lane0; l0 < lane0 + lanes; l0 += width)
+        {
+            var ra = T.GatherRows(state, idx.Slice(l0, width));
+            var rb = T.GatherRows(state, idx.Slice(8 + l0, width));
+            T vAx = ra.R0, vAy = ra.R1, wA = ra.R2, vBx = rb.R0, vBy = rb.R1, wB = rb.R2;
+            T mA = W<T>(wide, W2D.InvMassA, l0), iA = W<T>(wide, W2D.InvInertiaA, l0), mB = W<T>(wide, W2D.InvMassB, l0), iB = W<T>(wide, W2D.InvInertiaB, l0);
+            T rolling = W<T>(wide, W2D.Rolling, l0), rollingMass = W<T>(wide, W2D.RollingMass, l0);
+            T rollImp = W<T>(wide, W2D.Roll, l0);
+
+            // Rolling resistance, then friction, then non-penetration last: the last constraint solved wins the argument, and keeping bodies apart matters most.
+            T total = W<T>(wide, W2D.Impulse0, l0) + W<T>(wide, W2D.Impulse1, l0);
+            T maxRoll = rolling * total;
+            T lambda = Lane.Neg(rollingMass * (wB - wA));
+            T newRoll = Clamp(rollImp + lambda, Lane.Neg(maxRoll), maxRoll);
+            lambda = newRoll - rollImp;
+            rollImp = newRoll;
+            wA = wA - iA * lambda;
+            wB = wB + iB * lambda;
+            rollImp.StoreAt(wide, W2D.Roll * 8 + l0);
+
+            FrictionPoints<T>(wide, l0, ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB);
+            NormalPoints<T>(wide, l0, useBias, in kp, in ra, in rb, ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB);
+            Scatter(state, idx, l0, vAx, vAy, wA, vBx, vBy, wB);
+        }
+    }
+
+    // The friction and the non-penetration passes are separate methods, not inlined: each is its own unit for the JIT's inlining budget, which one method holding all of the lane operations exhausts
+    // (the operators then stay calls). The velocities pass through references and are held in locals inside.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void FrictionPoints<T>(Span<float> wide, int l0, ref T rvAx, ref T rvAy, ref T rwA, ref T rvBx, ref T rvBy, ref T rwB) where T : struct, ILane<T>
+    {
+        T vAx = rvAx, vAy = rvAy, wA = rwA, vBx = rvBx, vBy = rvBy, wB = rwB;
+        T nx = W<T>(wide, W2D.NormalX, l0), ny = W<T>(wide, W2D.NormalY, l0);
+        T mA = W<T>(wide, W2D.InvMassA, l0), iA = W<T>(wide, W2D.InvInertiaA, l0), mB = W<T>(wide, W2D.InvMassB, l0), iB = W<T>(wide, W2D.InvInertiaB, l0);
+        T tx = ny, ty = Lane.Neg(nx); // the tangent is the normal turned clockwise
+        T friction = W<T>(wide, W2D.Friction, l0);
+        for (int pt = 0; pt < 2; pt++)
+        {
+            int pb = W2D.Point0 + pt * W2D.PointStride, ib = W2D.Impulse0 + 3 * pt;
+            T rAx = W<T>(wide, pb + W2D.AnchorAX, l0), rAy = W<T>(wide, pb + W2D.AnchorAY, l0), rBx = W<T>(wide, pb + W2D.AnchorBX, l0), rBy = W<T>(wide, pb + W2D.AnchorBY, l0);
+            T tMass = W<T>(wide, pb + W2D.TangentMass, l0);
+            T nImp = W<T>(wide, ib, l0), tImp = W<T>(wide, ib + 1, l0);
+            T dvx = (vBx - wB * rBy) - (vAx - wA * rAy);
+            T dvy = (vBy + wB * rBx) - (vAy + wA * rAx);
+            T vt = dvx * tx + dvy * ty;
+            T imp = Lane.Neg(tMass * vt);
+            T maxF = friction * nImp;
+            T newT = Clamp(tImp + imp, Lane.Neg(maxF), maxF);
+            imp = newT - tImp;
+            newT.StoreAt(wide, (ib + 1) * 8 + l0);
+            Apply(ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB, mA, iA, mB, iB, rAx, rAy, rBx, rBy, tx * imp, ty * imp);
+        }
+
+        rvAx = vAx; rvAy = vAy; rwA = wA; rvBx = vBx; rvBy = vBy; rwB = wB;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void NormalPoints<T>(Span<float> wide, int l0, bool useBias, in KernelParams kp, in Rows8<T> ra, in Rows8<T> rb, ref T rvAx, ref T rvAy, ref T rwA, ref T rvBx, ref T rvBy, ref T rwB) where T : struct, ILane<T>
+    {
+        T zero = T.Zero, one = T.Broadcast(1f);
         T negPush = T.Broadcast(-kp.PushOutVelocity);
         T slop = T.Broadcast(kp.LinearSlop);
         T invH = T.Broadcast(kp.InverseSubstepDt);
-        T negThreshold = T.Broadcast(-kp.RestitutionThreshold);
-
-        for (int l0 = lane0; l0 < lane0 + lanes; l0 += width)
+        T vAx = rvAx, vAy = rvAy, wA = rwA, vBx = rvBx, vBy = rvBy, wB = rwB;
+        T dpAx = ra.R4, dpAy = ra.R5, dqAc = ra.R6, dqAs = ra.R7;
+        T dpBx = rb.R4, dpBy = rb.R5, dqBc = rb.R6, dqBs = rb.R7;
+        T nx = W<T>(wide, W2D.NormalX, l0), ny = W<T>(wide, W2D.NormalY, l0);
+        T mA = W<T>(wide, W2D.InvMassA, l0), iA = W<T>(wide, W2D.InvInertiaA, l0), mB = W<T>(wide, W2D.InvMassB, l0), iB = W<T>(wide, W2D.InvInertiaB, l0);
+        T biasRate = default, massScale = default, impulseScale = default;
+        if (useBias) { biasRate = W<T>(wide, W2D.BiasRate, l0); massScale = W<T>(wide, W2D.MassScale, l0); impulseScale = W<T>(wide, W2D.ImpulseScale, l0); }
+        for (int pt = 0; pt < 2; pt++)
         {
-            var gA = idx.Slice(l0, width);
-            var gB = idx.Slice(8 + l0, width);
-            var ra = T.GatherRows(state, gA);
-            var rb = T.GatherRows(state, gB);
-            var v = new Vel<T> { Ax = ra.R0, Ay = ra.R1, Wa = ra.R2, Bx = rb.R0, By = rb.R1, Wb = rb.R2 };
-            var k = new Con<T>
+            int pb = W2D.Point0 + pt * W2D.PointStride, ib = W2D.Impulse0 + 3 * pt;
+            T rAx = W<T>(wide, pb + W2D.AnchorAX, l0), rAy = W<T>(wide, pb + W2D.AnchorAY, l0), rBx = W<T>(wide, pb + W2D.AnchorBX, l0), rBy = W<T>(wide, pb + W2D.AnchorBY, l0);
+            T adjSep = W<T>(wide, pb + W2D.AdjustedSeparation, l0), nMass = W<T>(wide, pb + W2D.NormalMass, l0);
+            T nImp = W<T>(wide, ib, l0), maxN = W<T>(wide, ib + 2, l0);
+            // Current separation from the accumulated body motion of this step: anchors turn with the bodies' delta rotations.
+            T prAx = dqAc * rAx - dqAs * rAy, prAy = dqAs * rAx + dqAc * rAy;
+            T prBx = dqBc * rBx - dqBs * rBy, prBy = dqBs * rBx + dqBc * rBy;
+            T dx = (dpBx - dpAx) + (prBx - prAx);
+            T dy = (dpBy - dpAy) + (prBy - prAy);
+            T s = (dx * nx + dy * ny) + adjSep;
+            T sPos = T.GreaterThan(s, zero);
+            T bias, ms, isc;
+            if (useBias)
             {
-                Nx = W<T>(wide, W2D.NormalX, l0), Ny = W<T>(wide, W2D.NormalY, l0),
-                MA = W<T>(wide, W2D.InvMassA, l0), IA = W<T>(wide, W2D.InvInertiaA, l0), MB = W<T>(wide, W2D.InvMassB, l0), IB = W<T>(wide, W2D.InvInertiaB, l0),
-            };
-            k.Tx = k.Ny; k.Ty = Lane.Neg(k.Nx); // the tangent is the normal turned clockwise
-            T rollImp = W<T>(wide, W2D.Roll, l0);
-            Pt<T> p0 = default, p1 = default;
-
-            if (phase == SolvePhase.WarmStart)
-            {
-                p0 = LoadWarm<T>(wide, W2D.Point0, W2D.Impulse0, l0);
-                p1 = LoadWarm<T>(wide, W2D.Point0 + W2D.PointStride, W2D.Impulse1, l0);
-                WarmStart(ref v, in k, in p0);
-                WarmStart(ref v, in k, in p1);
-                v.Wa = v.Wa - k.IA * rollImp;
-                v.Wb = v.Wb + k.IB * rollImp;
-            }
-            else if (phase == SolvePhase.Restitution)
-            {
-                k.Restitution = W<T>(wide, W2D.Restitution, l0);
-                p0 = LoadRestitution<T>(wide, W2D.Point0, W2D.Impulse0, l0);
-                p1 = LoadRestitution<T>(wide, W2D.Point0 + W2D.PointStride, W2D.Impulse1, l0);
-                Restitute(ref v, in k, ref p0, maskTrue, negThreshold);
-                Restitute(ref v, in k, ref p1, maskTrue, negThreshold);
+                T soft = Lane.Max(biasRate * Lane.Min(s + slop, zero), negPush);
+                bias = T.Select(sPos, s * invH, soft);
+                ms = T.Select(sPos, one, massScale);
+                isc = T.Select(sPos, zero, impulseScale);
             }
             else
             {
-                k.Friction = W<T>(wide, W2D.Friction, l0); k.Rolling = W<T>(wide, W2D.Rolling, l0); k.RollingMass = W<T>(wide, W2D.RollingMass, l0);
-                k.BiasRate = W<T>(wide, W2D.BiasRate, l0); k.MassScale = W<T>(wide, W2D.MassScale, l0); k.ImpulseScale = W<T>(wide, W2D.ImpulseScale, l0);
-                k.DpAx = ra.R4; k.DpAy = ra.R5; k.DqAc = ra.R6; k.DqAs = ra.R7;
-                k.DpBx = rb.R4; k.DpBy = rb.R5; k.DqBc = rb.R6; k.DqBs = rb.R7;
-                p0 = LoadPoint<T>(wide, W2D.Point0, W2D.Impulse0, l0);
-                p1 = LoadPoint<T>(wide, W2D.Point0 + W2D.PointStride, W2D.Impulse1, l0);
-                bool useBias = phase == SolvePhase.Solve;
-                // Rolling resistance, then friction, then non-penetration last: the last constraint solved wins the argument, and keeping bodies apart matters most.
-                T total = p0.NImp + p1.NImp;
-                T maxRoll = k.Rolling * total;
-                T lambda = Lane.Neg(k.RollingMass * (v.Wb - v.Wa));
-                T newRoll = Clamp(rollImp + lambda, Lane.Neg(maxRoll), maxRoll);
-                lambda = newRoll - rollImp;
-                rollImp = newRoll;
-                v.Wa = v.Wa - k.IA * lambda;
-                v.Wb = v.Wb + k.IB * lambda;
-                Friction(ref v, in k, ref p0);
-                Friction(ref v, in k, ref p1);
-                Normal(ref v, in k, ref p0, useBias, slop, invH, negPush);
-                Normal(ref v, in k, ref p1, useBias, slop, invH, negPush);
+                bias = T.Select(sPos, s * invH, zero);
+                ms = one;
+                isc = zero;
             }
 
-            T vAx = v.Ax, vAy = v.Ay, wA = v.Wa, vBx = v.Bx, vBy = v.By, wB = v.Wb;
-            vAx.StoreAt(os, 0 * width); vAy.StoreAt(os, 1 * width); wA.StoreAt(os, 2 * width);
-            vBx.StoreAt(os, 3 * width); vBy.StoreAt(os, 4 * width); wB.StoreAt(os, 5 * width);
-            for (int l = 0; l < width; l++)
-            {
-                // Scatter offsets are body rows the preparation wrote (a body index plus one, times the row stride), or -1 for a body that keeps its velocity.
-                int oa = idx[16 + l0 + l];
-                if (oa >= 0)
-                {
-                    Mem.Range(state, oa, BS2D.W + 1);
-                    Mem.At(state, oa + BS2D.Vx) = os[l]; Mem.At(state, oa + BS2D.Vy) = os[width + l]; Mem.At(state, oa + BS2D.W) = os[2 * width + l];
-                }
+            T dvx = (vBx - wB * rBy) - (vAx - wA * rAy);
+            T dvy = (vBy + wB * rBx) - (vAy + wA * rAx);
+            T vn = dvx * nx + dvy * ny;
+            T imp = Lane.Neg(nMass * ms * (vn + bias)) - isc * nImp;
+            T newImp = Lane.Max(nImp + imp, zero);
+            imp = newImp - nImp;
+            maxN = Lane.Max(maxN, newImp);
+            Apply(ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB, mA, iA, mB, iB, rAx, rAy, rBx, rBy, nx * imp, ny * imp);
+            newImp.StoreAt(wide, ib * 8 + l0); maxN.StoreAt(wide, (ib + 2) * 8 + l0);
+        }
 
-                int ob = idx[24 + l0 + l];
-                if (ob >= 0)
-                {
-                    Mem.Range(state, ob, BS2D.W + 1);
-                    Mem.At(state, ob + BS2D.Vx) = os[3 * width + l]; Mem.At(state, ob + BS2D.Vy) = os[4 * width + l]; Mem.At(state, ob + BS2D.W) = os[5 * width + l];
-                }
+        rvAx = vAx; rvAy = vAy; rwA = wA; rvBx = vBx; rvBy = vBy; rwB = wB;
+    }
+
+
+    // Writes the solved velocities back. Scatter offsets are body rows the preparation wrote (a body index plus one, times the row stride), or -1 for a body that keeps its velocity.
+    private static void Scatter<T>(Span<float> state, ReadOnlySpan<int> idx, int l0, T vAx, T vAy, T wA, T vBx, T vBy, T wB) where T : struct, ILane<T>
+    {
+        int width = T.Count;
+        Mem.SkipInit(out OutStage outs);
+        Span<float> os = outs;
+        vAx.StoreAt(os, 0 * width); vAy.StoreAt(os, 1 * width); wA.StoreAt(os, 2 * width);
+        vBx.StoreAt(os, 3 * width); vBy.StoreAt(os, 4 * width); wB.StoreAt(os, 5 * width);
+        for (int l = 0; l < width; l++)
+        {
+            int oa = idx[16 + l0 + l];
+            if (oa >= 0)
+            {
+                Mem.Range(state, oa, BS2D.W + 1);
+                Mem.At(state, oa + BS2D.Vx) = os[l]; Mem.At(state, oa + BS2D.Vy) = os[width + l]; Mem.At(state, oa + BS2D.W) = os[2 * width + l];
             }
 
-            if (phase == SolvePhase.Restitution)
+            int ob = idx[24 + l0 + l];
+            if (ob >= 0)
             {
-                // Restitution leaves the friction and rolling impulses alone.
-                p0.NImp.StoreAt(wide, W2D.Impulse0 * 8 + l0); p0.MaxN.StoreAt(wide, (W2D.Impulse0 + 2) * 8 + l0);
-                p1.NImp.StoreAt(wide, W2D.Impulse1 * 8 + l0); p1.MaxN.StoreAt(wide, (W2D.Impulse1 + 2) * 8 + l0);
-            }
-            else if (phase != SolvePhase.WarmStart)
-            {
-                rollImp.StoreAt(wide, W2D.Roll * 8 + l0);
-                p0.NImp.StoreAt(wide, W2D.Impulse0 * 8 + l0); p0.TImp.StoreAt(wide, (W2D.Impulse0 + 1) * 8 + l0); p0.MaxN.StoreAt(wide, (W2D.Impulse0 + 2) * 8 + l0);
-                p1.NImp.StoreAt(wide, W2D.Impulse1 * 8 + l0); p1.TImp.StoreAt(wide, (W2D.Impulse1 + 1) * 8 + l0); p1.MaxN.StoreAt(wide, (W2D.Impulse1 + 2) * 8 + l0);
+                Mem.Range(state, ob, BS2D.W + 1);
+                Mem.At(state, ob + BS2D.Vx) = os[3 * width + l]; Mem.At(state, ob + BS2D.Vy) = os[4 * width + l]; Mem.At(state, ob + BS2D.W) = os[5 * width + l];
             }
         }
     }

@@ -25,4 +25,8 @@ internal static class Mem
     /// <summary>A writable reference to element <paramref name="offset"/> without a bounds check; the caller has established the range (see <see cref="Range"/>).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ref float At(Span<float> s, int offset) => ref Unsafe.Add(ref MemoryMarshal.GetReference(s), offset);
+
+    /// <summary>Declares a scratch buffer without clearing it; the caller writes every element it reads.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void SkipInit<TBuffer>(out TBuffer buffer) => Unsafe.SkipInit(out buffer);
 }

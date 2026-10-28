@@ -85,18 +85,23 @@ internal readonly struct Lanes1 : ILane<Lanes1>
 
     public static Lanes1 Zero => default;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes1 Broadcast(float x) => new(x);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes1 Load(ReadOnlySpan<float> source) => new(source[0]);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Store(Span<float> destination) => destination[0] = _v;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes1 LoadAt(ReadOnlySpan<float> source, int offset)
     {
         Mem.Range(source, offset, 1);
         return new(Mem.At(source, offset));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void StoreAt(Span<float> destination, int offset)
     {
         Mem.Range(destination, offset, 1);
@@ -109,18 +114,25 @@ internal readonly struct Lanes1 : ILane<Lanes1>
         return new Rows8<Lanes1> { R0 = new(r[0]), R1 = new(r[1]), R2 = new(r[2]), R3 = new(r[3]), R4 = new(r[4]), R5 = new(r[5]), R6 = new(r[6]), R7 = new(r[7]) };
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes1 operator +(Lanes1 a, Lanes1 b) => new(a._v + b._v);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes1 operator -(Lanes1 a, Lanes1 b) => new(a._v - b._v);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes1 operator *(Lanes1 a, Lanes1 b) => new(a._v * b._v);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes1 operator /(Lanes1 a, Lanes1 b) => new(a._v / b._v);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes1 Negate(Lanes1 a) => new(-a._v);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes1 GreaterThan(Lanes1 a, Lanes1 b) => new(BitConverter.Int32BitsToSingle(a._v > b._v ? -1 : 0));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes1 Select(Lanes1 mask, Lanes1 whenSet, Lanes1 whenClear) =>
         BitConverter.SingleToInt32Bits(mask._v) != 0 ? whenSet : whenClear;
 }
@@ -136,18 +148,23 @@ internal readonly struct Lanes128 : ILane<Lanes128>
 
     public static Lanes128 Zero => default;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes128 Broadcast(float x) => new(Vector128.Create(x));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes128 Load(ReadOnlySpan<float> source) => new(Vector128.Create(source));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Store(Span<float> destination) => _v.CopyTo(destination);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes128 LoadAt(ReadOnlySpan<float> source, int offset)
     {
         Mem.Range(source, offset, 4);
         return new(Vector128.LoadUnsafe(in Mem.At(source, offset)));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void StoreAt(Span<float> destination, int offset)
     {
         Mem.Range(destination, offset, 4);
@@ -164,18 +181,25 @@ internal readonly struct Lanes128 : ILane<Lanes128>
         };
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes128 operator +(Lanes128 a, Lanes128 b) => new(Vector128.Add(a._v, b._v));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes128 operator -(Lanes128 a, Lanes128 b) => new(Vector128.Subtract(a._v, b._v));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes128 operator *(Lanes128 a, Lanes128 b) => new(Vector128.Multiply(a._v, b._v));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes128 operator /(Lanes128 a, Lanes128 b) => new(Vector128.Divide(a._v, b._v));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes128 Negate(Lanes128 a) => new(Vector128.Xor(a._v, Vector128.Create(-0f)));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes128 GreaterThan(Lanes128 a, Lanes128 b) => new(Vector128.GreaterThan(a._v, b._v));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes128 Select(Lanes128 mask, Lanes128 whenSet, Lanes128 whenClear) =>
         new(Vector128.ConditionalSelect(mask._v, whenSet._v, whenClear._v));
 }
@@ -191,18 +215,23 @@ internal readonly struct Lanes256 : ILane<Lanes256>
 
     public static Lanes256 Zero => default;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes256 Broadcast(float x) => new(Vector256.Create(x));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes256 Load(ReadOnlySpan<float> source) => new(Vector256.Create(source));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Store(Span<float> destination) => _v.CopyTo(destination);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes256 LoadAt(ReadOnlySpan<float> source, int offset)
     {
         Mem.Range(source, offset, 8);
         return new(Vector256.LoadUnsafe(in Mem.At(source, offset)));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void StoreAt(Span<float> destination, int offset)
     {
         Mem.Range(destination, offset, 8);
@@ -243,18 +272,25 @@ internal readonly struct Lanes256 : ILane<Lanes256>
         };
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes256 operator +(Lanes256 a, Lanes256 b) => new(Vector256.Add(a._v, b._v));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes256 operator -(Lanes256 a, Lanes256 b) => new(Vector256.Subtract(a._v, b._v));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes256 operator *(Lanes256 a, Lanes256 b) => new(Vector256.Multiply(a._v, b._v));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes256 operator /(Lanes256 a, Lanes256 b) => new(Vector256.Divide(a._v, b._v));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes256 Negate(Lanes256 a) => new(Vector256.Xor(a._v, Vector256.Create(-0f)));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes256 GreaterThan(Lanes256 a, Lanes256 b) => new(Vector256.GreaterThan(a._v, b._v));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes256 Select(Lanes256 mask, Lanes256 whenSet, Lanes256 whenClear) =>
         new(Vector256.ConditionalSelect(mask._v, whenSet._v, whenClear._v));
 }
