@@ -86,3 +86,67 @@ Evidence (maxPenetration / finalPenetration / other, x64 run; the stable engines
 - **sleep-wake-3d:** all engines but Rapier3D create the bodies asleep (Rapier3D reports none asleep, as in 2D). The ball crushes the stacks (0.33–1.28 deep) and scatters 0–7 bodies off the slab, so the thresholds are loose; enlarging the metric's container does not remove the scatter.
 - **queries-3d** (Apple M2, 1 thread, queries per second ray / overlap / cast; hits ray / overlap / cast): Jolt 2.2 M / 0.19 M / 0.78 M, 2941 / 34028 / 2256; Box3D 1.7 M / 0.25 M / 1.3 M, 2939 / 35159 / 2265; Rapier3D 3.4 M / 0.47 M / 0.42 M, 2941 / 34982 / 2263. Hit counts agree within 3.3%.
 
+## Stability under the robust metrics (x64, one thread; robust / raw)
+
+Same run as the proposed thresholds in `docs/scenes.md` (metric definitions there). Each cell is the robust value, then the raw (old-definition) value. Engines are listed where they ran the scene; `onephysics` is this library. These values supersede the old-metric evidence above where they differ: the old single-frame definitions were `jitterRaw`, `restKERaw`, `finalPenetrationRaw`, `escapesRaw`.
+
+**jitter**
+
+| scene | box2d | box2dnet | rapier2d | jolt | box3d | rapier3d | bepu | jitter2 | onephysics |
+|---|---|---|---|---|---|---|---|---|---|
+| pyramid-20 | 0 / 0 | 0 / 0 | 0 / 0 |  |  |  |  |  | 0 / 0 |
+| pyramid-100 | 0.115 / 0.01 | 0 / 0 | 0.00965 / 0 |  |  |  |  |  | 0 / 0 |
+| large-pile | 0.0449 / 0.0933 | 0.0137 / 1.04 | 0.078 / 0.0265 |  |  |  |  |  | 0.041 / 0.122 |
+| pyramid-3d-10 |  |  |  | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| pyramid-3d-30 |  |  |  | 0 / 0 | 0 / 0 | 0 / 0 | 0.0457 / 0.131 | 0 / 0 | 0 / 0 |
+| large-pile-3d |  |  |  | 0.00313 / 0.0158 | 8.77e-06 / 0 | 0.000332 / 0.0291 | 0.00664 / 0.0361 | 0.000343 / 0.0214 | 0.000121 / 0.0362 |
+
+**restKE**
+
+| scene | box2d | box2dnet | rapier2d | jolt | box3d | rapier3d | bepu | jitter2 | onephysics |
+|---|---|---|---|---|---|---|---|---|---|
+| pyramid-20 | 0 / 0 | 0 / 0 | 0 / 0 |  |  |  |  |  | 0 / 0 |
+| pyramid-100 | 0.00224 / 0.000728 | 0 / 0 | 0 / 0 |  |  |  |  |  | 0 / 0 |
+| large-pile | 0.00432 / 0.00014 | 0.000543 / 0.000131 | 0.00834 / 0.000486 |  |  |  |  |  | 0.0011 / 3.38e-06 |
+| pyramid-3d-10 |  |  |  | 0 / 0 | 0 / 0 | 0 / 0 | 2.41e-07 / 8.86e-08 | 2.12e-12 / 7.65e-13 | 0 / 0 |
+| pyramid-3d-30 |  |  |  | 0 / 0 | 0 / 0 | 0 / 0 | 0.0294 / 0.0254 | 9.14e-06 / 3.02e-06 | 0 / 0 |
+| large-pile-3d |  |  |  | 9.32e-08 / 1.07e-06 | 0 / 0 | 5.95e-07 / 1.77e-05 | 5.87e-06 / 8.12e-06 | 2.97e-08 / 4.51e-06 | 1.71e-08 / 1.9e-05 |
+| ragdoll-pile-3d |  |  |  | 0.0315 / 0.0571 | 0.00897 / 0.162 | 0.0131 / 0.131 | 0.0169 / 0.245 | 0.00486 / 0.00566 | 0.126 / 0.821 |
+
+**finalPenetration**
+
+| scene | box2d | box2dnet | rapier2d | jolt | box3d | rapier3d | bepu | jitter2 | onephysics |
+|---|---|---|---|---|---|---|---|---|---|
+| pyramid-20 | 0.00304 / 0.0036 | 0.00301 / 0.00347 | 0.00304 / 0.0033 |  |  |  |  |  | 0.00206 / 0.00235 |
+| pyramid-100 | 0.0152 / 0.018 | 0.0156 / 0.0209 | 0.0151 / 0.0174 |  |  |  |  |  | 0.0102 / 0.0123 |
+| large-pile | 0.0489 / 0.148 | 0.0502 / 0.179 | 0.0499 / 0.124 |  |  |  |  |  | 0.0353 / 0.11 |
+| tumbler | 0.0316 / 0.0891 | 0.0342 / 0.0715 | 0.0353 / 0.0932 |  |  |  |  |  | 0.0253 / 0.0661 |
+| sleep-wake | 0.0355 / 0.104 | 0.0481 / 0.0692 | 0.0351 / 0.0777 |  |  |  |  |  | 0.0362 / 0.129 |
+| mixed-terrain | 0.00503 / 0.0139 | 0.00481 / 0.0149 | 0.00504 / 0.0194 |  |  |  |  |  | 0.00356 / 0.0107 |
+| pyramid-3d-10 |  |  |  | 0.000546 / 0.000978 | 0.000422 / 0.000543 | 0.000405 / 0.000464 | 0.00081 / 0.00167 | 0.000935 / 0.00174 | 0.000393 / 0.000467 |
+| pyramid-3d-30 |  |  |  | 0.00267 / 0.00626 | 0.00132 / 0.00189 | 0.00127 / 0.00172 | 0.00215 / 0.454 | 0.0034 / 0.495 | 0.00125 / 0.00166 |
+| large-pile-3d |  |  |  | 0.0305 / 0.0687 | 0.00919 / 0.128 | 0.00518 / 0.0833 | 0.00735 / 0.0418 | 0.00998 / 0.0186 | 0.00729 / 0.0314 |
+| ragdoll-pile-3d |  |  |  | 0.0202 / 0.0275 | 0.00394 / 0.0821 | 0.00172 / 0.0232 | 0.00581 / 0.0351 | 0.01 / 0.0112 | 0.00378 / 0.0169 |
+| mesh-terrain-3d |  |  |  | 0.02 / 0.0272 | 0.00346 / 0.0214 | 0.00115 / 0.0061 | 0.000876 / 0.0276 | 0.01 / 0.323 | 0.000367 / 0.00492 |
+| heightfield-terrain-3d |  |  |  | 0.0209 / 0.0556 | 0.195 / 0.385 | 0.00115 / 0.0061 | 0.000876 / 0.0276 | 0.01 / 0.324 | 0.00893 / 0.039 |
+| sleep-wake-3d |  |  |  | 0.119 / 0.671 | 0.033 / 0.368 | 0.0413 / 0.297 | 0.067 / 0.909 | 0.193 / 0.472 | 0.103 / 0.357 |
+
+**escapes**
+
+| scene | box2d | box2dnet | rapier2d | jolt | box3d | rapier3d | bepu | jitter2 | onephysics |
+|---|---|---|---|---|---|---|---|---|---|
+| pyramid-20 | 0 / 0 | 0 / 0 | 0 / 0 |  |  |  |  |  | 0 / 0 |
+| pyramid-100 | 0 / 0 | 0 / 0 | 0 / 0 |  |  |  |  |  | 0 / 0 |
+| large-pile | 0 / 0 | 0 / 0 | 0 / 0 |  |  |  |  |  | 0 / 0 |
+| tumbler | 0 / 0 | 0 / 0 | 0 / 0 |  |  |  |  |  | 0 / 0 |
+| sleep-wake | 0 / 0 | 0 / 0 | 0 / 0 |  |  |  |  |  | 0 / 0 |
+| mixed-terrain | 0 / 0 | 0 / 0 | 0 / 0 |  |  |  |  |  | 0 / 0 |
+| pyramid-3d-10 |  |  |  | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| pyramid-3d-30 |  |  |  | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| large-pile-3d |  |  |  | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| ragdoll-pile-3d |  |  |  | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| mesh-terrain-3d |  |  |  | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 3 / 3 | 0 / 0 |
+| heightfield-terrain-3d |  |  |  | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 3 / 3 | 0 / 0 |
+| sleep-wake-3d |  |  |  | 0 / 0 | 0 / 4 | 0 / 5 | 0 / 7 | 0 / 0 | 0 / 0 |
+
+`ragdoll-pile-3d` `restKE` per engine is in the `restKE` table above: bepu 0.0169 / 0.245, box3d 0.00897 / 0.162, jitter2 0.00486 / 0.00566, jolt 0.0315 / 0.0571, rapier3d 0.0131 / 0.131, onephysics 0.126 / 0.821.

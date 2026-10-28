@@ -205,4 +205,83 @@ This library's engine, 1 thread, default options (robust / raw):
 | tumbler, mixed-terrain | | | 0.0253 / 0.0661, 0.00356 / 0.0107 | 0 / 0 |
 | mesh-terrain-3d, heightfield-terrain-3d | | | 0.000362 / 0.0196, 0.00893 / 0.0344 | 0 / 0 |
 
-Reference values and the thresholds proposed from them (the worst stable leader plus a margin): pending, the reference engines have not been run under the new metrics yet.
+### Reference values and proposed thresholds
+
+Measured on the x64 worker (Ryzen 9 7950X3D, 32 logical cores; load 26 before, 17 to 23 during, 18 after: other projects' work shared the machine, which does not change simulated results), one thread, .NET 10.0.13, the references at the versions and configurations pinned above, every engine through `bar run --mode stability` on the scenes regenerated from this commit. Values are the robust metric; `*` marks an engine that is not stable on that scene (the engines in the previous section's list, plus any whose `maxSpeed`, `maxPenetration` or `escapes` exceed the old caps), whose value does not set the threshold. The raw values of every engine are in `docs/bench.md`.
+
+**Rule.** The proposed threshold is 1.5 times the worst value among the stable engines other than ours, rounded up to 1, 1.5, 2, 3, 5 or 7 times a power of ten, and not below a floor of 0.01 for `jitter`, 0.0001 for `restKE` and 0.005 for `finalPenetration` (a pile that is at rest in every engine has zeros, and a threshold of zero would fail on rounding noise). `escapes` stays 0 everywhere. "ours ok" says whether this library's engine passes the proposed threshold.
+
+| scene | metric | box2d | box2dnet | rapier2d | jolt | box3d | rapier3d | bepu | jitter2 | ours | proposed | ours ok |
+| pyramid-20 | jitter | 0 | 0 | 0 |  |  |  |  |  | 0 | 0.01 | yes |
+| pyramid-20 | restKE | 0 | 0 | 0 |  |  |  |  |  | 0 | 0.0001 | yes |
+| pyramid-20 | finalPenetration | 0.00304 | 0.00301 | 0.00304 |  |  |  |  |  | 0.00206 | 0.005 | yes |
+| pyramid-20 | escapes | 0 | 0 | 0 |  |  |  |  |  | 0 | 0 | yes |
+
+<!-- pyramid-20: stable ['box2d', 'rapier2d', 'box2dnet']; unstable [] -->
+| pyramid-100 | jitter | 0.115 | 0 | 0.00965 |  |  |  |  |  | 0 | 0.2 | yes |
+| pyramid-100 | restKE | 0.00224 | 0 | 0 |  |  |  |  |  | 0 | 0.005 | yes |
+| pyramid-100 | finalPenetration | 0.0152 | 0.0156 | 0.0151 |  |  |  |  |  | 0.0102 | 0.03 | yes |
+| pyramid-100 | escapes | 0 | 0 | 0 |  |  |  |  |  | 0 | 0 | yes |
+
+<!-- pyramid-100: stable ['box2d', 'rapier2d', 'box2dnet']; unstable [] -->
+| large-pile | jitter | 0.0449 | 0.0137 | 0.078 |  |  |  |  |  | 0.041 | 0.15 | yes |
+| large-pile | restKE | 0.00432 | 0.000543 | 0.00834 |  |  |  |  |  | 0.0011 | 0.015 | yes |
+| large-pile | finalPenetration | 0.0489 | 0.0502 | 0.0499 |  |  |  |  |  | 0.0353 | 0.1 | yes |
+| large-pile | escapes | 0 | 0 | 0 |  |  |  |  |  | 0 | 0 | yes |
+
+<!-- large-pile: stable ['box2d', 'rapier2d', 'box2dnet']; unstable [] -->
+| tumbler | finalPenetration | 0.0316 | 0.0342 | 0.0353 |  |  |  |  |  | 0.0253 | 0.07 | yes |
+| tumbler | escapes | 0 | 0 | 0 |  |  |  |  |  | 0 | 0 | yes |
+
+<!-- tumbler: stable ['box2d', 'rapier2d', 'box2dnet']; unstable [] -->
+| sleep-wake | finalPenetration | 0.0355 | 0.0481 | 0.0351 |  |  |  |  |  | 0.0362 | 0.1 | yes |
+| sleep-wake | escapes | 0 | 0 | 0 |  |  |  |  |  | 0 | 0 | yes |
+
+<!-- sleep-wake: stable ['box2d', 'rapier2d', 'box2dnet']; unstable [] -->
+| mixed-terrain | finalPenetration | 0.00503 | 0.00481 | 0.00504 |  |  |  |  |  | 0.00356 | 0.01 | yes |
+| mixed-terrain | escapes | 0 | 0 | 0 |  |  |  |  |  | 0 | 0 | yes |
+
+<!-- mixed-terrain: stable ['box2d', 'rapier2d', 'box2dnet']; unstable [] -->
+| pyramid-3d-10 | jitter |  |  |  | 0 | 0 | 0 | 0 | 0 | 0 | 0.01 | yes |
+| pyramid-3d-10 | restKE |  |  |  | 0 | 0 | 0 | 2.41e-07 | 2.12e-12 | 0 | 0.0001 | yes |
+| pyramid-3d-10 | finalPenetration |  |  |  | 0.000546 | 0.000422 | 0.000405 | 0.00081 | 0.000935 | 0.000393 | 0.005 | yes |
+| pyramid-3d-10 | escapes |  |  |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | yes |
+
+<!-- pyramid-3d-10: stable ['jolt', 'box3d', 'rapier3d', 'bepu', 'jitter2']; unstable [] -->
+| pyramid-3d-30 | jitter |  |  |  | 0 | 0 | 0 | 0.0457* | 0* | 0 | 0.01 | yes |
+| pyramid-3d-30 | restKE |  |  |  | 0 | 0 | 0 | 0.0294* | 9.14e-06* | 0 | 0.0001 | yes |
+| pyramid-3d-30 | finalPenetration |  |  |  | 0.00267 | 0.00132 | 0.00127 | 0.00215* | 0.0034* | 0.00125 | 0.005 | yes |
+| pyramid-3d-30 | escapes |  |  |  | 0 | 0 | 0 | 0* | 0* | 0 | 0 | yes |
+
+<!-- pyramid-3d-30: stable ['jolt', 'box3d', 'rapier3d']; unstable ['bepu', 'jitter2'] -->
+| large-pile-3d | jitter |  |  |  | 0.00313 | 8.77e-06 | 0.000332 | 0.00664 | 0.000343 | 0.000121 | 0.01 | yes |
+| large-pile-3d | restKE |  |  |  | 9.32e-08 | 0 | 5.95e-07 | 5.87e-06 | 2.97e-08 | 1.71e-08 | 0.0001 | yes |
+| large-pile-3d | finalPenetration |  |  |  | 0.0305 | 0.00919 | 0.00518 | 0.00735 | 0.00998 | 0.00729 | 0.05 | yes |
+| large-pile-3d | escapes |  |  |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | yes |
+
+<!-- large-pile-3d: stable ['jolt', 'box3d', 'rapier3d', 'bepu', 'jitter2']; unstable [] -->
+| ragdoll-pile-3d | restKE |  |  |  | 0.0315 | 0.00897 | 0.0131 | 0.0169 | 0.00486 | 0.126 | 0.05 | NO |
+| ragdoll-pile-3d | finalPenetration |  |  |  | 0.0202 | 0.00394 | 0.00172 | 0.00581 | 0.01 | 0.00378 | 0.05 | yes |
+| ragdoll-pile-3d | escapes |  |  |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | yes |
+
+<!-- ragdoll-pile-3d: stable ['jolt', 'box3d', 'rapier3d', 'bepu', 'jitter2']; unstable [] -->
+| mesh-terrain-3d | finalPenetration |  |  |  | 0.02 | 0.00346 | 0.00115 | 0.000876 | 0.01* | 0.000367 | 0.03 | yes |
+| mesh-terrain-3d | escapes |  |  |  | 0 | 0 | 0 | 0 | 3* | 0 | 0 | yes |
+
+<!-- mesh-terrain-3d: stable ['jolt', 'box3d', 'rapier3d', 'bepu']; unstable ['jitter2'] -->
+| heightfield-terrain-3d | finalPenetration |  |  |  | 0.0209 | 0.195* | 0.00115 | 0.000876 | 0.01* | 0.00893 | 0.05 | yes |
+| heightfield-terrain-3d | escapes |  |  |  | 0 | 0* | 0 | 0 | 3* | 0 | 0 | yes |
+
+<!-- heightfield-terrain-3d: stable ['jolt', 'rapier3d', 'bepu']; unstable ['box3d', 'jitter2'] -->
+| sleep-wake-3d | finalPenetration |  |  |  | 0.119 | 0.033 | 0.0413 | 0.067 | 0.193 | 0.103 | 0.3 | yes |
+| sleep-wake-3d | escapes |  |  |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | yes |
+
+<!-- sleep-wake-3d: stable ['jolt', 'box3d', 'rapier3d', 'bepu', 'jitter2']; unstable [] -->
+
+The comments list, per scene, which engines were counted stable.
+
+**Findings.**
+- `ragdoll-pile-3d` `restKE`: ours is **0.126** (raw 0.821) against 0.0049 to 0.032 for the others (raw 0.0057 to 0.245), so this library's engine fails the proposed 0.05. It is the one row where the robust metric does not rescue us: more than a tenth of our bodies keep moving at the end of the run. Within our sweep the same metric ran 0.041 to 0.181. This is an engine finding, not a metric artefact.
+- `heightfield-terrain-3d`: Box3D (0.195 deep, an alpha height-field finding) is not counted. `sleep-wake-3d`: all engines pass with `escapeMargin` 60; with the old 0.5 m margin Bepu, Box3D and Rapier3D threw 7, 4 and 5 boxes out of the container (`escapesRaw`).
+- `pyramid-100` `jitter`: Box2D's robust value (0.115) is higher than its raw one (0.01): the window includes an earlier interval in which the pyramid was still settling.
+- Scenes without a row (`joint-grid`, `chain`, `bullets`, `queries`, `characters`, vehicles) carry none of the four metrics except `escapes`, which is 0 for every stable engine.
