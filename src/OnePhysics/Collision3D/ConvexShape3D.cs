@@ -64,6 +64,17 @@ public readonly struct ConvexShape3D
     /// <summary>A zero-size shape: a point. Useful as the moving side of a ray cast.</summary>
     public static ConvexShape3D Point => default;
 
+    /// <summary>Largest ratio of a shape's longest outer dimension to its shortest, 2^20. The cast and distance routines work in float32 with tolerances relative to the largest coordinate they see, so a shape much thinner than that is not resolved.</summary>
+    public const float MaxAspectRatio = 1048576f;
+
+    private static void RequireAspect(float longest, float shortest, string name)
+    {
+        if (!(longest <= shortest * MaxAspectRatio))
+        {
+            throw new ArgumentOutOfRangeException(name, shortest, $"The shape is {longest} long but only {shortest} thick (ratio above {MaxAspectRatio}); a thickness of at least 1/{MaxAspectRatio} of the length is expected.");
+        }
+    }
+
     private static void RequireDim(float value, string name, bool allowZero = false)
     {
         if (!float.IsFinite(value) || value > MaxDimension || (allowZero ? value < 0 : value <= 0))
@@ -84,13 +95,14 @@ public readonly struct ConvexShape3D
     /// <summary>A box centred on the origin with edges along the axes.</summary>
     /// <param name="halfExtents">Half the size along each axis; each finite and positive.</param>
     /// <param name="convexRadius">Edge rounding radius, 0 for sharp; at most the smallest half extent. The outer size stays <paramref name="halfExtents"/>.</param>
-    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range, or the shape is thinner than <see cref="MaxAspectRatio"/> allows for its length.</exception>
     public static ConvexShape3D Box(Vector3F halfExtents, float convexRadius = 0f)
     {
         RequireDim(halfExtents.X, "halfExtents.X");
         RequireDim(halfExtents.Y, "halfExtents.Y");
         RequireDim(halfExtents.Z, "halfExtents.Z");
         float m = Math.Min(halfExtents.X, Math.Min(halfExtents.Y, halfExtents.Z));
+        RequireAspect(Math.Max(halfExtents.X, Math.Max(halfExtents.Y, halfExtents.Z)), m, nameof(halfExtents));
         if (!(convexRadius >= 0 && convexRadius <= m))
         {
             throw new ArgumentOutOfRangeException(nameof(convexRadius), convexRadius, $"convexRadius is {convexRadius}; a value in [0, {m}] (the smallest half extent) is expected.");
@@ -102,11 +114,12 @@ public readonly struct ConvexShape3D
     /// <summary>A capsule along Y centred on the origin: a cylinder of half height <paramref name="halfHeight"/> capped by hemispheres.</summary>
     /// <param name="halfHeight">Half the length of the cylindrical part; finite, positive.</param>
     /// <param name="radius">Radius; finite, positive.</param>
-    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range, or the shape is thinner than <see cref="MaxAspectRatio"/> allows for its length.</exception>
     public static ConvexShape3D Capsule(float halfHeight, float radius)
     {
         RequireDim(halfHeight, nameof(halfHeight));
         RequireDim(radius, nameof(radius));
+        RequireAspect(halfHeight + radius, radius, nameof(radius));
         return new ConvexShape3D(ConvexShapeKind3D.Capsule, new Vector3F(0, halfHeight, 0), radius, null);
     }
 
@@ -114,12 +127,13 @@ public readonly struct ConvexShape3D
     /// <param name="halfHeight">Half the distance between the sphere centres; finite, positive.</param>
     /// <param name="topRadius">Radius of the sphere at +halfHeight; finite, positive.</param>
     /// <param name="bottomRadius">Radius of the sphere at -halfHeight; finite, positive.</param>
-    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range, or one sphere contains the other (the radii differ by at least twice <paramref name="halfHeight"/>).</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range, the shape is thinner than <see cref="MaxAspectRatio"/> allows, or one sphere contains the other (the radii differ by at least twice <paramref name="halfHeight"/>).</exception>
     public static ConvexShape3D TaperedCapsule(float halfHeight, float topRadius, float bottomRadius)
     {
         RequireDim(halfHeight, nameof(halfHeight));
         RequireDim(topRadius, nameof(topRadius));
         RequireDim(bottomRadius, nameof(bottomRadius));
+        RequireAspect(halfHeight + Math.Max(topRadius, bottomRadius), Math.Min(topRadius, bottomRadius), nameof(halfHeight));
         if (!(Math.Abs((double)topRadius - bottomRadius) < 2.0 * halfHeight))
         {
             throw new ArgumentOutOfRangeException(nameof(bottomRadius), bottomRadius, $"The radii {topRadius} and {bottomRadius} differ by at least the centre distance {2.0 * halfHeight}, so one sphere contains the other; radii differing by less than twice halfHeight are expected.");
@@ -132,12 +146,13 @@ public readonly struct ConvexShape3D
     /// <param name="halfHeight">Half the height; finite, positive.</param>
     /// <param name="radius">Radius; finite, positive.</param>
     /// <param name="convexRadius">Edge rounding radius, 0 for sharp; at most the smaller of the two. The outer size stays as given.</param>
-    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range, or the shape is thinner than <see cref="MaxAspectRatio"/> allows for its length.</exception>
     public static ConvexShape3D Cylinder(float halfHeight, float radius, float convexRadius = 0f)
     {
         RequireDim(halfHeight, nameof(halfHeight));
         RequireDim(radius, nameof(radius));
         float m = Math.Min(halfHeight, radius);
+        RequireAspect(Math.Max(halfHeight, radius), m, nameof(halfHeight));
         if (!(convexRadius >= 0 && convexRadius <= m))
         {
             throw new ArgumentOutOfRangeException(nameof(convexRadius), convexRadius, $"convexRadius is {convexRadius}; a value in [0, {m}] is expected.");

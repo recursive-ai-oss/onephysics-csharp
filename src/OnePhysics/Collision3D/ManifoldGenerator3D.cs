@@ -280,7 +280,35 @@ public sealed partial class ManifoldGenerator3D
             }
         }
 
-        return new Manifold3D(normal, n, p0, p1, p2, p3);
+        return new Manifold3D(UnitNormal(normal), n, p0, p1, p2, p3);
+    }
+
+    // The depth and direction searches (SAT axes, EPA faces) can hand back a normal that is off by more than rounding when the shapes are tiny, denormal or hugely different in size;
+    // a normal that is not within 1e-3 of unit squared length is rescaled in double so every manifold leaves here with a unit normal. A zero or non-finite normal falls back to the +Y axis.
+    private static Vector3F UnitNormal(Vector3F n)
+    {
+        double x = n.X, y = n.Y, z = n.Z;
+        double l2 = (x * x) + (y * y) + (z * z);
+        if (Math.Abs(l2 - 1.0) <= 1e-3)
+        {
+            return n;
+        }
+
+        if (!(l2 > 0.0) || double.IsInfinity(l2))
+        {
+            // Overflowed squares: scale by the largest component first.
+            double m = Math.Max(Math.Abs(x), Math.Max(Math.Abs(y), Math.Abs(z)));
+            if (!(m > 0.0) || double.IsInfinity(m) || double.IsNaN(m))
+            {
+                return Vector3F.UnitY;
+            }
+
+            x /= m; y /= m; z /= m;
+            l2 = (x * x) + (y * y) + (z * z);
+        }
+
+        double inv = 1.0 / Math.Sqrt(l2);
+        return new Vector3F((float)(x * inv), (float)(y * inv), (float)(z * inv));
     }
 
     // Twice the signed area of the triangle (edge a->b, point x) about the normal, positive when x lies to the right of a->b, i.e. outside a counter-clockwise triangle.
