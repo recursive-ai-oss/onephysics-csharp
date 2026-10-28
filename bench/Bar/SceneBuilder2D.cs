@@ -9,6 +9,9 @@ namespace Bar;
 /// <summary>Builds a 2D world from a scene definition. Shared by the bar runner and the hash-matrix scenarios. Revolute joints (the only 2D kind the scene format has) are created; a joint between two non-dynamic bodies is dropped.</summary>
 public static class SceneBuilder2D
 {
+    /// <summary>Applied to the world options before the world is created; the stability sweeps use it to perturb contact stiffness or the substep count. Null in every other use.</summary>
+    public static Action<WorldOptions2D>? Tweak { get; set; }
+
     public static (PhysicsWorld2D World, Body[] Bodies, WorldOptions2D Options) Build(Scene s, int threads) => Build(s, threads, out _);
 
     /// <summary>Builds the scene; bodies with a <c>character</c> script become characters (their bodies are in the array), returned with their scripts in body order.</summary>
@@ -16,6 +19,7 @@ public static class SceneBuilder2D
     {
         var opt = new WorldOptions2D { Gravity = new Vector2F((float)s.Gx, (float)s.Gy), ThreadCount = threads };
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
+        Tweak?.Invoke(opt);
         var world = new PhysicsWorld2D(opt);
 
         if (s.Bodies.Exists(b => b.Script != null)) world.SetLayerCollision(1, 1, false); // characters pass through each other (layer 1); the world and the crates are layer 0

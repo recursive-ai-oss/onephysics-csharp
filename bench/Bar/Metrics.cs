@@ -191,13 +191,20 @@ public static class Metrics
 
         if (want.Contains("restKE"))
         {
+            double SpecificKe(int f, int i)
+            {
+                var mp = mass[i]; var d = frames[f].D;
+                double vx = d[i * 7 + 3], vy = d[i * 7 + 4], w = d[i * 7 + 5];
+                return mp.M > 0 ? (0.5 * mp.M * (vx * vx + vy * vy) + 0.5 * mp.I * w * w) / mp.M : 0;
+            }
+            r["restKE"] = Robust.RestKe(frames.Count, dyn, SpecificKe);
             double ke = 0, m = 0;
             foreach (var i in dyn)
             {
                 var mp = mass[i]; double vx = last.D[i * 7 + 3], vy = last.D[i * 7 + 4], w = last.D[i * 7 + 5];
                 ke += 0.5 * mp.M * (vx * vx + vy * vy) + 0.5 * mp.I * w * w; m += mp.M;
             }
-            r["restKE"] = m > 0 ? ke / m : 0;
+            r["restKERaw"] = m > 0 ? ke / m : 0;
         }
         if (want.Contains("jitter") && frames.Count >= 2)
         {
@@ -207,7 +214,12 @@ public static class Metrics
                 double dx = last.D[i * 7] - prev.D[i * 7], dy = last.D[i * 7 + 1] - prev.D[i * 7 + 1];
                 j = Math.Max(j, Math.Sqrt(dx * dx + dy * dy) / dt);
             }
-            r["jitter"] = j;
+            r["jitterRaw"] = j;
+            r["jitter"] = Robust.Jitter(frames.Count, k => frames[k].Step, s.Dt, dyn, (a, b, i) =>
+            {
+                double dx = frames[b].D[i * 7] - frames[a].D[i * 7], dy = frames[b].D[i * 7 + 1] - frames[a].D[i * 7 + 1];
+                return Math.Sqrt(dx * dx + dy * dy);
+            });
         }
         if (want.Contains("charJitter") && frames.Count >= 3)
         {
@@ -234,16 +246,21 @@ public static class Metrics
         if (want.Contains("awakeFinal")) r["awakeFinal"] = dyn.Count(i => last.D[i * 7 + 6] > 0.5);
         if (want.Contains("escapes") && s.Params.TryGetValue("container", out var c))
         {
-            double x0 = double.Parse(c[0], CultureInfo.InvariantCulture) - 0.5, y0 = double.Parse(c[1], CultureInfo.InvariantCulture) - 0.5;
-            double x1 = double.Parse(c[2], CultureInfo.InvariantCulture) + 0.5, y1 = double.Parse(c[3], CultureInfo.InvariantCulture) + 0.5;
-            int worst = 0;
-            foreach (var fr in frames)
+            double cx0 = double.Parse(c[0], CultureInfo.InvariantCulture), cy0 = double.Parse(c[1], CultureInfo.InvariantCulture);
+            double cx1 = double.Parse(c[2], CultureInfo.InvariantCulture), cy1 = double.Parse(c[3], CultureInfo.InvariantCulture);
+            int Escapes(double margin)
             {
-                int cnt = 0;
-                foreach (var i in dyn) { double x = fr.D[i * 7], y = fr.D[i * 7 + 1]; if (!(x >= x0 && x <= x1 && y >= y0 && y <= y1)) cnt++; }
-                worst = Math.Max(worst, cnt);
+                int worst = 0;
+                foreach (var fr in frames)
+                {
+                    int cnt = 0;
+                    foreach (var i in dyn) { double x = fr.D[i * 7], y = fr.D[i * 7 + 1]; if (!(x >= cx0 - margin && x <= cx1 + margin && y >= cy0 - margin && y <= cy1 + margin)) cnt++; }
+                    worst = Math.Max(worst, cnt);
+                }
+                return worst;
             }
-            r["escapes"] = worst;
+            r["escapesRaw"] = Escapes(Robust.DefaultEscapeMargin);
+            r["escapes"] = Escapes(Robust.EscapeMargin(s));
         }
         if (want.Contains("tunnelled"))
         {
@@ -279,8 +296,16 @@ public static class Metrics
                 }
             r["jointError"] = worst;
         }
-        if (want.Contains("maxPenetration")) r["maxPenetration"] = Penetration(s, frames);
-        if (want.Contains("finalPenetration")) r["finalPenetration"] = Penetration(s, [last]);
+        if (want.Contains("maxPenetration") || want.Contains("finalPenetration"))
+        {
+            var pen = Penetration(s, want.Contains("maxPenetration") ? frames : frames.TakeLast(Robust.Window).ToList());
+            if (want.Contains("maxPenetration")) r["maxPenetration"] = pen.Max(Robust.Deepest);
+            if (want.Contains("finalPenetration"))
+            {
+                r["finalPenetrationRaw"] = Robust.Deepest(pen[^1]);
+                r["finalPenetration"] = Robust.FinalPenetration(pen);
+            }
+        }
         return r;
     }
 
@@ -290,16 +315,18 @@ public static class Metrics
         return (f.D[b * 7] + c * lx - sn * ly, f.D[b * 7 + 1] + sn * lx + c * ly);
     }
 
-    static double Penetration(Scene s, List<Frame> frames)
+    /// <summary>Overlap depth of every overlapping shape pair, per frame, deepest first.</summary>
+    static List<double[]> Penetration(Scene s, List<Frame> frames)
     {
         var parts = Parts(s);
         var jointed = new HashSet<long>();
         foreach (var j in s.Joints) jointed.Add(((long)Math.Min(j.A, j.B) << 32) | (uint)Math.Max(j.A, j.B));
-        double worst = 0;
+        var result = new List<double[]>();
         var wx = new double[parts.Count][]; // world core points per part
         var minX = new double[parts.Count]; var maxX = new double[parts.Count]; var minY = new double[parts.Count]; var maxY = new double[parts.Count];
         foreach (var fr in frames)
         {
+            var depths = new List<double>();
             for (int k = 0; k < parts.Count; k++)
             {
                 var pt = parts[k]; var b = pt.Body;
@@ -331,11 +358,13 @@ public static class Metrics
                     if (jointed.Contains(((long)Math.Min(pi.Body, pj.Body) << 32) | (uint)Math.Max(pi.Body, pj.Body))) continue;
                     var a = Pts(wx[i]); var b = Pts(wx[j]);
                     double sd = CoreDistance(a, b) - pi.Radius - pj.Radius;
-                    if (-sd > worst) worst = -sd;
+                    if (sd < 0) depths.Add(-sd);
                 }
             }
+            depths.Sort((a, b) => b.CompareTo(a));
+            result.Add(depths.ToArray());
         }
-        return worst;
+        return result;
     }
 
     static List<(double x, double y)> Pts(double[] w)

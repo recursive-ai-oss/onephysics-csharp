@@ -20,13 +20,13 @@ public static class Program
                 foreach (var kv in Metrics.Compute(s, opts.Pos(1))) Console.WriteLine($"{kv.Key}={kv.Value.ToString("R", CultureInfo.InvariantCulture)}");
                 return 0;
             }
-            case "selftest": return Metrics.SelfTest() + Metrics3.SelfTest();
+            case "selftest": return Metrics.SelfTest() + Metrics3.SelfTest() + Robust.SelfTest();
             case "run": return Runner.Run(opts);
             case "summarize": Runner.Summarize(opts.Pos(0)); return 0;
             case "box2dnet-driver": return Box2DNetDriver.Run(opts);
             case "bepu-driver": return BepuDriver.Run(opts);
             case "jitter2-driver": return Jitter2Driver.Run(opts);
-            case "onephysics-driver": return Scene.Load(opts.Get("scene", "")).Dim == 3 ? Driver3.Run(opts, new OnePhysics3Sim()) : OnePhysicsDriver.Run(opts);
+            case "onephysics-driver": SweepTweaks.Install(); return Scene.Load(opts.Get("scene", "")).Dim == 3 ? Driver3.Run(opts, new OnePhysics3Sim()) : OnePhysicsDriver.Run(opts);
             default: return Usage();
         }
     }
@@ -281,5 +281,21 @@ static class Runner
             using var p = Process.Start(psi)!; var s = p.StandardOutput.ReadToEnd().Trim(); p.WaitForExit(); return s.Trim('{', '}', ' ');
         }
         catch (Exception) { return "unknown"; }
+    }
+}
+
+
+/// <summary>Stability-sweep perturbations of this library's own engine, read from the environment of the driver process: BAR_CONTACT_HERTZ_SCALE, BAR_JOINT_HERTZ_SCALE and BAR_PUSH_OUT_SCALE multiply the soft-constraint frequencies and the push-out speed, BAR_CONTACT_DAMPING and BAR_JOINT_DAMPING set the damping ratios, BAR_SUBSTEPS sets the substep count. Unset means the defaults.</summary>
+static class SweepTweaks
+{
+    static float Get(string name, float d) => float.TryParse(Environment.GetEnvironmentVariable(name), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : d;
+
+    public static void Install()
+    {
+        float ch = Get("BAR_CONTACT_HERTZ_SCALE", 1f), jh = Get("BAR_JOINT_HERTZ_SCALE", 1f), cd = Get("BAR_CONTACT_DAMPING", -1f), jd = Get("BAR_JOINT_DAMPING", -1f), push = Get("BAR_PUSH_OUT_SCALE", 1f);
+        int sub = (int)Get("BAR_SUBSTEPS", 0f);
+        if (ch == 1f && jh == 1f && cd < 0 && jd < 0 && push == 1f && sub == 0) return;
+        SceneBuilder2D.Tweak = o => { o.ContactHertz *= ch; o.JointHertz *= jh; o.PushOutVelocity *= push; if (cd >= 0) o.ContactDampingRatio = cd; if (jd >= 0) o.JointDampingRatio = jd; if (sub > 0) o.Substeps = sub; };
+        SceneBuilder3D.Tweak = o => { o.ContactHertz *= ch; o.JointHertz *= jh; o.PushOutVelocity *= push; if (cd >= 0) o.ContactDampingRatio = cd; if (jd >= 0) o.JointDampingRatio = jd; if (sub > 0) o.Substeps = sub; };
     }
 }
