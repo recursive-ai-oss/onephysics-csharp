@@ -1,13 +1,13 @@
 using System;
 
-namespace RecursiveAI.OnePhysics.Collision2D.Reference;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// A fixed scenario over the whole 2D collision API, reduced to one 64-bit hash: random shapes (some of them deliberately invalid), manifolds, distances, ray and shape casts,
 /// times of impact and mass data, all from a seeded generator written with exact arithmetic only. The hash is the same on every platform and runtime;
 /// it is used by the tests and the AOT and WebAssembly smoke apps to check exactly that.
 /// </summary>
-public static class CollisionHash2D
+internal static class CollisionHash2D
 {
     private struct Rng
     {
@@ -128,7 +128,7 @@ public static class CollisionHash2D
         foreach (Vec2[] pts in hostile)
         {
             try { Shape2D.CreatePolygon(pts); h.Add(0u); }
-            catch (InvalidShapeException e) { h.Add((uint)e.Reason + 1u); }
+            catch (InvalidShapeException e) { h.Add((uint)e.Error); }
         }
 
         for (int i = 0; i < shapes.Length; i++)

@@ -1,9 +1,11 @@
 using System;
 using System.Threading;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Core;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>One unit of parallel work, run with a task index. Tasks of one call must touch disjoint data (or only read shared data).</summary>
+[Experimental("OPHYS0001")]
 public interface IParallelBody
 {
     /// <summary>Runs task number <paramref name="task"/>.</summary>
@@ -14,6 +16,7 @@ public interface IParallelBody
 /// A sequence of stages, each a set of independent tasks; every task of a stage finishes before any task of the next stage starts. <see cref="TaskCount"/> must depend only on data that does not
 /// change during the call.
 /// </summary>
+[Experimental("OPHYS0001")]
 public interface IStagedBody
 {
     /// <summary>Number of tasks in stage <paramref name="stage"/> (zero skips the stage).</summary>
@@ -31,6 +34,7 @@ public interface IStagedBody
 /// Worker threads are shared by every executor in the process and stay alive for it (they spin briefly after a call, then sleep, so a world that is no longer stepped costs nothing).
 /// A call that finds the workers busy with another world's step, or that runs on a platform without threads, simply runs its tasks on the calling thread: the answer is the same.
 /// </remarks>
+[Experimental("OPHYS0001")]
 public sealed class TaskExecutor
 {
     /// <summary>Creates an executor. <paramref name="threadCount"/> is at least 1; 1 never leaves the calling thread (always the case on single-threaded WASM).</summary>

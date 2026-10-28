@@ -1,9 +1,11 @@
 using System;
 using RecursiveAI.OneMath;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>Result of a penetration or separation query between two convex shapes, in the frame of shape A.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct ConvexContact3D
 {
     internal ConvexContact3D(float separation, Vector3F normal, Vector3F pointA, Vector3F pointB)
@@ -34,6 +36,7 @@ public readonly struct ConvexContact3D
 /// Expanding Polytope Algorithm: penetration depth and direction of overlapping convex shapes (van den Bergen 2001, "Proximity queries and penetration depth computation on 3D game objects"; Ericson 2005, ch. 9).
 /// An instance owns its working storage and reuses it, so queries do not allocate; it is not safe to share between threads.
 /// </summary>
+[Experimental("OPHYS0001")]
 public sealed class Epa3D
 {
     private const int MaxVertices = 128;

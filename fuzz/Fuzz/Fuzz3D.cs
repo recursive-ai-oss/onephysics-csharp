@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Collision3D;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 // Fuzz target for the 3D contact manifolds. The bytes describe two shapes, a pose and a speculative distance. Most values are ordinary, some are NaN, infinite, huge or tiny,
 // so hostile input reaches the shape constructors and the pose check. Allowed outcomes: a manifold with finite numbers, or a typed argument error from a constructor or

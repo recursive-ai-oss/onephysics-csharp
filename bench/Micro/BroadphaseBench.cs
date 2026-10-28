@@ -1,7 +1,7 @@
 using System;
 using BenchmarkDotNet.Attributes;
-using RecursiveAI.OnePhysics.Broadphase;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Bench;
 

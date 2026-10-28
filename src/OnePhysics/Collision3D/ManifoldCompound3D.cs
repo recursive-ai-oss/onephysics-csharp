@@ -1,14 +1,16 @@
 using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// The contact manifold of one child pair, with the sub-shape ids that go with it. A contact between two shapes with compounds is one constraint per child pair: the pair
 /// <c>(SubShapeA, SubShapeB)</c> is part of the constraint's key (the shared core stores both ids per constraint), and the manifold's own 32-bit feature ids match points between frames
 /// within that constraint. A shape that is not a compound has sub-shape id 0.
 /// </summary>
+[Experimental("OPHYS0001")]
 public readonly struct ChildContact3D
 {
     internal ChildContact3D(int subShapeA, int subShapeB, Manifold3D manifold)

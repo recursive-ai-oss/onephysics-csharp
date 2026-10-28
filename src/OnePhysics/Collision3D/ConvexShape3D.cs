@@ -2,7 +2,9 @@ using System;
 using RecursiveAI.OneMath;
 using RecursiveAI.OneMath.Physics;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+using RecursiveAI.OnePhysics.LowLevel;
+
+namespace RecursiveAI.OnePhysics;
 
 /// <summary>The kinds of support-mapped convex shape.</summary>
 public enum ConvexShapeKind3D : byte

@@ -1,9 +1,8 @@
 using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Broadphase;
-using RecursiveAI.OnePhysics.Collision2D;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics2D;
 
@@ -130,19 +129,29 @@ internal sealed partial class Engine2D : ISnapshotSection
 
     // ------------------------------------------------------------------ bodies
 
-    public BodyHandle CreateBody(in BodyDef d)
+    public BodyHandle CreateBody(in BodyDef def)
     {
-        if (!double.IsFinite(d.Position.X) || !double.IsFinite(d.Position.Y)) { throw new ArgumentOutOfRangeException(nameof(d), "Body position must be finite."); }
-        if (!float.IsFinite(d.Angle)) { throw new ArgumentOutOfRangeException(nameof(d), d.Angle, "Body angle must be finite."); }
-        if (!float.IsFinite(d.AngularVelocity)) { throw new ArgumentOutOfRangeException(nameof(d), d.AngularVelocity, "Angular velocity must be finite."); }
+        ref readonly BodyDef d = ref def;
+        if (!double.IsFinite(d.Position.X) || !double.IsFinite(d.Position.Y)) { throw new ArgumentOutOfRangeException(nameof(def), "Body position must be finite."); }
+        if (!float.IsFinite(d.Angle)) { throw new ArgumentOutOfRangeException(nameof(def), d.Angle, "Body angle must be finite."); }
+        if (!float.IsFinite(d.AngularVelocity)) { throw new ArgumentOutOfRangeException(nameof(def), d.AngularVelocity, "Angular velocity must be finite."); }
         Nonnegative(d.LinearDamping, "LinearDamping");
         Nonnegative(d.AngularDamping, "AngularDamping");
-        if (!float.IsFinite(d.GravityScale)) { throw new ArgumentOutOfRangeException(nameof(d), d.GravityScale, "GravityScale must be finite."); }
+        if (!float.IsFinite(d.GravityScale)) { throw new ArgumentOutOfRangeException(nameof(def), d.GravityScale, "GravityScale must be finite."); }
         var (s, c) = RecursiveAI.OneMath.Math64.SinCos(d.Angle);
         var flags = BodyBits.None;
         if (d.IsBullet) { flags |= BodyBits.Bullet; }
         if (!d.AllowSleep) { flags |= BodyBits.NoSleep; }
-        var h = Core.CreateBody(d.Type, [d.Position.X, d.Position.Y], [(float)c, (float)s], [d.LinearVelocity.X, d.LinearVelocity.Y], [d.AngularVelocity], 1f, [1f], flags);
+        BodyHandle h;
+        try
+        {
+            h = Core.CreateBody(d.Type, [d.Position.X, d.Position.Y], [(float)c, (float)s], [d.LinearVelocity.X, d.LinearVelocity.Y], [d.AngularVelocity], 1f, [1f], flags);
+        }
+        catch (ArgumentOutOfRangeException e) when (e.ParamName == "position")
+        {
+            // WorldCore names its own parameter; the caller passed a definition.
+            throw new ArgumentOutOfRangeException(nameof(def), e.ActualValue, e.Message);
+        }
         int b = h.Index;
         EnsureBodies(b + 1);
         LocalCenter[2 * b] = 0f; LocalCenter[2 * b + 1] = 0f;
@@ -254,7 +263,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     /// <summary>Fails before a step when a moving body's bounds are outside what the broadphase accepts, so a step never stops half way. Lowest slot first.</summary>
     public void CheckBounds()
     {
-        if (FindOutOfBounds(false, out var h, out string message)) { throw new BodyOutOfBoundsException(h, message); }
+        if (FindOutOfBounds(false, out var h, out string message)) { throw new BodyOutOfBoundsException(new Body(World!, h), message); }
     }
 
     private const double SafeBound = 524288.0;
@@ -527,7 +536,7 @@ internal sealed partial class Engine2D : ISnapshotSection
             string reason = "";
             if (moved.IsValid(out reason) && moved.Fatten(Opt.BroadphaseMargin, ReadOnlySpan<double>.Empty, 2.0).IsValid(out reason)) { continue; }
             var handle = Core.HandleOfBody(b);
-            throw new BodyOutOfBoundsException(handle, "Shifting the origin by (" + offset[0].ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ", " + offset[1].ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ") would leave body " + handle + " outside the supported range: " + reason + " Nothing was changed.");
+            throw new BodyOutOfBoundsException(new Body(World!, handle), "Shifting the origin by (" + offset[0].ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ", " + offset[1].ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ") would leave body " + handle + " outside the supported range: " + reason + " Nothing was changed.");
         }
     }
 

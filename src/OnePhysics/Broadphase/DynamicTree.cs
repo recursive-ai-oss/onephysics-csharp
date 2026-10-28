@@ -1,10 +1,13 @@
 using System;
 using System.Globalization;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Broadphase;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>Receives the proxies whose box overlaps a query box.</summary>
+[Experimental("OPHYS0001")]
 public interface IOverlapCallback
 {
     /// <summary>Called once per overlapping proxy, in a fixed traversal order. Return false to stop the query.</summary>
@@ -14,6 +17,7 @@ public interface IOverlapCallback
 }
 
 /// <summary>Receives the proxies a ray or box sweep reaches, and decides how far the traversal goes (Catto, GDC 2019: the callback clips the ray).</summary>
+[Experimental("OPHYS0001")]
 public interface IRayCallback
 {
     /// <summary>
@@ -25,6 +29,7 @@ public interface IRayCallback
 
 /// <summary>A ray, or a box swept along a translation, prepared for repeated tests against boxes.</summary>
 /// <typeparam name="TBox">The box type it tests against.</typeparam>
+[Experimental("OPHYS0001")]
 public interface IRay<TBox> where TBox : struct, IBox<TBox>
 {
     /// <summary>True when the ray reaches <paramref name="box"/> at a fraction in [0, <paramref name="maxFraction"/>]; <paramref name="enter"/> is the entry fraction (0 when the ray starts inside).</summary>
@@ -127,6 +132,7 @@ internal ref struct RayStack
 /// Not thread-safe for writes; any number of threads may query while nobody writes.
 /// </remarks>
 /// <typeparam name="TBox">The box type: <see cref="Aabb2D"/> or <see cref="Aabb3D"/>.</typeparam>
+[Experimental("OPHYS0001")]
 public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
 {
     private const int NullNode = -1;

@@ -1,6 +1,7 @@
 using System;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using RecursiveAI.OnePhysics.Physics3D;
 
 // A 3D scene with characters: walkers climbing stairs and a ramp, one riding a sliding platform and one turning platform, one pushing crates, a jumper and a rigid character. Shared by the hash-matrix runner and

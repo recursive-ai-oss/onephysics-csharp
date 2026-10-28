@@ -1,6 +1,6 @@
 # 3D convex collision core
 
-Normative description of `RecursiveAI.OnePhysics.Collision3D`: support-mapped convex shapes, GJK distance and casts, EPA penetration, Quickhull hulls and mass properties. A port that follows this text and the arithmetic rules below produces the same bits.
+Normative description of the 3D collision code (namespace `RecursiveAI.OnePhysics.LowLevel`, the experimental raw tier; the shape and hull types a world takes in queries, and the exceptions, are in `RecursiveAI.OnePhysics`): support-mapped convex shapes, GJK distance and casts, EPA penetration, Quickhull hulls and mass properties. A port that follows this text and the arithmetic rules below produces the same bits.
 
 ## Arithmetic
 
@@ -128,7 +128,7 @@ Over 10^5 random separated pairs (all shape kinds, rounded and sharp, speculativ
 
 ## Decorators and compounds
 
-Raw-tier types in `RecursiveAI.OnePhysics.Collision3D`: `ScaledShape3D`, `PlacedShape3D`, `ShapeBounds3D`, `Compound3D`, `MutableCompound3D` (both derive from `CompoundShape3D`), `CompoundPairs3D`, the compound methods of `ManifoldGenerator3D`, and `ShapeCompositionException` (with `ShapeCompositionError`). Arithmetic is float32 as above; the tree's boxes are double (widened exactly from float32).
+Raw-tier types in `RecursiveAI.OnePhysics.LowLevel`: `ScaledShape3D`, `PlacedShape3D`, `ShapeBounds3D`, `Compound3D`, `MutableCompound3D` (both derive from `CompoundShape3D`), `CompoundPairs3D`, the compound methods of `ManifoldGenerator3D`, and `ShapeCompositionException` (with `ShapeCompositionError`). Arithmetic is float32 as above; the tree's boxes are double (widened exactly from float32).
 
 ### Scaled shapes
 

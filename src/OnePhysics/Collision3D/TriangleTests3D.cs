@@ -1,12 +1,14 @@
 using System;
 using RecursiveAI.OneMath;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// Exact-as-possible tests of single triangles, shared by <see cref="TriangleMesh3D"/> and <see cref="HeightField3D"/> and usable on their own.
 /// They compute in double from float32 inputs, so every result is the same on every platform, and a brute-force loop over these functions is the reference the mid-phase must agree with.
 /// </summary>
+[Experimental("OPHYS0001")]
 public static class TriangleTests3D
 {
     /// <summary>

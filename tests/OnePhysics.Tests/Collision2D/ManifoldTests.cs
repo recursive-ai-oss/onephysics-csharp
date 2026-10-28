@@ -1,5 +1,6 @@
 using System;
-using RecursiveAI.OnePhysics.Collision2D;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using Xunit;
 
 namespace RecursiveAI.OnePhysics.Tests.Collision2D;
@@ -450,8 +451,8 @@ public class DeterminismTests
     [Fact]
     public void FixedInputHashIsStable()
     {
-        ulong h = RecursiveAI.OnePhysics.Collision2D.Reference.CollisionHash2D.Compute();
-        Assert.Equal(h, RecursiveAI.OnePhysics.Collision2D.Reference.CollisionHash2D.Compute());
+        ulong h = RecursiveAI.OnePhysics.LowLevel.CollisionHash2D.Compute();
+        Assert.Equal(h, RecursiveAI.OnePhysics.LowLevel.CollisionHash2D.Compute());
         Assert.Equal(ExpectedHash, h);
     }
 

@@ -1,9 +1,12 @@
 using System;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Broadphase;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>A 2D axis-aligned box in world space (double precision). Its <see cref="Area"/> is the perimeter, the 2D analogue of surface area in the SAH.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct Aabb2D : IBox<Aabb2D>, IEquatable<Aabb2D>
 {
     /// <summary>Creates a box from its bounds. No validation happens here; the tree validates on entry.</summary>

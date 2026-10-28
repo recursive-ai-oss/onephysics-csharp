@@ -24,7 +24,7 @@ static class StageProfile
     /// <summary>Starts recording boundaries.</summary>
     public static void Install()
     {
-        RecursiveAI.OnePhysics.Core.StageProbe.OnMark = stage => { stamp[marks] = Stopwatch.GetTimestamp(); order[marks++] = stage; };
+        RecursiveAI.OnePhysics.LowLevel.StageProbe.OnMark = stage => { stamp[marks] = Stopwatch.GetTimestamp(); order[marks++] = stage; };
     }
 
     /// <summary>Call before a step.</summary>

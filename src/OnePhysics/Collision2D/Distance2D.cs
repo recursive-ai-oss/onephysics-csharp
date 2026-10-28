@@ -1,12 +1,14 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision2D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// Warm-start data for <see cref="Distance2D.Compute"/>: the vertices of the last simplex. Pass the same cache for the same pair on the next call (a default value is a valid empty cache).
 /// A cache with out-of-range content is ignored, never an error.
 /// </summary>
+[Experimental("OPHYS0001")]
 public struct SimplexCache2D
 {
     /// <summary>Number of simplex vertices stored (0 to 3).</summary>
@@ -16,6 +18,7 @@ public struct SimplexCache2D
 }
 
 /// <summary>Result of a distance query. Points are in the frame of shape A.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct DistanceOutput2D
 {
     /// <summary>Closest point on shape A.</summary>
@@ -41,6 +44,7 @@ public readonly struct DistanceOutput2D
 }
 
 /// <summary>Motion of a body over a step for continuous collision: the centre of mass moves in a straight line and the rotation is interpolated by normalised linear interpolation of (cos, sin), so no trigonometry is needed.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct Sweep2D
 {
     /// <summary>Centre of mass in the body frame (the point the rotation turns about).</summary>
@@ -80,6 +84,7 @@ public readonly struct Sweep2D
 }
 
 /// <summary>Outcome of a time-of-impact search.</summary>
+[Experimental("OPHYS0001")]
 public enum ToiState : byte
 {
     /// <summary>The search ran out of iterations; the fraction is a time before contact (safe).</summary>
@@ -96,6 +101,7 @@ public enum ToiState : byte
 }
 
 /// <summary>Result of <see cref="Distance2D.TimeOfImpact"/>.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct ToiOutput2D
 {
     /// <summary>What happened.</summary>
@@ -126,6 +132,7 @@ internal struct SimplexVertex
 }
 
 /// <summary>Distance between convex shapes (GJK), shape casts and time of impact.</summary>
+[Experimental("OPHYS0001")]
 public static class Distance2D
 {
     private const float Epsilon = 1.1920929e-7f;

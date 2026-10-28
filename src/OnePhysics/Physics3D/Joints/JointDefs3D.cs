@@ -1,6 +1,7 @@
 using System;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 
@@ -103,14 +104,18 @@ public readonly struct JointFrame3D
     public JointFrame3D(Vector3F position, QuaternionF rotation)
     {
         Position = position;
-        Rotation = rotation;
+        _rotation = default;
+        _rotation.Set(rotation, QuaternionF.Identity);
     }
+
+    // Stored relative to the identity so that default(JointFrame3D) is the frame at the body origin with no rotation.
+    private readonly ZeroDefaultQuat _rotation;
 
     /// <summary>Position in the body's origin frame.</summary>
     public Vector3F Position { get; }
 
-    /// <summary>Orientation in the body's frame; any finite non-zero quaternion (normalized on creation).</summary>
-    public QuaternionF Rotation { get; }
+    /// <summary>Orientation in the body's frame; any finite non-zero quaternion (normalized on creation). The zero value of the struct is the identity.</summary>
+    public QuaternionF Rotation => _rotation.Get(QuaternionF.Identity);
 
     /// <summary>The frame at the body origin with no rotation.</summary>
     public static JointFrame3D Identity => new(default, QuaternionF.Identity);
@@ -129,13 +134,6 @@ public interface IJointDef3D
 /// <summary>Fixed joint: locks the relative pose of the two frames. Defaults: frames at the body origins, no collision between the bodies, never breaks.</summary>
 public struct FixedJointDef : IJointDef3D
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public FixedJointDef()
-    {
-        LocalFrameA = LocalFrameB = JointFrame3D.Identity;
-        BreakForce = BreakTorque = float.PositiveInfinity;
-    }
-
     /// <summary>The first body.</summary>
     public Body BodyA { get; set; }
 
@@ -152,22 +150,19 @@ public struct FixedJointDef : IJointDef3D
     public bool CollideConnected { get; set; }
 
     /// <summary>Reaction force (N) above which the joint breaks at the end of a step. Default infinity (never).</summary>
-    public float BreakForce { get; set; }
+    public float BreakForce { readonly get => ZeroDefault.Get(_breakForce, float.PositiveInfinity); set => _breakForce = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakForce;
 
     /// <summary>Reaction torque (N·m) above which the joint breaks. Default infinity.</summary>
-    public float BreakTorque { get; set; }
+    public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakTorque;
 }
 
 /// <summary>Point (ball-and-socket) joint: the two frame positions coincide, rotation is free.</summary>
 public struct PointJointDef : IJointDef3D
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public PointJointDef()
-    {
-        LocalFrameA = LocalFrameB = JointFrame3D.Identity;
-        BreakForce = BreakTorque = float.PositiveInfinity;
-    }
-
     /// <summary>The first body.</summary>
     public Body BodyA { get; set; }
 
@@ -184,25 +179,19 @@ public struct PointJointDef : IJointDef3D
     public bool CollideConnected { get; set; }
 
     /// <summary>Break threshold, N. Default infinity.</summary>
-    public float BreakForce { get; set; }
+    public float BreakForce { readonly get => ZeroDefault.Get(_breakForce, float.PositiveInfinity); set => _breakForce = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakForce;
 
     /// <summary>Break threshold, N·m. Default infinity.</summary>
-    public float BreakTorque { get; set; }
+    public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakTorque;
 }
 
 /// <summary>Distance joint between the two frame positions. Rigid at <see cref="Length"/> unless the spring is on; with a spring the length may range between <see cref="MinLength"/> and <see cref="MaxLength"/>.</summary>
 public struct DistanceJointDef : IJointDef3D
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public DistanceJointDef()
-    {
-        LocalFrameA = LocalFrameB = JointFrame3D.Identity;
-        Length = 1f;
-        MaxLength = float.PositiveInfinity;
-        SpringDampingRatio = 0.5f;
-        BreakForce = BreakTorque = float.PositiveInfinity;
-    }
-
     /// <summary>The first body.</summary>
     public Body BodyA { get; set; }
 
@@ -216,13 +205,17 @@ public struct DistanceJointDef : IJointDef3D
     public JointFrame3D LocalFrameB { get; set; }
 
     /// <summary>Rest length, metres, at least 0.005. Default 1.</summary>
-    public float Length { get; set; }
+    public float Length { readonly get => ZeroDefault.Get(_length, 1f); set => _length = ZeroDefault.Set(value, 1f); }
+
+    private uint _length;
 
     /// <summary>Shortest length when the limit is on or the spring is on, at least 0. Default 0.</summary>
     public float MinLength { get; set; }
 
     /// <summary>Longest length, at least <see cref="MinLength"/>. Default infinity.</summary>
-    public float MaxLength { get; set; }
+    public float MaxLength { readonly get => ZeroDefault.Get(_maxLength, float.PositiveInfinity); set => _maxLength = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _maxLength;
 
     /// <summary>Enforces <see cref="MinLength"/> and <see cref="MaxLength"/> as hard limits.</summary>
     public bool EnableLimit { get; set; }
@@ -234,30 +227,27 @@ public struct DistanceJointDef : IJointDef3D
     public float SpringHertz { get; set; }
 
     /// <summary>Spring damping ratio. Default 0.5.</summary>
-    public float SpringDampingRatio { get; set; }
+    public float SpringDampingRatio { readonly get => ZeroDefault.Get(_springDampingRatio, 0.5f); set => _springDampingRatio = ZeroDefault.Set(value, 0.5f); }
+
+    private uint _springDampingRatio;
 
     /// <summary>When true the bodies keep colliding. Default false.</summary>
     public bool CollideConnected { get; set; }
 
     /// <summary>Break threshold, N. Default infinity.</summary>
-    public float BreakForce { get; set; }
+    public float BreakForce { readonly get => ZeroDefault.Get(_breakForce, float.PositiveInfinity); set => _breakForce = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakForce;
 
     /// <summary>Break threshold, N·m. Default infinity.</summary>
-    public float BreakTorque { get; set; }
+    public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakTorque;
 }
 
 /// <summary>Hinge joint about the x axis of the frames. The angle is zero when the frames' y axes agree.</summary>
 public struct HingeJointDef : IJointDef3D
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public HingeJointDef()
-    {
-        LocalFrameA = LocalFrameB = JointFrame3D.Identity;
-        LowerAngle = -3.1415927f; UpperAngle = 3.1415927f;
-        SpringDampingRatio = 0.5f;
-        BreakForce = BreakTorque = float.PositiveInfinity;
-    }
-
     /// <summary>The first body.</summary>
     public Body BodyA { get; set; }
 
@@ -274,10 +264,14 @@ public struct HingeJointDef : IJointDef3D
     public bool EnableLimit { get; set; }
 
     /// <summary>Lower angle, radians within -pi..pi. Default -pi.</summary>
-    public float LowerAngle { get; set; }
+    public float LowerAngle { readonly get => ZeroDefault.Get(_lowerAngle, -3.1415927f); set => _lowerAngle = ZeroDefault.Set(value, -3.1415927f); }
+
+    private uint _lowerAngle;
 
     /// <summary>Upper angle, radians. Default pi.</summary>
-    public float UpperAngle { get; set; }
+    public float UpperAngle { readonly get => ZeroDefault.Get(_upperAngle, 3.1415927f); set => _upperAngle = ZeroDefault.Set(value, 3.1415927f); }
+
+    private uint _upperAngle;
 
     /// <summary>Turns the motor on.</summary>
     public bool EnableMotor { get; set; }
@@ -295,29 +289,27 @@ public struct HingeJointDef : IJointDef3D
     public float SpringHertz { get; set; }
 
     /// <summary>Spring damping ratio. Default 0.5.</summary>
-    public float SpringDampingRatio { get; set; }
+    public float SpringDampingRatio { readonly get => ZeroDefault.Get(_springDampingRatio, 0.5f); set => _springDampingRatio = ZeroDefault.Set(value, 0.5f); }
+
+    private uint _springDampingRatio;
 
     /// <summary>When true the bodies keep colliding. Default false.</summary>
     public bool CollideConnected { get; set; }
 
     /// <summary>Break threshold, N. Default infinity.</summary>
-    public float BreakForce { get; set; }
+    public float BreakForce { readonly get => ZeroDefault.Get(_breakForce, float.PositiveInfinity); set => _breakForce = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakForce;
 
     /// <summary>Break threshold, N·m. Default infinity.</summary>
-    public float BreakTorque { get; set; }
+    public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakTorque;
 }
 
 /// <summary>Slider joint along the x axis of the frames, rotation locked. The translation is zero when the frame positions coincide.</summary>
 public struct SliderJointDef : IJointDef3D
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public SliderJointDef()
-    {
-        LocalFrameA = LocalFrameB = JointFrame3D.Identity;
-        SpringDampingRatio = 0.5f;
-        BreakForce = BreakTorque = float.PositiveInfinity;
-    }
-
     /// <summary>The first body.</summary>
     public Body BodyA { get; set; }
 
@@ -355,29 +347,27 @@ public struct SliderJointDef : IJointDef3D
     public float SpringHertz { get; set; }
 
     /// <summary>Spring damping ratio. Default 0.5.</summary>
-    public float SpringDampingRatio { get; set; }
+    public float SpringDampingRatio { readonly get => ZeroDefault.Get(_springDampingRatio, 0.5f); set => _springDampingRatio = ZeroDefault.Set(value, 0.5f); }
+
+    private uint _springDampingRatio;
 
     /// <summary>When true the bodies keep colliding. Default false.</summary>
     public bool CollideConnected { get; set; }
 
     /// <summary>Break threshold, N. Default infinity.</summary>
-    public float BreakForce { get; set; }
+    public float BreakForce { readonly get => ZeroDefault.Get(_breakForce, float.PositiveInfinity); set => _breakForce = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakForce;
 
     /// <summary>Break threshold, N·m. Default infinity.</summary>
-    public float BreakTorque { get; set; }
+    public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakTorque;
 }
 
 /// <summary>Cone joint: a point joint that keeps the two frame x axes within <see cref="HalfConeAngle"/> of each other.</summary>
 public struct ConeJointDef : IJointDef3D
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public ConeJointDef()
-    {
-        LocalFrameA = LocalFrameB = JointFrame3D.Identity;
-        HalfConeAngle = 0.7853982f;
-        BreakForce = BreakTorque = float.PositiveInfinity;
-    }
-
     /// <summary>The first body.</summary>
     public Body BodyA { get; set; }
 
@@ -391,30 +381,27 @@ public struct ConeJointDef : IJointDef3D
     public JointFrame3D LocalFrameB { get; set; }
 
     /// <summary>Largest angle between the two x axes, radians within (0, pi]. Default pi/4.</summary>
-    public float HalfConeAngle { get; set; }
+    public float HalfConeAngle { readonly get => ZeroDefault.Get(_halfConeAngle, 0.7853982f); set => _halfConeAngle = ZeroDefault.Set(value, 0.7853982f); }
+
+    private uint _halfConeAngle;
 
     /// <summary>When true the bodies keep colliding. Default false.</summary>
     public bool CollideConnected { get; set; }
 
     /// <summary>Break threshold, N. Default infinity.</summary>
-    public float BreakForce { get; set; }
+    public float BreakForce { readonly get => ZeroDefault.Get(_breakForce, float.PositiveInfinity); set => _breakForce = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakForce;
 
     /// <summary>Break threshold, N·m. Default infinity.</summary>
-    public float BreakTorque { get; set; }
+    public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakTorque;
 }
 
 /// <summary>Swing-twist joint (a ball-and-socket for limbs): twist about the frame x axis within a range, swing of that axis inside an elliptical cone.</summary>
 public struct SwingTwistJointDef : IJointDef3D
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public SwingTwistJointDef()
-    {
-        LocalFrameA = LocalFrameB = JointFrame3D.Identity;
-        LowerTwist = -0.7853982f; UpperTwist = 0.7853982f;
-        SwingYHalfAngle = SwingZHalfAngle = 0.7853982f;
-        BreakForce = BreakTorque = float.PositiveInfinity;
-    }
-
     /// <summary>The first body.</summary>
     public Body BodyA { get; set; }
 
@@ -428,25 +415,37 @@ public struct SwingTwistJointDef : IJointDef3D
     public JointFrame3D LocalFrameB { get; set; }
 
     /// <summary>Lower twist angle, radians within -pi..pi. Default -pi/4.</summary>
-    public float LowerTwist { get; set; }
+    public float LowerTwist { readonly get => ZeroDefault.Get(_lowerTwist, -0.7853982f); set => _lowerTwist = ZeroDefault.Set(value, -0.7853982f); }
+
+    private uint _lowerTwist;
 
     /// <summary>Upper twist angle. Default pi/4.</summary>
-    public float UpperTwist { get; set; }
+    public float UpperTwist { readonly get => ZeroDefault.Get(_upperTwist, 0.7853982f); set => _upperTwist = ZeroDefault.Set(value, 0.7853982f); }
+
+    private uint _upperTwist;
 
     /// <summary>Half angle of the swing about the frame y axis, radians within (0, pi]. Default pi/4.</summary>
-    public float SwingYHalfAngle { get; set; }
+    public float SwingYHalfAngle { readonly get => ZeroDefault.Get(_swingYHalfAngle, 0.7853982f); set => _swingYHalfAngle = ZeroDefault.Set(value, 0.7853982f); }
+
+    private uint _swingYHalfAngle;
 
     /// <summary>Half angle of the swing about the frame z axis, radians within (0, pi]. Default pi/4.</summary>
-    public float SwingZHalfAngle { get; set; }
+    public float SwingZHalfAngle { readonly get => ZeroDefault.Get(_swingZHalfAngle, 0.7853982f); set => _swingZHalfAngle = ZeroDefault.Set(value, 0.7853982f); }
+
+    private uint _swingZHalfAngle;
 
     /// <summary>When true the bodies keep colliding. Default false.</summary>
     public bool CollideConnected { get; set; }
 
     /// <summary>Break threshold, N. Default infinity.</summary>
-    public float BreakForce { get; set; }
+    public float BreakForce { readonly get => ZeroDefault.Get(_breakForce, float.PositiveInfinity); set => _breakForce = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakForce;
 
     /// <summary>Break threshold, N·m. Default infinity.</summary>
-    public float BreakTorque { get; set; }
+    public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakTorque;
 }
 
 /// <summary>
@@ -455,15 +454,6 @@ public struct SwingTwistJointDef : IJointDef3D
 /// </summary>
 public struct SixDofJointDef : IJointDef3D
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public SixDofJointDef()
-    {
-        LocalFrameA = LocalFrameB = JointFrame3D.Identity;
-        SpringDampingRatio = new Vector3F(0.5f, 0.5f, 0.5f);
-        AngularSpringDampingRatio = new Vector3F(0.5f, 0.5f, 0.5f);
-        BreakForce = BreakTorque = float.PositiveInfinity;
-    }
-
     /// <summary>The first body.</summary>
     public Body BodyA { get; set; }
 
@@ -528,22 +518,30 @@ public struct SixDofJointDef : IJointDef3D
     public Vector3F SpringHertz { get; set; }
 
     /// <summary>Translation spring damping ratios. Default 0.5.</summary>
-    public Vector3F SpringDampingRatio { get; set; }
+    public Vector3F SpringDampingRatio { readonly get => _springDampingRatio.Get(new Vector3F(0.5f, 0.5f, 0.5f)); set => _springDampingRatio.Set(value, new Vector3F(0.5f, 0.5f, 0.5f)); }
+
+    private ZeroDefault3 _springDampingRatio;
 
     /// <summary>Rotation spring frequencies, Hz.</summary>
     public Vector3F AngularSpringHertz { get; set; }
 
     /// <summary>Rotation spring damping ratios. Default 0.5.</summary>
-    public Vector3F AngularSpringDampingRatio { get; set; }
+    public Vector3F AngularSpringDampingRatio { readonly get => _angularSpringDampingRatio.Get(new Vector3F(0.5f, 0.5f, 0.5f)); set => _angularSpringDampingRatio.Set(value, new Vector3F(0.5f, 0.5f, 0.5f)); }
+
+    private ZeroDefault3 _angularSpringDampingRatio;
 
     /// <summary>When true the bodies keep colliding. Default false.</summary>
     public bool CollideConnected { get; set; }
 
     /// <summary>Break threshold, N. Default infinity.</summary>
-    public float BreakForce { get; set; }
+    public float BreakForce { readonly get => ZeroDefault.Get(_breakForce, float.PositiveInfinity); set => _breakForce = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakForce;
 
     /// <summary>Break threshold, N·m. Default infinity.</summary>
-    public float BreakTorque { get; set; }
+    public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakTorque;
 }
 
 /// <summary>
@@ -552,14 +550,6 @@ public struct SixDofJointDef : IJointDef3D
 /// </summary>
 public struct PathJointDef : IJointDef3D
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public PathJointDef()
-    {
-        LocalFrameB = JointFrame3D.Identity;
-        Up = new Vector3F(0f, 1f, 0f);
-        BreakForce = BreakTorque = float.PositiveInfinity;
-    }
-
     /// <summary>The body that carries the path.</summary>
     public Body BodyA { get; set; }
 
@@ -576,7 +566,9 @@ public struct PathJointDef : IJointDef3D
     public bool Loop { get; set; }
 
     /// <summary>Direction (in A's frame) that the path frame's y axis leans towards. Default (0, 1, 0).</summary>
-    public Vector3F Up { get; set; }
+    public Vector3F Up { readonly get => _up.Get(new Vector3F(0f, 1f, 0f)); set => _up.Set(value, new Vector3F(0f, 1f, 0f)); }
+
+    private ZeroDefault3 _up;
 
     /// <summary>How the follower's orientation is held. Default free.</summary>
     public PathRotation Rotation { get; set; }
@@ -594,23 +586,19 @@ public struct PathJointDef : IJointDef3D
     public bool CollideConnected { get; set; }
 
     /// <summary>Break threshold, N. Default infinity.</summary>
-    public float BreakForce { get; set; }
+    public float BreakForce { readonly get => ZeroDefault.Get(_breakForce, float.PositiveInfinity); set => _breakForce = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakForce;
 
     /// <summary>Break threshold, N·m. Default infinity.</summary>
-    public float BreakTorque { get; set; }
+    public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakTorque;
 }
 
 /// <summary>Gear joint: the angular speeds about the two frames' x axes satisfy <c>ωA·axisA + Ratio·ωB·axisB = 0</c>. Joint frames' rotations give the axes; positions are ignored.</summary>
 public struct GearJointDef : IJointDef3D
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public GearJointDef()
-    {
-        LocalFrameA = LocalFrameB = JointFrame3D.Identity;
-        Ratio = 1f;
-        BreakForce = BreakTorque = float.PositiveInfinity;
-    }
-
     /// <summary>The first gear.</summary>
     public Body BodyA { get; set; }
 
@@ -624,29 +612,27 @@ public struct GearJointDef : IJointDef3D
     public JointFrame3D LocalFrameB { get; set; }
 
     /// <summary>Speed ratio: B's angular speed is -1/Ratio times A's. Finite, absolute value within 1e-6..1e6. Default 1.</summary>
-    public float Ratio { get; set; }
+    public float Ratio { readonly get => ZeroDefault.Get(_ratio, 1f); set => _ratio = ZeroDefault.Set(value, 1f); }
+
+    private uint _ratio;
 
     /// <summary>When true the bodies keep colliding. Default false.</summary>
     public bool CollideConnected { get; set; }
 
     /// <summary>Break threshold, N. Default infinity.</summary>
-    public float BreakForce { get; set; }
+    public float BreakForce { readonly get => ZeroDefault.Get(_breakForce, float.PositiveInfinity); set => _breakForce = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakForce;
 
     /// <summary>Break threshold, N·m. Default infinity.</summary>
-    public float BreakTorque { get; set; }
+    public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakTorque;
 }
 
 /// <summary>Rack-and-pinion joint: <c>Ratio·ωA·axisA = vB·axisB</c> with A the pinion (rotating about its frame x axis) and B the rack (moving along its frame x axis); Ratio is metres per radian.</summary>
 public struct RackAndPinionJointDef : IJointDef3D
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public RackAndPinionJointDef()
-    {
-        LocalFrameA = LocalFrameB = JointFrame3D.Identity;
-        Ratio = 1f;
-        BreakForce = BreakTorque = float.PositiveInfinity;
-    }
-
     /// <summary>The pinion.</summary>
     public Body BodyA { get; set; }
 
@@ -660,30 +646,27 @@ public struct RackAndPinionJointDef : IJointDef3D
     public JointFrame3D LocalFrameB { get; set; }
 
     /// <summary>Rack travel per radian of pinion rotation, metres; finite, absolute value within 1e-6..1e6. Default 1.</summary>
-    public float Ratio { get; set; }
+    public float Ratio { readonly get => ZeroDefault.Get(_ratio, 1f); set => _ratio = ZeroDefault.Set(value, 1f); }
+
+    private uint _ratio;
 
     /// <summary>When true the bodies keep colliding. Default false.</summary>
     public bool CollideConnected { get; set; }
 
     /// <summary>Break threshold, N. Default infinity.</summary>
-    public float BreakForce { get; set; }
+    public float BreakForce { readonly get => ZeroDefault.Get(_breakForce, float.PositiveInfinity); set => _breakForce = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakForce;
 
     /// <summary>Break threshold, N·m. Default infinity.</summary>
-    public float BreakTorque { get; set; }
+    public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakTorque;
 }
 
 /// <summary>Pulley joint: a rope from body A's anchor up to <see cref="FixedPointA"/>, over to <see cref="FixedPointB"/> and down to B's anchor, with <c>lengthA + Ratio·lengthB</c> held between the limits.</summary>
 public struct PulleyJointDef : IJointDef3D
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public PulleyJointDef()
-    {
-        LocalFrameA = LocalFrameB = JointFrame3D.Identity;
-        Ratio = 1f;
-        MinLength = MaxLength = -1f;
-        BreakForce = BreakTorque = float.PositiveInfinity;
-    }
-
     /// <summary>The first body.</summary>
     public Body BodyA { get; set; }
 
@@ -703,20 +686,30 @@ public struct PulleyJointDef : IJointDef3D
     public Vector3D FixedPointB { get; set; }
 
     /// <summary>Length ratio, within 1e-6..1e6. Default 1.</summary>
-    public float Ratio { get; set; }
+    public float Ratio { readonly get => ZeroDefault.Get(_ratio, 1f); set => _ratio = ZeroDefault.Set(value, 1f); }
+
+    private uint _ratio;
 
     /// <summary>Smallest value of <c>lengthA + Ratio·lengthB</c>, at least 0; a negative value (the default for both limits) means the current value, making the rope rigid.</summary>
-    public float MinLength { get; set; }
+    public float MinLength { readonly get => ZeroDefault.Get(_minLength, -1f); set => _minLength = ZeroDefault.Set(value, -1f); }
+
+    private uint _minLength;
 
     /// <summary>Largest value of <c>lengthA + Ratio·lengthB</c>; negative means the current value.</summary>
-    public float MaxLength { get; set; }
+    public float MaxLength { readonly get => ZeroDefault.Get(_maxLength, -1f); set => _maxLength = ZeroDefault.Set(value, -1f); }
+
+    private uint _maxLength;
 
     /// <summary>When true the bodies keep colliding. Default false.</summary>
     public bool CollideConnected { get; set; }
 
     /// <summary>Break threshold, N. Default infinity.</summary>
-    public float BreakForce { get; set; }
+    public float BreakForce { readonly get => ZeroDefault.Get(_breakForce, float.PositiveInfinity); set => _breakForce = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakForce;
 
     /// <summary>Break threshold, N·m. Default infinity.</summary>
-    public float BreakTorque { get; set; }
+    public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
+
+    private uint _breakTorque;
 }

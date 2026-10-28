@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Broadphase;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>A pair of sub-shape ids from a compound-versus-compound enumeration.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct SubShapePair3D : IEquatable<SubShapePair3D>
 {
     /// <summary>Creates a pair.</summary>
@@ -45,6 +48,7 @@ public readonly struct SubShapePair3D : IEquatable<SubShapePair3D>
 /// (<see cref="ShapeBounds3D"/>): the bounds of the other side, grown by <c>margin</c> on every side in double precision, must overlap or touch the child's bounds.
 /// Results come in a fixed order, ascending child id (ascending by first id, then second, for pairs), whatever shape the tree has.
 /// </summary>
+[Experimental("OPHYS0001")]
 public static class CompoundPairs3D
 {
     private static void CheckMargin(float margin)

@@ -1,8 +1,10 @@
 using System;
 using RecursiveAI.OneMath;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
+[Experimental("OPHYS0001")]
 public sealed partial class ManifoldGenerator3D
 {
     // Spheres and capsules are a core segment (a point for a sphere) plus a radius, so one routine covers sphere-sphere, sphere-capsule and capsule-capsule.

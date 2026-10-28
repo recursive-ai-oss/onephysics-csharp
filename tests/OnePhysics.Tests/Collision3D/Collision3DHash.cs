@@ -1,6 +1,7 @@
 using System;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Collision3D;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// A fixed set of convex-collision inputs run through every query, with all output bits folded into one FNV-1a hash.

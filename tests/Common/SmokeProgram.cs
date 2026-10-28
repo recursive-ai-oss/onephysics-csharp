@@ -1,6 +1,6 @@
 using System;
-using RecursiveAI.OnePhysics.Core;
-using RecursiveAI.OnePhysics.Core.Reference;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using V3F = RecursiveAI.OneMath.Vector3F;
 using V3D = RecursiveAI.OneMath.Vector3D;
 
@@ -21,7 +21,7 @@ internal static class SmokeProgram
         ulong h = a.World.ComputeHash();
         bool ok = h == b.World.ComputeHash() && h == c.World.ComputeHash();
         // The 2D collision scenario must give the same hash on every platform (see docs/collision2d.md).
-        ulong ch = RecursiveAI.OnePhysics.Collision2D.Reference.CollisionHash2D.Compute();
+        ulong ch = RecursiveAI.OnePhysics.LowLevel.CollisionHash2D.Compute();
         ok &= ch == 0x31E47F1BCE1B321FUL;
         Console.WriteLine("collision2d " + ch.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         Console.WriteLine(ok ? "OK " + h.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) : "FAIL");

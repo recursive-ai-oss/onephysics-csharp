@@ -1,9 +1,11 @@
 using System;
 using System.Globalization;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Core;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>What a constraint is.</summary>
+[Experimental("OPHYS0001")]
 public enum ConstraintKind : byte
 {
     /// <summary>Not a constraint (a dead slot).</summary>
@@ -21,6 +23,7 @@ public enum ConstraintKind : byte
 
 /// <summary>Per-constraint flag bits.</summary>
 [Flags]
+[Experimental("OPHYS0001")]
 public enum ConstraintBits : byte
 {
     /// <summary>No flags.</summary>
@@ -34,6 +37,7 @@ public enum ConstraintBits : byte
 }
 
 /// <summary>Everything needed to create a constraint. Orientation matters: body A and shape A are the first of the pair as the engine defines it (the contact normal points from A to B).</summary>
+[Experimental("OPHYS0001")]
 public struct ConstraintDesc
 {
     /// <summary>Contact, sensor or joint.</summary>
@@ -66,6 +70,7 @@ public struct ConstraintDesc
 /// A contact's identity for events and for cross-frame matching is (shape A, sub-shape A, shape B, sub-shape B) plus per-point feature ids, so compound and mesh children are first-class.
 /// Per-constraint persistent data (manifold geometry and warm-start impulses, or joint rows) lives in a fixed-stride float payload.
 /// </summary>
+[Experimental("OPHYS0001")]
 public sealed class ConstraintStore
 {
     /// <summary>Color value of a constraint that is not in the coloring: sensors and constraints without a dynamic body.</summary>
@@ -322,6 +327,7 @@ public sealed class ConstraintStore
 }
 
 /// <summary>Shape slots: ownership and lifetime only. Geometry belongs to the engines, which keep their own arrays indexed by shape slot and save them through <see cref="ISnapshotSection"/>.</summary>
+[Experimental("OPHYS0001")]
 public sealed class ShapeStore
 {
     private int[] _owner = new int[64];

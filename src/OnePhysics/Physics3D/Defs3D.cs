@@ -1,6 +1,7 @@
 using System;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 
@@ -224,23 +225,18 @@ public sealed class WorldOptions3D
 /// <summary>Everything needed to create a body; defaults make a dynamic body at the origin.</summary>
 public struct BodyDef
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public BodyDef()
-    {
-        Type = BodyType.Dynamic;
-        Rotation = QuaternionF.Identity;
-        GravityScale = 1f;
-        AllowSleep = true;
-    }
-
     /// <summary>Static, kinematic or dynamic. Default dynamic.</summary>
-    public BodyType Type { get; set; }
+    public BodyType Type { readonly get => (BodyType)(_type ^ (byte)(BodyType.Dynamic)); set => _type = (byte)((byte)value ^ (byte)(BodyType.Dynamic)); }
+
+    private byte _type;
 
     /// <summary>Body origin in world coordinates, within ±2^21 of the world origin.</summary>
     public Vector3D Position { get; set; }
 
     /// <summary>Orientation; any non-zero finite quaternion (normalised on creation). Default identity.</summary>
-    public QuaternionF Rotation { get; set; }
+    public QuaternionF Rotation { readonly get => _rotation.Get(QuaternionF.Identity); set => _rotation.Set(value, QuaternionF.Identity); }
+
+    private ZeroDefaultQuat _rotation;
 
     /// <summary>Initial linear velocity, m/s.</summary>
     public Vector3F LinearVelocity { get; set; }
@@ -255,7 +251,9 @@ public struct BodyDef
     public float AngularDamping { get; set; }
 
     /// <summary>Multiplier on gravity. Default 1.</summary>
-    public float GravityScale { get; set; }
+    public float GravityScale { readonly get => ZeroDefault.Get(_gravityScale, 1f); set => _gravityScale = ZeroDefault.Set(value, 1f); }
+
+    private uint _gravityScale;
 
     /// <summary>Locks rotation (infinite inertia).</summary>
     public bool FixedRotation { get; set; }
@@ -264,7 +262,9 @@ public struct BodyDef
     public bool IsBullet { get; set; }
 
     /// <summary>Whether the body may sleep. Default true.</summary>
-    public bool AllowSleep { get; set; }
+    public bool AllowSleep { readonly get => !_allowSleepOff; set => _allowSleepOff = !value; }
+
+    private bool _allowSleepOff;
 
     /// <summary>Creates a dynamic body asleep.</summary>
     public bool StartAsleep { get; set; }
@@ -273,34 +273,33 @@ public struct BodyDef
 /// <summary>Everything needed to create a shape besides its geometry; defaults suit a wooden object.</summary>
 public struct ShapeDef
 {
-    /// <summary>Creates a definition with the defaults.</summary>
-    public ShapeDef()
-    {
-        Density = 1f;
-        Friction = 0.6f;
-        RollingResistance = Material3D.DefaultRollingResistance;
-        CategoryBits = 1u;
-        MaskBits = uint.MaxValue;
-        LocalRotation = QuaternionF.Identity;
-    }
-
     /// <summary>Density in kg/m³; 0 adds no mass. Default 1. A dynamic body's total mass and each diagonal entry of its inertia tensor must lie within 1e-18..1e30, and the tensor must be invertible; a shape that would break that is refused with an <see cref="ArgumentOutOfRangeException"/> naming the mass and inertia, and the body is unchanged.</summary>
-    public float Density { get; set; }
+    public float Density { readonly get => ZeroDefault.Get(_density, 1f); set => _density = ZeroDefault.Set(value, 1f); }
+
+    private uint _density;
 
     /// <summary>Friction coefficient. Default 0.6.</summary>
-    public float Friction { get; set; }
+    public float Friction { readonly get => ZeroDefault.Get(_friction, 0.6f); set => _friction = ZeroDefault.Set(value, 0.6f); }
+
+    private uint _friction;
 
     /// <summary>Restitution in 0..1. Default 0.</summary>
     public float Restitution { get; set; }
 
     /// <summary>Rolling resistance. Default <see cref="Material3D.DefaultRollingResistance"/>.</summary>
-    public float RollingResistance { get; set; }
+    public float RollingResistance { readonly get => ZeroDefault.Get(_rollingResistance, Material3D.DefaultRollingResistance); set => _rollingResistance = ZeroDefault.Set(value, Material3D.DefaultRollingResistance); }
+
+    private uint _rollingResistance;
 
     /// <summary>Collision category bits. Default 1.</summary>
-    public uint CategoryBits { get; set; }
+    public uint CategoryBits { readonly get => _categoryBits ^ (1u); set => _categoryBits = value ^ (1u); }
+
+    private uint _categoryBits;
 
     /// <summary>Categories this shape collides with. Default all.</summary>
-    public uint MaskBits { get; set; }
+    public uint MaskBits { readonly get => _maskBits ^ (uint.MaxValue); set => _maskBits = value ^ (uint.MaxValue); }
+
+    private uint _maskBits;
 
     /// <summary>Non-zero: shapes in one group always (positive) or never (negative) collide, ignoring masks.</summary>
     public int GroupIndex { get; set; }
@@ -315,7 +314,9 @@ public struct ShapeDef
     public Vector3F LocalPosition { get; set; }
 
     /// <summary>Orientation of the shape in the body's frame; any non-zero finite quaternion. Default identity.</summary>
-    public QuaternionF LocalRotation { get; set; }
+    public QuaternionF LocalRotation { readonly get => _localRotation.Get(QuaternionF.Identity); set => _localRotation.Set(value, QuaternionF.Identity); }
+
+    private ZeroDefaultQuat _localRotation;
 
     /// <summary>Copies a material into the definition.</summary>
     public ShapeDef WithMaterial(Material3D m)
@@ -442,9 +443,9 @@ public readonly struct Trigger
 /// <summary>A body has left the range the engine supports; <see cref="Body"/> names it.</summary>
 public sealed class BodyOutOfBoundsException : PhysicsException
 {
-    /// <summary>The offending body.</summary>
-    public BodyHandle Body { get; }
+    /// <summary>The offending body; destroy it or move it back, then step again.</summary>
+    public Body Body { get; }
 
     /// <summary>Creates the exception.</summary>
-    public BodyOutOfBoundsException(BodyHandle body, string message) : base(message) { Body = body; }
+    public BodyOutOfBoundsException(Body body, string message) : base(message) { Body = body; }
 }

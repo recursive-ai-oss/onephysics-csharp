@@ -2,7 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Collision3D;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using Xunit;
 
 namespace RecursiveAI.OnePhysics.Tests.Collision3D;

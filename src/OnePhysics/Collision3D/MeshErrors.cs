@@ -1,6 +1,8 @@
 using System;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+using RecursiveAI.OnePhysics.LowLevel;
+
+namespace RecursiveAI.OnePhysics;
 
 /// <summary>Why a triangle mesh or height field could not be built.</summary>
 public enum MeshBuildError

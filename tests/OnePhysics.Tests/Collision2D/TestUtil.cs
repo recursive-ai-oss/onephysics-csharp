@@ -1,5 +1,6 @@
 using System;
-using RecursiveAI.OnePhysics.Collision2D;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Tests.Collision2D;
 

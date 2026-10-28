@@ -1,4 +1,6 @@
-namespace RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics.LowLevel;
+
+namespace RecursiveAI.OnePhysics;
 
 /// <summary>Bounds on material coefficients, so combining two materials (a geometric mean needs their product) cannot overflow float32.</summary>
 public static class MaterialLimits

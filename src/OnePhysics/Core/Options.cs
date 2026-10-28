@@ -1,13 +1,15 @@
 using System;
 using System.Globalization;
 using RecursiveAI.OneMath;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Core;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// Lane counts that decide how the dimension-independent storage is laid out: how many numbers a position, a rotation, a velocity and an inverse inertia take.
 /// The same arrays and the same scheduler serve 2D and 3D; only these strides differ.
 /// </summary>
+[Experimental("OPHYS0001")]
 public readonly struct DimensionLayout : IEquatable<DimensionLayout>
 {
     /// <summary>Doubles per body position (2 or 3).</summary>
@@ -84,7 +86,7 @@ public readonly struct DimensionLayout : IEquatable<DimensionLayout>
 /// Offsets (in floats) inside a contact constraint's payload. A manifold has a header, then up to four points of <see cref="PointStride"/> floats each;
 /// 2D uses the first two. Unused points are zero. Engines may use the trailing floats after the points for their own per-manifold data.
 /// </summary>
-public static class ManifoldLayout
+internal static class ManifoldLayout
 {
     /// <summary>Header: normal x, y, z (0..2), friction (3), restitution (4), rolling resistance (5), then rolling impulse x, y, z (6..8).</summary>
     public const int Header = 9;
@@ -138,48 +140,8 @@ public static class ManifoldLayout
     public static int MaxNormalImpulse(int i) => Header + i * PointStride + 10;
 }
 
-/// <summary>Which categories of events a world records. Disabled kinds cost nothing.</summary>
-[Flags]
-public enum EventMask : ushort
-{
-    /// <summary>No events.</summary>
-    None = 0,
-
-    /// <summary>A contact constraint was created.</summary>
-    ContactBegin = 1 << 0,
-
-    /// <summary>A contact constraint exists at the end of a step and asked for persist events.</summary>
-    ContactPersist = 1 << 1,
-
-    /// <summary>A contact constraint was removed.</summary>
-    ContactEnd = 1 << 2,
-
-    /// <summary>A sensor overlap began.</summary>
-    SensorEnter = 1 << 3,
-
-    /// <summary>A sensor overlap ended.</summary>
-    SensorExit = 1 << 4,
-
-    /// <summary>A joint broke.</summary>
-    JointBreak = 1 << 5,
-
-    /// <summary>A body fell asleep.</summary>
-    Sleep = 1 << 6,
-
-    /// <summary>A body woke.</summary>
-    Wake = 1 << 7,
-
-    /// <summary>A contact approached faster than the engine's hit-speed threshold. Not part of <see cref="Default"/>.</summary>
-    ContactHit = 1 << 8,
-
-    /// <summary>Everything except per-step persist events and hit events.</summary>
-    Default = 0xFF & ~ContactPersist,
-
-    /// <summary>Every kind.</summary>
-    All = 0x1FF,
-}
-
 /// <summary>Options of a <see cref="WorldCore"/>. All values are inputs to the simulation except <see cref="ThreadCount"/> and <see cref="WorldId"/>, which never change a result and are not saved in snapshots.</summary>
+[Experimental("OPHYS0001")]
 public sealed class WorldOptions
 {
     /// <summary>Lane counts of the storage. Default <see cref="DimensionLayout.Spatial"/>.</summary>

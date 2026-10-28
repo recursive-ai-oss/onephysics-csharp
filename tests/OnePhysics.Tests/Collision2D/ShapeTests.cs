@@ -1,5 +1,6 @@
 using System;
-using RecursiveAI.OnePhysics.Collision2D;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using Xunit;
 
 namespace RecursiveAI.OnePhysics.Tests.Collision2D;
@@ -143,7 +144,7 @@ public class ShapeTests
         void Expect(ShapeError reason, Vec2[] pts, float radius = 0f)
         {
             var e = Assert.Throws<InvalidShapeException>(() => Shape2D.CreatePolygon(pts, radius));
-            Assert.Equal(reason, e.Reason);
+            Assert.Equal(reason, e.Error);
             Assert.False(string.IsNullOrEmpty(e.Message));
         }
 
@@ -168,11 +169,11 @@ public class ShapeTests
 
         Expect(ShapeError.TooManyVertices, many);
         Expect(ShapeError.TooManyPoints, new Vec2[70000]);
-        Assert.Equal(ShapeError.NotFinite, Assert.Throws<InvalidShapeException>(() => Shape2D.CreateCircle(new Vec2(0, 0), float.NaN)).Reason);
-        Assert.Equal(ShapeError.OutOfRange, Assert.Throws<InvalidShapeException>(() => Shape2D.CreateCircle(new Vec2(0, 0), 0f)).Reason);
-        Assert.Equal(ShapeError.Degenerate, Assert.Throws<InvalidShapeException>(() => Shape2D.CreateCapsule(new Vec2(0, 0), new Vec2(0, 0), 1f)).Reason);
-        Assert.Equal(ShapeError.TooFewPoints, Assert.Throws<InvalidShapeException>(() => new Chain2D(new[] { new Vec2(0, 0) })).Reason);
-        Assert.Equal(ShapeError.Degenerate, Assert.Throws<InvalidShapeException>(() => new Chain2D(new[] { new Vec2(0, 0), new Vec2(0, 0), new Vec2(1, 0) })).Reason);
+        Assert.Equal(ShapeError.NotFinite, Assert.Throws<InvalidShapeException>(() => Shape2D.CreateCircle(new Vec2(0, 0), float.NaN)).Error);
+        Assert.Equal(ShapeError.OutOfRange, Assert.Throws<InvalidShapeException>(() => Shape2D.CreateCircle(new Vec2(0, 0), 0f)).Error);
+        Assert.Equal(ShapeError.Degenerate, Assert.Throws<InvalidShapeException>(() => Shape2D.CreateCapsule(new Vec2(0, 0), new Vec2(0, 0), 1f)).Error);
+        Assert.Equal(ShapeError.TooFewPoints, Assert.Throws<InvalidShapeException>(() => new Chain2D(new[] { new Vec2(0, 0) })).Error);
+        Assert.Equal(ShapeError.Degenerate, Assert.Throws<InvalidShapeException>(() => new Chain2D(new[] { new Vec2(0, 0), new Vec2(0, 0), new Vec2(1, 0) })).Error);
     }
 
     [Fact]

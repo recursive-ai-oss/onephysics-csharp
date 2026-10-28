@@ -1,6 +1,6 @@
 using System.Runtime.Intrinsics;
 
-namespace RecursiveAI.OnePhysics.Core;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// Which lane width the wide solver kernels run at by default. Batches are always eight lanes and every lane computes the scalar twin's operations in the same order,

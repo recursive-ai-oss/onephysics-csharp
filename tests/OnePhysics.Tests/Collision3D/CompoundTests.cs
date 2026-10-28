@@ -2,7 +2,8 @@ using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
 using RecursiveAI.OneMath.Physics;
-using RecursiveAI.OnePhysics.Collision3D;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using Xunit;
 
 namespace RecursiveAI.OnePhysics.Tests.Collision3D;
@@ -702,7 +703,7 @@ public class CompoundTests
 
     private static byte[] Bytes(CompoundShape3D c)
     {
-        var w = RecursiveAI.OnePhysics.Core.StateWriter.ToBuffer();
+        var w = RecursiveAI.OnePhysics.LowLevel.StateWriter.ToBuffer();
         c.WriteBvh(w);
         return w.ToArray();
     }

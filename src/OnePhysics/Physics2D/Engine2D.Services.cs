@@ -1,5 +1,6 @@
 using System;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics2D;
 
@@ -217,17 +218,19 @@ internal sealed partial class Engine2D
 
     // ------------------------------------------------------------------ mutation used by the handles
 
-    public void SetLayerCollision(int a, int b, bool collide)
+    public void SetLayerCollision(int layerA, int layerB, bool collide)
     {
-        CheckLayer(a, nameof(a)); CheckLayer(b, nameof(b));
+        CheckLayer(layerA, nameof(layerA)); CheckLayer(layerB, nameof(layerB));
+        int a = layerA, b = layerB;
         uint ba = 1u << b, bb = 1u << a;
         if (collide) { LayerMatrix[a] |= ba; LayerMatrix[b] |= bb; } else { LayerMatrix[a] &= ~ba; LayerMatrix[b] &= ~bb; }
         FilterDirty = true;
     }
 
-    public bool GetLayerCollision(int a, int b)
+    public bool GetLayerCollision(int layerA, int layerB)
     {
-        CheckLayer(a, nameof(a)); CheckLayer(b, nameof(b));
+        CheckLayer(layerA, nameof(layerA)); CheckLayer(layerB, nameof(layerB));
+        int a = layerA, b = layerB;
         return ((LayerMatrix[a] >> b) & 1u) != 0;
     }
 

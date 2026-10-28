@@ -3,9 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using RecursiveAI.OneMath;
 using RecursiveAI.OneMath.Physics;
-using RecursiveAI.OnePhysics.Broadphase;
-using RecursiveAI.OnePhysics.Collision3D;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using RecursiveAI.OnePhysics.Physics2D;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
@@ -174,20 +173,30 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     // ------------------------------------------------------------------ bodies
 
-    public BodyHandle CreateBody(in BodyDef d)
+    public BodyHandle CreateBody(in BodyDef def)
     {
-        if (!double.IsFinite(d.Position.X) || !double.IsFinite(d.Position.Y) || !double.IsFinite(d.Position.Z)) { throw new ArgumentOutOfRangeException(nameof(d), "Body position must be finite."); }
-        var q = Normalize(d.Rotation, nameof(d));
+        ref readonly BodyDef d = ref def;
+        if (!double.IsFinite(d.Position.X) || !double.IsFinite(d.Position.Y) || !double.IsFinite(d.Position.Z)) { throw new ArgumentOutOfRangeException(nameof(def), "Body position must be finite."); }
+        var q = Normalize(d.Rotation, nameof(def));
         Finite3(d.LinearVelocity, "LinearVelocity");
         Finite3(d.AngularVelocity, "AngularVelocity");
         Nonnegative(d.LinearDamping, "LinearDamping");
         Nonnegative(d.AngularDamping, "AngularDamping");
-        if (!float.IsFinite(d.GravityScale)) { throw new ArgumentOutOfRangeException(nameof(d), d.GravityScale, "GravityScale must be finite."); }
+        if (!float.IsFinite(d.GravityScale)) { throw new ArgumentOutOfRangeException(nameof(def), d.GravityScale, "GravityScale must be finite."); }
         var flags = BodyBits.None;
         if (d.IsBullet) { flags |= BodyBits.Bullet; }
         if (!d.AllowSleep) { flags |= BodyBits.NoSleep; }
-        var h = Core.CreateBody(d.Type, [d.Position.X, d.Position.Y, d.Position.Z], [q.X, q.Y, q.Z, q.W], [d.LinearVelocity.X, d.LinearVelocity.Y, d.LinearVelocity.Z],
-            [d.AngularVelocity.X, d.AngularVelocity.Y, d.AngularVelocity.Z], 1f, [1f, 0f, 0f, 1f, 0f, 1f], flags);
+        BodyHandle h;
+        try
+        {
+            h = Core.CreateBody(d.Type, [d.Position.X, d.Position.Y, d.Position.Z], [q.X, q.Y, q.Z, q.W], [d.LinearVelocity.X, d.LinearVelocity.Y, d.LinearVelocity.Z],
+                [d.AngularVelocity.X, d.AngularVelocity.Y, d.AngularVelocity.Z], 1f, [1f, 0f, 0f, 1f, 0f, 1f], flags);
+        }
+        catch (ArgumentOutOfRangeException e) when (e.ParamName == "position")
+        {
+            // WorldCore names its own parameter; the caller passed a definition.
+            throw new ArgumentOutOfRangeException(nameof(def), e.ActualValue, e.Message);
+        }
         int b = h.Index;
         EnsureBodies(b + 1);
         for (int k = 0; k < 3; k++) { LocalCenter[3 * b + k] = 0f; Force[3 * b + k] = 0f; Torque[3 * b + k] = 0f; Dp[3 * b + k] = 0f; }
@@ -338,7 +347,7 @@ internal sealed partial class Engine3D : ISnapshotSection
     /// <summary>Fails before a step when a moving body's bounds are outside what the broadphase accepts, so a step never stops half way. Lowest slot first.</summary>
     public void CheckBounds()
     {
-        if (FindOutOfBounds(false, out var h, out string message, true)) { throw new BodyOutOfBoundsException(h, message); }
+        if (FindOutOfBounds(false, out var h, out string message, true)) { throw new BodyOutOfBoundsException(new Body(World!, h), message); }
     }
 
     private readonly double[] _dp3 = new double[3];
@@ -622,7 +631,7 @@ internal sealed partial class Engine3D : ISnapshotSection
             if (moved.IsValid(out reason) && moved.Fatten(Opt.BroadphaseMargin, ReadOnlySpan<double>.Empty, 2.0).IsValid(out reason)) { continue; }
             var handle = Core.HandleOfBody(b);
             var ci = CultureInfo.InvariantCulture;
-            throw new BodyOutOfBoundsException(handle, "Shifting the origin by (" + offset[0].ToString("R", ci) + ", " + offset[1].ToString("R", ci) + ", " + offset[2].ToString("R", ci) + ") would leave body " + handle + " outside the supported range: " + reason + " Nothing was changed.");
+            throw new BodyOutOfBoundsException(new Body(World!, handle), "Shifting the origin by (" + offset[0].ToString("R", ci) + ", " + offset[1].ToString("R", ci) + ", " + offset[2].ToString("R", ci) + ") would leave body " + handle + " outside the supported range: " + reason + " Nothing was changed.");
         }
     }
 

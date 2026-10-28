@@ -1,9 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Broadphase;
-using RecursiveAI.OnePhysics.Collision2D;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics2D;
 
@@ -83,6 +84,7 @@ public sealed partial class PhysicsWorld2D
     public Vector2D Origin => new(_core.Origin[0], _core.Origin[1]);
 
     /// <summary>The raw tier: the dimension-independent core this world drives (bodies, constraints, islands, events). Read it freely; changing it behind the engine's back is unsupported.</summary>
+    [Experimental("OPHYS0001")]
     public WorldCore Core => _core;
 
     /// <summary>The events of the last step in their delivered order (contact begin, persist and end, sleep, wake). Valid until the next <see cref="Step"/>.</summary>
@@ -245,10 +247,20 @@ public sealed partial class PhysicsWorld2D
     public Body CreateBody(in BodyDef def) => new(this, _engine.CreateBody(in def));
 
     /// <summary>Creates a body from a definition; the one-liner form of <see cref="CreateBody(in BodyDef)"/>.</summary>
-    public Body CreateBody(BodyType type, Vector2D position, float angle = 0f)
+    public Body CreateBody(BodyType type, Vector2D position, float angle = 0f) => CreateBody(type, position, angle, nameof(position));
+
+    // positionParam names the caller's parameter in the error: the happy-path methods call this with their own "at".
+    private Body CreateBody(BodyType type, Vector2D position, float angle, string positionParam)
     {
+        if (!double.IsFinite(position.X) || !double.IsFinite(position.Y)) { throw new ArgumentOutOfRangeException(positionParam, position, "Body position must be finite."); }
+        if (!float.IsFinite(angle)) { throw new ArgumentOutOfRangeException(nameof(angle), angle, "Body angle must be finite."); }
         var d = new BodyDef { Type = type, Position = position, Angle = angle };
-        return CreateBody(in d);
+        try { return CreateBody(in d); }
+        catch (ArgumentOutOfRangeException e) when (e.ParamName == "def" && e.Message.Contains("osition", StringComparison.Ordinal))
+        {
+            // Only the position range is left to fail here (the engine checks the +-2^21 bound).
+            throw new ArgumentOutOfRangeException(positionParam, position, e.Message);
+        }
     }
 
     /// <summary>Adds a circle (centre in the body's frame).</summary>
@@ -309,34 +321,63 @@ public sealed partial class PhysicsWorld2D
 
     /// <summary>Adds a box of the given full size (width, height) centred at <paramref name="at"/>. Dynamic by default.</summary>
     /// <example><c>var box = world.AddBox(new Vector2F(1, 1), at: new Vector2D(0, 5));</c></example>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="at"/> or <paramref name="angle"/> is not finite, or <paramref name="at"/> is beyond +-2^21 from the origin.</exception>
+    /// <exception cref="InvalidShapeException">A side of <paramref name="size"/> is not finite or is smaller than 2E-05 (its <see cref="ArgumentException.ParamName"/> is <c>size</c>).</exception>
     public Body AddBox(Vector2F size, Vector2D at = default, float angle = 0f, BodyType type = BodyType.Dynamic, Material2D? material = null, float density = 1f)
     {
-        var body = CreateBody(type, at, angle);
-        CreateBox(body, 0.5f * size.X, 0.5f * size.Y, default, 0f, 0f, ShapeFor(material, density));
+        CheckSize(size, nameof(size));
+        var body = CreateBody(type, at, angle, nameof(at));
+        try { CreateBox(body, 0.5f * size.X, 0.5f * size.Y, default, 0f, 0f, ShapeFor(material, density)); }
+        catch (InvalidShapeException e) { body.Destroy(); throw e.ForParameter(nameof(size)); }
+        catch (Exception) { body.Destroy(); throw; }
         return body;
+    }
+
+    // The box sides are full sizes here; the shape code speaks of half extents, so the happy path states its own limits in the caller's terms.
+    private static void CheckSize(Vector2F size, string param)
+    {
+        float min = 2f * Constants2D.MinShapeExtent, max = 2f * Constants2D.MaxShapeCoordinate;
+        if (!float.IsFinite(size.X) || !float.IsFinite(size.Y))
+        {
+            throw new InvalidShapeException(ShapeError.NotFinite, "size is (" + size.X.ToString("R", CultureInfo.InvariantCulture) + ", " + size.Y.ToString("R", CultureInfo.InvariantCulture) + "); both sides must be finite", param);
+        }
+
+        if (!(size.X >= min && size.Y >= min && size.X <= max && size.Y <= max))
+        {
+            throw new InvalidShapeException(ShapeError.OutOfRange, "size is (" + size.X.ToString("R", CultureInfo.InvariantCulture) + ", " + size.Y.ToString("R", CultureInfo.InvariantCulture) + "); each side must be within " + min.ToString("R", CultureInfo.InvariantCulture) + ".." + max.ToString("R", CultureInfo.InvariantCulture), param);
+        }
     }
 
     /// <summary>Adds a circle centred at <paramref name="at"/>. Dynamic by default.</summary>
     public Body AddCircle(float radius, Vector2D at = default, BodyType type = BodyType.Dynamic, Material2D? material = null, float density = 1f)
     {
-        var body = CreateBody(type, at);
-        CreateCircle(body, radius, default, ShapeFor(material, density));
+        var body = CreateBody(type, at, 0f, nameof(at));
+        try { CreateCircle(body, radius, default, ShapeFor(material, density)); }
+        catch (InvalidShapeException e) { body.Destroy(); throw e.ForParameter(nameof(radius)); }
+        catch (Exception) { body.Destroy(); throw; }
         return body;
     }
 
     /// <summary>Adds a capsule whose axis runs from (-halfLength, 0) to (halfLength, 0) in the body's frame. Dynamic by default.</summary>
     public Body AddCapsule(float halfLength, float radius, Vector2D at = default, float angle = 0f, BodyType type = BodyType.Dynamic, Material2D? material = null, float density = 1f)
     {
-        var body = CreateBody(type, at, angle);
-        CreateCapsule(body, new Vector2F(-halfLength, 0f), new Vector2F(halfLength, 0f), radius, ShapeFor(material, density));
+        var body = CreateBody(type, at, angle, nameof(at));
+        try { CreateCapsule(body, new Vector2F(-halfLength, 0f), new Vector2F(halfLength, 0f), radius, ShapeFor(material, density)); }
+        catch (InvalidShapeException e)
+        {
+            body.Destroy();
+            throw e.ForParameter(e.Message.StartsWith("radius", StringComparison.Ordinal) ? nameof(radius) : nameof(halfLength), e.Message.StartsWith("radius", StringComparison.Ordinal) ? null : "halfLength is " + halfLength.ToString("R", CultureInfo.InvariantCulture) + "; the capsule's two end points must be at least " + Constants2D.MinShapeExtent.ToString("R", CultureInfo.InvariantCulture) + " apart (halfLength at least " + (0.5f * Constants2D.MinShapeExtent).ToString("R", CultureInfo.InvariantCulture) + ")");
+        }
+        catch (Exception) { body.Destroy(); throw; }
         return body;
     }
 
     /// <summary>Adds the convex hull of up to 8 points (in the body's frame), rounded by <paramref name="radius"/>. Dynamic by default.</summary>
     public Body AddPolygon(ReadOnlySpan<Vector2F> points, Vector2D at = default, float angle = 0f, float radius = 0f, BodyType type = BodyType.Dynamic, Material2D? material = null, float density = 1f)
     {
-        var body = CreateBody(type, at, angle);
+        var body = CreateBody(type, at, angle, nameof(at));
         try { CreatePolygon(body, points, radius, ShapeFor(material, density)); }
+        catch (InvalidShapeException e) { body.Destroy(); throw e.ForParameter(e.Message.StartsWith("radius", StringComparison.Ordinal) ? nameof(radius) : nameof(points)); }
         catch (ArgumentException) { body.Destroy(); throw; }
         return body;
     }
@@ -345,7 +386,9 @@ public sealed partial class PhysicsWorld2D
     public Body AddSegment(Vector2D a, Vector2D b, Material2D? material = null)
     {
         var body = CreateBody(BodyType.Static, default);
-        CreateSegment(body, a.ToSingle(), b.ToSingle(), ShapeFor(material, 0f));
+        try { CreateSegment(body, a.ToSingle(), b.ToSingle(), ShapeFor(material, 0f)); }
+        catch (InvalidShapeException e) { body.Destroy(); throw e.ForParameter(nameof(a)); }
+        catch (Exception) { body.Destroy(); throw; }
         return body;
     }
 
@@ -356,6 +399,7 @@ public sealed partial class PhysicsWorld2D
         for (int i = 0; i < p.Length; i++) { p[i] = points[i].ToSingle(); }
         var body = CreateBody(BodyType.Static, default);
         try { CreateChain(body, p, loop, twoSided, ShapeFor(material, 0f)); }
+        catch (InvalidShapeException e) { body.Destroy(); throw e.ForParameter(nameof(points)); }
         catch (ArgumentException) { body.Destroy(); throw; }
         return body;
     }

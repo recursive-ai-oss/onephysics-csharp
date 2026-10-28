@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using RecursiveAI.OnePhysics.Physics3D;
 using Xunit;
 
@@ -385,7 +386,7 @@ public class World3DTests
         Assert.ThrowsAny<ArgumentException>(() => w.AddConvexHull([new Vector3F(float.NaN, 0, 0), new Vector3F(1, 0, 0), new Vector3F(0, 1, 0), new Vector3F(0, 0, 1)]));
         Assert.ThrowsAny<ArgumentException>(() => w.AddMesh([new Vector3F(0, 0, 0)], [0, 0, 0]));
         Assert.ThrowsAny<ArgumentException>(() => w.AddCompound([]));
-        Assert.Throws<RecursiveAI.OnePhysics.Collision3D.StaticOnlyShapeException>(() =>
+        Assert.Throws<RecursiveAI.OnePhysics.StaticOnlyShapeException>(() =>
         {
             var d = w.AddSphere(1f);
             w.CreateMesh(d, [new Vector3F(0, 0, 0), new Vector3F(1, 0, 0), new Vector3F(0, 1, 0)], [0, 1, 2]);
@@ -416,7 +417,7 @@ public class World3DTests
         }
 
         Assert.NotNull(caught);
-        Assert.Equal(b.RawHandle, caught!.Body);
+        Assert.Equal(b, caught!.Body);
         ulong hash = w.ComputeHash();
         Assert.Throws<BodyOutOfBoundsException>(() => w.Step(Dt));
         Assert.Equal(hash, w.ComputeHash());

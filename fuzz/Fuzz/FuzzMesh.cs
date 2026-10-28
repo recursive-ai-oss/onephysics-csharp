@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Collision3D;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>Fuzz targets for triangle mesh and height field construction from hostile arrays, and for their queries on random shapes.</summary>
 internal static class FuzzMesh

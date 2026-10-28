@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using RecursiveAI.OneMath;
+using System.Diagnostics.CodeAnalysis;
 
-namespace RecursiveAI.OnePhysics.Collision3D;
+namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>Options for <see cref="TriangleMesh3D.Create"/>. The default value chooses every setting automatically.</summary>
+[Experimental("OPHYS0001")]
 public readonly struct MeshBuildOptions
 {
     /// <summary>
@@ -22,6 +24,7 @@ public readonly struct MeshBuildOptions
 /// (outward for closed bodies); active edges are decided from it. Vertices at the same position are treated as one when deciding which edges are shared, so a mesh with split vertices still gets its seams right.
 /// </para>
 /// </summary>
+[Experimental("OPHYS0001")]
 public sealed class TriangleMesh3D : TriangleSoup3D
 {
     /// <summary>Largest coordinate magnitude accepted, 2^21.</summary>

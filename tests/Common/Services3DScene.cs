@@ -1,6 +1,7 @@
 using System;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 using RecursiveAI.OnePhysics.Physics3D;
 
 // A 3D scene that exercises the world services: layers (a runtime matrix change), a sensor volume, per-pair events over a triangle mesh, hit events and queries every step.

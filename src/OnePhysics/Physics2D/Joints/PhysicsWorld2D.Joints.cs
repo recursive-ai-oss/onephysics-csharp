@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
-using RecursiveAI.OnePhysics.Collision2D;
-using RecursiveAI.OnePhysics.Core;
+using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics2D;
 
@@ -82,10 +82,20 @@ public sealed partial class PhysicsWorld2D
         return b.Handle;
     }
 
+    // The parameter name of the definition in the CreateJoint overloads, which are the callers of Make.
+    private static readonly string DefParameter = "def";
+
     private Joint Make(Body a, Body b, JointData2D d)
     {
-        var h = _engine.CreateJoint(H(a, "BodyA"), H(b, "BodyB"), d);
-        return new Joint(this, h);
+        try
+        {
+            var h = _engine.CreateJoint(H(a, "BodyA"), H(b, "BodyB"), d);
+            return new Joint(this, h);
+        }
+        catch (InvalidJointException e) when (e.ParamName is null)
+        {
+            throw new InvalidJointException(e.Message, DefParameter);
+        }
     }
 
     private static byte Flags(bool limit, bool motor, bool spring, bool collide) =>
@@ -196,7 +206,8 @@ public sealed partial class PhysicsWorld2D
     {
         var d = new RevoluteJointDef { BodyA = a, BodyB = b, LocalAnchorA = ToLocal(a, anchor, "anchor"), LocalAnchorB = ToLocal(b, anchor, "anchor"), CollideConnected = collideConnected };
         d.ReferenceAngle = RelativeAngle(a, b);
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(b)); }
     }
 
     /// <summary>A slider: B moves along <paramref name="axis"/> (a world direction, normalized) through <paramref name="anchor"/>, rotation locked as it is now.</summary>
@@ -204,7 +215,8 @@ public sealed partial class PhysicsWorld2D
     {
         var d = new PrismaticJointDef { BodyA = a, BodyB = b, LocalAnchorA = ToLocal(a, anchor, "anchor"), LocalAnchorB = ToLocal(b, anchor, "anchor"), LocalAxisA = DirToLocal(a, axis, "axis"), CollideConnected = collideConnected };
         d.ReferenceAngle = RelativeAngle(a, b);
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(b)); }
     }
 
     /// <summary>Welds the bodies together as they are now: position and rotation locked at <paramref name="anchor"/>. Make it springy with <see cref="Joint.SetWeldSprings"/>.</summary>
@@ -212,7 +224,8 @@ public sealed partial class PhysicsWorld2D
     {
         var d = new WeldJointDef { BodyA = a, BodyB = b, LocalAnchorA = ToLocal(a, anchor, "anchor"), LocalAnchorB = ToLocal(b, anchor, "anchor"), CollideConnected = collideConnected };
         d.ReferenceAngle = RelativeAngle(a, b);
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(b)); }
     }
 
     /// <summary>A spring between two world points (one on each body): rest length is their current distance, frequency <paramref name="hertz"/> and damping ratio <paramref name="dampingRatio"/>; the length is free to change.</summary>
@@ -226,7 +239,8 @@ public sealed partial class PhysicsWorld2D
             BodyA = a, BodyB = b, LocalAnchorA = la, LocalAnchorB = lb, Length = len < 0.005f ? 0.005f : len,
             EnableSpring = true, SpringHertz = hertz, SpringDampingRatio = dampingRatio, CollideConnected = collideConnected,
         };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(b)); }
     }
 
     /// <summary>A rigid rod between two world points, at their current distance.</summary>
@@ -236,14 +250,16 @@ public sealed partial class PhysicsWorld2D
         double dx = anchorB.X - anchorA.X, dy = anchorB.Y - anchorA.Y;
         float len = (float)Math.Sqrt(dx * dx + dy * dy);
         var d = new DistanceJointDef { BodyA = a, BodyB = b, LocalAnchorA = la, LocalAnchorB = lb, Length = len < 0.005f ? 0.005f : len, CollideConnected = collideConnected };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(b)); }
     }
 
     /// <summary>A suspension: <paramref name="wheel"/> slides along <paramref name="axis"/> (a world direction) through <paramref name="anchor"/> on <paramref name="chassis"/> with a spring (default 1 Hz, damping ratio 0.7) and spins freely; add a motor through the <see cref="Joint"/>.</summary>
     public Joint AddWheel(Body chassis, Body wheel, Vector2D anchor, Vector2F axis, bool collideConnected = false)
     {
         var d = new WheelJointDef { BodyA = chassis, BodyB = wheel, LocalAnchorA = ToLocal(chassis, anchor, "anchor"), LocalAnchorB = ToLocal(wheel, anchor, "anchor"), LocalAxisA = DirToLocal(chassis, axis, "axis"), CollideConnected = collideConnected };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(wheel)); }
     }
 
     /// <summary>
@@ -258,7 +274,8 @@ public sealed partial class PhysicsWorld2D
             BodyA = ground, BodyB = body, LocalAnchorB = ToLocal(body, target, "target"), Target = target, Hertz = hertz, DampingRatio = dampingRatio,
             MaxForce = maxForce > 0f ? maxForce : 1000f * (mass > 1f ? mass : 1f),
         };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(body)); }
     }
 
     /// <summary>A motor joint that keeps B's pose relative to A as it is now, with force and torque capped at <paramref name="maxForce"/> and <paramref name="maxTorque"/>.</summary>
@@ -267,6 +284,7 @@ public sealed partial class PhysicsWorld2D
         var pa = a.Position; var pb = b.Position;
         var off = a.Rotation.InverseRotate(new Vec2((float)(pb.X - pa.X), (float)(pb.Y - pa.Y)));
         var d = new MotorJointDef { BodyA = a, BodyB = b, LinearOffset = new Vector2F(off.X, off.Y), AngularOffset = RelativeAngle(a, b), MaxForce = maxForce, MaxTorque = maxTorque, CollideConnected = collideConnected };
-        return CreateJoint(in d);
+        try { return CreateJoint(in d); }
+        catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(b)); }
     }
 }
