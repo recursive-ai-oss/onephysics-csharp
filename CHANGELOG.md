@@ -4,7 +4,13 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 **0.x previews are not bit-compatible with each other: snapshots, saved games and replays from one preview do not carry to another.**
 
-## Unreleased
+## 0.1.0-preview.3
+
+- **OneMath 1.0.0.** The package now depends on `RecursiveAI.OneMath` 1.0.0 (from 0.1.0-preview.5). Its results are bit-identical to the preview, so this change alone moves no world.
+- **Input limits.** Inputs that would break the world later are refused with typed errors: material coefficients beyond the limit, shapes with unrepresentable mass or inertia, convex shapes thinner than 2^-20 of their length, non-finite body state at the start of a step, invalid wheel dimensions in a snapshot. See `docs/limits.md`.
+- **Restore exactness.** The test that skips pairs still apart is now bounded by both shapes' reach, so a restored world containing kinematic or static bodies continues exactly like the original. Host-style hash scenarios with restores in the middle of a run now cover this.
+- `ShiftOrigin` validates the shift before changing anything: a shift that would move a body out of range is refused with a typed error, and the world is unchanged.
+- **Moved results: continuous collision against compounds.** Compound sweeps are now clipped to the compound's range, and short ray and normal edge cases in the 3D narrowphase are fixed, so some worlds with fast bodies or compounds differ from preview.2.
 
 - **Moved results: sensors.** A sensor overlap is no longer a constraint. It is a mark on the pair, so a sensor never takes a constraint slot, a pair slot or a color that a contact could have had. Adding, moving or removing a sensor of any body type (static, kinematic, dynamic) leaves every solid body bit-identical. Worlds that contain sensors give different results and different snapshot bytes than preview.2 (in preview.2 sensors paired with kinematic bodies and characters reordered contact solving). Worlds without sensors are unchanged by this change.
 - Sensor enter and exit events are unchanged in kind and order; an exit is now also reported when a body or shape that was inside a sensor is destroyed.
