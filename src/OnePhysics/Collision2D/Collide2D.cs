@@ -220,18 +220,29 @@ public static class Collide2D
         // The other core's points as x and y lanes, four per vector; lanes past the count are masked out of the minimum. Every lane computes
         // nx * (ox - vx) + ny * (oy - vy), the scalar expression, and the minimum of finite values does not depend on the order it is taken in.
         Vector128<float> big = Vector128.Create(float.MaxValue);
-        Vector256<float> sh0 = Vector256.Shuffle(Mem.LoadFour(in o.V, 0), Vector256.Create(0, 2, 4, 6, 1, 3, 5, 7));
-        Vector128<float> ox0 = sh0.GetLower(), oy0 = sh0.GetUpper();
+        Vector128<float> ox0, oy0, ox1 = default, oy1 = default, mask1 = default;
+        ReadOnlySpan<Vec2> ov = o.V;
+        bool two = on > 4;
+        if (Vector256.IsHardwareAccelerated)
+        {
+            Vector256<float> sh0 = Vector256.Shuffle(Mem.LoadFour(in o.V, 0), Vector256.Create(0, 2, 4, 6, 1, 3, 5, 7));
+            ox0 = sh0.GetLower(); oy0 = sh0.GetUpper();
+            if (two)
+            {
+                Vector256<float> sh1 = Vector256.Shuffle(Mem.LoadFour(in o.V, 4), Vector256.Create(0, 2, 4, 6, 1, 3, 5, 7));
+                ox1 = sh1.GetLower(); oy1 = sh1.GetUpper();
+            }
+        }
+        else
+        {
+            // The same lanes without a 256-bit vector (arm64 and WebAssembly have 128-bit vectors only).
+            ox0 = Vector128.Create(ov[0].X, ov[1].X, ov[2].X, ov[3].X); oy0 = Vector128.Create(ov[0].Y, ov[1].Y, ov[2].Y, ov[3].Y);
+            if (two) { ox1 = Vector128.Create(ov[4].X, ov[5].X, ov[6].X, ov[7].X); oy1 = Vector128.Create(ov[4].Y, ov[5].Y, ov[6].Y, ov[7].Y); }
+        }
+
         Vector128<int> idx = Vector128.Create(0, 1, 2, 3);
         Vector128<float> mask0 = Vector128.LessThan(idx, Vector128.Create(on)).AsSingle();
-        Vector128<float> ox1 = default, oy1 = default, mask1 = default;
-        bool two = on > 4;
-        if (two)
-        {
-            Vector256<float> sh1 = Vector256.Shuffle(Mem.LoadFour(in o.V, 4), Vector256.Create(0, 2, 4, 6, 1, 3, 5, 7));
-            ox1 = sh1.GetLower(); oy1 = sh1.GetUpper();
-            mask1 = Vector128.LessThan(idx + Vector128.Create(4), Vector128.Create(on)).AsSingle();
-        }
+        if (two) { mask1 = Vector128.LessThan(idx + Vector128.Create(4), Vector128.Create(on)).AsSingle(); }
 
         for (int i = 0; i < faces; i++)
         {

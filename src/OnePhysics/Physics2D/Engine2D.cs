@@ -90,7 +90,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     public readonly PairTable PairMap = new();
 
     /// <summary>Lanes per kernel call: 8, 4 or 1. All give the same bits; the choice exists so tests can prove it.</summary>
-    public int KernelWidth = 8;
+    public int KernelWidth = KernelWidthChoice.Default;
 
     public Engine2D(WorldCore core, Broadphase2D bp, WorldOptions2D opt)
     {
