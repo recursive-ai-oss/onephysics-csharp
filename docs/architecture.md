@@ -155,7 +155,7 @@ Body positions are double and relative to the world origin; the public boundary 
 
 | 3D needs | How the core meets it |
 |---|---|
-| Larger manifolds | Four manifold points × 12 floats plus a 9-float header with rolling impulse; 64 payload floats per constraint in 3D; feature ids per point (4 per constraint). 2D uses the same code with 2 points and a 40-float payload. |
+| Larger manifolds | Four manifold points × 12 floats plus a 9-float header with rolling impulse; 64 payload floats per constraint in 3D; feature ids per point (4 per constraint). 2D uses the same code with 2 points and a 40-float payload; its engine keeps a body-fixed copy of the manifold in the floats the layout leaves unused (`world2d.md`, manifold recycling). |
 | 6-DOF joint rows | The payload holds up to six rows of engine-defined state; coloring and islands treat joints like contacts (a joint is a constraint with kind Joint, a handle, and a break value); joint breaks are a core event. |
 | Compound and mesh sub-shape ids in contact keys | Every constraint stores shape A/B with generations and sub-shape A/B; events and the event sort order carry them; feature ids match points across frames. |
 | CCD and speculative contacts | Speculative contacts are ordinary contacts created within a margin (the stage decides the margin; separation may be positive in the payload). Continuous collision runs inside the engine's `UpdateContacts`/`IntegratePositions`; the Bullet body flag is stored; `Restitution` and `StoreResults` phases exist for post-solve work; contacts may be added in any step in ascending order. |
