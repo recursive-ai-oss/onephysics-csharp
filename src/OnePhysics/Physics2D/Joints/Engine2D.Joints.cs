@@ -93,7 +93,7 @@ internal sealed partial class Engine2D
             {
                 int lo = Math.Min(sa, sb), hi = Math.Max(sa, sb);
                 if (!PairMap.TryGetValue(PairKey(lo, hi), out int p)) { continue; }
-                if (PairCons[p] >= 0) { Core.RemoveConstraint(PairCons[p]); }
+                if (Pairs[p].Cons >= 0) { Core.RemoveConstraint(Pairs[p].Cons); }
                 FreePair(p);
             }
         }

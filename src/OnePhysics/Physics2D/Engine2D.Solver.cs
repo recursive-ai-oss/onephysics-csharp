@@ -28,9 +28,21 @@ internal sealed partial class Engine2D
 
     // ------------------------------------------------------------------ prepare
 
-    /// <summary>Once per step before anything is prepared: sizes the per-step solver storage and copies every live body's velocity into <see cref="BodyState"/> with zero accumulated motion.</summary>
-    public void BeginSolve(int batches)
+    // Contact and joint soft coefficients of the step, computed once instead of once per batch.
+    private float _dynBias, _dynMass, _dynImpulse, _stBias, _stMass, _stImpulse, _jointBias, _jointMass, _jointImpulse;
+
+    /// <summary>Once per step before anything is prepared: computes the soft coefficients, sizes the per-step solver storage and copies every live body's velocity into <see cref="BodyState"/> with zero accumulated motion.</summary>
+    public void BeginSolve(int batches, in StepContext ctx)
     {
+        {
+            float hertz = Opt.ContactHertz;
+            float cap = 0.25f * ctx.InverseSubstepDt;
+            if (hertz > cap) { hertz = cap; }
+            MakeSoft(hertz, Opt.ContactDampingRatio, ctx.SubstepDt, out _dynBias, out _dynMass, out _dynImpulse);
+            MakeSoft(2f * hertz, Opt.ContactDampingRatio, ctx.SubstepDt, out _stBias, out _stMass, out _stImpulse);
+            MakeSoft(Opt.JointHertz > cap ? cap : Opt.JointHertz, Opt.JointDampingRatio, ctx.SubstepDt, out _jointBias, out _jointMass, out _jointImpulse);
+        }
+
         var core = Core;
         var bodies = core.Bodies;
         int nb = bodies.HighWater;
@@ -119,11 +131,7 @@ internal sealed partial class Engine2D
         ReadOnlySpan<float> invMass = bodies.InverseMass, invI = bodies.InverseInertia;
         ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
         ReadOnlySpan<byte> type = bodies.Type;
-        float hertz = Opt.ContactHertz;
-        float cap = 0.25f * ctx.InverseSubstepDt;
-        if (hertz > cap) { hertz = cap; }
-        MakeSoft(hertz, Opt.ContactDampingRatio, ctx.SubstepDt, out float dynBias, out float dynMass, out float dynImpulse);
-        MakeSoft(2f * hertz, Opt.ContactDampingRatio, ctx.SubstepDt, out float stBias, out float stMass, out float stImpulse);
+        float dynBias = _dynBias, dynMass = _dynMass, dynImpulse = _dynImpulse, stBias = _stBias, stMass = _stMass, stImpulse = _stImpulse;
 
         var w = Wide.AsSpan(group * W2D.GroupFloats, W2D.GroupFloats);
         var idx = WideIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup);
@@ -139,8 +147,7 @@ internal sealed partial class Engine2D
             for (int l = 0; l < W2D.Lanes; l++) { jidx[l] = 0; jidx[8 + l] = 0; jidx[16 + l] = -1; jidx[24 + l] = -1; }
         }
 
-        float jointRigidBias = 0f, jointRigidMass = 1f, jointRigidImpulse = 0f;
-        if (jidx.Length != 0) { MakeSoft(Opt.JointHertz > cap ? cap : Opt.JointHertz, Opt.JointDampingRatio, ctx.SubstepDt, out jointRigidBias, out jointRigidMass, out jointRigidImpulse); }
+        float jointRigidBias = _jointBias, jointRigidMass = _jointMass, jointRigidImpulse = _jointImpulse;
         bool anyJoint = false;
         foreach (int c in constraints)
         {
