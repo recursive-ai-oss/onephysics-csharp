@@ -115,14 +115,32 @@ public class World3DTests
     public void ASphereRollsWithoutSlippingOnAPlane()
     {
         var w = NewWorld(tweak: o => o.SleepEnabled = false);
-        Floor(w);
-        var ball = w.AddSphere(0.5f, new Vector3D(0, 0.5, 0));
+        // No rolling resistance, which would slow the ball below the ideal rolling speed.
+        var noRolling = new Material3D(0.6f, 0f, 0f);
+        w.AddBox(new Vector3F(100f, 1f, 100f), at: new Vector3D(0, -0.5, 0), type: BodyType.Static, material: noRolling);
+        var ball = w.AddSphere(0.5f, new Vector3D(0, 0.5, 0), material: noRolling);
         ball.LinearVelocity = new Vector3F(4f, 0, 0);
         for (int i = 0; i < 120; i++) { w.Step(Dt); }
         // A solid sphere sliding at v0 ends rolling at 5/7 v0 with w = v / r (about -z for motion along +x).
         Assert.Equal(4f * 5f / 7f, ball.LinearVelocity.X, 1);
         Assert.Equal(-ball.LinearVelocity.X / 0.5f, ball.AngularVelocity.Z, 1);
         Assert.Equal(0f, ball.AngularVelocity.X, 2);
+    }
+
+    [Fact]
+    public void ARollingBallComesToRestWithTheDefaultMaterial()
+    {
+        // The default rolling resistance (0.003) slows a ball rolling at 1 m/s at about c g / (1.4 r) = 0.14 m/s^2, so it stops within about seven seconds (measured: 0.17 m/s left after five).
+        var w = NewWorld(tweak: o => o.SleepEnabled = false);
+        Floor(w);
+        var ball = w.AddSphere(0.15f, new Vector3D(0, 0.15, 0));
+        ball.LinearVelocity = new Vector3F(1f, 0, 0);
+        ball.AngularVelocity = new Vector3F(0, 0, -1f / 0.15f);
+        for (int i = 0; i < 300; i++) { w.Step(Dt); }
+        float mid = ball.LinearVelocity.X;
+        Assert.InRange(mid, 0.05f, 0.5f);
+        for (int i = 0; i < 420; i++) { w.Step(Dt); }
+        Assert.True(Math.Abs(ball.LinearVelocity.X) < 0.05f && ball.AngularVelocity.Length() * 0.15f < 0.05f, "the ball still rolls: v = " + ball.LinearVelocity.X);
     }
 
     [Fact]
@@ -197,6 +215,9 @@ public class World3DTests
         Assert.True(ball.Position.X < 5.0, "the ball tunnelled to x = " + ball.Position.X);
     }
 
+    // Ice without rolling resistance: the movers start without spin, and the question is the seams, not the resistance.
+    private static readonly Material3D Ice = new(0.05f, 0f, 0f);
+
     /// <summary>A flat two-triangle-per-cell mesh: a box sliding across the seams must not jump.</summary>
     [Theory]
     [InlineData(0)]
@@ -217,8 +238,8 @@ public class World3DTests
             }
         }
 
-        w.AddMesh(verts.ToArray(), idx.ToArray(), material: Material3D.Ice);
-        var ice = Material3D.Ice;
+        w.AddMesh(verts.ToArray(), idx.ToArray(), material: Ice);
+        var ice = Ice;
         Body mover = shape == 0 ? w.AddBox(new Vector3F(0.8f, 0.4f, 0.8f), new Vector3D(-6, 0.2, -5.3), material: ice) : w.AddSphere(0.3f, new Vector3D(-6, 0.3, -5.3), material: ice);
         for (int i = 0; i < 90; i++) { w.Step(Dt); }
         mover.LinearVelocity = new Vector3F(6f, 0f, 0.8f);

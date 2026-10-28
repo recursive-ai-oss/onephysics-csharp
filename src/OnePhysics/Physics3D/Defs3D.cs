@@ -7,12 +7,17 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// <summary>Surface properties of a shape: friction, restitution and rolling resistance. Presets are starting points, not measurements.</summary>
 public readonly struct Material3D : IEquatable<Material3D>
 {
+    /// <summary>The rolling resistance of a material or shape that does not set one: 0.003. A sphere or capsule touches a surface at one point or along a line, where Coulomb friction alone has no
+    /// torque to spin it down (about the contact normal, or about the capsule's axis); without any resistance a ragdoll's heads and limbs spin on indefinitely and a pile never comes to rest. This
+    /// small cap on the rolling torque, a fraction of the normal impulse times 1 m, removes that spin and slows a free rolling ball only as a rubber tyre on a road would.</summary>
+    public const float DefaultRollingResistance = 0.003f;
+
     /// <summary>Creates a material.</summary>
     /// <param name="friction">Coulomb friction coefficient; finite and at least 0.</param>
     /// <param name="restitution">Bounciness in 0..1.</param>
-    /// <param name="rollingResistance">Resistance to rolling, as a fraction of the normal impulse times 1 m; finite and at least 0.</param>
+    /// <param name="rollingResistance">Resistance to rolling, as a fraction of the normal impulse times 1 m; finite and at least 0. Default <see cref="DefaultRollingResistance"/>.</param>
     /// <exception cref="ArgumentOutOfRangeException">A value is outside its range.</exception>
-    public Material3D(float friction, float restitution = 0f, float rollingResistance = 0f)
+    public Material3D(float friction, float restitution = 0f, float rollingResistance = DefaultRollingResistance)
     {
         if (!(friction >= 0f) || !float.IsFinite(friction)) { throw new ArgumentOutOfRangeException(nameof(friction), friction, "Friction must be finite and at least 0."); }
         if (!(restitution >= 0f && restitution <= 1f)) { throw new ArgumentOutOfRangeException(nameof(restitution), restitution, "Restitution must be within 0..1."); }
@@ -255,6 +260,7 @@ public struct ShapeDef
     {
         Density = 1f;
         Friction = 0.6f;
+        RollingResistance = Material3D.DefaultRollingResistance;
         CategoryBits = 1u;
         MaskBits = uint.MaxValue;
         LocalRotation = QuaternionF.Identity;
@@ -269,7 +275,7 @@ public struct ShapeDef
     /// <summary>Restitution in 0..1. Default 0.</summary>
     public float Restitution { get; set; }
 
-    /// <summary>Rolling resistance. Default 0.</summary>
+    /// <summary>Rolling resistance. Default <see cref="Material3D.DefaultRollingResistance"/>.</summary>
     public float RollingResistance { get; set; }
 
     /// <summary>Collision category bits. Default 1.</summary>

@@ -3,7 +3,7 @@
 # Usage: ONEMATH_FEED=<directory holding RecursiveAI.OneMath.*.nupkg> tools/localfeed.sh
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-version="0.1.0-preview.4"
+version="0.1.0-preview.5"
 if [ -z "${ONEMATH_FEED:-}" ]; then
   echo "set ONEMATH_FEED to the directory containing RecursiveAI.OneMath.$version.nupkg" >&2
   exit 2

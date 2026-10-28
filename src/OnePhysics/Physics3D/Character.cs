@@ -310,7 +310,7 @@ public sealed partial class PhysicsWorld3D
             float half = 0.5f * def.Height - def.Radius;
             // Density that gives a rigid capsule the requested mass: cylinder plus two hemispheres.
             float volume = (float)Math.PI * def.Radius * def.Radius * (2f * half + 4f / 3f * def.Radius);
-            var sd = new ShapeDef { Density = rigid ? def.Mass / volume : 0f, Friction = rigid ? 0f : 0.6f, Layer = def.Layer, CategoryBits = def.CategoryBits, MaskBits = def.MaskBits };
+            var sd = new ShapeDef { Density = rigid ? def.Mass / volume : 0f, Friction = rigid ? 0f : 0.6f, RollingResistance = 0f, Layer = def.Layer, CategoryBits = def.CategoryBits, MaskBits = def.MaskBits };
             CreateCapsule(body, half, def.Radius, sd);
         }
         catch

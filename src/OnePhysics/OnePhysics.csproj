@@ -11,7 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="RecursiveAI.OneMath" Version="0.1.0-preview.4" />
+    <PackageReference Include="RecursiveAI.OneMath" Version="0.1.0-preview.5" />
   </ItemGroup>
 
 </Project>

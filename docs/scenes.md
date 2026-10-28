@@ -162,8 +162,8 @@ Nine runs per scene: contact frequency scaled by 0.97, 0.98, 0.99, 0.995, 1.00, 
 | sleep-wake | finalPenetration | 0.15 | 0.124 – 0.284 | 0.0287 – 0.0316 – 0.0362 | 0.050 |
 | sleep-wake-3d | finalPenetration | 1.0 | 0.257 – 0.51 | 0.0625 – 0.0994 – 0.124 | 0.062 |
 | sleep-wake-3d | escapes | 10 | 1 – 19 | 0 – 0 – 0 | 0.000 |
-| ragdoll-pile-3d | restKE | 0.5 | 0.396 – 1.42 | 0.0409 – 0.0962 – 0.181 | 0.280 |
-| ragdoll-pile-3d | finalPenetration | 0.2 | 0.0135 – 0.0253 | 0.0031 – 0.0035 – 0.00414 | 0.005 |
+| ragdoll-pile-3d | restKE | 0.5 | 0.102 – 0.706 | 2.54e-07 – 3.45e-06 – 1.46e-05 | 0.00003 |
+| ragdoll-pile-3d | finalPenetration | 0.2 | 0.0130 – 0.173 | 0.00217 – 0.00313 – 0.00333 | 0.017 |
 
 Every robust spread is under 0.3 of the old threshold, and the raw columns show the single-frame statistics that were not (large-pile `jitter` reached 1.26 in one run, ragdoll `restKE` 1.42, sleep-wake `finalPenetration` 0.28, sleep-wake-3d `escapes` 19).
 
@@ -203,7 +203,7 @@ This library's engine, 1 thread, default options (robust / raw):
 | pyramid-3d-30 | 0 / 0 | 0 / 0 | 0.00120 / 0.00164 | 0 / 0 |
 | large-pile | 0.0410 / 0.122 | 0.00110 / 3.4e-6 | 0.0353 / 0.110 | 0 / 0 |
 | large-pile-3d | 0.00274 / 0.0124 | 1.6e-6 / 6.0e-6 | 0.00722 / 0.0335 | 0 / 0 |
-| ragdoll-pile-3d | | 0.0662 / 0.396 | 0.00413 / 0.0203 | 0 / 0 |
+| ragdoll-pile-3d | | 4.6e-6 / 0.416 | 0.00333 / 0.0167 | 0 / 0 |
 | sleep-wake | | | 0.0362 / 0.129 | 0 / 0 |
 | sleep-wake-3d | | | 0.0978 / 0.503 | 0 / 1 |
 | tumbler, mixed-terrain | | | 0.0253 / 0.0661, 0.00356 / 0.0107 | 0 / 0 |
@@ -264,8 +264,8 @@ Measured on the x64 worker (Ryzen 9 7950X3D, 32 logical cores; load 26 before, 1
 | large-pile-3d | escapes |  |  |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | yes |
 
 <!-- large-pile-3d: stable ['jolt', 'box3d', 'rapier3d', 'bepu', 'jitter2']; unstable [] -->
-| ragdoll-pile-3d | restKE |  |  |  | 0.0315 | 0.00897 | 0.0131 | 0.0169 | 0.00486 | 0.126 | 0.05 | NO |
-| ragdoll-pile-3d | finalPenetration |  |  |  | 0.0202 | 0.00394 | 0.00172 | 0.00581 | 0.01 | 0.00378 | 0.05 | yes |
+| ragdoll-pile-3d | restKE |  |  |  | 0.0315 | 0.00897 | 0.0131 | 0.0169 | 0.00486 | 4.6e-06 | 0.05 | yes |
+| ragdoll-pile-3d | finalPenetration |  |  |  | 0.0202 | 0.00394 | 0.00172 | 0.00581 | 0.01 | 0.00333 | 0.05 | yes |
 | ragdoll-pile-3d | escapes |  |  |  | 0 | 0 | 0 | 0 | 0 | 0 | 0 | yes |
 
 <!-- ragdoll-pile-3d: stable ['jolt', 'box3d', 'rapier3d', 'bepu', 'jitter2']; unstable [] -->
@@ -285,7 +285,7 @@ Measured on the x64 worker (Ryzen 9 7950X3D, 32 logical cores; load 26 before, 1
 The comments list, per scene, which engines were counted stable.
 
 **Findings.**
-- `ragdoll-pile-3d` `restKE`: ours is **0.126** (raw 0.821) against 0.0049 to 0.032 for the others (raw 0.0057 to 0.245), so this library's engine fails the proposed 0.05. It is the one row where the robust metric does not rescue us: more than a tenth of our bodies keep moving at the end of the run. Within our sweep the same metric ran 0.041 to 0.181. This is an engine finding, not a metric artefact.
+- `ragdoll-pile-3d` `restKE`: before the fix ours was **0.126** (raw 0.821) against 0.0049 to 0.032 for the others. The cause was spin: the heads and limbs of a pile of point-jointed ragdolls (spheres and capsules touching the floor or each other at one point or along a line) kept turning at 1 to 4 rad/s to the end of the run, because Coulomb friction alone has no torque to stop a spin and the engine had no rolling resistance or body damping by default. Every shape now defaults to a rolling resistance of 0.003 (`Material3D.DefaultRollingResistance`); ours is **4.6e-6** (raw 0.416) and 2.5e-7 to 1.5e-5 over the nine-run contact-frequency sweep. A body angular damping of 0.05 (about Jolt's default) left it at 0.14; 0.5 fixed it but would bleed every free spin, so it was not chosen.
 - `heightfield-terrain-3d`: Box3D (0.195 deep, an alpha height-field finding) is not counted. `sleep-wake-3d`: all engines pass with `escapeMargin` 60; with the old 0.5 m margin Bepu, Box3D and Rapier3D threw 7, 4 and 5 boxes out of the container (`escapesRaw`).
 - `pyramid-100` `jitter`: Box2D's robust value (0.115) is higher than its raw one (0.01): the window includes an earlier interval in which the pyramid was still settling.
 - Scenes without a row (`joint-grid`, `chain`, `bullets`, `queries`, `characters`, vehicles) carry none of the four metrics except `escapes`, which is 0 for every stable engine.
