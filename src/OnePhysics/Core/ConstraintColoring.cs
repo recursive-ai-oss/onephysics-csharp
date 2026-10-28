@@ -107,20 +107,24 @@ public sealed class ConstraintColoring
     }
 
     /// <summary>Buckets the active constraints (not sensors, not uncolored, at least one awake dynamic body) by color, each bucket in ascending constraint index.</summary>
-    internal void BuildActive(BodyStore bodies, ConstraintStore cons)
+    internal void BuildActive(BodyStore bodies, ConstraintStore cons, TaskExecutor? executor = null)
     {
         Array.Clear(_start);
         int n = cons.HighWater;
-        var kind = cons.Kind; var color = cons.Color; var ba = cons.BodyA; var bb = cons.BodyB;
-        int total = 0;
         if (_bucketOf.Length < n) { _bucketOf = new byte[Math.Max(n, _bucketOf.Length * 2)]; }
         var bucketOf = _bucketOf;
+
+        // Whether a constraint is active is looked up (through its two bodies) once, in blocks that write only their own slice of bucketOf; the counting and the fill then read the answers.
+        int blocks = (n + ActiveBlock - 1) / ActiveBlock;
+        var task = new ActiveBlockTask(bodies, cons, bucketOf);
+        if (executor != null && blocks > 1) { executor.For(blocks, task); }
+        else { for (int blk = 0; blk < blocks; blk++) { task.Run(blk); } }
+
+        int total = 0;
         for (int c = 0; c < n; c++)
         {
-            // Whether a constraint is active is looked up (through its two bodies) once; the second pass reuses the answer.
-            if (!IsActive(bodies, kind[c], color[c], ba[c], bb[c])) { bucketOf[c] = Inactive; continue; }
-            int bucket = Bucket(color[c]);
-            bucketOf[c] = (byte)bucket;
+            int bucket = bucketOf[c];
+            if (bucket == Inactive) { continue; }
             _start[bucket + 1]++;
             total++;
         }
@@ -138,7 +142,26 @@ public sealed class ConstraintColoring
     }
 
     private const byte Inactive = 255;
+    private const int ActiveBlock = 4096;
     private byte[] _bucketOf = new byte[64];
+
+    private readonly struct ActiveBlockTask : IParallelBody
+    {
+        private readonly BodyStore _bodies; private readonly ConstraintStore _cons; private readonly byte[] _bucketOf;
+
+        public ActiveBlockTask(BodyStore bodies, ConstraintStore cons, byte[] bucketOf) { _bodies = bodies; _cons = cons; _bucketOf = bucketOf; }
+
+        public void Run(int block)
+        {
+            var cons = _cons;
+            var kind = cons.Kind; var color = cons.Color; var ba = cons.BodyA; var bb = cons.BodyB;
+            int lo = block * ActiveBlock, hi = Math.Min(lo + ActiveBlock, cons.HighWater);
+            for (int c = lo; c < hi; c++)
+            {
+                _bucketOf[c] = IsActive(_bodies, kind[c], color[c], ba[c], bb[c]) ? (byte)Bucket(color[c]) : Inactive;
+            }
+        }
+    }
 
     private static int Bucket(byte color) => color == ConstraintStore.Overflow ? 0 : 1 + color;
 

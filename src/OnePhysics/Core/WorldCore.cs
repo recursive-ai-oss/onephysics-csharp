@@ -549,7 +549,7 @@ public sealed class WorldCore
         stages.UpdateContacts(this);
         BuildAwakeBodies();
         _coloring.EnsureBodies(_bodies.HighWater);
-        _coloring.BuildActive(_bodies, _constraints);
+        _coloring.BuildActive(_bodies, _constraints, Executor);
         var ctx = new StepContext(dt, _options.Substeps);
         int active = _coloring.ActiveCount;
         int storeChunks = (active + ChunkSize - 1) / ChunkSize;
@@ -587,19 +587,51 @@ public sealed class WorldCore
         _stepCount++;
     }
 
+    // Bodies per block when the awake list is built in parallel; below two blocks the loop is serial.
+    private const int AwakeBlock = 2048;
+    private int[] _awakeBlockCounts = new int[4];
+
     private void BuildAwakeBodies()
     {
         int n = _bodies.HighWater;
-        if (_awake.Length < n) { _awake = new int[Math.Max(n, _awake.Length * 2)]; }
+        int blocks = (n + AwakeBlock - 1) / AwakeBlock;
+        int need = Math.Max(blocks, 1) * AwakeBlock;
+        if (_awake.Length < need) { _awake = new int[Math.Max(need, _awake.Length * 2)]; }
+        if (_awakeBlockCounts.Length < blocks) { _awakeBlockCounts = new int[Math.Max(blocks, _awakeBlockCounts.Length * 2)]; }
+
+        // Every block lists its awake bodies at the start of its own slots in index order; closing the gaps in block order gives the list one serial loop would build.
+        Executor.For(blocks, new AwakeBlockTask(this));
         int k = 0;
-        var type = _bodies.Type;
-        for (int b = 0; b < n; b++)
+        for (int blk = 0; blk < blocks; blk++)
         {
-            if (!_bodies.IsLive(b)) { continue; }
-            if (type[b] == (byte)BodyType.Kinematic || (type[b] == (byte)BodyType.Dynamic && _bodies.IsAwake(b))) { _awake[k++] = b; }
+            int count = _awakeBlockCounts[blk];
+            if (count > 0 && k != blk * AwakeBlock) { Array.Copy(_awake, blk * AwakeBlock, _awake, k, count); }
+            k += count;
         }
 
         _awakeCount = k;
+    }
+
+    private readonly struct AwakeBlockTask : IParallelBody
+    {
+        private readonly WorldCore _w;
+        public AwakeBlockTask(WorldCore w) => _w = w;
+
+        public void Run(int block)
+        {
+            var w = _w;
+            var bodies = w._bodies;
+            var type = bodies.Type;
+            int lo = block * AwakeBlock, hi = Math.Min(lo + AwakeBlock, bodies.HighWater);
+            int k = lo;
+            for (int b = lo; b < hi; b++)
+            {
+                if (!bodies.IsLive(b)) { continue; }
+                if (type[b] == (byte)BodyType.Kinematic || (type[b] == (byte)BodyType.Dynamic && bodies.IsAwake(b))) { w._awake[k++] = b; }
+            }
+
+            w._awakeBlockCounts[block] = k - lo;
+        }
     }
 
     private void PrepareBatches<TStages>(TStages stages, in StepContext ctx) where TStages : IWorldStages
