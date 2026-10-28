@@ -113,10 +113,15 @@ public sealed class ConstraintColoring
         int n = cons.HighWater;
         var kind = cons.Kind; var color = cons.Color; var ba = cons.BodyA; var bb = cons.BodyB;
         int total = 0;
+        if (_bucketOf.Length < n) { _bucketOf = new byte[Math.Max(n, _bucketOf.Length * 2)]; }
+        var bucketOf = _bucketOf;
         for (int c = 0; c < n; c++)
         {
-            if (!IsActive(bodies, kind[c], color[c], ba[c], bb[c])) { continue; }
-            _start[Bucket(color[c]) + 1]++;
+            // Whether a constraint is active is looked up (through its two bodies) once; the second pass reuses the answer.
+            if (!IsActive(bodies, kind[c], color[c], ba[c], bb[c])) { bucketOf[c] = Inactive; continue; }
+            int bucket = Bucket(color[c]);
+            bucketOf[c] = (byte)bucket;
+            _start[bucket + 1]++;
             total++;
         }
 
@@ -126,10 +131,14 @@ public sealed class ConstraintColoring
         for (int i = 0; i < cursor.Length; i++) { cursor[i] = _start[i]; }
         for (int c = 0; c < n; c++)
         {
-            if (!IsActive(bodies, kind[c], color[c], ba[c], bb[c])) { continue; }
-            _list[cursor[Bucket(color[c])]++] = c;
+            int bucket = bucketOf[c];
+            if (bucket == Inactive) { continue; }
+            _list[cursor[bucket]++] = c;
         }
     }
+
+    private const byte Inactive = 255;
+    private byte[] _bucketOf = new byte[64];
 
     private static int Bucket(byte color) => color == ConstraintStore.Overflow ? 0 : 1 + color;
 
