@@ -6,6 +6,7 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>What a joint-break callback is told. The joint is already destroyed, so <see cref="Joint"/> is stale and only identifies it (compare handles, or read <see cref="Joint.RawHandle"/>).</summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "Handle fields, not properties, so that `hit.Body.LinearVelocity = v` compiles: a property result is not a variable (CS1612), a readonly field is.")]
 public readonly struct JointBreak
 {
     internal JointBreak(Joint joint, Body bodyA, Body bodyB, float value)
@@ -17,16 +18,20 @@ public readonly struct JointBreak
     }
 
     /// <summary>The joint that broke (destroyed by the break).</summary>
-    public Joint Joint { get; }
+    public readonly Joint Joint;
 
     /// <summary>The joint's first body (stale if that body was destroyed in the meantime).</summary>
-    public Body BodyA { get; }
+    public readonly Body BodyA;
 
     /// <summary>The joint's second body.</summary>
-    public Body BodyB { get; }
+    public readonly Body BodyB;
 
     /// <summary>The reaction force (N) or torque (N·m) that exceeded the threshold, as measured at the end of the step.</summary>
     public float Value { get; }
+
+    /// <inheritdoc/>
+    public override string ToString() =>
+        "JointBreak(" + Joint + ", " + BodyA + " - " + BodyB + ", value " + Value.ToString(System.Globalization.CultureInfo.InvariantCulture) + ")";
 }
 
 /// <summary>
@@ -98,7 +103,7 @@ public readonly struct Joint : IEquatable<Joint>
     // ---- limits ----
 
     /// <summary>Whether the limit is on (hinge, slider, distance).</summary>
-    public bool LimitEnabled
+    public bool EnableLimit
     {
         get { ref var d = ref Rec(out _, out _); Need(in d, "limit", LimitTypes); return d.Limit; }
         set
@@ -112,13 +117,38 @@ public readonly struct Joint : IEquatable<Joint>
         }
     }
 
-    /// <summary>Lower limit: radians (hinge), metres (slider) or the shortest length (distance).</summary>
-    public float LowerLimit { get { ref var d = ref Rec(out _, out _); Need(in d, "limit", LimitTypes); return d.Lower; } }
+    private float LimitValue(bool upper, string what, uint types)
+    {
+        ref var d = ref Rec(out _, out _);
+        Need(in d, what, types);
+        return upper ? d.Upper : d.Lower;
+    }
 
-    /// <summary>Upper limit, in the same units as <see cref="LowerLimit"/>.</summary>
-    public float UpperLimit { get { ref var d = ref Rec(out _, out _); Need(in d, "limit", LimitTypes); return d.Upper; } }
+    /// <summary>Hinge joints: the lower angle limit, radians.</summary>
+    /// <exception cref="InvalidJointException">The joint is not a hinge.</exception>
+    public float LowerAngle => LimitValue(false, "angle limit", Hinge);
 
-    /// <summary>Sets both limits (lower at most upper; hinge angles within -pi..pi; distance lengths at least 0) without turning the limit on.</summary>
+    /// <summary>Hinge joints: the upper angle limit, radians.</summary>
+    /// <exception cref="InvalidJointException">The joint is not a hinge.</exception>
+    public float UpperAngle => LimitValue(true, "angle limit", Hinge);
+
+    /// <summary>Slider joints: the lower translation limit along the axis, metres.</summary>
+    /// <exception cref="InvalidJointException">The joint is not a slider.</exception>
+    public float LowerTranslation => LimitValue(false, "translation limit", Slider);
+
+    /// <summary>Slider joints: the upper translation limit along the axis, metres.</summary>
+    /// <exception cref="InvalidJointException">The joint is not a slider.</exception>
+    public float UpperTranslation => LimitValue(true, "translation limit", Slider);
+
+    /// <summary>Distance joints: the shortest length the limit allows, metres.</summary>
+    /// <exception cref="InvalidJointException">The joint is not a distance joint.</exception>
+    public float MinLength => LimitValue(false, "length limit", Distance);
+
+    /// <summary>Distance joints: the longest length the limit allows, metres.</summary>
+    /// <exception cref="InvalidJointException">The joint is not a distance joint.</exception>
+    public float MaxLength => LimitValue(true, "length limit", Distance);
+
+    /// <summary>Sets both limits without turning the limit on: angles in radians within -pi..pi (hinge), translations in metres (slider) or lengths in metres, at least 0 (distance); lower at most upper.</summary>
     /// <exception cref="InvalidJointException">The limits are the wrong way round, or the joint has none.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A value is not finite or out of range.</exception>
     public void SetLimits(float lower, float upper)
@@ -137,7 +167,7 @@ public readonly struct Joint : IEquatable<Joint>
     // ---- motor ----
 
     /// <summary>Whether the motor is on (hinge, slider, path).</summary>
-    public bool MotorEnabled
+    public bool EnableMotor
     {
         get { ref var d = ref Rec(out _, out _); Need(in d, "motor", MotorTypes); return d.Motor; }
         set
@@ -158,17 +188,38 @@ public readonly struct Joint : IEquatable<Joint>
         set { ref var d = ref Rec(out var w, out int c); Need(in d, "motor", MotorTypes); var e = d; e.MotorSpeed = value; Commit(w, c, ref d, in e); }
     }
 
-    /// <summary>Largest motor force in newtons (slider, path) or torque in N·m (hinge), at least 0.</summary>
+    /// <summary>Largest motor force in newtons of a slider or path joint, at least 0. A hinge's motor takes a torque: <see cref="MaxMotorTorque"/>.</summary>
+    /// <exception cref="InvalidJointException">The joint's motor is rotational (hinge) or the joint has none.</exception>
     public float MaxMotorForce
     {
-        get { ref var d = ref Rec(out _, out _); Need(in d, "motor", MotorTypes); return d.MaxMotor; }
-        set { ref var d = ref Rec(out var w, out int c); Need(in d, "motor", MotorTypes); var e = d; e.MaxMotor = value; Commit(w, c, ref d, in e); }
+        get { ref var d = ref Rec(out _, out _); NeedForceMotor(in d); return d.MaxMotor; }
+        set { ref var d = ref Rec(out var w, out int c); NeedForceMotor(in d); var e = d; e.MaxMotor = value; Commit(w, c, ref d, in e); }
+    }
+
+    /// <summary>Largest motor torque in N·m of a hinge, at least 0. Linear motors take a force: <see cref="MaxMotorForce"/>.</summary>
+    /// <exception cref="InvalidJointException">The joint is not a hinge.</exception>
+    public float MaxMotorTorque
+    {
+        get { ref var d = ref Rec(out _, out _); NeedTorqueMotor(in d); return d.MaxMotor; }
+        set { ref var d = ref Rec(out var w, out int c); NeedTorqueMotor(in d); var e = d; e.MaxMotor = value; Commit(w, c, ref d, in e); }
+    }
+
+    private static void NeedForceMotor(in JointData3D d)
+    {
+        if (d.Type == (byte)JointType3D.Hinge) { throw new InvalidJointException("A hinge joint's motor is rotational and takes a torque: use MaxMotorTorque."); }
+        Need(in d, "motor force", Slider | Path);
+    }
+
+    private static void NeedTorqueMotor(in JointData3D d)
+    {
+        if (d.Type == (byte)JointType3D.Slider || d.Type == (byte)JointType3D.Path) { throw new InvalidJointException("A " + JointData3D.Name((JointType3D)d.Type) + " joint's motor is linear and takes a force: use MaxMotorForce."); }
+        Need(in d, "motor torque", Hinge);
     }
 
     // ---- spring ----
 
     /// <summary>Whether the spring is on (hinge, slider, distance).</summary>
-    public bool SpringEnabled
+    public bool EnableSpring
     {
         get { ref var d = ref Rec(out _, out _); Need(in d, "spring", SpringTypes); return d.Spring; }
         set
@@ -267,14 +318,14 @@ public readonly struct Joint : IEquatable<Joint>
     }
 
     /// <summary>Six-dof joint: turns the motor of one axis on or off and sets its target speed (m/s or rad/s) and largest force or torque.</summary>
-    public void SetAxisMotor(JointAxes axis, bool enabled, float speed = 0f, float maxForce = 0f)
+    public void SetAxisMotor(JointAxes axis, bool enabled, float speed = 0f, float maxForceOrTorque = 0f)
     {
         int i = AxisIndex(axis, nameof(axis));
         ref var d = ref Rec(out var w, out int c);
         Need(in d, "axes", 1u << (int)JointType3D.SixDof);
         var e = d;
         e.Six.MotorMask = (byte)(enabled ? e.Six.MotorMask | (1 << i) : e.Six.MotorMask & ~(1 << i));
-        e.Six.MotorSpeed[i] = speed; e.Six.MaxMotor[i] = maxForce;
+        e.Six.MotorSpeed[i] = speed; e.Six.MaxMotor[i] = maxForceOrTorque;
         Commit(w, c, ref d, in e);
         if (!enabled) { w.Core.Constraints.Payload(c)[JP.SixAxis + 4 * i] = 0f; }
     }

@@ -245,8 +245,8 @@ public class Buoyancy3DTests
         var w = NewWorld();
         var parts = new[]
         {
-            new CompoundPart(ShapeSpec3D.Box(new Vector3F(0.5f, 0.5f, 0.5f)), new Vector3F(-1f, 0f, 0f)),
-            new CompoundPart(ShapeSpec3D.Box(new Vector3F(0.25f, 0.25f, 0.25f)), new Vector3F(1f, 0f, 0f)),
+            new CompoundPart(ShapeSpec3D.Box(new Vector3F(1f, 1f, 1f)), new Vector3F(-1f, 0f, 0f)),
+            new CompoundPart(ShapeSpec3D.Box(new Vector3F(0.5f, 0.5f, 0.5f)), new Vector3F(1f, 0f, 0f)),
         };
         var b = w.AddCompound(parts, at: new Vector3D(0, -20, 0));
         float whole = w.ApplyBuoyancy(b, new FluidDef(), Dt);

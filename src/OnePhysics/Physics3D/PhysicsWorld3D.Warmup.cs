@@ -24,7 +24,7 @@ public sealed partial class PhysicsWorld3D
             for (int i = 0; i < 60; i++) { w.AddBox(new Vector3F(1, 1, 1), at: new Vector3D(-5 + 1.05 * (i % 10), 0.5 + 1.02 * (i / 10), 0)); }
             var ball = w.AddSphere(0.5f, at: new Vector3D(2, 3, 0));
             var zone = w.CreateBody(BodyType.Static, new Vector3D(0, 1, 0));
-            w.CreateBox(zone, new Vector3F(3, 2, 3), 0f, new ShapeDef { IsSensor = true, Density = 0f });
+            w.CreateBox(zone, new Vector3F(6, 4, 6), 0f, new ShapeDef { IsSensor = true, Density = 0f });
             int sink = 0;
             zone.OnTriggerEnter += _ => sink++;
             ball.OnCollisionEnter += _ => sink++;

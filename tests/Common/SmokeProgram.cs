@@ -89,15 +89,15 @@ internal static class SmokeProgram
         {
             var link = w.AddBox(new RecursiveAI.OneMath.Vector2F(1f, 0.2f), new RecursiveAI.OneMath.Vector2D(0.5 + i, 10), density: 1f + i);
             var j = w.AddHinge(prev, link, new RecursiveAI.OneMath.Vector2D(i, 10));
-            if (i == 2) { j.SetLimits(-0.3f, 0.3f); j.LimitEnabled = true; }
-            if (i == 0) { j.MotorEnabled = true; j.MotorSpeed = 0.5f; j.MaxMotorForce = 20f; }
+            if (i == 2) { j.SetLimits(-0.3f, 0.3f); j.EnableLimit = true; }
+            if (i == 0) { j.EnableMotor = true; j.MotorSpeed = 0.5f; j.MaxMotorTorque = 20f; }
             prev = link;
         }
 
         var car = w.AddBox(new RecursiveAI.OneMath.Vector2F(3f, 0.5f), new RecursiveAI.OneMath.Vector2D(-8, 2), density: 2f);
         var wheel = w.AddCircle(0.5f, new RecursiveAI.OneMath.Vector2D(-7, 1));
         var wj = w.AddWheel(car, wheel, new RecursiveAI.OneMath.Vector2D(-7, 1), new RecursiveAI.OneMath.Vector2F(0, 1));
-        wj.MotorEnabled = true; wj.MotorSpeed = -4f; wj.MaxMotorForce = 20f;
+        wj.EnableMotor = true; wj.MotorSpeed = -4f; wj.MaxMotorTorque = 20f;
         var bob = w.AddCircle(0.4f, new RecursiveAI.OneMath.Vector2D(8, 6));
         w.AddSpring(ground, bob, new RecursiveAI.OneMath.Vector2D(8, 9), new RecursiveAI.OneMath.Vector2D(8, 6), 2f, 0.3f);
         var beamWall = w.AddBox(new RecursiveAI.OneMath.Vector2F(0.4f, 3f), new RecursiveAI.OneMath.Vector2D(14, 3), type: BodyType.Static);
@@ -155,7 +155,7 @@ internal static class SmokeProgram
         bullet.LinearVelocity = new RecursiveAI.OneMath.Vector2F(300f, 0f);
         for (int i = 0; i < 4; i++)
         {
-            var def = RecursiveAI.OnePhysics.Physics2D.Character.Humanoid;
+            var def = RecursiveAI.OnePhysics.Physics2D.CharacterDef.Humanoid;
             def.PushStrength = i * 0.3f;
             w.AddCharacter(new RecursiveAI.OneMath.Vector2D(-6 + i * 1.5, 1.5), def);
         }
@@ -226,7 +226,7 @@ internal static class SmokeProgram
         w.AddCone(b2, b3, new V3D(2.5, 6, 0), new V3F(1, 0, 0), 0.6f);
         var six = w.AddConfigurable(b3, b4, new V3D(3.5, 6, 0));
         six.SetAxisMode(RecursiveAI.OnePhysics.Physics3D.JointAxes.AngularZ, RecursiveAI.OnePhysics.Physics3D.JointAxisMode.Free);
-        w.AddSlider(b4, b5, new V3D(4.5, 6, 0), new V3F(1, 0, 0)).SpringEnabled = true;
+        w.AddSlider(b4, b5, new V3D(4.5, 6, 0), new V3F(1, 0, 0)).EnableSpring = true;
         w.AddSpring(b5, b6, new V3D(5, 6, 0), new V3D(6, 6, 0), 3f, 0.3f);
         w.AddDistance(b6, b7, new V3D(6.2, 6, 0), new V3D(6.8, 6, 0));
         w.AddFixed(b7, b8, new V3D(7.5, 6, 0));
@@ -236,7 +236,7 @@ internal static class SmokeProgram
         p.AngularVelocity = new V3F(0, 0, 2);
         var track = w.AddBox(new V3F(0.2f, 0.2f, 0.2f), new V3D(-8, 3, 0), type: BodyType.Static);
         var cart = w.AddBox(new V3F(0.3f, 0.3f, 0.3f), new V3D(-8, 3, 0));
-        w.AddPath(track, cart, [new V3D(-8, 3, 0), new V3D(-7, 3, 1), new V3D(-6, 3.5, 2), new V3D(-5, 3, 3)]).MotorEnabled = true;
+        w.AddPath(track, cart, [new V3D(-8, 3, 0), new V3D(-7, 3, 1), new V3D(-6, 3.5, 2), new V3D(-5, 3, 3)]).EnableMotor = true;
         var l = w.AddBox(new V3F(0.4f, 0.4f, 0.4f), new V3D(-1, 5, 3));
         var r = w.AddBox(new V3F(0.4f, 0.4f, 0.4f), new V3D(1, 4, 3), density: 3f);
         w.AddPulley(l, r, l.Position, r.Position, new V3D(-1, 8, 3), new V3D(1, 8, 3));

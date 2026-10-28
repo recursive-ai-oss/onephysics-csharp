@@ -183,7 +183,7 @@ public class QueryTests
             switch (i % 3)
             {
                 case 0: w.CreateSegment(b, new Vector2F(rng.Range(-8, 0), rng.Range(-4, 4)), new Vector2F(rng.Range(0, 8), rng.Range(-4, 4))); break;
-                case 1: w.CreateBox(b, rng.Range(1, 6), rng.Range(0.3f, 1.5f), default, rng.Range(-1, 1)); break;
+                case 1: w.CreateBox(b, new Vector2F(2f * rng.Range(1, 6), 2f * rng.Range(0.3f, 1.5f)), default, rng.Range(-1, 1)); break;
                 default: w.CreateChain(b, [new Vector2F(-5, 0), new Vector2F(0, rng.Range(0, 3)), new Vector2F(5, 0), new Vector2F(9, rng.Range(-2, 2))], false, true); break;
             }
         }
@@ -196,7 +196,7 @@ public class QueryTests
             switch (rng.Next(4))
             {
                 case 0: w.CreateCircle(b, rng.Range(0.2f, 1.2f), default, def); break;
-                case 1: w.CreateBox(b, rng.Range(0.2f, 1.5f), rng.Range(0.2f, 1.2f), default, 0f, rng.Range(0, 0.3f), def); break;
+                case 1: w.CreateBox(b, new Vector2F(2f * rng.Range(0.2f, 1.5f), 2f * rng.Range(0.2f, 1.2f)), default, 0f, rng.Range(0, 0.3f), def); break;
                 case 2: w.CreateCapsule(b, new Vector2F(-0.6f, 0), new Vector2F(0.6f, 0.2f), rng.Range(0.15f, 0.5f), def); break;
                 default: w.CreatePolygon(b, [new Vector2F(0, 0.8f), new Vector2F(-0.7f, 0.1f), new Vector2F(-0.3f, -0.6f), new Vector2F(0.5f, -0.5f)], 0f, def); break;
             }

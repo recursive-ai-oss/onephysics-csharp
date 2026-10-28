@@ -139,14 +139,14 @@ public class ZeroDefaultTests
     {
         var w2 = new P2.PhysicsWorld2D(new P2.WorldOptions2D { WorldId = 5 });
         P2.CharacterDef d2 = default;
-        Assert.Equal(P2.Character.Humanoid.Radius, d2.Radius);
-        Assert.Equal(P2.Character.Humanoid.Height, d2.Height);
+        Assert.Equal(P2.CharacterDef.Humanoid.Radius, d2.Radius);
+        Assert.Equal(P2.CharacterDef.Humanoid.Height, d2.Height);
         var c2 = w2.AddCharacter(new Vector2D(0, 2), d2);
         Assert.True(c2.IsValid);
 
         var w3 = new P3.PhysicsWorld3D(new P3.WorldOptions3D { WorldId = 5 });
         P3.CharacterDef d3 = default;
-        Assert.Equal(P3.Character.Humanoid.Radius, d3.Radius);
+        Assert.Equal(P3.CharacterDef.Humanoid.Radius, d3.Radius);
         Assert.Equal(new Vector3F(0, 1, 0), d3.Up);
         var c3 = w3.AddCharacter(new Vector3D(0, 2, 0), d3);
         Assert.True(c3.IsValid);

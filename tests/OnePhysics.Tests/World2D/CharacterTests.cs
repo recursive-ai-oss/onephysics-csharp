@@ -35,7 +35,7 @@ public class CharacterTests
         }
     }
 
-    private static Driver Spawn(PhysicsWorld2D w, double x, double y, CharacterDef? def = null) => new(w.AddCharacter(new Vector2D(x, y), def ?? Character.Humanoid));
+    private static Driver Spawn(PhysicsWorld2D w, double x, double y, CharacterDef? def = null) => new(w.AddCharacter(new Vector2D(x, y), def ?? CharacterDef.Humanoid));
 
     private static void Run(PhysicsWorld2D w, Driver d, int steps) { for (int i = 0; i < steps; i++) { d.Tick(w); } }
 
@@ -97,7 +97,7 @@ public class CharacterTests
         var w = NewWorld();
         Floor(w);
         w.AddBox(new Vector2F(1f, 10f), at: new Vector2D(6, 5), type: BodyType.Static);
-        var c = w.AddCharacter(new Vector2D(2, 6), Character.Humanoid);
+        var c = w.AddCharacter(new Vector2D(2, 6), CharacterDef.Humanoid);
         // Diagonal movement down and into the wall: it slides down the wall, then along the floor, and rests in the corner touching neither.
         for (int i = 0; i < 400; i++)
         {
@@ -182,7 +182,7 @@ public class CharacterTests
         var w = NewWorld();
         var def = new BodyDef { Type = BodyType.Kinematic, Position = new Vector2D(0, -0.25), LinearVelocity = new Vector2F(2f, 0f) };
         var platform = w.CreateBody(in def);
-        w.CreateBox(platform, 5f, 0.25f);
+        w.CreateBox(platform, new Vector2F(10f, 0.5f));
         var d = Spawn(w, 0, 0.95);
         Run(w, d, 30);
         Assert.True(d.C.IsGrounded);
@@ -201,7 +201,7 @@ public class CharacterTests
         var w = NewWorld();
         var def = new BodyDef { Type = BodyType.Kinematic, Position = new Vector2D(0, -0.25), LinearVelocity = new Vector2F(0f, 1.5f) };
         var platform = w.CreateBody(in def);
-        w.CreateBox(platform, 5f, 0.25f);
+        w.CreateBox(platform, new Vector2F(10f, 0.5f));
         var d = Spawn(w, 0, 0.95);
         Run(w, d, 30);
         double y0 = d.C.Position.Y;
@@ -218,7 +218,7 @@ public class CharacterTests
             var w = NewWorld();
             Floor(w);
             var box = w.AddBox(new Vector2F(1f, 1f), at: new Vector2D(3, 0.5));
-            var def = Character.Humanoid;
+            var def = CharacterDef.Humanoid;
             def.PushStrength = strength;
             var d = Spawn(w, 0, 0.95, def);
             d.Vx = 2f;
@@ -244,7 +244,7 @@ public class CharacterTests
         var w = NewWorld();
         Floor(w);
         // A ramp rising to the right at 54 degrees, steeper than the 45 degree limit; the character drops onto its face and cannot stand there.
-        w.AddBox(new Vector2F(20f, 1f), at: new Vector2D(0, 3), angle: 0.9425f, type: BodyType.Static);
+        w.AddBox(new Vector2F(20f, 1f), at: new Vector2D(0, 3), angleRadians: 0.9425f, type: BodyType.Static);
         var d = Spawn(w, -0.5, 8);
         bool sawSteep = false;
         for (int i = 0; i < 240; i++)
@@ -275,9 +275,9 @@ public class CharacterTests
         var c = NewWorld().AddCharacter(default);
         Assert.Equal(70f, c.Mass);
         Assert.Equal(500f, c.MaxPushForce);
-        Assert.Equal(30f, Character.Child.Mass);
-        Assert.Equal(400f, Character.Giant.Mass);
-        Assert.Equal(2000f, Character.Giant.MaxPushForce);
+        Assert.Equal(30f, CharacterDef.Child.Mass);
+        Assert.Equal(400f, CharacterDef.Giant.Mass);
+        Assert.Equal(2000f, CharacterDef.Giant.MaxPushForce);
         c.MaxPushForce = 0f;
         Assert.Equal(0f, c.MaxPushForce);
         Assert.Throws<ArgumentOutOfRangeException>(() => c.MaxPushForce = -1f);
@@ -297,7 +297,7 @@ public class CharacterTests
             var w = NewWorld();
             Floor(w);
             var box = w.AddBox(new Vector2F(1f, 1f), at: new Vector2D(1.2, 0.5), density: 20f); // 20 kg
-            var def = Character.Humanoid;
+            var def = CharacterDef.Humanoid;
             def.PushStrength = 1f;
             def.MaxPushForce = maxForce;
             var d = Spawn(w, 0, 0.95, def);
@@ -317,7 +317,7 @@ public class CharacterTests
     {
         var w = NewWorld();
         var plank = w.AddBox(new Vector2F(4f, 0.4f), at: new Vector2D(0, -0.2), density: 100f); // 160 kg
-        var def = Character.Humanoid;
+        var def = CharacterDef.Humanoid;
         def.Mass = 80f;
         var c = w.AddCharacter(new Vector2D(0, 0.9 + 0.001), def);
         c.Move(new Vector2F(0f, -0.001f), Dt); // first move: finds the ground and presses on it
@@ -351,7 +351,7 @@ public class CharacterTests
         Floor(w);
         var wall = w.AddBox(new Vector2F(1f, 10f), at: new Vector2D(6, 5), type: BodyType.Static);
         wall.Layer = 3;
-        var def = Character.Humanoid;
+        var def = CharacterDef.Humanoid;
         def.LayerMask = ~(1u << 3);
         var d = Spawn(w, 5, 0.95, def);
         d.Vx = 3f;
@@ -460,7 +460,7 @@ public class CharacterTests
         Assert.Throws<StaleHandleException>(() => c2.Move(new Vector2F(1, 0), Dt));
         var c3 = w.AddCharacter(new Vector2D(0, 1));
         Assert.NotEqual(c2, c3);
-        Assert.Throws<StaleHandleException>(() => w.GetCharacter(c2.GetHashCode(), 1));
+        Assert.Throws<StaleHandleException>(() => w.GetCharacter(c2.RawHandle));
     }
 
     [Fact]
@@ -473,11 +473,11 @@ public class CharacterTests
             w.AddBox(new Vector2F(1f, 10f), at: new Vector2D(6, 5), type: BodyType.Static);
             var pdef = new BodyDef { Type = BodyType.Kinematic, Position = new Vector2D(-8, -0.25), LinearVelocity = new Vector2F(1f, 0f) };
             var pb = w.CreateBody(in pdef);
-            w.CreateBox(pb, 3f, 0.25f);
+            w.CreateBox(pb, new Vector2F(6f, 0.5f));
             w.AddBox(new Vector2F(1f, 1f), at: new Vector2D(3, 0.5));
             for (int i = 0; i < 4; i++)
             {
-                var def = Character.Humanoid;
+                var def = CharacterDef.Humanoid;
                 def.PushStrength = i % 2;
                 w.AddCharacter(new Vector2D(-8 + i * 2, 1.5), def);
             }
@@ -551,7 +551,7 @@ public class CharacterTests
             var chars = new Character[20];
             for (int i = 0; i < chars.Length; i++)
             {
-                var def = Character.Humanoid;
+                var def = CharacterDef.Humanoid;
                 def.PushStrength = 0.5f;
                 chars[i] = w.AddCharacter(new Vector2D(-10 + i * 0.7, 1), def);
             }

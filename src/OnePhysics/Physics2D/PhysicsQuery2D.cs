@@ -34,10 +34,10 @@ public sealed class PhysicsQuery2D
     public int RaycastAll(Vector2D origin, Vector2F direction, Span<QueryHit2D> results, float maxDistance = float.PositiveInfinity) => _world.RaycastAll(origin, direction, results, maxDistance, in _filter);
 
     /// <summary>Nearest hit of a swept shape (see <see cref="PhysicsWorld2D.ShapeCast"/>).</summary>
-    public bool ShapeCast(in Shape2D shape, Vector2D position, float angle, Vector2F direction, out QueryHit2D hit, float maxDistance = float.PositiveInfinity) => _world.ShapeCast(in shape, position, angle, direction, out hit, maxDistance, in _filter);
+    public bool ShapeCast(in Shape2D shape, Vector2D position, float angleRadians, Vector2F direction, out QueryHit2D hit, float maxDistance = float.PositiveInfinity) => _world.ShapeCast(in shape, position, angleRadians, direction, out hit, maxDistance, in _filter);
 
     /// <summary>All shapes a shape overlaps, by slot, into a caller buffer.</summary>
-    public int OverlapShapeAll(in Shape2D shape, Vector2D position, float angle, Span<QueryHit2D> results) => _world.OverlapShapeAll(in shape, position, angle, results, in _filter);
+    public int OverlapShapeAll(in Shape2D shape, Vector2D position, float angleRadians, Span<QueryHit2D> results) => _world.OverlapShapeAll(in shape, position, angleRadians, results, in _filter);
 
     /// <summary>Nearest shape to a point (see <see cref="PhysicsWorld2D.ClosestPoint"/>).</summary>
     public bool ClosestPoint(Vector2D point, out QueryHit2D hit, float maxDistance = 1000f) => _world.ClosestPoint(point, out hit, maxDistance, in _filter);

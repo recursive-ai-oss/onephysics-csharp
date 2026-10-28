@@ -42,6 +42,9 @@ public readonly struct Ragdoll : IEquatable<Ragdoll>
         return e.Ragdolls[_index]!;
     }
 
+    /// <summary>The raw handle (world id, slot, generation); <see cref="PhysicsWorld3D.GetRagdoll"/> turns it back into the ragdoll.</summary>
+    public RagdollHandle RawHandle => new(_world?.Id ?? 0, _index, _generation);
+
     /// <summary>True while the ragdoll exists (it ends with <see cref="Remove"/>, or when one of its bodies is destroyed on its own).</summary>
     public bool IsValid => _world != null && _world.Engine.RagHandles.IsAlive(_index, _generation);
 
@@ -342,9 +345,9 @@ public sealed partial class PhysicsWorld3D
                 var sd = new ShapeDef { Density = p.Mass / p.Volume(), Friction = p.Friction, CategoryBits = d.CategoryBits, MaskBits = d.MaskBits, GroupIndex = group };
                 switch (p.Shape)
                 {
-                    case RagdollShapeKind.Sphere: CreateSphere(body, p.ShapeSize.X, sd); break;
-                    case RagdollShapeKind.Capsule: CreateCapsule(body, p.ShapeSize.X, p.ShapeSize.Y, sd); break;
-                    default: CreateBox(body, p.ShapeSize, 0f, sd); break;
+                    case RagdollShapeKind.Sphere: CreateSphere(body, p.ShapeHalfSize.X, sd); break;
+                    case RagdollShapeKind.Capsule: CreateCapsule(body, p.ShapeHalfSize.X, p.ShapeHalfSize.Y, sd); break;
+                    default: CreateBox(body, new Vector3F(2f * p.ShapeHalfSize.X, 2f * p.ShapeHalfSize.Y, 2f * p.ShapeHalfSize.Z), 0f, sd); break;
                 }
 
                 s.Body[i] = body.Handle.Index; s.BodyGen[i] = body.Handle.Generation;
@@ -386,13 +389,18 @@ public sealed partial class PhysicsWorld3D
         return ragdoll;
     }
 
-    /// <summary>The <see cref="Ragdoll"/> for a raw slot and generation (from the raw tier); fails when it no longer exists.</summary>
-    /// <exception cref="StaleHandleException">There is no such ragdoll.</exception>
-    public Ragdoll GetRagdoll(int index, int generation)
+    /// <summary>The <see cref="Ragdoll"/> for a raw handle (from <see cref="Ragdoll.RawHandle"/>).</summary>
+    /// <exception cref="InvalidHandleException">The handle is null, belongs to another world (<see cref="ForeignHandleException"/>) or refers to a removed ragdoll (<see cref="StaleHandleException"/>).</exception>
+    public Ragdoll GetRagdoll(RagdollHandle handle)
     {
-        if (!_engine.RagHandles.IsAlive(index, generation)) { throw new StaleHandleException("Ragdoll #" + index.ToString(CultureInfo.InvariantCulture) + " (generation " + generation.ToString(CultureInfo.InvariantCulture) + ") does not exist."); }
-        return new Ragdoll(this, index, generation);
+        if (handle.IsNull) { throw new InvalidHandleException("The null ragdoll handle was used."); }
+        if (handle.World != Id) { throw new ForeignHandleException(handle + " belongs to world " + handle.World.ToString(CultureInfo.InvariantCulture) + ", not world " + Id.ToString(CultureInfo.InvariantCulture) + "."); }
+        if (!_engine.RagHandles.IsAlive(handle.Index, handle.Generation)) { throw new StaleHandleException(handle + " is stale: the ragdoll was removed."); }
+        return new Ragdoll(this, handle.Index, handle.Generation);
     }
+
+    /// <summary>True while the ragdoll exists in this world. False for null handles, handles of another world and removed ragdolls (never throws). Allocates nothing.</summary>
+    public bool IsRagdollAlive(RagdollHandle handle) => !handle.IsNull && handle.World == Id && _engine.RagHandles.IsAlive(handle.Index, handle.Generation);
 
     /// <summary>The ragdoll that <paramref name="body"/> is a part of, if there is one.</summary>
     public bool TryGetRagdoll(Body body, out Ragdoll ragdoll)

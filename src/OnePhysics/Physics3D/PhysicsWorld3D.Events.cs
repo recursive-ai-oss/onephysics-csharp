@@ -6,7 +6,7 @@ using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 
-public sealed partial class PhysicsWorld3D
+public sealed partial class PhysicsWorld3D : ICallbackGate
 {
     private readonly Dictionary<int, Handlers> _handlers = new();
     private PhysicsEvent[] _publicEvents = new PhysicsEvent[16];
@@ -108,6 +108,106 @@ public sealed partial class PhysicsWorld3D
         int n = 0;
         for (int c = _engine.ContactOf(e.ShapeA.Index, e.ShapeB.Index); c >= 0 && c < cs.HighWater && cs.IsLive(c) && cs.KindOf(c) == ConstraintKind.Contact && n <= cs.HighWater; c = _engine.ConsNext[c]) { n++; }
         return n;
+    }
+
+    // ------------------------------------------------------------------ callbacks across restore and resimulation
+
+    // A callback belongs to a handle (index and generation). Destroying the body, joint or character takes its callbacks out of use; once the world has taken a snapshot it also remembers the most recent
+    // ones, so a restore that brings the same handle back gives them back. Older ones are forgotten (see HandlerGraveyard).
+    private readonly HandlerGraveyard<Handlers> _deadHandlers = new();
+    private readonly HandlerGraveyard<JointHandlers> _deadJointHandlers = new();
+    private readonly HandlerGraveyard<Action<ControllerColliderHit>> _deadControllerHandlers = new();
+    private bool _remembersDestroyed;
+    private int _suppressed;
+
+    /// <summary>
+    /// Starts a scope in which no per-body, per-joint or character callback runs (collision, trigger, sleep, wake, joint-break and controller-hit handlers). Events are still produced and polled the same way,
+    /// so a rollback host does <c>Restore</c> and then resimulates under <c>using (world.SuppressCallbacks())</c> without replaying sounds and particles. Allocates nothing; scopes nest; dispose it once.
+    /// </summary>
+    public CallbackSuppression SuppressCallbacks()
+    {
+        _suppressed++;
+        return new CallbackSuppression(this);
+    }
+
+    void ICallbackGate.EndSuppression()
+    {
+        if (_suppressed > 0) { _suppressed--; }
+    }
+
+    internal void RetireBodyHandlers(BodyHandle h)
+    {
+        if (_handlers.Remove(h.Index, out var set) && _remembersDestroyed && set.Generation == h.Generation) { _deadHandlers.Add(h.Index, h.Generation, set); }
+    }
+
+    private void RetireJointHandlers(int index, int generation)
+    {
+        if (_jointHandlers.Remove(index, out var set) && _remembersDestroyed && set.Generation == generation) { _deadJointHandlers.Add(index, generation, set); }
+    }
+
+    /// <summary>With callbacks suppressed a broken joint's handlers are not run, but they must not stay keyed to the destroyed joint either.</summary>
+    private void RetireBrokenJointHandlers()
+    {
+        foreach (var e in _core.Events.Delivered)
+        {
+            if (e.Kind == EventKind.JointBreak) { RetireJointHandlers(e.Joint.Index, e.Joint.Generation); }
+        }
+    }
+
+    /// <summary>After a restore: callbacks of handles that no longer exist are set aside, and set-aside ones whose handle exists again are given back.</summary>
+    private void ReconcileHandlersAfterRestore()
+    {
+        var dead = _deadScratch;
+        dead.Clear();
+        foreach (var kv in _handlers)
+        {
+            if (!_core.Bodies.Handles.IsAlive(kv.Key, kv.Value.Generation)) { dead.Add(kv.Key); }
+        }
+
+        foreach (int k in dead)
+        {
+            var set = _handlers[k];
+            _handlers.Remove(k);
+            if (_remembersDestroyed) { _deadHandlers.Add(k, set.Generation, set); }
+        }
+
+        for (int i = _deadHandlers.Count - 1; i >= 0; i--)
+        {
+            var e = _deadHandlers[i];
+            if (!_core.Bodies.Handles.IsAlive(e.Index, e.Generation)) { continue; }
+            _deadHandlers.RemoveAt(i);
+            if (!_handlers.TryGetValue(e.Index, out var current) || current.Generation != e.Generation) { _handlers[e.Index] = e.Set; }
+        }
+
+        dead.Clear();
+        foreach (var kv in _jointHandlers)
+        {
+            if (!_core.Constraints.Handles.IsAlive(kv.Key, kv.Value.Generation)) { dead.Add(kv.Key); }
+        }
+
+        foreach (int k in dead)
+        {
+            var set = _jointHandlers[k];
+            _jointHandlers.Remove(k);
+            if (_remembersDestroyed) { _deadJointHandlers.Add(k, set.Generation, set); }
+        }
+
+        for (int i = _deadJointHandlers.Count - 1; i >= 0; i--)
+        {
+            var e = _deadJointHandlers[i];
+            if (!_core.Constraints.Handles.IsAlive(e.Index, e.Generation)) { continue; }
+            _deadJointHandlers.RemoveAt(i);
+            if (!_jointHandlers.TryGetValue(e.Index, out var current) || current.Generation != e.Generation) { _jointHandlers[e.Index] = e.Set; }
+        }
+
+        RetireDeadControllerHandlers();
+        for (int i = _deadControllerHandlers.Count - 1; i >= 0; i--)
+        {
+            var e = _deadControllerHandlers[i];
+            if (!_engine.CharHandles.IsAlive(e.Index, e.Generation)) { continue; }
+            _deadControllerHandlers.RemoveAt(i);
+            if (!_controllerHandlers.TryGetValue(e.Index, out var current) || current.Generation != e.Generation) { _controllerHandlers[e.Index] = (e.Generation, e.Set); }
+        }
     }
 
     // ------------------------------------------------------------------ polled events (middle tier)

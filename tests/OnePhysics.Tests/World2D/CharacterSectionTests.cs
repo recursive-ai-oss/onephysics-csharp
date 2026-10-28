@@ -21,7 +21,7 @@ public class CharacterSectionTests
     {
         var w = NewWorld();
         var floor = w.CreateBody(BodyType.Static, new Vector2D(0, -0.5));
-        w.CreateBox(floor, 30f, 0.5f, default, 0f, 0f, new ShapeDef { Layer = services ? 2 : 0 });
+        w.CreateBox(floor, new Vector2F(60f, 1f), default, 0f, 0f, new ShapeDef { Layer = services ? 2 : 0 });
         for (int i = 0; i < 4; i++)
         {
             var b = w.CreateBody(BodyType.Dynamic, new Vector2D(i * 1.2 - 3, 1.0 + 0.3 * i));
@@ -32,7 +32,7 @@ public class CharacterSectionTests
         {
             w.IgnoreLayerCollision(1, 3);
             var s = w.CreateBody(BodyType.Static, new Vector2D(0, 1));
-            w.CreateBox(s, 1f, 1f, default, 0f, 0f, new ShapeDef { IsSensor = true });
+            w.CreateBox(s, new Vector2F(2f, 2f), default, 0f, 0f, new ShapeDef { IsSensor = true });
         }
 
         if (joints)
@@ -44,8 +44,8 @@ public class CharacterSectionTests
 
         if (characters)
         {
-            w.AddCharacter(new Vector2D(-8, 1), Character.Humanoid);
-            w.AddCharacter(new Vector2D(8, 1), Character.Child);
+            w.AddCharacter(new Vector2D(-8, 1), CharacterDef.Humanoid);
+            w.AddCharacter(new Vector2D(8, 1), CharacterDef.Child);
         }
 
         return w;
@@ -163,7 +163,7 @@ public class CharacterSectionTests
         var joint = w.AddHinge(pivot, plank, new Vector2D(0, 5));
         Assert.True(joint.IsValid);
         plank.AngularVelocity = 0.25f;
-        var c = w.AddCharacter(new Vector2D(1.5, 6.1), Character.Humanoid);
+        var c = w.AddCharacter(new Vector2D(1.5, 6.1), CharacterDef.Humanoid);
         int grounded = 0;
         for (int i = 0; i < 90; i++)
         {
@@ -186,11 +186,11 @@ public class CharacterSectionTests
         // A trigger zone is a weightless dynamic body: a sensor never detects a static body, and two non-dynamic bodies never pair.
         var zdef = new BodyDef { Type = BodyType.Dynamic, Position = new Vector2D(3, 1), GravityScale = 0f };
         var zone = w.CreateBody(in zdef);
-        w.CreateBox(zone, 0.05f, 0.05f, new Vector2F(0f, 5f), 0f, 1f, new ShapeDef { Layer = 5 });
-        w.CreateBox(zone, 0.5f, 1f, default, 0f, 0f, new ShapeDef { IsSensor = true });
+        w.CreateBox(zone, new Vector2F(0.1f, 0.1f), new Vector2F(0f, 5f), 0f, 1f, new ShapeDef { Layer = 5 });
+        w.CreateBox(zone, new Vector2F(1f, 2f), default, 0f, 0f, new ShapeDef { IsSensor = true });
         w.IgnoreLayerCollision(5, 0);
         int enters = 0;
-        var c = w.AddCharacter(new Vector2D(0, 0.91), Character.Humanoid);
+        var c = w.AddCharacter(new Vector2D(0, 0.91), CharacterDef.Humanoid);
         zone.OnTriggerEnter += t => { if (t.Other == c.Body) { enters++; } };
         for (int s = 0; s < 240; s++) { c.Move(new Vector2F(2f * Dt, -0.5f * Dt), Dt); w.Step(Dt); }
         Assert.Equal(1, enters);
@@ -202,7 +202,7 @@ public class CharacterSectionTests
     {
         var w = NewWorld(93);
         w.AddBox(new Vector2F(20f, 1f), at: new Vector2D(0, -0.5), type: BodyType.Static);
-        var c = w.AddCharacter(new Vector2D(0, 2), Character.Humanoid);
+        var c = w.AddCharacter(new Vector2D(0, 2), CharacterDef.Humanoid);
         for (int i = 0; i < 90; i++) { c.Move(new Vector2F(0f, (c.IsGrounded ? -0.5f : -4f) * Dt), Dt); w.Step(Dt); }
         Assert.True(c.IsGrounded);
         var g = new DebugGeometry();
@@ -223,7 +223,7 @@ public class CharacterSectionTests
         w.AddBox(new Vector2F(60f, 1f), at: new Vector2D(0, -0.5), type: BodyType.Static);
         // Forty characters standing closer together than their width (overlapping by design).
         var chars = new Character[40];
-        for (int i = 0; i < chars.Length; i++) { chars[i] = w.AddCharacter(new Vector2D(-10 + i * 0.25, 0.91), Character.Humanoid); }
+        for (int i = 0; i < chars.Length; i++) { chars[i] = w.AddCharacter(new Vector2D(-10 + i * 0.25, 0.91), CharacterDef.Humanoid); }
         var start = new Vector2D[chars.Length];
         for (int i = 0; i < chars.Length; i++) { start[i] = chars[i].Position; }
         double maxSpeed = 0;
@@ -251,8 +251,8 @@ public class CharacterSectionTests
     {
         var w = NewWorld(95);
         w.AddBox(new Vector2F(60f, 1f), at: new Vector2D(0, -0.5), type: BodyType.Static);
-        var a = w.AddCharacter(new Vector2D(-3, 0.95), Character.Humanoid);
-        var b = w.AddCharacter(new Vector2D(3, 0.95), Character.Humanoid);
+        var a = w.AddCharacter(new Vector2D(-3, 0.95), CharacterDef.Humanoid);
+        var b = w.AddCharacter(new Vector2D(3, 0.95), CharacterDef.Humanoid);
         for (int s = 0; s < 400; s++)
         {
             a.Move(new Vector2F(2f * Dt, -0.5f * Dt), Dt);

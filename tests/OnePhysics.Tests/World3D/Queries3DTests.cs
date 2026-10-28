@@ -37,7 +37,7 @@ public class Queries3DTests
                     break;
                 }
                 default:
-                    w.AddCompound([new CompoundPart(ShapeSpec3D.Box(new Vector3F(0.8f, 0.3f, 0.3f)), default), new CompoundPart(ShapeSpec3D.Sphere(0.5f), new Vector3F(1f, 0.5f, 0f))], at, rot, type);
+                    w.AddCompound([new CompoundPart(ShapeSpec3D.Box(new Vector3F(1.6f, 0.6f, 0.6f)), default), new CompoundPart(ShapeSpec3D.Sphere(0.5f), new Vector3F(1f, 0.5f, 0f))], at, rot, type);
                     break;
             }
         }

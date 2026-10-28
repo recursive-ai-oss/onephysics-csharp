@@ -42,7 +42,7 @@ public class Character3DTests
         }
     }
 
-    private static Driver Spawn(PhysicsWorld3D w, double x, double y, double z, CharacterDef? def = null) => new(w.AddCharacter(new Vector3D(x, y, z), def ?? Character.Humanoid));
+    private static Driver Spawn(PhysicsWorld3D w, double x, double y, double z, CharacterDef? def = null) => new(w.AddCharacter(new Vector3D(x, y, z), def ?? CharacterDef.Humanoid));
 
     private static void Run(PhysicsWorld3D w, Driver d, int steps) { for (int i = 0; i < steps; i++) { d.Tick(w); } }
 
@@ -210,7 +210,7 @@ public class Character3DTests
         Floor(w);
         var light = w.AddBox(new Vector3F(0.6f, 0.6f, 0.6f), at: new Vector3D(0, 0.3, 3), density: 100f); // 21.6 kg
         var heavy = w.AddBox(new Vector3F(0.6f, 0.6f, 0.6f), at: new Vector3D(10, 0.3, 3), density: 1e6f); // 216 t
-        var def = Character.Humanoid;
+        var def = CharacterDef.Humanoid;
         def.PushStrength = 1f;
         var a = Spawn(w, 0, 0.95, 0, def);
         var b = Spawn(w, 10, 0.95, 0, def);
@@ -381,7 +381,7 @@ public class Character3DTests
     {
         var w = new PhysicsWorld3D(new WorldOptions3D { WorldId = 72, Gravity = new Vector3F(0, 0, -9.81f) });
         w.AddBox(new Vector3F(100f, 100f, 1f), at: new Vector3D(0, 0, -0.5), type: BodyType.Static);
-        var def = Character.Humanoid;
+        var def = CharacterDef.Humanoid;
         def.Up = new Vector3F(0, 0, 1);
         var c = w.AddCharacter(new Vector3D(0, 0, 3), def);
         float vz = 0f;
@@ -404,7 +404,7 @@ public class Character3DTests
     {
         var w = NewWorld();
         Floor(w);
-        var c = w.AddCharacter(new Vector3D(0, 1.0, -4), Character.RigidHumanoid);
+        var c = w.AddCharacter(new Vector3D(0, 1.0, -4), CharacterDef.RigidHumanoid);
         Assert.Equal(CharacterKind.Rigid, c.Kind);
         Assert.InRange(c.Body.Mass, 69f, 71f);
         for (int i = 0; i < 90; i++) { c.Move(default, Dt); w.Step(Dt); }
@@ -425,7 +425,7 @@ public class Character3DTests
         var w = NewWorld();
         Floor(w);
         Ramp(w, 0.5f, 10f); // 26.6 degrees
-        var c = w.AddCharacter(new Vector3D(0, 1.0, 0), Character.RigidHumanoid);
+        var c = w.AddCharacter(new Vector3D(0, 1.0, 0), CharacterDef.RigidHumanoid);
         for (int i = 0; i < 60; i++) { c.Move(default, Dt); w.Step(Dt); }
         for (int i = 0; i < 240; i++) { c.Move(new Vector3F(0, 0, 1.5f * Dt), Dt); w.Step(Dt); }
         Assert.True(c.Position.Y > 2.5, "climbed to " + c.Position.Y);
@@ -449,12 +449,12 @@ public class Character3DTests
         var drivers = new Driver[8];
         for (int i = 0; i < drivers.Length; i++)
         {
-            var def = Character.Humanoid;
+            var def = CharacterDef.Humanoid;
             def.PushStrength = i % 2 == 0 ? 0.8f : 0f;
             drivers[i] = new Driver(w.AddCharacter(new Vector3D(-4 + i * 1.4, 1.5 + 0.2 * i, -8), def)) { Vz = 0.8f + 0.2f * (i % 4), Vx = (i - 3.5f) * 0.1f };
         }
 
-        drivers[7] = new Driver(w.AddCharacter(new Vector3D(12, 1.9, 0), Character.RigidHumanoid)) { Vz = 0.5f };
+        drivers[7] = new Driver(w.AddCharacter(new Vector3D(12, 1.9, 0), CharacterDef.RigidHumanoid)) { Vz = 0.5f };
         return (w, drivers);
     }
 
@@ -585,7 +585,7 @@ public class Character3DTests
         Assert.Throws<ArgumentOutOfRangeException>(() => w.AddCharacter(default, new CharacterDef { Mass = 0f }));
         Assert.Throws<ArgumentOutOfRangeException>(() => w.AddCharacter(default, new CharacterDef { Kind = (CharacterKind)7 }));
         Assert.Throws<ArgumentOutOfRangeException>(() => w.AddCharacter(default, new CharacterDef { Layer = 40 }));
-        Assert.Throws<ArgumentNullException>(() => Mover3D.Move(null!, Character.Humanoid, ref StateRef(), default, Dt));
+        Assert.Throws<ArgumentNullException>(() => Mover3D.Move(null!, CharacterDef.Humanoid, ref StateRef(), default, Dt));
         Assert.Single(w.GetCharacters());
         w.Step(Dt);
         Assert.True(float.IsFinite((float)c.Position.Y));

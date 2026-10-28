@@ -32,7 +32,7 @@ public class HostHooks3DTests
         }
 
         var sensorBody = w.CreateBody(BodyType.Static, new Vector3D(0, 2, 0));
-        w.CreateBox(sensorBody, new Vector3F(1f, 1f, 1f), 0f, new ShapeDef { IsSensor = true, Density = 0f });
+        w.CreateBox(sensorBody, new Vector3F(2f, 2f, 2f), 0f, new ShapeDef { IsSensor = true, Density = 0f });
         w.AddSphere(0.3f, new Vector3D(0.2, 6, 0));
         if (withCharacter) { w.AddCharacter(new Vector3D(8, 1, 0)); }
         return w;
@@ -201,7 +201,7 @@ public class HostHooks3DTests
         var ch = w.AddCharacter(new Vector3D(30, 1, 0));
         Assert.True(w.IsBodyAlive(box.RawHandle));
         Assert.True(w.IsShapeAlive(shape.RawHandle));
-        Assert.True(w.IsCharacterAlive(ch.Index, ch.Generation));
+        Assert.True(w.IsCharacterAlive(ch.RawHandle));
         Assert.False(w.IsBodyAlive(default));
         Assert.False(w.IsShapeAlive(default));
         Assert.False(w.IsJointAlive(default));
