@@ -5,6 +5,9 @@ Deterministic 2D and 3D rigid-body physics for .NET, written from first principl
 **Status: preview (0.1).** The 2D engine (circles, capsules, rounded polygons, segments and chains; revolute, prismatic, weld, wheel, distance, motor and mouse joints; bullets and continuous collision; a character mover; layers, filters, sensors, events and queries; byte-exact snapshot and restore; per-step world hashes; debug geometry) is complete and deterministic across x64, arm64 and browser WebAssembly, at any vector width and thread count. The 3D engine is in progress. Speed is not yet at parity with the fastest native engines, and the shared core (storage, scheduler, snapshot format) may still change before the 3D release.
 
 ```csharp
+using RecursiveAI.OneMath;               // Vector2F, Vector2D
+using RecursiveAI.OnePhysics.Physics2D;
+
 var world = new PhysicsWorld2D();
 world.AddBox(new Vector2F(20, 1), at: new Vector2D(0, -1), type: BodyType.Static);
 var ball = world.AddCircle(0.5f, at: new Vector2D(0, 5));
