@@ -402,53 +402,64 @@ internal sealed partial class Engine3D
         PointBlock(ref j, in g, p, rigid, warm);
     }
 
+    /// <summary>
+    /// Gradient of the twist angle 2·atan2(x, w) with respect to B's angular velocity relative to A, in world axes.
+    /// The twist is about the swung axis when the swing is large, so a row about A's x axis alone stops enforcing the limit there;
+    /// differentiating the angle through q' = ½ ω q gives (1, (wz + xy)/(x² + w²), (xz − wy)/(x² + w²)) in A's frame.
+    /// </summary>
+    private static Vector3F TwistGradient(in JGeo g, QuaternionF q)
+    {
+        float n2 = q.X * q.X + q.W * q.W;
+        if (!(n2 > 1e-4f)) { return g.AxA; }
+        float inv = 1f / n2;
+        return g.FA.Rotate(new Vector3F(1f, (q.W * q.Z + q.X * q.Y) * inv, (q.X * q.Z - q.W * q.Y) * inv));
+    }
+
     private static void SolveSwingTwist(ref JS3 j, in JGeo g, ref JointData3D d, ReadOnlySpan<float> s, Span<float> p, Soft rigid, bool useBias, float invH, bool warm)
     {
         float jb = s[JRow3.JBias], jm = s[JRow3.JMass], ji = s[JRow3.JImp];
-        float twist = 0f;
-        QuaternionF swing = QuaternionF.Identity;
-        if (!warm) { twist = SwingTwist(Relative(in g), out swing); }
-        var twistRow = JointRow.Ang(g.AxA);
+        var rel = Relative(in g);
+        float twist = SwingTwist(rel, out var swing);
+        var twistRow = JointRow.Ang(TwistGradient(in g, rel));
         LimitRow(ref j, p, JP.Lower, twistRow, twist - d.Lower, useBias, jb, jm, ji, invH, warm);
         LimitRow(ref j, p, JP.Upper, twistRow.Neg(), d.Upper - twist, useBias, jb, jm, ji, invH, warm);
 
         // Swing: the quaternion's (y, z) components bound an ellipse (y / sin(hy/2))² + (z / sin(hz/2))² <= 1 (Rouwé's talks on ragdoll constraints, swing-twist decomposition of Dobrowolski).
-        // Outside it the row pushes B back about the ellipse's normal at the swing's direction.
-        if (warm) { LimitRowWarm(ref j, in g, p); }
-        else
-        {
-            float ly = s[JRow3.SwingLimit], lz = s[JRow3.SwingLimit + 1];
-            float sy = swing.Y, sz = swing.Z;
-            float rho = float.Sqrt((sy / ly) * (sy / ly) + (sz / lz) * (sz / lz));
-            JointRow row = default;
-            float cval = 1f;
-            if (rho > 1e-6f)
-            {
-                float mag = 2f * float.Sqrt(sy * sy + sz * sz);
-                cval = mag * (1f - rho) / rho;
-                float gy = sy / (ly * ly), gz = sz / (lz * lz);
-                float gl = float.Sqrt(gy * gy + gz * gz);
-                var axisA = g.AyA * (gy / gl) + g.AzA * (gz / gl);
-                row = JointRow.Ang(axisA).Neg();
-                LimitRow(ref j, p, JP.Swing, row, cval, useBias, jb, jm, ji, invH, false);
-            }
-            else { p[JP.Swing] = 0f; }
-        }
+        // The row is the exact gradient of the ellipse function with respect to the relative angular velocity, so it keeps working when the twist is large.
+        float ly = s[JRow3.SwingLimit], lz = s[JRow3.SwingLimit + 1];
+        bool outside = SwingRow(in g, rel, swing, ly, lz, out var swingRow, out float cval);
+        if (outside) { LimitRow(ref j, p, JP.Swing, swingRow, cval, useBias, jb, jm, ji, invH, warm); }
+        else if (!warm) { p[JP.Swing] = 0f; }
 
         PointBlock(ref j, in g, p, rigid, warm);
     }
 
-    /// <summary>Warm start of the swing row: the stored impulse acts about the axis of the swing at the start of the solve call (re-derived from the current pose).</summary>
-    private static void LimitRowWarm(ref JS3 j, in JGeo g, Span<float> p)
+    /// <summary>
+    /// The swing limit's row and slack. With the swing's (y, z) components s(q) = (y w − z x, z w + y x)/n, n = √(x² + w²), and q' = ½ ω q, the rate of every component is linear in ω;
+    /// the slack is (1 − ρ)·L with ρ the ellipse function and L the swing angle at which this direction reaches the ellipse, so the row is −L ∇ρ (about the axis of the swing when it is small).
+    /// Returns false when the swing is too small to have a direction.
+    /// </summary>
+    private static bool SwingRow(in JGeo g, QuaternionF q, QuaternionF swing, float ly, float lz, out JointRow row, out float cval)
     {
-        float lam = p[JP.Swing];
-        if (lam == 0f) { return; }
-        SwingTwist(Relative(in g), out var swing);
+        row = default; cval = 1f;
         float sy = swing.Y, sz = swing.Z;
-        float l = float.Sqrt(sy * sy + sz * sz);
-        if (!(l > 1e-9f)) { return; }
-        var axisA = g.AyA * (sy / l) + g.AzA * (sz / l);
-        j.Apply(JointRow.Ang(axisA).Neg(), lam);
+        float rho = float.Sqrt((sy / ly) * (sy / ly) + (sz / lz) * (sz / lz));
+        float n = float.Sqrt(q.X * q.X + q.W * q.W);
+        if (!(rho > 1e-6f) || !(n > 1e-3f)) { return false; }
+        float mag = 2f * float.Sqrt(sy * sy + sz * sz);
+        cval = mag * (1f - rho) / rho;
+        float lref = mag / rho;
+        var gx = new Vector3F(q.W, q.Z, -q.Y) * 0.5f;
+        var gy = new Vector3F(-q.Z, q.W, q.X) * 0.5f;
+        var gz = new Vector3F(q.Y, -q.X, q.W) * 0.5f;
+        var gw = new Vector3F(-q.X, -q.Y, -q.Z) * 0.5f;
+        float inv = 1f / n;
+        var dn = (gx * q.X + gw * q.W) * inv;
+        var dsy = (gy * q.W + gw * q.Y - gz * q.X - gx * q.Z) * inv - dn * (sy * inv);
+        var dsz = (gz * q.W + gw * q.Z + gy * q.X + gx * q.Y) * inv - dn * (sz * inv);
+        var drho = (dsy * (sy / (ly * ly)) + dsz * (sz / (lz * lz))) * (1f / rho);
+        row = JointRow.Ang(g.FA.Rotate(drho * -lref));
+        return true;
     }
 
     // ------------------------------------------------------------------ six degrees of freedom

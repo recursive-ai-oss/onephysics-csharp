@@ -249,8 +249,43 @@ public class Joint3DTests
         double tx = n > 1e-12 ? x / n : 0, tw = n > 1e-12 ? wq / n : 1;
         twist = 2 * Math.Atan2(tx, tw);
         // swing = q * conj(twist) with twist = (tx, 0, 0, tw): the Hamilton product written out for its y and z parts.
-        double sy = y * tw + z * tx, sz = z * tw - y * tx;
+        double sy = y * tw - z * tx, sz = z * tw + y * tx;
         ey = sy / ly; ez = sz / lz;
+    }
+
+    [Theory]
+    [InlineData(1, 0, 0)]
+    [InlineData(-1, 0, 0)]
+    [InlineData(0, 1, 0)]
+    [InlineData(0, -1, 0)]
+    [InlineData(0, 0, 1)]
+    [InlineData(0, 0, -1)]
+    [InlineData(1, 1, 0)]
+    [InlineData(1, 0, 1)]
+    [InlineData(0, 1, 1)]
+    [InlineData(0, 1, -1)]
+    [InlineData(1, 1, 1)]
+    [InlineData(-1, 1, 1)]
+    public void SwingTwistHoldsUnderConstantTorqueAboutOneAxis(float tx, float ty, float tz)
+    {
+        var w = NoGravity();
+        var parent = Anchor(w);
+        var child = w.AddBox(new Vector3F(1f, 0.4f, 0.4f), new Vector3D(0.5, 0, 0));
+        const float tw = 0.4f, sy = 0.6f, sz = 0.3f;
+        w.AddCharacterJoint(parent, child, new Vector3D(0, 0, 0), new Vector3F(1, 0, 0), -tw, tw, sy, sz);
+        double ly = Math.Sin(sy / 2), lz = Math.Sin(sz / 2);
+        double worstTwist = 0, worstEllipse = 0;
+        for (int i = 0; i < 240; i++)
+        {
+            child.ApplyTorque(new Vector3F(tx, ty, tz) * 6f);
+            w.Step(Dt);
+            SwingTwistOf(child.Rotation, out double twist, out double ey, out double ez, ly, lz);
+            worstTwist = Math.Max(worstTwist, Math.Abs(twist) - tw);
+            worstEllipse = Math.Max(worstEllipse, Math.Sqrt(ey * ey + ez * ez) - 1);
+        }
+
+        Assert.True(worstTwist < 0.06, "twist violation " + worstTwist);
+        Assert.True(worstEllipse < 0.15, "swing violation (relative) " + worstEllipse);
     }
 
     [Fact]
