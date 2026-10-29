@@ -17,6 +17,17 @@ internal static class AllocMeter
         return window.Bytes();
     }
 
+    /// <summary>
+    /// Collects garbage before a run of windows. Without it, a world set up a moment ago (large arrays, a fresh snapshot buffer) makes the runtime's allocator report a few KB on the calling
+    /// thread in some window of its first hundred steps, when the machine is busy, whichever call that window is in and with the code under test allocating nothing: the same worlds,
+    /// started after a collection or a pause, report zero. A library allocation is not hidden by this, since it repeats in every window.
+    /// </summary>
+    public static void Settle()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+    }
+
     /// <summary>Starts a window that spans code which cannot be wrapped in a delegate.</summary>
     public static Window Start() => new(JitInfo.GetCompiledMethodCount(currentThread: true), GC.GetAllocatedBytesForCurrentThread());
 

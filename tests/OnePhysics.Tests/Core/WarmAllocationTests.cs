@@ -24,12 +24,8 @@ public class WarmAllocationTests
     // method on that thread is not counted (see AllocMeter): the first run of a path nothing exercised before compiles it, and compiling allocates whatever the library does.
     private const int WorkerSlots = 64;
 
-    // The first world a process runs may meet code and types for the first time at a step the priming did not reach (a hash on a worker count nothing used yet, a batch query in a world of one
-    // thread); the runtime then loads or binds them on the calling thread and allocates, which is not the library holding memory. A first world, run to the end and not judged, takes those;
-    // the second is judged and must allocate nothing.
     private static void Verdict(Func<string?> scenario)
     {
-        _ = scenario();
         string? problem = scenario();
         Assert.True(problem == null, problem);
     }
@@ -66,6 +62,7 @@ public class WarmAllocationTests
         var zone = w.CreateBody(BodyType.Static, new Vector2D(-2, 1));
         w.CreateBox(zone, new Vector2F(6, 4), def: new Physics2D.ShapeDef { IsSensor = true });
         w.Warmup();
+        AllocMeter.Settle();
 
         var hits = new QueryHit2D[16];
         var scratch = new byte[1 << 22];
@@ -123,6 +120,7 @@ public class WarmAllocationTests
         var zone = w.CreateBody(BodyType.Static, new Vector3D(-2, 1, 0));
         w.CreateBox(zone, new Vector3F(6, 4, 6), 0f, new Physics3D.ShapeDef { IsSensor = true, Density = 0f });
         w.Warmup();
+        AllocMeter.Settle();
 
         var hits = new QueryHit3D[16];
         var scratch = new byte[1 << 22];

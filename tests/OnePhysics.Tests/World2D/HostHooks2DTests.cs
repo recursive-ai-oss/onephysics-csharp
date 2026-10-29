@@ -64,6 +64,7 @@ public class HostHooks2DTests
 
         long Measure(Action a)
         {
+            AllocMeter.Settle();
             a();
             long total = 0;
             for (int i = 0; i < 20; i++) { total += AllocMeter.Of(a); }
