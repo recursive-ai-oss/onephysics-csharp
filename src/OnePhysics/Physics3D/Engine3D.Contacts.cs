@@ -139,6 +139,7 @@ internal sealed partial class Engine3D
 
     private byte[] _active = new byte[8]; // per body: awake and dynamic, or a kinematic body in motion (see IsActive); valid for the contact stage that filled it
     private int[] _boxStamp = new int[8];
+    private byte[] _boxInside = new byte[8]; // per shape, set with the tight box: 1 when the box lies inside the proxy's stored box, so the tree update has nothing to do
     private int _stamp;
     private double[] _boxes = new double[48];
     private int[] _updateList = new int[64];
@@ -163,7 +164,7 @@ internal sealed partial class Engine3D
         // The tight box of every shape of a moving body is kept for this step: a pair whose shapes are farther apart than the speculative distance has no contact points, and two box comparisons say so
         // without loading either shape.
         int shapeHigh = world.Shapes.HighWater;
-        if (_boxStamp.Length < shapeHigh) { int cap = Math.Max(shapeHigh, _boxStamp.Length * 2); _boxes = new double[cap * 6]; _boxStamp = new int[cap]; }
+        if (_boxStamp.Length < shapeHigh) { int cap = Math.Max(shapeHigh, _boxStamp.Length * 2); _boxes = new double[cap * 6]; _boxStamp = new int[cap]; _boxInside = new byte[cap]; }
         _stamp++;
         // 1. Broadphase boxes of every body that moved last step. The displacement stretches the box ahead of the motion.
         // The tight boxes are pure functions of body state and are computed in parallel over fixed chunks of the awake list; the tree is then updated serially in list order.
@@ -175,6 +176,7 @@ internal sealed partial class Engine3D
             if (!bodies.IsLive(b)) { continue; }
             for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
             {
+                if (_boxInside[s] != 0) { continue; }
                 int o = 6 * s;
                 var tight = new Aabb3D(_boxes[o], _boxes[o + 1], _boxes[o + 2], _boxes[o + 3], _boxes[o + 4], _boxes[o + 5]);
                 Bp.MoveProxy(Proxy[s], tight, Dp[3 * b], Dp[3 * b + 1], Dp[3 * b + 2]);
@@ -484,6 +486,10 @@ internal sealed partial class Engine3D
                     int o = 6 * s;
                     e._boxes[o] = tight.MinX; e._boxes[o + 1] = tight.MinY; e._boxes[o + 2] = tight.MinZ; e._boxes[o + 3] = tight.MaxX; e._boxes[o + 4] = tight.MaxY; e._boxes[o + 5] = tight.MaxZ;
                     e._boxStamp[s] = e._stamp;
+                    // Most moving shapes stay inside their stored box; the test reads the tree, which nothing changes until the serial pass. A box with a NaN never counts as inside, and a displacement that is not
+                    // finite is left to the tree update, which rejects it.
+                    int b3 = 3 * b;
+                    e._boxInside[s] = float.IsFinite(e.Dp[b3]) && float.IsFinite(e.Dp[b3 + 1]) && float.IsFinite(e.Dp[b3 + 2]) && Aabb3D.Contains(e.Bp.FatBoundsOfLive(e.Proxy[s]), tight) ? (byte)1 : (byte)0;
                 }
             }
         }
