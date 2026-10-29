@@ -6,7 +6,6 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 ## [Unreleased]
 
-- Internal: an eight-lane kernel for the box edge-axis search (bit-identical to the scalar one, about 10× per pair) is in the library for later use; no world, hash or snapshot changes.
 - **`Warmup` primes more of the process.** Its trial world now drops a pile that lands, settles and falls asleep (150 steps) and runs box and sphere casts and box and capsule overlaps, so those paths are loaded before a host's first step. Worlds, hashes and snapshots are unchanged.
 
 **Moved results:** 3D worlds move (the broadphase keeps tighter boxes, so pairs start and end at different steps), and 2D and 3D worlds move again because positions now advance on a 2^-32 grid (see the origin shift entry).

@@ -81,9 +81,6 @@ public sealed partial class ManifoldGenerator3D
 
     private static readonly BoxTopology s_boxTopo = new();
 
-    /// <summary>The half-edge of the unit cube numbered by the edge direction and corner-sign code that the edge axis search reports.</summary>
-    internal static int BoxEdgeHalfEdge(int axis, int cornerCode) => s_boxTopo.Edge[(axis * 4) + cornerCode];
-
     // How far inside a normal cone (as a component of the unit axis) an edge axis must lie to count; closer to the rim it coincides with a face axis to within a few parts in ten thousand.
     private const float ConeMargin = 1e-4f;
 
@@ -134,7 +131,7 @@ public sealed partial class ManifoldGenerator3D
 
     // The nine edge-edge axes (an edge of A crossed with an edge of B). The axis is oriented from A towards B; its separation is the distance between the centres along it minus the reach of each box. The edges
     // reported are the ones that support each box along the axis (A's along the axis, B's against it). Parallel pairs have no axis. Returns negative infinity and edge -1 when no pair has one.
-    internal static float BoxEdges(Vector3F hA, Vector3F hB, in Matrix3x3F r, Vector3F t, out int edgeA, out int edgeB, out Vector3F axis)
+    private static float BoxEdges(Vector3F hA, Vector3F hB, in Matrix3x3F r, Vector3F t, out int edgeA, out int edgeB, out Vector3F axis)
     {
         BoxTopology topo = s_boxTopo;
         edgeA = -1;
