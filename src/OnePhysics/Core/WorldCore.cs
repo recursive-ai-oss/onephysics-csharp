@@ -841,6 +841,19 @@ public sealed class WorldCore
         // The stage is decoded once for the whole range.
         public void RunRange(int stage, int first, int count)
         {
+#if STAGE_TIMERS
+            int k = _w._stageKind[stage], a = _w._stageArg[stage];
+            int ph = k <= StageIntegratePositions ? 0 : (k == StageOverflow ? a : a & 0xFF);
+            StageProbe.OnSolveRun?.Invoke(k, ph, count, true);
+            RunRangeCore(stage, first, count);
+            StageProbe.OnSolveRun?.Invoke(k, ph, count, false);
+#else
+            RunRangeCore(stage, first, count);
+#endif
+        }
+
+        private void RunRangeCore(int stage, int first, int count)
+        {
             var w = _w;
             int kind = w._stageKind[stage], arg = w._stageArg[stage];
             if (kind <= StageIntegratePositions)
