@@ -10,6 +10,7 @@ internal static class Program
     private static int Main(string[] args)
     {
         if (args.Length > 0 && args[0] == "--position-cost") { return PositionCost.Run(args); }
+        if (args.Length > 0 && args[0] == "--solve-layout") { return SolveLayoutBench.Run(args); }
         BenchmarkSwitcher.FromAssembly(typeof(StepBench).Assembly).Run(args);
         return 0;
     }
