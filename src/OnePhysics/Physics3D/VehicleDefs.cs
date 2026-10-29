@@ -27,25 +27,25 @@ public sealed class TyreDef
     /// <summary>Peak friction coefficient of the tyre; combined with the ground shape's friction as <c>sqrt(tyre · ground)</c>, the world's rule. Default 1.5 (about 0.95 on the default ground). At least 0.</summary>
     public float Friction { get; set; } = 1.5f;
 
-    /// <summary>Longitudinal stiffness factor B. Default 10; larger gives a sharper peak at a smaller slip ratio. Positive.</summary>
+    /// <summary>Longitudinal stiffness factor B. Default 10; larger gives a sharper peak at a smaller slip ratio. Positive, at most 1000.</summary>
     public float LongitudinalB { get; set; } = 10f;
 
-    /// <summary>Longitudinal shape factor C. Default 1.65; controls the height of the curve at large slip. Positive.</summary>
+    /// <summary>Longitudinal shape factor C. Default 1.65; controls the height of the curve at large slip. Positive, at most 1000.</summary>
     public float LongitudinalC { get; set; } = 1.65f;
 
-    /// <summary>Longitudinal curvature factor E. Default 0.9; at most 1.</summary>
+    /// <summary>Longitudinal curvature factor E. Default 0.9; within -1000 to 1.</summary>
     public float LongitudinalE { get; set; } = 0.9f;
 
-    /// <summary>Lateral stiffness factor B. Default 8. Positive.</summary>
+    /// <summary>Lateral stiffness factor B. Default 8. Positive, at most 1000.</summary>
     public float LateralB { get; set; } = 8f;
 
-    /// <summary>Lateral shape factor C. Default 1.5. Positive.</summary>
+    /// <summary>Lateral shape factor C. Default 1.5. Positive, at most 1000.</summary>
     public float LateralC { get; set; } = 1.5f;
 
-    /// <summary>Lateral curvature factor E. Default 0.5; at most 1.</summary>
+    /// <summary>Lateral curvature factor E. Default 0.5; within -1000 to 1.</summary>
     public float LateralE { get; set; } = 0.5f;
 
-    /// <summary>Speed below which slip is normalised by this speed instead of the true one (the slip ratio and angle are undefined at rest), m/s. Default 1. Positive.</summary>
+    /// <summary>Speed below which slip is normalised by this speed instead of the true one (the slip ratio and angle are undefined at rest), m/s. Default 1. Within 0.001 to 1000.</summary>
     public float LowSpeed { get; set; } = 1f;
 
     /// <summary>A copy.</summary>
@@ -57,6 +57,9 @@ public sealed class TyreDef
         VehicleCheck.Positive(LongitudinalB, where + ".LongitudinalB"); VehicleCheck.Positive(LongitudinalC, where + ".LongitudinalC"); VehicleCheck.AtMost1(LongitudinalE, where + ".LongitudinalE");
         VehicleCheck.Positive(LateralB, where + ".LateralB"); VehicleCheck.Positive(LateralC, where + ".LateralC"); VehicleCheck.AtMost1(LateralE, where + ".LateralE");
         VehicleCheck.Positive(LowSpeed, where + ".LowSpeed");
+        VehicleCheck.Within(LongitudinalB, 0f, 1000f, where + ".LongitudinalB"); VehicleCheck.Within(LongitudinalC, 0f, 1000f, where + ".LongitudinalC"); VehicleCheck.Within(LongitudinalE, -1000f, 1f, where + ".LongitudinalE");
+        VehicleCheck.Within(LateralB, 0f, 1000f, where + ".LateralB"); VehicleCheck.Within(LateralC, 0f, 1000f, where + ".LateralC"); VehicleCheck.Within(LateralE, -1000f, 1f, where + ".LateralE");
+        VehicleCheck.Within(LowSpeed, 1e-3f, 1000f, where + ".LowSpeed"); VehicleCheck.Within(Friction, 0f, 1000f, where + ".Friction");
     }
 }
 
@@ -103,10 +106,10 @@ public sealed class WheelDef
     /// <summary>Extra compression the spring force assumes at every length, m: the spring pushes with <c>k · (maxLength − length + preload)</c>, so the car sits higher for the same load. Default 0. At least 0.</summary>
     public float PreloadLength { get; set; }
 
-    /// <summary>Mass this wheel's spring carries, kg. 0 (default) means the chassis mass divided by the number of wheels. At least 0.</summary>
+    /// <summary>Mass this wheel's spring carries, kg. 0 (default) means the chassis mass divided by the number of wheels. Within 0 to 1e30.</summary>
     public float SprungMass { get; set; }
 
-    /// <summary>Moment of inertia of the wheel and what spins with it, kg·m². Default 1. Positive.</summary>
+    /// <summary>Moment of inertia of the wheel and what spins with it, kg·m². Default 1. Within 0.001 to 1000000.</summary>
     public float Inertia { get; set; } = 1f;
 
     /// <summary>Angular damping of the wheel's spin, 1/s. Default 0.2. At least 0.</summary>
@@ -148,7 +151,7 @@ public sealed class WheelDef
         VehicleCheck.Positive(SpringFrequency, w + ".SpringFrequency");
         if (SpringFrequency > 25f) { throw new ArgumentOutOfRangeException(w + ".SpringFrequency", SpringFrequency, w + ".SpringFrequency must be at most 25 Hz."); }
         VehicleCheck.AtLeast0(DampingRatio, w + ".DampingRatio"); VehicleCheck.AtLeast0(PreloadLength, w + ".PreloadLength"); VehicleCheck.AtLeast0(SprungMass, w + ".SprungMass");
-        VehicleCheck.Positive(Inertia, w + ".Inertia"); VehicleCheck.AtLeast0(AngularDamping, w + ".AngularDamping");
+        VehicleCheck.Positive(Inertia, w + ".Inertia"); VehicleCheck.Within(Inertia, 1e-3f, 1e6f, w + ".Inertia"); VehicleCheck.AtLeast0(AngularDamping, w + ".AngularDamping"); VehicleCheck.Within(SprungMass, 0f, 1e30f, w + ".SprungMass");
         if (!(Math.Abs(MaxSteerAngle) <= 1.5707964f)) { throw new ArgumentOutOfRangeException(w + ".MaxSteerAngle", MaxSteerAngle, w + ".MaxSteerAngle must be finite and at most pi/2 in size."); }
         VehicleCheck.AtLeast0(MaxBrakeTorque, w + ".MaxBrakeTorque"); VehicleCheck.AtLeast0(MaxHandbrakeTorque, w + ".MaxHandbrakeTorque");
         if (Tyre == null) { throw new ArgumentNullException(w + ".Tyre", w + ".Tyre must not be null."); }
@@ -161,7 +164,7 @@ public sealed class WheelDef
 [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class EngineDef
 {
-    /// <summary>Torque at the curve's value 1, N·m. Default 400. Positive.</summary>
+    /// <summary>Torque at the curve's value 1, N·m. Default 400. Positive, at most 10000000.</summary>
     public float MaxTorque { get; set; } = 400f;
 
     /// <summary>Idle speed, revolutions per minute; the engine holds it when the clutch is open or the throttle is released. Default 1000. Positive.</summary>
@@ -170,7 +173,7 @@ public sealed class EngineDef
     /// <summary>Rev limit, rpm; torque is cut at it. Default 6500. Greater than <see cref="MinRpm"/>.</summary>
     public float MaxRpm { get; set; } = 6500f;
 
-    /// <summary>Moment of inertia of the engine and flywheel, kg·m². Default 0.5. Positive.</summary>
+    /// <summary>Moment of inertia of the engine and flywheel, kg·m². Default 0.5. Within 0.001 to 1000000.</summary>
     public float Inertia { get; set; } = 0.5f;
 
     /// <summary>
@@ -182,7 +185,7 @@ public sealed class EngineDef
     /// <summary>Engine braking: torque opposing the engine with the throttle closed, as a fraction of <see cref="MaxTorque"/> at the rev limit, growing linearly with speed. Default 0.15. At least 0.</summary>
     public float EngineBraking { get; set; } = 0.15f;
 
-    /// <summary>The largest torque the clutch carries when fully engaged, as a multiple of <see cref="MaxTorque"/>. Default 2. Positive.</summary>
+    /// <summary>The largest torque the clutch carries when fully engaged, as a multiple of <see cref="MaxTorque"/>. Default 2. Positive, at most 1000.</summary>
     public float ClutchStrength { get; set; } = 2f;
 
     internal static readonly float[] DefaultCurve = { 0.6f, 0.85f, 0.95f, 1f, 0.97f, 0.9f, 0.8f, 0.7f };
@@ -196,7 +199,7 @@ public sealed class EngineDef
     {
         VehicleCheck.Positive(MaxTorque, "Engine.MaxTorque"); VehicleCheck.Positive(MinRpm, "Engine.MinRpm");
         if (!(MaxRpm > MinRpm) || !float.IsFinite(MaxRpm) || MaxRpm > 100000f) { throw new ArgumentOutOfRangeException("Engine.MaxRpm", MaxRpm, "Engine.MaxRpm must be finite, greater than MinRpm and at most 100000."); }
-        VehicleCheck.Positive(Inertia, "Engine.Inertia"); VehicleCheck.AtLeast0(EngineBraking, "Engine.EngineBraking"); VehicleCheck.Positive(ClutchStrength, "Engine.ClutchStrength");
+        VehicleCheck.Positive(Inertia, "Engine.Inertia"); VehicleCheck.Within(Inertia, 1e-3f, 1e6f, "Engine.Inertia"); VehicleCheck.Within(MaxTorque, 0f, 1e7f, "Engine.MaxTorque"); VehicleCheck.Within(ClutchStrength, 0f, 1000f, "Engine.ClutchStrength"); VehicleCheck.AtLeast0(EngineBraking, "Engine.EngineBraking"); VehicleCheck.Positive(ClutchStrength, "Engine.ClutchStrength");
         var c = Curve;
         if (c.Length < 2 || c.Length > 64) { throw new ArgumentOutOfRangeException("Engine.TorqueCurve", c.Length, "Engine.TorqueCurve needs 2 to 64 samples."); }
         for (int i = 0; i < c.Length; i++)
@@ -213,10 +216,10 @@ public sealed class TransmissionDef
     /// <summary>True (default) for an automatic box that shifts by engine speed and picks reverse from the drive input; false for a manual one set with <c>Vehicle.Gear</c>.</summary>
     public bool Automatic { get; set; } = true;
 
-    /// <summary>Forward gear ratios, first gear first (engine turns per turn of the driveshaft). Null (default) is 3.5, 2.2, 1.5, 1.1, 0.85, 0.7. One to 12 entries, each positive.</summary>
+    /// <summary>Forward gear ratios, first gear first (engine turns per turn of the driveshaft). Null (default) is 3.5, 2.2, 1.5, 1.1, 0.85, 0.7. One to 12 entries, each within 0 to 1000 and positive.</summary>
     public float[]? ForwardRatios { get; set; }
 
-    /// <summary>Reverse ratio (positive number). Default 3.2. Positive.</summary>
+    /// <summary>Reverse ratio (positive number). Default 3.2. Positive, at most 1000.</summary>
     public float ReverseRatio { get; set; } = 3.2f;
 
     /// <summary>Seconds the clutch is open during a shift. Default 0.25. At least 0.</summary>
@@ -239,8 +242,8 @@ public sealed class TransmissionDef
     {
         var r = Ratios;
         if (r.Length < 1 || r.Length > 12) { throw new ArgumentOutOfRangeException("Transmission.ForwardRatios", r.Length, "Transmission.ForwardRatios needs 1 to 12 entries."); }
-        for (int i = 0; i < r.Length; i++) { VehicleCheck.Positive(r[i], "Transmission.ForwardRatios[" + i.ToString(CultureInfo.InvariantCulture) + "]"); }
-        VehicleCheck.Positive(ReverseRatio, "Transmission.ReverseRatio"); VehicleCheck.AtLeast0(SwitchTime, "Transmission.SwitchTime");
+        for (int i = 0; i < r.Length; i++) { VehicleCheck.Positive(r[i], "Transmission.ForwardRatios[" + i.ToString(CultureInfo.InvariantCulture) + "]"); VehicleCheck.Within(r[i], 0f, 1000f, "Transmission.ForwardRatios[" + i.ToString(CultureInfo.InvariantCulture) + "]"); }
+        VehicleCheck.Positive(ReverseRatio, "Transmission.ReverseRatio"); VehicleCheck.Within(ReverseRatio, 0f, 1000f, "Transmission.ReverseRatio"); VehicleCheck.AtLeast0(SwitchTime, "Transmission.SwitchTime");
         VehicleCheck.Positive(ShiftDownRpm, "Transmission.ShiftDownRpm");
         if (!(ShiftUpRpm > ShiftDownRpm) || !float.IsFinite(ShiftUpRpm)) { throw new ArgumentOutOfRangeException("Transmission.ShiftUpRpm", ShiftUpRpm, "Transmission.ShiftUpRpm must be finite and greater than ShiftDownRpm."); }
     }
@@ -256,7 +259,7 @@ public sealed class DifferentialDef
     /// <summary>Index of the right wheel, or -1 for none.</summary>
     public int Right { get; set; } = 1;
 
-    /// <summary>Final drive ratio of this differential. Default 3.4. Positive.</summary>
+    /// <summary>Final drive ratio of this differential. Default 3.4. Positive, at most 1000.</summary>
     public float Ratio { get; set; } = 3.4f;
 
     /// <summary>Share of this differential's torque that goes to the left wheel at equal wheel speeds. Default 0.5. Within 0..1.</summary>
@@ -281,7 +284,7 @@ public sealed class DifferentialDef
         if (Right < -1 || Right >= wheels) { throw new ArgumentOutOfRangeException(w + ".Right", Right, w + ".Right must be -1 or a wheel index below " + wheels.ToString(CultureInfo.InvariantCulture) + "."); }
         if (Left < 0 && Right < 0) { throw new ArgumentOutOfRangeException(w, w + " drives no wheel."); }
         if (Left == Right) { throw new ArgumentOutOfRangeException(w + ".Right", Right, w + " drives one wheel twice."); }
-        VehicleCheck.Positive(Ratio, w + ".Ratio");
+        VehicleCheck.Positive(Ratio, w + ".Ratio"); VehicleCheck.Within(Ratio, 0f, 1000f, w + ".Ratio");
         if (!(LeftRightSplit >= 0f && LeftRightSplit <= 1f)) { throw new ArgumentOutOfRangeException(w + ".LeftRightSplit", LeftRightSplit, w + ".LeftRightSplit must be within 0..1."); }
         if (!(LimitedSlipRatio >= 0f && LimitedSlipRatio <= 100f)) { throw new ArgumentOutOfRangeException(w + ".LimitedSlipRatio", LimitedSlipRatio, w + ".LimitedSlipRatio must be within 0..100."); }
         VehicleCheck.AtLeast0(EngineTorqueRatio, w + ".EngineTorqueRatio");
@@ -466,6 +469,12 @@ internal static class VehicleCheck
     public static void AtLeast0(float v, string name)
     {
         if (!(v >= 0f) || !float.IsFinite(v)) { throw new ArgumentOutOfRangeException(name, v, name + " must be finite and at least 0."); }
+    }
+
+    /// <summary>Finite and within [lo, hi]. Wide enough for any real vehicle; the limits keep products of a definition's numbers (ratios, inertias, torques) far from float overflow, which would put NaN in the drivetrain.</summary>
+    public static void Within(float v, float lo, float hi, string name)
+    {
+        if (!(v >= lo && v <= hi)) { throw new ArgumentOutOfRangeException(name, v, name + " must be within " + lo.ToString("R", CultureInfo.InvariantCulture) + " to " + hi.ToString("R", CultureInfo.InvariantCulture) + "."); }
     }
 
     public static void AtMost1(float v, string name)
