@@ -1,15 +1,11 @@
 using System;
-using System.Runtime;
 
 namespace RecursiveAI.OnePhysics.Tests.Core;
 
-/// <summary>
-/// Counts what the library allocates on the calling thread. When the runtime compiles a method on the thread in the middle of a window (the first run of a path that nothing exercised before),
-/// the compiler's own allocations land in the same counter, whatever the code under test does; such a window is not counted. A library allocation repeats in every window, so it still shows in the others.
-/// </summary>
+/// <summary>Counts what the calling thread allocates in a window.</summary>
 internal static class AllocMeter
 {
-    /// <summary>Bytes allocated by <paramref name="action"/> on this thread, or 0 when a method was compiled on this thread while it ran.</summary>
+    /// <summary>Bytes allocated by <paramref name="action"/> on this thread.</summary>
     public static long Of(Action action)
     {
         var window = Start();
@@ -29,16 +25,12 @@ internal static class AllocMeter
     }
 
     /// <summary>Starts a window that spans code which cannot be wrapped in a delegate.</summary>
-    public static Window Start() => new(JitInfo.GetCompiledMethodCount(currentThread: true), GC.GetAllocatedBytesForCurrentThread());
+    public static Window Start() => new(GC.GetAllocatedBytesForCurrentThread());
 
     /// <summary>An open measuring window.</summary>
-    public readonly struct Window(long compiled, long allocated)
+    public readonly struct Window(long allocated)
     {
-        /// <summary>Bytes allocated since <see cref="Start"/>, or 0 when a method was compiled on this thread meanwhile.</summary>
-        public long Bytes()
-        {
-            long bytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
-            return JitInfo.GetCompiledMethodCount(currentThread: true) == compiled ? bytes : 0;
-        }
+        /// <summary>Bytes allocated since <see cref="Start"/>.</summary>
+        public long Bytes() => GC.GetAllocatedBytesForCurrentThread() - allocated;
     }
 }

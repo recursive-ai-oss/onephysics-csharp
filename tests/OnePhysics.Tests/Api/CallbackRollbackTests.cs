@@ -296,6 +296,7 @@ public class CallbackRollbackTests
         w.Restore(snap);
         for (int i = 0; i < 20; i++) { w.Step(Dt); }
 
+        AllocMeter.Settle();
         long bytes = 0;
         Action step = () => w.Step(Dt);
         for (int i = 0; i < 100; i++) { bytes += AllocMeter.Of(step); }
@@ -318,6 +319,7 @@ public class CallbackRollbackTests
         w3.Warmup();
         for (int i = 0; i < 100; i++) { w3.Step(Dt); }
         using (w3.SuppressCallbacks()) { }
+        AllocMeter.Settle();
         bytes = 0;
         Action step3 = () => w3.Step(Dt);
         using (w3.SuppressCallbacks())
