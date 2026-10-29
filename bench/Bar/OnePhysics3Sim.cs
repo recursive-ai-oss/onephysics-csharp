@@ -42,7 +42,7 @@ sealed class OnePhysics3Sim : ISim3
             if (!cs.IsLive(c)) continue;
             if (cs.KindOf(c) == ConstraintKind.Joint) joints++; else { contacts++; points += cs.PointCount[c]; }
         }
-        return $"constraints_contacts={contacts}\nconstraints_points={points}\nconstraints_joints={joints}\n";
+        return $"constraints_contacts={contacts}\nconstraints_points={points}\nconstraints_joints={joints}\n" + CountLines();
     }
 
     public void Step(double dt)
@@ -51,7 +51,44 @@ sealed class OnePhysics3Sim : ISim3
         DriveVehicles();
         DriveJoints();
         world.Step((float)dt);
+        if (StageProfile.Requested && stepNo >= 60) Count();
         stepNo++;
+    }
+
+    // Work counts per step for the stage report (OP_PROFILE): awake bodies, live pair-table entries, pairs with an awake body (the ones the narrowphase revisits), contact constraints with points, their points and joints.
+    readonly List<int[]> counts = [];
+
+    void Count()
+    {
+        var e = world.Engine; var core = e.Core; var cs = core.Constraints; var owner = core.Shapes.Owner; var bodies = core.Bodies;
+        int live = 0, awakePairs = 0;
+        for (int p = 0; p < e.PairHigh; p++)
+        {
+            if (!e.PairLive[p]) continue;
+            live++;
+            if (bodies.IsAwake(owner[e.PairA[p]]) || bodies.IsAwake(owner[e.PairB[p]])) awakePairs++;
+        }
+        int contacts = 0, points = 0, joints = 0;
+        for (int c = 0; c < cs.HighWater; c++)
+        {
+            if (!cs.IsLive(c)) continue;
+            if (cs.KindOf(c) == ConstraintKind.Joint) joints++; else if (cs.PointCount[c] > 0) { contacts++; points += cs.PointCount[c]; }
+        }
+        counts.Add([core.AwakeBodies.Length, live, awakePairs, contacts, points, joints]);
+    }
+
+    string CountLines()
+    {
+        if (counts.Count == 0) return "";
+        string[] names = ["awake_bodies", "pairs_live", "pairs_awake", "manifolds", "points", "joints"];
+        var sb = new StringBuilder();
+        for (int k = 0; k < names.Length; k++)
+        {
+            var col = counts.Select(d => d[k]).OrderBy(x => x).ToArray();
+            sb.Append(CultureInfo.InvariantCulture, $"cnt_{names[k]}={col[col.Length / 2]}\n");
+        }
+        sb.Append("series_awake=").Append(string.Join(',', counts.Select(d => d[0]))).Append('\n');
+        return sb.ToString();
     }
 
     // Scripted input, as in the 2D driver: walk along +x at the script's speed, reversing every period steps, jump every so many steps, stand still from the stop step; gravity is integrated into a vertical

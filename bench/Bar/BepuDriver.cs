@@ -15,20 +15,25 @@ static class BepuDriver
     struct NarrowPhaseCallbacks : INarrowPhaseCallbacks
     {
         public static HashSet<int> Jointed = new(); // joined body handle pairs, encoded (min << 16 | max)
+        // Work counts for the stage report (BAR_BEPU_STAGES): candidate pairs the broadphase hands to the callback, the ones allowed, manifolds configured and their contact points. Single-thread runs only.
+        public static long Candidates, Allowed, Manifolds, Points;
         public void Initialize(Simulation simulation) { }
         public bool AllowContactGeneration(int workerIndex, CollidableReference a, CollidableReference b, ref float speculativeMargin)
         {
+            Candidates++;
             if (a.Mobility != CollidableMobility.Dynamic && b.Mobility != CollidableMobility.Dynamic) return false;
             if (a.Mobility != CollidableMobility.Static && b.Mobility != CollidableMobility.Static)
             {
                 int x = a.BodyHandle.Value, y = b.BodyHandle.Value; if (x > y) (x, y) = (y, x);
                 if (Jointed.Contains(x << 16 | y)) return false;
             }
+            Allowed++;
             return true;
         }
         public bool AllowContactGeneration(int workerIndex, CollidablePair pair, int childIndexA, int childIndexB) => true;
         public bool ConfigureContactManifold<TManifold>(int workerIndex, CollidablePair pair, ref TManifold manifold, out PairMaterialProperties pairMaterial) where TManifold : unmanaged, IContactManifold<TManifold>
         {
+            Manifolds++; Points += manifold.Count;
             pairMaterial.FrictionCoefficient = 0.6f; pairMaterial.MaximumRecoveryVelocity = 2f; pairMaterial.SpringSettings = new SpringSettings(30, 1);
             return true;
         }
@@ -163,7 +168,49 @@ static class BepuDriver
             return list;
         }
 
-        public void Step(double dt) => sim.Timestep((float)dt, dispatcher);
+        // BAR_BEPU_STAGES=1 runs the documented stages one by one in the documented order (Sleep, PredictBoundingBoxes, CollisionDetection, Solve, IncrementallyOptimizeDataStructures) and times each;
+        // otherwise the plain Timestep runs, so the stage sum can be compared with it. Integration and the incremental update of contacts happen inside Solve (with substeps) per the engine's documentation.
+        static readonly bool Staged = Environment.GetEnvironmentVariable("BAR_BEPU_STAGES") != null;
+        static readonly string[] StageNames = ["sleep", "predict_bounds", "collision", "solve", "optimize"];
+        readonly List<double[]> perStep = [];
+        readonly long[] t = new long[6];
+        int stepNo;
+
+        public void Step(double dt)
+        {
+            if (!Staged) { sim.Timestep((float)dt, dispatcher); return; }
+            float h = (float)dt;
+            NarrowPhaseCallbacks.Candidates = NarrowPhaseCallbacks.Allowed = NarrowPhaseCallbacks.Manifolds = NarrowPhaseCallbacks.Points = 0;
+            t[0] = System.Diagnostics.Stopwatch.GetTimestamp();
+            sim.Sleep(); t[1] = System.Diagnostics.Stopwatch.GetTimestamp();
+            sim.PredictBoundingBoxes(h, dispatcher); t[2] = System.Diagnostics.Stopwatch.GetTimestamp();
+            sim.CollisionDetection(h, dispatcher); t[3] = System.Diagnostics.Stopwatch.GetTimestamp();
+            sim.Solve(h, dispatcher); t[4] = System.Diagnostics.Stopwatch.GetTimestamp();
+            sim.IncrementallyOptimizeDataStructures(dispatcher); t[5] = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (stepNo++ < scene.Warmup) return;
+            var d = new double[StageNames.Length + 6];
+            for (int i = 0; i < StageNames.Length; i++) d[i] = (t[i + 1] - t[i]) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            d[5] = sim.Bodies.ActiveSet.Count; d[6] = sim.Solver.CountConstraints();
+            d[7] = NarrowPhaseCallbacks.Candidates; d[8] = NarrowPhaseCallbacks.Allowed; d[9] = NarrowPhaseCallbacks.Manifolds; d[10] = NarrowPhaseCallbacks.Points;
+            perStep.Add(d);
+        }
+
+        public string Extra()
+        {
+            if (perStep.Count == 0) return "";
+            string[] names = [.. StageNames, "awake_bodies", "constraints", "candidates", "allowed", "manifolds", "points"];
+            var sb = new System.Text.StringBuilder();
+            for (int k = 0; k < names.Length; k++)
+            {
+                var col = perStep.Select(d => d[k]).OrderBy(x => x).ToArray();
+                sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"stage_{names[k]}={col[col.Length / 2]:F5}\n");
+            }
+
+            var sums = perStep.Select(d => d[0] + d[1] + d[2] + d[3] + d[4]).OrderBy(x => x).ToArray();
+            sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"stage_sum={sums[sums.Length / 2]:F5}\n");
+            sb.Append("series_awake=").Append(string.Join(',', perStep.Select(d => d[5].ToString("F0", System.Globalization.CultureInfo.InvariantCulture)))).Append('\n');
+            return sb.ToString();
+        }
 
         public void WakeAll(Scene s)
         {
