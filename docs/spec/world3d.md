@@ -444,3 +444,27 @@ Every candidate below was built, run through all fifteen 3D stability scenes at 
 * The first version, with the passes as single methods, was 15 to 30% slower than the scalar code: the gyroscopic step and the position pass each held 150 to 250 lane operations, past the runtime's inlining budget, so every operation became a call (see round 10). Split into `GyroSetup`/`GyroSolve` and `Displace`/`Rotations`/`WorldInertia`, with the intermediate rows passed through the staging block, they inline.
 * Whole-step A/B against round 16 (one thread, 20th percentile of 600 steps, best of 3, interleaved, shared host at load 20 to 30, indicative): joint-chains-3d 0.64 to 0.51 ms (1.26×), ragdoll-pile-3d 3.24 to 2.95 (1.10×), sleep-wake-3d 2.40 to 2.15 (1.12×), heightfield-terrain-3d 2.13 to 1.94 (1.10×), large-pile-3d 1.02×, mesh-terrain-3d 1.05×; eight threads 0.9 to 1.17× (noise about ±8%).
 * What is left in the pass: about half of the time is the scalar copy into and out of the staging block (about 60 loads and 30 stores a body); the lane arithmetic is a small part. A body-major layout read by whole-row gathers, as the contact kernel does for velocities, would remove it but changes the public velocity storage.
+
+### Round 18: pair stage and terrain (no result changes)
+
+* **Mesh pairs keep the convex shape loaded.** A convex shape against the triangles of a mesh or height field is tested against the same shape in the same pose for every triangle, but the polyhedron of that shape was rebuilt (every vertex transformed, every face plane recomputed) for each one. `ManifoldGenerator3D.BeginPin(side)`/`EndPin()` declare that one side of the following calls is fixed; the first call loads it, the rest reuse it. The polyhedron's edge tables (`PrepareEdges`) are likewise kept for as long as the polyhedron stays loaded. Nothing else is cached across calls, so a pair's result is the same bits as before.
+* **Height-field box walk.** A leaf block (4 × 4 cells) used to test all 32 triangles against the query box. It now clips the cell range to the box's x and z extent (widened by one cell for rounding; Ericson, *Real-Time Collision Detection*, 7.1.2, on walking only the cells a box covers), builds each cell's four corners once for both triangles, and skips a cell whose heights lie entirely above or below the box. The set of triangles returned is the same, in the same order.
+* **Mesh candidates.** `TriangleSoup3D.CollectCandidates` is the engine's own candidate query: no argument checks, bounds read off the rotation matrix, ids sorted as a span. `Overlap` also sorts as a span.
+* **Pairs that match their constraints skip the serial pass.** After the narrowphase, a pair whose new contacts are exactly its present constraints (same sub-shape keys in the same order, no body asleep, not a sensor) adds, removes and wakes nothing, so it cannot change constraint order or colours. The parallel narrowphase now records its constraints for the payload write, and the serial apply visits only pairs that add, remove or wake. This applies when the payload write is deferred (64 or more pairs, no custom material mixer), as before.
+* **Tree update only for shapes that left their box.** The test "is the moved shape's tight box still inside the proxy's stored box" is a read of the tree, so it runs in the parallel tight-box task; the serial tree update skips the shapes that passed. A NaN box or a non-finite displacement never counts as inside, so those still reach the update that rejects them.
+* **Measured and dropped.** A plane test per candidate triangle (the triangle's own face axis, run before loading it) rejected only 7% of candidates, because the neighbours of a contact triangle are nearly coplanar with it; and a bounds-only candidate walk (no exact box–triangle test) raised the number of triangles taking the full manifold test from 2.5 to 3.4 per pair and was slower overall. Neither is in the code.
+* **Where a mesh step goes** (mesh-terrain-3d, one thread, a whole run with a Stopwatch around each stage of the convex-against-soup path, indicative): the candidate query costs about as much as all the triangle tests together; the triangle tests cost 150 ns (sphere), 1.25 µs (box), 1 µs (capsule) and 1.45 µs (hull) each, 2.5 triangles per fresh soup pair; 49% of soup pairs reuse their manifolds. The per-triangle test is the largest single cost left; a dedicated triangle-against-convex routine is the next lever.
+* Per-stage times, ms per step (median over the measured steps, Profile configuration, shared host at load 3, pinned to 8 cores, indicative; before → after the first four changes):
+
+| scene | threads | narrowphase | apply | step |
+|---|---|---|---|---|
+| large-pile-3d | 1 | 2.79 → 2.93 | 0.46 → 0.30 | 9.14 → 9.03 |
+| large-pile-3d | 8 | 0.39 → 0.40 | 0.21 → 0.05 | 1.87 → 1.72 |
+| sleep-wake-3d | 1 | 1.57 → 1.58 | 0.23 → 0.21 | 3.50 → 3.43 |
+| sleep-wake-3d | 8 | 0.22 → 0.23 | 0.08 → 0.06 | 0.88 → 0.86 |
+| mesh-terrain-3d | 1 | 0.82 → 0.79 | 0.13 → 0.10 | 2.32 → 2.26 |
+| mesh-terrain-3d | 8 | 0.12 → 0.12 | 0.05 → 0.02 | 0.56 → 0.52 |
+| heightfield-terrain-3d | 1 | 1.15 → 0.89 | 0.13 → 0.10 | 2.63 → 2.35 |
+| heightfield-terrain-3d | 8 | 0.20 → 0.13 | 0.05 → 0.02 | 0.63 → 0.54 |
+
+* Hash matrix: jit and threads8 equal, manifest unchanged (c3c8c0dfc7d5fa51). Tests pass in Release and Checked.
