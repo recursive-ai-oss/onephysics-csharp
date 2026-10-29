@@ -80,7 +80,7 @@ using (world.SuppressCallbacks())                // no sounds or particles twice
 
   To use both dimensions in one file, import neither and alias what you use: `using Body2D = RecursiveAI.OnePhysics.Physics2D.Body;` and `using Body3D = RecursiveAI.OnePhysics.Physics3D.Body;`. The names stay the same in both so code reads alike; the alias says which world a variable belongs to.
 
-Sizes are full sizes (`AddBox(size)`), angles are radians (`CharacterDef.SlopeLimit` included), and a parameter that is a half extent says `half` in its name. [docs/api-names.md](docs/api-names.md) lists every convention, the table from `AddHinge`-style names to joint definitions, and the rule for handlers across `Restore`.
+Sizes are full sizes (`AddBox(size)`), angles are radians (`CharacterDef.SlopeLimit` included), and a parameter that is a half extent says `half` in its name. [docs/guide/api-names.md](docs/guide/api-names.md) lists every convention, the table from `AddHinge`-style names to joint definitions, and the rule for handlers across `Restore`.
 - `RecursiveAI.OnePhysics.Debug`: debug geometry as plain data.
 - `RecursiveAI.OnePhysics.LowLevel`: the raw tier (storage, scheduler, broadphase trees, narrowphase and manifold routines, snapshot readers and writers). Marked `[Experimental("OPHYS0001")]`: using it needs `<NoWarn>$(NoWarn);OPHYS0001</NoWarn>`, and it may change between previews.
 

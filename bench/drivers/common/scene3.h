@@ -1,4 +1,4 @@
-/* Reader for the engine-neutral 3D scene format (docs/scenes.md). Header-only; compiles as C99 and as C++. */
+/* Reader for the engine-neutral 3D scene format (docs/spec/scenes.md). Header-only; compiles as C99 and as C++. */
 #ifndef OP_SCENE3_H
 #define OP_SCENE3_H
 
@@ -9,8 +9,8 @@
 #include <time.h>
 
 typedef struct { char kind[16]; int material; double density, radius; int np; double* p; } Op3Shape;
-typedef struct { int type; /* 0 static 1 kinematic 2 dynamic */ double pos[3], q[4], v[3], w[3]; int bullet, asleep; int shape0, shapeN; int isChar; double cSpeed, cPeriod, cJump, cStop, cPush; /* scripted character (docs/scenes.md): walk speed, reversal period, jump interval, stop step, push strength */ int isVeh; char vPreset[8]; /* "car", "tank" or "bike" */ double vThrottle, vSteer, vPeriod, vSteerFrom, vBrakeFrom; /* scripted car (docs/scenes.md): throttle, steering amplitude, steering period, first steering step, first braking step */ } Op3Body;
-typedef struct { char kind[16]; int a, b; double pa[3], pb[3], axis[3]; int hasLimit; double lower, upper; int hasSwing; double swingY, swingZ; int hasDrive; double driveK, driveC, driveMax, driveAx, driveAy, driveAz, driveAmp; int drivePeriod; /* swingtwist (docs/scenes.md): twist axis in axis[], swing half angles, pose drive */ } Op3Joint;
+typedef struct { int type; /* 0 static 1 kinematic 2 dynamic */ double pos[3], q[4], v[3], w[3]; int bullet, asleep; int shape0, shapeN; int isChar; double cSpeed, cPeriod, cJump, cStop, cPush; /* scripted character (docs/spec/scenes.md): walk speed, reversal period, jump interval, stop step, push strength */ int isVeh; char vPreset[8]; /* "car", "tank" or "bike" */ double vThrottle, vSteer, vPeriod, vSteerFrom, vBrakeFrom; /* scripted car (docs/spec/scenes.md): throttle, steering amplitude, steering period, first steering step, first braking step */ } Op3Body;
+typedef struct { char kind[16]; int a, b; double pa[3], pb[3], axis[3]; int hasLimit; double lower, upper; int hasSwing; double swingY, swingZ; int hasDrive; double driveK, driveC, driveMax, driveAx, driveAy, driveAz, driveAmp; int drivePeriod; /* swingtwist (docs/spec/scenes.md): twist axis in axis[], swing half angles, pose drive */ } Op3Joint;
 typedef struct { int kind; /* 0 ray 1 overlap 2 cast */ double p[8]; } Op3Query;
 typedef struct { int step; } Op3Wake;
 typedef struct {
@@ -18,7 +18,7 @@ typedef struct {
     int nMat; double* friction; double* restitution;
     int nBody; Op3Body* bodies; int nShape; Op3Shape* shapes;
     int nJoint; Op3Joint* joints; int nQuery; Op3Query* queries; int nWake; Op3Wake* wakes;
-    int hasFluid; double fluidY, fluidDensity, fluidFlow[3]; /* param fluid <surface y> <density> <flow x y z> (docs/scenes.md): water filling everything below y */
+    int hasFluid; double fluidY, fluidDensity, fluidFlow[3]; /* param fluid <surface y> <density> <flow x y z> (docs/spec/scenes.md): water filling everything below y */
 } Op3Scene;
 
 #define OP3_GROW(T, arr, n, cap) do { if ((n) >= (cap)) { (cap) = (cap) ? (cap) * 2 : 64; (arr) = (T*)realloc((arr), (size_t)(cap) * sizeof(T)); } } while (0)

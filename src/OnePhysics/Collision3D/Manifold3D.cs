@@ -26,7 +26,7 @@ public readonly struct ManifoldPoint3D
     /// Feature id, stable while the same pair of geometric features stays in contact, so warm starting can match points between frames. The high 16 bits
     /// name the feature of shape A and the low 16 bits the feature of shape B. A feature code has its kind in the top two bits (0 face, 1 edge, 2 vertex, 3 derived)
     /// and an index in the low 14 bits: a hull's face, edge (half-edge index / 2) or vertex index (a box uses the indices of a unit cube hull), a sphere's single
-    /// vertex 0, the ends of a capsule or tapered capsule as vertices 0 (+Y) and 1 (-Y) with the axis as edge 0, a cylinder's rim samples, side line and caps (see docs/collision3d.md).
+    /// vertex 0, the ends of a capsule or tapered capsule as vertices 0 (+Y) and 1 (-Y) with the axis as edge 0, a cylinder's rim samples, side line and caps (see docs/spec/collision3d.md).
     /// A point where a clipped edge of the incident face crosses a side of the reference face pairs the two edges; a surviving corner of the incident face pairs the
     /// reference face with that corner. Indices above 16383 wrap.
     /// </summary>

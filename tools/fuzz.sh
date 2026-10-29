@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Coverage-guided fuzzing of the fuzz targets in fuzz/Fuzz (see docs/fuzzing.md).
+# Coverage-guided fuzzing of the fuzz targets in fuzz/Fuzz (see docs/spec/fuzzing.md).
 #
 #   tools/fuzz.sh build                      build the Checked configuration and instrument the library copy with SharpFuzz
 #   tools/fuzz.sh seeds                      copy the committed seed corpora (testdata/fuzz-seeds) into the corpus directory, keeping what is there

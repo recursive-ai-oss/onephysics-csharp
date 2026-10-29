@@ -17,11 +17,11 @@ public static class SceneBuilder3D
     public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads, out List<(P3.Character Character, CharacterScript Script, int Body)> characters) =>
         Build(s, threads, out characters, out _);
 
-    /// <summary>As above, and bodies with a <c>vehicle</c> script get a vehicle built from the named preset (see docs/scenes.md); they are returned with their scripts in body order.</summary>
+    /// <summary>As above, and bodies with a <c>vehicle</c> script get a vehicle built from the named preset (see docs/spec/scenes.md); they are returned with their scripts in body order.</summary>
     public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads, out List<(P3.Character Character, CharacterScript Script, int Body)> characters, out List<(P3.Vehicle Vehicle, VehicleScript Script, int Body)> vehicles) =>
         Build(s, threads, out characters, out vehicles, out _);
 
-    /// <summary>The unit quaternion that turns +x onto the unit vector (ux, uy, uz) by the shortest arc: the frame of a swing-twist joint whose twist axis is that vector (docs/scenes.md).</summary>
+    /// <summary>The unit quaternion that turns +x onto the unit vector (ux, uy, uz) by the shortest arc: the frame of a swing-twist joint whose twist axis is that vector (docs/spec/scenes.md).</summary>
     public static QuaternionF JointFrame(double ux, double uy, double uz)
     {
         if (1 + ux < 1e-9) return new QuaternionF(0, 1, 0, 0);

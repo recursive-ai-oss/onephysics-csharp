@@ -1064,7 +1064,7 @@ public sealed class WorldCore
         WriteState(w, true);
     }
 
-    /// <summary>Serializes the whole world: options, step counter, origin, bodies, shapes, constraints (with warm-start payloads and colors), islands and sleep state, delivered and pending events, and registered sections. Layout in docs/architecture.md; format version 1. Allocates the returned array only; <see cref="TrySnapshot"/> allocates nothing.</summary>
+    /// <summary>Serializes the whole world: options, step counter, origin, bodies, shapes, constraints (with warm-start payloads and colors), islands and sleep state, delivered and pending events, and registered sections. Layout in docs/spec/architecture.md; format version 1. Allocates the returned array only; <see cref="TrySnapshot"/> allocates nothing.</summary>
     public byte[] Snapshot()
     {
         var w = _snapWriter ??= StateWriter.ToBuffer();

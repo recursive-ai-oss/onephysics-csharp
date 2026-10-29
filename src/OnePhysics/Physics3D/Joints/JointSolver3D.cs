@@ -6,7 +6,7 @@ using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 
-/// <summary>Slots of a joint's persistent payload (accumulated impulses). Which slots a type uses is listed in docs/world3d.md.</summary>
+/// <summary>Slots of a joint's persistent payload (accumulated impulses). Which slots a type uses is listed in docs/spec/world3d.md.</summary>
 internal static class JP
 {
     public const int Spring = 10, Motor = 11, Lower = 12, Upper = 13, Swing = 14;

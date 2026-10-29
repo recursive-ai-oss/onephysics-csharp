@@ -10,7 +10,7 @@ public sealed class ShapeDef
     public int Material;
     public double Density;
     public double Radius;           // skin radius: circle/capsule/polygon
-    public double[] P = [];         // kind-specific numbers, see docs/scenes.md
+    public double[] P = [];         // kind-specific numbers, see docs/spec/scenes.md
 }
 
 /// <summary>The scripted input of a character: walk at <c>Speed</c> m/s, reversing every <c>Period</c> steps; jump every <c>Jump</c> steps (0 = never); stop walking and jumping at step <c>Stop</c>.</summary>
@@ -55,7 +55,7 @@ public sealed class JointDef
     public bool HasLimit; public double Lower, Upper;
     public bool HasMotor; public double MotorSpeed, MaxTorque;
     public bool HasSwing; public double SwingY, SwingZ;                                    // swingtwist: half angles about the frame y and z axes
-    public bool HasDrive; public double DriveK, DriveC, DriveMax, DriveAx, DriveAy, DriveAz, DriveAmp; public int DrivePeriod;   // swingtwist pose drive, see docs/scenes.md
+    public bool HasDrive; public double DriveK, DriveC, DriveMax, DriveAx, DriveAy, DriveAz, DriveAmp; public int DrivePeriod;   // swingtwist pose drive, see docs/spec/scenes.md
 }
 
 public sealed class QueryDef

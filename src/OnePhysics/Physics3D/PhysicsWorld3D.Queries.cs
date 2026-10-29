@@ -180,7 +180,7 @@ public sealed partial class PhysicsWorld3D
 
     /// <summary>
     /// Sweeps a convex shape along a direction and returns the first hit (nearest; ties by shape slot). <paramref name="shape"/> is in its own frame, placed at <paramref name="position"/> rotated by <paramref name="rotation"/>.
-    /// A mover that already overlaps a shape hits it at distance 0 with a zero normal. The fraction is accurate to about 2e-4 of the translation (see collision3d.md).
+    /// A mover that already overlaps a shape hits it at distance 0 with a zero normal. The fraction is accurate to about 2e-4 of the translation (see docs/spec/collision3d.md).
     /// </summary>
     /// <param name="shape">The mover, for example <c>ConvexShape3D.Box(...)</c>.</param>
     /// <param name="position">Where the shape's frame starts, finite and within +-2^22.</param>

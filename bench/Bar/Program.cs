@@ -39,9 +39,9 @@ public static class Program
                    bar metrics SCENE DUMP
                    bar run --mode timing|stability [--scenes a,b|all] [--engines box2d,rapier2d,box2dnet,jolt,box3d,rapier3d,bepu,jitter2,onephysics] [--threads 1,8,all]
                            [--scene-dir DIR] [--state DIR] [--out DIR] [--repeat N] [--job-id ID] [--lock-held] [--force-engines]
-                   bar run --mode profile [--scenes ...] [--engines box2d,rapier2d,rapier3d,onephysics] [--threads 1] [--lock-held]   per-stage times beside ours (see docs/bench.md)
+                   bar run --mode profile [--scenes ...] [--engines box2d,rapier2d,rapier3d,onephysics] [--threads 1] [--lock-held]   per-stage times beside ours (see docs/spec/bench.md)
                    bar summarize RESULT_DIR
-                   bar verdict --timing DIR[,DIR...] [--metrics FILE[,FILE...]] [--out DIR]   bar verdict against the fastest stable managed engine (see docs/bench.md)
+                   bar verdict --timing DIR[,DIR...] [--metrics FILE[,FILE...]] [--out DIR]   bar verdict against the fastest stable managed engine (see docs/spec/bench.md)
             """);
         return 2;
     }

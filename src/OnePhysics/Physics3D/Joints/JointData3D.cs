@@ -30,7 +30,7 @@ internal struct SixDofData
 }
 
 /// <summary>
-/// The parameters of one 3D joint, as the engine keeps and snapshots them (indexed by constraint slot). One record serves every joint type; docs/world3d.md lists the meaning of the shared fields per type.
+/// The parameters of one 3D joint, as the engine keeps and snapshots them (indexed by constraint slot). One record serves every joint type; docs/spec/world3d.md lists the meaning of the shared fields per type.
 /// A joint has a frame on each body (a point and a rotation in the body's origin frame): the frame's x axis is the joint's main axis (hinge axis, slider axis, twist axis, gear axis).
 /// The last five fields are runtime bookkeeping, not part of a snapshot.
 /// </summary>

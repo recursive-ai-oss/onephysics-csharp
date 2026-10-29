@@ -93,7 +93,7 @@ public sealed partial class PhysicsWorld3D
     [Experimental("OPHYS0001")]
     public WorldCore Core => _core;
 
-    /// <summary>The events of the last step in the core's deterministic order, with contact and hit events collapsed to one per pair of shapes (see docs/world3d.md). Valid until the next <see cref="Step"/>.</summary>
+    /// <summary>The events of the last step in the core's deterministic order, with contact and hit events collapsed to one per pair of shapes (see docs/spec/world3d.md). Valid until the next <see cref="Step"/>.</summary>
     public ReadOnlySpan<PhysicsEvent> Events => _publicEvents.AsSpan(0, _publicEventCount);
 
     internal Engine3D Engine => _engine;
@@ -151,7 +151,7 @@ public sealed partial class PhysicsWorld3D
     public int GetSnapshotSize() => _core.GetSnapshotSize();
 
     /// <summary>
-    /// Writes the snapshot into <paramref name="destination"/>: byte-exact, so restoring the bytes into a world made with the same options and continuing gives identical per-step hashes, events and snapshots. Layout in docs/architecture.md.
+    /// Writes the snapshot into <paramref name="destination"/>: byte-exact, so restoring the bytes into a world made with the same options and continuing gives identical per-step hashes, events and snapshots. Layout in docs/spec/architecture.md.
     /// When it fits, returns true and <paramref name="written"/> is its length. When it does not, nothing is written, the result is false and <paramref name="written"/> is the length needed (see <see cref="GetSnapshotSize"/>).
     /// Allocates nothing once the world's internal buffer has grown to the snapshot's size.
     /// </summary>
