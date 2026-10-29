@@ -1,9 +1,20 @@
-# onephysics-csharp
+# OnePhysics for .NET
 
-Deterministic 2D and 3D rigid-body physics for .NET, written from first principles: the same world state, bit for bit, on every platform, CPU and thread count. Package `RecursiveAI.OnePhysics` (name provisional), built on [onemath](https://github.com/recursive-ai-oss/onemath-csharp) for its deterministic math.
+Deterministic 2D rigid-body physics for .NET, written from first principles: the same world state, bit for bit, on every platform, CPU, vector width and thread count. Package `RecursiveAI.OnePhysics`, built on [onemath](https://github.com/recursive-ai-oss/onemath-csharp) for its deterministic math.
 
-**Status: preview (0.1).** The 2D engine (circles, capsules, rounded polygons, segments and chains; revolute, prismatic, weld, wheel, distance, motor and mouse joints; bullets and continuous collision; a character mover; layers, filters, sensors, events and queries; byte-exact snapshot and restore; per-step world hashes; debug geometry) is complete and deterministic across x64, arm64 and browser WebAssembly, at any vector width and thread count. The 3D engine is in progress. Speed is not yet at parity with the fastest native engines, and the raw tier (`RecursiveAI.OnePhysics.LowLevel`) may still change.
+**Status: preview.** The 2D engine is the supported surface: circles, capsules, rounded polygons, segments and chains; revolute, prismatic, weld, wheel, distance, motor and mouse joints; bullets and continuous collision; a character mover; layers, filters, sensors, events and queries; byte-exact snapshot and restore; per-step world hashes; debug geometry. The 3D engine (`RecursiveAI.OnePhysics.Physics3D`) ships as a **preview marked `[Experimental("OPHYS0002")]`**: it works and is deterministic, but its API and its results may change between previews. The raw tier (`RecursiveAI.OnePhysics.LowLevel`) is `[Experimental("OPHYS0001")]`. Previews are not bit-compatible with each other: a snapshot or replay from one preview does not carry to the next.
 
+## Install
+
+```
+dotnet add package RecursiveAI.OnePhysics --prerelease
+```
+
+Targets `net10.0`; works under NativeAOT, trimming and browser WebAssembly. Its only dependency is `RecursiveAI.OneMath`.
+
+## 2D in a minute
+
+<!-- example: Quickstart2D.cs -->
 ```csharp
 using System;
 using RecursiveAI.OneMath;               // Vector2F, Vector2D
@@ -27,9 +38,13 @@ byte[] saved = world.Snapshot();                // byte-exact; Restore(saved) co
 ulong hash = world.ComputeHash();               // the same on every platform
 ```
 
-The 3D world has the same members with 3D math types:
+## 3D, a preview
 
+The 3D world has the same members with 3D math types. Using it raises the experimental diagnostic `OPHYS0002` until you acknowledge it:
+
+<!-- example: Quickstart3D.cs -->
 ```csharp
+#pragma warning disable OPHYS0002        // the 3D engine is a preview
 using System;
 using RecursiveAI.OneMath;               // Vector3F, Vector3D
 using RecursiveAI.OnePhysics;            // BodyType, events, exceptions
@@ -47,44 +62,26 @@ byte[] saved = world.Snapshot();
 ulong hash = world.ComputeHash();
 ```
 
-Joints come back as typed views (`HingeJoint`, `SliderJoint`, ... each converts implicitly to `Joint`), so a member that another kind of joint has does not compile. Rollback hosts restore a snapshot and resimulate inside `SuppressCallbacks()`, which mutes per-body handlers but not polled events:
+## What you get
 
-```csharp
-using System;
-using RecursiveAI.OneMath;               // Vector2F, Vector2D
-using RecursiveAI.OnePhysics;            // BodyType, EventKind
-using RecursiveAI.OnePhysics.Physics2D;  // PhysicsWorld2D, Body, HingeJoint
+- **Deterministic.** Only IEEE-exact `+ - * /` and `sqrt` and our own transcendental functions; fixed-order reductions and constraint coloring. The world hash after N steps is the same on x64, arm64 and WebAssembly, scalar or SIMD, one thread or all cores.
+- **Three tiers, one engine.** One-liners (`world.AddBox(...)`, `body.OnCollisionEnter`), definitions and polled events, and a raw tier, each built on the one below.
+- **Rollback-ready.** Byte-exact `Snapshot`/`TrySnapshot` and `Restore`, `ComputeHash` per step, `SuppressCallbacks` for resimulation, allocation-free steady state after `Warmup`.
+- **Handles you can hold.** `Body`, `Shape` and `Joint` are small structs; a destroyed one throws a `StaleHandleException` naming it.
+- **Hostile input is refused,** with typed errors that name the value and the limit.
 
-var world = new PhysicsWorld2D();
-var ground = world.AddBox(new Vector2F(20, 1), at: new Vector2D(0, -1), type: BodyType.Static);
-var ball = world.AddCircle(0.5f, at: new Vector2D(0, 3));
-HingeJoint hinge = world.AddHinge(ground, ball, new Vector2D(0, 3));   // a typed view: only the members a hinge has
-hinge.EnableMotor = true;
-hinge.MaxMotorTorque = 5f;
-int sounds = 0;
-ball.OnCollisionEnter += c => sounds++;
+## Guide
 
-byte[] before = world.Snapshot();                // one per frame in a real host
-for (int i = 0; i < 120; i++) world.Step(1f / 60);
-world.Restore(before);                           // a late input arrived: roll back and resimulate
-using (world.SuppressCallbacks())                // no sounds or particles twice; polled events still work
-{
-    for (int i = 0; i < 120; i++) world.Step(1f / 60);
-}
-```
-
-## Namespaces
-
-- `RecursiveAI.OnePhysics`: what game code names everywhere: `BodyType`, `EventKind`, `EventMask`, `PhysicsEvent`, the handles (`BodyHandle`, `ShapeHandle`, `JointHandle`) and the exceptions.
-- `RecursiveAI.OnePhysics.Physics2D` and `RecursiveAI.OnePhysics.Physics3D`: the world, `Body`, `Shape`, `Joint`, `Character`, the definitions (`BodyDef`, `ShapeDef`, the joint definitions, `CharacterDef`; each is valid at its zero value and then means its documented defaults), queries and options. The two namespaces have the same member names.
-
-  To use both dimensions in one file, import neither and alias what you use: `using Body2D = RecursiveAI.OnePhysics.Physics2D.Body;` and `using Body3D = RecursiveAI.OnePhysics.Physics3D.Body;`. The names stay the same in both so code reads alike; the alias says which world a variable belongs to.
-
-Sizes are full sizes (`AddBox(size)`), angles are radians (`CharacterDef.SlopeLimit` included), and a parameter that is a half extent says `half` in its name. [docs/guide/api-names.md](docs/guide/api-names.md) lists every convention, the table from `AddHinge`-style names to joint definitions, and the rule for handlers across `Restore`.
-- `RecursiveAI.OnePhysics.Debug`: debug geometry as plain data.
-- `RecursiveAI.OnePhysics.LowLevel`: the raw tier (storage, scheduler, broadphase trees, narrowphase and manifold routines, snapshot readers and writers). Marked `[Experimental("OPHYS0001")]`: using it needs `<NoWarn>$(NoWarn);OPHYS0001</NoWarn>`, and it may change between previews.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) to build.
+- [Install](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/install.md) and [quick start](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/quick-start.md)
+- [The three tiers](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/tiers.md)
+- [Events](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/events.md)
+- [Queries, layers and filters](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/queries-and-layers.md)
+- [Rollback and lockstep](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/rollback.md)
+- [Determinism guarantees](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/determinism.md)
+- [Units and sizes](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/units.md), [names and conventions](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/api-names.md), [input limits](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/limits.md)
+- [Coming from Unity](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/unity-mapping.md)
+- [Port specifications](https://github.com/recursive-ai-oss/onephysics-csharp/tree/main/docs/spec): the normative, language-neutral description of every choice that affects the bits.
+- [Changelog](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/CHANGELOG.md) and [contributing](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/CONTRIBUTING.md)
 
 ## Licence
 
