@@ -25,7 +25,7 @@ public sealed partial class PhysicsWorld2D
             {
                 var w = new PhysicsWorld2D(new WorldOptions2D { WorldId = 1, ThreadCount = threads });
                 w.AddBox(new Vector2F(20, 1), at: new Vector2D(0, -1), type: BodyType.Static);
-                for (int i = 0; i < 60; i++) { w.AddBox(new Vector2F(1, 1), at: new Vector2D(-5 + 1.05 * (i % 10), 0.5 + 1.02 * (i / 10))); }
+                for (int i = 0; i < 60; i++) { w.AddBox(new Vector2F(1, 1), at: new Vector2D(-5 + 1.05 * (i % 10), 0.8 + 1.3 * (i / 10))); }
                 var ball = w.AddCircle(0.5f, at: new Vector2D(2, 3));
                 var zone = w.CreateBody(BodyType.Static, new Vector2D(0, 1));
                 w.CreateBox(zone, new Vector2F(6, 4), def: new ShapeDef { IsSensor = true });
@@ -34,7 +34,8 @@ public sealed partial class PhysicsWorld2D
                 ball.OnCollisionEnter += _ => sink++;
                 var player = w.AddCharacter(at: new Vector2D(6, 1));
                 var buffer = new QueryHit2D[8];
-                for (int i = 0; i < 40; i++)
+                // Long enough for the pile to land, settle and fall asleep, so the impact, resting and sleeping paths have run.
+                for (int i = 0; i < 150; i++)
                 {
                     player.Move(new Vector2F(-0.05f, -0.1f), 1f / 60);
                     w.Step(1f / 60);

@@ -6,10 +6,12 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 ## [Unreleased]
 
-- **3D: a substep schedule per island.** Islands without a joint (and not touching a kinematic body or holding a vehicle) now run 2 substeps of 1 solve and 2 relax passes (`WorldOptions3D.ContactSubsteps`, `ContactVelocityIterations`, `ContactRelaxIterations`; `ContactSubsteps = 0` restores the world-wide schedule); islands with joints keep `Substeps`. Piles and terrain step about 1.15-1.35x faster and worlds with those islands move; adding a joint changes only the island that receives it. The options are not saved in snapshots.
+- **`Warmup` primes more of the process.** Its trial world now drops a pile that lands, settles and falls asleep (150 steps) and runs box and sphere casts and box and capsule overlaps, so those paths are loaded before a host's first step. Worlds, hashes and snapshots are unchanged.
+
 **Moved results:** 3D worlds move (the broadphase keeps tighter boxes, so pairs start and end at different steps), and 2D and 3D worlds move again because positions now advance on a 2^-32 grid (see the origin shift entry).
 
 - **3D ray casts and sphere casts are faster (ray 0.59x, sphere cast 0.79x, `OverlapSphereAll` 0.84x the time on a 3000-body pile, one thread, indicative).** Spheres, capsules, boxes and hulls are tested in closed form, and the GJK route only runs for starts inside, grazing hits, edge regions and other shape kinds. Which shape is hit and the hit counts do not change; the last bits of `Fraction`, `Distance`, `Point` and `Normal` of ray and sphere-cast hits do (within the old route's tolerance), so worlds that cast (vehicle wheel rays) move.
+- **3D: a substep schedule per island.** Islands without a joint (and not touching a kinematic body or holding a vehicle) now run 2 substeps of 1 solve and 2 relax passes (`WorldOptions3D.ContactSubsteps`, `ContactVelocityIterations`, `ContactRelaxIterations`; `ContactSubsteps = 0` restores the world-wide schedule); islands with joints keep `Substeps`. Piles and terrain step about 1.15-1.35x faster and worlds with those islands move; adding a joint changes only the island that receives it. The options are saved in snapshots and covered by the world hash.
 - **3D broadphase defaults:** `BroadphaseMargin` is 0.03 (was 0.1), boxes stretch over four steps of motion, and the tree is refitted between rebuilds. About half as many pairs are kept alive in piles; sleep-wake scenes step about 1.2× faster and large piles at eight threads about 1.15×. Stability is unchanged on every 3D scene.
 - A fast body still inside the supported range no longer fails the step with an argument error when its stretched box would cross the range limit; the stretch stops at the limit.
 
