@@ -8,6 +8,9 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591;CA1707</NoWarn>
     <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <!-- Tiered compilation off: with it on, the runtime compiles on-stack-replacement versions on the calling thread and installs optimized code from a background thread, and both allocate a few
+         hundred bytes to kilobytes inside the runtime at moments that depend on timing. The allocation tests count every thread, so they would count that (see WarmAllocationTests). -->
+    <TieredCompilation>false</TieredCompilation>
   </PropertyGroup>
 
   <ItemGroup>

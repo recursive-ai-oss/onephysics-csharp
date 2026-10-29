@@ -419,7 +419,7 @@ public class CharacterTests
         Assert.Throws<ArgumentOutOfRangeException>(() => c.Move(new Vector2F(1e6f, 0), Dt));
         Assert.Throws<ArgumentOutOfRangeException>(() => c.Move(new Vector2F(1, 0), 0f));
         Assert.Throws<ArgumentOutOfRangeException>(() => c.Move(new Vector2F(1, 0), float.NaN));
-        Assert.Throws<ArgumentOutOfRangeException>(() => c.SlopeLimit = 91f);
+        Assert.Throws<ArgumentOutOfRangeException>(() => c.SlopeLimitRadians = 91f);
         Assert.Throws<ArgumentOutOfRangeException>(() => c.StepOffset = -1f);
         Assert.Throws<ArgumentOutOfRangeException>(() => c.PushStrength = float.NaN);
         Assert.Throws<ArgumentOutOfRangeException>(() => c.Position = new Vector2D(double.NaN, 0));

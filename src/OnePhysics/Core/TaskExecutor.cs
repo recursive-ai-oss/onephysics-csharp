@@ -53,6 +53,12 @@ public sealed class TaskExecutor
     // A staged call needs at least this many tasks in some stage before waking the workers pays for itself.
     private const int MinParallelTasks = 4;
 
+    // Set while a throwaway world primes the process (Warmup): every call then goes through the worker pool, however few tasks it has, so that the pool's per-body-type state is created
+    // before the host's steps, not at the first step that happens to be big enough. Only which thread runs a task changes; results never do.
+    [ThreadStatic] private static bool s_primeParallel;
+
+    internal static void SetPrimeParallel(bool on) => s_primeParallel = on;
+
     /// <summary>Maximum number of threads working at once.</summary>
     public int ThreadCount { get; }
 
@@ -65,7 +71,7 @@ public sealed class TaskExecutor
     /// <summary>Runs <paramref name="body"/> for every task in <c>0..taskCount-1</c> and returns when all are done. Order of execution is unspecified; the result must not depend on it.</summary>
     public void For<TBody>(int taskCount, TBody body) where TBody : IParallelBody
     {
-        if (ThreadCount == 1 || taskCount <= 1 || !WorkerPool.TryRun(Math.Min(ThreadCount - 1, taskCount - 1), taskCount, in body))
+        if (ThreadCount == 1 || taskCount <= 0 || (taskCount == 1 && !s_primeParallel) || !WorkerPool.TryRun(Math.Min(ThreadCount - 1, taskCount - 1), taskCount, in body))
         {
             for (int i = 0; i < taskCount; i++) { body.Run(i); }
         }
@@ -82,7 +88,7 @@ public sealed class TaskExecutor
     {
         if (stageCount <= 0) { return; }
         int workers = ThreadCount - 1;
-        if (workers > 0 && mostTasks >= MinParallelTasks)
+        if (workers > 0 && mostTasks >= MinParallelTasks && !s_primeParallel)
         {
             // Every thread crosses every stage boundary, so threads beyond what the stages can keep busy only add waiting: take as many as there is one task each in the average stage.
             // This looks at the stage sizes alone; which thread runs which task never reaches a result.
@@ -92,7 +98,7 @@ public sealed class TaskExecutor
             if (useful - 1 < workers) { workers = (int)Math.Max(useful - 1, 0); }
         }
 
-        if (workers == 0 || mostTasks < MinParallelTasks || !WorkerPool.TryRunStages(workers, stageCount, in body))
+        if (workers == 0 || (mostTasks < MinParallelTasks && !s_primeParallel) || !WorkerPool.TryRunStages(workers, stageCount, in body))
         {
             for (int s = 0; s < stageCount; s++)
             {
@@ -159,6 +165,7 @@ internal static class WorkerPool
         public int Index;
         public int Sleeping;
         public bool Signaled; // guarded by the worker object's monitor
+        public int InitSeen;  // the last thread-init version this worker ran
     }
 
     private static readonly object CreateLock = new();
@@ -422,24 +429,64 @@ internal static class WorkerPool
         }
     }
 
-    /// <summary>Run once on every pool thread started after it is set, before the thread takes work; an engine uses it to create the per-thread scratch its steps would otherwise create on first use.</summary>
-    internal static Action? ThreadInit;
+    private static Action? _threadInit;
+    private static int _initVersion;
+
+    /// <summary>
+    /// Registers work every pool thread runs once, before it takes a task after the registration: an engine uses it to create the per-thread scratch its steps would otherwise create on first use
+    /// (on a worker that is at an arbitrary step, which depends on timing). Returns after every worker started so far has run it, so threads created by an earlier world are covered as well.
+    /// Registering the same action again does nothing.
+    /// </summary>
+    internal static void AddThreadInit(Action init)
+    {
+        int version;
+        Worker[] all;
+        lock (CreateLock)
+        {
+            if (_threadInit != null && Array.IndexOf(_threadInit.GetInvocationList(), init) >= 0) { return; }
+            _threadInit = (Action?)Delegate.Combine(_threadInit, init);
+            version = Interlocked.Increment(ref _initVersion);
+            all = _workers;
+        }
+
+        // Workers asleep are woken to run it; workers polling see the new version at their next round.
+        foreach (var w in all)
+        {
+            if (Interlocked.CompareExchange(ref w.Sleeping, 0, 1) == 1) { Signal(w); }
+        }
+
+        var wait = new SpinWait();
+        long giveUp = Environment.TickCount64 + 10000; // a worker that cannot be scheduled for ten seconds is not waited for; it runs the init when it next wakes
+        foreach (var w in all)
+        {
+            while (Volatile.Read(ref w.InitSeen) != version && Environment.TickCount64 < giveUp) { wait.SpinOnce(); }
+        }
+    }
+
+    private static void RunThreadInit(Worker w)
+    {
+        int version = Volatile.Read(ref _initVersion);
+        if (w.InitSeen == version) { return; }
+        Volatile.Read(ref _threadInit)?.Invoke();
+        Volatile.Write(ref w.InitSeen, version);
+    }
 
     private static void Loop(Worker w)
     {
-        ThreadInit?.Invoke();
+        RunThreadInit(w);
         long seen = Volatile.Read(ref _claim) >> 32;
         while (true)
         {
+            RunThreadInit(w);
             int spins = 0;
-            while ((Volatile.Read(ref _claim) >> 32) == seen && (Volatile.Read(ref _claim) & 0xFFFFFFFFL) == Closed)
+            while ((Volatile.Read(ref _claim) >> 32) == seen && (Volatile.Read(ref _claim) & 0xFFFFFFFFL) == Closed && w.InitSeen == Volatile.Read(ref _initVersion))
             {
                 if (++spins < SpinRounds) { Thread.SpinWait(4); continue; }
                 Interlocked.Exchange(ref w.Sleeping, 1);
                 long now = Volatile.Read(ref _claim);
-                if ((now >> 32) != seen || (now & 0xFFFFFFFFL) != Closed)
+                if ((now >> 32) != seen || (now & 0xFFFFFFFFL) != Closed || w.InitSeen != Volatile.Read(ref _initVersion))
                 {
-                    // A call arrived while going to sleep: undo, or absorb the wake-up the caller has already sent.
+                    // A call or an init arrived while going to sleep: undo, or absorb the wake-up the caller has already sent.
                     if (Interlocked.CompareExchange(ref w.Sleeping, 0, 1) != 1) { WaitSignal(w); }
                     break;
                 }

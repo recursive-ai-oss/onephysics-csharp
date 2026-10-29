@@ -48,7 +48,7 @@ public readonly struct ControllerColliderHit
 }
 
 /// <summary>
-/// A character: an upright capsule on a kinematic body, moved by collide-and-slide (<see cref="Move(Vector2F, float)"/>). It stands on ground within <see cref="SlopeLimit"/>, climbs steps up to <see cref="StepOffset"/>,
+/// A character: an upright capsule on a kinematic body, moved by collide-and-slide (<see cref="Move(Vector2F, float)"/>). It stands on ground within <see cref="SlopeLimitRadians"/>, climbs steps up to <see cref="StepOffset"/>,
 /// slides along walls and steeper slopes, rides moving ground, and can push dynamic bodies. Like <see cref="Body"/> it is a small struct handle (world, slot, generation) that allocates nothing and fails with a
 /// <see cref="StaleHandleException"/> once the character is destroyed; the state lives in the world and in its snapshots.
 /// </summary>
@@ -104,10 +104,10 @@ public readonly struct Character : IEquatable<Character>
     /// <summary>The velocity the last move gave the character (displacement divided by dt), metres per second; the kinematic body moves with it during the next step.</summary>
     public Vector2F Velocity { get { var e = Resolve(out int c); return new Vector2F(e.CharVx[c], e.CharVy[c]); } }
 
-    /// <summary>True when the last move ended standing on ground within <see cref="SlopeLimit"/>.</summary>
+    /// <summary>True when the last move ended standing on ground within <see cref="SlopeLimitRadians"/>.</summary>
     public bool IsGrounded { get { var e = Resolve(out int c); return e.CharGround[c] == GroundState.OnGround; } }
 
-    /// <summary>What the character stood on after the last move: in the air, on a slope steeper than <see cref="SlopeLimit"/> (it slides), or on walkable ground.</summary>
+    /// <summary>What the character stood on after the last move: in the air, on a slope steeper than <see cref="SlopeLimitRadians"/> (it slides), or on walkable ground.</summary>
     public GroundState Ground { get { var e = Resolve(out int c); return e.CharGround[c]; } }
 
     /// <summary>Normal of the surface under the character when it is on ground or on a steep slope; zero in the air.</summary>
@@ -139,10 +139,10 @@ public readonly struct Character : IEquatable<Character>
 
     /// <summary>Steepest ground the character can stand on, radians within [0, pi/2] (Unity's <c>slopeLimit</c> is in degrees).</summary>
     /// <exception cref="ArgumentOutOfRangeException">Setting a value outside [0, pi/2].</exception>
-    public float SlopeLimit
+    public float SlopeLimitRadians
     {
-        get { var e = Resolve(out int c); return e.CharDef[c].SlopeLimit; }
-        set { var e = Resolve(out int c); var d = e.CharDef[c]; d.SlopeLimit = value; d.Validate(); e.CharDef[c] = d; }
+        get { var e = Resolve(out int c); return e.CharDef[c].SlopeLimitRadians; }
+        set { var e = Resolve(out int c); var d = e.CharDef[c]; d.SlopeLimitRadians = value; d.Validate(); e.CharDef[c] = d; }
     }
 
     /// <summary>Tallest step climbed and farthest snap down to ground, metres, within [0, Height] (Unity's <c>stepOffset</c>).</summary>

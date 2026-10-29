@@ -107,7 +107,7 @@ internal static class FuzzCharacters2D
             default:
                 return new CharacterDef
                 {
-                    Radius = r.Float(), Height = r.Float(), SlopeLimit = r.Float(), StepOffset = r.Float(), Skin = r.Float(),
+                    Radius = r.Float(), Height = r.Float(), SlopeLimitRadians = r.Float(), StepOffset = r.Float(), Skin = r.Float(),
                     LayerMask = r.Byte() < 40 ? 0u : uint.MaxValue, PushStrength = r.Float(), Layer = r.Byte() % 40 - 3, CategoryBits = (uint)r.Byte(), MaskBits = r.Bool() ? uint.MaxValue : (uint)r.Byte(),
                 };
         }
@@ -171,7 +171,7 @@ internal static class FuzzCharacters2D
                     var c = PickChar(chars, r);
                     switch (r.Byte() % 4)
                     {
-                        case 0: c.SlopeLimit = r.Float(); break;
+                        case 0: c.SlopeLimitRadians = r.Float(); break;
                         case 1: c.StepOffset = r.Float(); break;
                         case 2: c.PushStrength = r.Float(); break;
                         default: c.LayerMask = (uint)(r.Byte() << 8 | r.Byte()); break;

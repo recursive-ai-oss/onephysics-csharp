@@ -91,7 +91,7 @@ public struct CharacterDef
     /// Steepest ground the character can stand on, in radians within [0, pi/2] (Unity's <c>slopeLimit</c> is in degrees: pass 45 degrees converted to radians). Steeper surfaces are walls: the character slides down them.
     /// Default pi/4 (45 degrees).
     /// </summary>
-    public float SlopeLimit
+    public float SlopeLimitRadians
     {
         readonly get => (float)(SlopeLimitDegrees * (Math.PI / 180.0));
         set => SlopeLimitDegrees = (float)(value * (180.0 / Math.PI));
@@ -167,7 +167,7 @@ public struct CharacterDef
     {
         if (!(Radius > 0f && Radius <= 1000f)) { throw new ArgumentOutOfRangeException(nameof(Radius), Radius, "Radius must be within (0, 1000]."); }
         if (!(Height >= 2f * Radius && Height <= 10000f)) { throw new ArgumentOutOfRangeException(nameof(Height), Height, "Height must be at least twice the radius (" + (2f * Radius).ToString(CultureInfo.InvariantCulture) + ") and at most 10000."); }
-        if (!(SlopeLimitDegrees >= 0f && SlopeLimitDegrees <= 90f)) { throw new ArgumentOutOfRangeException(nameof(SlopeLimit), SlopeLimit, "SlopeLimit must be within [0, pi/2] radians."); }
+        if (!(SlopeLimitDegrees >= 0f && SlopeLimitDegrees <= 90f)) { throw new ArgumentOutOfRangeException(nameof(SlopeLimitRadians), SlopeLimitRadians, "SlopeLimitRadians must be within [0, pi/2] radians."); }
         if (!(StepOffset >= 0f && StepOffset <= Height)) { throw new ArgumentOutOfRangeException(nameof(StepOffset), StepOffset, "StepOffset must be within [0, Height]."); }
         if (!(Skin >= 0.0001f && Skin <= 0.5f * Radius)) { throw new ArgumentOutOfRangeException(nameof(Skin), Skin, "Skin must be within [0.0001, Radius / 2]."); }
         if (!(PushStrength >= 0f && PushStrength <= 100f)) { throw new ArgumentOutOfRangeException(nameof(PushStrength), PushStrength, "PushStrength must be within [0, 100]."); }

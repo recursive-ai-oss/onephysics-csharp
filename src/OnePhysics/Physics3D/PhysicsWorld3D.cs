@@ -40,11 +40,11 @@ public sealed partial class PhysicsWorld3D
         int pairs = o.PairCapacity > 0 ? o.PairCapacity : defaults ? Math.Max(8 * bodies, 64) : 0;
         int contacts = o.ContactCapacity > 0 ? o.ContactCapacity : defaults ? Math.Max(6 * bodies, 64) : 0;
         int islands = o.IslandCapacity > 0 ? o.IslandCapacity : defaults ? Math.Max(bodies, 16) : 0;
-        // Pool threads started from here on prepare their narrowphase scratch before their first step.
-        WorkerPool.ThreadInit = Engine3D.PrepareThread;
         _core.Reserve(contacts, islands, bodies);
         _core.ReserveRestore(contacts, pairs, islands, bodies);
         _engine.Reserve(pairs, contacts, bodies, shapes);
+        // Every pool thread, including those an earlier world started, prepares its narrowphase scratch now instead of at whichever step first gives it work.
+        WorkerPool.AddThreadInit(Engine3D.PrepareThread);
         // The public contact events are built from the core's every step.
         _pairIndex.EnsureCapacity(contacts + 16);
         if (_aggs.Length < contacts + 16) { Array.Resize(ref _aggs, contacts + 16); }

@@ -26,53 +26,69 @@ public sealed class IslandSet
     private bool[] _scratchVisited = new bool[64];
     private int[] _snapshot = new int[16];
 
-    // Body lists that were outgrown. A list that has to grow takes the smallest spare that is big enough before allocating, so lists traded between islands by merges and splits
-    // stop allocating once the biggest island has been seen. Contents are never read from a spare.
-    private readonly List<int[]> _spare = new();
-    private const int MaxSpare = 64;
+    // Body lists are pooled by size class (a list of length L is in class floor(log2 L)). An island holds one list; when it outgrows it, the bigger list comes from the pool and the old one goes
+    // back, and when a split or a merge leaves an island with a list much bigger than it needs, the list is traded for a smaller one. Reserve stocks every class for the worst case, so a
+    // world within its reserved body count allocates no list however islands merge and split (a class-c list is held only by an island of more than c/2 bodies, so at most 2N/c of them exist).
+    // Contents are never read from a pooled list.
+    private readonly List<int[]>[] _pool = new List<int[]>[31];
+    private const int MinList = 4;
+
+    private static int CeilLog2(int n) => n <= 1 ? 0 : System.Numerics.BitOperations.Log2((uint)(n - 1)) + 1;
+    private static int FloorLog2(int n) => System.Numerics.BitOperations.Log2((uint)n);
+
+    private void Release(int[] list)
+    {
+        int k = FloorLog2(list.Length);
+        (_pool[k] ??= new List<int[]>()).Add(list);
+    }
+
+    // The smallest pooled list of at least `need` ints, or null.
+    private int[]? TryTake(int need)
+    {
+        for (int k = CeilLog2(Math.Max(need, MinList)); k < _pool.Length; k++)
+        {
+            var stack = _pool[k];
+            if (stack != null && stack.Count > 0)
+            {
+                int[] taken = stack[stack.Count - 1];
+                stack.RemoveAt(stack.Count - 1);
+                return taken;
+            }
+        }
+
+        return null;
+    }
+
+    private int[] Take(int need) => TryTake(need) ?? new int[1 << CeilLog2(Math.Max(need, MinList))];
 
     private int[] Grow(int[] old, int used, int need)
     {
-        int best = -1;
-        for (int i = 0; i < _spare.Count; i++)
-        {
-            if (_spare[i].Length >= need && (best < 0 || _spare[i].Length < _spare[best].Length)) { best = i; }
-        }
-
-        int[] grown;
-        if (best >= 0)
-        {
-            grown = _spare[best];
-            _spare[best] = old;
-        }
-        else
-        {
-            grown = new int[Math.Max(need, old.Length * 2)];
-            if (_spare.Count < MaxSpare) { _spare.Add(old); }
-        }
-
+        int[] grown = Take(need);
         Array.Copy(old, grown, used);
+        Release(old);
         return grown;
     }
 
-    // A list for an island read from a snapshot: the smallest spare that fits (the outgrown one takes its place), else a new one. Contents are not copied.
+    // A list for an island read from a snapshot. Contents are not copied.
     private int[] Swap(int[]? old, int need)
     {
-        int best = -1;
-        for (int i = 0; i < _spare.Count; i++)
-        {
-            if (_spare[i].Length >= need && (best < 0 || _spare[i].Length < _spare[best].Length)) { best = i; }
-        }
+        int[] taken = Take(need);
+        if (old != null) { Release(old); }
+        return taken;
+    }
 
-        if (best >= 0)
-        {
-            int[] taken = _spare[best];
-            if (old != null) { _spare[best] = old; } else { _spare.RemoveAt(best); }
-            return taken;
-        }
-
-        if (old != null && _spare.Count < MaxSpare) { _spare.Add(old); }
-        return new int[Math.Max(need, 8)];
+    // Trades a list that is at least twice as long as the island needs for a smaller pooled one, when the pool has one.
+    private void RightSize(int island)
+    {
+        int[] list = _bodies[island];
+        int n = _count[island];
+        if (list.Length < 2 * Math.Max(n, MinList)) { return; }
+        int[]? smaller = TryTake(n);
+        if (smaller == null) { return; }
+        if (smaller.Length >= list.Length) { Release(smaller); return; }
+        Array.Copy(list, smaller, n);
+        _bodies[island] = smaller;
+        Release(list);
     }
 
     private readonly List<int> _stack = new();
@@ -112,9 +128,25 @@ public sealed class IslandSet
         if (_countsScratch.Length < islands) { Array.Resize(ref _countsScratch, islands); }
         if (_scratchVisited.Length < bodies) { Array.Resize(ref _scratchVisited, bodies); }
         if (_snapshot.Length < bodies) { Array.Resize(ref _snapshot, bodies); }
-        int big = 0;
-        foreach (var spare in _spare) { if (spare.Length >= bodies) { big++; } }
-        for (; big < 4 && _spare.Count < MaxSpare; big++) { _spare.Add(new int[Math.Max(bodies, 4)]); }
+        StockPool(bodies);
+    }
+
+    // Brings every size class up to the worst case for `bodies` dynamic bodies: N+2 lists for the smallest class (every body its own island) and 2N/c+2 of class c above it.
+    private void StockPool(int bodies)
+    {
+        int n = Math.Max(bodies, MinList);
+        int top = CeilLog2(n);
+        for (int k = FloorLog2(MinList); k <= top; k++)
+        {
+            int size = 1 << k;
+            int want = k == FloorLog2(MinList) ? n + 2 : (int)(((2L * n) + size - 1) / size) + 2;
+            int have = 0;
+            for (int i = 0; i < _bodies.Length; i++) { if (_bodies[i] != null && _bodies[i].Length >= size) { have++; } }
+            for (int j = k; j < _pool.Length; j++) { if (_pool[j] != null) { have += _pool[j].Count; } }
+            var stack = _pool[k] ??= new List<int[]>();
+            stack.EnsureCapacity(2 * want);
+            for (; have < want; have++) { stack.Add(new int[size]); }
+        }
     }
 
     private int NewId()
@@ -127,7 +159,7 @@ public sealed class IslandSet
         }
 
         // A freed island keeps its list for the next one, so splits and merges allocate nothing once warm.
-        _bodies[id] ??= new int[4];
+        _bodies[id] ??= Take(MinList);
         _count[id] = 0; _asleep[id] = false; _removed[id] = 0;
         return id;
     }
@@ -155,6 +187,7 @@ public sealed class IslandSet
         if (n == 1)
         {
             _ids.Free(id);
+            Release(_bodies[id]); _bodies[id] = null!;
             _asleep[id] = false; _removed[id] = 0; _count[id] = 0;
         }
         else
@@ -197,7 +230,8 @@ public sealed class IslandSet
         _bodies[lo] = x; _count[lo] = total;
         _removed[lo] += _removed[hi];
         _ids.Free(hi);
-        _bodies[hi] = spare; _count[hi] = 0; _removed[hi] = 0; _asleep[hi] = false;
+        _bodies[hi] = null!; _count[hi] = 0; _removed[hi] = 0; _asleep[hi] = false;
+        Release(spare);
         return lo;
     }
 
@@ -252,6 +286,7 @@ public sealed class IslandSet
         }
 
         for (int s = 0; s < n; s++) { seen[snapshot[s]] = false; }
+        RightSize(island);
         return components;
     }
 
@@ -318,6 +353,11 @@ public sealed class IslandSet
                 if (counts[i] == 0) { throw r.Error("empty island"); }
                 int need = Math.Max(4, counts[i]);
                 if (s._bodies[i] == null || s._bodies[i].Length < need) { s._bodies[i] = s.Swap(s._bodies[i], need); }
+            }
+            else if (s._bodies[i] != null)
+            {
+                s.Release(s._bodies[i]);
+                s._bodies[i] = null!;
             }
         }
 

@@ -49,7 +49,7 @@ public readonly struct ControllerColliderHit
 
 /// <summary>
 /// A character: an upright capsule moved by <see cref="Move(Vector3F, float)"/>. A <see cref="CharacterKind.Virtual"/> character (the default) is a kinematic body moved by collide-and-slide: it stands on ground
-/// within <see cref="SlopeLimit"/>, climbs steps up to <see cref="StepOffset"/>, slides along walls and steeper slopes, rides moving ground and can push dynamic bodies with a bounded force.
+/// within <see cref="SlopeLimitRadians"/>, climbs steps up to <see cref="StepOffset"/>, slides along walls and steeper slopes, rides moving ground and can push dynamic bodies with a bounded force.
 /// A <see cref="CharacterKind.Rigid"/> character is a dynamic capsule whose velocity the move sets; the solver does the rest. Like <see cref="Body"/> it is a small struct handle (world, slot, generation)
 /// that allocates nothing and fails with a <see cref="StaleHandleException"/> once the character is destroyed; the state lives in the world and in its snapshots.
 /// </summary>
@@ -109,7 +109,7 @@ public readonly struct Character : IEquatable<Character>
     /// <summary>The velocity the last move gave the character (displacement divided by dt for a virtual character), metres per second; the body moves with it during the next step.</summary>
     public Vector3F Velocity { get { var e = Resolve(out int c); return new Vector3F(e.CharVx[c], e.CharVy[c], e.CharVz[c]); } }
 
-    /// <summary>True when the last move ended standing on ground within <see cref="SlopeLimit"/>.</summary>
+    /// <summary>True when the last move ended standing on ground within <see cref="SlopeLimitRadians"/>.</summary>
     public bool IsGrounded { get { var e = Resolve(out int c); return e.CharGround[c] == GroundState.OnGround; } }
 
     /// <summary>On ground, on a slope too steep to stand on, or in the air, as of the last move.</summary>
@@ -147,10 +147,10 @@ public readonly struct Character : IEquatable<Character>
 
     /// <summary>Steepest ground the character can stand on, radians within [0, pi/2] (Unity's <c>slopeLimit</c> is in degrees).</summary>
     /// <exception cref="ArgumentOutOfRangeException">Setting a value outside [0, pi/2].</exception>
-    public float SlopeLimit
+    public float SlopeLimitRadians
     {
-        get { var e = Resolve(out int c); return e.CharDef[c].SlopeLimit; }
-        set { var e = Resolve(out int c); var d = e.CharDef[c]; d.SlopeLimit = value; d.Validate(); e.CharDef[c] = d; }
+        get { var e = Resolve(out int c); return e.CharDef[c].SlopeLimitRadians; }
+        set { var e = Resolve(out int c); var d = e.CharDef[c]; d.SlopeLimitRadians = value; d.Validate(); e.CharDef[c] = d; }
     }
 
     /// <summary>Tallest step climbed and farthest snap down to ground, metres, within [0, Height] (Unity's <c>stepOffset</c>).</summary>

@@ -43,7 +43,11 @@ public sealed partial class PhysicsWorld2D
         _core.Reserve(contacts, islands, bodies);
         _core.ReserveRestore(contacts, pairs, islands, bodies);
         _engine.Reserve(pairs, contacts, bodies, shapes);
+        // Every pool thread, including those an earlier world started, prepares its query scratch now instead of at whichever step first gives it a batch query.
+        WorkerPool.AddThreadInit(PrepareWorkerThread);
     }
+
+    private static void PrepareWorkerThread() => QueryScratch.Warm(64);
 
     /// <summary>
     /// Gets the world ready for allocation-free steps: sizes the storage to <see cref="WorldOptions2D.PairCapacity"/>, <see cref="WorldOptions2D.ContactCapacity"/> and <see cref="WorldOptions2D.IslandCapacity"/>

@@ -38,6 +38,8 @@ internal sealed class QueryScratch
     {
         var s = t_cached ??= new QueryScratch();
         if (s.Hits.Length < capacity) { s.Hits = new RawHit[capacity]; }
+        s.Tris.EnsureCapacity(64);
+        s.Ids.EnsureCapacity(256);
     }
 
     public static QueryScratch Acquire(int capacity)
