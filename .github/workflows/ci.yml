@@ -1,73 +1,165 @@
 name: ci
 
-# RecursiveAI.OneMath is restored from nuget.org once it is published there. Until then restore fails on
-# GitHub-hosted runners; builds work wherever tools/localfeed.sh has put the package into .localfeed/.
-
+# Builds and tests on four platforms, publishes the NativeAOT smoke app, runs the determinism hash matrix on each
+# platform and on WebAssembly and requires every platform to produce the same hashes, and checks that the package
+# packs. Nothing is pushed anywhere.
 on:
   push:
+    branches: [main, 'ci-check/**']
   pull_request:
 
 permissions:
   contents: read
 
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+
 jobs:
-  linux-x64:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-      - run: dotnet workload install wasm-tools
-      - run: tools/check.sh
-      - run: tools/check.sh Checked
-      - run: tools/smoke-aot.sh
-
-  linux-arm64:
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-      - run: dotnet workload install wasm-tools
-      - run: tools/check.sh
-      - run: tools/smoke-aot.sh
-
-  osx-arm64:
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-      - run: dotnet workload install wasm-tools
-      - run: tools/check.sh
-      - run: tools/smoke-aot.sh
-
-  win-x64:
-    runs-on: windows-2025
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, rid: win-x64 }
+          - { os: ubuntu-latest, rid: linux-x64, full: true }
+          - { os: ubuntu-24.04-arm, rid: linux-arm64 }
+          - { os: macos-latest, rid: osx-arm64 }
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Build output goes outside the checkout, as it does locally; the runner context is only available inside steps.
+      - name: Artifacts directory
+        run: echo "ONEPHYSICS_ARTIFACTS=$RUNNER_TEMP/artifacts" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
-      - run: dotnet workload install wasm-tools
-      - run: tools/check.sh
-      - run: tools/smoke-aot.sh
+      # One platform runs the whole check script: source scans, the full solution (benchmark runner, fuzz targets, smoke
+      # apps; the browser smoke app needs the wasm-tools workload), the tests, a fuzz smoke and the scene checksums.
+      - name: Check (scans, solution build, tests)
+        if: matrix.full
+        run: |
+          dotnet workload install wasm-tools
+          tools/check.sh Release
+      - name: Build
+        if: '!matrix.full'
+        run: dotnet build tests/OnePhysics.Tests -c Release
+      - name: Test
+        if: '!matrix.full'
+        run: dotnet test --project tests/OnePhysics.Tests -c Release --no-build
+      - name: Native AOT toolchain (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang zlib1g-dev
+      - name: Publish AOT smoke app (warnings are errors)
+        run: dotnet publish tests/AotSmoke -c Release -r ${{ matrix.rid }} -o "$RUNNER_TEMP/smoke" -warnaserror
+      - name: Run AOT smoke app
+        run: |
+          "$RUNNER_TEMP/smoke/AotSmoke"
+      # JIT with one and eight threads, software-only vectors on the scenes that do not take hours, and NativeAOT.
+      - name: Hash matrix
+        env:
+          HASHMATRIX_RID: ${{ matrix.rid }}
+          HASHMATRIX_SLOW_FILTER: world
+        run: tools/hash-matrix.sh -o "$RUNNER_TEMP/hm" -p "${{ matrix.rid }}-" jit threads8 scalar aot
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: manifests-${{ matrix.rid }}
+          path: |
+            ${{ runner.temp }}/hm/*.txt
+            ${{ runner.temp }}/hm/*.steps
+          if-no-files-found: error
 
-  browser-wasm:
-    runs-on: ubuntu-24.04
+  checked:
+    # The tests again with bounds-checked internal accessors.
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Artifacts directory
+        run: echo "ONEPHYSICS_ARTIFACTS=$RUNNER_TEMP/artifacts" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
-      - uses: actions/setup-node@v4
+      - name: Build
+        run: dotnet build tests/OnePhysics.Tests -c Checked
+      - name: Test
+        run: dotnet test --project tests/OnePhysics.Tests -c Checked --no-build
+
+  wasm:
+    # The smoke app and the hash-matrix scenarios on browser WebAssembly under Node, compared with the JIT run on this runner.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 22
-      - run: dotnet workload install wasm-tools
-      - run: tools/smoke-wasm.sh
+          persist-credentials: false
+      - name: Artifacts directory
+        run: echo "ONEPHYSICS_ARTIFACTS=$RUNNER_TEMP/artifacts" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: WebAssembly build tools
+        run: dotnet workload install wasm-tools
+      - name: Smoke app on WebAssembly
+        run: tools/smoke-wasm.sh
+      - name: Hash matrix, JIT against browser-wasm
+        env:
+          HASHMATRIX_RID: linux-x64
+          HASHMATRIX_SLOW_FILTER: world
+        run: tools/hash-matrix.sh -o "$RUNNER_TEMP/hm" -p wasm- jit wasm
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: manifests-wasm
+          path: |
+            ${{ runner.temp }}/hm/*.txt
+            ${{ runner.temp }}/hm/*.steps
+          if-no-files-found: error
+
+  compare:
+    # Every platform must produce the same hashes on the scenarios they share.
+    needs: [build, wasm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: manifests-*
+          path: manifests
+          merge-multiple: true
+      - name: Compare manifests
+        env:
+          HASHMATRIX_RID: linux-x64
+        run: |
+          ls -l manifests
+          # Windows writes CRLF into text files it creates; compare without it.
+          sed -i 's/\r$//' manifests/*.txt manifests/*.steps
+          tools/hash-matrix.sh -o manifests -p linux-x64- compare
+
+  pack:
+    # Builds the package as an artifact only, with package validation, and checks that the symbol package exists.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Artifacts directory
+        run: echo "ONEPHYSICS_ARTIFACTS=$RUNNER_TEMP/artifacts" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Pack
+        run: |
+          dotnet pack src/OnePhysics -c Release -o "$RUNNER_TEMP/packages"
+          ls -l "$RUNNER_TEMP/packages"
+          ls "$RUNNER_TEMP/packages"/*.nupkg "$RUNNER_TEMP/packages"/*.snupkg
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages
+          path: ${{ runner.temp }}/packages/*

@@ -5,6 +5,14 @@
     <RootNamespace>RecursiveAI.OnePhysics</RootNamespace>
     <PackageId>$(PackageBaseName)</PackageId>
     <Description>Deterministic 2D and 3D rigid-body physics for .NET with identical results on every platform.</Description>
+    <PackageTags>physics;rigid-body;2d;3d;deterministic;determinism;lockstep;rollback;simulation;collision;nativeaot;trimmable</PackageTags>
+    <PackageReleaseNotes>See CHANGELOG.md in the repository.</PackageReleaseNotes>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <!-- First public version, so there is nothing to compare with yet; set PackageValidationBaselineVersion after this release. -->
+    <EnablePackageValidation>true</EnablePackageValidation>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
     <!-- The raw tier is marked experimental for consumers; inside the package it is simply used. -->
@@ -15,6 +23,8 @@
 
   <ItemGroup>
     <None Include="../../CHANGELOG.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="../../LICENSE-MIT" Pack="true" PackagePath="/" Visible="false" />
+    <None Include="../../LICENSE-APACHE" Pack="true" PackagePath="/" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>
