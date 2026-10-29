@@ -63,11 +63,19 @@ internal sealed class QueryScratch
     /// <summary>Keeps the best <see cref="Capacity"/> hits ordered by (key, slot).</summary>
     public void Insert(in RawHit h)
     {
-        int i = Count;
-        while (i > 0 && (Hits[i - 1].Key > h.Key || (Hits[i - 1].Key == h.Key && Hits[i - 1].Slot > h.Slot))) { i--; }
+        // Hits usually arrive in no particular order, so the place is found by bisection and the tail moves with one block copy.
+        int lo = 0, hi = Count;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) >> 1;
+            ref readonly RawHit m = ref Hits[mid];
+            if (m.Key < h.Key || (m.Key == h.Key && m.Slot <= h.Slot)) { lo = mid + 1; } else { hi = mid; }
+        }
+
+        int i = lo;
         if (i >= Capacity) { return; }
         int last = Count < Capacity ? Count : Capacity - 1;
-        for (int j = last; j > i; j--) { Hits[j] = Hits[j - 1]; }
+        if (last > i) { Array.Copy(Hits, i, Hits, i + 1, last - i); }
         Hits[i] = h;
         if (Count < Capacity) { Count++; }
     }
