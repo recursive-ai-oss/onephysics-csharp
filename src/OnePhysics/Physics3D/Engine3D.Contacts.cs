@@ -107,6 +107,8 @@ internal sealed class NarrowScratch
     public static TriangleShapeBuffer3D TriBuf => H.TriBuf;
     public ContactOut[] Out = new ContactOut[128];
     public int OutCount;
+    /// <summary>Pairs of this chunk that passed the tight-box test, and those among them that ran the narrowphase (not skipped as apart, not reusing a manifold); read by the work counters.</summary>
+    public int Reached, Fresh;
 
     public ref ContactOut Next()
     {
@@ -136,6 +138,9 @@ internal sealed partial class Engine3D
             return owner[shapeA] != owner[shapeB] && _e.CanCollide(shapeA, shapeB) && !_e.JointsPreventCollision(owner[shapeA], owner[shapeB]);
         }
     }
+
+    /// <summary>Work done by the last contact stage: pairs the broadphase reported as new, pairs revisited (an awake body), pairs that passed the tight-box test, and those that ran the narrowphase.</summary>
+    internal int StatNewPairs, StatUpdated, StatReached, StatFresh;
 
     private byte[] _active = new byte[8]; // per body: awake and dynamic, or a kinematic body in motion (see IsActive); valid for the contact stage that filled it
     private int[] _boxStamp = new int[8];
@@ -171,6 +176,9 @@ internal sealed partial class Engine3D
         var awakeList = world.AwakeBodies;
         int boxChunks = (awakeList.Length + BoxChunk - 1) / BoxChunk;
         world.Executor.For(boxChunks, new TightBoxTask(this, boxChunks));
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Move);
+#endif
         foreach (int b in awakeList)
         {
             if (!bodies.IsLive(b)) { continue; }
@@ -184,6 +192,9 @@ internal sealed partial class Engine3D
         }
 
         // 2. Start-of-step pose, zero accumulated motion and world-axes inverse inertia for every body (sleeping bodies may wake during the stage).
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Init);
+#endif
         var rot = bodies.Rotation;
         var invI = bodies.InverseInertia;
         var invMass = bodies.InverseMass;
@@ -259,13 +270,18 @@ internal sealed partial class Engine3D
             for (int i = old; i < _scratch.Length; i++) { _scratch[i] = new NarrowScratch(); }
         }
 
+        // Work counters of the step, for benchmark reports: pairs found by the broadphase this step, and the sums of the per-chunk counts below (set after the narrowphase).
+        StatNewPairs = found.Length;
         if (_applyCount.Length < chunks) { _applyCount = new int[Math.Max(chunks, _applyCount.Length * 2)]; }
         if (_applyIdx.Length < chunks * 64) { _applyIdx = new int[Math.Max(chunks * 64, _applyIdx.Length * 2)]; }
-        for (int i = 0; i < chunks; i++) { _scratch[i].OutCount = 0; }
+        for (int i = 0; i < chunks; i++) { _scratch[i].OutCount = 0; _scratch[i].Reached = 0; _scratch[i].Fresh = 0; }
+        StatUpdated = _updateCount;
+        StatReached = 0; StatFresh = 0;
         // The serial pass only adds, matches and removes constraints (their order fixes the colors); writing the manifolds into the payloads is independent per constraint and runs afterwards in parallel.
         // A user material mixer is called in pair order on this thread instead.
         _deferWrite = Opt.MaterialMixer == null && _updateCount >= 64;
         world.Executor.For(chunks, new CollideTask(this));
+        for (int i = 0; i < chunks; i++) { StatReached += _scratch[i].Reached; StatFresh += _scratch[i].Fresh; }
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Apply);
 #endif
@@ -609,6 +625,7 @@ internal sealed partial class Engine3D
         var ga = Geoms[GeomOf[sa]]!;
         var gb = Geoms[GeomOf[sb]]!;
         if (ga.Soup != null && gb.Soup != null) { return; }
+        sc.Reached++;
         var owner = Core.Shapes.Owner;
         int ba = owner[sa], bb = owner[sb];
         var bodies = Core.Bodies;
@@ -625,6 +642,7 @@ internal sealed partial class Engine3D
             return;
         }
 
+        sc.Fresh++;
         var la = Local[sa]; var lb = Local[sb];
         var lcA = LocalCenterOf(ba); var lcB = LocalCenterOf(bb);
 

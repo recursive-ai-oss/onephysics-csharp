@@ -59,6 +59,30 @@ public static class ShapeBounds3D
                         float.Sqrt(m.M31 * m.M31 + m.M33 * m.M33) * h.X + Math.Abs(m.M32) * h.Y + r, out min, out max);
                     return;
                 }
+
+            case ConvexShapeKind3D.Hull:
+                if (r == 0f && shape.Hull is { } hull)
+                {
+                    // One pass over the vertices for all six extremes instead of six support searches. The extreme along -row is the vertex with the smallest dot product, and negating a dot product is exact,
+                    // so every value is the one Extreme would return.
+                    Vector3F r0 = m.Row(0), r1 = m.Row(1), r2 = m.Row(2);
+                    ReadOnlySpan<Vector3F> vs = hull.Vertices;
+                    float lx = Vector3F.Dot(vs[0], r0), hx = lx, ly = Vector3F.Dot(vs[0], r1), hy = ly, lz = Vector3F.Dot(vs[0], r2), hz = lz;
+                    for (int i = 1; i < vs.Length; i++)
+                    {
+                        float dx = Vector3F.Dot(vs[i], r0), dy = Vector3F.Dot(vs[i], r1), dz = Vector3F.Dot(vs[i], r2);
+                        if (dx > hx) { hx = dx; } if (dx < lx) { lx = dx; }
+                        if (dy > hy) { hy = dy; } if (dy < ly) { ly = dy; }
+                        if (dz > hz) { hz = dz; } if (dz < lz) { lz = dz; }
+                    }
+
+                    float ax0 = lx + t.X, ax1 = hx + t.X, ay0 = ly + t.Y, ay1 = hy + t.Y, az0 = lz + t.Z, az1 = hz + t.Z;
+                    min = new Vector3F(ax0 - Pad(ax0, ax1), ay0 - Pad(ay0, ay1), az0 - Pad(az0, az1));
+                    max = new Vector3F(ax1 + Pad(ax0, ax1), ay1 + Pad(ay0, ay1), az1 + Pad(az0, az1));
+                    return;
+                }
+
+                break;
         }
 
         float x0 = Extreme(shape, m.Row(0), t.X, -1f), x1 = Extreme(shape, m.Row(0), t.X, 1f);

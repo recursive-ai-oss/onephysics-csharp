@@ -26,7 +26,15 @@ public sealed partial class PhysicsWorld3D
         o.Validate();
         _core = new WorldCore(o.ToCore()) { SymmetricSweep = true, SplitWhenAnyBodyRests = true }; // alternating sweep order keeps one-iteration friction from drifting tall stacks sideways
         o.WorldId = _core.Id;
-        var bp = new Broadphase3D(new BroadphaseOptions { Margin = o.BroadphaseMargin });
+        var bp = new Broadphase3D(new BroadphaseOptions
+        {
+            Margin = o.BroadphaseMargin,
+            // A moving proxy's box is stretched four steps ahead: it then lasts about four steps, and every update of a moved proxy costs a tree walk for its pairs (measured against two steps on a falling pile).
+            DisplacementMultiplier = 4.0,
+            // The tree top is rebuilt every fourth time it is due and refitted in between: the rebuild is serial and was most of the pair stage on a pile that is always moving.
+            EnlargedRebuildShift = 1,
+            EnlargedRefitSteps = 3,
+        });
         _engine = new Engine3D(_core, bp, o) { World = this };
         _core.AddSection(bp);
         _core.AddSection(_engine);

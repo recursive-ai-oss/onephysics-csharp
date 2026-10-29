@@ -539,6 +539,9 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
             }
         }
 
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Search);
+#endif
         CollectMoved();
         int chunks = (_movedCount + ChunkSize - 1) / ChunkSize;
         while (_chunks.Count < chunks) { _chunks.Add(new PairChunk()); }
@@ -564,7 +567,13 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
         }
 
         _pairCount = total;
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Sort);
+#endif
         SortPairs(total);
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Alloc);
+#endif
 
         for (int i = 0; i < _movedCount; i++)
         {

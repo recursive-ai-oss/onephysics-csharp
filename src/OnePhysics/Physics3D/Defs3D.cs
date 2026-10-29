@@ -158,8 +158,8 @@ public sealed class WorldOptions3D
     /// <summary>Distance at which surfaces get a speculative contact, metres. Default 0.02.</summary>
     public float SpeculativeDistance { get; set; } = 0.02f;
 
-    /// <summary>Margin of the broadphase boxes, metres. Fixed at construction. Default 0.1.</summary>
-    public double BroadphaseMargin { get; set; } = 0.1;
+    /// <summary>Margin of the broadphase boxes, metres. Fixed at construction. Default 0.03: a little over the speculative distance, so a contact can start while the boxes of its two bodies already overlap, and few pairs are kept that cannot touch.</summary>
+    public double BroadphaseMargin { get; set; } = 0.03;
 
     /// <summary>Replaces the default material combination (friction: geometric mean; restitution and rolling resistance: maximum). Never saved.</summary>
     public MaterialMixer? MaterialMixer { get; set; }
