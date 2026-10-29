@@ -90,6 +90,19 @@ public sealed class WorldOptions3D
     /// <summary>Relaxation iterations per substep, 0..256. Default 1.</summary>
     public int RelaxIterations { get; set; } = 1;
 
+    /// <summary>
+    /// Substeps per step for islands that hold no joint, 0..256. Default 2. An island with a joint, a vehicle or a touching kinematic body runs <see cref="Substeps"/>; every other island runs this many substeps of
+    /// <see cref="ContactVelocityIterations"/> and <see cref="ContactRelaxIterations"/>, which costs less and is stable where no joint needs the finer step. 0, or a value not below <see cref="Substeps"/>, runs every island on the world's schedule.
+    /// Not saved in snapshots, though it decides results: a host sets it the same way every run, as it does the other options it passes at creation.
+    /// </summary>
+    public int ContactSubsteps { get; set; } = 2;
+
+    /// <summary>Biased solver iterations per substep of an island on the contact-only schedule, 1..256. Default 2.</summary>
+    public int ContactVelocityIterations { get; set; } = 2;
+
+    /// <summary>Relaxation iterations per substep of an island on the contact-only schedule, 0..256. Default 1.</summary>
+    public int ContactRelaxIterations { get; set; } = 1;
+
     /// <summary>Threads used by a step, 1..1024. The result never depends on it. Default 1.</summary>
     public int ThreadCount { get; set; } = 1;
 
@@ -173,6 +186,9 @@ public sealed class WorldOptions3D
     /// <exception cref="ArgumentOutOfRangeException">A value is outside its range.</exception>
     public void Validate()
     {
+        if (ContactSubsteps < 0 || ContactSubsteps > 256) { throw new ArgumentOutOfRangeException(nameof(ContactSubsteps), ContactSubsteps, "ContactSubsteps must be in 0..256."); }
+        if (ContactVelocityIterations < 1 || ContactVelocityIterations > 256) { throw new ArgumentOutOfRangeException(nameof(ContactVelocityIterations), ContactVelocityIterations, "ContactVelocityIterations must be in 1..256."); }
+        if (ContactRelaxIterations < 0 || ContactRelaxIterations > 256) { throw new ArgumentOutOfRangeException(nameof(ContactRelaxIterations), ContactRelaxIterations, "ContactRelaxIterations must be in 0..256."); }
         if (PairCapacity < 0 || PairCapacity > MaxCapacity) { throw new ArgumentOutOfRangeException(nameof(PairCapacity), PairCapacity, "PairCapacity must be in 0..16777216."); }
         if (ContactCapacity < 0 || ContactCapacity > MaxCapacity) { throw new ArgumentOutOfRangeException(nameof(ContactCapacity), ContactCapacity, "ContactCapacity must be in 0..16777216."); }
         if (IslandCapacity < 0 || IslandCapacity > MaxCapacity) { throw new ArgumentOutOfRangeException(nameof(IslandCapacity), IslandCapacity, "IslandCapacity must be in 0..16777216."); }

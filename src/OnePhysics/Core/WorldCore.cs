@@ -38,8 +38,12 @@ public readonly struct StepContext
     /// <summary>Substeps in this step.</summary>
     public int Substeps { get; }
 
-    internal StepContext(float dt, int substeps)
+    /// <summary>Which schedule the stage call belongs to: 0 for the world's own, 1 for the contact-only schedule of islands without joints.</summary>
+    internal int Schedule { get; }
+
+    internal StepContext(float dt, int substeps, int schedule)
     {
+        Schedule = schedule;
         Dt = dt;
         Substeps = substeps;
         SubstepDt = dt / substeps;
@@ -603,41 +607,57 @@ public sealed class WorldCore
 #endif
         _coloring.EnsureBodies(_bodies.HighWater);
         _coloring.BuildActive(_bodies, _constraints, Executor, _awakeCount > 0);
-        var ctx = new StepContext(dt, _options.Substeps);
+        var ctx = new StepContext(dt, _options.Substeps, 0);
+        var ctxLite = new StepContext(dt, _liteSubsteps, 1);
         int active = _coloring.ActiveCount;
         int storeChunks = (active + ChunkSize - 1) / ChunkSize;
         _events.EnsureSlots(1 + storeChunks);
         var list = _coloring.ListArray;
+        bool split = _liteOn && PlanSchedules(active, list);
+        _splitActive = split;
+        if (!split) { CountWholeColors(); }
 
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Prepare);
 #endif
         Executor.For(storeChunks, new PrepareTask<TStages>(this, stages, list, 0, active, ctx));
-        PrepareBatches(stages, ctx);
-
-        int bodyChunks = (_awakeCount + ChunkSize - 1) / ChunkSize;
+        PrepareBatches(stages, ctx, ctxLite, split);
 
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Solve);
 #endif
-        // All substeps run as one staged call: the stage boundaries (integrate, then each color of each pass) are crossed by polling inside the executor instead of one fork and join per stage.
-        _stageCount = 0;
-        _stageMostTasks = 0;
-        for (int s = 0; s < _options.Substeps; s++)
+        // Each program (the joint schedule's islands, then the contact-only schedule's) runs as one staged call: the stage boundaries (integrate, then each color of each pass) are crossed by polling inside the executor
+        // instead of one fork and join per stage. Islands share no dynamic body, so running the programs one after the other gives what running them together would.
+        for (int prog = 0; prog < (split ? 2 : 1); prog++)
         {
-            _flipSweep = (s & 1) == 1;
-            AddStage(StageIntegrateVelocities, 0, bodyChunks);
-            AddSolvePass(SolvePhase.WarmStart);
-            for (int i = 0; i < _options.VelocityIterations; i++) { AddSolvePass(SolvePhase.Solve); }
-            AddStage(StageIntegratePositions, 0, bodyChunks);
-            for (int i = 0; i < _options.RelaxIterations; i++) { AddSolvePass(SolvePhase.Relax); }
+            if (split && (prog == 0 ? _awakeFullCount : _awakeLiteCount) == 0 && _progConstraints[prog] == 0) { continue; }
+            var pctx = prog == 0 ? ctx : ctxLite;
+            int subs = prog == 0 ? _options.Substeps : _liteSubsteps;
+            int vel = prog == 0 ? _options.VelocityIterations : _liteVelocity;
+            int relax = prog == 0 ? _options.RelaxIterations : _liteRelax;
+            var progBodies = split ? (prog == 0 ? _awakeFull : _awakeLite) : _awake;
+            int progCount = split ? (prog == 0 ? _awakeFullCount : _awakeLiteCount) : _awakeCount;
+            int progChunks = (progCount + ChunkSize - 1) / ChunkSize;
+            _stageCount = 0;
+            _stageMostTasks = 0;
+            for (int s = 0; s < subs; s++)
+            {
+                _flipSweep = (s & 1) == 1;
+                AddStage(StageIntegrateVelocities, 0, progChunks);
+                AddSolvePass(prog, SolvePhase.WarmStart);
+                for (int i = 0; i < vel; i++) { AddSolvePass(prog, SolvePhase.Solve); }
+                AddStage(StageIntegratePositions, 0, progChunks);
+                for (int i = 0; i < relax; i++) { AddSolvePass(prog, SolvePhase.Relax); }
+            }
+
+            AddSolvePass(prog, SolvePhase.Restitution);
+            Executor.ForStages(_stageCount, new SolveProgram<TStages>(this, stages, list, pctx, prog, progBodies, progCount), _stageMostTasks);
         }
 
-        AddSolvePass(SolvePhase.Restitution);
-        Executor.ForStages(_stageCount, new SolveProgram<TStages>(this, stages, list, ctx), _stageMostTasks);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Finalize);
 #endif
+        int bodyChunks = (_awakeCount + ChunkSize - 1) / ChunkSize;
         Executor.For(bodyChunks, new FinalizeTask<TStages>(this, stages, _awake, _awakeCount, ctx));
         stages.AfterFinalize(this, ctx);
 #if STAGE_TIMERS
@@ -661,6 +681,133 @@ public sealed class WorldCore
         _stepCount++;
     }
 
+    // ------------------------------------------------------------------ per-island schedules
+
+    private bool _liteOn;
+    private int _liteSubsteps = 2, _liteVelocity = 2, _liteRelax = 1;
+    private bool _splitActive;
+    private byte[] _islandFull = new byte[16];
+    private byte[] _consLite = new byte[16];
+    private int[] _awakeFull = new int[64], _awakeLite = new int[64];
+    private int _awakeFullCount, _awakeLiteCount;
+    private int[] _forcedFull = new int[16];
+    private int _forcedCount;
+    private int[] _partTmp = new int[64];
+
+    /// <summary>
+    /// Sets the schedule of islands that hold no joint (and are not forced onto the joint schedule): <paramref name="substeps"/> substeps of <paramref name="velocity"/> solve and <paramref name="relax"/> relax passes.
+    /// With <paramref name="on"/> false every island runs the schedule in <see cref="Options"/>. Never saved; the host sets it the same way every run.
+    /// </summary>
+    internal void SetContactSchedule(bool on, int substeps, int velocity, int relax)
+    {
+        _liteOn = on; _liteSubsteps = substeps; _liteVelocity = velocity; _liteRelax = relax;
+    }
+
+    /// <summary>Asks for the island of a dynamic body to run the joint schedule in the next step, for bodies the engine drives with that schedule in mind (vehicles). Cleared by the step.</summary>
+    internal void KeepJointSchedule(int body)
+    {
+        if (!_liteOn) { return; }
+        if (_forcedCount == _forcedFull.Length) { Array.Resize(ref _forcedFull, _forcedCount * 2); }
+        _forcedFull[_forcedCount++] = body;
+    }
+
+    /// <summary>Substeps the constraint ran in the last step: the contact-only schedule's when it belonged to an island on it, else the world's.</summary>
+    internal int SubstepsOf(int constraint) => _splitActive && constraint < _consLite.Length && _consLite[constraint] != 0 ? _liteSubsteps : _options.Substeps;
+
+    // Decides each island's schedule from its content at the start of the step: an island holds the joint schedule when any of its constraints is a joint, when it touches a kinematic body (which then moves on that schedule),
+    // or when the engine asked for it; every other island runs the contact-only schedule. Returns false when no island is on the contact-only schedule (the step then runs as one program).
+    private bool PlanSchedules(int active, int[] list)
+    {
+        var bodies = _bodies;
+        var cons = _constraints;
+        int ni = _islands.HighWater;
+        if (_islandFull.Length < ni) { _islandFull = new byte[Math.Max(ni, _islandFull.Length * 2)]; }
+        Array.Clear(_islandFull, 0, ni);
+        bool anyKinematic = false;
+        for (int i = 0; i < _awakeCount; i++) { if (bodies.TypeOf(_awake[i]) == BodyType.Kinematic) { anyKinematic = true; break; } }
+        var island = bodies.Island;
+        var kind = cons.Kind;
+        var bodyA = cons.BodyA;
+        var bodyB = cons.BodyB;
+        for (int k = 0; k < active; k++)
+        {
+            int c = list[k];
+            bool joint = kind[c] == (byte)ConstraintKind.Joint;
+            if (!joint && !anyKinematic) { continue; }
+            int a = bodyA[c], b = bodyB[c];
+            if (!joint && bodies.TypeOf(a) != BodyType.Kinematic && bodies.TypeOf(b) != BodyType.Kinematic) { continue; }
+            if (island[a] >= 0) { _islandFull[island[a]] = 1; }
+            if (island[b] >= 0) { _islandFull[island[b]] = 1; }
+        }
+
+        for (int i = 0; i < _forcedCount; i++)
+        {
+            int b = _forcedFull[i];
+            if (b < bodies.HighWater && island[b] >= 0 && island[b] < ni) { _islandFull[island[b]] = 1; }
+        }
+
+        _forcedCount = 0;
+        // Bodies of each program, in ascending order.
+        if (_awakeFull.Length < _awakeCount) { _awakeFull = new int[Math.Max(_awakeCount, _awakeFull.Length * 2)]; }
+        if (_awakeLite.Length < _awakeCount) { _awakeLite = new int[Math.Max(_awakeCount, _awakeLite.Length * 2)]; }
+        int nf = 0, nl = 0;
+        for (int i = 0; i < _awakeCount; i++)
+        {
+            int b = _awake[i];
+            int isl = island[b];
+            if (isl < 0 || _islandFull[isl] != 0) { _awakeFull[nf++] = b; } else { _awakeLite[nl++] = b; }
+        }
+
+        _awakeFullCount = nf; _awakeLiteCount = nl;
+        if (nl == 0) { return false; }
+        // Constraints: those of an island on the contact-only schedule; a joint, or a constraint with no dynamic body, stays on the joint schedule.
+        int nc = cons.HighWater;
+        if (_consLite.Length < nc) { _consLite = new byte[Math.Max(nc, _consLite.Length * 2)]; }
+        Array.Clear(_consLite, 0, nc);
+        _progConstraints[0] = 0; _progConstraints[1] = 0;
+        for (int g = 0; g < GroupSlots; g++)
+        {
+            int start = GroupStart(g), n = GroupSize(g);
+            int lite = 0;
+            for (int k = 0; k < n; k++)
+            {
+                int c = list[start + k];
+                if (kind[c] == (byte)ConstraintKind.Joint) { continue; }
+                int a = bodyA[c];
+                int isl = bodies.IsDynamic(a) ? island[a] : island[bodyB[c]];
+                if (isl >= 0 && _islandFull[isl] == 0) { _consLite[c] = 1; lite++; }
+            }
+
+            _tStart[g] = start; _tCount[g] = n - lite;
+            _tStart[GroupSlots + g] = start + n - lite; _tCount[GroupSlots + g] = lite;
+            _progConstraints[0] += n - lite; _progConstraints[1] += lite;
+        }
+
+        return true;
+    }
+
+    // Moves the contact-only constraints of every group behind the others, each part keeping its order.
+    private void PartitionColors()
+    {
+        var list = _coloring.ListArray;
+        for (int g = 0; g < GroupSlots; g++)
+        {
+            int lite = _tCount[GroupSlots + g];
+            int n = _tCount[g] + lite;
+            if (lite == 0 || lite == n) { continue; }
+            int start = _tStart[g];
+            if (_partTmp.Length < n) { _partTmp = new int[Math.Max(n, _partTmp.Length * 2)]; }
+            int f = 0, l = n - lite;
+            for (int k = 0; k < n; k++)
+            {
+                int c = list[start + k];
+                if (_consLite[c] != 0) { _partTmp[l++] = c; } else { _partTmp[f++] = c; }
+            }
+
+            Array.Copy(_partTmp, 0, list, start, n);
+        }
+    }
+
     // Bodies per block when the awake list is built in parallel; below two blocks the loop is serial.
     private const int AwakeBlock = 2048;
     private int[] _awakeBlockCounts = new int[4];
@@ -679,9 +826,15 @@ public sealed class WorldCore
         _events.Reserve(2 * contacts + 16, 1 + chunks, 2 * ChunkSize);
         int awake = (Math.Max((bodies + AwakeBlock - 1) / AwakeBlock, 1)) * AwakeBlock;
         if (_awake.Length < awake) { Array.Resize(ref _awake, awake); }
+        // Room for the per-island schedule plan: the two body lists, one flag per island and per constraint, and the reorder buffer of the largest color.
+        if (_awakeFull.Length < awake) { _awakeFull = new int[awake]; }
+        if (_awakeLite.Length < awake) { _awakeLite = new int[awake]; }
+        if (_islandFull.Length < islands) { _islandFull = new byte[islands]; }
+        if (_consLite.Length < contacts) { _consLite = new byte[contacts]; }
+        if (_partTmp.Length < contacts) { _partTmp = new int[contacts]; }
         // Stages of one step: per substep the two integrations and a pass over every color for warm starting, each solve and each relax pass (plus the restitution pass).
         int passes = _options.VelocityIterations + _options.RelaxIterations + 2;
-        int stages = _options.Substeps * (3 + passes * (ConstraintColoring.ColorCount + 1)) + 8;
+        int stages = Math.Max(_options.Substeps, _liteOn ? _liteSubsteps : 1) * (3 + Math.Max(passes, _liteVelocity + _liteRelax + 2) * (ConstraintColoring.ColorCount + 1)) + 8;
         if (_stageKind.Length < stages) { Array.Resize(ref _stageKind, stages); Array.Resize(ref _stageArg, stages); Array.Resize(ref _stageTasks, stages); }
         Executor.Reserve(stages);
     }
@@ -747,38 +900,71 @@ public sealed class WorldCore
         }
     }
 
-    // Batch table for PrepareBatches: for each group of batches (the overflow set, then each color) where its constraints start in the list, how many there are and the number of its first batch.
-    private int[] _pbStart = new int[ConstraintColoring.ColorCount + 2];
-    private int[] _pbCount = new int[ConstraintColoring.ColorCount + 2];
-    private int[] _pbFirst = new int[ConstraintColoring.ColorCount + 3];
+    // The constraints of the step by program (0: the joint schedule, 1: the contact-only schedule) and group (0: the overflow set, 1 + c: color c): where they start in the list and how many there are.
+    private const int GroupSlots = ConstraintColoring.ColorCount + 1;
+    private readonly int[] _tStart = new int[2 * GroupSlots];
+    private readonly int[] _tCount = new int[2 * GroupSlots];
+    private readonly int[] _progConstraints = new int[2];
 
-    private void PrepareBatches<TStages>(TStages stages, in StepContext ctx) where TStages : IWorldStages
+    // Batch table for PrepareBatches: for each non-empty group (program 0's overflow set and colors, then program 1's) where its constraints start in the list, how many there are, the number of its first batch and its program.
+    private int[] _pbStart = new int[2 * GroupSlots];
+    private int[] _pbCount = new int[2 * GroupSlots];
+    private int[] _pbFirst = new int[2 * GroupSlots + 1];
+    private int[] _pbProg = new int[2 * GroupSlots];
+
+    private int GroupStart(int slot) => slot == 0 ? _coloring.OverflowStart : _coloring.ColorStart(slot - 1);
+    private int GroupSize(int slot) => slot == 0 ? _coloring.Overflow.Length : _coloring.ColorSize(slot - 1);
+
+    // Without a split every constraint belongs to program 0.
+    private void CountWholeColors()
+    {
+        _progConstraints[0] = 0; _progConstraints[1] = 0;
+        for (int g = 0; g < GroupSlots; g++)
+        {
+            int n = GroupSize(g);
+            _tStart[g] = GroupStart(g); _tCount[g] = n;
+            _tStart[GroupSlots + g] = _tStart[g] + n; _tCount[GroupSlots + g] = 0;
+            _progConstraints[0] += n;
+        }
+    }
+
+    private void PrepareBatches<TStages>(TStages stages, in StepContext ctx, in StepContext ctxLite, bool split) where TStages : IWorldStages
     {
         var list = _coloring.ListArray;
         int groups = 0, batches = 0;
-        // Overflow first, then the colors in order: the same batch numbers as always, so the layout of the groups does not change.
-        for (int g = -1; g < ConstraintColoring.ColorCount; g++)
+        // Program 0 first (the overflow set, then the colors in order), then program 1: without a split that is the same batch numbering as always.
+        for (int prog = 0; prog < 2; prog++)
         {
-            int n = g < 0 ? _coloring.Overflow.Length : _coloring.Color(g).Length;
-            if (n == 0) { continue; }
-            _pbStart[groups] = g < 0 ? _coloring.OverflowStart : _coloring.ColorStart(g);
-            _pbCount[groups] = n;
-            _pbFirst[groups] = batches;
-            batches += (n + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
-            groups++;
+            for (int g = 0; g < GroupSlots; g++)
+            {
+                int n = _tCount[prog * GroupSlots + g];
+                if (n == 0) { continue; }
+                _pbStart[groups] = _tStart[prog * GroupSlots + g];
+                _pbCount[groups] = n;
+                _pbFirst[groups] = batches;
+                _pbProg[groups] = prog;
+                batches += (n + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
+                groups++;
+            }
         }
 
         _pbFirst[groups] = batches;
         stages.BeginSolve(this, batches, in ctx);
+        if (split)
+        {
+            stages.BeginSolve(this, batches, in ctxLite);
+            PartitionColors();
+        }
+
         // One parallel call for every batch of every color: a call per color pays a fork and join for each of up to 24 small colors.
         int tasks = (batches + ConstraintColoring.BatchesPerTask - 1) / ConstraintColoring.BatchesPerTask;
-        Executor.For(tasks, new PrepareBatchTask<TStages>(this, stages, list, groups, batches, ctx));
+        Executor.For(tasks, new PrepareBatchTask<TStages>(this, stages, list, groups, batches, ctx, ctxLite));
     }
 
     private readonly struct PrepareBatchTask<TStages> : IParallelBody where TStages : IWorldStages
     {
-        private readonly WorldCore _w; private readonly TStages _s; private readonly int[] _list; private readonly int _groups, _batches; private readonly StepContext _ctx;
-        public PrepareBatchTask(WorldCore w, TStages s, int[] list, int groups, int batches, StepContext ctx) { _w = w; _s = s; _list = list; _groups = groups; _batches = batches; _ctx = ctx; }
+        private readonly WorldCore _w; private readonly TStages _s; private readonly int[] _list; private readonly int _groups, _batches; private readonly StepContext _ctx, _ctxLite;
+        public PrepareBatchTask(WorldCore w, TStages s, int[] list, int groups, int batches, StepContext ctx, StepContext ctxLite) { _w = w; _s = s; _list = list; _groups = groups; _batches = batches; _ctx = ctx; _ctxLite = ctxLite; }
         public void Run(int task)
         {
             int first = task * ConstraintColoring.BatchesPerTask;
@@ -788,7 +974,8 @@ public sealed class WorldCore
                 while (_w._pbFirst[g + 1] <= bt) { g++; }
                 int lo = (bt - _w._pbFirst[g]) * ConstraintColoring.Lanes;
                 int n = _w._pbCount[g];
-                _s.PrepareBatch(_w, _list.AsSpan(_w._pbStart[g] + lo, Math.Min(ConstraintColoring.Lanes, n - lo)), bt, in _ctx);
+                var batch = _list.AsSpan(_w._pbStart[g] + lo, Math.Min(ConstraintColoring.Lanes, n - lo));
+                if (_w._pbProg[g] == 0) { _s.PrepareBatch(_w, batch, bt, in _ctx); } else { _s.PrepareBatch(_w, batch, bt, in _ctxLite); }
             }
         }
     }
@@ -822,15 +1009,16 @@ public sealed class WorldCore
         _stageCount++;
     }
 
-    // One pass over every constraint in one phase: the overflow constraints first, serially and in order, then each color (the constraints of a color share no dynamic body, so their order cannot matter).
-    private void AddSolvePass(SolvePhase phase)
+    // One pass over every constraint of one program in one phase: the overflow constraints first, serially and in order, then each color (the constraints of a color share no dynamic body, so their order cannot matter).
+    private void AddSolvePass(int prog, SolvePhase phase)
     {
         bool reverse = SymmetricSweep && phase != SolvePhase.WarmStart && ((phase == SolvePhase.Relax) != _flipSweep);
-        if (!reverse && _coloring.Overflow.Length > 0) { AddStage(StageOverflow, (int)phase, 1); }
+        int overflow = _tCount[prog * GroupSlots];
+        if (!reverse && overflow > 0) { AddStage(StageOverflow, (int)phase, 1); }
         for (int k = 0; k < ConstraintColoring.ColorCount; k++)
         {
             int color = reverse ? ConstraintColoring.ColorCount - 1 - k : k;
-            int n = _coloring.Color(color).Length;
+            int n = _tCount[prog * GroupSlots + 1 + color];
             if (n == 0) { continue; }
             int batches = (n + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
             // One task per batch: stages are short, and a stage cut into a few multi-batch tasks leaves most threads waiting at its boundary.
@@ -838,13 +1026,13 @@ public sealed class WorldCore
             AddStage(StageColor, (int)phase | (color << 8), batches);
         }
 
-        if (reverse && _coloring.Overflow.Length > 0) { AddStage(StageOverflow, (int)phase, 1); }
+        if (reverse && overflow > 0) { AddStage(StageOverflow, (int)phase, 1); }
     }
 
     private readonly struct SolveProgram<TStages> : IStagedBody where TStages : IWorldStages
     {
-        private readonly WorldCore _w; private readonly TStages _s; private readonly int[] _list; private readonly StepContext _ctx;
-        public SolveProgram(WorldCore w, TStages s, int[] list, StepContext ctx) { _w = w; _s = s; _list = list; _ctx = ctx; }
+        private readonly WorldCore _w; private readonly TStages _s; private readonly int[] _list; private readonly StepContext _ctx; private readonly int _prog; private readonly int[] _bodies; private readonly int _bodyCount;
+        public SolveProgram(WorldCore w, TStages s, int[] list, StepContext ctx, int prog, int[] bodies, int bodyCount) { _w = w; _s = s; _list = list; _ctx = ctx; _prog = prog; _bodies = bodies; _bodyCount = bodyCount; }
 
         public int TaskCount(int stage) => _w._stageTasks[stage];
 
@@ -873,14 +1061,14 @@ public sealed class WorldCore
                 for (int task = first; task < first + count; task++)
                 {
                     int lo = task * ChunkSize;
-                    var span = w._awake.AsSpan(lo, Math.Min(ChunkSize, w._awakeCount - lo));
+                    var span = _bodies.AsSpan(lo, Math.Min(ChunkSize, _bodyCount - lo));
                     if (kind == StageIntegrateVelocities) { _s.IntegrateVelocities(w, span, in _ctx); } else { _s.IntegratePositions(w, span, in _ctx); }
                 }
             }
             else if (kind == StageOverflow)
             {
-                int os = w._coloring.OverflowStart;
-                int on = w._coloring.Overflow.Length;
+                int os = w._tStart[_prog * GroupSlots];
+                int on = w._tCount[_prog * GroupSlots];
                 for (int lo = 0; lo < on; lo += ConstraintColoring.Lanes)
                 {
                     _s.SolveBatch(w, _list.AsSpan(os + lo, Math.Min(ConstraintColoring.Lanes, on - lo)), (SolvePhase)arg, in _ctx);
@@ -889,7 +1077,7 @@ public sealed class WorldCore
             else
             {
                 int color = arg >> 8;
-                int start = w._coloring.ColorStart(color), total = w._coloring.ColorSize(color);
+                int start = w._tStart[_prog * GroupSlots + 1 + color], total = w._tCount[_prog * GroupSlots + 1 + color];
                 var phase = (SolvePhase)(arg & 0xFF);
                 for (int task = first; task < first + count; task++)
                 {
