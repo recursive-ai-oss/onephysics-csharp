@@ -37,7 +37,7 @@ public readonly struct JointBreak
 /// <summary>
 /// A handle to a 3D joint: world, slot and generation. A small struct that allocates nothing; once the joint is destroyed (by <see cref="Destroy"/>, by breaking, or because a body was destroyed)
 /// every copy fails with a <see cref="StaleHandleException"/> naming the joint. Properties that a joint type does not have throw <see cref="InvalidJointException"/>.
-/// Edits take effect at the next step and wake the joint's bodies.
+/// Edits take effect at the next step and wake the joint's bodies. The <c>Add*</c> one-liners and <c>CreateJoint</c> return a typed view (for example <c>HingeJoint</c>) that has only the members its kind has and converts implicitly to <see cref="Joint"/>; use <see cref="Joint"/> to hold joints of any kind in one collection (the explicit conversion back checks the kind).
 /// </summary>
 public readonly struct Joint : IEquatable<Joint>
 {

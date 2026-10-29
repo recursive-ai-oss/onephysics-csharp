@@ -315,6 +315,7 @@ public class CallbackRollbackTests
 
         w3.Warmup();
         for (int i = 0; i < 100; i++) { w3.Step(Dt); }
+        using (w3.SuppressCallbacks()) { }
         before = GC.GetAllocatedBytesForCurrentThread();
         using (w3.SuppressCallbacks())
         {

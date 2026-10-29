@@ -72,7 +72,7 @@ public struct CharacterDef
     private uint _height;
 
     /// <summary>
-    /// Steepest ground the character can stand on, in radians within [0, pi/2] (Unity's <c>slopeLimit</c> is in degrees: pass <c>45 * MathF.PI / 180</c>). Steeper surfaces are walls: the character slides down them.
+    /// Steepest ground the character can stand on, in radians within [0, pi/2] (Unity's <c>slopeLimit</c> is in degrees: pass 45 degrees converted to radians). Steeper surfaces are walls: the character slides down them.
     /// Default pi/4 (45 degrees).
     /// </summary>
     public float SlopeLimit
