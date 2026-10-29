@@ -169,4 +169,17 @@ public class RestoreBounds3DTests
         Assert.Contains("extent", ex.Message);
         Assert.Equal(before, other.Snapshot());
     }
+
+    // A differential ratio of 3e37 is finite but makes the drivetrain overflow into NaN within one step, and the NaN engine speed was then written into the snapshot, which the reader refuses.
+    // Definitions with numbers that large are refused when the vehicle is added, and a snapshot that carries one is refused on restore.
+    [Fact]
+    public void ADrivetrainNumberThatOverflowsTheStepIsRefused()
+    {
+        var w = NewWorld();
+        w.AddBox(new Vector3F(100f, 1f, 100f), at: new Vector3D(0, -0.5, 0), type: BodyType.Static);
+        var chassis = w.AddBox(new Vector3F(1.8f, 0.5f, 4.2f), at: new Vector3D(0, 1.0, 0), density: 100f);
+        var def = VehicleDef.Kart;
+        def.Differentials[0].Ratio = 3.19e37f;
+        Assert.Throws<ArgumentOutOfRangeException>(() => w.AddVehicle(chassis, def));
+    }
 }
