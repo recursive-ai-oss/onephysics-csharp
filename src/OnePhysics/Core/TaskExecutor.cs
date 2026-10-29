@@ -455,11 +455,11 @@ internal static class WorkerPool
             if (Interlocked.CompareExchange(ref w.Sleeping, 0, 1) == 1) { Signal(w); }
         }
 
+        // A worker that cannot be scheduled for several seconds is not waited for; it runs the init when it next wakes.
         var wait = new SpinWait();
-        long giveUp = Environment.TickCount64 + 10000; // a worker that cannot be scheduled for ten seconds is not waited for; it runs the init when it next wakes
         foreach (var w in all)
         {
-            while (Volatile.Read(ref w.InitSeen) != version && Environment.TickCount64 < giveUp) { wait.SpinOnce(); }
+            for (int i = 0; i < 10000 && Volatile.Read(ref w.InitSeen) != version; i++) { wait.SpinOnce(); }
         }
     }
 

@@ -8,6 +8,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// A shape passes when its layer is in <see cref="LayerMask"/>, its category is in <see cref="MaskBits"/> and the query's <see cref="CategoryBits"/> intersect the shape's mask,
 /// it is not a sensor (unless <see cref="IncludeSensors"/>), and <see cref="Predicate"/> (if any) returns true.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct QueryFilter3D
 {
     private uint _noLayers, _noCategory, _noMask;
@@ -41,6 +42,7 @@ public struct QueryFilter3D
 
 /// <summary>A query result. Which fields are meaningful depends on the query; see each method.</summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "Handle fields, not properties, so that `hit.Body.LinearVelocity = v` compiles: a property result is not a variable (CS1612), a readonly field is.")]
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct QueryHit3D
 {
     internal QueryHit3D(Shape shape, Vector3D point, Vector3F normal, float fraction, float distance, int subShape)
@@ -85,6 +87,7 @@ public readonly struct QueryHit3D
 }
 
 /// <summary>One ray of a batch.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct RayInput3D
 {
     /// <summary>Creates a ray; validated when the batch runs.</summary>
@@ -106,6 +109,7 @@ public readonly struct RayInput3D
 }
 
 /// <summary>One sphere of a batch (an overlap, or a cast when <see cref="Direction"/> is used).</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct SphereInput3D
 {
     /// <summary>Creates a sphere query; validated when the batch runs.</summary>

@@ -9,6 +9,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// A rigid body you can hold: a small struct (world, slot, generation) that allocates nothing. Every member fails with a clear <see cref="InvalidHandleException"/> once the body is destroyed
 /// or when used on the default value. Positions are doubles in world coordinates; velocities, forces and orientation are float32.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly partial struct Body : IEquatable<Body>
 {
     private readonly PhysicsWorld3D? _world;
@@ -312,6 +313,7 @@ public readonly partial struct Body : IEquatable<Body>
 }
 
 /// <summary>A shape handle: geometry attached to a body, with its material and filter. Fails clearly once destroyed.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly partial struct Shape : IEquatable<Shape>
 {
     private readonly PhysicsWorld3D? _world;

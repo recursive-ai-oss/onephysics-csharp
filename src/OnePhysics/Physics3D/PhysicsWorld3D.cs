@@ -12,6 +12,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// A 3D rigid-body world. The happy path is the <c>Add*</c> methods and <see cref="Step"/>; <see cref="CreateBody(in BodyDef)"/> and the <c>Create*</c> shape methods are the middle tier;
 /// <see cref="Core"/> exposes the shared storage for the raw tier. Results are bit-identical on every platform, thread count and vector width. Not thread-safe: use a world from one thread at a time.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed partial class PhysicsWorld3D
 {
     private readonly Engine3D _engine;
@@ -144,7 +145,7 @@ public sealed partial class PhysicsWorld3D
 
     private readonly List<int> _deadScratch = new();
 
-    /// <summary>The 64-bit hash of the whole simulation state (bodies, shapes, contacts with their warm-start impulses, islands, broadphase, options and origin; not pending callbacks). Equal states give equal hashes on every platform. Allocates nothing.</summary>
+    /// <summary>The 64-bit hash of the whole simulation state (bodies, shapes, contacts with their warm-start impulses, islands, broadphase, options and origin; not pending callbacks). Equal states give equal hashes on every platform. The state is streamed through the hash as it is walked; no snapshot is built or copied. Allocates nothing.</summary>
     public ulong ComputeHash() => _core.ComputeHash();
 
     /// <summary>The number of bytes <see cref="TrySnapshot"/> writes for the world as it is now. Allocates nothing.</summary>

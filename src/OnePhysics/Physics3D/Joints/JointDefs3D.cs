@@ -6,6 +6,7 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>The kinds of 3D joint.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public enum JointType3D : byte
 {
     /// <summary>Locks position and rotation.</summary>
@@ -46,6 +47,7 @@ public enum JointType3D : byte
 }
 
 /// <summary>What a six-degrees-of-freedom joint does about one axis.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public enum JointAxisMode : byte
 {
     /// <summary>The axis is held (the default).</summary>
@@ -59,6 +61,7 @@ public enum JointAxisMode : byte
 }
 
 /// <summary>How a path joint holds the follower's orientation.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public enum PathRotation : byte
 {
     /// <summary>The follower turns freely.</summary>
@@ -73,6 +76,7 @@ public enum PathRotation : byte
 
 /// <summary>Axes of a six-degrees-of-freedom joint, as flags: translation along x, y, z of the joint frame, rotation about them.</summary>
 [Flags]
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public enum JointAxes : byte
 {
     /// <summary>None.</summary>
@@ -98,6 +102,7 @@ public enum JointAxes : byte
 }
 
 /// <summary>A joint's frame on one body: a point and an orientation in the body's own frame (measured from the body origin). The frame's x axis is the joint's main axis.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct JointFrame3D
 {
     /// <summary>Creates a frame.</summary>
@@ -122,6 +127,7 @@ public readonly struct JointFrame3D
 }
 
 /// <summary>Fields shared by every 3D joint definition; the concrete definitions add their own. Each definition is a plain struct with defaults.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public interface IJointDef3D
 {
     /// <summary>The first body.</summary>
@@ -132,6 +138,7 @@ public interface IJointDef3D
 }
 
 /// <summary>Fixed joint: locks the relative pose of the two frames. Defaults: frames at the body origins, no collision between the bodies, never breaks.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct FixedJointDef : IJointDef3D
 {
     /// <summary>The first body.</summary>
@@ -161,6 +168,7 @@ public struct FixedJointDef : IJointDef3D
 }
 
 /// <summary>Point (ball-and-socket) joint: the two frame positions coincide, rotation is free.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct PointJointDef : IJointDef3D
 {
     /// <summary>The first body.</summary>
@@ -190,6 +198,7 @@ public struct PointJointDef : IJointDef3D
 }
 
 /// <summary>Distance joint between the two frame positions. Rigid at <see cref="Length"/> unless the spring is on; with a spring the length may range between <see cref="MinLength"/> and <see cref="MaxLength"/>.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct DistanceJointDef : IJointDef3D
 {
     /// <summary>The first body.</summary>
@@ -246,6 +255,7 @@ public struct DistanceJointDef : IJointDef3D
 }
 
 /// <summary>Hinge joint about the x axis of the frames. The angle is zero when the frames' y axes agree.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct HingeJointDef : IJointDef3D
 {
     /// <summary>The first body.</summary>
@@ -308,6 +318,7 @@ public struct HingeJointDef : IJointDef3D
 }
 
 /// <summary>Slider joint along the x axis of the frames, rotation locked. The translation is zero when the frame positions coincide.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct SliderJointDef : IJointDef3D
 {
     /// <summary>The first body.</summary>
@@ -366,6 +377,7 @@ public struct SliderJointDef : IJointDef3D
 }
 
 /// <summary>Cone joint: a point joint that keeps the two frame x axes within <see cref="HalfConeAngle"/> of each other.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct ConeJointDef : IJointDef3D
 {
     /// <summary>The first body.</summary>
@@ -400,6 +412,7 @@ public struct ConeJointDef : IJointDef3D
 }
 
 /// <summary>Swing-twist joint (a ball-and-socket for limbs): twist about the frame x axis within a range, swing of that axis inside an elliptical cone.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct SwingTwistJointDef : IJointDef3D
 {
     /// <summary>The first body.</summary>
@@ -452,6 +465,7 @@ public struct SwingTwistJointDef : IJointDef3D
 /// Six-degrees-of-freedom joint. Axes are those of frame A: translation along x, y, z and rotation about them (x is the twist, y and z the swing). Each axis is locked, limited or free;
 /// limited rotation about y and z bounds the swing components independently (accurate for moderate swing). Defaults: everything locked, no motors or springs.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct SixDofJointDef : IJointDef3D
 {
     /// <summary>The first body.</summary>
@@ -548,6 +562,7 @@ public struct SixDofJointDef : IJointDef3D
 /// Path joint: <see cref="LocalFrameB"/>'s position follows a smooth curve (a Catmull-Rom spline through <see cref="Points"/>) fixed to body A. Points are in A's origin frame. With a motor the follower is driven along the path;
 /// an open path has hard ends.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct PathJointDef : IJointDef3D
 {
     /// <summary>The body that carries the path.</summary>
@@ -597,6 +612,7 @@ public struct PathJointDef : IJointDef3D
 }
 
 /// <summary>Gear joint: the angular speeds about the two frames' x axes satisfy <c>ωA·axisA + Ratio·ωB·axisB = 0</c>. Joint frames' rotations give the axes; positions are ignored.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct GearJointDef : IJointDef3D
 {
     /// <summary>The first gear.</summary>
@@ -631,6 +647,7 @@ public struct GearJointDef : IJointDef3D
 }
 
 /// <summary>Rack-and-pinion joint: <c>Ratio·ωA·axisA = vB·axisB</c> with A the pinion (rotating about its frame x axis) and B the rack (moving along its frame x axis); Ratio is metres per radian.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct RackAndPinionJointDef : IJointDef3D
 {
     /// <summary>The pinion.</summary>
@@ -665,6 +682,7 @@ public struct RackAndPinionJointDef : IJointDef3D
 }
 
 /// <summary>Pulley joint: a rope from body A's anchor up to <see cref="FixedPointA"/>, over to <see cref="FixedPointB"/> and down to B's anchor, with <c>lengthA + Ratio·lengthB</c> held between the limits.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct PulleyJointDef : IJointDef3D
 {
     /// <summary>The first body.</summary>

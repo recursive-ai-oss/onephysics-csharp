@@ -8,6 +8,7 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>The state of one wheel after the last step (<see cref="Vehicle.GetWheel"/>).</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct WheelState
 {
     internal WheelState(bool contact, Vector3D point, Vector3F normal, Body ground, float length, float springForce, float omega, float spin, float steer, float slipRatio, float slipAngle, float fx, float fy, Vector3D center, float radius)
@@ -68,6 +69,7 @@ public readonly struct WheelState
 /// (its chassis body destroyed or <see cref="Destroy"/> called); the state lives in the world and in its snapshots.
 /// </summary>
 /// <example><c>var car = world.AddVehicle(chassis, VehicleDef.Car); car.Drive(throttle: 1f, steer: 0.2f); world.Step(1f / 60f);</c></example>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly partial struct Vehicle : IEquatable<Vehicle>
 {
     private readonly PhysicsWorld3D? _world;

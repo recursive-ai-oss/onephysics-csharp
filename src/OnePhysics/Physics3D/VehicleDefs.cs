@@ -5,6 +5,7 @@ using RecursiveAI.OneMath;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>The shape a wheel sweeps against the world to find the ground.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public enum WheelCastShape : byte
 {
     /// <summary>A cylinder with rounded edges (the wheel's radius and width): rolls over the edges of meshes and height fields without snagging.</summary>
@@ -20,6 +21,7 @@ public enum WheelCastShape : byte
 /// (wheel surface speed against ground speed along the rolling direction), the lateral curve of the tangent of the slip angle. The two forces are limited together by a friction ellipse
 /// (Milliken and Milliken, <i>Race Car Vehicle Dynamics</i>, ch. 2): when the normalised forces' length exceeds 1 both are scaled back to it.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class TyreDef
 {
     /// <summary>Peak friction coefficient of the tyre; combined with the ground shape's friction as <c>sqrt(tyre · ground)</c>, the world's rule. Default 1.5 (about 0.95 on the default ground). At least 0.</summary>
@@ -62,6 +64,7 @@ public sealed class TyreDef
 /// One wheel: where its suspension is attached to the chassis, how the suspension behaves, how the wheel steers and brakes and which tyre it carries. Positions and directions are in the chassis body's frame.
 /// The wheel centre sits at <c>Position + SuspensionDirection · length</c> with <c>length</c> between <see cref="SuspensionMinLength"/> and <see cref="SuspensionMaxLength"/>; <see cref="Position"/> is the highest the wheel centre can be.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class WheelDef
 {
     /// <summary>Top of the suspension: the wheel centre at zero length, in the chassis frame. Default the origin.</summary>
@@ -155,6 +158,7 @@ public sealed class WheelDef
 }
 
 /// <summary>An engine: peak torque, rev range and a torque curve.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class EngineDef
 {
     /// <summary>Torque at the curve's value 1, N·m. Default 400. Positive.</summary>
@@ -203,6 +207,7 @@ public sealed class EngineDef
 }
 
 /// <summary>A gearbox, automatic or manual.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class TransmissionDef
 {
     /// <summary>True (default) for an automatic box that shifts by engine speed and picks reverse from the drive input; false for a manual one set with <c>Vehicle.Gear</c>.</summary>
@@ -242,6 +247,7 @@ public sealed class TransmissionDef
 }
 
 /// <summary>A differential sharing the driveshaft's torque between two wheels of one axle (or one wheel with <see cref="Right"/> = -1).</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class DifferentialDef
 {
     /// <summary>Index of the left wheel in <see cref="VehicleDef.Wheels"/>, or -1 for none.</summary>
@@ -283,6 +289,7 @@ public sealed class DifferentialDef
 }
 
 /// <summary>An anti-roll bar: a torsion spring between the two wheels of an axle that adds to the spring force of the more compressed wheel and takes it from the other.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class AntiRollBarDef
 {
     /// <summary>Index of the left wheel.</summary>
@@ -312,6 +319,7 @@ public sealed class AntiRollBarDef
 /// (the differentials, the anti-roll bars, <see cref="Vehicle.GetWheel"/>). Chassis frame: +X right, +Y up, +Z forward in the presets; any other layout is fine as long as the wheels' directions say so.
 /// Definitions are classes so the arrays of wheels and the presets can be edited freely; <see cref="PhysicsWorld3D.AddVehicle(Body, VehicleDef)"/> copies what it needs.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class VehicleDef
 {
     /// <summary>The wheels, 1 to 32.</summary>

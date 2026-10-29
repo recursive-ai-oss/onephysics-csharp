@@ -6,6 +6,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>Decides whether two shapes may collide, as a struct so the call is specialized and allocation-free. Middle tier only: the happy path uses the layer matrix and <see cref="PairPredicate"/>.</summary>
 /// <remarks>Install one with <see cref="PhysicsWorld3D.SetContactFilter{TFilter}"/>. It runs serially, once when a pair of overlapping shapes is first found and again when filters are re-evaluated, so it must be a pure function of the shapes' properties.</remarks>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public interface IContactFilter
 {
     /// <summary>True when the two shapes may collide. <paramref name="a"/> has the lower shape slot.</summary>

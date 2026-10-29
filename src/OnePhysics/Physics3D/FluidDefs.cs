@@ -13,6 +13,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// scaled by <see cref="Body.BuoyancyFactor"/>) and quadratic drag against the fluid's flow. Spheres, boxes and hulls are cut exactly; cylinders, capsules and tapered capsules are cut as 24-sided polyhedra whose
 /// volume is within about 1 % of the true one; compounds sum their children; triangle meshes, height fields and sensors do not float and are skipped.
 /// </remarks>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class FluidDef
 {
     /// <summary>Largest coordinate accepted for the surface and the region, 2^22 (the same bound as body positions).</summary>
@@ -91,6 +92,7 @@ public sealed class FluidDef
 /// A fluid in a 3D world: a small struct handle (world, slot, generation) made by <see cref="PhysicsWorld3D.AddWater(double, float, Vector3F, float)"/> or <see cref="PhysicsWorld3D.AddFluid"/>.
 /// It allocates nothing and throws <see cref="StaleHandleException"/> once removed. Properties change the fluid from the next step and wake sleeping bodies.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct Fluid : IEquatable<Fluid>
 {
     private readonly PhysicsWorld3D? _world;
@@ -181,6 +183,7 @@ public readonly struct Fluid : IEquatable<Fluid>
 }
 
 /// <summary>What a fluid surface does to one shape: the part of the volume below the surface, where its centre is, and the area it presents to a flow.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct SubmergedVolume3D
 {
     internal SubmergedVolume3D(float volume, Vector3F centroid, float area)

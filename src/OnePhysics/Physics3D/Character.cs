@@ -8,6 +8,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>What <see cref="Character.OnControllerColliderHit"/> reports (Unity's <c>ControllerColliderHit</c>): a surface the character was deflected by during a move.</summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "Handle fields, not properties, so that `hit.Body.LinearVelocity = v` compiles: a property result is not a variable (CS1612), a readonly field is.")]
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct ControllerColliderHit
 {
     internal ControllerColliderHit(Character character, in MoverHit3D hit, Vector3F moveDirection, float moveLength)
@@ -54,6 +55,7 @@ public readonly struct ControllerColliderHit
 /// that allocates nothing and fails with a <see cref="StaleHandleException"/> once the character is destroyed; the state lives in the world and in its snapshots.
 /// </summary>
 /// <example><c>var player = world.AddCharacter(at: new Vector3D(0, 1, 0), CharacterDef.Humanoid); player.Move(new Vector3F(input.X * speed * dt, velocityY * dt, input.Z * speed * dt), dt); world.Step(dt);</c></example>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct Character : IEquatable<Character>
 {
     private readonly PhysicsWorld3D? _world;

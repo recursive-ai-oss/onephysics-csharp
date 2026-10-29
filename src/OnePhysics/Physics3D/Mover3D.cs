@@ -8,6 +8,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>Which sides of a character touched something during a move (Unity's <c>CollisionFlags</c>); combine with <c>|</c>.</summary>
 [Flags]
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public enum CharacterContact : byte
 {
     /// <summary>Nothing blocked the move.</summary>
@@ -24,6 +25,7 @@ public enum CharacterContact : byte
 }
 
 /// <summary>What a character stands on after its last move.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public enum GroundState : byte
 {
     /// <summary>Nothing walkable or steep is within reach below the character.</summary>
@@ -37,6 +39,7 @@ public enum GroundState : byte
 }
 
 /// <summary>How a character is simulated.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public enum CharacterKind : byte
 {
     /// <summary>A kinematic capsule moved by collide-and-slide (Jolt's "virtual" character): steps, slopes, moving platforms, pushing. It does not take part in the solver as a dynamic body.</summary>
@@ -50,6 +53,7 @@ public enum CharacterKind : byte
 /// One surface the mover must stay in front of, for the plane solver (<see cref="Mover3D.SolvePlanes"/>). The mover satisfies, for the movement vector <c>d</c>,
 /// <c>dot(d, Normal) + Separation >= 0</c>, pushing itself out along the normal by at most <see cref="PushLimit"/> when it starts inside.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct CollisionPlane3D
 {
     /// <summary>Unit normal pointing from the obstacle towards the mover.</summary>
@@ -75,6 +79,7 @@ public struct CollisionPlane3D
 /// Creation parameters of a character: a capsule standing along <see cref="Up"/>, moved by <see cref="Character.Move(Vector3F, float)"/>. Defaults are a human: 1.8 m tall, 0.3 m radius,
 /// 45 degree slope limit, 0.3 m step, 70 kg, a virtual (kinematic) character with the y axis up.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct CharacterDef
 {
     /// <summary>Radius of the capsule, metres, within (0, 1000]. Default 0.3.</summary>
@@ -181,6 +186,7 @@ public struct CharacterDef
 }
 
 /// <summary>The mover's memory between moves: where the capsule's centre is and what it stands on. A <see cref="Character"/> keeps one in the world (and in snapshots); the middle tier keeps its own.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct MoverState3D
 {
     /// <summary>Centre of the capsule in world coordinates, finite and within +-2^21 of the world origin.</summary>
@@ -200,6 +206,7 @@ public struct MoverState3D
 }
 
 /// <summary>A surface the mover touched and was deflected by, in the order the solver met them.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct MoverHit3D
 {
     internal MoverHit3D(Shape shape, Vector3D point, Vector3F normal)
@@ -223,6 +230,7 @@ public readonly struct MoverHit3D
 }
 
 /// <summary>The outcome of <see cref="Mover3D.Move"/>.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct MoveResult3D
 {
     internal MoveResult3D(CharacterContact flags, Vector3F displacement, int hitCount)
@@ -252,6 +260,7 @@ public readonly struct MoveResult3D
 /// stopped. Surfaces within the slope limit are floor; steps are climbed by lifting, moving and dropping back. Triangle meshes and height fields use the engine's internal-edge rule, so a character
 /// walking over the seam between two coplanar triangles is not deflected by it.
 /// </remarks>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public static class Mover3D
 {
     /// <summary>

@@ -12,6 +12,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// (and to upright at rest), limited to <see cref="MaxLeanTorque"/>. Past <see cref="FallAngle"/> the assist lets go and the bike falls.
 /// </para>
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class MotorcycleDef
 {
     /// <summary>The front wheel (steered). Its <see cref="WheelDef.MaxSteerAngle"/> is replaced by <see cref="MaxSteerAngle"/> and the speed limit; its tyre and brake torque apply.</summary>

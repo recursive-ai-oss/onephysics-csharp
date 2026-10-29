@@ -4,6 +4,16 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 **0.x previews are not bit-compatible with each other: snapshots, saved games and replays from one preview do not carry to another.**
 
+## [Unreleased]
+
+No result moves: world hashes, snapshot bytes and event order are the same as before for the same inputs.
+
+- **Allocation-free from the first step, also under load and with several threads.** `Warmup()` now prepares every pool thread (including threads an earlier world started) for the narrowphase and batch queries, runs the pool's parallel paths of a throwaway world whatever their size, and stocks the island body-list pool for the world's body count. Before, a pile that kept merging and splitting islands allocated a few hundred bytes at about one step in a few hundred, and the first step of a multi-threaded 3D world allocated on the calling thread. `ComputeHash()` is documented as streaming (it always was: no snapshot copy is made).
+- **Breaking: `CharacterDef.SlopeLimit` and `Character.SlopeLimit` are `SlopeLimitRadians`** (2D and 3D); the unit is in the name. The value and its default are unchanged.
+- **`world.BodyCount`, `world.Bodies`, `world.CharacterCount`, `world.Characters`** (2D and 3D, identical): count and `foreach` over the live bodies and characters in slot order with a struct enumerator that allocates nothing.
+- **The 3D engine is `[Experimental("OPHYS0002")]`:** every public type in `RecursiveAI.OnePhysics.Physics3D`. Using it raises the diagnostic until you suppress it (`#pragma warning disable OPHYS0002` or `<NoWarn>`); its API and its results may change between previews. The 2D engine and the shared types are not marked.
+- The package now carries the README.
+
 ## [0.1.0-preview.5]
 
 First public release. (Notes to be filled in from the changes since preview.4.)

@@ -17,6 +17,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// <para>A pose is one rotation per part. Entry <c>i</c> is the rotation of part <c>i</c> relative to its parent in the bind pose's axes: the identity everywhere is the bind pose, and a rotation about a world axis in the bind pose
 /// means the same rotation of the limb whatever the parent is doing (the usual local animation rotation when bone axes are aligned with the bind pose). Entry 0, the root, orients the whole figure in <see cref="SetPose"/> and <see cref="MoveToPose"/> and is ignored by <see cref="DriveToPose"/>.</para>
 /// </remarks>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct Ragdoll : IEquatable<Ragdoll>
 {
     private readonly PhysicsWorld3D? _world;
