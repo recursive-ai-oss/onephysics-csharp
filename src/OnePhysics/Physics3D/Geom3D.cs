@@ -33,17 +33,17 @@ public readonly struct ShapeSpec3D
     public static ShapeSpec3D Sphere(float radius) => Make(KSphere, radius);
 
     /// <summary>A box.</summary>
-    /// <param name="halfExtents">Half sizes along x, y and z.</param>
+    /// <param name="size">Full sizes along x, y and z (the same as <see cref="PhysicsWorld3D.AddBox"/>).</param>
     /// <param name="convexRadius">Rounding radius; the outer size stays the same. Default 0.</param>
-    public static ShapeSpec3D Box(Vector3F halfExtents, float convexRadius = 0f) => Make(KBox, halfExtents.X, halfExtents.Y, halfExtents.Z, convexRadius);
+    public static ShapeSpec3D Box(Vector3F size, float convexRadius = 0f) => Make(KBox, 0.5f * size.X, 0.5f * size.Y, 0.5f * size.Z, convexRadius);
 
     /// <summary>A capsule along the y axis.</summary>
-    /// <param name="halfHeight">Half the length of the segment between the cap centres.</param>
+    /// <param name="halfLength">Half the length of the segment between the cap centres.</param>
     /// <param name="radius">Cap radius.</param>
-    public static ShapeSpec3D Capsule(float halfHeight, float radius) => Make(KCapsule, halfHeight, radius);
+    public static ShapeSpec3D Capsule(float halfLength, float radius) => Make(KCapsule, halfLength, radius);
 
     /// <summary>A capsule whose caps have different radii, along the y axis.</summary>
-    public static ShapeSpec3D TaperedCapsule(float halfHeight, float topRadius, float bottomRadius) => Make(KTapered, halfHeight, topRadius, bottomRadius);
+    public static ShapeSpec3D TaperedCapsule(float halfLength, float topRadius, float bottomRadius) => Make(KTapered, halfLength, topRadius, bottomRadius);
 
     /// <summary>A cylinder along the y axis.</summary>
     public static ShapeSpec3D Cylinder(float halfHeight, float radius, float convexRadius = 0f) => Make(KCylinder, halfHeight, radius, convexRadius);

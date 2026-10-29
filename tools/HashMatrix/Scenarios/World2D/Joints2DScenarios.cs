@@ -40,26 +40,26 @@ internal static class Joints2DScenarios
         {
             var link = w.AddBox(new Vector2F(1f, 0.2f), new Vector2D(-14 + 0.5 + i, 11.5), density: 1f + i);
             var j = w.AddHinge(prev, link, new Vector2D(-14 + i, 11.5));
-            if (i % 3 == 2) { j.SetLimits(-0.4f, 0.4f); j.LimitEnabled = true; }
-            if (i == 0) { j.MotorEnabled = true; j.MotorSpeed = 0.5f; j.MaxMotorForce = 50f; }
+            if (i % 3 == 2) { j.SetLimits(-0.4f, 0.4f); j.EnableLimit = true; }
+            if (i == 0) { j.EnableMotor = true; j.MotorSpeed = 0.5f; j.MaxMotorTorque = 50f; }
             prev = link;
         }
 
         var rail = w.AddBox(new Vector2F(0.2f, 0.2f), new Vector2D(4, 8), type: BodyType.Static);
         var slide = w.AddBox(new Vector2F(1f, 1f), new Vector2D(4, 8));
         var s = w.AddSlider(rail, slide, new Vector2D(4, 8), new Vector2F(1, 0));
-        s.SetLimits(-3f, 3f); s.LimitEnabled = true; s.MotorEnabled = true; s.MotorSpeed = 1f; s.MaxMotorForce = 30f;
+        s.SetLimits(-3f, 3f); s.EnableLimit = true; s.EnableMotor = true; s.MotorSpeed = 1f; s.MaxMotorForce = 30f;
 
         var car = w.AddBox(new Vector2F(3f, 0.5f), new Vector2D(-6, 2), density: 2f);
         var wheel = w.AddCircle(0.5f, new Vector2D(-5, 1), density: 1f, material: new Material2D(1.0f));
         var wj = w.AddWheel(car, wheel, new Vector2D(-5, 1), new Vector2F(0, 1));
-        wj.SpringHertz = 3f; wj.MotorEnabled = true; wj.MotorSpeed = -5f; wj.MaxMotorForce = 20f;
-        wj.SetLimits(-0.3f, 0.3f); wj.LimitEnabled = true;
+        wj.SpringHertz = 3f; wj.EnableMotor = true; wj.MotorSpeed = -5f; wj.MaxMotorTorque = 20f;
+        wj.SetLimits(-0.3f, 0.3f); wj.EnableLimit = true;
 
         var bob1 = w.AddCircle(0.4f, new Vector2D(8, 9));
         var bob2 = w.AddCircle(0.4f, new Vector2D(10, 9));
         var sp = w.AddSpring(top, bob1, new Vector2D(8, 11.75), new Vector2D(8, 9), 2f, 0.3f);
-        sp.SetLimits(1f, 4f); sp.LimitEnabled = true;
+        sp.SetLimits(1f, 4f); sp.EnableLimit = true;
         w.AddDistance(bob1, bob2, new Vector2D(8, 9), new Vector2D(10, 9));
 
         var wall = w.AddBox(new Vector2F(0.4f, 3f), new Vector2D(14, 3), type: BodyType.Static);
@@ -77,7 +77,7 @@ internal static class Joints2DScenarios
         rel.SetOffset(new Vector2F(1.5f, -1f), 0.3f);
 
         // Some loose bodies so contacts and joints share colors.
-        for (int i = 0; i < 12; i++) { w.AddBox(new Vector2F(0.8f, 0.8f), new Vector2D(-3 + 0.9 * (i % 4), 0.4 + 0.85 * (i / 4)), angle: 0.01f * i); }
+        for (int i = 0; i < 12; i++) { w.AddBox(new Vector2F(0.8f, 0.8f), new Vector2D(-3 + 0.9 * (i % 4), 0.4 + 0.85 * (i / 4)), angleRadians: 0.01f * i); }
         return w;
     }
 }

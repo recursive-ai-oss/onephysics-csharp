@@ -26,7 +26,7 @@ public class BulletTests
     {
         var def = new BodyDef { Type = BodyType.Dynamic, Position = new Vector2D(x, y), LinearVelocity = new Vector2F(vx, vy) };
         var b = w.CreateBody(in def);
-        w.CreateBox(b, hx, hy);
+        w.CreateBox(b, new Vector2F(2f * hx, 2f * hy));
         return b;
     }
 

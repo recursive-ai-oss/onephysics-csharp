@@ -84,7 +84,7 @@ public class Joint3DTests
         var arm = w.AddBox(new Vector3F(1f, 0.1f, 0.1f), new Vector3D(0.5, 10, 0));
         var j = w.AddHinge(pivot, arm, new Vector3D(0, 10, 0), new Vector3F(0, 0, 1));
         j.SetLimits(-0.3f, 0.6f);
-        j.LimitEnabled = true;
+        j.EnableLimit = true;
         double worstLow = 0, worstHigh = 0;
         for (int i = 0; i < 600; i++)
         {
@@ -109,7 +109,7 @@ public class Joint3DTests
         var car = w.AddBox(new Vector3F(0.5f, 0.5f, 0.5f), new Vector3D(0, 0, 0));
         var j = w.AddSlider(rail, car, new Vector3D(0, 0, 0), new Vector3F(1, 0, 0));
         j.SetLimits(-1f, 1f);
-        j.LimitEnabled = true;
+        j.EnableLimit = true;
         car.LinearVelocity = new Vector3F(8, 0.5f, 0.3f);
         double worst = 0, off = 0;
         for (int i = 0; i < 360; i++)
@@ -130,7 +130,7 @@ public class Joint3DTests
         var pivot = Anchor(w);
         var wheel = w.AddCylinder(0.1f, 0.5f, new Vector3D(0, 0, 0), AxisAngle(new Vector3F(1, 0, 0), MathF.PI / 2));
         var j = w.AddHinge(pivot, wheel, new Vector3D(0, 0, 0), new Vector3F(0, 0, 1));
-        j.MotorSpeed = 3f; j.MaxMotorForce = 1000f; j.MotorEnabled = true;
+        j.MotorSpeed = 3f; j.MaxMotorTorque = 1000f; j.EnableMotor = true;
         for (int i = 0; i < 120; i++) { w.Step(Dt); }
         Assert.InRange(wheel.AngularVelocity.Z, 2.98f, 3.02f);
 
@@ -139,7 +139,7 @@ public class Joint3DTests
         var wheel2 = w2.AddCylinder(0.1f, 0.5f, new Vector3D(0, 0, 0), AxisAngle(new Vector3F(1, 0, 0), MathF.PI / 2));
         var j2 = w2.AddHinge(pivot2, wheel2, new Vector3D(0, 0, 0), new Vector3F(0, 0, 1));
         float inertia = wheel2.Inertia.M22; // the cylinder's own axis, turned to world z
-        j2.MotorSpeed = 50f; j2.MaxMotorForce = 0.5f; j2.MotorEnabled = true;
+        j2.MotorSpeed = 50f; j2.MaxMotorTorque = 0.5f; j2.EnableMotor = true;
         for (int i = 0; i < 120; i++) { w2.Step(Dt); }
         // After one second a torque of 0.5 N m has added 0.5 / I rad/s.
         Assert.InRange(Math.Abs(wheel2.AngularVelocity.Z) * inertia, 0.45f, 0.55f);
@@ -152,7 +152,7 @@ public class Joint3DTests
         var rail = Anchor(w);
         var car = w.AddBox(new Vector3F(0.5f, 0.5f, 0.5f), new Vector3D(0, 0, 0));
         var j = w.AddSlider(rail, car, new Vector3D(0, 0, 0), new Vector3F(0, 1, 0));
-        j.MotorSpeed = 2f; j.MaxMotorForce = 100f; j.MotorEnabled = true;
+        j.MotorSpeed = 2f; j.MaxMotorForce = 100f; j.EnableMotor = true;
         for (int i = 0; i < 120; i++) { w.Step(Dt); }
         Assert.InRange(car.LinearVelocity.Y, 1.98f, 2.02f);
     }
@@ -186,7 +186,7 @@ public class Joint3DTests
         var rail = Anchor(w);
         var car = w.AddBox(new Vector3F(0.5f, 0.5f, 0.5f), new Vector3D(0, 0, 0));
         var j = w.AddSlider(rail, car, new Vector3D(0, 0, 0), new Vector3F(1, 0, 0));
-        j.SpringHertz = hertz; j.SpringDampingRatio = zeta; j.SpringEnabled = true;
+        j.SpringHertz = hertz; j.SpringDampingRatio = zeta; j.EnableSpring = true;
         car.Position = new Vector3D(0.4, 0, 0); // stretch the spring: translation 0 is where the frames met at creation
         var (period, decay) = Oscillate(w, car, 120 * 8);
         double wn = 2 * Math.PI * hertz, wd = wn * Math.Sqrt(1 - zeta * zeta);
@@ -432,7 +432,7 @@ public class Joint3DTests
         var cart = w.AddBox(new Vector3F(0.3f, 0.3f, 0.3f), new Vector3D(0, 0, 0));
         Vector3D[] pts = [new(0, 0, 0), new(2, 0, 0), new(4, 1, 0), new(6, 1, 2), new(8, 0, 2)];
         var j = w.AddPath(track, cart, pts);
-        j.MotorSpeed = 1.5f; j.MaxMotorForce = 500f; j.MotorEnabled = true;
+        j.MotorSpeed = 1.5f; j.MaxMotorForce = 500f; j.EnableMotor = true;
         double worst = 0;
         for (int i = 0; i < 360; i++)
         {
@@ -521,7 +521,7 @@ public class Joint3DTests
         var c = other.AddSphere(0.3f, default);
         Assert.Throws<ForeignHandleException>(() => w.AddPoint(a, c, default));
         var e = w.AddSphere(0.3f, new Vector3D(3, 0, 0));
-        var hinge = w.AddHinge(a, e, new Vector3D(1.5, 0, 0), new Vector3F(0, 0, 1));
+        Joint hinge = w.AddHinge(a, e, new Vector3D(1.5, 0, 0), new Vector3F(0, 0, 1));
         Assert.Throws<InvalidJointException>(() => _ = hinge.Length);
         Assert.Throws<InvalidJointException>(() => hinge.SetAxisMode(JointAxes.LinearX, JointAxisMode.Free));
     }
@@ -639,7 +639,7 @@ public class Joint3DTests
         w.AddCone(b2, b3, new Vector3D(2.5, 6, 0), new Vector3F(1, 0, 0), 0.6f);
         var six = w.AddConfigurable(b3, b4, new Vector3D(3.5, 6, 0));
         six.SetAxisMode(JointAxes.AngularZ, JointAxisMode.Free); six.SetAxisMode(JointAxes.LinearX, JointAxisMode.Limited); six.SetAxisLimits(JointAxes.LinearX, -0.1f, 0.1f);
-        w.AddSlider(b4, b5, new Vector3D(4.5, 6, 0), new Vector3F(1, 0, 0)).SpringEnabled = true;
+        w.AddSlider(b4, b5, new Vector3D(4.5, 6, 0), new Vector3F(1, 0, 0)).EnableSpring = true;
         w.AddSpring(b5, b6, new Vector3D(5, 6, 0), new Vector3D(6, 6, 0), 3f, 0.3f);
         w.AddDistance(b6, b7, new Vector3D(6.2, 6, 0), new Vector3D(6.8, 6, 0));
         w.AddFixed(b7, b8, new Vector3D(7.5, 6, 0));
@@ -650,7 +650,7 @@ public class Joint3DTests
         var track = w.AddBox(new Vector3F(0.2f, 0.2f, 0.2f), new Vector3D(-8, 3, 0), type: BodyType.Static);
         var cart = w.AddBox(new Vector3F(0.3f, 0.3f, 0.3f), new Vector3D(-8, 3, 0));
         var path = w.AddPath(track, cart, [new Vector3D(-8, 3, 0), new Vector3D(-7, 3, 1), new Vector3D(-6, 3.5, 2), new Vector3D(-5, 3, 3)]);
-        path.MotorSpeed = 1f; path.MaxMotorForce = 200f; path.MotorEnabled = true;
+        path.MotorSpeed = 1f; path.MaxMotorForce = 200f; path.EnableMotor = true;
         var l = w.AddBox(new Vector3F(0.4f, 0.4f, 0.4f), new Vector3D(-1, 5, 3));
         var r = w.AddBox(new Vector3F(0.4f, 0.4f, 0.4f), new Vector3D(1, 4, 3), density: 3f);
         w.AddPulley(l, r, l.Position, r.Position, new Vector3D(-1, 8, 3), new Vector3D(1, 8, 3));

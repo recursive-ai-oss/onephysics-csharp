@@ -176,7 +176,7 @@ internal static class Fuzz2DWorld
                                 w.CreatePolygon(b, pts, r.Float(), sd);
                                 break;
                             }
-                        case 3: w.CreateBox(b, r.Float(), r.Float(), r.V2F(), r.Float(), r.Float(), sd); break;
+                        case 3: w.CreateBox(b, new Vector2F(r.Float(), r.Float()), r.V2F(), r.Float(), r.Float(), sd); break;
                         case 4: w.CreateSegment(b, r.V2F(), r.V2F(), sd); break;
                         default:
                             {

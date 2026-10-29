@@ -59,11 +59,11 @@ public sealed partial class PhysicsWorld3D
         return ConvexShape3D.Box(new Vector3F(0.5f * size.X, 0.5f * size.Y, 0.5f * size.Z));
     }
 
-    private static ConvexShape3D CapsuleShape(float halfHeight, float radius)
+    private static ConvexShape3D CapsuleShape(float halfLength, float radius)
     {
-        if (!float.IsFinite(halfHeight) || halfHeight < 0f) { throw new ArgumentOutOfRangeException(nameof(halfHeight), halfHeight, "halfHeight must be finite and at least 0."); }
+        if (!float.IsFinite(halfLength) || halfLength < 0f) { throw new ArgumentOutOfRangeException(nameof(halfLength), halfLength, "halfLength must be finite and at least 0."); }
         if (!(radius > 0f) || !float.IsFinite(radius)) { throw new ArgumentOutOfRangeException(nameof(radius), radius, "A capsule radius must be finite and positive."); }
-        return ConvexShape3D.Capsule(halfHeight, radius);
+        return ConvexShape3D.Capsule(halfLength, radius);
     }
 
     private QueryHit3D ToHit(in RawHit h, float length) =>
@@ -252,21 +252,21 @@ public sealed partial class PhysicsWorld3D
     public QueryHit3D[] BoxCastAll(Vector3D center, Vector3F size, QuaternionF rotation, Vector3F direction, float maxDistance = float.PositiveInfinity, in QueryFilter3D filter = default)
         => ShapeCastAll(BoxShape(size), center, rotation, direction, maxDistance, in filter);
 
-    /// <summary>Sweeps a capsule whose axis runs along y from -halfHeight to halfHeight in its frame, rotated by <paramref name="rotation"/>; the nearest hit.</summary>
-    public bool CapsuleCast(Vector3D center, float halfHeight, float radius, QuaternionF rotation, Vector3F direction, out QueryHit3D hit, float maxDistance = float.PositiveInfinity, in QueryFilter3D filter = default)
-        => ShapeCast(CapsuleShape(halfHeight, radius), center, rotation, direction, out hit, maxDistance, in filter);
+    /// <summary>Sweeps a capsule whose axis runs along y from -halfLength to halfLength in its frame, rotated by <paramref name="rotation"/>; the nearest hit.</summary>
+    public bool CapsuleCast(Vector3D center, float halfLength, float radius, QuaternionF rotation, Vector3F direction, out QueryHit3D hit, float maxDistance = float.PositiveInfinity, in QueryFilter3D filter = default)
+        => ShapeCast(CapsuleShape(halfLength, radius), center, rotation, direction, out hit, maxDistance, in filter);
 
     /// <summary>True when a swept capsule hits anything.</summary>
-    public bool CapsuleCastAny(Vector3D center, float halfHeight, float radius, QuaternionF rotation, Vector3F direction, float maxDistance = float.PositiveInfinity, in QueryFilter3D filter = default)
-        => ShapeCastAny(CapsuleShape(halfHeight, radius), center, rotation, direction, maxDistance, in filter);
+    public bool CapsuleCastAny(Vector3D center, float halfLength, float radius, QuaternionF rotation, Vector3F direction, float maxDistance = float.PositiveInfinity, in QueryFilter3D filter = default)
+        => ShapeCastAny(CapsuleShape(halfLength, radius), center, rotation, direction, maxDistance, in filter);
 
     /// <summary>Every hit of a swept capsule, nearest first, into a caller buffer.</summary>
-    public int CapsuleCastAll(Vector3D center, float halfHeight, float radius, QuaternionF rotation, Vector3F direction, Span<QueryHit3D> results, float maxDistance = float.PositiveInfinity, in QueryFilter3D filter = default)
-        => ShapeCastAll(CapsuleShape(halfHeight, radius), center, rotation, direction, results, maxDistance, in filter);
+    public int CapsuleCastAll(Vector3D center, float halfLength, float radius, QuaternionF rotation, Vector3F direction, Span<QueryHit3D> results, float maxDistance = float.PositiveInfinity, in QueryFilter3D filter = default)
+        => ShapeCastAll(CapsuleShape(halfLength, radius), center, rotation, direction, results, maxDistance, in filter);
 
     /// <summary>Every hit of a swept capsule, nearest first, in a new array.</summary>
-    public QueryHit3D[] CapsuleCastAll(Vector3D center, float halfHeight, float radius, QuaternionF rotation, Vector3F direction, float maxDistance = float.PositiveInfinity, in QueryFilter3D filter = default)
-        => ShapeCastAll(CapsuleShape(halfHeight, radius), center, rotation, direction, maxDistance, in filter);
+    public QueryHit3D[] CapsuleCastAll(Vector3D center, float halfLength, float radius, QuaternionF rotation, Vector3F direction, float maxDistance = float.PositiveInfinity, in QueryFilter3D filter = default)
+        => ShapeCastAll(CapsuleShape(halfLength, radius), center, rotation, direction, maxDistance, in filter);
 
     // ------------------------------------------------------------------ overlaps
 
@@ -342,17 +342,17 @@ public sealed partial class PhysicsWorld3D
     /// <summary>Every shape the box overlaps, by slot, in a new array.</summary>
     public QueryHit3D[] OverlapBoxAll(Vector3D center, Vector3F size, QuaternionF rotation, in QueryFilter3D filter = default) => OverlapShapeAll(BoxShape(size), center, rotation, in filter);
 
-    /// <summary>The overlapped shape nearest the capsule's centre; the capsule's axis runs along y from -halfHeight to halfHeight in its frame.</summary>
-    public bool OverlapCapsule(Vector3D center, float halfHeight, float radius, QuaternionF rotation, out QueryHit3D hit, in QueryFilter3D filter = default) => OverlapShape(CapsuleShape(halfHeight, radius), center, rotation, out hit, in filter);
+    /// <summary>The overlapped shape nearest the capsule's centre; the capsule's axis runs along y from -halfLength to halfLength in its frame.</summary>
+    public bool OverlapCapsule(Vector3D center, float halfLength, float radius, QuaternionF rotation, out QueryHit3D hit, in QueryFilter3D filter = default) => OverlapShape(CapsuleShape(halfLength, radius), center, rotation, out hit, in filter);
 
     /// <summary>True when the capsule overlaps anything.</summary>
-    public bool OverlapCapsuleAny(Vector3D center, float halfHeight, float radius, QuaternionF rotation, in QueryFilter3D filter = default) => OverlapShapeAny(CapsuleShape(halfHeight, radius), center, rotation, in filter);
+    public bool OverlapCapsuleAny(Vector3D center, float halfLength, float radius, QuaternionF rotation, in QueryFilter3D filter = default) => OverlapShapeAny(CapsuleShape(halfLength, radius), center, rotation, in filter);
 
     /// <summary>Every shape the capsule overlaps, by slot, into a caller buffer.</summary>
-    public int OverlapCapsuleAll(Vector3D center, float halfHeight, float radius, QuaternionF rotation, Span<QueryHit3D> results, in QueryFilter3D filter = default) => OverlapShapeAll(CapsuleShape(halfHeight, radius), center, rotation, results, in filter);
+    public int OverlapCapsuleAll(Vector3D center, float halfLength, float radius, QuaternionF rotation, Span<QueryHit3D> results, in QueryFilter3D filter = default) => OverlapShapeAll(CapsuleShape(halfLength, radius), center, rotation, results, in filter);
 
     /// <summary>Every shape the capsule overlaps, by slot, in a new array.</summary>
-    public QueryHit3D[] OverlapCapsuleAll(Vector3D center, float halfHeight, float radius, QuaternionF rotation, in QueryFilter3D filter = default) => OverlapShapeAll(CapsuleShape(halfHeight, radius), center, rotation, in filter);
+    public QueryHit3D[] OverlapCapsuleAll(Vector3D center, float halfLength, float radius, QuaternionF rotation, in QueryFilter3D filter = default) => OverlapShapeAll(CapsuleShape(halfLength, radius), center, rotation, in filter);
 
     // ------------------------------------------------------------------ closest point
 

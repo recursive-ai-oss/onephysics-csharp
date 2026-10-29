@@ -37,7 +37,7 @@ internal static class Services3DScene
 
         // A sensor volume the falling bodies pass through.
         var sensorBody = w.CreateBody(BodyType.Static, new Vector3D(6, 3, 0));
-        w.CreateBox(sensorBody, new Vector3F(2f, 0.5f, 2f), 0f, new ShapeDef { IsSensor = true, Density = 0f });
+        w.CreateBox(sensorBody, new Vector3F(4f, 1f, 4f), 0f, new ShapeDef { IsSensor = true, Density = 0f });
 
         for (int i = 0; i < 10; i++)
         {

@@ -405,7 +405,7 @@ internal sealed partial class Engine3D
     {
         var up = UnitUp(def.Up);
         float halfLength = 0.5f * def.Height - def.Radius;
-        double cosDeg = Math64.SinCos((double)def.SlopeLimit * (Math.PI / 180.0)).Item2;
+        double cosDeg = Math64.SinCos((double)def.SlopeLimitDegrees * (Math.PI / 180.0)).Item2;
         return new MoverCtx
         {
             Capsule = ConvexShape3D.Capsule(halfLength, def.Radius), Rot = AlignY(up), Up = up,

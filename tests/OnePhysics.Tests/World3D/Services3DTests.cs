@@ -127,7 +127,7 @@ public class Services3DTests
         var w = NewWorld();
         var body = w.AddBox(new Vector3F(1, 1, 1), at: new Vector3D(0, 1, 0));
         float mass = body.Mass;
-        var extra = w.CreateBox(body, new Vector3F(3, 3, 3), 0f, new ShapeDef { IsSensor = true, Density = 5f });
+        var extra = w.CreateBox(body, new Vector3F(6, 6, 6), 0f, new ShapeDef { IsSensor = true, Density = 5f });
         Assert.Equal(mass, body.Mass);
         Assert.True(extra.IsSensor);
         w.Step(Dt);
@@ -384,7 +384,7 @@ public class Services3DTests
 
         // Joints with their anchors, axes and limits.
         var hinge = w.AddHinge(box, ball, new Vector3D(10, 20, 31), new Vector3F(0, 1, 0));
-        hinge.SetLimits(-0.5f, 0.75f); hinge.LimitEnabled = true;
+        hinge.SetLimits(-0.5f, 0.75f); hinge.EnableLimit = true;
         w.GetDebugGeometry(DebugContent.Joints, g);
         Assert.Single(g.Joints.ToArray());
         var j = g.Joints[0];

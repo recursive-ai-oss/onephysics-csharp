@@ -28,11 +28,11 @@ public class SensorIndependenceTests
     {
         var w = new PhysicsWorld2D(new WorldOptions2D { ThreadCount = threads, WorldId = 5 });
         var ground = w.CreateBody(BodyType.Static, new Vector2D(0, -0.5));
-        w.CreateBox(ground, 12f, 0.5f);
+        w.CreateBox(ground, new Vector2F(24f, 1f));
         var wall = w.CreateBody(BodyType.Static, new Vector2D(-12.5, 6));
-        w.CreateBox(wall, 0.5f, 6.5f);
+        w.CreateBox(wall, new Vector2F(1f, 13f));
         wall = w.CreateBody(BodyType.Static, new Vector2D(12.5, 6));
-        w.CreateBox(wall, 0.5f, 6.5f);
+        w.CreateBox(wall, new Vector2F(1f, 13f));
 
         // Solid bodies first, so that their slots are the same in every variant. A pile that keeps arriving: pairs are created, ended and their slots reused for the whole run.
         var solids = new List<Body>();
@@ -43,12 +43,12 @@ public class SensorIndependenceTests
             double x = -10 + (Next() % 2000) / 100.0, y = 1 + i * 0.45;
             var b = w.CreateBody(BodyType.Dynamic, new Vector2D(x, y), (Next() % 628) / 100f);
             if (i % 3 == 0) { w.CreateCircle(b, 0.3f + (Next() % 30) / 100f); }
-            else { w.CreateBox(b, 0.25f + (Next() % 40) / 100f, 0.25f + (Next() % 40) / 100f, default, 0f, 0.05f); }
+            else { w.CreateBox(b, new Vector2F(2f * (0.25f + (Next() % 40) / 100f), 2f * (0.25f + (Next() % 40) / 100f)), default, 0f, 0.05f); }
             solids.Add(b);
         }
 
         var kinematic = w.CreateBody(BodyType.Kinematic, new Vector2D(-11, 2));
-        w.CreateBox(kinematic, 1f, 0.3f);
+        w.CreateBox(kinematic, new Vector2F(2f, 0.6f));
         kinematic.LinearVelocity = new Vector2F(1.2f, 0f);
         solids.Add(kinematic);
 
@@ -59,7 +59,7 @@ public class SensorIndependenceTests
         if ((kinds & Kinds.Static) != 0)
         {
             var zone = w.CreateBody(BodyType.Static, new Vector2D(0, 2));
-            w.CreateBox(zone, 4f, 2f, default, 0f, 0f, new ShapeDef { IsSensor = true });
+            w.CreateBox(zone, new Vector2F(8f, 4f), default, 0f, 0f, new ShapeDef { IsSensor = true });
             Count(zone);
             var zone2 = w.CreateBody(BodyType.Static, new Vector2D(-8, 5));
             w.CreateCircle(zone2, 2f, default, new ShapeDef { IsSensor = true });
@@ -87,7 +87,7 @@ public class SensorIndependenceTests
             if (step == 200 && (kinds & Kinds.Late) != 0)
             {
                 late = w.CreateBody(BodyType.Static, new Vector2D(3, 1));
-                w.CreateBox(late, 3f, 1f, default, 0f, 0f, new ShapeDef { IsSensor = true });
+                w.CreateBox(late, new Vector2F(6f, 2f), default, 0f, 0f, new ShapeDef { IsSensor = true });
                 Count(late);
             }
 

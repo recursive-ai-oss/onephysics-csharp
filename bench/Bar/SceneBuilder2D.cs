@@ -85,7 +85,7 @@ public static class SceneBuilder2D
         {
             case "circle": world.CreateCircle(body, (float)sh.Radius, new Vector2F((float)p[0], (float)p[1]), def); break;
             case "capsule": world.CreateCapsule(body, new Vector2F((float)p[0], (float)p[1]), new Vector2F((float)p[2], (float)p[3]), (float)sh.Radius, def); break;
-            case "box": world.CreateBox(body, (float)p[0], (float)p[1], new Vector2F((float)p[2], (float)p[3]), (float)p[4], (float)sh.Radius, def); break;
+            case "box": world.CreateBox(body, new Vector2F(2f * ((float)p[0]), 2f * ((float)p[1])), new Vector2F((float)p[2], (float)p[3]), (float)p[4], (float)sh.Radius, def); break;
             case "polygon":
             {
                 var pts = new Vector2F[p.Length / 2];

@@ -17,7 +17,7 @@ public class KinematicSensor3DTests
     private static Body SensorBody(PhysicsWorld3D w, double x, BodyType type)
     {
         var b = w.CreateBody(type, new Vector3D(x, 0, 0));
-        w.CreateBox(b, new Vector3F(1, 1, 1), 0f, new ShapeDef { IsSensor = true, Density = 0f });
+        w.CreateBox(b, new Vector3F(2, 2, 2), 0f, new ShapeDef { IsSensor = true, Density = 0f });
         return b;
     }
 
@@ -75,7 +75,7 @@ public class KinematicSensor3DTests
     {
         var w = NewWorld();
         var sensor = SensorBody(w, 0, BodyType.Static);
-        var c = w.AddCharacter(new Vector3D(-4, 0, 0), Character.Humanoid);
+        var c = w.AddCharacter(new Vector3D(-4, 0, 0), CharacterDef.Humanoid);
         var log = new List<string>();
         sensor.OnTriggerEnter += t => log.Add("enter");
         sensor.OnTriggerExit += t => log.Add("exit");

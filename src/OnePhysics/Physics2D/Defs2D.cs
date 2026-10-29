@@ -324,6 +324,7 @@ public readonly struct ContactPoint2D
 }
 
 /// <summary>What a collision callback is told: the other body and shapes, and where and how they touch.</summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "Handle fields, not properties, so that `hit.Body.LinearVelocity = v` compiles: a property result is not a variable (CS1612), a readonly field is.")]
 public readonly struct Collision
 {
     private readonly ContactPoint2D _p0, _p1;
@@ -342,16 +343,16 @@ public readonly struct Collision
     }
 
     /// <summary>The body the callback belongs to.</summary>
-    public Body Body { get; }
+    public readonly Body Body;
 
     /// <summary>The body it touched. For an exit caused by destroying a body this handle is stale (<see cref="Body.IsValid"/> is false).</summary>
-    public Body Other { get; }
+    public readonly Body Other;
 
     /// <summary>The shape of <see cref="Body"/> involved.</summary>
-    public Shape Shape { get; }
+    public readonly Shape Shape;
 
     /// <summary>The shape of <see cref="Other"/> involved.</summary>
-    public Shape OtherShape { get; }
+    public readonly Shape OtherShape;
 
     /// <summary>Contact normal pointing from <see cref="Body"/> towards <see cref="Other"/>; zero when <see cref="HasPoint"/> is false.</summary>
     public Vector2F Normal { get; }
@@ -381,9 +382,14 @@ public readonly struct Collision
 
     /// <summary>For hit events (<c>OnCollisionHit</c>): the approach speed along the normal at the start of the step; 0 for other callbacks.</summary>
     public float ApproachSpeed { get; }
+
+    /// <inheritdoc/>
+    public override string ToString() =>
+        "Collision(" + Body + " - " + Other + ", " + PointCount + (PointCount == 1 ? " point" : " points") + ")";
 }
 
 /// <summary>What a trigger callback is told: the other body and shapes of a sensor overlap.</summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "Handle fields, not properties, so that `hit.Body.LinearVelocity = v` compiles: a property result is not a variable (CS1612), a readonly field is.")]
 public readonly struct Trigger
 {
     internal Trigger(Body self, Body other, Shape selfShape, Shape otherShape, bool selfIsSensor)
@@ -396,19 +402,23 @@ public readonly struct Trigger
     }
 
     /// <summary>The body the callback belongs to.</summary>
-    public Body Body { get; }
+    public readonly Body Body;
 
     /// <summary>The other body. After an exit caused by destroying a body or shape this handle may be stale (<see cref="Body.IsValid"/> is false).</summary>
-    public Body Other { get; }
+    public readonly Body Other;
 
     /// <summary>The shape of <see cref="Body"/> involved.</summary>
-    public Shape Shape { get; }
+    public readonly Shape Shape;
 
     /// <summary>The shape of <see cref="Other"/> involved.</summary>
-    public Shape OtherShape { get; }
+    public readonly Shape OtherShape;
 
     /// <summary>True when <see cref="Shape"/> is the sensor, false when <see cref="OtherShape"/> is.</summary>
     public bool SelfIsSensor { get; }
+
+    /// <inheritdoc/>
+    public override string ToString() =>
+        "Trigger(" + Body + " - " + Other + ")";
 }
 
 /// <summary>

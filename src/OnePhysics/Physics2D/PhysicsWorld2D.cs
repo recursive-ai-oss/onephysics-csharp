@@ -64,7 +64,7 @@ public sealed partial class PhysicsWorld2D
         {
             ReserveCapacity(true);
             var buffer = new byte[_core.GetSnapshotSize()];
-            if (!TrySnapshot(buffer, out int n)) { break; }
+            if (!_core.TrySnapshot(buffer, out int n)) { break; }
             Restore(buffer.AsSpan(0, n));
         }
 
@@ -108,7 +108,11 @@ public sealed partial class PhysicsWorld2D
         _core.Step(new Stages2D(_engine), dt);
         InvalidateQueryPad();
         _engine.ReconcileJoints();
-        if (_handlers.Count > 0 || _jointHandlers.Count > 0) { DispatchEvents(); }
+        if (_suppressed == 0)
+        {
+            if (_handlers.Count > 0 || _jointHandlers.Count > 0) { DispatchEvents(); }
+        }
+        else if (_jointHandlers.Count > 0) { RetireBrokenJointHandlers(); }
     }
 
     private void SyncCoreOptions()
@@ -144,28 +148,44 @@ public sealed partial class PhysicsWorld2D
     /// When it fits, returns true and <paramref name="written"/> is its length. When it does not, nothing is written, the result is false and <paramref name="written"/> is the length needed (see <see cref="GetSnapshotSize"/>).
     /// Allocates nothing once the world's internal buffer has grown to the snapshot's size.
     /// </summary>
-    public bool TrySnapshot(Span<byte> destination, out int written) => _core.TrySnapshot(destination, out written);
+    public bool TrySnapshot(Span<byte> destination, out int written)
+    {
+        _remembersDestroyed = true;
+        return _core.TrySnapshot(destination, out written);
+    }
 
     /// <summary>The same bytes as <see cref="TrySnapshot"/> in a new array. Delegates and collision callbacks are not saved.</summary>
-    public byte[] Snapshot() => _core.Snapshot();
+    public byte[] Snapshot()
+    {
+        _remembersDestroyed = true;
+        return _core.Snapshot();
+    }
 
     /// <summary>The same as <see cref="Restore(ReadOnlySpan{byte})"/> for an array.</summary>
     /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
+    /// <returns>The saved options whose value the restore changed; see <see cref="OptionChanges"/>.</returns>
     /// <exception cref="SnapshotFormatException">The bytes are not a valid snapshot of a 2D world; the world is unchanged.</exception>
-    public void Restore(byte[] snapshot)
+    public OptionChanges Restore(byte[] snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        Restore((ReadOnlySpan<byte>)snapshot);
+        return Restore((ReadOnlySpan<byte>)snapshot);
     }
 
     /// <summary>
     /// Replaces the world's state with a snapshot. The snapshot is validated first; on any problem a <see cref="SnapshotFormatException"/> is thrown and the world is unchanged.
-    /// Handles taken before the snapshot stay valid in a world with the same <see cref="Id"/> when the same bodies exist in it. Collision callbacks of bodies that no longer exist are dropped.
+    /// Handles taken before the snapshot stay valid in a world with the same <see cref="Id"/> when the same bodies exist in it. Callbacks belong to handles: a restore that brings a destroyed body, joint or character back (the same handle) gives its callbacks back, and the world forgets the callbacks of handles that stay gone (it remembers the most recent 1024 destroyed ones once it has taken a snapshot). Rollback hosts should resimulate under <see cref="SuppressCallbacks"/> and read polled events.
     /// Allocates nothing once the world's internal buffers have grown to the snapshot's size.
     /// </summary>
+    /// <returns>The saved options whose value the restore changed (the snapshot's values replace the ones the world was built with); see <see cref="OptionChanges"/>.</returns>
     /// <exception cref="SnapshotFormatException">The bytes are not a valid snapshot of a 2D world; the world is unchanged.</exception>
-    public void Restore(ReadOnlySpan<byte> snapshot)
+    public OptionChanges Restore(ReadOnlySpan<byte> snapshot)
     {
+        var before = _engine.Opt;
+        var oldGravity = before.Gravity;
+        int oldSubsteps = before.Substeps, oldVelocity = before.VelocityIterations, oldRelax = before.RelaxIterations;
+        bool oldSleep = before.SleepEnabled;
+        float oldTimeToSleep = before.TimeToSleep, oldThreshold = before.SleepThreshold;
+        var oldEvents = before.Events;
         _core.BeginRestore(snapshot);
         string? problem = null;
         try
@@ -194,16 +214,20 @@ public sealed partial class PhysicsWorld2D
             throw new SnapshotFormatException(problem, 0);
         }
 
-        InvalidateQueryPad();
-        var dead = _deadScratch;
-        dead.Clear();
-        foreach (var kv in _handlers)
-        {
-            if (!_core.Bodies.Handles.IsAlive(kv.Key, kv.Value.Generation)) { dead.Add(kv.Key); }
-        }
+        var after = _engine.Opt;
+        var changed = OptionChanges.None;
+        if (after.Gravity != oldGravity) { changed |= OptionChanges.Gravity; }
+        if (after.Substeps != oldSubsteps) { changed |= OptionChanges.Substeps; }
+        if (after.VelocityIterations != oldVelocity) { changed |= OptionChanges.VelocityIterations; }
+        if (after.RelaxIterations != oldRelax) { changed |= OptionChanges.RelaxIterations; }
+        if (after.SleepEnabled != oldSleep) { changed |= OptionChanges.SleepEnabled; }
+        if (BitConverter.SingleToInt32Bits(after.TimeToSleep) != BitConverter.SingleToInt32Bits(oldTimeToSleep)) { changed |= OptionChanges.TimeToSleep; }
+        if (BitConverter.SingleToInt32Bits(after.SleepThreshold) != BitConverter.SingleToInt32Bits(oldThreshold)) { changed |= OptionChanges.SleepThreshold; }
+        if (after.Events != oldEvents) { changed |= OptionChanges.Events; }
 
-        foreach (int k in dead) { _handlers.Remove(k); }
-        if (_controllerHandlers.Count > 0) { DropDeadControllerHandlers(); }
+        InvalidateQueryPad();
+        ReconcileHandlersAfterRestore();
+        return changed;
     }
 
     /// <summary>
@@ -231,9 +255,6 @@ public sealed partial class PhysicsWorld2D
     /// <summary>True while the joint exists in this world. False for null handles, handles of another world, destroyed joints and constraints that are not joints (never throws). Allocates nothing.</summary>
     public bool IsJointAlive(JointHandle handle) => !handle.IsNull && handle.World == Id && _core.Constraints.Handles.IsAlive(handle.Index, handle.Generation) && _core.Constraints.KindOf(handle.Index) == ConstraintKind.Joint;
 
-    /// <summary>True while the character with this slot index and generation (see <see cref="Character.Index"/> and <see cref="Character.Generation"/>) exists. Never throws. Allocates nothing.</summary>
-    public bool IsCharacterAlive(int index, int generation) => _engine.CharHandles.IsAlive(index, generation);
-
     /// <summary>The <see cref="Body"/> for a raw handle (from an event, an exception or the raw tier).</summary>
     /// <exception cref="InvalidHandleException">The handle is null, belongs to another world or refers to a destroyed body.</exception>
     public Body GetBody(BodyHandle handle)
@@ -247,14 +268,14 @@ public sealed partial class PhysicsWorld2D
     public Body CreateBody(in BodyDef def) => new(this, _engine.CreateBody(in def));
 
     /// <summary>Creates a body from a definition; the one-liner form of <see cref="CreateBody(in BodyDef)"/>.</summary>
-    public Body CreateBody(BodyType type, Vector2D position, float angle = 0f) => CreateBody(type, position, angle, nameof(position));
+    public Body CreateBody(BodyType type, Vector2D position, float angleRadians = 0f) => CreateBody(type, position, angleRadians, nameof(position));
 
     // positionParam names the caller's parameter in the error: the happy-path methods call this with their own "at".
-    private Body CreateBody(BodyType type, Vector2D position, float angle, string positionParam)
+    private Body CreateBody(BodyType type, Vector2D position, float angleRadians, string positionParam)
     {
         if (!double.IsFinite(position.X) || !double.IsFinite(position.Y)) { throw new ArgumentOutOfRangeException(positionParam, position, "Body position must be finite."); }
-        if (!float.IsFinite(angle)) { throw new ArgumentOutOfRangeException(nameof(angle), angle, "Body angle must be finite."); }
-        var d = new BodyDef { Type = type, Position = position, Angle = angle };
+        if (!float.IsFinite(angleRadians)) { throw new ArgumentOutOfRangeException(nameof(angleRadians), angleRadians, "Body angle must be finite."); }
+        var d = new BodyDef { Type = type, Position = position, Angle = angleRadians };
         try { return CreateBody(in d); }
         catch (ArgumentOutOfRangeException e) when (e.ParamName == "def" && e.Message.Contains("osition", StringComparison.Ordinal))
         {
@@ -280,11 +301,17 @@ public sealed partial class PhysicsWorld2D
         return AddShape(body, Shape2D.CreatePolygon(v, radius), def);
     }
 
-    /// <summary>Adds a box of the given half extents, optionally offset and rotated within the body's frame and rounded by <paramref name="radius"/>.</summary>
-    public Shape CreateBox(Body body, float halfWidth, float halfHeight, Vector2F center = default, float angle = 0f, float radius = 0f, ShapeDef? def = null)
+    /// <summary>Adds a box of the given full size (width, height, the same as <see cref="AddBox"/>), optionally offset and rotated within the body's frame and rounded by <paramref name="radius"/>.</summary>
+    /// <param name="body">The body that gets the shape.</param>
+    /// <param name="size">Full width and height in metres.</param>
+    /// <param name="center">Centre of the box in the body's frame.</param>
+    /// <param name="angleRadians">Rotation of the box in the body's frame, radians.</param>
+    /// <param name="radius">Corner rounding radius, metres; the box grows by it on every side.</param>
+    /// <param name="def">Shape settings; null means the defaults.</param>
+    public Shape CreateBox(Body body, Vector2F size, Vector2F center = default, float angleRadians = 0f, float radius = 0f, ShapeDef? def = null)
     {
-        var (s, c) = RecursiveAI.OneMath.Math64.SinCos(angle);
-        return AddShape(body, Shape2D.CreateBox(halfWidth, halfHeight, new Vec2(center.X, center.Y), new Rot2((float)c, (float)s), radius), def);
+        var (s, c) = RecursiveAI.OneMath.Math64.SinCos(angleRadians);
+        return AddShape(body, Shape2D.CreateBox(0.5f * size.X, 0.5f * size.Y, new Vec2(center.X, center.Y), new Rot2((float)c, (float)s), radius), def);
     }
 
     /// <summary>Adds a two-sided segment with no thickness (it has no area, so it adds no mass).</summary>
@@ -321,13 +348,13 @@ public sealed partial class PhysicsWorld2D
 
     /// <summary>Adds a box of the given full size (width, height) centred at <paramref name="at"/>. Dynamic by default.</summary>
     /// <example><c>var box = world.AddBox(new Vector2F(1, 1), at: new Vector2D(0, 5));</c></example>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="at"/> or <paramref name="angle"/> is not finite, or <paramref name="at"/> is beyond +-2^21 from the origin.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="at"/> or <paramref name="angleRadians"/> is not finite, or <paramref name="at"/> is beyond +-2^21 from the origin.</exception>
     /// <exception cref="InvalidShapeException">A side of <paramref name="size"/> is not finite or is smaller than 2E-05 (its <see cref="ArgumentException.ParamName"/> is <c>size</c>).</exception>
-    public Body AddBox(Vector2F size, Vector2D at = default, float angle = 0f, BodyType type = BodyType.Dynamic, Material2D? material = null, float density = 1f)
+    public Body AddBox(Vector2F size, Vector2D at = default, float angleRadians = 0f, BodyType type = BodyType.Dynamic, Material2D? material = null, float density = 1f)
     {
         CheckSize(size, nameof(size));
-        var body = CreateBody(type, at, angle, nameof(at));
-        try { CreateBox(body, 0.5f * size.X, 0.5f * size.Y, default, 0f, 0f, ShapeFor(material, density)); }
+        var body = CreateBody(type, at, angleRadians, nameof(at));
+        try { CreateBox(body, size, default, 0f, 0f, ShapeFor(material, density)); }
         catch (InvalidShapeException e) { body.Destroy(); throw e.ForParameter(nameof(size)); }
         catch (Exception) { body.Destroy(); throw; }
         return body;
@@ -359,9 +386,9 @@ public sealed partial class PhysicsWorld2D
     }
 
     /// <summary>Adds a capsule whose axis runs from (-halfLength, 0) to (halfLength, 0) in the body's frame. Dynamic by default.</summary>
-    public Body AddCapsule(float halfLength, float radius, Vector2D at = default, float angle = 0f, BodyType type = BodyType.Dynamic, Material2D? material = null, float density = 1f)
+    public Body AddCapsule(float halfLength, float radius, Vector2D at = default, float angleRadians = 0f, BodyType type = BodyType.Dynamic, Material2D? material = null, float density = 1f)
     {
-        var body = CreateBody(type, at, angle, nameof(at));
+        var body = CreateBody(type, at, angleRadians, nameof(at));
         try { CreateCapsule(body, new Vector2F(-halfLength, 0f), new Vector2F(halfLength, 0f), radius, ShapeFor(material, density)); }
         catch (InvalidShapeException e)
         {
@@ -373,9 +400,9 @@ public sealed partial class PhysicsWorld2D
     }
 
     /// <summary>Adds the convex hull of up to 8 points (in the body's frame), rounded by <paramref name="radius"/>. Dynamic by default.</summary>
-    public Body AddPolygon(ReadOnlySpan<Vector2F> points, Vector2D at = default, float angle = 0f, float radius = 0f, BodyType type = BodyType.Dynamic, Material2D? material = null, float density = 1f)
+    public Body AddPolygon(ReadOnlySpan<Vector2F> points, Vector2D at = default, float angleRadians = 0f, float radius = 0f, BodyType type = BodyType.Dynamic, Material2D? material = null, float density = 1f)
     {
-        var body = CreateBody(type, at, angle, nameof(at));
+        var body = CreateBody(type, at, angleRadians, nameof(at));
         try { CreatePolygon(body, points, radius, ShapeFor(material, density)); }
         catch (InvalidShapeException e) { body.Destroy(); throw e.ForParameter(e.Message.StartsWith("radius", StringComparison.Ordinal) ? nameof(radius) : nameof(points)); }
         catch (ArgumentException) { body.Destroy(); throw; }
@@ -417,8 +444,8 @@ public sealed partial class PhysicsWorld2D
     internal void DestroyBody(BodyHandle h)
     {
         _engine.DestroyBody(h);
-        _handlers.Remove(h.Index);
-        if (_controllerHandlers.Count > 0) { DropDeadControllerHandlers(); }
+        RetireBodyHandlers(h);
+        if (_controllerHandlers.Count > 0) { RetireDeadControllerHandlers(); }
     }
 
     internal void DestroyShape(ShapeHandle h) => _engine.DestroyShape(h);

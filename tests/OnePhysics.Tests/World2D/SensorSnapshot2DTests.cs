@@ -19,7 +19,7 @@ public class SensorSnapshot2DTests
         w.AddBox(new Vector2F(40, 1), at: new Vector2D(0, -1), type: BodyType.Static);
         for (int i = 0; i < 12; i++) { w.AddBox(new Vector2F(1, 1), at: new Vector2D((i % 4) - 1.5, 6 + (i / 4 * 1.2))); }
         var zone = w.CreateBody(BodyType.Static, new Vector2D(0, 3.5));
-        w.CreateBox(zone, 6, 1, def: new ShapeDef { IsSensor = true });
+        w.CreateBox(zone, new Vector2F(12, 2), def: new ShapeDef { IsSensor = true });
         return w;
     }
 

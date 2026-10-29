@@ -16,13 +16,13 @@ public sealed class InvalidRagdollException : PhysicsException
 /// <summary>The geometry of a ragdoll part's body.</summary>
 public enum RagdollShapeKind : byte
 {
-    /// <summary>A capsule along the body's y axis: <see cref="RagdollPartDef.ShapeSize"/> is (half length of the straight part, radius).</summary>
+    /// <summary>A capsule along the body's y axis: <see cref="RagdollPartDef.ShapeHalfSize"/> is (half length of the straight part, radius).</summary>
     Capsule = 0,
 
-    /// <summary>A sphere: <see cref="RagdollPartDef.ShapeSize"/>.X is the radius.</summary>
+    /// <summary>A sphere: <see cref="RagdollPartDef.ShapeHalfSize"/>.X is the radius.</summary>
     Sphere = 1,
 
-    /// <summary>A box: <see cref="RagdollPartDef.ShapeSize"/> holds the half extents.</summary>
+    /// <summary>A box: <see cref="RagdollPartDef.ShapeHalfSize"/> holds the half extents.</summary>
     Box = 2,
 }
 
@@ -54,8 +54,8 @@ public sealed class RagdollPartDef
     /// <summary>The shape. Default capsule.</summary>
     public RagdollShapeKind Shape { get; set; } = RagdollShapeKind.Capsule;
 
-    /// <summary>Shape size, m: see <see cref="RagdollShapeKind"/>. Components used must be positive and finite. Default (0.1, 0.05, 0.05).</summary>
-    public Vector3F ShapeSize { get; set; } = new(0.1f, 0.05f, 0.05f);
+    /// <summary>Half sizes of the shape, m: see <see cref="RagdollShapeKind"/> (box half extents; capsule half length and radius; sphere radius). Components used must be positive and finite. Default (0.1, 0.05, 0.05).</summary>
+    public Vector3F ShapeHalfSize { get; set; } = new(0.1f, 0.05f, 0.05f);
 
     /// <summary>Position of the body (its centre) in ragdoll space, m. Default the origin.</summary>
     public Vector3F Position { get; set; }
@@ -101,7 +101,7 @@ public sealed class RagdollPartDef
     internal float Volume()
     {
         const float Pi = 3.1415927f;
-        float a = ShapeSize.X, b = ShapeSize.Y, c = ShapeSize.Z;
+        float a = ShapeHalfSize.X, b = ShapeHalfSize.Y, c = ShapeHalfSize.Z;
         return Shape switch
         {
             RagdollShapeKind.Sphere => 4f / 3f * Pi * a * a * a,
@@ -198,12 +198,12 @@ public sealed class RagdollDef
             if (!Enum.IsDefined(p.Shape)) { throw new ArgumentOutOfRangeException("Shape", p.Shape, Where(i, p) + ": unknown shape kind."); }
             switch (p.Shape)
             {
-                case RagdollShapeKind.Sphere: Positive(p.ShapeSize.X, i, p, "ShapeSize.X (radius)"); break;
-                case RagdollShapeKind.Capsule: Positive(p.ShapeSize.X, i, p, "ShapeSize.X (half length)"); Positive(p.ShapeSize.Y, i, p, "ShapeSize.Y (radius)"); break;
-                default: Positive(p.ShapeSize.X, i, p, "ShapeSize.X"); Positive(p.ShapeSize.Y, i, p, "ShapeSize.Y"); Positive(p.ShapeSize.Z, i, p, "ShapeSize.Z"); break;
+                case RagdollShapeKind.Sphere: Positive(p.ShapeHalfSize.X, i, p, "ShapeHalfSize.X (radius)"); break;
+                case RagdollShapeKind.Capsule: Positive(p.ShapeHalfSize.X, i, p, "ShapeHalfSize.X (half length)"); Positive(p.ShapeHalfSize.Y, i, p, "ShapeHalfSize.Y (radius)"); break;
+                default: Positive(p.ShapeHalfSize.X, i, p, "ShapeHalfSize.X"); Positive(p.ShapeHalfSize.Y, i, p, "ShapeHalfSize.Y"); Positive(p.ShapeHalfSize.Z, i, p, "ShapeHalfSize.Z"); break;
             }
 
-            if (Math.Abs(p.ShapeSize.X) > 65536f || Math.Abs(p.ShapeSize.Y) > 65536f || Math.Abs(p.ShapeSize.Z) > 65536f) { throw new ArgumentOutOfRangeException("ShapeSize", p.ShapeSize, Where(i, p) + ": ShapeSize is beyond 65536 m."); }
+            if (Math.Abs(p.ShapeHalfSize.X) > 65536f || Math.Abs(p.ShapeHalfSize.Y) > 65536f || Math.Abs(p.ShapeHalfSize.Z) > 65536f) { throw new ArgumentOutOfRangeException("ShapeHalfSize", p.ShapeHalfSize, Where(i, p) + ": ShapeHalfSize is beyond 65536 m."); }
             Position(p.Position, i, p, "Position");
             Rotation(p.Rotation, i, p, "Rotation");
             Positive(p.Mass, i, p, "Mass");
@@ -248,7 +248,7 @@ public sealed class RagdollDef
         RagdollPartDef P(string name, int parent, RagdollShapeKind kind, float a, float b, float c, float x, float y, float z, float kg, float jx, float jy, float jz,
             float twist, float swingY, float swingZ, float k, float damp, float max, float friction = 0.6f) => new()
         {
-            Name = name, Parent = parent, Shape = kind, ShapeSize = new Vector3F(a * s, b * s, c * s), Position = new Vector3F(x * s, y * s, z * s), Mass = kg * m,
+            Name = name, Parent = parent, Shape = kind, ShapeHalfSize = new Vector3F(a * s, b * s, c * s), Position = new Vector3F(x * s, y * s, z * s), Mass = kg * m,
             JointPosition = new Vector3F(jx * s, jy * s, jz * s), JointRotation = up, LowerTwist = -twist, UpperTwist = twist, SwingYHalfAngle = swingY, SwingZHalfAngle = swingZ,
             DriveStiffness = k * g, DriveDamping = damp * g, MaxTorque = max * g, Friction = friction,
         };

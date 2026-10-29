@@ -48,10 +48,10 @@ public class Ragdoll3DTests
             SelfCollision = RagdollSelfCollision.None,
             Parts =
             [
-                new RagdollPartDef { Name = "base", Shape = RagdollShapeKind.Box, ShapeSize = new Vector3F(0.2f, 0.2f, 0.2f), Position = new Vector3F(0, 0.2f, 0), Mass = 200f },
+                new RagdollPartDef { Name = "base", Shape = RagdollShapeKind.Box, ShapeHalfSize = new Vector3F(0.2f, 0.2f, 0.2f), Position = new Vector3F(0, 0.2f, 0), Mass = 200f },
                 new RagdollPartDef
                 {
-                    Name = "arm", Parent = 0, Shape = RagdollShapeKind.Capsule, ShapeSize = new Vector3F(0.3f, 0.05f, 0), Position = new Vector3F(0.5f, 1.4f, 0), Mass = 5f,
+                    Name = "arm", Parent = 0, Shape = RagdollShapeKind.Capsule, ShapeHalfSize = new Vector3F(0.3f, 0.05f, 0), Position = new Vector3F(0.5f, 1.4f, 0), Mass = 5f,
                     Rotation = new QuaternionF(0, 0, -R, R),   // capsule's y axis along world +x
                     JointPosition = new Vector3F(0.15f, 1.4f, 0), JointRotation = new QuaternionF(0, 0, -R, R),   // twist axis along +x: the arm points out sideways
                     LowerTwist = -0.2f, UpperTwist = 0.2f, SwingYHalfAngle = swing, SwingZHalfAngle = swing,
@@ -401,7 +401,7 @@ public class Ragdoll3DTests
         Assert.Contains("Position", Assert.Throws<ArgumentOutOfRangeException>(() => w.AddRagdoll(nan)).Message);
         var mass = Good(); mass.Parts[1].Mass = 0f;
         Assert.Throws<ArgumentOutOfRangeException>(() => w.AddRagdoll(mass));
-        var size = Good(); size.Parts[1].ShapeSize = new Vector3F(1, -1, 1);
+        var size = Good(); size.Parts[1].ShapeHalfSize = new Vector3F(1, -1, 1);
         Assert.Throws<ArgumentOutOfRangeException>(() => w.AddRagdoll(size));
         var zero = Good(); zero.Parts[1].Rotation = default;
         Assert.Throws<ArgumentOutOfRangeException>(() => w.AddRagdoll(zero));
@@ -437,7 +437,7 @@ public class Ragdoll3DTests
         var w = NewWorld();
         var a = w.AddBox(new Vector3F(1, 1, 1));
         var b = w.AddBox(new Vector3F(1, 1, 1), at: new Vector3D(2, 0, 0));
-        var hinge = w.AddHinge(a, b, new Vector3D(1, 0, 0), new Vector3F(0, 0, 1));
+        Joint hinge = w.AddHinge(a, b, new Vector3D(1, 0, 0), new Vector3F(0, 0, 1));
         Assert.Throws<InvalidJointException>(() => hinge.SetPoseDrive(QuaternionF.Identity, 1f, 1f, 1f));
         var st = w.CreateJoint(new SwingTwistJointDef { BodyA = a, BodyB = b });
         Assert.Throws<ArgumentOutOfRangeException>(() => st.SetPoseDrive(QuaternionF.Identity, -1f, 1f, 1f));

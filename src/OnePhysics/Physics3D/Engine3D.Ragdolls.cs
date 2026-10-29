@@ -157,7 +157,7 @@ internal sealed partial class Engine3D
             {
                 var p = d.Parts[i];
                 w.WriteInt32(p.Parent); w.WriteByte((byte)p.Shape);
-                WriteVec(w, p.ShapeSize); WriteVec(w, p.Position); WriteQuat(w, p.Rotation);
+                WriteVec(w, p.ShapeHalfSize); WriteVec(w, p.Position); WriteQuat(w, p.Rotation);
                 w.WriteSingle(p.Mass); w.WriteSingle(p.Friction);
                 WriteVec(w, p.JointPosition); WriteQuat(w, p.JointRotation);
                 w.WriteSingle(p.LowerTwist); w.WriteSingle(p.UpperTwist); w.WriteSingle(p.SwingYHalfAngle); w.WriteSingle(p.SwingZHalfAngle);
@@ -205,7 +205,7 @@ internal sealed partial class Engine3D
                 byte shape = r.ReadByte();
                 if (shape > (byte)RagdollShapeKind.Box) { throw r.Error("invalid ragdoll shape kind"); }
                 p.Shape = (RagdollShapeKind)shape;
-                p.ShapeSize = ReadVec(r); p.Position = ReadVec(r); p.Rotation = ReadQuat(r);
+                p.ShapeHalfSize = ReadVec(r); p.Position = ReadVec(r); p.Rotation = ReadQuat(r);
                 p.Mass = r.ReadSingle(); p.Friction = r.ReadSingle();
                 p.JointPosition = ReadVec(r); p.JointRotation = ReadQuat(r);
                 p.LowerTwist = r.ReadSingle(); p.UpperTwist = r.ReadSingle(); p.SwingYHalfAngle = r.ReadSingle(); p.SwingZHalfAngle = r.ReadSingle();

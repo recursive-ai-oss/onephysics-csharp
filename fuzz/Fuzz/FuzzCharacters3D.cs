@@ -88,7 +88,7 @@ internal static class FuzzCharacters3D
         };
         for (int i = 0; i < 4; i++) { list.Add(w.AddBox(new Vector3F(0.8f, 0.8f, 0.8f), new Vector3D(-3 + 1.5 * i, 0.4, 0))); }
         var kin = w.CreateBody(new BodyDef { Type = BodyType.Kinematic, Position = new Vector3D(-6, 2, 3), LinearVelocity = new Vector3F(1f, 0f, 0f) });
-        w.CreateBox(kin, new Vector3F(4f, 0.4f, 4f), 0f);
+        w.CreateBox(kin, new Vector3F(8f, 0.8f, 8f), 0f);
         list.Add(kin);
         bodies = list.ToArray();
         return w;
@@ -98,9 +98,9 @@ internal static class FuzzCharacters3D
     {
         switch (r.Byte() % 5)
         {
-            case 0: return r.Bool() ? Character.Humanoid : Character.RigidHumanoid;
-            case 1: return Character.Child;
-            case 2: return Character.Giant;
+            case 0: return r.Bool() ? CharacterDef.Humanoid : CharacterDef.RigidHumanoid;
+            case 1: return CharacterDef.Child;
+            case 2: return CharacterDef.Giant;
             default:
                 return new CharacterDef
                 {
@@ -234,7 +234,7 @@ internal static class FuzzCharacters3D
 
         for (int i = 0; i < 3; i++)
         {
-            var def = i == 1 ? Character.Child : i == 2 ? Character.RigidHumanoid : Character.Humanoid;
+            var def = i == 1 ? CharacterDef.Child : i == 2 ? CharacterDef.RigidHumanoid : CharacterDef.Humanoid;
             def.PushStrength = i * 0.5f;
             w.AddCharacter(new Vector3D(-3 + 2 * i, 1.2, 0), def);
         }

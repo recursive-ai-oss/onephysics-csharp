@@ -113,7 +113,7 @@ internal static class Fuzz3DServices
             switch (i % 3)
             {
                 case 0: w.CreateSphere(b, 0.4f, def); break;
-                case 1: w.CreateBox(b, new Vector3F(0.4f, 0.3f, 0.35f), 0f, def); break;
+                case 1: w.CreateBox(b, new Vector3F(0.8f, 0.6f, 0.7f), 0f, def); break;
                 default: w.CreateCapsule(b, 0.3f, 0.25f, def); break;
             }
 

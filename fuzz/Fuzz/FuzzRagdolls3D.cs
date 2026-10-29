@@ -75,7 +75,7 @@ internal static class FuzzRagdolls3D
         var p = good;
         byte m = r.Byte();
         if ((m & 1) != 0) { p.Parent = r.Byte() % 20 - 3; }
-        if ((m & 2) != 0) { p.Shape = (RagdollShapeKind)(r.Byte() % 5); p.ShapeSize = r.V3F(); }
+        if ((m & 2) != 0) { p.Shape = (RagdollShapeKind)(r.Byte() % 5); p.ShapeHalfSize = r.V3F(); }
         if ((m & 4) != 0) { p.Position = r.V3F(); }
         if ((m & 8) != 0) { p.Rotation = r.Quat(); }
         if ((m & 16) != 0) { p.Mass = r.Float(); p.Friction = r.Float(); }

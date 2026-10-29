@@ -70,7 +70,7 @@ public sealed partial class PhysicsWorld3D
         {
             ReserveCapacity(true);
             var buffer = new byte[_core.GetSnapshotSize()];
-            if (!TrySnapshot(buffer, out int n)) { break; }
+            if (!_core.TrySnapshot(buffer, out int n)) { break; }
             Restore(buffer.AsSpan(0, n));
         }
 
@@ -115,7 +115,11 @@ public sealed partial class PhysicsWorld3D
         _engine.ReconcileJoints();
         InvalidateQueryPad();
         BuildPublicEvents();
-        if (_handlers.Count > 0 || _jointHandlers.Count > 0) { DispatchEvents(); }
+        if (_suppressed == 0)
+        {
+            if (_handlers.Count > 0 || _jointHandlers.Count > 0) { DispatchEvents(); }
+        }
+        else if (_jointHandlers.Count > 0) { RetireBrokenJointHandlers(); }
     }
 
     private void SyncCoreOptions()
@@ -151,28 +155,44 @@ public sealed partial class PhysicsWorld3D
     /// When it fits, returns true and <paramref name="written"/> is its length. When it does not, nothing is written, the result is false and <paramref name="written"/> is the length needed (see <see cref="GetSnapshotSize"/>).
     /// Allocates nothing once the world's internal buffer has grown to the snapshot's size.
     /// </summary>
-    public bool TrySnapshot(Span<byte> destination, out int written) => _core.TrySnapshot(destination, out written);
+    public bool TrySnapshot(Span<byte> destination, out int written)
+    {
+        _remembersDestroyed = true;
+        return _core.TrySnapshot(destination, out written);
+    }
 
     /// <summary>The same bytes as <see cref="TrySnapshot"/> in a new array. Delegates and collision callbacks are not saved.</summary>
-    public byte[] Snapshot() => _core.Snapshot();
+    public byte[] Snapshot()
+    {
+        _remembersDestroyed = true;
+        return _core.Snapshot();
+    }
 
     /// <summary>The same as <see cref="Restore(ReadOnlySpan{byte})"/> for an array.</summary>
     /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
+    /// <returns>The saved options whose value the restore changed; see <see cref="OptionChanges"/>.</returns>
     /// <exception cref="SnapshotFormatException">The bytes are not a valid snapshot of a 3D world; the world is unchanged.</exception>
-    public void Restore(byte[] snapshot)
+    public OptionChanges Restore(byte[] snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        Restore((ReadOnlySpan<byte>)snapshot);
+        return Restore((ReadOnlySpan<byte>)snapshot);
     }
 
     /// <summary>
     /// Replaces the world's state with a snapshot. The snapshot is validated first; on any problem a <see cref="SnapshotFormatException"/> is thrown and the world is unchanged.
-    /// Handles taken before the snapshot stay valid in a world with the same <see cref="Id"/> when the same bodies exist in it. Collision callbacks of bodies that no longer exist are dropped.
+    /// Handles taken before the snapshot stay valid in a world with the same <see cref="Id"/> when the same bodies exist in it. Callbacks belong to handles: a restore that brings a destroyed body, joint or character back (the same handle) gives its callbacks back, and the world forgets the callbacks of handles that stay gone (it remembers the most recent 1024 destroyed ones once it has taken a snapshot). Rollback hosts should resimulate under <see cref="SuppressCallbacks"/> and read polled events.
     /// Allocates nothing once the world's internal buffers have grown to the snapshot's size.
     /// </summary>
+    /// <returns>The saved options whose value the restore changed (the snapshot's values replace the ones the world was built with); see <see cref="OptionChanges"/>.</returns>
     /// <exception cref="SnapshotFormatException">The bytes are not a valid snapshot of a 3D world; the world is unchanged.</exception>
-    public void Restore(ReadOnlySpan<byte> snapshot)
+    public OptionChanges Restore(ReadOnlySpan<byte> snapshot)
     {
+        var before = _engine.Opt;
+        var oldGravity = before.Gravity;
+        int oldSubsteps = before.Substeps, oldVelocity = before.VelocityIterations, oldRelax = before.RelaxIterations;
+        bool oldSleep = before.SleepEnabled;
+        float oldTimeToSleep = before.TimeToSleep, oldThreshold = before.SleepThreshold;
+        var oldEvents = before.Events;
         _core.BeginRestore(snapshot);
         string? problem = null;
         try
@@ -201,18 +221,21 @@ public sealed partial class PhysicsWorld3D
             throw new SnapshotFormatException(problem, 0);
         }
 
-        var dead = _deadScratch;
-        dead.Clear();
-        foreach (var kv in _handlers)
-        {
-            if (!_core.Bodies.Handles.IsAlive(kv.Key, kv.Value.Generation)) { dead.Add(kv.Key); }
-        }
+        var after = _engine.Opt;
+        var changed = OptionChanges.None;
+        if (after.Gravity != oldGravity) { changed |= OptionChanges.Gravity; }
+        if (after.Substeps != oldSubsteps) { changed |= OptionChanges.Substeps; }
+        if (after.VelocityIterations != oldVelocity) { changed |= OptionChanges.VelocityIterations; }
+        if (after.RelaxIterations != oldRelax) { changed |= OptionChanges.RelaxIterations; }
+        if (after.SleepEnabled != oldSleep) { changed |= OptionChanges.SleepEnabled; }
+        if (BitConverter.SingleToInt32Bits(after.TimeToSleep) != BitConverter.SingleToInt32Bits(oldTimeToSleep)) { changed |= OptionChanges.TimeToSleep; }
+        if (BitConverter.SingleToInt32Bits(after.SleepThreshold) != BitConverter.SingleToInt32Bits(oldThreshold)) { changed |= OptionChanges.SleepThreshold; }
+        if (after.Events != oldEvents) { changed |= OptionChanges.Events; }
 
-        foreach (int k in dead) { _handlers.Remove(k); }
-        DropStaleJointHandlers();
-        DropDeadControllerHandlers();
+        ReconcileHandlersAfterRestore();
         InvalidateQueryPad();
         BuildPublicEvents();
+        return changed;
     }
 
     /// <summary>Moves the world origin by <paramref name="offset"/> (call between steps, on every peer at the same step): all positions shrink by it. Offsets must be multiples of 2^-31.</summary>
@@ -238,9 +261,6 @@ public sealed partial class PhysicsWorld3D
 
     /// <summary>True while the joint exists in this world. False for null handles, handles of another world, destroyed joints and constraints that are not joints (never throws). Allocates nothing.</summary>
     public bool IsJointAlive(JointHandle handle) => !handle.IsNull && handle.World == Id && _core.Constraints.Handles.IsAlive(handle.Index, handle.Generation) && _core.Constraints.KindOf(handle.Index) == ConstraintKind.Joint;
-
-    /// <summary>True while the character with this slot index and generation (see <see cref="Character.Index"/> and <see cref="Character.Generation"/>) exists. Never throws. Allocates nothing.</summary>
-    public bool IsCharacterAlive(int index, int generation) => _engine.CharHandles.IsAlive(index, generation);
 
     /// <summary>Wraps a raw handle as a <see cref="Body"/>.</summary>
     /// <exception cref="InvalidHandleException">The handle is stale, null or from another world.</exception>
@@ -275,11 +295,11 @@ public sealed partial class PhysicsWorld3D
     /// <summary>Attaches a sphere.</summary>
     public Shape CreateSphere(Body body, float radius, ShapeDef? def = null) => CreateShape(body, ShapeSpec3D.Sphere(radius), def);
 
-    /// <summary>Attaches a box.</summary>
-    public Shape CreateBox(Body body, Vector3F halfExtents, float convexRadius = 0f, ShapeDef? def = null) => CreateShape(body, ShapeSpec3D.Box(halfExtents, convexRadius), def);
+    /// <summary>Attaches a box of the given full size (the same as <see cref="AddBox"/>).</summary>
+    public Shape CreateBox(Body body, Vector3F size, float convexRadius = 0f, ShapeDef? def = null) => CreateShape(body, ShapeSpec3D.Box(size, convexRadius), def);
 
     /// <summary>Attaches a capsule along the body's y axis.</summary>
-    public Shape CreateCapsule(Body body, float halfHeight, float radius, ShapeDef? def = null) => CreateShape(body, ShapeSpec3D.Capsule(halfHeight, radius), def);
+    public Shape CreateCapsule(Body body, float halfLength, float radius, ShapeDef? def = null) => CreateShape(body, ShapeSpec3D.Capsule(halfLength, radius), def);
 
     /// <summary>Attaches a cylinder along the body's y axis.</summary>
     public Shape CreateCylinder(Body body, float halfHeight, float radius, float convexRadius = 0f, ShapeDef? def = null) => CreateShape(body, ShapeSpec3D.Cylinder(halfHeight, radius, convexRadius), def);
@@ -326,16 +346,16 @@ public sealed partial class PhysicsWorld3D
             throw new ArgumentOutOfRangeException(nameof(size), size, "Each side of the box must be finite and within (0, " + max.ToString("R", CultureInfo.InvariantCulture) + "].");
         }
 
-        return AddOne(type, at, rotation, ShapeSpec3D.Box(new Vector3F(0.5f * size.X, 0.5f * size.Y, 0.5f * size.Z)), material, density);
+        return AddOne(type, at, rotation, ShapeSpec3D.Box(size), material, density);
     }
 
     /// <summary>Adds a sphere.</summary>
     public Body AddSphere(float radius, Vector3D at = default, BodyType type = BodyType.Dynamic, Material3D? material = null, float density = 1f)
         => AddOne(type, at, default, ShapeSpec3D.Sphere(radius), material, density);
 
-    /// <summary>Adds a capsule along the y axis: <paramref name="halfHeight"/> is half the length of the straight part.</summary>
-    public Body AddCapsule(float halfHeight, float radius, Vector3D at = default, QuaternionF rotation = default, BodyType type = BodyType.Dynamic, Material3D? material = null, float density = 1f)
-        => AddOne(type, at, rotation, ShapeSpec3D.Capsule(halfHeight, radius), material, density);
+    /// <summary>Adds a capsule along the y axis: <paramref name="halfLength"/> is half the length of the straight part.</summary>
+    public Body AddCapsule(float halfLength, float radius, Vector3D at = default, QuaternionF rotation = default, BodyType type = BodyType.Dynamic, Material3D? material = null, float density = 1f)
+        => AddOne(type, at, rotation, ShapeSpec3D.Capsule(halfLength, radius), material, density);
 
     /// <summary>Adds a cylinder along the y axis.</summary>
     public Body AddCylinder(float halfHeight, float radius, Vector3D at = default, QuaternionF rotation = default, BodyType type = BodyType.Dynamic, Material3D? material = null, float density = 1f)
@@ -393,7 +413,7 @@ public sealed partial class PhysicsWorld3D
     internal void DestroyBody(BodyHandle h)
     {
         _engine.DestroyBody(h);
-        _handlers.Remove(h.Index);
+        RetireBodyHandlers(h);
     }
 
     internal void DestroyShape(ShapeHandle h) => _engine.DestroyShape(h);

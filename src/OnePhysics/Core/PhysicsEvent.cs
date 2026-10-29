@@ -91,4 +91,8 @@ public readonly struct PhysicsEvent
         float v = r.ReadSingle();
         return new PhysicsEvent((EventKind)k, a, b, sa, sb, subA, subB, j, v);
     }
+
+    /// <inheritdoc/>
+    public override string ToString() =>
+        Kind + " " + BodyA + (BodyB.IsNull ? "" : " - " + BodyB) + (Joint.IsNull ? "" : " " + Joint) + (Value == 0f ? "" : " value " + Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
 }
