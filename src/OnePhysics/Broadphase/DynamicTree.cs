@@ -302,6 +302,18 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
         _leafCount--;
     }
 
+    /// <summary>
+    /// Moves every box by <c>-offset</c> in place (an origin shift): the tree keeps its shape, heights and flags, so pair finding goes on exactly as it would have in the unshifted world.
+    /// Bounds are clamped to the coordinate limit (see <see cref="IBox{TSelf}.Translated"/>).
+    /// </summary>
+    public void Translate(ReadOnlySpan<double> offset)
+    {
+        for (int i = 0; i < _used; i++)
+        {
+            if (_nodes[i].Height >= 0) { _nodes[i].Box = _nodes[i].Box.Translated(offset); }
+        }
+    }
+
     /// <summary>Gives a proxy new bounds by removing and reinserting it (the proxy id is unchanged). The caller decides whether the move is worth it; see the broadphase for fattening.</summary>
     public void MoveProxy(int proxy, in TBox box)
     {

@@ -443,9 +443,9 @@ internal sealed partial class Engine3D
             var rs = pose.Rotation;
             var inv = rs.Conjugated();
             var off = new Vector3F(
-                (float)((Cx + (double)ShapePose.Translation.X) - (p[0] + (double)pose.Translation.X)),
-                (float)((Cy + (double)ShapePose.Translation.Y) - (p[1] + (double)pose.Translation.Y)),
-                (float)((Cz + (double)ShapePose.Translation.Z) - (p[2] + (double)pose.Translation.Z)));
+                (float)((Cx - p[0]) + ((double)ShapePose.Translation.X - (double)pose.Translation.X)),
+                (float)((Cy - p[1]) + ((double)ShapePose.Translation.Y - (double)pose.Translation.Y)),
+                (float)((Cz - p[2]) + ((double)ShapePose.Translation.Z - (double)pose.Translation.Z)));
             var rel = new RigidTransformF(inv * ShapePose.Rotation, inv.Rotate(off));
             var motion = inv.Rotate(Motion);
             // The hit only matters if the body would end the step well inside the surface: shallower overlaps are the contact solver's job, and clamping them would pin a body that is resting on,

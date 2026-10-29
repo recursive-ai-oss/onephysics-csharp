@@ -28,9 +28,9 @@ public class World3DTests
     }
 
     /// <summary>A static floor, a stack of boxes, a heap of mixed shapes and a compound: enough contact variety for determinism checks.</summary>
-    internal static PhysicsWorld3D BuildScene(int threads, int id = 7)
+    internal static PhysicsWorld3D BuildScene(int threads, int id = 7, Action<WorldOptions3D>? tweak = null)
     {
-        var w = NewWorld(threads, id);
+        var w = NewWorld(threads, id, tweak);
         Floor(w);
         for (int row = 0; row < 4; row++)
         {
@@ -513,19 +513,32 @@ public class World3DTests
     }
 
     [Fact]
-    public void ShiftingTheOriginKeepsTheSimulationGoing()
+    public void ShiftingTheOriginIsExact()
     {
-        var a = BuildScene(1);
-        var b = BuildScene(1);
+        // The shift moves positions and stored broadphase boxes by the same offset and nothing else, so the shifted world steps through the same states as the unshifted one, translated.
+        // Sleeping is off so the pile keeps moving for the whole run.
+        var a = BuildScene(1, 7, o => o.SleepEnabled = false);
+        var b = BuildScene(1, 7, o => o.SleepEnabled = false);
+        // Positions handed in by a host are 31.32 fixed-point values; snap the scene's decimal ones to that grid so the shift is exact for every body.
+        foreach (var w in new[] { a, b })
+        {
+            var pos = w.Core.Bodies.Position;
+            for (int k = 0; k < pos.Length; k++) { pos[k] = Math.Round(pos[k] * 4294967296.0) / 4294967296.0; }
+        }
         for (int i = 0; i < 30; i++) { a.Step(Dt); b.Step(Dt); }
         b.ShiftOrigin(new Vector3D(64.0, -8.0, 16.0));
-        for (int i = 0; i < 25; i++) { a.Step(Dt); b.Step(Dt); }
-        // Positions differ by exactly the shift (the shifted world works in smaller numbers, so float rounding of the differences is the only change). The shift rebuilds the tree with plain margins, so pairs of the shifted world can appear a step later than in the unshifted one; in a tumbling pile that reorders constraints and the two worlds part ways after about 30 steps, so only the first 25 are compared.
-        var ba = a.Core.Bodies; var bb = b.Core.Bodies;
-        var pa = ba.Position; var pb = bb.Position;
-        for (int i = 0; i < ba.HighWater; i++)
+        for (int i = 0; i < 600; i++)
         {
-            Assert.InRange(Math.Abs(pa[3 * i] - 64.0 - pb[3 * i]) + Math.Abs(pa[3 * i + 1] + 8.0 - pb[3 * i + 1]) + Math.Abs(pa[3 * i + 2] - 16.0 - pb[3 * i + 2]), 0.0, 0.05);
+            a.Step(Dt); b.Step(Dt);
+            var pa = a.Core.Bodies.Position; var pb = b.Core.Bodies.Position;
+            var va = a.Core.Bodies.LinearVelocity; var vb = b.Core.Bodies.LinearVelocity;
+            var ra = a.Core.Bodies.Rotation; var rb = b.Core.Bodies.Rotation;
+            for (int k = 0; k < a.Core.Bodies.HighWater; k++)
+            {
+                Assert.True(pa[3 * k] - 64.0 == pb[3 * k] && pa[3 * k + 1] + 8.0 == pb[3 * k + 1] && pa[3 * k + 2] - 16.0 == pb[3 * k + 2], "position of body " + k + " at step " + i);
+                Assert.True(va[3 * k] == vb[3 * k] && va[3 * k + 1] == vb[3 * k + 1] && va[3 * k + 2] == vb[3 * k + 2], "velocity of body " + k + " at step " + i);
+                Assert.True(ra[4 * k] == rb[4 * k] && ra[4 * k + 1] == rb[4 * k + 1] && ra[4 * k + 2] == rb[4 * k + 2] && ra[4 * k + 3] == rb[4 * k + 3], "rotation of body " + k + " at step " + i);
+            }
         }
     }
 

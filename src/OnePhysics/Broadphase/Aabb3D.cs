@@ -101,6 +101,15 @@ public readonly struct Aabb3D : IBox<Aabb3D>, IEquatable<Aabb3D>
     }
 
     /// <inheritdoc/>
+    public Aabb3D Translated(ReadOnlySpan<double> offset)
+    {
+        const double L = BoxLimits.MaxCoordinate;
+        return new Aabb3D(
+            Math.Clamp(MinX - offset[0], -L, L), Math.Clamp(MinY - offset[1], -L, L), Math.Clamp(MinZ - offset[2], -L, L),
+            Math.Clamp(MaxX - offset[0], -L, L), Math.Clamp(MaxY - offset[1], -L, L), Math.Clamp(MaxZ - offset[2], -L, L));
+    }
+
+    /// <inheritdoc/>
     public bool IsValid(out string reason) =>
         BoxLimits.CheckAxis(MinX, MaxX, "x", out reason) && BoxLimits.CheckAxis(MinY, MaxY, "y", out reason) && BoxLimits.CheckAxis(MinZ, MaxZ, "z", out reason);
 

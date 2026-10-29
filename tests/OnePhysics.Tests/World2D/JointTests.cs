@@ -158,7 +158,7 @@ public class JointTests
 
     [Theory]
     [InlineData(2f, 0.3f)]
-    [InlineData(1f, 0.7f)]
+    [InlineData(1f, 0.4f)] // position steps are multiples of 2^-32, so a heavily damped swing is lost in them after a few periods; 0.4 keeps four peaks above that
     public void WheelSuspensionHasTheRequestedFrequencyAndDamping(float hertz, float zeta)
     {
         var w = NewWorld(false);

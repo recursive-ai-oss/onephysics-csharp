@@ -187,7 +187,7 @@ internal sealed partial class Engine3D
                 if (_boxInside[s] != 0) { continue; }
                 int o = 6 * s;
                 var tight = new Aabb3D(_boxes[o], _boxes[o + 1], _boxes[o + 2], _boxes[o + 3], _boxes[o + 4], _boxes[o + 5]);
-                Bp.MoveProxy(Proxy[s], tight, Dp[3 * b], Dp[3 * b + 1], Dp[3 * b + 2]);
+                Bp.MoveProxy(Proxy[s], tight, WorldCore.Grid(Dp[3 * b]), WorldCore.Grid(Dp[3 * b + 1]), WorldCore.Grid(Dp[3 * b + 2]));
             }
         }
 
@@ -649,9 +649,9 @@ internal sealed partial class Engine3D
         // Shape frames in world axes. Positions are subtracted in double first; only the (small) difference becomes float.
         Vector3F armA = qA.Rotate(la.Translation - lcA), armB = qB.Rotate(lb.Translation - lcB);
         QuaternionF rwa = qA * la.Rotation, rwb = qB * lb.Rotation;
-        double dx = (pB[0] + (double)armB.X) - (pA[0] + (double)armA.X);
-        double dy = (pB[1] + (double)armB.Y) - (pA[1] + (double)armA.Y);
-        double dz = (pB[2] + (double)armB.Z) - (pA[2] + (double)armA.Z);
+        double dx = (pB[0] - pA[0]) + ((double)armB.X - (double)armA.X);
+        double dy = (pB[1] - pA[1]) + ((double)armB.Y - (double)armA.Y);
+        double dz = (pB[2] - pA[2]) + ((double)armB.Z - (double)armA.Z);
         var inv = rwa.Conjugated();
         var bInA = new RigidTransformF(inv * rwb, inv.Rotate(new Vector3F((float)dx, (float)dy, (float)dz)));
         var f = new PairFrame { Rwa = rwa, ArmA = armA, ComDiff = new Vector3F((float)(pA[0] - pB[0]), (float)(pA[1] - pB[1]), (float)(pA[2] - pB[2])) };

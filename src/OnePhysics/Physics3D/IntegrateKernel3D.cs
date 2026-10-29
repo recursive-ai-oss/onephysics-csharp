@@ -327,7 +327,7 @@ internal static class IntegrateKernel3D
             {
                 int b = list[i0 + l];
                 int b3 = 3 * b, b4 = 4 * b, b6 = 6 * b, o = 16 * b;
-                pos[b3] += (double)st[PLin * Lanes + l]; pos[b3 + 1] += (double)st[(PLin + 1) * Lanes + l]; pos[b3 + 2] += (double)st[(PLin + 2) * Lanes + l];
+                pos[b3] += WorldCore.Grid(st[PLin * Lanes + l]); pos[b3 + 1] += WorldCore.Grid(st[(PLin + 1) * Lanes + l]); pos[b3 + 2] += WorldCore.Grid(st[(PLin + 2) * Lanes + l]);
                 for (int k = 0; k < 3; k++) { Mem.At(dp, b3 + k) = st[(PDp + k) * Lanes + l]; Mem.At(pk, o + k) = st[(PDp + k) * Lanes + l]; }
                 for (int k = 0; k < 4; k++) { Mem.At(dq, b4 + k) = st[(PDq + k) * Lanes + l]; Mem.At(rot, b4 + k) = st[(PRot + k) * Lanes + l]; Mem.At(pk, o + 3 + k) = st[(PDq + k) * Lanes + l]; }
                 for (int k = 0; k < 6; k++) { Mem.At(wInvI, b6 + k) = st[(PWInvI + k) * Lanes + l]; Mem.At(pk, o + 7 + k) = st[(PWInvI + k) * Lanes + l]; }
