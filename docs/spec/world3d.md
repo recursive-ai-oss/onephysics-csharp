@@ -728,3 +728,22 @@ Pairs per step: sleep-wake-3d 1,150 run the narrowphase, 580 of them touching pa
 * **Tried and dropped:** `SkipLocalsInit` on the pair methods (no change beyond the split's), and a faster path for reused manifolds (already about 80 ns).
 
 Hash matrix: manifest unchanged on the 37 scenarios, so no line moves.
+
+### Round 31: would a narrowphase run in batches across pairs pay? (no result changes; one kernel built, not wired in)
+
+**The question.** The contact stage of ragdoll-pile-3d and sleep-wake-3d is about twice Bepu's, spread thinly (round 30). Process pairs of one type side by side, one pair per SIMD lane, with a scalar twin, and see what that takes off a step.
+
+**Built.** `BoxEdgesWide3D.Run` (`Collision3D/BoxEdgesWide3D.cs`) runs the nine edge-edge axes of the box separating axis test for eight box pairs at once. Each lane does the operations of the scalar search in the same order (squares first for the cone test, one divide and one square root per axis, `ConditionalSelect` where the scalar code branches, strict `>` for the best axis so the earliest axis wins a tie), and nothing crosses lanes, so a lane's answer is the scalar answer whatever the width. `BoxEdgesWideTests` compares best separation, axis, and both supporting edges with the scalar `BoxEdges` bit for bit over 32,000 random, axis-aligned, quarter-turn and nearly aligned poses, with NaN and all-zero lanes mixed in.
+
+**Measured** (`Bar micro-boxedges`, 4096 pairs of pile-like poses, best of 200 repetitions, tiered compilation off, loaded host, indicative): scalar 152–172 ns per pair, eight lanes 14.6–14.8 ns per pair, about 10×, at tilts from 0.02 to 1.0.
+
+**Why it is not wired in.** The kernel is the best case for batching: all arithmetic, no memory. What it saves in a step is its share of the pairs, and that share is small:
+* the edge search runs for about 186k of the 438k box pairs that reach the separating axis test in sleep-wake-3d (round 30), about 440 a step, so 440 × (152 − 15) ns is about 0.06 ms of a 3.6 ms step (under 2%);
+* batching the face-axis test as well (60 ns scalar) adds about 0.03 ms; the face clipping (240 ns, branchy, four-point reduction) and the polyhedron, capsule–box and GJK routines do not vectorize across pairs without reordering their work by case first;
+* the reuse test, the apart-pair skip and the tight-box rejection are about 80–130 ns a pair, but their cost is loading each pair's two bodies, shapes and payload (cache misses and pointer chasing), not arithmetic; eight lanes of arithmetic do not change that, and gathering the operands into lane arrays costs about what the scalar loads cost.
+
+Wiring the kernel in needs `Collide` split into a gather pass, a wide pass and a continue pass per chunk of pairs, for a gain that I estimate at 3–7% of the collision stage (box–box face and edge tests, both box–box call sites), against the aim of 0.6×. It would also need a staging area per chunk and a fixed lane assignment (pairs in update-list order, a short last batch padded with copies of a real lane, which is width-independent). That does not pay on these two scenes, and nothing was changed in the pair driver.
+
+**What would move the stage.** The pair count (1.8–2.2× Bepu's at equal awake bodies), the per-pair memory traffic (shape and body records read through several arrays), and the 130 ns around each pair outside the shape routine. A narrowphase that sorts a chunk's pairs by shape-kind pair first, so each routine runs over a run of like pairs with warm code and data, is the batching that fits those, but needs the pair driver and the apply pass reorganized and is a larger change than this round.
+
+Hash matrix: not run; no behaviour changed (`BoxEdges` is `internal` instead of `private`, and the wide kernel has no caller in the library).
