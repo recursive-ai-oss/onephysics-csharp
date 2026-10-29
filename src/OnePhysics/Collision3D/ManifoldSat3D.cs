@@ -27,8 +27,13 @@ public sealed partial class ManifoldGenerator3D
         public float[] Cx = new float[24], Cy = new float[24], Cz = new float[24], Dx = new float[24], Dy = new float[24], Dz = new float[24], Ex = new float[24], Ey = new float[24], Ez = new float[24];
         public float[] Gx = new float[24], Gy = new float[24], Gz = new float[24], Qx = new float[24], Qy = new float[24], Qz = new float[24], G2 = new float[24];
 
+        // PrepareEdges is a function of what Load wrote, so a polyhedron that stays loaded keeps its edge data.
+        private bool _edgesReady;
+
         public void PrepareEdges()
         {
+            if (_edgesReady) { return; }
+            _edgesReady = true;
             ReadOnlySpan<HullEdge3D> e = Hull.Edges;
             int n = e.Length >> 1;
             if (EC.Length < n)
@@ -61,6 +66,7 @@ public sealed partial class ManifoldGenerator3D
 
         public void Load(in ConvexShape3D s, bool transform, in Matrix3x3F r, Vector3F t)
         {
+            _edgesReady = false;
             var hull = HullOf(s);
             Hull = hull;
             ReadOnlySpan<Vector3F> hv = hull.Vertices;
@@ -305,7 +311,9 @@ public sealed partial class ManifoldGenerator3D
     // Only boxes are remembered: their hull is the shared unit cube, whereas a hull-kind shape may be a reused buffer (the triangle of a mesh contact) whose points change between calls.
     private void LoadPair(in ConvexShape3D a, in ConvexShape3D b, in Matrix3x3F r, Vector3F t)
     {
-        if (!(_paLoaded && a.Kind == ConvexShapeKind3D.Box && _paHull != null && a.CoreSize.X == _paSize.X && a.CoreSize.Y == _paSize.Y && a.CoreSize.Z == _paSize.Z))
+        bool keepA = _pinSide == 1 && _pinned, keepB = _pinSide == 2 && _pinned;
+        if (_pinSide != 0) { _pinned = true; }
+        if (!keepA && !(_paLoaded && a.Kind == ConvexShapeKind3D.Box && _paHull != null && a.CoreSize.X == _paSize.X && a.CoreSize.Y == _paSize.Y && a.CoreSize.Z == _paSize.Z))
         {
             _pa.Load(a, false, r, default);
             _paHull = a.Kind == ConvexShapeKind3D.Box ? s_unitBox : null;
@@ -313,8 +321,17 @@ public sealed partial class ManifoldGenerator3D
             _paLoaded = true;
         }
 
-        _pb.Load(b, true, r, t);
+        if (!keepB) { _pb.Load(b, true, r, t); }
     }
+
+    private int _pinSide;
+    private bool _pinned;
+
+    /// <summary>Declares that the following calls share one convex shape and one relative pose, and only the other shape changes (a convex shape against the triangles of a mesh): the shared shape on the given side (1 = A, 2 = B) is loaded for the first call and kept for the rest. End with <see cref="EndPin"/>.</summary>
+    internal void BeginPin(int side) { _pinSide = side; _pinned = false; }
+
+    /// <summary>Ends <see cref="BeginPin"/>.</summary>
+    internal void EndPin() { _pinSide = 0; _pinned = false; }
 
     // Whether the vertex of q nearest to the plane of p's face lies, projected along the face normal, inside the face's polygon (on its boundary counts).
     private static bool NearestVertexOverFace(PolyData p, PolyData q, int face, out Vector3F nearest)

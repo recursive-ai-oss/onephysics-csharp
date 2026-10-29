@@ -260,11 +260,10 @@ internal sealed partial class Engine3D
         if (_applyCount.Length < chunks) { _applyCount = new int[Math.Max(chunks, _applyCount.Length * 2)]; }
         if (_applyIdx.Length < chunks * 64) { _applyIdx = new int[Math.Max(chunks * 64, _applyIdx.Length * 2)]; }
         for (int i = 0; i < chunks; i++) { _scratch[i].OutCount = 0; }
-        world.Executor.For(chunks, new CollideTask(this));
-
         // The serial pass only adds, matches and removes constraints (their order fixes the colors); writing the manifolds into the payloads is independent per constraint and runs afterwards in parallel.
         // A user material mixer is called in pair order on this thread instead.
         _deferWrite = Opt.MaterialMixer == null && _updateCount >= 64;
+        world.Executor.For(chunks, new CollideTask(this));
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Apply);
 #endif
@@ -375,6 +374,39 @@ internal sealed partial class Engine3D
         }
 
         PairCons[p] = head;
+    }
+
+    // Whether the pair's new contacts are exactly its present constraints (same sub-shape keys in the same order, at least one) and nothing needs waking. If so the constraints are recorded for the payload write
+    // and the pair skips the serial pass. Reads only; it runs inside the parallel narrowphase, where nothing adds, removes or wakes.
+    private bool MatchesInPlace(int i, NarrowScratch sc)
+    {
+        if (_resStatus[i] != 1) { return false; }
+        int count = _resCount[i];
+        int p = _updateList[i];
+        int c = PairCons[p];
+        if (count == 0 || c < 0) { return false; }
+        int sa = PairA[p], sb = PairB[p];
+        if (IsSensor(sa) || IsSensor(sb)) { return false; }
+        var bodies = Core.Bodies;
+        var owner = Core.Shapes.Owner;
+        int ba = owner[sa], bb = owner[sb];
+        if ((bodies.IsDynamic(ba) && !bodies.IsAwake(ba)) || (bodies.IsDynamic(bb) && !bodies.IsAwake(bb))) { return false; }
+        var cs = Core.Constraints;
+        int first = _resFirst[i];
+        for (int j = 0; j < count; j++, c = ConsNext[c])
+        {
+            if (c < 0 || cs.SubShapeA[c] != sc.Out[first + j].SubA || cs.SubShapeB[c] != sc.Out[first + j].SubB) { return false; }
+        }
+
+        if (c >= 0) { return false; }
+        c = PairCons[p];
+        for (int j = 0; j < count; j++, c = ConsNext[c])
+        {
+            ref ContactOut o = ref sc.Out[first + j];
+            o.Cons = c; o.ShapeA = sa; o.ShapeB = sb;
+        }
+
+        return true;
     }
 
     private Shape WrapShape(int slot) => new(World!, Core.HandleOfShape(slot));
@@ -529,7 +561,8 @@ internal sealed partial class Engine3D
             {
                 e.Collide(i, sc);
                 // Worth the serial pass: the boxes no longer overlap (the pair goes), or the pair has points or a constraint to match.
-                if (e._resStatus[i] == 2 || e._resCount[i] != 0 || e.PairCons[e._updateList[i]] != -1) { e._applyIdx[lo + listed++] = i; }
+                // A pair whose new contacts are exactly its constraints, one for one, changes nothing the serial pass owns (no constraint is added or removed, so no color moves); it only needs its payloads written.
+                if ((e._resStatus[i] == 2 || e._resCount[i] != 0 || e.PairCons[e._updateList[i]] != -1) && !(e._deferWrite && e.MatchesInPlace(i, sc))) { e._applyIdx[lo + listed++] = i; }
             }
 
             e._applyCount[task] = listed;
@@ -733,9 +766,11 @@ internal sealed partial class Engine3D
         var triBuf = NarrowScratch.TriBuf;
         var gen = NarrowScratch.Gen;
         tris.Clear();
-        soup.GetCandidates(shape, shapeInSoup, spec, tris, NarrowScratch.Ids);
+        soup.CollectCandidates(shape, shapeInSoup, spec, tris, NarrowScratch.Ids);
         // The shape in the soup's frame is the same for every triangle; with the soup as B the manifold is computed in the shape's frame, which needs the inverse.
         var soupInShape = soupIsA ? default : shapeInSoup.Inverted();
+        // Every triangle is tested against the same shape in the same pose, so the shape's polyhedron is built once for the pair, not once per triangle.
+        gen.BeginPin(soupIsA ? 2 : 1);
         // For a child of a compound the manifold comes back in the child's frame; mapToA moves it into the compound's frame (only when the compound is shape A).
         for (int t = 0; t < tris.Count; t++)
         {
@@ -758,6 +793,8 @@ internal sealed partial class Engine3D
             if (m.PointCount == 0) { continue; }
             Emit(sc, in f, subA, subB, in m, shapeLocal, map, soupFromA, true, tri, soupIsA, triBuf.Normal);
         }
+
+        gen.EndPin();
     }
 
     private static void Emit(NarrowScratch sc, in PairFrame f, int subA, int subB, in Manifold3D m, in RigidTransformF mapToA, bool map, in RigidTransformF soupFromA, bool filter, in SoupTriangle3D tri,

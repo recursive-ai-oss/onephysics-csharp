@@ -427,7 +427,8 @@ public sealed class TriangleMesh3D : TriangleSoup3D
                 {
                     int id = order[k];
                     int i3 = 3 * id;
-                    if (TriangleTests3D.BoxTriangle(box, _vertices[_indices[i3]], _vertices[_indices[i3 + 1]], _vertices[_indices[i3 + 2]]))
+                    Vector3F v0 = _vertices[_indices[i3]], v1 = _vertices[_indices[i3 + 1]], v2 = _vertices[_indices[i3 + 2]];
+                    if (TriangleTests3D.BoxTriangle(box, v0, v1, v2))
                     {
                         ids.Add(id);
                     }
