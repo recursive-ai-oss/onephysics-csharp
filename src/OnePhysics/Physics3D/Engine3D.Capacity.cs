@@ -39,7 +39,7 @@ internal sealed partial class Engine3D
             for (int i = old; i < _scratch.Length; i++) { _scratch[i] = new NarrowScratch(); }
         }
 
-        if (_boxStamp.Length < shapes) { _boxes = new double[shapes * 6]; _boxStamp = new int[shapes]; }
+        if (_boxStamp.Length < shapes) { _boxes = new double[shapes * 6]; _boxStamp = new int[shapes]; _boxInside = new byte[shapes]; }
         if (_active.Length < bodies) { _active = new byte[bodies]; _isSleeper = new byte[bodies]; }
         if (_sleepers.Length < bodies) { _sleepers = new int[bodies]; }
 

@@ -8,7 +8,8 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 
 internal enum QueryKind : byte { Ray, Cast, Overlap, Closest }
 
-internal enum QueryMode : byte { Closest, Any, All }
+/// <summary>Closest keeps the best hit, Any stops at the first, All keeps the best N in order, Count only counts the accepted shapes (overlap queries; no hit is stored).</summary>
+internal enum QueryMode : byte { Closest, Any, All, Count }
 
 /// <summary>One accepted shape during a query. <c>Key</c> orders the results: ray and cast fraction, closest-point distance, overlap centre distance (closest mode) or shape slot (all mode); ties break on the shape slot.</summary>
 internal struct RawHit
@@ -482,8 +483,20 @@ internal sealed partial class Engine3D
         private bool Visit(int slot)
         {
             if (!E.Passes(in Filter, slot) || !E.Narrow(in Q, Mode, slot, S, out RawHit h)) { return false; }
+            if (Mode == QueryMode.Count) { S.Count++; return true; }
             S.Insert(in h);
             return true;
+        }
+
+        private readonly bool ApartFromBox(int proxy)
+        {
+            var e = E;
+            ref readonly QueryParams q = ref Q;
+            if (!e.QuickRejects || q.Kind != QueryKind.Overlap || q.Mover.Kind != ConvexShapeKind3D.Sphere) { return false; }
+            ref readonly Aabb3D b = ref e.Bp.FatBoundsOfLive(proxy);
+            double reach = (double)q.Mover.ConvexRadius + QueryEpsilon + 1e-3 + ((proxy & 3) == 0 ? 0.0 : e.QueryPad());
+            double dx = Math.Max(Math.Max(b.MinX - q.X, q.X - b.MaxX), 0.0), dy = Math.Max(Math.Max(b.MinY - q.Y, q.Y - b.MaxY), 0.0), dz = Math.Max(Math.Max(b.MinZ - q.Z, q.Z - b.MaxZ), 0.0);
+            return dx * dx + dy * dy + dz * dz > reach * reach;
         }
 
         public double Report(int proxy, int userId, double maxFraction)
@@ -498,6 +511,9 @@ internal sealed partial class Engine3D
 
         public bool Report(int proxy, int userId)
         {
+            // A sphere reaches a shape only if it reaches the shape's stored box grown by what that box may lag behind the body (the same growth the tree query used), so the distance from its
+            // centre to that box, a few arithmetic operations, settles most candidates of a large sphere that the box overlap of the query let through at its corners.
+            if (ApartFromBox(proxy)) { return true; }
             Visit(userId);
             return !(Mode == QueryMode.Any && S.Count > 0);
         }
@@ -511,6 +527,7 @@ internal sealed partial class Engine3D
     {
         if (mode != QueryMode.All) { capacity = 1; }
         capacity = Math.Max(0, Math.Min(capacity, Core.Shapes.HighWater));
+        if (mode == QueryMode.Count) { capacity = Math.Min(capacity, 1); } // counted, not stored
         var scratch = QueryScratch.Acquire(capacity);
         try
         {

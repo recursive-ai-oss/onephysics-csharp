@@ -412,7 +412,7 @@ public sealed partial class PhysicsWorld3D
     internal int OverlapSphereCount(Vector3D center, float radius, in QueryFilter3D filter)
     {
         var q = OverlapParams(SphereShape(radius), center, default);
-        var s = _engine.Run(in q, in filter, QueryMode.All, int.MaxValue);
+        var s = _engine.Run(in q, in filter, QueryMode.Count, int.MaxValue);
         try { return s.Count; }
         finally { s.Release(); }
     }

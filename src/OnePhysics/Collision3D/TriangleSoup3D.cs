@@ -429,7 +429,8 @@ public abstract class TriangleSoup3D
         CheckBox(box);
         int before = ids.Count;
         BoxWalk(box, ids);
-        ids.Sort(before, ids.Count - before, null);
+        // Span sort: no comparer object, and insertion sort for the handful of ids a shape-sized box finds.
+        System.Runtime.InteropServices.CollectionsMarshal.AsSpan(ids).Slice(before).Sort();
         return ids.Count - before;
     }
 
@@ -456,6 +457,18 @@ public abstract class TriangleSoup3D
         return new Bounds3F(new Vector3F(nx.X, ny.Y, nz.Z), new Vector3F(px.X, py.Y, pz.Z));
     }
 
+    // The same six support points as ShapeBounds, read off the rotation matrix: the support directions are its rows, and only the one component of each support point that bounds the box is needed.
+    private static Bounds3F PlacedBounds(in ConvexShape3D shape, in RigidTransformF placement)
+    {
+        Matrix3x3F m = placement.Rotation.ToMatrix();
+        Vector3F t = placement.Translation;
+        Vector3F r0 = m.Row(0), r1 = m.Row(1), r2 = m.Row(2);
+        float x1 = Vector3F.Dot(r0, shape.Support(r0)) + t.X, x0 = Vector3F.Dot(r0, shape.Support(-r0)) + t.X;
+        float y1 = Vector3F.Dot(r1, shape.Support(r1)) + t.Y, y0 = Vector3F.Dot(r1, shape.Support(-r1)) + t.Y;
+        float z1 = Vector3F.Dot(r2, shape.Support(r2)) + t.Z, z0 = Vector3F.Dot(r2, shape.Support(-r2)) + t.Z;
+        return new Bounds3F(new Vector3F(x0, y0, z0), new Vector3F(x1, y1, z1));
+    }
+
     private static void CheckPlacement(in RigidTransformF t)
     {
         CheckFinite(t.Translation, "shapeInSoup.Translation");
@@ -471,6 +484,20 @@ public abstract class TriangleSoup3D
     {
         float m = Math.Max(Math.Max(Math.Abs(b.Min.X), Math.Abs(b.Max.X)), Math.Max(Math.Max(Math.Abs(b.Min.Y), Math.Abs(b.Max.Y)), Math.Max(Math.Abs(b.Min.Z), Math.Abs(b.Max.Z))));
         return b.Inflate(1e-5f * (m + 1e-3f));
+    }
+
+    /// <summary>The narrowphase's candidate query: the triangles that touch the shape's bounds grown by the margin, ascending by id. The same triangles as <see cref="GetCandidates"/>, without its argument checks: the engine's own poses are valid.</summary>
+    internal void CollectCandidates(in ConvexShape3D shape, in RigidTransformF shapeInSoup, float margin, List<SoupTriangle3D> triangles, List<int> ids)
+    {
+        Bounds3F box = PlacedBounds(shape, shapeInSoup).Inflate(margin);
+        ids.Clear();
+        BoxWalk(box, ids);
+        System.Runtime.InteropServices.CollectionsMarshal.AsSpan(ids).Sort();
+        foreach (int id in ids)
+        {
+            TryGetTriangle(id, out SoupTriangle3D t);
+            triangles.Add(t);
+        }
     }
 
     /// <summary>

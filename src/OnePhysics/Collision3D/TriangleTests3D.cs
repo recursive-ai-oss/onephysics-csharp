@@ -77,6 +77,13 @@ public static class TriangleTests3D
         return canonical ? positive : !positive;
     }
 
+    /// <summary>Whether the triangle's axis-aligned bounds and the box share a point: the cheap first step of <see cref="BoxTriangle"/>.</summary>
+    internal static bool BoundsMeet(in Bounds3F box, Vector3F a, Vector3F b, Vector3F c)
+    {
+        Vector3F lo = Vector3F.Min(a, Vector3F.Min(b, c)), hi = Vector3F.Max(a, Vector3F.Max(b, c));
+        return lo.X <= box.Max.X && box.Min.X <= hi.X && lo.Y <= box.Max.Y && box.Min.Y <= hi.Y && lo.Z <= box.Max.Z && box.Min.Z <= hi.Z;
+    }
+
     /// <summary>
     /// Tests a triangle against an axis-aligned box by the separating-axis theorem (13 axes; Ericson, Real-Time Collision Detection, 5.2.9; Akenine-Möller 2001). Touching counts as overlapping.
     /// The triangle's own bounding box is tested first with exact float comparisons, so a triangle is never reported when its bounds are apart from the box.
@@ -88,8 +95,7 @@ public static class TriangleTests3D
     /// <returns>True when the closed triangle and the closed box share a point (within double rounding).</returns>
     public static bool BoxTriangle(Bounds3F box, Vector3F a, Vector3F b, Vector3F c)
     {
-        Vector3F lo = Vector3F.Min(a, Vector3F.Min(b, c)), hi = Vector3F.Max(a, Vector3F.Max(b, c));
-        if (!(lo.X <= box.Max.X && box.Min.X <= hi.X && lo.Y <= box.Max.Y && box.Min.Y <= hi.Y && lo.Z <= box.Max.Z && box.Min.Z <= hi.Z))
+        if (!BoundsMeet(box, a, b, c))
         {
             return false;
         }

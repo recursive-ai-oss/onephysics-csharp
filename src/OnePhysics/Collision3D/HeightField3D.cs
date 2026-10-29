@@ -191,6 +191,9 @@ public sealed class HeightField3D : TriangleSoup3D
 
     private Vector3F P(int i, int j) => new((float)i * _scale.X, _heights[(j * _nx) + i] * _scale.Y, (float)j * _scale.Z);
 
+    // A cell coordinate from a position divided by the cell size, kept in int range (NaN and huge values land on the ends).
+    private static int ClampCell(float x) => x >= 1e9f ? 1000000000 : x <= -1e9f ? -1000000000 : (int)Math.Floor(x);
+
     private void Tri(int cell, int k, out Vector3F a, out Vector3F b, out Vector3F c)
     {
         int i = cell % _cx, j = cell / _cx;
@@ -485,6 +488,15 @@ public sealed class HeightField3D : TriangleSoup3D
             {
                 int i0 = bx << BlockShift, j0 = bz << BlockShift;
                 int i1 = Math.Min(i0 + (1 << BlockShift), _cx), j1 = Math.Min(j0 + (1 << BlockShift), _cz);
+                // Only the cells whose x and z extent meets the box can hold a triangle that touches it; the range is widened by a cell so rounding of the division never drops one.
+                // (Ericson, Real-Time Collision Detection, 7.1.2: a grid is walked over the cells a box covers, not over all of them.)
+                float sx = _scale.X, sz = _scale.Z;
+                if (sx > 0f && sz > 0f)
+                {
+                    i0 = Math.Max(i0, ClampCell(box.Min.X / sx) - 1); i1 = Math.Min(i1, ClampCell(box.Max.X / sx) + 2);
+                    j0 = Math.Max(j0, ClampCell(box.Min.Z / sz) - 1); j1 = Math.Min(j1, ClampCell(box.Max.Z / sz) + 2);
+                }
+
                 for (int j = j0; j < j1; j++)
                 {
                     for (int i = i0; i < i1; i++)
@@ -495,13 +507,22 @@ public sealed class HeightField3D : TriangleSoup3D
                             continue;
                         }
 
-                        for (int k = 0; k < 2; k++)
+                        // The four corners once for both triangles; a cell whose heights all lie beyond the box in y holds no triangle that touches it.
+                        Vector3F v00 = P(i, j), v10 = P(i + 1, j), v01 = P(i, j + 1), v11 = P(i + 1, j + 1);
+                        float ylo = Math.Min(Math.Min(v00.Y, v10.Y), Math.Min(v01.Y, v11.Y)), yhi = Math.Max(Math.Max(v00.Y, v10.Y), Math.Max(v01.Y, v11.Y));
+                        if (ylo > box.Max.Y || yhi < box.Min.Y)
                         {
-                            Tri(cell, k, out Vector3F a, out Vector3F b, out Vector3F c);
-                            if (TriangleTests3D.BoxTriangle(box, a, b, c))
-                            {
-                                ids.Add((2 * cell) + k);
-                            }
+                            continue;
+                        }
+
+                        if (TriangleTests3D.BoxTriangle(box, v00, v01, v11))
+                        {
+                            ids.Add(2 * cell);
+                        }
+
+                        if (TriangleTests3D.BoxTriangle(box, v00, v11, v10))
+                        {
+                            ids.Add((2 * cell) + 1);
                         }
                     }
                 }
