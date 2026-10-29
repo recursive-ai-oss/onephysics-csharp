@@ -118,6 +118,20 @@ internal static class SolveLayoutBench
             }
         }
 
+        // Paired groups: same results required.
+        var plan = PairPlan(e, groups); int pairs = 0; foreach (bool bpair in plan) { if (bpair) { pairs++; } }
+        ResetB(); for (int p = 0; p < 3; p++) { PassB2<Lanes256>(gb, vel, offA, offB, scA, scB, maxPts, counts, ng, plan, kp); }
+        int diff2 = 0;
+        for (int b = 0; b < nb; b++) { for (int k = 0; k < 3; k++) { if (BitConverter.SingleToInt32Bits(vel[8 * b + k]) != BitConverter.SingleToInt32Bits(aLin[3 * b + k])) { diff2++; } if (BitConverter.SingleToInt32Bits(vel[8 * b + 3 + k]) != BitConverter.SingleToInt32Bits(aAng[3 * b + k])) { diff2++; } } }
+        double bestP = double.MaxValue;
+        for (int r = 0; r < repeats; r++)
+        {
+            ResetB();
+            long s = Stopwatch.GetTimestamp();
+            for (int p = 0; p < passes; p++) { PassB2<Lanes256>(gb, vel, offA, offB, scA, scB, maxPts, counts, ng, plan, kp); }
+            bestP = Math.Min(bestP, Stopwatch.GetElapsedTime(s).TotalMilliseconds / passes);
+        }
+
         // ---- Timing, interleaved, best of repeats.
         double bestA = double.MaxValue, bestB = double.MaxValue;
         for (int r = 0; r < repeats + 2; r++)
@@ -168,6 +182,7 @@ internal static class SolveLayoutBench
         Console.WriteLine($"A: {bestA:F4} ms per pass, {bestA * 1e6 / manifolds:F2} ns per manifold, {bestA * 1e6 / points:F2} ns per point, {bestA * 1e6 / ng:F1} ns per group");
         Console.WriteLine($"B: {bestB:F4} ms per pass, {bestB * 1e6 / manifolds:F2} ns per manifold, {bestB * 1e6 / points:F2} ns per point, {bestB * 1e6 / ng:F1} ns per group");
         Console.WriteLine($"A / B = {bestA / bestB:F3}");
+        Console.WriteLine($"B with {pairs} disjoint pairs of groups interleaved: {bestP:F4} ms per pass, {bestP * 1e6 / ng:F1} ns per group, vs B alone {bestB / bestP:F3}x; velocities differing from A: {diff2}");
         Console.WriteLine($"B knockouts, ns per group: gathers on one hot row {bestNoGather * 1e6 / ng:F1}, scatters off {bestNoScatter * 1e6 / ng:F1}, both {bestNeither * 1e6 / ng:F1} (full {bestB * 1e6 / ng:F1})");
         Console.WriteLine($"B pose refresh (inertia rows and separations, after each position integration): {bestR:F4} ms per call; it serves the warm start, solve and relax passes of a substep");
         Console.WriteLine($"B with the refresh charged to two passes: {bestB + bestR / 2:F4} ms per pass, A / B = {bestA / (bestB + bestR / 2):F3}; charged to one pass: {bestB + bestR:F4} ms, A / B = {bestA / (bestB + bestR):F3}");
@@ -353,6 +368,86 @@ internal static class SolveLayoutBench
             Dp = new V3<T>(g0.R0, g0.R1, g0.R2), Qx = g0.R3, Qy = g0.R4, Qz = g0.R5, Qw = g0.R6,
             I = new Sym<T> { M0 = g0.R7, M1 = g1.R0, M2 = g1.R1, M3 = g1.R2, M4 = g1.R3, M5 = g1.R4 },
         };
+    }
+
+
+    /// <summary>Which groups can run as a pair: a group and the next one when they share no dynamic body (so the order of the two cannot matter).</summary>
+    private static bool[] PairPlan(Engine3D e, List<int> groups)
+    {
+        var pair = new bool[groups.Count];
+        for (int i = 0; i + 1 < groups.Count; i++)
+        {
+            if (pair[i]) { continue; }
+            var x = e.WideIdx.AsSpan(groups[i] * W3D.IdxPerGroup, W3D.IdxPerGroup); var y = e.WideIdx.AsSpan(groups[i + 1] * W3D.IdxPerGroup, W3D.IdxPerGroup);
+            bool ok = true;
+            for (int a = 16; a < 32 && ok; a++) { if (x[a] < 0) { continue; } for (int b = 16; b < 32; b++) { if (x[a] == y[b]) { ok = false; break; } } }
+            // Static bodies are only read, so sharing one is fine; shared dynamic bodies are not.
+            if (ok) { pair[i] = true; i++; }
+        }
+
+        return pair;
+    }
+
+    private static void PassB2<T>(float[] gb, float[] vel, int[] offA, int[] offB, int[] scA, int[] scB, int[] maxPts, List<int> counts, int ng, bool[] pair, in KernelParams kp) where T : struct, ILane<T>
+    {
+        T zero = T.Zero, one = T.Broadcast(1f);
+        T invH = T.Broadcast(kp.InverseSubstepDt), slop = T.Broadcast(kp.LinearSlop), negPush = T.Broadcast(-kp.PushOutVelocity);
+        for (int i = 0; i < ng; i++)
+        {
+            if (pair[i])
+            {
+                int j = i + 1;
+                RunPair<T>(gb.AsSpan(i * GroupB, GroupB), gb.AsSpan(j * GroupB, GroupB), vel, offA.AsSpan(i * 8, 8), offB.AsSpan(i * 8, 8), scA.AsSpan(i * 8, 8), scB.AsSpan(i * 8, 8),
+                    offA.AsSpan(j * 8, 8), offB.AsSpan(j * 8, 8), scA.AsSpan(j * 8, 8), scB.AsSpan(j * 8, 8), maxPts[i], maxPts[j], counts[i], counts[j], invH, slop, negPush, zero, one);
+                i++;
+            }
+            else
+            {
+                RunGroup<T>(gb.AsSpan(i * GroupB, GroupB), vel, offA.AsSpan(i * 8, 8), offB.AsSpan(i * 8, 8), scA.AsSpan(i * 8, 8), scB.AsSpan(i * 8, 8), maxPts[i], counts[i], true, invH, slop, negPush, zero, one);
+            }
+        }
+    }
+
+    private static void RunPair<T>(Span<float> gx, Span<float> gy, Span<float> vel, ReadOnlySpan<int> oAx, ReadOnlySpan<int> oBx, ReadOnlySpan<int> sAx, ReadOnlySpan<int> sBx,
+        ReadOnlySpan<int> oAy, ReadOnlySpan<int> oBy, ReadOnlySpan<int> sAy, ReadOnlySpan<int> sBy, int mx, int my, int nx, int ny, T invH, T slop, T negPush, T zero, T one) where T : struct, ILane<T>
+    {
+        int width = T.Count;
+        // Only whole-vector groups (width 8, up to eight lanes) are paired.
+        var xa = T.GatherRows(vel, oAx); var xb = T.GatherRows(vel, oBx);
+        var ya = T.GatherRows(vel, oAy); var yb = T.GatherRows(vel, oBy);
+        var ax = new Body<T> { V = new V3<T>(xa.R0, xa.R1, xa.R2), W = new V3<T>(xa.R3, xa.R4, xa.R5), I = SymAt<T>(gx, IA, 0), InvMass = F<T>(gx, MA, 0) };
+        var bx = new Body<T> { V = new V3<T>(xb.R0, xb.R1, xb.R2), W = new V3<T>(xb.R3, xb.R4, xb.R5), I = SymAt<T>(gx, IB, 0), InvMass = F<T>(gx, MB, 0) };
+        var ay = new Body<T> { V = new V3<T>(ya.R0, ya.R1, ya.R2), W = new V3<T>(ya.R3, ya.R4, ya.R5), I = SymAt<T>(gy, IA, 0), InvMass = F<T>(gy, MA, 0) };
+        var by = new Body<T> { V = new V3<T>(yb.R0, yb.R1, yb.R2), W = new V3<T>(yb.R3, yb.R4, yb.R5), I = SymAt<T>(gy, IB, 0), InvMass = F<T>(gy, MB, 0) };
+        var nX = Vec<T>(gx, N, 0); var t1X = Vec<T>(gx, T1, 0); var t2X = Vec<T>(gx, T2, 0); T frX = F<T>(gx, Fr, 0);
+        var nY = Vec<T>(gy, N, 0); var t1Y = Vec<T>(gy, T1, 0); var t2Y = Vec<T>(gy, T2, 0); T frY = F<T>(gy, Fr, 0);
+        int mn = Math.Min(mx, my);
+        for (int i = 0; i < mn; i++) { Friction(ref ax, ref bx, gx, P0 + i * PS, 0, t1X, t2X, frX); Friction(ref ay, ref by, gy, P0 + i * PS, 0, t1Y, t2Y, frY); }
+        for (int i = mn; i < mx; i++) { Friction(ref ax, ref bx, gx, P0 + i * PS, 0, t1X, t2X, frX); }
+        for (int i = mn; i < my; i++) { Friction(ref ay, ref by, gy, P0 + i * PS, 0, t1Y, t2Y, frY); }
+        T brX = F<T>(gx, Bias, 0), msX = F<T>(gx, MS, 0), isX = F<T>(gx, IS, 0), brY = F<T>(gy, Bias, 0), msY = F<T>(gy, MS, 0), isY = F<T>(gy, IS, 0);
+        for (int i = 0; i < mn; i++) { Normal(ref ax, ref bx, gx, P0 + i * PS, 0, nX, true, brX, msX, isX, invH, slop, negPush, zero, one); Normal(ref ay, ref by, gy, P0 + i * PS, 0, nY, true, brY, msY, isY, invH, slop, negPush, zero, one); }
+        for (int i = mn; i < mx; i++) { Normal(ref ax, ref bx, gx, P0 + i * PS, 0, nX, true, brX, msX, isX, invH, slop, negPush, zero, one); }
+        for (int i = mn; i < my; i++) { Normal(ref ay, ref by, gy, P0 + i * PS, 0, nY, true, brY, msY, isY, invH, slop, negPush, zero, one); }
+        Out(ref ax, ref bx, gx, vel, sAx, sBx, nx, width);
+        Out(ref ay, ref by, gy, vel, sAy, sBy, ny, width);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void Out<T>(ref Body<T> a, ref Body<T> b, Span<float> g, Span<float> vel, ReadOnlySpan<int> scA, ReadOnlySpan<int> scB, int n, int width) where T : struct, ILane<T>
+    {
+        Span<float> os = g.Slice(OutB, 12 * 8);
+        a.V.X.StoreAt(os, 0 * width); a.V.Y.StoreAt(os, 1 * width); a.V.Z.StoreAt(os, 2 * width);
+        a.W.X.StoreAt(os, 3 * width); a.W.Y.StoreAt(os, 4 * width); a.W.Z.StoreAt(os, 5 * width);
+        b.V.X.StoreAt(os, 6 * width); b.V.Y.StoreAt(os, 7 * width); b.V.Z.StoreAt(os, 8 * width);
+        b.W.X.StoreAt(os, 9 * width); b.W.Y.StoreAt(os, 10 * width); b.W.Z.StoreAt(os, 11 * width);
+        for (int l = 0; l < width && l < n; l++)
+        {
+            int ia = scA[l];
+            if (ia >= 0) { Scatter(vel, os, ia, l, width); }
+            int ib = scB[l];
+            if (ib >= 0) { Scatter(vel, os, ib, l + 6 * width, width); }
+        }
     }
 
     /// <summary>One solve pass over all groups in layout B.</summary>
