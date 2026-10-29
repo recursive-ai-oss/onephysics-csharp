@@ -615,6 +615,7 @@ public sealed class WorldCore
         _events.EnsureSlots(1 + storeChunks);
         var list = _coloring.ListArray;
         bool split = _liteOn && PlanSchedules(active, list);
+        _forcedCount = 0;
         _splitActive = split;
         if (!split) { CountWholeColors(); }
 
@@ -706,7 +707,6 @@ public sealed class WorldCore
     /// <summary>Asks for the island of a dynamic body to run the joint schedule in the next step, for bodies the engine drives with that schedule in mind (vehicles). Cleared by the step.</summary>
     internal void KeepJointSchedule(int body)
     {
-        if (!_liteOn) { return; }
         if (_forcedCount == _forcedFull.Length) { Array.Resize(ref _forcedFull, _forcedCount * 2); }
         _forcedFull[_forcedCount++] = body;
     }
