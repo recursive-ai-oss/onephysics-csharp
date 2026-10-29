@@ -206,7 +206,7 @@ public sealed partial class PhysicsWorld3D
             throw;
         }
 
-        if (!_engine.IsConsistentWithCore()) { problem = "the snapshot's 3D engine state does not match its bodies and shapes"; }
+        if (!_engine.IsConsistentWithCore()) { problem = _engine.ConsistencyProblem.Length > 0 ? _engine.ConsistencyProblem : "the snapshot's 3D engine state does not match its bodies and shapes"; }
         else
         {
             LoadOptionsFromCore();
