@@ -442,7 +442,19 @@ internal sealed partial class Engine3D : ISnapshotSection
     public Aabb3D TightBox(int b, int s)
     {
         var pos = Core.Bodies.PositionOf(b);
-        var pose = ShapePoseFromCom(b, s);
+        // A shape placed at its body's centre of mass with no turn of its own (every single-shape body made from the common constructors) has the body's pose; skipping the composition is exact.
+        var l = Local[s];
+        var lc = LocalCenterOf(b);
+        RigidTransformF pose;
+        if (l.Rotation.X == 0f && l.Rotation.Y == 0f && l.Rotation.Z == 0f && l.Rotation.W == 1f && l.Translation.X == lc.X && l.Translation.Y == lc.Y && l.Translation.Z == lc.Z)
+        {
+            pose = new RigidTransformF(RotationOfBody(b), default);
+        }
+        else
+        {
+            pose = ShapePoseFromCom(b, s);
+        }
+
         var g = Geoms[GeomOf[s]]!;
         Vector3F mn, mx;
         if (g.IsConvex) { ShapeBounds3D.Compute(g.Convex, pose, out mn, out mx); }
