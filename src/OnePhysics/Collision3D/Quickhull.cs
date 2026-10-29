@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
+using RecursiveAI.OneMath.Predicates;
 
 namespace RecursiveAI.OnePhysics.LowLevel;
 
@@ -29,11 +30,12 @@ internal sealed class QuickhullBuilder
     private readonly HullBuildOptions _options;
     private readonly Vector3F[] _points;
     private double _eps;
-    private double _visEps; // a face is visible from a point when it is farther above the face than this: far below the merge tolerance so that faces stay convex
+    private double _mag; // sum of the largest absolute coordinate per axis
     private readonly List<Face> _all = new();
     private int _alive;
     private int[] _refCount = Array.Empty<int>();
     private int _vertexCount;
+    private bool[] _dropped = Array.Empty<bool>(); // apexes given up on because the horizon could not be walked
 
     public QuickhullBuilder(ReadOnlySpan<Vector3F> points, HullBuildOptions options)
     {
@@ -86,6 +88,11 @@ internal sealed class QuickhullBuilder
             _z[i] = p.Z;
         }
     }
+
+    // Whether point p is strictly above the plane of triangle f, decided exactly: the hull stays convex whatever the noise in the input, so every
+    // visible region is one disk with a simple horizon (Barber, Dobkin, Huhdanpaa 1996 assume exactly this; floating-point planes do not give it).
+    private bool SeesFace(Face f, int p) =>
+        ExactPredicates.Orient3D(_x[f.V[0]], _y[f.V[0]], _z[f.V[0]], _x[f.V[1]], _y[f.V[1]], _z[f.V[1]], _x[f.V[2]], _y[f.V[2]], _z[f.V[2]], _x[p], _y[p], _z[p]) < 0;
 
     private double Dist(Face f, int p) => f.Nx * _x[p] + f.Ny * _y[p] + f.Nz * _z[p] - f.Off;
 
@@ -195,7 +202,7 @@ internal sealed class QuickhullBuilder
             throw Degenerate("all points coincide");
         }
 
-        _visEps = _eps * 1e-3;
+        _mag = magSum;
 
         // Initial tetrahedron: the farthest pair among the axis extremes, then the point farthest from their line, then from their plane.
         int i0 = -1, i1 = -1;
@@ -338,216 +345,265 @@ internal sealed class QuickhullBuilder
         var vertexVis = new Dictionary<int, int>();
         bool stop = false;
 
-        while (stack.Count > 0 && !stop)
+        // A point is discarded when it is within the tolerance of the faces it was tested against, but it may still be above another face by more
+        // (a thin triangle's plane reaches far). After the stack empties every point is tested against every face; strays go back into the lists.
+        _dropped = new bool[_n];
+        for (int round = 0; round < 16 && !stop; round++)
         {
-            Face seed = stack[^1];
-            stack.RemoveAt(stack.Count - 1);
-            if (seed.Dead || seed.Out == null || seed.Out.Count == 0)
+            while (stack.Count > 0 && !stop)
             {
-                continue;
-            }
-
-            int apex = seed.FarPt;
-            visibleMark++;
-            visible.Clear();
-            seed.Mark = visibleMark;
-            visible.Add(seed);
-            for (int k = 0; k < visible.Count; k++)
-            {
-                Face v = visible[k];
-                for (int e = 0; e < 3; e++)
+                Face seed = stack[^1];
+                stack.RemoveAt(stack.Count - 1);
+                if (seed.Dead || seed.Out == null || seed.Out.Count == 0)
                 {
-                    Face? g = v.Nb[e];
-                    if (g != null && g.Mark != visibleMark && Dist(g, apex) > _visEps)
+                    continue;
+                }
+
+                int apex = seed.FarPt;
+                visibleMark++;
+                visible.Clear();
+                seed.Mark = visibleMark;
+                visible.Add(seed);
+                for (int k = 0; k < visible.Count; k++)
+                {
+                    Face v = visible[k];
+                    for (int e = 0; e < 3; e++)
                     {
-                        g.Mark = visibleMark;
-                        visible.Add(g);
+                        Face? g = v.Nb[e];
+                        if (g != null && g.Mark != visibleMark && SeesFace(g, apex))
+                        {
+                            g.Mark = visibleMark;
+                            visible.Add(g);
+                        }
                     }
                 }
-            }
 
-            int h = 0;
-            bool ok = false;
-            int[] order = Array.Empty<int>();
-            for (int attempt = 0; attempt < 2 && !ok; attempt++)
-            {
-                if (attempt == 1)
+                int h = 0;
+                bool ok = false;
+                int[] order = Array.Empty<int>();
+                for (int attempt = 0; attempt < 2 && !ok; attempt++)
                 {
-                    // The horizon pinched: faces with two visible neighbours form a one-triangle notch; take them too and try again.
-                    for (bool changed = true; changed;)
+                    if (attempt == 1)
                     {
-                        changed = false;
-                        for (int k = 0; k < visible.Count; k++)
+                        // The horizon pinched: faces with two visible neighbours form a one-triangle notch; take them too and try again.
+                        for (bool changed = true; changed;)
                         {
-                            for (int e = 0; e < 3; e++)
+                            changed = false;
+                            for (int k = 0; k < visible.Count; k++)
                             {
-                                Face? g = visible[k].Nb[e];
-                                if (g != null && g.Mark != visibleMark)
+                                for (int e = 0; e < 3; e++)
                                 {
-                                    int vis = 0;
-                                    for (int q = 0; q < 3; q++)
+                                    Face? g = visible[k].Nb[e];
+                                    if (g != null && g.Mark != visibleMark)
                                     {
-                                        if (g.Nb[q]!.Mark == visibleMark)
+                                        int vis = 0;
+                                        for (int q = 0; q < 3; q++)
                                         {
-                                            vis++;
+                                            if (g.Nb[q]!.Mark == visibleMark)
+                                            {
+                                                vis++;
+                                            }
                                         }
-                                    }
 
-                                    if (vis >= 2)
-                                    {
-                                        g.Mark = visibleMark;
-                                        visible.Add(g);
-                                        changed = true;
+                                        if (vis >= 2)
+                                        {
+                                            g.Mark = visibleMark;
+                                            visible.Add(g);
+                                            changed = true;
+                                        }
                                     }
                                 }
                             }
                         }
+
+                    }
+
+                    horizonFace.Clear();
+                    horizonEdge.Clear();
+                    foreach (Face v in visible)
+                    {
+                        for (int e = 0; e < 3; e++)
+                        {
+                            if (v.Nb[e]!.Mark != visibleMark)
+                            {
+                                horizonFace.Add(v);
+                                horizonEdge.Add(e);
+                            }
+                        }
+                    }
+
+                    // Order the horizon edges into one cycle; anything else is a numerical pinch and the apex is skipped.
+                    h = horizonFace.Count;
+                    ok = h >= 3;
+                    fromIndex.Clear();
+                    for (int k = 0; k < h && ok; k++)
+                    {
+                        int from = horizonFace[k].V[horizonEdge[k]];
+                        ok = fromIndex.TryAdd(from, k);
+                    }
+
+                    order = new int[ok ? h : 0];
+                    if (ok)
+                    {
+                        bool[] seen = new bool[h];
+                        int cur = 0;
+                        order[0] = 0;
+                        seen[0] = true;
+                        for (int k = 1; k < h && ok; k++)
+                        {
+                            int to = horizonFace[cur].V[(horizonEdge[cur] + 1) % 3];
+                            ok = fromIndex.TryGetValue(to, out cur) && !seen[cur];
+                            if (ok)
+                            {
+                                seen[cur] = true;
+                                order[k] = cur;
+                            }
+                        }
+
+                        if (ok)
+                        {
+                            ok = horizonFace[cur].V[(horizonEdge[cur] + 1) % 3] == horizonFace[0].V[horizonEdge[0]];
+                        }
                     }
 
                 }
 
-                horizonFace.Clear();
-                horizonEdge.Clear();
+                if (!ok)
+                {
+                    DropPoint(seed, apex);
+                    if (seed.Out != null && seed.Out.Count > 0)
+                    {
+                        stack.Add(seed);
+                    }
+
+                    continue;
+                }
+
+                // Limits: vertices that lose every face disappear, the apex appears.
+                vertexVis.Clear();
                 foreach (Face v in visible)
                 {
                     for (int e = 0; e < 3; e++)
                     {
-                        if (v.Nb[e]!.Mark != visibleMark)
+                        vertexVis[v.V[e]] = vertexVis.GetValueOrDefault(v.V[e]) + 1;
+                    }
+                }
+
+                int removed = 0;
+                foreach (Face v in visible)
+                {
+                    for (int e = 0; e < 3; e++)
+                    {
+                        int vv = v.V[e];
+                        if (vertexVis.TryGetValue(vv, out int cnt) && cnt == _refCount[vv])
                         {
-                            horizonFace.Add(v);
-                            horizonEdge.Add(e);
+                            removed++;
+                            vertexVis.Remove(vv);
                         }
                     }
                 }
 
-                // Order the horizon edges into one cycle; anything else is a numerical pinch and the apex is skipped.
-                h = horizonFace.Count;
-                ok = h >= 3;
-                fromIndex.Clear();
-                for (int k = 0; k < h && ok; k++)
+                if (_vertexCount + 1 - removed > maxV || _alive - visible.Count + h > maxF)
                 {
-                    int from = horizonFace[k].V[horizonEdge[k]];
-                    ok = fromIndex.TryAdd(from, k);
+                    stop = true;
+                    break;
                 }
 
-                order = new int[ok ? h : 0];
-                if (ok)
+                var created = new Face[h];
+                for (int k = 0; k < h; k++)
                 {
-                    bool[] seen = new bool[h];
-                    int cur = 0;
-                    order[0] = 0;
-                    seen[0] = true;
-                    for (int k = 1; k < h && ok; k++)
+                    Face vf = horizonFace[order[k]];
+                    int e = horizonEdge[order[k]];
+                    int a = vf.V[e], b = vf.V[(e + 1) % 3];
+                    Face outside = vf.Nb[e]!;
+                    Face nf = NewFace(a, b, apex);
+                    nf.Nb[0] = outside;
+                    Link(outside, b, a, nf);
+                    created[k] = nf;
+                }
+
+                for (int k = 0; k < h; k++)
+                {
+                    created[k].Nb[1] = created[(k + 1) % h];
+                    created[k].Nb[2] = created[(k + h - 1) % h];
+                }
+
+                orphans.Clear();
+                foreach (Face v in visible)
+                {
+                    if (v.Out != null)
                     {
-                        int to = horizonFace[cur].V[(horizonEdge[cur] + 1) % 3];
-                        ok = fromIndex.TryGetValue(to, out cur) && !seen[cur];
-                        if (ok)
+                        foreach (int p in v.Out)
                         {
-                            seen[cur] = true;
-                            order[k] = cur;
+                            if (p != apex)
+                            {
+                                orphans.Add(p);
+                            }
+                        }
+                    }
+                }
+
+                foreach (Face v in visible)
+                {
+                    Kill(v);
+                    v.Out = null;
+                }
+
+                foreach (int p in orphans)
+                {
+                    Face? bestFace = null;
+                    double bestD = _eps;
+                    foreach (Face nf in created)
+                    {
+                        double d = Dist(nf, p);
+                        if (d > bestD)
+                        {
+                            bestD = d;
+                            bestFace = nf;
                         }
                     }
 
-                    if (ok)
+                    if (bestFace != null)
                     {
-                        ok = horizonFace[cur].V[(horizonEdge[cur] + 1) % 3] == horizonFace[0].V[horizonEdge[0]];
+                        Assign(bestFace, p, bestD);
                     }
                 }
 
-            }
-
-            if (!ok)
-            {
-                DropPoint(seed, apex);
-                if (seed.Out != null && seed.Out.Count > 0)
+                foreach (Face nf in created)
                 {
-                    stack.Add(seed);
-                }
-
-                continue;
-            }
-
-            // Limits: vertices that lose every face disappear, the apex appears.
-            vertexVis.Clear();
-            foreach (Face v in visible)
-            {
-                for (int e = 0; e < 3; e++)
-                {
-                    vertexVis[v.V[e]] = vertexVis.GetValueOrDefault(v.V[e]) + 1;
-                }
-            }
-
-            int removed = 0;
-            foreach (Face v in visible)
-            {
-                for (int e = 0; e < 3; e++)
-                {
-                    int vv = v.V[e];
-                    if (vertexVis.TryGetValue(vv, out int cnt) && cnt == _refCount[vv])
+                    if (nf.Out != null)
                     {
-                        removed++;
-                        vertexVis.Remove(vv);
+                        stack.Add(nf);
                     }
                 }
             }
 
-            if (_vertexCount + 1 - removed > maxV || _alive - visible.Count + h > maxF)
+            if (stop)
             {
-                stop = true;
                 break;
             }
 
-            var created = new Face[h];
-            for (int k = 0; k < h; k++)
+            for (int p = 0; p < _n; p++)
             {
-                Face vf = horizonFace[order[k]];
-                int e = horizonEdge[order[k]];
-                int a = vf.V[e], b = vf.V[(e + 1) % 3];
-                Face outside = vf.Nb[e]!;
-                Face nf = NewFace(a, b, apex);
-                nf.Nb[0] = outside;
-                Link(outside, b, a, nf);
-                created[k] = nf;
-            }
-
-            for (int k = 0; k < h; k++)
-            {
-                created[k].Nb[1] = created[(k + 1) % h];
-                created[k].Nb[2] = created[(k + h - 1) % h];
-            }
-
-            orphans.Clear();
-            foreach (Face v in visible)
-            {
-                if (v.Out != null)
+                if (_refCount[p] != 0 || _dropped[p])
                 {
-                    foreach (int p in v.Out)
-                    {
-                        if (p != apex)
-                        {
-                            orphans.Add(p);
-                        }
-                    }
+                    continue;
                 }
-            }
 
-            foreach (Face v in visible)
-            {
-                Kill(v);
-                v.Out = null;
-            }
-
-            foreach (int p in orphans)
-            {
                 Face? bestFace = null;
                 double bestD = _eps;
-                foreach (Face nf in created)
+                foreach (Face f in _all)
                 {
-                    double d = Dist(nf, p);
+                    if (f.Dead)
+                    {
+                        continue;
+                    }
+
+                    double d = Dist(f, p);
                     if (d > bestD)
                     {
                         bestD = d;
-                        bestFace = nf;
+                        bestFace = f;
                     }
                 }
 
@@ -557,16 +613,21 @@ internal sealed class QuickhullBuilder
                 }
             }
 
-            foreach (Face nf in created)
+            foreach (Face f in _all)
             {
-                if (nf.Out != null)
+                if (!f.Dead && f.Out != null && f.Out.Count > 0)
                 {
-                    stack.Add(nf);
+                    stack.Add(f);
                 }
+            }
+
+            if (stack.Count == 0)
+            {
+                break;
             }
         }
 
-        return Finish();
+        return Finish(stop);
     }
 
     // True when the triangle's smallest altitude is within the tolerance; longestEdge is the index of its longest edge (ties to the lowest).
@@ -594,8 +655,18 @@ internal sealed class QuickhullBuilder
         return area2 <= _eps * Math.Sqrt(best);
     }
 
+    // One edge's contribution to Newell's normal about the point (mx, my, mz).
+    private void AddNewell(int a, int b, double mx, double my, double mz, ref double nx, ref double ny, ref double nz)
+    {
+        double ax = _x[a] - mx, ay = _y[a] - my, az = _z[a] - mz, bx = _x[b] - mx, by = _y[b] - my, bz = _z[b] - mz;
+        nx += (ay * bz) - (az * by);
+        ny += (az * bx) - (ax * bz);
+        nz += (ax * by) - (ay * bx);
+    }
+
     private void DropPoint(Face f, int p)
     {
+        _dropped[p] = true;
         f.Out!.Remove(p);
         f.FarPt = -1;
         f.FarDist = 0;
@@ -611,7 +682,23 @@ internal sealed class QuickhullBuilder
     }
 
     // Phase 2: triangles to polygons to half-edges.
-    private ConvexHull3D Finish()
+    private ConvexHull3D Finish(bool limited)
+    {
+        // A merged face is only kept if its plane still bounds every hull vertex (Gregorius, GDC 2014: robust hulls). A face whose plane does not
+        // is taken apart into its triangles, whose planes are exact, and the merge is redone without it.
+        bool[] noMerge = new bool[_all.Count];
+        while (true)
+        {
+            ConvexHull3D? hull = FinishRound(noMerge, limited);
+            if (hull != null)
+            {
+                return hull;
+            }
+        }
+    }
+
+    // One merge-and-build attempt; null when a merged face failed the containment check and its triangles were added to noMerge (indexed by Face.Id).
+    private ConvexHull3D? FinishRound(bool[] noMerge, bool limited)
     {
         var tris = new List<Face>();
         int[] index = new int[_all.Count];
@@ -693,7 +780,7 @@ internal sealed class QuickhullBuilder
                     ok = Math.Abs(Dist(f, go)) <= _eps && Math.Abs(Dist(g, fo)) <= _eps;
                 }
 
-                if (ok)
+                if (ok && !noMerge[f.Id] && !noMerge[g.Id])
                 {
                     int ri = Find(i), rj = Find(j);
                     if (ri != rj)
@@ -704,133 +791,335 @@ internal sealed class QuickhullBuilder
             }
         }
 
-        int[] group = new int[t];
-        for (int i = 0; i < t; i++)
+        List<int[]> polys;
+        List<int[]> polyTris; // the triangles each polygon was made of, in step with polys
+        while (true)
         {
-            group[i] = Find(i);
-        }
-
-        var members = new List<int>[t];
-        for (int i = 0; i < t; i++)
-        {
-            (members[group[i]] ??= new List<int>()).Add(i);
-        }
-
-        var polys = new List<int[]>();
-        var next = new Dictionary<int, int>();
-        for (int r = 0; r < t; r++)
-        {
-            List<int>? m = members[r];
-            if (m == null)
+            int[] group = new int[t];
+            for (int i = 0; i < t; i++)
             {
-                continue;
+                group[i] = Find(i);
             }
 
-            int[]? cycle = null;
-            if (m.Count > 1)
+            var members = new List<int>[t];
+            for (int i = 0; i < t; i++)
             {
-                next.Clear();
-                var order = new List<int>();
-                bool ok = true;
-                foreach (int ti in m)
+                (members[group[i]] ??= new List<int>()).Add(i);
+            }
+
+            polys = new List<int[]>();
+            polyTris = new List<int[]>();
+            var next = new Dictionary<int, int>();
+            for (int r = 0; r < t; r++)
+            {
+                List<int>? m = members[r];
+                if (m == null)
                 {
-                    for (int e = 0; e < 3 && ok; e++)
+                    continue;
+                }
+
+                int[]? cycle = null;
+                if (m.Count > 1)
+                {
+                    next.Clear();
+                    var order = new List<int>();
+                    bool ok = true;
+                    foreach (int ti in m)
                     {
-                        if (group[index[tris[ti].Nb[e]!.Id]] != r)
+                        for (int e = 0; e < 3 && ok; e++)
                         {
-                            int from = tris[ti].V[e];
-                            ok = next.TryAdd(from, tris[ti].V[(e + 1) % 3]);
-                            order.Add(from);
+                            if (group[index[tris[ti].Nb[e]!.Id]] != r)
+                            {
+                                int from = tris[ti].V[e];
+                                ok = next.TryAdd(from, tris[ti].V[(e + 1) % 3]);
+                                order.Add(from);
+                            }
+                        }
+                    }
+
+                    if (ok && order.Count >= 3)
+                    {
+                        var cyc = new List<int>();
+                        int start = order[0], cur = start;
+                        do
+                        {
+                            cyc.Add(cur);
+                            ok = next.TryGetValue(cur, out cur);
+                        }
+                        while (ok && cur != start && cyc.Count <= order.Count);
+                        if (ok && cyc.Count == order.Count)
+                        {
+                            cycle = cyc.ToArray();
+                        }
+                    }
+
+                    if (cycle == null)
+                    {
+                        foreach (int ti in m)
+                        {
+                            group[ti] = ti;
                         }
                     }
                 }
 
-                if (ok && order.Count >= 3)
+                if (cycle != null)
                 {
-                    var cyc = new List<int>();
-                    int start = order[0], cur = start;
-                    do
-                    {
-                        cyc.Add(cur);
-                        ok = next.TryGetValue(cur, out cur);
-                    }
-                    while (ok && cur != start && cyc.Count <= order.Count);
-                    if (ok && cyc.Count == order.Count)
-                    {
-                        cycle = cyc.ToArray();
-                    }
+                    polys.Add(cycle);
+                    polyTris.Add(m.ToArray());
                 }
-
-                if (cycle == null)
+                else
                 {
                     foreach (int ti in m)
                     {
-                        group[ti] = ti;
+                        polys.Add(new[] { tris[ti].V[0], tris[ti].V[1], tris[ti].V[2] });
+                        polyTris.Add(new[] { ti });
                     }
                 }
             }
 
-            if (cycle != null)
+            // A vertex lying on exactly two faces is in the middle of an edge, not a corner.
+            int[] valence = new int[_n];
+            foreach (int[] p in polys)
             {
-                polys.Add(cycle);
-            }
-            else
-            {
-                foreach (int ti in m)
+                foreach (int v in p)
                 {
-                    polys.Add(new[] { tris[ti].V[0], tris[ti].V[1], tris[ti].V[2] });
+                    valence[v]++;
                 }
+            }
+
+            // A valence-2 vertex is dropped only if it stays within the tolerance of the planes of both polygons it is removed from.
+            // Otherwise it is a real feature (a bend the pairwise merge test could not see) and dropping it would cut input points out of the hull.
+            // Keeping a vertex changes the reduced polygons, so the test repeats until no further vertex has to stay.
+            bool[] dropVertex = new bool[_n];
+            bool[] bent = new bool[_n];
+            for (bool grew = true; grew;)
+            {
+                grew = false;
+                for (int v = 0; v < _n; v++)
+                {
+                    dropVertex[v] = valence[v] == 2 && !bent[v];
+                }
+
+                foreach (int[] p in polys)
+                {
+                    int kept = 0;
+                    foreach (int v in p)
+                    {
+                        if (!dropVertex[v])
+                        {
+                            kept++;
+                        }
+                    }
+
+                    if (kept < 3 || kept == p.Length)
+                    {
+                        continue;
+                    }
+
+                    // Newell's plane of the reduced polygon about its mean, as the final face planes are made.
+                    double mx = 0, my = 0, mz = 0;
+                    foreach (int v in p)
+                    {
+                        if (!dropVertex[v])
+                        {
+                            mx += _x[v];
+                            my += _y[v];
+                            mz += _z[v];
+                        }
+                    }
+
+                    mx /= kept;
+                    my /= kept;
+                    mz /= kept;
+                    double nx = 0, ny = 0, nz = 0;
+                    int prev = -1;
+                    int first = -1;
+                    foreach (int v in p)
+                    {
+                        if (dropVertex[v])
+                        {
+                            continue;
+                        }
+
+                        if (prev >= 0)
+                        {
+                            AddNewell(prev, v, mx, my, mz, ref nx, ref ny, ref nz);
+                        }
+                        else
+                        {
+                            first = v;
+                        }
+
+                        prev = v;
+                    }
+
+                    AddNewell(prev, first, mx, my, mz, ref nx, ref ny, ref nz);
+                    double len = Math.Sqrt((nx * nx) + (ny * ny) + (nz * nz));
+                    if (!(len > 0))
+                    {
+                        continue;
+                    }
+
+                    foreach (int v in p)
+                    {
+                        if (dropVertex[v] && !bent[v] && Math.Abs((nx * (_x[v] - mx)) + (ny * (_y[v] - my)) + (nz * (_z[v] - mz))) / len > _eps)
+                        {
+                            bent[v] = true;
+                            grew = true;
+                        }
+                    }
+                }
+            }
+
+            for (int i = 0; i < polys.Count; i++)
+            {
+                int[] p = polys[i];
+                int keep = 0;
+                foreach (int v in p)
+                {
+                    if (!dropVertex[v])
+                    {
+                        keep++;
+                    }
+                }
+
+                if (keep == p.Length)
+                {
+                    continue;
+                }
+
+                if (keep < 3)
+                {
+                    // A sliver face squeezed between two faces; they meet along its long edge.
+                    polys[i] = Array.Empty<int>();
+                    continue;
+                }
+
+                int[] q = new int[keep];
+                int w = 0;
+                foreach (int v in p)
+                {
+                    if (!dropVertex[v])
+                    {
+                        q[w++] = v;
+                    }
+                }
+
+                polys[i] = q;
+            }
+
+            for (int i = polys.Count - 1; i >= 0; i--)
+            {
+                if (polys[i].Length == 0)
+                {
+                    polys.RemoveAt(i);
+                    polyTris.RemoveAt(i);
+                }
+            }
+
+            // Two faces that share a bent chain are coplanar to within the tolerance and belong together: join their triangles and build again.
+            bool anyBent = false, joined = false;
+            for (int v = 0; v < _n; v++)
+            {
+                if (!bent[v])
+                {
+                    continue;
+                }
+
+                anyBent = true;
+                int root = -1;
+                for (int i = 0; i < t; i++)
+                {
+                    if ((tris[i].V[0] != v && tris[i].V[1] != v && tris[i].V[2] != v) || noMerge[tris[i].Id])
+                    {
+                        continue;
+                    }
+
+                    int r = Find(i);
+                    if (root < 0)
+                    {
+                        root = r;
+                    }
+                    else if (r != root)
+                    {
+                        parent[Math.Max(r, root)] = Math.Min(r, root);
+                        root = Find(root);
+                        joined = true;
+                    }
+                }
+            }
+
+            if (!anyBent)
+            {
+                break;
+            }
+
+            if (!joined)
+            {
+                throw Degenerate("the faces around a nearly flat vertex cannot be joined into one polygon");
             }
         }
 
-        // A vertex lying on exactly two faces is in the middle of an edge, not a corner.
-        int[] valence = new int[_n];
-        foreach (int[] p in polys)
+        // Containment check: each polygon's final plane (Newell, about the mean) must bound every input point.
+        double tol = (8 * _eps) + (1.2e-7 * _mag);
+        bool retry = false;
+        for (int pi = 0; pi < polys.Count; pi++)
         {
+            int[] p = polys[pi];
+            double mx = 0, my = 0, mz = 0;
             foreach (int v in p)
             {
-                valence[v]++;
+                mx += _x[v];
+                my += _y[v];
+                mz += _z[v];
+            }
+
+            mx /= p.Length;
+            my /= p.Length;
+            mz /= p.Length;
+            double nx = 0, ny = 0, nz = 0;
+            for (int k = 0; k < p.Length; k++)
+            {
+                AddNewell(p[k], p[(k + 1) % p.Length], mx, my, mz, ref nx, ref ny, ref nz);
+            }
+
+            double len = Math.Sqrt((nx * nx) + (ny * ny) + (nz * nz));
+            if (!(len > 0))
+            {
+                throw Degenerate("a face has no area");
+            }
+
+            bool bad = false;
+            for (int v = 0; v < _n && !bad; v++)
+            {
+                if (limited && _refCount[v] == 0)
+                {
+                    continue; // a hull cut short by MaxVertices or MaxFaces leaves points outside by design
+                }
+
+                bad = ((nx * (_x[v] - mx)) + (ny * (_y[v] - my)) + (nz * (_z[v] - mz))) / len > tol;
+            }
+
+            if (bad)
+            {
+                if (polyTris[pi].Length == 1)
+                {
+                    throw Degenerate("the triangle hull is not convex within the tolerance");
+                }
+
+                foreach (int ti in polyTris[pi])
+                {
+                    noMerge[tris[ti].Id] = true;
+                }
+
+                retry = true;
             }
         }
 
-        for (int i = 0; i < polys.Count; i++)
+        if (retry)
         {
-            int[] p = polys[i];
-            int keep = 0;
-            foreach (int v in p)
-            {
-                if (valence[v] != 2)
-                {
-                    keep++;
-                }
-            }
-
-            if (keep == p.Length)
-            {
-                continue;
-            }
-
-            if (keep < 3)
-            {
-                // A sliver face squeezed between two faces; they meet along its long edge.
-                polys[i] = Array.Empty<int>();
-                continue;
-            }
-
-            int[] q = new int[keep];
-            int w = 0;
-            foreach (int v in p)
-            {
-                if (valence[v] != 2)
-                {
-                    q[w++] = v;
-                }
-            }
-
-            polys[i] = q;
+            return null;
         }
-
-        polys.RemoveAll(static p => p.Length == 0);
 
         // Canonical form: rotate each polygon to start at its lowest vertex, order polygons by that vertex then the next.
         for (int i = 0; i < polys.Count; i++)

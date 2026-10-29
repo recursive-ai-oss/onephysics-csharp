@@ -366,4 +366,24 @@ public class HullTests
             }
         }
     }
+
+    /// <summary>
+    /// Every input point lies inside every face plane within 1e-4 of the hull's extent. The points are a lattice with 1e-6 noise whose near-coplanar
+    /// side once lost a corner vertex (it sat on two faces that bend by less than the merge tolerance, and was dropped as if it were mid-edge).
+    /// </summary>
+    [Fact]
+    public void NoisyNearlyCoplanarSideKeepsEveryInputPointInside()
+    {
+        byte[] raw = { 0xff, 0x1b, 0xb6, 0x73, 0xff, 0xff, 0xff, 0xff, 0xc2, 0xff, 0xff, 0xff, 0x00, 0x00, 0x10, 0xff, 0x00, 0xff, 0xff, 0x16, 0x23, 0xff, 0x0a, 0xa4 };
+        var pts = new Vector3F[raw.Length / 3];
+        for (int i = 0; i < pts.Length; i++)
+        {
+            int o = i * 3;
+            pts[i] = new Vector3F(((raw[o] - 128) / 64f) + ((raw[o + 1] & 3) * 1e-6f), ((raw[o + 1] >> 2) - 32) / 32f, ((raw[o + 2] - 128) / 64f) + ((raw[o + 2] & 1) * 1e-7f));
+        }
+
+        ConvexHull3D hull = ConvexHull3D.Build(pts);
+        double worst = Validate(hull, pts);
+        Assert.True(worst <= 1e-4 * 2.0, $"an input point is {worst} outside a face plane");
+    }
 }
