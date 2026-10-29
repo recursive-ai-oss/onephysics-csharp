@@ -4,7 +4,11 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 **0.x previews are not bit-compatible with each other: snapshots, saved games and replays from one preview do not carry to another.**
 
-## 0.1.0-preview.4
+## [0.1.0-preview.5]
+
+First public release. (Notes to be filled in from the changes since preview.4.)
+
+## [0.1.0-preview.4]
 
 **Breaking API changes.** No result moves: world hashes, snapshot bytes and event order are the same as in preview.3 for the same inputs. Migration is by namespace, definition and exception contracts only.
 
@@ -26,7 +30,7 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 - **Rollback and handlers.** `using (world.SuppressCallbacks())` mutes body, joint and character handlers (polled events still work; it allocates nothing and nests). Per-body handlers now stay registered when a restore brings the same handle back: the world keeps the handlers of the last 1024 destroyed handles per kind once it has taken a snapshot, and a world that never snapshots releases handlers at destroy as before.
 - `ToString` on `PhysicsEvent`, `Collision`, `Trigger`, `JointBreak`, `ControllerColliderHit` and `QueryHit2D/3D`.
 
-## 0.1.0-preview.3
+## [0.1.0-preview.3]
 
 - **OneMath 1.0.0.** The package now depends on `RecursiveAI.OneMath` 1.0.0 (from 0.1.0-preview.5). Its results are bit-identical to the preview, so this change alone moves no world.
 - **Input limits.** Inputs that would break the world later are refused with typed errors: material coefficients beyond the limit, shapes with unrepresentable mass or inertia, convex shapes thinner than 2^-20 of their length, non-finite body state at the start of a step, invalid wheel dimensions in a snapshot. See `docs/guide/limits.md`.
@@ -42,12 +46,14 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 - Allocation: a deep-contact path in the 3D narrowphase allocated 96 bytes per call and no longer does; a restore of a larger world now allocates nothing after `Warmup()`.
 - **Moved results: speed rounds and fixes since preview.2.** These change the state after the same inputs, for the scenes named: the 2D pair stage (refit between tree rebuilds) moves 2D worlds with many moving bodies; the 3D solver kernels move worlds with joints and ragdolls; the character and services fixes for stale displacement move 2D worlds with characters or services.
 
-## 0.1.0-preview.2
+## [0.1.0-preview.2]
 
 - Host hooks: `TrySnapshot`, `GetSnapshotSize` and `Restore(ReadOnlySpan<byte>)` without per-call copies; allocation-free `ComputeHash`; handle liveness queries; character index and generation; typed errors for velocity and bullet settings on static bodies.
 - **Moved results: sensors for kinematic bodies and characters.** Sensors now pair with kinematic bodies and characters, so those worlds' events, constraint order and results differ from preview.1.
 - Speed rounds between preview.1 and preview.2 (pair stage, solver glue, 3D contact preparation) left the world hashes of the project's scenes unchanged; the sensor change above is what moved results in preview.2.
 
-## 0.1.0-preview.1
+## [0.1.0-preview.1]
 
 First preview: the 2D engine, the shared core (handles, deterministic scheduler and coloring, islands and sleeping, layers and filters, events and sensors, queries, materials, snapshot and restore, world hashes, debug geometry), and the 3D rigid core with characters, vehicles, ragdolls and buoyancy in progress.
+
+[0.1.0-preview.5]: https://github.com/recursive-ai-oss/onephysics-csharp/releases/tag/v0.1.0-preview.5

@@ -4,12 +4,15 @@
     <!-- The package id derives from this single property pair. -->
     <PackagePrefix>RecursiveAI</PackagePrefix>
     <PackageBaseName>$(PackagePrefix).OnePhysics</PackageBaseName>
-    <Version>0.1.0-dev</Version>
+    <!-- The one place the package version lives. -->
+    <Version>0.1.0-preview.5</Version>
     <Authors>Recursive AI, LLC</Authors>
     <Company>Recursive AI, LLC</Company>
     <Copyright>Copyright (c) Recursive AI, LLC</Copyright>
     <PackageLicenseExpression>MIT OR Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/recursive-ai-oss/onephysics-csharp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/recursive-ai-oss/onephysics-csharp</PackageProjectUrl>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -22,12 +25,18 @@
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
     <Deterministic>true</Deterministic>
-    <ContinuousIntegrationBuild Condition="'$(ContinuousIntegrationBuild)' == ''">true</ContinuousIntegrationBuild>
     <Configurations>Debug;Release;Checked;Profile</Configurations>
     <InvariantGlobalization>true</InvariantGlobalization>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Floating-point results must never depend on the JIT's choices. -->
     <TieredPGO>false</TieredPGO>
+  </PropertyGroup>
+
+  <!-- Reproducible packages: path mapping applies to the library only (src/), and only on CI. Test projects keep real paths. -->
+  <PropertyGroup>
+    <_ProjectDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)'))</_ProjectDir>
+    <_SrcDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', 'src'))</_SrcDir>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true' and $(_ProjectDir.StartsWith('$(_SrcDir)'))">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
   <!-- Build output never lands in the checkout: set ONEPHYSICS_ARTIFACTS to choose where it goes. -->
