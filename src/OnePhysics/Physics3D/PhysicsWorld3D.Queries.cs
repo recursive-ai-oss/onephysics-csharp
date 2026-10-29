@@ -420,4 +420,5 @@ public sealed partial class PhysicsWorld3D
     internal bool Brute { get => _engine.BruteQueries; set => _engine.BruteQueries = value; }
 
     internal bool QuickRejects { get => _engine.QuickRejects; set => _engine.QuickRejects = value; }
+    internal bool ClosedFormLeaves { get => _engine.ClosedFormLeaves; set => _engine.ClosedFormLeaves = value; }
 }
