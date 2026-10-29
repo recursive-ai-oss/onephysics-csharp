@@ -967,7 +967,7 @@ internal sealed class QuickhullBuilder
 
             if (!joined)
             {
-                throw Degenerate("two faces that bend by less than the tolerance cannot be told apart from one face");
+                throw Degenerate("the faces around a nearly flat vertex cannot be joined into one polygon");
             }
         }
 
