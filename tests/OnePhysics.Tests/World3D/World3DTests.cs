@@ -59,15 +59,19 @@ public class World3DTests
     [Fact]
     public void FreeFallMatchesTheIntegratorFormula()
     {
-        var w = NewWorld(tweak: o => o.SleepEnabled = false);
-        var ball = w.AddSphere(0.5f, new Vector3D(0, 100, 0));
-        for (int i = 0; i < 60; i++) { w.Step(Dt); }
-        // 4 substeps per step, semi-implicit Euler: after n substeps v = -g h n and y = y0 - g h^2 n (n + 1) / 2, h = dt / 4.
-        double h = (double)Dt / 4, n = 240;
-        Assert.Equal(-9.81 * h * n, ball.LinearVelocity.Y, 3);
-        Assert.Equal(100 - 9.81 * h * h * n * (n + 1) / 2, ball.Position.Y, 3);
-        Assert.Equal(0.0, ball.Position.X);
-        Assert.Equal(0.0, ball.Position.Z);
+        // A body with no joint runs the contact-only schedule (2 substeps by default); the world's own schedule has 4.
+        foreach (var (contactSubsteps, substeps) in new[] { (0, 4), (2, 2) })
+        {
+            var w = NewWorld(tweak: o => { o.SleepEnabled = false; o.ContactSubsteps = contactSubsteps; });
+            var ball = w.AddSphere(0.5f, new Vector3D(0, 100, 0));
+            for (int i = 0; i < 60; i++) { w.Step(Dt); }
+            // Semi-implicit Euler: after n substeps v = -g h n and y = y0 - g h^2 n (n + 1) / 2, h = dt / substeps.
+            double h = (double)Dt / substeps, n = 60 * substeps;
+            Assert.Equal(-9.81 * h * n, ball.LinearVelocity.Y, 3);
+            Assert.Equal(100 - 9.81 * h * h * n * (n + 1) / 2, ball.Position.Y, 3);
+            Assert.Equal(0.0, ball.Position.X);
+            Assert.Equal(0.0, ball.Position.Z);
+        }
     }
 
     [Fact]
@@ -147,7 +151,7 @@ public class World3DTests
     [Fact]
     public void ATorqueFreeAsymmetricBodyConservesAngularMomentum()
     {
-        var w = NewWorld(tweak: o => { o.SleepEnabled = false; o.Gravity = default; });
+        var w = NewWorld(tweak: o => { o.SleepEnabled = false; o.Gravity = default; o.ContactSubsteps = 0; });
         var body = w.AddBox(new Vector3F(1f, 2f, 4f), at: new Vector3D(0, 0, 0));
         body.AngularVelocity = new Vector3F(0.2f, 3f, 0.1f); // near the intermediate axis: the tumbling case
         Vector3F L()
@@ -167,7 +171,7 @@ public class World3DTests
             maxDrift = Math.Max(maxDrift, (l - l0).Length() / l0.Length());
         }
 
-        // One implicit gyroscopic Newton step per substep: the measured drift over 10 s of tumbling stays below 1.5 %.
+        // One implicit gyroscopic Newton step per substep: the measured drift over 10 s of tumbling stays below 1.5 % at 4 substeps (a free body on the contact-only schedule, 2 substeps, drifts 2.9 %).
         Assert.InRange(maxDrift, 0f, 0.015f);
     }
 

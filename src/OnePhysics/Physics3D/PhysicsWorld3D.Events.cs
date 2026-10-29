@@ -301,7 +301,7 @@ public sealed partial class PhysicsWorld3D : ICallbackGate
                 count = cs.PointCount[c];
                 var n = new Vector3F(pl[ManifoldLayout.Normal], pl[ManifoldLayout.Normal + 1], pl[ManifoldLayout.Normal + 2]);
                 normal = flip ? -n : n;
-                float scale = _core.Options.Substeps;
+                float scale = _core.SubstepsOf(c);
                 for (int k = 0; k < count; k++)
                 {
                     int a = ManifoldLayout.AnchorA(k);

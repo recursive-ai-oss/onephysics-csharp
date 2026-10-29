@@ -217,7 +217,7 @@ public sealed partial class PhysicsWorld2D : ICallbackGate
                 var posA = _core.Bodies.PositionOf(cs.BodyA[c]);
                 count = cs.PointCount[c];
                 normal = flip ? new Vector2F(-pl[ManifoldLayout.Normal], -pl[ManifoldLayout.Normal + 1]) : new Vector2F(pl[ManifoldLayout.Normal], pl[ManifoldLayout.Normal + 1]);
-                float scale = _core.Options.Substeps;
+                float scale = _core.SubstepsOf(c);
                 for (int k = 0; k < count; k++)
                 {
                     int a = ManifoldLayout.AnchorA(k);

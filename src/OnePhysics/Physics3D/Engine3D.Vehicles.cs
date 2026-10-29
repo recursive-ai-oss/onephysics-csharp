@@ -227,6 +227,8 @@ internal sealed partial class Engine3D
         }
         else if (s.Forward != 0f || s.Brake > 0f || s.Handbrake > 0f) { bodies.SleepTime[b] = 0f; }
 
+        // The wheel forces below are timed for the world's own substep count, so the chassis' island runs that schedule.
+        Core.KeepJointSchedule(b);
         RefreshWorldInertia(b);
         var def = s.Def;
         int n = s.Wheels;
