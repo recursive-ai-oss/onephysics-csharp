@@ -1,6 +1,6 @@
 # Architecture of the shared core
 
-This document is normative for the dimension-independent core in `src/OnePhysics/Core/`: everything a port must reproduce to get the same bits. The 2D and 3D engines sit on it and add shapes, collision, solvers and joints through the stage interface below. The core is **not frozen**: it may still change while the 3D engine is being built; each change updates this file.
+This document is normative for the dimension-independent core in `src/OnePhysics/Core/`: everything a port must reproduce to get the same bits. The 2D and 3D engines sit on it and add shapes, collision, solvers and joints through the stage interface below. The core and the snapshot format are **frozen at format version 1** as of 0.2.0-preview.1: the layout below no longer changes within version 1, and any later change to it is a new format version recorded here. New engine state goes in a new registered section with its own id. Frozen means the layout, not the results: a world may still step to different bits from one preview to the next.
 
 All numbers are little-endian, floats are IEEE 754 binary32/binary64, and only `+ − × ÷ sqrt` are used on them.
 
