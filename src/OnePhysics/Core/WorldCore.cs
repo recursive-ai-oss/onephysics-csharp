@@ -836,15 +836,21 @@ public sealed class WorldCore
 
         public int TaskCount(int stage) => _w._stageTasks[stage];
 
-        public void Run(int stage, int task)
+        public void Run(int stage, int task) => RunRange(stage, task, 1);
+
+        // The stage is decoded once for the whole range.
+        public void RunRange(int stage, int first, int count)
         {
             var w = _w;
             int kind = w._stageKind[stage], arg = w._stageArg[stage];
             if (kind <= StageIntegratePositions)
             {
-                int lo = task * ChunkSize;
-                var span = w._awake.AsSpan(lo, Math.Min(ChunkSize, w._awakeCount - lo));
-                if (kind == StageIntegrateVelocities) { _s.IntegrateVelocities(w, span, in _ctx); } else { _s.IntegratePositions(w, span, in _ctx); }
+                for (int task = first; task < first + count; task++)
+                {
+                    int lo = task * ChunkSize;
+                    var span = w._awake.AsSpan(lo, Math.Min(ChunkSize, w._awakeCount - lo));
+                    if (kind == StageIntegrateVelocities) { _s.IntegrateVelocities(w, span, in _ctx); } else { _s.IntegratePositions(w, span, in _ctx); }
+                }
             }
             else if (kind == StageOverflow)
             {
@@ -858,9 +864,13 @@ public sealed class WorldCore
             else
             {
                 int color = arg >> 8;
-                int start = w._coloring.ColorStart(color), count = w._coloring.Color(color).Length;
-                int lo = task * ConstraintColoring.Lanes;
-                _s.SolveBatch(w, _list.AsSpan(start + lo, Math.Min(ConstraintColoring.Lanes, count - lo)), (SolvePhase)(arg & 0xFF), in _ctx);
+                int start = w._coloring.ColorStart(color), total = w._coloring.ColorSize(color);
+                var phase = (SolvePhase)(arg & 0xFF);
+                for (int task = first; task < first + count; task++)
+                {
+                    int lo = task * ConstraintColoring.Lanes;
+                    _s.SolveBatch(w, _list.AsSpan(start + lo, Math.Min(ConstraintColoring.Lanes, total - lo)), phase, in _ctx);
+                }
             }
         }
     }

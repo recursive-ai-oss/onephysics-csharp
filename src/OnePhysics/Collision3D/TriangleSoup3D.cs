@@ -76,6 +76,9 @@ public sealed class TriangleShapeBuffer3D
         _shape = ConvexShape3D.FromHull(new ConvexHull3D(_vertices, _faces, edges, s_vertexEdges, default), 0f);
     }
 
+    /// <summary>The unit normal of the triangle loaded last, the same bits as <see cref="SoupTriangle3D.Normal"/>.</summary>
+    internal Vector3F Normal { get; private set; }
+
     /// <summary>Loads a triangle and returns the shape; the vertices are used as given, so the shape lives in whatever frame they are expressed in.</summary>
     /// <param name="a">First vertex.</param>
     /// <param name="b">Second vertex.</param>
@@ -91,6 +94,7 @@ public sealed class TriangleShapeBuffer3D
         float off = Vector3F.Dot(nf, a);
         _faces[0] = new HullFace3D(nf, off, 0, 3);
         _faces[1] = new HullFace3D(-nf, -off, 1, 3);
+        Normal = nf;
         return _shape;
     }
 }

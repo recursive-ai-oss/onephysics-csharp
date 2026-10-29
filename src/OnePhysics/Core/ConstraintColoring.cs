@@ -226,6 +226,8 @@ public sealed class ConstraintColoring
 
     internal int ColorStart(int color) => _start[1 + color];
 
+    internal int ColorSize(int color) => _start[2 + color] - _start[1 + color];
+
     internal int OverflowStart => _start[0];
 
     internal int[] ListArray => _list;

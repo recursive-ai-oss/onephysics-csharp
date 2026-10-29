@@ -24,6 +24,12 @@ public interface IStagedBody
 
     /// <summary>Runs task <paramref name="task"/> of stage <paramref name="stage"/>.</summary>
     void Run(int stage, int task);
+
+    /// <summary>Runs tasks <c>first .. first + count - 1</c> of a stage in order, on one thread; used when a stage is not shared. The default calls <see cref="Run"/> for each; an implementation may decode the stage once.</summary>
+    void RunRange(int stage, int first, int count)
+    {
+        for (int i = 0; i < count; i++) { Run(stage, first + i); }
+    }
 }
 
 /// <summary>
@@ -90,8 +96,7 @@ public sealed class TaskExecutor
         {
             for (int s = 0; s < stageCount; s++)
             {
-                int n = body.TaskCount(s);
-                for (int i = 0; i < n; i++) { body.Run(s, i); }
+                body.RunRange(s, 0, body.TaskCount(s));
             }
         }
     }

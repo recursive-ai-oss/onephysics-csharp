@@ -734,6 +734,8 @@ internal sealed partial class Engine3D
         var gen = NarrowScratch.Gen;
         tris.Clear();
         soup.GetCandidates(shape, shapeInSoup, spec, tris, NarrowScratch.Ids);
+        // The shape in the soup's frame is the same for every triangle; with the soup as B the manifold is computed in the shape's frame, which needs the inverse.
+        var soupInShape = soupIsA ? default : shapeInSoup.Inverted();
         // For a child of a compound the manifold comes back in the child's frame; mapToA moves it into the compound's frame (only when the compound is shape A).
         for (int t = 0; t < tris.Count; t++)
         {
@@ -749,17 +751,17 @@ internal sealed partial class Engine3D
             }
             else
             {
-                m = gen.Collide(shape, tshape, shapeInSoup.Inverted(), spec);
+                m = gen.Collide(shape, tshape, soupInShape, spec);
                 subA = child < 0 ? 0 : child; subB = tri.Id;
             }
 
             if (m.PointCount == 0) { continue; }
-            Emit(sc, in f, subA, subB, in m, shapeLocal, map, soupFromA, true, tri, soupIsA);
+            Emit(sc, in f, subA, subB, in m, shapeLocal, map, soupFromA, true, tri, soupIsA, triBuf.Normal);
         }
     }
 
     private static void Emit(NarrowScratch sc, in PairFrame f, int subA, int subB, in Manifold3D m, in RigidTransformF mapToA, bool map, in RigidTransformF soupFromA, bool filter, in SoupTriangle3D tri,
-        bool soupIsA = false)
+        bool soupIsA = false, Vector3F triNormal = default)
     {
         if (m.PointCount == 0) { return; }
         Vector3F n = map ? mapToA.Rotation.Rotate(m.Normal) : m.Normal;
@@ -769,7 +771,7 @@ internal sealed partial class Engine3D
             // Internal-edge rule (Rouwé's write-ups on internal edges, Gregorius on contact generation): a point whose closest triangle feature is an inactive edge, or a vertex whose
             // two edges in this triangle are both inactive, lies on a seam between flat neighbours. If the manifold's normal also leans away from the face normal, the neighbour's own
             // face contact is the right one, and this one would kick a body sliding over the seam: the manifold is dropped. Contacts on the back of a triangle are not filtered.
-            Vector3F triN = tri.Normal;
+            Vector3F triN = triNormal;
             Vector3F towards = soupIsA ? n : soupFromA.Rotation.Rotate(-n); // from the triangle towards the other shape, in the soup's frame
             float d = Vector3F.Dot(towards, triN);
             if (d >= -0.1f && d < GhostCosine)
