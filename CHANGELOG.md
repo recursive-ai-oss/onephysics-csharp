@@ -9,6 +9,7 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 ## [0.2.0-preview.1]
 
 - **The snapshot format is frozen at version 1.** Its layout (header, options, bodies, shapes, constraints, islands and registered sections, `docs/spec/architecture.md`) no longer changes within version 1. A later change is a new format version. Results may still move between previews.
+- **Raw tier (`[Experimental("OPHYS0001")]`): `IBox<TSelf>` gains `Translated(ReadOnlySpan<double>)`**, which the exact origin shift uses. A type that implements `IBox<TSelf>` outside the library must add it.
 - **The 3D engine stays `[Experimental("OPHYS0002")]`.** It meets the speed bar on most scenes but not all yet: within 1.15x of the fastest stable managed engine (BepuPhysics v2, Jitter2), per scene and thread count. Measured on a Ryzen 9 7950X3D (ours / reference median step time, t1 / t8 on one core complex / t32):
 
   | scene | t1 | t8 | t32 |
