@@ -55,7 +55,7 @@ public class SensorIndependence3DTests
         if ((kinds & Kinds.Static) != 0)
         {
             var zone = w.CreateBody(BodyType.Static, new Vector3D(0, 2, 0));
-            w.CreateBox(zone, new Vector3F(4, 2, 4), 0f, new ShapeDef { IsSensor = true, Density = 0f });
+            w.CreateBox(zone, new Vector3F(8, 4, 8), 0f, new ShapeDef { IsSensor = true, Density = 0f });
             Count(zone);
             var zone2 = w.CreateBody(BodyType.Static, new Vector3D(-7, 4, 3));
             w.CreateSphere(zone2, 2.5f, new ShapeDef { IsSensor = true, Density = 0f });
@@ -83,7 +83,7 @@ public class SensorIndependence3DTests
             if (step == 150 && (kinds & Kinds.Late) != 0)
             {
                 late = w.CreateBody(BodyType.Static, new Vector3D(3, 1, 0));
-                w.CreateBox(late, new Vector3F(3, 1, 3), 0f, new ShapeDef { IsSensor = true, Density = 0f });
+                w.CreateBox(late, new Vector3F(6, 2, 6), 0f, new ShapeDef { IsSensor = true, Density = 0f });
                 Count(late);
             }
 

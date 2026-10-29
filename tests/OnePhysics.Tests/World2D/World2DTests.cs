@@ -60,7 +60,7 @@ public class World2DTests
     {
         var w = NewWorld();
         w.AddBox(new Vector2F(20f, 1f), at: new Vector2D(0, -0.5), type: BodyType.Static);
-        var box = w.AddBox(new Vector2F(1f, 1f), at: new Vector2D(0, 3), angle: 0.3f);
+        var box = w.AddBox(new Vector2F(1f, 1f), at: new Vector2D(0, 3), angleRadians: 0.3f);
         for (int i = 0; i < 360; i++) { w.Step(Dt); }
         Assert.InRange(box.Position.Y, 0.49, 0.51);
         Assert.False(box.IsAwake);
@@ -73,7 +73,7 @@ public class World2DTests
     {
         var w = NewWorld();
         var platform = w.CreateBody(new BodyDef { Type = BodyType.Kinematic, Position = new Vector2D(0, 0), LinearVelocity = new Vector2F(1f, 0f) });
-        w.CreateBox(platform, 50f, 0.5f);
+        w.CreateBox(platform, new Vector2F(100f, 1f));
         var box = w.AddBox(new Vector2F(1f, 1f), at: new Vector2D(0, 1.1));
         for (int i = 0; i < 240; i++) { w.Step(Dt); }
         Assert.True(box.IsAwake);
@@ -167,7 +167,7 @@ public class World2DTests
         Assert.Throws<InvalidShapeException>(() => w.CreateCircle(b, -1f));
         Assert.Throws<InvalidShapeException>(() => w.CreatePolygon(b, [new Vector2F(0, 0), new Vector2F(0, 0), new Vector2F(0, 0)]));
         Assert.Throws<InvalidShapeException>(() => w.CreatePolygon(b, [new Vector2F(0, 0), new Vector2F(1, 1), new Vector2F(2, 2)]));
-        Assert.Throws<InvalidShapeException>(() => w.CreateBox(b, float.NaN, 1f));
+        Assert.Throws<InvalidShapeException>(() => w.CreateBox(b, new Vector2F(2f * float.NaN, 2f)));
         Assert.Throws<ArgumentOutOfRangeException>(() => w.CreateCircle(b, 1f, default, new ShapeDef { Density = -1f }));
         Assert.Throws<ArgumentOutOfRangeException>(() => b.LinearVelocity = new Vector2F(float.PositiveInfinity, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => w.Step(0f));
@@ -290,9 +290,9 @@ public class World2DTests
         var w = NewWorld();
         w.Options.Gravity = default;
         var b = w.CreateBody(new BodyDef { Position = new Vector2D(5, 5), Angle = 0.5f });
-        w.CreateBox(b, 0.5f, 0.5f, new Vector2F(-1, 0));
-        w.CreateBox(b, 0.5f, 0.5f, new Vector2F(1, 0));
-        w.CreateBox(b, 0.5f, 0.5f, new Vector2F(3, 0)); // centre of mass at x = 1
+        w.CreateBox(b, new Vector2F(1f, 1f), new Vector2F(-1, 0));
+        w.CreateBox(b, new Vector2F(1f, 1f), new Vector2F(1, 0));
+        w.CreateBox(b, new Vector2F(1f, 1f), new Vector2F(3, 0)); // centre of mass at x = 1
         Assert.Equal(3f, b.Mass, 4);
         Assert.Equal(5.0, b.Position.X, 5);
         Assert.Equal(5.0, b.Position.Y, 5);
@@ -523,11 +523,11 @@ public class World2DTests
     {
         var w = new PhysicsWorld2D(new WorldOptions2D { PairFilter = (a, b) => !(a.Body.Type == BodyType.Static && b.Body.Type == BodyType.Static) });
         var floor = w.CreateBody(BodyType.Static, new Vector2D(0, -0.5));
-        w.CreateBox(floor, 20f, 0.5f, default, 0f, 0f, new ShapeDef { CategoryBits = 2u });
+        w.CreateBox(floor, new Vector2F(40f, 1f), default, 0f, 0f, new ShapeDef { CategoryBits = 2u });
         var ghost = w.CreateBody(BodyType.Dynamic, new Vector2D(0, 3));
-        w.CreateBox(ghost, 0.5f, 0.5f, default, 0f, 0f, new ShapeDef { MaskBits = 4u });   // does not include the floor's category
+        w.CreateBox(ghost, new Vector2F(1f, 1f), default, 0f, 0f, new ShapeDef { MaskBits = 4u });   // does not include the floor's category
         var solid = w.CreateBody(BodyType.Dynamic, new Vector2D(3, 3));
-        w.CreateBox(solid, 0.5f, 0.5f);
+        w.CreateBox(solid, new Vector2F(1f, 1f));
         for (int i = 0; i < 120; i++) { w.Step(Dt); }
         Assert.True(ghost.Position.Y < -1.0, "falls through: " + ghost.Position.Y);
         Assert.InRange(solid.Position.Y, 0.49, 0.51);

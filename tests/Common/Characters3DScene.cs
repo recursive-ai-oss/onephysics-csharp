@@ -42,12 +42,12 @@ internal static class Characters3DScene
         };
         for (int i = 0; i < chars.Length; i++)
         {
-            var def = Character.Humanoid;
+            var def = CharacterDef.Humanoid;
             def.PushStrength = plan[i].Push; def.Layer = 1; def.LayerMask = ~(1u << 1);
             chars[i] = w.AddCharacter(new Vector3D(plan[i].X, plan[i].Y, plan[i].Z), def);
         }
 
-        var rigid = w.AddCharacter(new Vector3D(0, 1.0, 12), Character.RigidHumanoid);
+        var rigid = w.AddCharacter(new Vector3D(0, 1.0, 12), CharacterDef.RigidHumanoid);
         var vy = new float[chars.Length];
         ulong hash = 0xCBF29CE484222325UL;
         void Mix(ulong v) { hash = (hash ^ v) * 0x100000001B3UL; hash ^= hash >> 29; }

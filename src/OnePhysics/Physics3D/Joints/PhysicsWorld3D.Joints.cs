@@ -42,27 +42,14 @@ public sealed partial class PhysicsWorld3D
     {
         if (!_jointHandlers.TryGetValue(e.Joint.Index, out var h) || h.Generation != e.Joint.Generation) { return; }
         var action = h.Break;
-        _jointHandlers.Remove(e.Joint.Index);
+        RetireJointHandlers(e.Joint.Index, e.Joint.Generation);
         action?.Invoke(new JointBreak(new Joint(this, e.Joint), new Body(this, e.BodyA), new Body(this, e.BodyB), e.Value));
-    }
-
-    private void DropStaleJointHandlers()
-    {
-        if (_jointHandlers.Count == 0) { return; }
-        var dead = new List<int>();
-        var cs = _core.Constraints;
-        foreach (var kv in _jointHandlers)
-        {
-            if (!cs.Handles.IsAlive(kv.Key, kv.Value.Generation)) { dead.Add(kv.Key); }
-        }
-
-        foreach (int k in dead) { _jointHandlers.Remove(k); }
     }
 
     internal void DestroyJoint(JointHandle h)
     {
         _core.DestroyJoint(h);
-        _jointHandlers.Remove(h.Index);
+        RetireJointHandlers(h.Index, h.Generation);
         _engine.ReconcileJoints();
     }
 
@@ -125,13 +112,19 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="InvalidJointException">Same body twice, no dynamic body, or values the type does not allow.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A value is not finite or out of range (the message names it).</exception>
     /// <exception cref="InvalidHandleException">A body is the default value, destroyed (<see cref="StaleHandleException"/>) or from another world.</exception>
-    public Joint CreateJoint(in FixedJointDef def) => Make(def.BodyA, def.BodyB, Base(JointType3D.Fixed, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque));
+    public FixedJoint CreateJoint(in FixedJointDef def) => new(CreateFixedJointDef(in def));
+
+    private Joint CreateFixedJointDef(in FixedJointDef def) => Make(def.BodyA, def.BodyB, Base(JointType3D.Fixed, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque));
 
     /// <summary>Creates a point (ball-and-socket) joint. Throws as <see cref="CreateJoint(in FixedJointDef)"/>.</summary>
-    public Joint CreateJoint(in PointJointDef def) => Make(def.BodyA, def.BodyB, Base(JointType3D.Point, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque));
+    public PointJoint CreateJoint(in PointJointDef def) => new(CreatePointJointDef(in def));
+
+    private Joint CreatePointJointDef(in PointJointDef def) => Make(def.BodyA, def.BodyB, Base(JointType3D.Point, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque));
 
     /// <summary>Creates a distance joint. Throws as <see cref="CreateJoint(in FixedJointDef)"/>.</summary>
-    public Joint CreateJoint(in DistanceJointDef def)
+    public DistanceJoint CreateJoint(in DistanceJointDef def) => new(CreateDistanceJointDef(in def));
+
+    private Joint CreateDistanceJointDef(in DistanceJointDef def)
     {
         var d = Base(JointType3D.Distance, Flags(def.EnableLimit, false, def.EnableSpring, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
         d.Length = def.Length; d.Lower = def.MinLength; d.Upper = def.MaxLength; d.Hertz = def.SpringHertz; d.Damping = def.SpringDampingRatio;
@@ -139,7 +132,9 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>Creates a hinge joint. Throws as <see cref="CreateJoint(in FixedJointDef)"/>.</summary>
-    public Joint CreateJoint(in HingeJointDef def)
+    public HingeJoint CreateJoint(in HingeJointDef def) => new(CreateHingeJointDef(in def));
+
+    private Joint CreateHingeJointDef(in HingeJointDef def)
     {
         var d = Base(JointType3D.Hinge, Flags(def.EnableLimit, def.EnableMotor, def.EnableSpring, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
         d.Lower = def.LowerAngle; d.Upper = def.UpperAngle; d.MotorSpeed = def.MotorSpeed; d.MaxMotor = def.MaxMotorTorque; d.Hertz = def.SpringHertz; d.Damping = def.SpringDampingRatio;
@@ -147,7 +142,9 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>Creates a slider joint. Throws as <see cref="CreateJoint(in FixedJointDef)"/>.</summary>
-    public Joint CreateJoint(in SliderJointDef def)
+    public SliderJoint CreateJoint(in SliderJointDef def) => new(CreateSliderJointDef(in def));
+
+    private Joint CreateSliderJointDef(in SliderJointDef def)
     {
         var d = Base(JointType3D.Slider, Flags(def.EnableLimit, def.EnableMotor, def.EnableSpring, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
         d.Lower = def.LowerTranslation; d.Upper = def.UpperTranslation; d.MotorSpeed = def.MotorSpeed; d.MaxMotor = def.MaxMotorForce; d.Hertz = def.SpringHertz; d.Damping = def.SpringDampingRatio;
@@ -155,7 +152,9 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>Creates a cone joint. Throws as <see cref="CreateJoint(in FixedJointDef)"/>.</summary>
-    public Joint CreateJoint(in ConeJointDef def)
+    public ConeJoint CreateJoint(in ConeJointDef def) => new(CreateConeJointDef(in def));
+
+    private Joint CreateConeJointDef(in ConeJointDef def)
     {
         var d = Base(JointType3D.Cone, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
         d.Swing1 = def.HalfConeAngle;
@@ -163,7 +162,9 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>Creates a swing-twist joint. Throws as <see cref="CreateJoint(in FixedJointDef)"/>.</summary>
-    public Joint CreateJoint(in SwingTwistJointDef def)
+    public SwingTwistJoint CreateJoint(in SwingTwistJointDef def) => new(CreateSwingTwistJointDef(in def));
+
+    private Joint CreateSwingTwistJointDef(in SwingTwistJointDef def)
     {
         var d = Base(JointType3D.SwingTwist, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
         d.Lower = def.LowerTwist; d.Upper = def.UpperTwist; d.Swing1 = def.SwingYHalfAngle; d.Swing2 = def.SwingZHalfAngle;
@@ -171,7 +172,9 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>Creates a six-degrees-of-freedom joint. Throws as <see cref="CreateJoint(in FixedJointDef)"/>.</summary>
-    public Joint CreateJoint(in SixDofJointDef def)
+    public SixDofJoint CreateJoint(in SixDofJointDef def) => new(CreateSixDofJointDef(in def));
+
+    private Joint CreateSixDofJointDef(in SixDofJointDef def)
     {
         var d = Base(JointType3D.SixDof, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
         ref var s = ref d.Six;
@@ -187,7 +190,9 @@ public sealed partial class PhysicsWorld3D
     private static void Set3(ref JF6 a, int o, Vector3F v) { a[o] = v.X; a[o + 1] = v.Y; a[o + 2] = v.Z; }
 
     /// <summary>Creates a path joint. Throws as <see cref="CreateJoint(in FixedJointDef)"/>, and <see cref="InvalidJointException"/> for fewer than 2 or more than 256 points.</summary>
-    public Joint CreateJoint(in PathJointDef def)
+    public PathJoint CreateJoint(in PathJointDef def) => new(CreatePathJointDef(in def));
+
+    private Joint CreatePathJointDef(in PathJointDef def)
     {
         var d = Base(JointType3D.Path, (byte)(Flags(false, def.EnableMotor, false, def.CollideConnected) | (def.Loop ? JointData3D.FlagLoop : 0)), JointFrame3D.Identity, def.LocalFrameB, def.BreakForce, def.BreakTorque);
         d.Path = def.Points == null ? null : (Vector3F[])def.Points.Clone();
@@ -196,7 +201,9 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>Creates a gear joint. Throws as <see cref="CreateJoint(in FixedJointDef)"/>.</summary>
-    public Joint CreateJoint(in GearJointDef def)
+    public GearJoint CreateJoint(in GearJointDef def) => new(CreateGearJointDef(in def));
+
+    private Joint CreateGearJointDef(in GearJointDef def)
     {
         var d = Base(JointType3D.Gear, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
         d.Ratio = def.Ratio;
@@ -204,7 +211,9 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>Creates a rack-and-pinion joint. Throws as <see cref="CreateJoint(in FixedJointDef)"/>.</summary>
-    public Joint CreateJoint(in RackAndPinionJointDef def)
+    public RackAndPinionJoint CreateJoint(in RackAndPinionJointDef def) => new(CreateRackAndPinionJointDef(in def));
+
+    private Joint CreateRackAndPinionJointDef(in RackAndPinionJointDef def)
     {
         var d = Base(JointType3D.RackAndPinion, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
         d.Ratio = def.Ratio;
@@ -212,7 +221,9 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>Creates a pulley joint. Negative min and max lengths mean the current rope length. Throws as <see cref="CreateJoint(in FixedJointDef)"/>.</summary>
-    public Joint CreateJoint(in PulleyJointDef def)
+    public PulleyJoint CreateJoint(in PulleyJointDef def) => new(CreatePulleyJointDef(in def));
+
+    private Joint CreatePulleyJointDef(in PulleyJointDef def)
     {
         var d = Base(JointType3D.Pulley, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
         d.Ratio = def.Ratio;
@@ -284,7 +295,7 @@ public sealed partial class PhysicsWorld3D
     /// <param name="axis">The hinge axis, a finite non-zero world direction.</param>
     /// <param name="collideConnected">When true the bodies keep colliding with each other.</param>
     /// <exception cref="InvalidJointException">Same body twice, or neither body dynamic.</exception>
-    public Joint AddHinge(Body a, Body b, Vector3D anchor, Vector3F axis, bool collideConnected = false)
+    public HingeJoint AddHinge(Body a, Body b, Vector3D anchor, Vector3F axis, bool collideConnected = false)
     {
         var w = WorldFrame(axis, nameof(axis));
         var d = new HingeJointDef { BodyA = a, BodyB = b, LocalFrameA = FrameOn(a, anchor, w, "anchor"), LocalFrameB = FrameOn(b, anchor, w, "anchor"), CollideConnected = collideConnected };
@@ -293,7 +304,7 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>A slider: B moves along <paramref name="axis"/> (a world direction) through <paramref name="anchor"/>, rotation locked as it is now; translation 0 is the current pose.</summary>
-    public Joint AddSlider(Body a, Body b, Vector3D anchor, Vector3F axis, bool collideConnected = false)
+    public SliderJoint AddSlider(Body a, Body b, Vector3D anchor, Vector3F axis, bool collideConnected = false)
     {
         var w = WorldFrame(axis, nameof(axis));
         var d = new SliderJointDef { BodyA = a, BodyB = b, LocalFrameA = FrameOn(a, anchor, w, "anchor"), LocalFrameB = FrameOn(b, anchor, w, "anchor"), CollideConnected = collideConnected };
@@ -302,7 +313,7 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>Welds the bodies together as they are now: position and rotation locked at <paramref name="anchor"/>.</summary>
-    public Joint AddFixed(Body a, Body b, Vector3D anchor, bool collideConnected = false)
+    public FixedJoint AddFixed(Body a, Body b, Vector3D anchor, bool collideConnected = false)
     {
         var d = new FixedJointDef { BodyA = a, BodyB = b, LocalFrameA = FrameOn(a, anchor, QuaternionF.Identity, "anchor"), LocalFrameB = FrameOn(b, anchor, QuaternionF.Identity, "anchor"), CollideConnected = collideConnected };
         try { return CreateJoint(in d); }
@@ -310,7 +321,7 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>A ball-and-socket: the world point <paramref name="anchor"/> stays on both bodies, rotation is free.</summary>
-    public Joint AddPoint(Body a, Body b, Vector3D anchor, bool collideConnected = false)
+    public PointJoint AddPoint(Body a, Body b, Vector3D anchor, bool collideConnected = false)
     {
         var d = new PointJointDef { BodyA = a, BodyB = b, LocalFrameA = FrameOn(a, anchor, QuaternionF.Identity, "anchor"), LocalFrameB = FrameOn(b, anchor, QuaternionF.Identity, "anchor"), CollideConnected = collideConnected };
         try { return CreateJoint(in d); }
@@ -318,7 +329,7 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>A spring between two world points (one on each body): rest length is their current distance, frequency <paramref name="hertz"/> and damping ratio <paramref name="dampingRatio"/>; the length is free to change.</summary>
-    public Joint AddSpring(Body a, Body b, Vector3D anchorA, Vector3D anchorB, float hertz = 4f, float dampingRatio = 0.5f, bool collideConnected = false)
+    public DistanceJoint AddSpring(Body a, Body b, Vector3D anchorA, Vector3D anchorB, float hertz = 4f, float dampingRatio = 0.5f, bool collideConnected = false)
     {
         var fa = new JointFrame3D(ToLocal(a, anchorA, "anchorA"), QuaternionF.Identity); var fb = new JointFrame3D(ToLocal(b, anchorB, "anchorB"), QuaternionF.Identity);
         float len = (float)Dist(anchorA, anchorB);
@@ -328,7 +339,7 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>A rigid rod between two world points, at their current distance.</summary>
-    public Joint AddDistance(Body a, Body b, Vector3D anchorA, Vector3D anchorB, bool collideConnected = false)
+    public DistanceJoint AddDistance(Body a, Body b, Vector3D anchorA, Vector3D anchorB, bool collideConnected = false)
     {
         var fa = new JointFrame3D(ToLocal(a, anchorA, "anchorA"), QuaternionF.Identity); var fb = new JointFrame3D(ToLocal(b, anchorB, "anchorB"), QuaternionF.Identity);
         float len = (float)Dist(anchorA, anchorB);
@@ -338,7 +349,7 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>A cone joint: a ball-and-socket at <paramref name="anchor"/> that keeps the two bodies' copies of <paramref name="axis"/> within <paramref name="halfAngle"/> radians of each other.</summary>
-    public Joint AddCone(Body a, Body b, Vector3D anchor, Vector3F axis, float halfAngle = 0.7853982f, bool collideConnected = false)
+    public ConeJoint AddCone(Body a, Body b, Vector3D anchor, Vector3F axis, float halfAngle = 0.7853982f, bool collideConnected = false)
     {
         var w = WorldFrame(axis, nameof(axis));
         var d = new ConeJointDef { BodyA = a, BodyB = b, LocalFrameA = FrameOn(a, anchor, w, "anchor"), LocalFrameB = FrameOn(b, anchor, w, "anchor"), HalfConeAngle = halfAngle, CollideConnected = collideConnected };
@@ -347,7 +358,7 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>A limb joint (Unity's CharacterJoint): a ball-and-socket at <paramref name="anchor"/> with twist about <paramref name="twistAxis"/> limited to the given range and swing limited to an elliptical cone (half angles about the two perpendicular axes). Angles in radians.</summary>
-    public Joint AddCharacterJoint(Body parent, Body child, Vector3D anchor, Vector3F twistAxis, float lowTwist = -0.7853982f, float highTwist = 0.7853982f, float swingYHalfAngle = 0.7853982f, float swingZHalfAngle = 0.7853982f, bool collideConnected = false)
+    public SwingTwistJoint AddCharacterJoint(Body parent, Body child, Vector3D anchor, Vector3F twistAxis, float lowTwist = -0.7853982f, float highTwist = 0.7853982f, float swingYHalfAngle = 0.7853982f, float swingZHalfAngle = 0.7853982f, bool collideConnected = false)
     {
         var w = WorldFrame(twistAxis, nameof(twistAxis));
         var d = new SwingTwistJointDef
@@ -360,7 +371,7 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>A six-degrees-of-freedom joint (Unity's ConfigurableJoint) with every axis locked at the current pose and the frame axes along the world axes; free or limit axes through <see cref="Joint.SetAxisMode"/> and <see cref="Joint.SetAxisLimits"/>.</summary>
-    public Joint AddConfigurable(Body a, Body b, Vector3D anchor, bool collideConnected = false)
+    public SixDofJoint AddConfigurable(Body a, Body b, Vector3D anchor, bool collideConnected = false)
     {
         var d = new SixDofJointDef { BodyA = a, BodyB = b, LocalFrameA = FrameOn(a, anchor, QuaternionF.Identity, "anchor"), LocalFrameB = FrameOn(b, anchor, QuaternionF.Identity, "anchor"), CollideConnected = collideConnected };
         try { return CreateJoint(in d); }
@@ -368,7 +379,7 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>A gear: A turns about world axis <paramref name="axisA"/> and B about <paramref name="axisB"/> so that <c>ωA·axisA + ratio·ωB·axisB = 0</c>.</summary>
-    public Joint AddGear(Body a, Body b, Vector3F axisA, Vector3F axisB, float ratio = 1f, bool collideConnected = false)
+    public GearJoint AddGear(Body a, Body b, Vector3F axisA, Vector3F axisB, float ratio = 1f, bool collideConnected = false)
     {
         var d = new GearJointDef
         {
@@ -380,7 +391,7 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>A rack and pinion: the pinion turns about world axis <paramref name="pinionAxis"/> and the rack slides along <paramref name="rackAxis"/>, <paramref name="ratio"/> metres per radian.</summary>
-    public Joint AddRackAndPinion(Body pinion, Body rack, Vector3F pinionAxis, Vector3F rackAxis, float ratio = 1f, bool collideConnected = false)
+    public RackAndPinionJoint AddRackAndPinion(Body pinion, Body rack, Vector3F pinionAxis, Vector3F rackAxis, float ratio = 1f, bool collideConnected = false)
     {
         var d = new RackAndPinionJointDef
         {
@@ -392,7 +403,7 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>A pulley: a rope from <paramref name="anchorA"/> over <paramref name="fixedA"/> and <paramref name="fixedB"/> to <paramref name="anchorB"/> at its current length, <c>lengthA + ratio·lengthB</c> held constant.</summary>
-    public Joint AddPulley(Body a, Body b, Vector3D anchorA, Vector3D anchorB, Vector3D fixedA, Vector3D fixedB, float ratio = 1f, bool collideConnected = false)
+    public PulleyJoint AddPulley(Body a, Body b, Vector3D anchorA, Vector3D anchorB, Vector3D fixedA, Vector3D fixedB, float ratio = 1f, bool collideConnected = false)
     {
         var d = new PulleyJointDef
         {
@@ -404,7 +415,7 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>A path: the origin of <paramref name="follower"/> rides a smooth curve through <paramref name="worldPoints"/> (world coordinates as the bodies are now) fixed to <paramref name="pathBody"/>. Add a motor through the <see cref="Joint"/>.</summary>
-    public Joint AddPath(Body pathBody, Body follower, ReadOnlySpan<Vector3D> worldPoints, bool loop = false, bool collideConnected = false)
+    public PathJoint AddPath(Body pathBody, Body follower, ReadOnlySpan<Vector3D> worldPoints, bool loop = false, bool collideConnected = false)
     {
         var pts = new Vector3F[worldPoints.Length];
         for (int i = 0; i < pts.Length; i++) { pts[i] = ToLocal(pathBody, worldPoints[i], "worldPoints"); }

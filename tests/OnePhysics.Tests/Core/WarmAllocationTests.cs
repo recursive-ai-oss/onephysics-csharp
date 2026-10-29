@@ -49,7 +49,7 @@ public class WarmAllocationTests
 
         var player = w.AddCharacter(at: new Vector2D(8, 1));
         var zone = w.CreateBody(BodyType.Static, new Vector2D(-2, 1));
-        w.CreateBox(zone, 3, 2, def: new Physics2D.ShapeDef { IsSensor = true });
+        w.CreateBox(zone, new Vector2F(6, 4), def: new Physics2D.ShapeDef { IsSensor = true });
         w.Warmup();
 
         var hits = new QueryHit2D[16];
@@ -96,7 +96,7 @@ public class WarmAllocationTests
 
         var player = w.AddCharacter(new Vector3D(8, 1, 0));
         var zone = w.CreateBody(BodyType.Static, new Vector3D(-2, 1, 0));
-        w.CreateBox(zone, new Vector3F(3, 2, 3), 0f, new Physics3D.ShapeDef { IsSensor = true, Density = 0f });
+        w.CreateBox(zone, new Vector3F(6, 4, 6), 0f, new Physics3D.ShapeDef { IsSensor = true, Density = 0f });
         w.Warmup();
 
         var hits = new QueryHit3D[16];

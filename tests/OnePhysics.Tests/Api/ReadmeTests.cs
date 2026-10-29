@@ -41,9 +41,10 @@ public class ReadmeTests
     public void ReadmeBlocksAreTheCompiledExamples()
     {
         var blocks = ReadmeBlocks();
-        Assert.Equal(2, blocks.Count);
+        Assert.Equal(3, blocks.Count);
         AssertContainsInOrder("Quickstart2D.cs", blocks[0]);
         AssertContainsInOrder("Quickstart3D.cs", blocks[1]);
+        AssertContainsInOrder("QuickstartRollback2D.cs", blocks[2]);
     }
 
     [Fact]
@@ -56,5 +57,7 @@ public class ReadmeTests
         var a3 = ReadmeExamples.Quickstart3D.Run();
         Assert.Equal(a3, ReadmeExamples.Quickstart3D.Run());
         Assert.True(a3.Bytes > 0);
+        var r = ReadmeExamples.QuickstartRollback2D.Run();
+        Assert.Equal(r, ReadmeExamples.QuickstartRollback2D.Run());
     }
 }

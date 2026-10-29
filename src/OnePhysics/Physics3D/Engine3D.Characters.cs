@@ -204,7 +204,7 @@ internal sealed partial class Engine3D
             if (!CharHandles.IsLive(c)) { continue; }
             var d = CharDef[c];
             w.WriteInt32(CharBody[c]); w.WriteInt32(CharBodyGen[c]);
-            w.WriteSingle(d.Radius); w.WriteSingle(d.Height); w.WriteSingle(d.SlopeLimit); w.WriteSingle(d.StepOffset); w.WriteSingle(d.Skin);
+            w.WriteSingle(d.Radius); w.WriteSingle(d.Height); w.WriteSingle(d.SlopeLimitDegrees); w.WriteSingle(d.StepOffset); w.WriteSingle(d.Skin);
             w.WriteUInt32(d.LayerMask); w.WriteSingle(d.PushStrength); w.WriteInt32(d.Layer); w.WriteUInt32(d.CategoryBits); w.WriteUInt32(d.MaskBits);
             w.WriteSingle(d.Up.X); w.WriteSingle(d.Up.Y); w.WriteSingle(d.Up.Z); w.WriteByte((byte)d.Kind); w.WriteSingle(d.Mass); w.WriteSingle(d.MaxPushForce);
             w.WriteByte((byte)CharGround[c]); w.WriteSingle(CharNx[c]); w.WriteSingle(CharNy[c]); w.WriteSingle(CharNz[c]);
@@ -250,7 +250,7 @@ internal sealed partial class Engine3D
             if (b.Body[c] < 0 || b.Body[c] >= bodyCount || b.BodyGen[c] < 1) { throw r.Error("invalid character body"); }
             var d = new CharacterDef
             {
-                Radius = r.ReadSingle(), Height = r.ReadSingle(), SlopeLimit = r.ReadSingle(), StepOffset = r.ReadSingle(), Skin = r.ReadSingle(),
+                Radius = r.ReadSingle(), Height = r.ReadSingle(), SlopeLimitDegrees = r.ReadSingle(), StepOffset = r.ReadSingle(), Skin = r.ReadSingle(),
                 LayerMask = r.ReadUInt32(), PushStrength = r.ReadSingle(), Layer = r.ReadInt32(), CategoryBits = r.ReadUInt32(), MaskBits = r.ReadUInt32(),
             };
             d.Up = new Vector3F(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());

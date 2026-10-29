@@ -26,7 +26,7 @@ public class ServicesTests
     private static Body Floor(PhysicsWorld2D w, int layer = 0)
     {
         var b = w.CreateBody(BodyType.Static, new Vector2D(0, -0.5));
-        w.CreateBox(b, 30f, 0.5f, default, 0f, 0f, new ShapeDef { Layer = layer });
+        w.CreateBox(b, new Vector2F(60f, 1f), default, 0f, 0f, new ShapeDef { Layer = layer });
         return b;
     }
 
@@ -71,7 +71,7 @@ public class ServicesTests
         var w = NewWorld(o: new WorldOptions2D { Gravity = new Vector2F(0, 0) });
         w.SetLayerCollision(1, 2, false);
         var floor = w.CreateBody(BodyType.Static, new Vector2D(0, -0.5));
-        w.CreateBox(floor, 30f, 0.5f, default, 0f, 0f, new ShapeDef { Layer = 1 });
+        w.CreateBox(floor, new Vector2F(60f, 1f), default, 0f, 0f, new ShapeDef { Layer = 1 });
         Ball(w, 0, 0.45, layer: 2);
         w.Step(Dt);
         Assert.Equal(0, Count(w, EventKind.ContactBegin));
@@ -177,7 +177,7 @@ public class ServicesTests
     private static Body Sensor(PhysicsWorld2D w, double x, double y, float half = 1f, BodyType type = BodyType.Static, int layer = 0)
     {
         var b = w.CreateBody(type, new Vector2D(x, y));
-        w.CreateBox(b, half, half, default, 0f, 0f, new ShapeDef { IsSensor = true, Layer = layer });
+        w.CreateBox(b, new Vector2F(2f * half, 2f * half), default, 0f, 0f, new ShapeDef { IsSensor = true, Layer = layer });
         return b;
     }
 
@@ -252,9 +252,9 @@ public class ServicesTests
     {
         var w = NewWorld();
         var b = w.CreateBody(BodyType.Dynamic, default);
-        w.CreateBox(b, 0.5f, 0.5f);
+        w.CreateBox(b, new Vector2F(1f, 1f));
         float mass = b.Mass;
-        w.CreateBox(b, 5f, 5f, default, 0f, 0f, new ShapeDef { IsSensor = true });
+        w.CreateBox(b, new Vector2F(10f, 10f), default, 0f, 0f, new ShapeDef { IsSensor = true });
         Assert.Equal(mass, b.Mass);
         Sensor(w, 0, 0, 3f);
         Sensor(w, 0.5, 0, 3f);
@@ -269,7 +269,7 @@ public class ServicesTests
         var w = NewWorld();
         Floor(w);
         var box = w.CreateBody(BodyType.Dynamic, new Vector2D(0, 0.55));
-        w.CreateBox(box, 0.5f, 0.5f);
+        w.CreateBox(box, new Vector2F(1f, 1f));
         Collision enter = default, stay = default, exit = default;
         box.OnCollisionEnter += c => enter = c;
         box.OnCollisionStay += c => stay = c;
@@ -415,7 +415,7 @@ public class ServicesTests
     {
         var w = NewWorld(o: new WorldOptions2D { Gravity = new Vector2F(0, 0) });
         var floor = w.CreateBody(BodyType.Static, new Vector2D(0, -1));
-        w.CreateBox(floor, 2f, 1f);
+        w.CreateBox(floor, new Vector2F(4f, 2f));
         var ball = w.CreateBody(BodyType.Dynamic, new Vector2D(0.5, 0.25));
         w.CreateCircle(ball, 0.5f);
         var g = new DebugGeometry();

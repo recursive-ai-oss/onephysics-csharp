@@ -52,7 +52,7 @@ public class World3DTests
             }
         }
 
-        w.AddCompound([new CompoundPart(ShapeSpec3D.Box(new Vector3F(0.6f, 0.2f, 0.2f)), default), new CompoundPart(ShapeSpec3D.Sphere(0.3f), new Vector3F(0.6f, 0.3f, 0f))], new Vector3D(1, 4, -2));
+        w.AddCompound([new CompoundPart(ShapeSpec3D.Box(new Vector3F(1.2f, 0.4f, 0.4f)), default), new CompoundPart(ShapeSpec3D.Sphere(0.3f), new Vector3F(0.6f, 0.3f, 0f))], new Vector3D(1, 4, -2));
         return w;
     }
 
@@ -432,7 +432,7 @@ public class World3DTests
         for (int j = 0; j < N; j++) { for (int i = 0; i < N; i++) { h[j * N + i] = 0.1f * ((i + j) % 2); } }
         var hf = w.AddHeightField(h, N, N, new Vector3F(1f, 1f, 1f), new Vector3D(-8, 0, -8));
         Assert.Equal(BodyType.Static, hf.Type);
-        var c = w.AddCompound([new CompoundPart(ShapeSpec3D.Box(new Vector3F(0.5f, 0.2f, 0.2f)), default), new CompoundPart(ShapeSpec3D.Box(new Vector3F(0.2f, 0.5f, 0.2f)), new Vector3F(0, 0.5f, 0))], new Vector3D(0, 2, 0));
+        var c = w.AddCompound([new CompoundPart(ShapeSpec3D.Box(new Vector3F(1f, 0.4f, 0.4f)), default), new CompoundPart(ShapeSpec3D.Box(new Vector3F(0.4f, 1f, 0.4f)), new Vector3F(0, 0.5f, 0))], new Vector3D(0, 2, 0));
         for (int i = 0; i < 300; i++) { w.Step(Dt); }
         Assert.InRange(c.Position.Y, -0.1, 1.5);
         Assert.False(c.IsAwake);

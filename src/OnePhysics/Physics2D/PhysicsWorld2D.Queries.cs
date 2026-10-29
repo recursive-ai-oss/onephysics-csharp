@@ -23,9 +23,9 @@ public sealed partial class PhysicsWorld2D
         }
     }
 
-    private static void CheckAngle(float angle)
+    private static void CheckAngle(float angleRadians)
     {
-        if (!float.IsFinite(angle)) { throw new ArgumentOutOfRangeException(nameof(angle), angle, "Angle must be finite."); }
+        if (!float.IsFinite(angleRadians)) { throw new ArgumentOutOfRangeException(nameof(angleRadians), angleRadians, "Angle must be finite."); }
     }
 
     /// <summary>Normalizes the direction and returns the cast translation and its length.</summary>
@@ -56,10 +56,10 @@ public sealed partial class PhysicsWorld2D
         if (shape.Count == 0) { throw new ArgumentException("The shape is empty (the default Shape2D); create one with Shape2D.Create*.", nameof(shape)); }
     }
 
-    private static Rot2 RotationOf(float angle)
+    private static Rot2 RotationOf(float angleRadians)
     {
-        CheckAngle(angle);
-        var (s, c) = Math64.SinCos(angle);
+        CheckAngle(angleRadians);
+        var (s, c) = Math64.SinCos(angleRadians);
         return new Rot2((float)c, (float)s);
     }
 
@@ -109,20 +109,20 @@ public sealed partial class PhysicsWorld2D
         return new QueryParams { Kind = QueryKind.Ray, X = origin.X, Y = origin.Y, Tx = tx, Ty = ty };
     }
 
-    private static QueryParams CastParams(in Shape2D shape, Vector2D position, float angle, Vector2F direction, float maxDistance, out float length)
+    private static QueryParams CastParams(in Shape2D shape, Vector2D position, float angleRadians, Vector2F direction, float maxDistance, out float length)
     {
         CheckShape(in shape);
         CheckPosition(position, nameof(position));
-        var rot = RotationOf(angle);
+        var rot = RotationOf(angleRadians);
         CheckCast(direction, maxDistance, out float tx, out float ty, out length);
         return new QueryParams { Kind = QueryKind.Cast, X = position.X, Y = position.Y, Tx = tx, Ty = ty, Mover = shape, MoverRot = rot };
     }
 
-    private static QueryParams OverlapParams(in Shape2D shape, Vector2D position, float angle)
+    private static QueryParams OverlapParams(in Shape2D shape, Vector2D position, float angleRadians)
     {
         CheckShape(in shape);
         CheckPosition(position, nameof(position));
-        return new QueryParams { Kind = QueryKind.Overlap, X = position.X, Y = position.Y, Mover = shape, MoverRot = RotationOf(angle) };
+        return new QueryParams { Kind = QueryKind.Overlap, X = position.X, Y = position.Y, Mover = shape, MoverRot = RotationOf(angleRadians) };
     }
 
     private static QueryParams ClosestParams(Vector2D point, float maxDistance)
@@ -177,45 +177,45 @@ public sealed partial class PhysicsWorld2D
     // ------------------------------------------------------------------ shape casts
 
     /// <summary>
-    /// Sweeps a shape along a direction and returns the first hit (nearest; ties by shape slot). <paramref name="shape"/> is in its own frame, placed at <paramref name="position"/> rotated by <paramref name="angle"/>.
+    /// Sweeps a shape along a direction and returns the first hit (nearest; ties by shape slot). <paramref name="shape"/> is in its own frame, placed at <paramref name="position"/> rotated by <paramref name="angleRadians"/>.
     /// A mover that already overlaps a shape hits it at distance 0. The hit fraction is within 1e-4 of the translation length short of the exact touch.
     /// </summary>
     /// <param name="shape">The mover, for example <c>Shape2D.CreateBox(...)</c>.</param>
     /// <param name="position">Where the shape's frame starts, finite and within +-2^22.</param>
-    /// <param name="angle">Rotation in radians, finite.</param>
+    /// <param name="angleRadians">Rotation in radians, finite.</param>
     /// <param name="direction">Sweep direction, finite and not zero.</param>
     /// <param name="hit">Hit point and normal are on the target shape (normal facing the mover).</param>
     /// <param name="maxDistance">Sweep length, positive; infinity means <see cref="MaxQueryDistance"/>.</param>
     /// <param name="filter">Which shapes count.</param>
     /// <exception cref="ArgumentOutOfRangeException">A value is not finite, the direction is zero, or the length is not positive.</exception>
     /// <exception cref="ArgumentException">The shape is the default (empty) value.</exception>
-    public bool ShapeCast(in Shape2D shape, Vector2D position, float angle, Vector2F direction, out QueryHit2D hit, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
+    public bool ShapeCast(in Shape2D shape, Vector2D position, float angleRadians, Vector2F direction, out QueryHit2D hit, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
     {
-        var q = CastParams(in shape, position, angle, direction, maxDistance, out float len);
+        var q = CastParams(in shape, position, angleRadians, direction, maxDistance, out float len);
         return QueryOne(in q, len, in filter, QueryMode.Closest, out hit);
     }
 
     /// <summary>True when the sweep hits any shape.</summary>
     /// <inheritdoc cref="ShapeCast"/>
-    public bool ShapeCastAny(in Shape2D shape, Vector2D position, float angle, Vector2F direction, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
+    public bool ShapeCastAny(in Shape2D shape, Vector2D position, float angleRadians, Vector2F direction, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
     {
-        var q = CastParams(in shape, position, angle, direction, maxDistance, out float len);
+        var q = CastParams(in shape, position, angleRadians, direction, maxDistance, out float len);
         return QueryOne(in q, len, in filter, QueryMode.Any, out _);
     }
 
     /// <summary>Every shape the sweep hits, nearest first, into <paramref name="results"/> (the nearest are kept when it is too small). Returns how many were written.</summary>
     /// <inheritdoc cref="ShapeCast"/>
-    public int ShapeCastAll(in Shape2D shape, Vector2D position, float angle, Vector2F direction, Span<QueryHit2D> results, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
+    public int ShapeCastAll(in Shape2D shape, Vector2D position, float angleRadians, Vector2F direction, Span<QueryHit2D> results, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
     {
-        var q = CastParams(in shape, position, angle, direction, maxDistance, out float len);
+        var q = CastParams(in shape, position, angleRadians, direction, maxDistance, out float len);
         return QueryMany(in q, len, in filter, results);
     }
 
     /// <summary>Every shape the sweep hits, nearest first, in a new array.</summary>
     /// <inheritdoc cref="ShapeCast"/>
-    public QueryHit2D[] ShapeCastAll(in Shape2D shape, Vector2D position, float angle, Vector2F direction, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
+    public QueryHit2D[] ShapeCastAll(in Shape2D shape, Vector2D position, float angleRadians, Vector2F direction, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
     {
-        var q = CastParams(in shape, position, angle, direction, maxDistance, out float len);
+        var q = CastParams(in shape, position, angleRadians, direction, maxDistance, out float len);
         return QueryArray(in q, len, in filter);
     }
 
@@ -235,37 +235,37 @@ public sealed partial class PhysicsWorld2D
     public QueryHit2D[] CircleCastAll(Vector2D center, float radius, Vector2F direction, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
         => ShapeCastAll(CircleShape(radius), center, 0f, direction, maxDistance, in filter);
 
-    /// <summary>Sweeps a box of full size <paramref name="size"/> centred at <paramref name="center"/>, rotated by <paramref name="angle"/>; the nearest hit.</summary>
-    public bool BoxCast(Vector2D center, Vector2F size, float angle, Vector2F direction, out QueryHit2D hit, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
-        => ShapeCast(Box(size), center, angle, direction, out hit, maxDistance, in filter);
+    /// <summary>Sweeps a box of full size <paramref name="size"/> centred at <paramref name="center"/>, rotated by <paramref name="angleRadians"/>; the nearest hit.</summary>
+    public bool BoxCast(Vector2D center, Vector2F size, float angleRadians, Vector2F direction, out QueryHit2D hit, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
+        => ShapeCast(Box(size), center, angleRadians, direction, out hit, maxDistance, in filter);
 
     /// <summary>True when a swept box hits anything.</summary>
-    public bool BoxCastAny(Vector2D center, Vector2F size, float angle, Vector2F direction, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
-        => ShapeCastAny(Box(size), center, angle, direction, maxDistance, in filter);
+    public bool BoxCastAny(Vector2D center, Vector2F size, float angleRadians, Vector2F direction, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
+        => ShapeCastAny(Box(size), center, angleRadians, direction, maxDistance, in filter);
 
     /// <summary>Every hit of a swept box, nearest first, into a caller buffer.</summary>
-    public int BoxCastAll(Vector2D center, Vector2F size, float angle, Vector2F direction, Span<QueryHit2D> results, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
-        => ShapeCastAll(Box(size), center, angle, direction, results, maxDistance, in filter);
+    public int BoxCastAll(Vector2D center, Vector2F size, float angleRadians, Vector2F direction, Span<QueryHit2D> results, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
+        => ShapeCastAll(Box(size), center, angleRadians, direction, results, maxDistance, in filter);
 
     /// <summary>Every hit of a swept box, nearest first, in a new array.</summary>
-    public QueryHit2D[] BoxCastAll(Vector2D center, Vector2F size, float angle, Vector2F direction, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
-        => ShapeCastAll(Box(size), center, angle, direction, maxDistance, in filter);
+    public QueryHit2D[] BoxCastAll(Vector2D center, Vector2F size, float angleRadians, Vector2F direction, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
+        => ShapeCastAll(Box(size), center, angleRadians, direction, maxDistance, in filter);
 
-    /// <summary>Sweeps a capsule whose axis runs from (-halfLength, 0) to (halfLength, 0) in its frame, rotated by <paramref name="angle"/>; the nearest hit.</summary>
-    public bool CapsuleCast(Vector2D center, float halfLength, float radius, float angle, Vector2F direction, out QueryHit2D hit, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
-        => ShapeCast(Capsule(halfLength, radius), center, angle, direction, out hit, maxDistance, in filter);
+    /// <summary>Sweeps a capsule whose axis runs from (-halfLength, 0) to (halfLength, 0) in its frame, rotated by <paramref name="angleRadians"/>; the nearest hit.</summary>
+    public bool CapsuleCast(Vector2D center, float halfLength, float radius, float angleRadians, Vector2F direction, out QueryHit2D hit, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
+        => ShapeCast(Capsule(halfLength, radius), center, angleRadians, direction, out hit, maxDistance, in filter);
 
     /// <summary>True when a swept capsule hits anything.</summary>
-    public bool CapsuleCastAny(Vector2D center, float halfLength, float radius, float angle, Vector2F direction, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
-        => ShapeCastAny(Capsule(halfLength, radius), center, angle, direction, maxDistance, in filter);
+    public bool CapsuleCastAny(Vector2D center, float halfLength, float radius, float angleRadians, Vector2F direction, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
+        => ShapeCastAny(Capsule(halfLength, radius), center, angleRadians, direction, maxDistance, in filter);
 
     /// <summary>Every hit of a swept capsule, nearest first, into a caller buffer.</summary>
-    public int CapsuleCastAll(Vector2D center, float halfLength, float radius, float angle, Vector2F direction, Span<QueryHit2D> results, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
-        => ShapeCastAll(Capsule(halfLength, radius), center, angle, direction, results, maxDistance, in filter);
+    public int CapsuleCastAll(Vector2D center, float halfLength, float radius, float angleRadians, Vector2F direction, Span<QueryHit2D> results, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
+        => ShapeCastAll(Capsule(halfLength, radius), center, angleRadians, direction, results, maxDistance, in filter);
 
     /// <summary>Every hit of a swept capsule, nearest first, in a new array.</summary>
-    public QueryHit2D[] CapsuleCastAll(Vector2D center, float halfLength, float radius, float angle, Vector2F direction, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
-        => ShapeCastAll(Capsule(halfLength, radius), center, angle, direction, maxDistance, in filter);
+    public QueryHit2D[] CapsuleCastAll(Vector2D center, float halfLength, float radius, float angleRadians, Vector2F direction, float maxDistance = float.PositiveInfinity, in QueryFilter2D filter = default)
+        => ShapeCastAll(Capsule(halfLength, radius), center, angleRadians, direction, maxDistance, in filter);
 
     private static Shape2D Box(Vector2F size)
     {
@@ -287,38 +287,38 @@ public sealed partial class PhysicsWorld2D
     /// </summary>
     /// <param name="shape">The query shape in its own frame.</param>
     /// <param name="position">Where its frame is, finite and within +-2^22.</param>
-    /// <param name="angle">Rotation in radians.</param>
+    /// <param name="angleRadians">Rotation in radians.</param>
     /// <param name="hit">The overlapped shape.</param>
     /// <param name="filter">Which shapes count.</param>
     /// <exception cref="ArgumentOutOfRangeException">A value is not finite or the position is beyond +-2^22.</exception>
     /// <exception cref="ArgumentException">The shape is the default (empty) value.</exception>
-    public bool OverlapShape(in Shape2D shape, Vector2D position, float angle, out QueryHit2D hit, in QueryFilter2D filter = default)
+    public bool OverlapShape(in Shape2D shape, Vector2D position, float angleRadians, out QueryHit2D hit, in QueryFilter2D filter = default)
     {
-        var q = OverlapParams(in shape, position, angle);
+        var q = OverlapParams(in shape, position, angleRadians);
         return QueryOne(in q, 0f, in filter, QueryMode.Closest, out hit);
     }
 
     /// <summary>True when the shape overlaps anything.</summary>
     /// <inheritdoc cref="OverlapShape"/>
-    public bool OverlapShapeAny(in Shape2D shape, Vector2D position, float angle, in QueryFilter2D filter = default)
+    public bool OverlapShapeAny(in Shape2D shape, Vector2D position, float angleRadians, in QueryFilter2D filter = default)
     {
-        var q = OverlapParams(in shape, position, angle);
+        var q = OverlapParams(in shape, position, angleRadians);
         return QueryOne(in q, 0f, in filter, QueryMode.Any, out _);
     }
 
     /// <summary>Every overlapped shape in ascending shape slot order, into <paramref name="results"/> (the lowest slots are kept when it is too small). Returns how many were written.</summary>
     /// <inheritdoc cref="OverlapShape"/>
-    public int OverlapShapeAll(in Shape2D shape, Vector2D position, float angle, Span<QueryHit2D> results, in QueryFilter2D filter = default)
+    public int OverlapShapeAll(in Shape2D shape, Vector2D position, float angleRadians, Span<QueryHit2D> results, in QueryFilter2D filter = default)
     {
-        var q = OverlapParams(in shape, position, angle);
+        var q = OverlapParams(in shape, position, angleRadians);
         return QueryMany(in q, 0f, in filter, results);
     }
 
     /// <summary>Every overlapped shape in ascending shape slot order, in a new array.</summary>
     /// <inheritdoc cref="OverlapShape"/>
-    public QueryHit2D[] OverlapShapeAll(in Shape2D shape, Vector2D position, float angle, in QueryFilter2D filter = default)
+    public QueryHit2D[] OverlapShapeAll(in Shape2D shape, Vector2D position, float angleRadians, in QueryFilter2D filter = default)
     {
-        var q = OverlapParams(in shape, position, angle);
+        var q = OverlapParams(in shape, position, angleRadians);
         return QueryArray(in q, 0f, in filter);
     }
 
@@ -347,16 +347,16 @@ public sealed partial class PhysicsWorld2D
     public QueryHit2D[] OverlapCircleAll(Vector2D center, float radius, in QueryFilter2D filter = default) => OverlapShapeAll(CircleShape(radius), center, 0f, in filter);
 
     /// <summary>The overlapped shape nearest the box's centre.</summary>
-    public bool OverlapBox(Vector2D center, Vector2F size, float angle, out QueryHit2D hit, in QueryFilter2D filter = default) => OverlapShape(Box(size), center, angle, out hit, in filter);
+    public bool OverlapBox(Vector2D center, Vector2F size, float angleRadians, out QueryHit2D hit, in QueryFilter2D filter = default) => OverlapShape(Box(size), center, angleRadians, out hit, in filter);
 
     /// <summary>True when the box overlaps anything.</summary>
-    public bool OverlapBoxAny(Vector2D center, Vector2F size, float angle, in QueryFilter2D filter = default) => OverlapShapeAny(Box(size), center, angle, in filter);
+    public bool OverlapBoxAny(Vector2D center, Vector2F size, float angleRadians, in QueryFilter2D filter = default) => OverlapShapeAny(Box(size), center, angleRadians, in filter);
 
     /// <summary>Every shape the box overlaps, by slot, into a caller buffer.</summary>
-    public int OverlapBoxAll(Vector2D center, Vector2F size, float angle, Span<QueryHit2D> results, in QueryFilter2D filter = default) => OverlapShapeAll(Box(size), center, angle, results, in filter);
+    public int OverlapBoxAll(Vector2D center, Vector2F size, float angleRadians, Span<QueryHit2D> results, in QueryFilter2D filter = default) => OverlapShapeAll(Box(size), center, angleRadians, results, in filter);
 
     /// <summary>Every shape the box overlaps, by slot, in a new array.</summary>
-    public QueryHit2D[] OverlapBoxAll(Vector2D center, Vector2F size, float angle, in QueryFilter2D filter = default) => OverlapShapeAll(Box(size), center, angle, in filter);
+    public QueryHit2D[] OverlapBoxAll(Vector2D center, Vector2F size, float angleRadians, in QueryFilter2D filter = default) => OverlapShapeAll(Box(size), center, angleRadians, in filter);
 
     // ------------------------------------------------------------------ closest point
 

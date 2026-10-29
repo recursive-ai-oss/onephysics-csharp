@@ -87,8 +87,18 @@ public struct CharacterDef
 
     private uint _height;
 
-    /// <summary>Steepest ground the character can stand on, degrees within [0, 90]. Steeper surfaces are walls: the character slides down them. Default 45.</summary>
-    public float SlopeLimit { readonly get => ZeroDefault.Get(_slopeLimit, 45f); set => _slopeLimit = ZeroDefault.Set(value, 45f); }
+    /// <summary>
+    /// Steepest ground the character can stand on, in radians within [0, pi/2] (Unity's <c>slopeLimit</c> is in degrees: pass 45 degrees converted to radians). Steeper surfaces are walls: the character slides down them.
+    /// Default pi/4 (45 degrees).
+    /// </summary>
+    public float SlopeLimit
+    {
+        readonly get => (float)(SlopeLimitDegrees * (Math.PI / 180.0));
+        set => SlopeLimitDegrees = (float)(value * (180.0 / Math.PI));
+    }
+
+    // The engine and the snapshot keep the limit in degrees (as float32): 45 and 40 are exact there, which keeps saved worlds and their hashes unchanged.
+    internal float SlopeLimitDegrees { readonly get => ZeroDefault.Get(_slopeLimit, 45f); set => _slopeLimit = ZeroDefault.Set(value, 45f); }
 
     private uint _slopeLimit;
 
@@ -141,11 +151,23 @@ public struct CharacterDef
 
     private uint _maxPushForce;
 
+    /// <summary>A person: 1.8 m tall, 0.3 m radius, 45 degree slope limit, 0.3 m step, 70 kg.</summary>
+    public static CharacterDef Humanoid => new();
+
+    /// <summary>A child: 1.2 m tall, 0.25 m radius, 45 degree slope limit, 0.2 m step, 30 kg.</summary>
+    public static CharacterDef Child => new() { Radius = 0.25f, Height = 1.2f, StepOffset = 0.2f, Mass = 30f };
+
+    /// <summary>A large creature: 3 m tall, 0.6 m radius, 40 degree slope limit, 0.5 m step, 400 kg.</summary>
+    public static CharacterDef Giant => new() { Radius = 0.6f, Height = 3f, SlopeLimitDegrees = 40f, StepOffset = 0.5f, Skin = 0.02f, Mass = 400f, MaxPushForce = 2000f };
+
+    /// <summary>A person simulated as a dynamic body (<see cref="CharacterKind.Rigid"/>).</summary>
+    public static CharacterDef RigidHumanoid => new() { Kind = CharacterKind.Rigid };
+
     internal readonly void Validate()
     {
         if (!(Radius > 0f && Radius <= 1000f)) { throw new ArgumentOutOfRangeException(nameof(Radius), Radius, "Radius must be within (0, 1000]."); }
         if (!(Height >= 2f * Radius && Height <= 10000f)) { throw new ArgumentOutOfRangeException(nameof(Height), Height, "Height must be at least twice the radius (" + (2f * Radius).ToString(CultureInfo.InvariantCulture) + ") and at most 10000."); }
-        if (!(SlopeLimit >= 0f && SlopeLimit <= 90f)) { throw new ArgumentOutOfRangeException(nameof(SlopeLimit), SlopeLimit, "SlopeLimit must be within [0, 90] degrees."); }
+        if (!(SlopeLimitDegrees >= 0f && SlopeLimitDegrees <= 90f)) { throw new ArgumentOutOfRangeException(nameof(SlopeLimit), SlopeLimit, "SlopeLimit must be within [0, pi/2] radians."); }
         if (!(StepOffset >= 0f && StepOffset <= Height)) { throw new ArgumentOutOfRangeException(nameof(StepOffset), StepOffset, "StepOffset must be within [0, Height]."); }
         if (!(Skin >= 0.0001f && Skin <= 0.5f * Radius)) { throw new ArgumentOutOfRangeException(nameof(Skin), Skin, "Skin must be within [0.0001, Radius / 2]."); }
         if (!(PushStrength >= 0f && PushStrength <= 100f)) { throw new ArgumentOutOfRangeException(nameof(PushStrength), PushStrength, "PushStrength must be within [0, 100]."); }

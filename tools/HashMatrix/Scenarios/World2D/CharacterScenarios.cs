@@ -30,18 +30,18 @@ internal static class CharacterScenarios
     {
         var w = new PhysicsWorld2D(new WorldOptions2D { ThreadCount = threads, WorldId = 12, Events = EventMask.All });
         ulong s = 7788;
-        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(0, -0.5)), 40f, 0.5f);
-        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(40, 5)), 0.5f, 6f);
-        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(-40, 5)), 0.5f, 6f);
+        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(0, -0.5)), new Vector2F(80f, 1f));
+        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(40, 5)), new Vector2F(1f, 12f));
+        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(-40, 5)), new Vector2F(1f, 12f));
         // Stairs and a ramp for the movers.
-        for (int i = 0; i < 4; i++) { w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(-6 + i * 0.5, 0.1 + 0.2 * i)), 0.25f, 0.1f + 0.2f * i); }
+        for (int i = 0; i < 4; i++) { w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(-6 + i * 0.5, 0.1 + 0.2 * i)), new Vector2F(0.5f, 2f * (0.1f + 0.2f * i))); }
         w.CreatePolygon(w.CreateBody(BodyType.Static, new Vector2D(12, 0)), [new Vector2F(-3, 0), new Vector2F(3, 0), new Vector2F(3, 2)], 0f);
         // A kinematic platform sweeping back and forth, a sensor zone, a hinged plank.
         var platform = w.CreateBody(new BodyDef { Type = BodyType.Kinematic, Position = new Vector2D(-20, 3), LinearVelocity = new Vector2F(1.5f, 0f) });
-        w.CreateBox(platform, 3f, 0.25f);
+        w.CreateBox(platform, new Vector2F(6f, 0.5f));
         var zone = w.CreateBody(new BodyDef { Type = BodyType.Dynamic, Position = new Vector2D(-14, 1), GravityScale = 0f });
-        w.CreateBox(zone, 0.05f, 0.05f, new Vector2F(0, 8), 0f, 1f, new ShapeDef { Layer = 4 });
-        w.CreateBox(zone, 1f, 1f, default, 0f, 0f, new ShapeDef { IsSensor = true });
+        w.CreateBox(zone, new Vector2F(0.1f, 0.1f), new Vector2F(0, 8), 0f, 1f, new ShapeDef { Layer = 4 });
+        w.CreateBox(zone, new Vector2F(2f, 2f), default, 0f, 0f, new ShapeDef { IsSensor = true });
         w.IgnoreLayerCollision(4, 0);
         var pivot = w.AddCircle(0.1f, new Vector2D(24, 4), BodyType.Static);
         var plank = w.AddBox(new Vector2F(6f, 0.3f), at: new Vector2D(24, 4));
@@ -52,7 +52,7 @@ internal static class CharacterScenarios
         for (int i = 0; i < 6; i++)
         {
             var plate = w.CreateBody(BodyType.Dynamic, new Vector2D(30 + i * 1.5, 6));
-            w.CreateBox(plate, 0.03f, 0.9f);
+            w.CreateBox(plate, new Vector2F(0.06f, 1.8f));
         }
 
         bullets = new Body[8];
@@ -67,7 +67,7 @@ internal static class CharacterScenarios
         chars = new Character[14];
         for (int i = 0; i < chars.Length; i++)
         {
-            var def = i % 2 == 0 ? Character.Humanoid : Character.Child;
+            var def = i % 2 == 0 ? CharacterDef.Humanoid : CharacterDef.Child;
             def.PushStrength = i % 3 == 0 ? 0.5f : 0f;
             double x = i < 4 ? -8 + 0.6 * i : i < 8 ? 6 + 0.9 * (i - 4) : i < 11 ? -21 + 1.2 * (i - 8) : 22 + 1.2 * (i - 11);
             double y = i < 11 ? (i >= 8 ? 3.5 : 1.0) : 4.6;

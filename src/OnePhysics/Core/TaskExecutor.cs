@@ -24,6 +24,12 @@ public interface IStagedBody
 
     /// <summary>Runs task <paramref name="task"/> of stage <paramref name="stage"/>.</summary>
     void Run(int stage, int task);
+
+    /// <summary>Runs tasks <c>first .. first + count - 1</c> of a stage in order, on one thread; used when a stage is not shared. The default calls <see cref="Run"/> for each; an implementation may decode the stage once.</summary>
+    void RunRange(int stage, int first, int count)
+    {
+        for (int i = 0; i < count; i++) { Run(stage, first + i); }
+    }
 }
 
 /// <summary>
@@ -78,11 +84,11 @@ public sealed class TaskExecutor
         int workers = ThreadCount - 1;
         if (workers > 0 && mostTasks >= MinParallelTasks)
         {
-            // Every thread crosses every stage boundary, so threads beyond what the stages can keep busy only add waiting: take as many as there are two tasks each in the average stage.
+            // Every thread crosses every stage boundary, so threads beyond what the stages can keep busy only add waiting: take as many as there is one task each in the average stage.
             // This looks at the stage sizes alone; which thread runs which task never reaches a result.
             long total = 0;
             for (int s = 0; s < stageCount; s++) { total += body.TaskCount(s); }
-            long useful = total / (2L * stageCount);
+            long useful = total / stageCount;
             if (useful - 1 < workers) { workers = (int)Math.Max(useful - 1, 0); }
         }
 
@@ -90,8 +96,7 @@ public sealed class TaskExecutor
         {
             for (int s = 0; s < stageCount; s++)
             {
-                int n = body.TaskCount(s);
-                for (int i = 0; i < n; i++) { body.Run(s, i); }
+                body.RunRange(s, 0, body.TaskCount(s));
             }
         }
     }

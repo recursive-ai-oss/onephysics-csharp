@@ -102,6 +102,20 @@ public readonly partial struct Body : IEquatable<Body>
         }
     }
 
+    /// <summary>The same as setting <see cref="LinearVelocity"/>; a method, so it also works on a handle that is not a variable (a list element or a property result).</summary>
+    /// <exception cref="BodyTypeException">The body is static.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A component is not finite.</exception>
+    public void SetLinearVelocity(Vector3F velocity) => LinearVelocity = velocity;
+
+    /// <summary>The same as setting <see cref="AngularVelocity"/>; a method, so it also works on a handle that is not a variable.</summary>
+    /// <exception cref="BodyTypeException">The body is static.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A component is not finite.</exception>
+    public void SetAngularVelocity(Vector3F velocity) => AngularVelocity = velocity;
+
+    /// <summary>The same as setting <see cref="Position"/> (teleports the body, keeping its rotation and velocity, and wakes it); a method, so it also works on a handle that is not a variable.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The position is not finite or is beyond +-2^21.</exception>
+    public void SetPosition(Vector3D position) => Position = position;
+
     /// <summary>Mass in kg; 0 for static and kinematic bodies.</summary>
     public float Mass { get { var (w, b) = Resolve(); return w.Core.Bodies.TypeOf(b) == BodyType.Dynamic ? w.Engine.Mass[b] : 0f; } }
 

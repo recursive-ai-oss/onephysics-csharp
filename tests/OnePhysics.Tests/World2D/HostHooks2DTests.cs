@@ -31,7 +31,7 @@ public class HostHooks2DTests
         }
 
         var sensorBody = w.CreateBody(BodyType.Static, new Vector2D(0, 2));
-        w.CreateBox(sensorBody, 1f, 1f, default, 0f, 0f, new ShapeDef { IsSensor = true });
+        w.CreateBox(sensorBody, new Vector2F(2f, 2f), default, 0f, 0f, new ShapeDef { IsSensor = true });
         w.AddCircle(0.3f, new Vector2D(0.2, 6));
         if (withCharacter) { w.AddCharacter(new Vector2D(8, 1)); }
         return w;
@@ -201,8 +201,8 @@ public class HostHooks2DTests
         var ch = w.AddCharacter(new Vector2D(30, 1));
         Assert.True(w.IsBodyAlive(box.RawHandle));
         Assert.True(w.IsShapeAlive(shape.RawHandle));
-        Assert.True(w.IsCharacterAlive(ch.Index, ch.Generation));
-        Assert.Same(w, w.GetCharacter(ch.Index, ch.Generation).Body.World);
+        Assert.True(w.IsCharacterAlive(ch.RawHandle));
+        Assert.Same(w, w.GetCharacter(ch.RawHandle).Body.World);
         Assert.False(w.IsBodyAlive(default));
         Assert.False(w.IsShapeAlive(default));
         Assert.False(w.IsJointAlive(default));

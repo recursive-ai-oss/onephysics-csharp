@@ -122,7 +122,13 @@ public sealed partial class ManifoldGenerator3D
             return Empty;
         }
 
-        ConvexContact3D c = _epa.Collide(a, b, bInA);
+        ConvexContact3D c;
+        bool capBox = (ka == ConvexShapeKind3D.Capsule && kb == ConvexShapeKind3D.Box) || (ka == ConvexShapeKind3D.Box && kb == ConvexShapeKind3D.Capsule);
+        if (!capBox || GeneralCapsuleBox || !CapsuleBoxContact(a, b, kb == ConvexShapeKind3D.Capsule, bInA, out c))
+        {
+            c = _epa.Collide(a, b, bInA);
+        }
+
         return Generic(a, b, bInA, c, speculativeDistance);
     }
 

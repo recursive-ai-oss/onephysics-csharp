@@ -52,16 +52,16 @@ internal static class HostProbeScenarios2D
     private static void Build(PhysicsWorld2D w)
     {
         ulong s = 424242;
-        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(0, -0.5)), 30f, 0.5f);
-        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(-30, 8)), 0.5f, 9f);
-        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(30, 8)), 0.5f, 9f);
+        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(0, -0.5)), new Vector2F(60f, 1f));
+        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(-30, 8)), new Vector2F(1f, 18f));
+        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(30, 8)), new Vector2F(1f, 18f));
         // A static sensor zone over the floor, a sliding kinematic platform carrying a kinematic sensor, and a spinning kinematic bar.
-        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(-10, 1.5)), 2.5f, 1.5f, default, 0f, 0f, new ShapeDef { IsSensor = true });
+        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(-10, 1.5)), new Vector2F(5f, 3f), default, 0f, 0f, new ShapeDef { IsSensor = true });
         var slider = w.CreateBody(new BodyDef { Type = BodyType.Kinematic, Position = new Vector2D(-18, 2.5), LinearVelocity = new Vector2F(2f, 0f) });
-        w.CreateBox(slider, 3f, 0.25f);
-        w.CreateBox(slider, 3f, 1.5f, new Vector2F(0, 1.75f), 0f, 0f, new ShapeDef { IsSensor = true });
+        w.CreateBox(slider, new Vector2F(6f, 0.5f));
+        w.CreateBox(slider, new Vector2F(6f, 3f), new Vector2F(0, 1.75f), 0f, 0f, new ShapeDef { IsSensor = true });
         var spinner = w.CreateBody(new BodyDef { Type = BodyType.Kinematic, Position = new Vector2D(8, 2.2), AngularVelocity = 1.2f });
-        w.CreateBox(spinner, 3.5f, 0.2f);
+        w.CreateBox(spinner, new Vector2F(7f, 0.4f));
         w.CreateCapsule(spinner, new Vector2F(0, -1.5f), new Vector2F(0, 1.5f), 0.15f);
         // A pile of mixed shapes; every seventh body has a dynamic sensor shape as well.
         for (int i = 0; i < 70; i++)
@@ -70,7 +70,7 @@ internal static class HostProbeScenarios2D
             switch (i % 4)
             {
                 case 0: w.CreateCircle(b, 0.3f + 0.05f * (i % 3)); break;
-                case 1: w.CreateBox(b, 0.4f, 0.3f); break;
+                case 1: w.CreateBox(b, new Vector2F(0.8f, 0.6f)); break;
                 case 2: w.CreateCapsule(b, new Vector2F(-0.4f, 0), new Vector2F(0.4f, 0), 0.22f); break;
                 default: w.CreatePolygon(b, [new Vector2F(0, 0.5f), new Vector2F(-0.45f, -0.3f), new Vector2F(0.45f, -0.3f)], 0.02f); break;
             }
@@ -82,16 +82,16 @@ internal static class HostProbeScenarios2D
         for (int i = 0; i < 6; i++)
         {
             var t = w.CreateBody(new BodyDef { Type = BodyType.Dynamic, Position = new Vector2D(-26 + 8 * i, 2.5 + 0.4 * (i % 3)), LinearVelocity = new Vector2F(i % 2 == 0 ? 6f : -6f, 3f), AngularVelocity = i % 2 == 0 ? 14f : -17f });
-            w.CreateBox(t, 0.9f, 0.12f);
+            w.CreateBox(t, new Vector2F(1.8f, 0.24f));
         }
 
         var late = w.CreateBody(new BodyDef { Type = BodyType.Kinematic, Position = new Vector2D(-4, 1.8), AngularVelocity = 0.9f });
-        w.CreateBox(late, 0.15f, 0.15f);
-        w.CreateBox(late, 2.5f, 0.12f, new Vector2F(2.6f, 0f), 0f);
+        w.CreateBox(late, new Vector2F(0.3f, 0.3f));
+        w.CreateBox(late, new Vector2F(5f, 0.24f), new Vector2F(2.6f, 0f), 0f);
 
         for (int i = 0; i < 6; i++)
         {
-            var def = i % 2 == 0 ? Character.Humanoid : Character.Child;
+            var def = i % 2 == 0 ? CharacterDef.Humanoid : CharacterDef.Child;
             def.PushStrength = i % 3 == 0 ? 0.5f : 0f;
             w.AddCharacter(new Vector2D(-24 + 4.5 * i, 1.2), def);
         }

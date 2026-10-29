@@ -36,14 +36,14 @@ internal static class ServicesScenarios
         var w = new PhysicsWorld2D(new WorldOptions2D { ThreadCount = threads, WorldId = 11, Events = EventMask.All, HitSpeedThreshold = 2f });
         ulong s = seed;
         var floor = w.CreateBody(BodyType.Static, new Vector2D(0, -0.5));
-        w.CreateBox(floor, 30f, 0.5f, default, 0f, 0f, new ShapeDef { Layer = 1 });
-        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(-30, 10)), 0.5f, 10f);
-        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(30, 10)), 0.5f, 10f);
+        w.CreateBox(floor, new Vector2F(60f, 1f), default, 0f, 0f, new ShapeDef { Layer = 1 });
+        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(-30, 10)), new Vector2F(1f, 20f));
+        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(30, 10)), new Vector2F(1f, 20f));
         // Two sensor zones, one on a static body and one on a kinematic platform.
-        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(-8, 1.5)), 3f, 1.5f, default, 0f, 0f, new ShapeDef { IsSensor = true });
+        w.CreateBox(w.CreateBody(BodyType.Static, new Vector2D(-8, 1.5)), new Vector2F(6f, 3f), default, 0f, 0f, new ShapeDef { IsSensor = true });
         var platform = w.CreateBody(new BodyDef { Type = BodyType.Kinematic, Position = new Vector2D(0, 4), LinearVelocity = new Vector2F(1.5f, 0f) });
-        w.CreateBox(platform, 4f, 0.25f);
-        w.CreateBox(platform, 4f, 2f, new Vector2F(0, 2.25f), 0f, 0f, new ShapeDef { IsSensor = true });
+        w.CreateBox(platform, new Vector2F(8f, 0.5f));
+        w.CreateBox(platform, new Vector2F(8f, 4f), new Vector2F(0, 2.25f), 0f, 0f, new ShapeDef { IsSensor = true });
         for (int i = 0; i < 90; i++)
         {
             var b = w.CreateBody(BodyType.Dynamic, new Vector2D(Range(ref s, -20, 20), 6 + (i / 10) * 1.3), Range(ref s, -1, 1));
@@ -52,7 +52,7 @@ internal static class ServicesScenarios
             switch (i % 4)
             {
                 case 0: w.CreateCircle(b, 0.35f + 0.1f * (i % 3), default, def); break;
-                case 1: w.CreateBox(b, 0.4f, 0.3f, default, 0f, 0f, def); break;
+                case 1: w.CreateBox(b, new Vector2F(0.8f, 0.6f), default, 0f, 0f, def); break;
                 case 2: w.CreateCapsule(b, new Vector2F(-0.4f, 0), new Vector2F(0.4f, 0), 0.25f, def); break;
                 default: w.CreatePolygon(b, [new Vector2F(0, 0.5f), new Vector2F(-0.45f, -0.3f), new Vector2F(0.45f, -0.3f)], 0f, def); break;
             }

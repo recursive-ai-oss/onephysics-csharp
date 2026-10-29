@@ -91,7 +91,7 @@ internal static class World3DScenarios
         w.AddCone(b2, b3, new Vector3D(2.5, 6, 0), new Vector3F(1, 0, 0), 0.6f);
         var six = w.AddConfigurable(b3, b4, new Vector3D(3.5, 6, 0));
         six.SetAxisMode(JointAxes.AngularZ, JointAxisMode.Free); six.SetAxisMode(JointAxes.LinearX, JointAxisMode.Limited); six.SetAxisLimits(JointAxes.LinearX, -0.1f, 0.1f);
-        w.AddSlider(b4, b5, new Vector3D(4.5, 6, 0), new Vector3F(1, 0, 0)).SpringEnabled = true;
+        w.AddSlider(b4, b5, new Vector3D(4.5, 6, 0), new Vector3F(1, 0, 0)).EnableSpring = true;
         w.AddSpring(b5, b6, new Vector3D(5, 6, 0), new Vector3D(6, 6, 0), 3f, 0.3f);
         w.AddDistance(b6, b7, new Vector3D(6.2, 6, 0), new Vector3D(6.8, 6, 0));
         w.AddFixed(b7, b8, new Vector3D(7.5, 6, 0));
@@ -102,7 +102,7 @@ internal static class World3DScenarios
         var track = w.AddBox(new Vector3F(0.2f, 0.2f, 0.2f), new Vector3D(-8, 3, 0), type: BodyType.Static);
         var cart = w.AddBox(new Vector3F(0.3f, 0.3f, 0.3f), new Vector3D(-8, 3, 0));
         var path = w.AddPath(track, cart, [new Vector3D(-8, 3, 0), new Vector3D(-7, 3, 1), new Vector3D(-6, 3.5, 2), new Vector3D(-5, 3, 3)]);
-        path.MotorSpeed = 1f; path.MaxMotorForce = 200f; path.MotorEnabled = true;
+        path.MotorSpeed = 1f; path.MaxMotorForce = 200f; path.EnableMotor = true;
         var l = w.AddBox(new Vector3F(0.4f, 0.4f, 0.4f), new Vector3D(-1, 5, 3));
         var r = w.AddBox(new Vector3F(0.4f, 0.4f, 0.4f), new Vector3D(1, 4, 3), density: 3f);
         w.AddPulley(l, r, l.Position, r.Position, new Vector3D(-1, 8, 3), new Vector3D(1, 8, 3));

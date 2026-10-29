@@ -21,7 +21,7 @@ public class JointServicesTests
     {
         var w = NewWorld();
         var floor = w.CreateBody(BodyType.Static, new Vector2D(0, -0.5));
-        w.CreateBox(floor, 30f, 0.5f, default, 0f, 0f, new ShapeDef { Layer = services ? 2 : 0 });
+        w.CreateBox(floor, new Vector2F(60f, 1f), default, 0f, 0f, new ShapeDef { Layer = services ? 2 : 0 });
         for (int i = 0; i < 6; i++)
         {
             var b = w.CreateBody(BodyType.Dynamic, new Vector2D(i * 1.2 - 3, 1.0 + 0.3 * i));
@@ -32,7 +32,7 @@ public class JointServicesTests
         {
             w.IgnoreLayerCollision(1, 3);
             var s = w.CreateBody(BodyType.Static, new Vector2D(0, 1));
-            w.CreateBox(s, 1f, 1f, default, 0f, 0f, new ShapeDef { IsSensor = true });
+            w.CreateBox(s, new Vector2F(2f, 2f), default, 0f, 0f, new ShapeDef { IsSensor = true });
         }
 
         if (joints)
@@ -220,7 +220,7 @@ public class JointServicesTests
     {
         var w = NewWorld(23);
         var floor = w.CreateBody(BodyType.Static, new Vector2D(0, -0.5));
-        w.CreateBox(floor, 30f, 0.5f, default, 0f, 0f);
+        w.CreateBox(floor, new Vector2F(60f, 1f), default, 0f, 0f);
         var ball = w.CreateBody(BodyType.Dynamic, new Vector2D(0, 0.45));
         w.CreateCircle(ball, 0.5f);
         var anchor = w.AddCircle(0.1f, new Vector2D(10, 10), BodyType.Static);

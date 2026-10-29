@@ -99,6 +99,20 @@ public readonly partial struct Body : IEquatable<Body>
         }
     }
 
+    /// <summary>The same as setting <see cref="LinearVelocity"/>; a method, so it also works on a handle that is not a variable (a list element or a property result).</summary>
+    /// <exception cref="BodyTypeException">The body is static.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A component is not finite.</exception>
+    public void SetLinearVelocity(Vector2F velocity) => LinearVelocity = velocity;
+
+    /// <summary>The same as setting <see cref="AngularVelocity"/>; a method, so it also works on a handle that is not a variable.</summary>
+    /// <exception cref="BodyTypeException">The body is static.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A component is not finite.</exception>
+    public void SetAngularVelocity(float velocity) => AngularVelocity = velocity;
+
+    /// <summary>The same as setting <see cref="Position"/> (teleports the body, keeping its rotation and velocity, and wakes it); a method, so it also works on a handle that is not a variable.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The position is not finite or is beyond +-2^21.</exception>
+    public void SetPosition(Vector2D position) => Position = position;
+
     /// <summary>Mass in kilograms (0 for static and kinematic bodies).</summary>
     public float Mass { get { var (w, b) = Resolve(); return w.Core.Bodies.TypeOf(b) == BodyType.Dynamic ? w.Engine.Mass[b] : 0f; } }
 
@@ -119,9 +133,9 @@ public readonly partial struct Body : IEquatable<Body>
         if (bodies.IsDynamic(b)) { w.Core.WakeIsland(bodies.Island[b]); bodies.SleepTime[b] = 0f; }
     }
 
-    /// <summary>Teleports the body: its origin goes to <paramref name="position"/> and its rotation to <paramref name="angle"/>, keeping its velocity. Wakes it.</summary>
+    /// <summary>Teleports the body: its origin goes to <paramref name="position"/> and its rotation to <paramref name="angleRadians"/>, keeping its velocity. Wakes it.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The position is not finite or is beyond +-2^21.</exception>
-    public void SetTransform(Vector2D position, float angle)
+    public void SetTransform(Vector2D position, float angleRadians)
     {
         var (w, b) = Resolve();
         if (!double.IsFinite(position.X) || !double.IsFinite(position.Y) || Math.Abs(position.X) > 2097152.0 || Math.Abs(position.Y) > 2097152.0)
@@ -129,10 +143,10 @@ public readonly partial struct Body : IEquatable<Body>
             throw new ArgumentOutOfRangeException(nameof(position), position, "Position " + position + " is outside the supported range of +-2^21 (2097152) relative to the world origin.");
         }
 
-        if (!float.IsFinite(angle)) { throw new ArgumentOutOfRangeException(nameof(angle), angle, "Angle must be finite."); }
+        if (!float.IsFinite(angleRadians)) { throw new ArgumentOutOfRangeException(nameof(angleRadians), angleRadians, "Angle must be finite."); }
         var e = w.Engine;
         var bodies = w.Core.Bodies;
-        var (s, c) = RecursiveAI.OneMath.Math64.SinCos(angle);
+        var (s, c) = RecursiveAI.OneMath.Math64.SinCos(angleRadians);
         var r = bodies.RotationOf(b);
         r[0] = (float)c; r[1] = (float)s;
         float lx = e.LocalCenter[2 * b], ly = e.LocalCenter[2 * b + 1];

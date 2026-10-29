@@ -136,7 +136,7 @@ public static class SceneBuilder3D
             case "box":
                 def.LocalPosition = new Vector3F((float)p[3], (float)p[4], (float)p[5]);
                 def.LocalRotation = new QuaternionF((float)p[6], (float)p[7], (float)p[8], (float)p[9]);
-                world.CreateBox(body, new Vector3F((float)p[0], (float)p[1], (float)p[2]), 0f, def); break;
+                world.CreateBox(body, new Vector3F(2f * ((float)p[0]), 2f * ((float)p[1]), 2f * ((float)p[2])), 0f, def); break;
             case "capsule":
             {
                 // Capsule scenes run along y; the endpoints give the half length and the shape's centre.

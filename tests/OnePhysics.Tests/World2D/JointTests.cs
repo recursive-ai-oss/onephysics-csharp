@@ -73,7 +73,7 @@ public class JointTests
         var rod = w.AddBox(new Vector2F(2f, 0.1f), new Vector2D(1, 0), density: 5f);
         var j = w.AddHinge(pivot, rod, new Vector2D(0, 0));
         j.SetLimits(-0.5f, 0.5f);
-        j.LimitEnabled = true;
+        j.EnableLimit = true;
         double min = 0;
         for (int i = 0; i < 480; i++) { w.Step(Dt); min = Math.Min(min, rod.Angle); }
         Assert.InRange(min, -0.5 - 0.02, -0.45); // dropped to the lower limit, overshoot at most 0.02 rad
@@ -88,7 +88,7 @@ public class JointTests
         var block = w.AddBox(new Vector2F(1f, 1f), new Vector2D(0, 0), density: 10f);
         var j = w.AddSlider(rail, block, new Vector2D(0, 0), new Vector2F(0, 1));
         j.SetLimits(-1f, 1f);
-        j.LimitEnabled = true;
+        j.EnableLimit = true;
         double min = 0;
         for (int i = 0; i < 300; i++) { w.Step(Dt); min = Math.Min(min, block.Position.Y); }
         Assert.InRange(min, -1.01, -0.99);
@@ -104,7 +104,7 @@ public class JointTests
         var wall = Anchor(w, 0, 0);
         var disk = w.AddCircle(1f, new Vector2D(0, 0));
         var j = w.AddHinge(wall, disk, new Vector2D(0, 0));
-        j.MotorEnabled = true; j.MotorSpeed = 3f; j.MaxMotorForce = 1000f;
+        j.EnableMotor = true; j.MotorSpeed = 3f; j.MaxMotorTorque = 1000f;
         for (int i = 0; i < 60; i++) { w.Step(Dt); }
         Assert.InRange(disk.AngularVelocity, 2.97f, 3.03f);
 
@@ -112,7 +112,7 @@ public class JointTests
         var wall2 = Anchor(w2, 0, 0);
         var disk2 = w2.AddCircle(1f, new Vector2D(0, 0));
         var j2 = w2.AddHinge(wall2, disk2, new Vector2D(0, 0));
-        j2.MotorEnabled = true; j2.MotorSpeed = 100f; j2.MaxMotorForce = 0.5f;
+        j2.EnableMotor = true; j2.MotorSpeed = 100f; j2.MaxMotorTorque = 0.5f;
         for (int i = 0; i < 60; i++) { w2.Step(Dt); }
         double expected = 0.5 / disk2.Inertia * 1.0; // torque / inertia after one second
         Assert.InRange(disk2.AngularVelocity / expected, 0.98, 1.02);
@@ -125,7 +125,7 @@ public class JointTests
         var rail = Anchor(w, 0, 0);
         var block = w.AddBox(new Vector2F(1f, 1f), new Vector2D(0, 0));
         var j = w.AddSlider(rail, block, new Vector2D(0, 0), new Vector2F(1, 0));
-        j.MotorEnabled = true; j.MotorSpeed = 2f; j.MaxMotorForce = 1000f;
+        j.EnableMotor = true; j.MotorSpeed = 2f; j.MaxMotorForce = 1000f;
         for (int i = 0; i < 60; i++) { w.Step(Dt); }
         Assert.InRange(block.LinearVelocity.X, 1.98f, 2.02f);
 
@@ -133,7 +133,7 @@ public class JointTests
         var rail2 = Anchor(w2, 0, 0);
         var block2 = w2.AddBox(new Vector2F(1f, 1f), new Vector2D(0, 0));
         var j2 = w2.AddSlider(rail2, block2, new Vector2D(0, 0), new Vector2F(1, 0));
-        j2.MotorEnabled = true; j2.MotorSpeed = 100f; j2.MaxMotorForce = 0.5f;
+        j2.EnableMotor = true; j2.MotorSpeed = 100f; j2.MaxMotorForce = 0.5f;
         for (int i = 0; i < 60; i++) { w2.Step(Dt); }
         Assert.InRange(block2.LinearVelocity.X / (0.5 / block2.Mass), 0.98, 1.02);
     }
@@ -303,8 +303,8 @@ public class JointTests
         var w = NewWorld();
         var a = w.AddBox(new Vector2F(1f, 1f), new Vector2D(0, 5), type: BodyType.Static);
         var b = w.AddBox(new Vector2F(1f, 1f), new Vector2D(2, 5));
-        var weld = w.AddFixed(a, b, new Vector2D(1, 5));
-        Assert.Throws<InvalidJointException>(() => weld.LimitEnabled = true);
+        Joint weld = w.AddFixed(a, b, new Vector2D(1, 5));
+        Assert.Throws<InvalidJointException>(() => weld.EnableLimit = true);
         Assert.Throws<InvalidJointException>(() => weld.Target);
     }
 
@@ -350,7 +350,7 @@ public class JointTests
         // Edits are validated too, and a refused edit changes nothing.
         var j = w.AddHinge(a, b, new Vector2D(1, 5));
         Assert.Throws<InvalidJointException>(() => j.SetLimits(1f, -1f));
-        Assert.Throws<ArgumentOutOfRangeException>(() => j.MaxMotorForce = float.NaN);
+        Assert.Throws<ArgumentOutOfRangeException>(() => j.MaxMotorTorque = float.NaN);
         Assert.Throws<ArgumentOutOfRangeException>(() => j.SpringHertz = -1f);
         Assert.Equal(1, w.JointCount);
         var hash = w.ComputeHash();
@@ -427,8 +427,8 @@ public class JointTests
         {
             var link = w.AddBox(new Vector2F(1f, 0.2f), new Vector2D(-14 + 0.5 + i, 11.5), density: 1f + i);
             var j = w.AddHinge(prev, link, new Vector2D(-14 + i, 11.5));
-            if (i % 3 == 2) { j.SetLimits(-0.4f, 0.4f); j.LimitEnabled = true; }
-            if (i == 0) { j.MotorEnabled = true; j.MotorSpeed = 0.5f; j.MaxMotorForce = 50f; }
+            if (i % 3 == 2) { j.SetLimits(-0.4f, 0.4f); j.EnableLimit = true; }
+            if (i == 0) { j.EnableMotor = true; j.MotorSpeed = 0.5f; j.MaxMotorTorque = 50f; }
             prev = link;
         }
 
@@ -436,18 +436,18 @@ public class JointTests
         var rail = w.AddBox(new Vector2F(0.2f, 0.2f), new Vector2D(4, 8), type: BodyType.Static);
         var slide = w.AddBox(new Vector2F(1f, 1f), new Vector2D(4, 8));
         var s = w.AddSlider(rail, slide, new Vector2D(4, 8), new Vector2F(1, 0));
-        s.SetLimits(-3f, 3f); s.LimitEnabled = true; s.MotorEnabled = true; s.MotorSpeed = 1f; s.MaxMotorForce = 30f;
+        s.SetLimits(-3f, 3f); s.EnableLimit = true; s.EnableMotor = true; s.MotorSpeed = 1f; s.MaxMotorForce = 30f;
 
         var car = w.AddBox(new Vector2F(3f, 0.5f), new Vector2D(-6, 2), density: 2f);
         var wheel = w.AddCircle(0.5f, new Vector2D(-5, 1), density: 1f, material: new Material2D(1.0f));
         var wj = w.AddWheel(car, wheel, new Vector2D(-5, 1), new Vector2F(0, 1));
-        wj.SpringHertz = 3f; wj.MotorEnabled = true; wj.MotorSpeed = -5f; wj.MaxMotorForce = 20f;
-        wj.SetLimits(-0.3f, 0.3f); wj.LimitEnabled = true;
+        wj.SpringHertz = 3f; wj.EnableMotor = true; wj.MotorSpeed = -5f; wj.MaxMotorTorque = 20f;
+        wj.SetLimits(-0.3f, 0.3f); wj.EnableLimit = true;
 
         var bob1 = w.AddCircle(0.4f, new Vector2D(8, 9));
         var bob2 = w.AddCircle(0.4f, new Vector2D(10, 9));
         var sp = w.AddSpring(top, bob1, new Vector2D(8, 11.75), new Vector2D(8, 9), 2f, 0.3f);
-        sp.SetLimits(1f, 4f); sp.LimitEnabled = true;
+        sp.SetLimits(1f, 4f); sp.EnableLimit = true;
         w.AddDistance(bob1, bob2, new Vector2D(8, 9), new Vector2D(10, 9));
 
         var wall = w.AddBox(new Vector2F(0.4f, 3f), new Vector2D(14, 3), type: BodyType.Static);

@@ -24,7 +24,7 @@ public sealed partial class PhysicsWorld2D
             for (int i = 0; i < 60; i++) { w.AddBox(new Vector2F(1, 1), at: new Vector2D(-5 + 1.05 * (i % 10), 0.5 + 1.02 * (i / 10))); }
             var ball = w.AddCircle(0.5f, at: new Vector2D(2, 3));
             var zone = w.CreateBody(BodyType.Static, new Vector2D(0, 1));
-            w.CreateBox(zone, 3, 2, def: new ShapeDef { IsSensor = true });
+            w.CreateBox(zone, new Vector2F(6, 4), def: new ShapeDef { IsSensor = true });
             int sink = 0;
             zone.OnTriggerEnter += _ => sink++;
             ball.OnCollisionEnter += _ => sink++;

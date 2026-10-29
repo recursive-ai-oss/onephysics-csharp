@@ -7,12 +7,14 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics2D;
 
 /// <summary>What <see cref="Character.OnControllerColliderHit"/> reports (Unity's <c>ControllerColliderHit</c>): a surface the character was deflected by during a move.</summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "Handle fields, not properties, so that `hit.Body.LinearVelocity = v` compiles: a property result is not a variable (CS1612), a readonly field is.")]
 public readonly struct ControllerColliderHit
 {
     internal ControllerColliderHit(Character character, in MoverHit2D hit, Vector2F moveDirection, float moveLength)
     {
         Character = character;
         Collider = hit.Shape;
+        Body = hit.Shape.Body;
         Point = hit.Point;
         Normal = hit.Normal;
         MoveDirection = moveDirection;
@@ -20,13 +22,13 @@ public readonly struct ControllerColliderHit
     }
 
     /// <summary>The character that moved.</summary>
-    public Character Character { get; }
+    public readonly Character Character;
 
     /// <summary>The shape that was touched.</summary>
-    public Shape Collider { get; }
+    public readonly Shape Collider;
 
     /// <summary>The body of <see cref="Collider"/>.</summary>
-    public Body Body => Collider.Body;
+    public readonly Body Body;
 
     /// <summary>A point on the contact, world coordinates.</summary>
     public Vector2D Point { get; }
@@ -39,6 +41,10 @@ public readonly struct ControllerColliderHit
 
     /// <summary>Length of the wanted displacement, metres.</summary>
     public float MoveLength { get; }
+
+    /// <inheritdoc/>
+    public override string ToString() =>
+        "ControllerColliderHit(" + Character + " hit " + Body + ")";
 }
 
 /// <summary>
@@ -46,7 +52,7 @@ public readonly struct ControllerColliderHit
 /// slides along walls and steeper slopes, rides moving ground, and can push dynamic bodies. Like <see cref="Body"/> it is a small struct handle (world, slot, generation) that allocates nothing and fails with a
 /// <see cref="StaleHandleException"/> once the character is destroyed; the state lives in the world and in its snapshots.
 /// </summary>
-/// <example><c>var player = world.AddCharacter(at: new Vector2D(0, 1), Character.Humanoid); player.Move(new Vector2F(input * speed * dt, velocityY * dt), dt); world.Step(dt);</c></example>
+/// <example><c>var player = world.AddCharacter(at: new Vector2D(0, 1), CharacterDef.Humanoid); player.Move(new Vector2F(input * speed * dt, velocityY * dt), dt); world.Step(dt);</c></example>
 public readonly struct Character : IEquatable<Character>
 {
     private readonly PhysicsWorld2D? _world;
@@ -59,15 +65,6 @@ public readonly struct Character : IEquatable<Character>
         _index = index;
         _generation = generation;
     }
-
-    /// <summary>A person: 1.8 m tall, 0.3 m radius, 45 degree slope limit, 0.3 m step.</summary>
-    public static CharacterDef Humanoid => new();
-
-    /// <summary>A child: 1.2 m tall, 0.25 m radius, 45 degree slope limit, 0.2 m step.</summary>
-    public static CharacterDef Child => new() { Radius = 0.25f, Height = 1.2f, StepOffset = 0.2f, Mass = 30f };
-
-    /// <summary>A large creature: 3 m tall, 0.6 m radius, 40 degree slope limit, 0.5 m step.</summary>
-    public static CharacterDef Giant => new() { Radius = 0.6f, Height = 3f, SlopeLimit = 40f, StepOffset = 0.5f, Skin = 0.02f, Mass = 400f, MaxPushForce = 2000f };
 
     private Engine2D Resolve(out int slot)
     {
@@ -82,11 +79,8 @@ public readonly struct Character : IEquatable<Character>
         return e;
     }
 
-    /// <summary>The character's slot index in its world; with <see cref="Generation"/> it identifies the character (see <see cref="PhysicsWorld2D.GetCharacter"/>).</summary>
-    public int Index => _index;
-
-    /// <summary>The generation of the slot when the character was created; a later character reusing the slot has a different one.</summary>
-    public int Generation => _generation;
+    /// <summary>The raw handle (world id, slot, generation); <see cref="PhysicsWorld2D.GetCharacter"/> turns it back into the character.</summary>
+    public CharacterHandle RawHandle => new(_world?.Id ?? 0, _index, _generation);
 
     /// <summary>True while the character exists.</summary>
     public bool IsValid => _world != null && _world.Engine.CharHandles.IsAlive(_index, _generation);
@@ -143,8 +137,8 @@ public readonly struct Character : IEquatable<Character>
         }
     }
 
-    /// <summary>Steepest ground the character can stand on, degrees within [0, 90] (Unity's <c>slopeLimit</c>).</summary>
-    /// <exception cref="ArgumentOutOfRangeException">Setting a value outside [0, 90].</exception>
+    /// <summary>Steepest ground the character can stand on, radians within [0, pi/2] (Unity's <c>slopeLimit</c> is in degrees).</summary>
+    /// <exception cref="ArgumentOutOfRangeException">Setting a value outside [0, pi/2].</exception>
     public float SlopeLimit
     {
         get { var e = Resolve(out int c); return e.CharDef[c].SlopeLimit; }
@@ -285,7 +279,7 @@ public sealed partial class PhysicsWorld2D
     private readonly Dictionary<int, (int Generation, Action<ControllerColliderHit> Handler)> _controllerHandlers = new();
 
     /// <summary>
-    /// Creates a character: a kinematic body with an upright capsule centred at <paramref name="at"/>. Use <see cref="Character.Humanoid"/>, <see cref="Character.Child"/>, <see cref="Character.Giant"/> or your own <see cref="CharacterDef"/>.
+    /// Creates a character: a kinematic body with an upright capsule centred at <paramref name="at"/>. Use <see cref="CharacterDef.Humanoid"/>, <see cref="CharacterDef.Child"/>, <see cref="CharacterDef.Giant"/> or your own <see cref="CharacterDef"/>.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">A definition value is out of range or the position is not finite or beyond +-2^21.</exception>
     public Character AddCharacter(Vector2D at, CharacterDef def)
@@ -309,16 +303,21 @@ public sealed partial class PhysicsWorld2D
         return new Character(this, c, _engine.CharHandles.GenerationOf(c));
     }
 
-    /// <summary>Creates a <see cref="Character.Humanoid"/> centred at <paramref name="at"/>.</summary>
-    public Character AddCharacter(Vector2D at) => AddCharacter(at, Character.Humanoid);
+    /// <summary>Creates a <see cref="CharacterDef.Humanoid"/> centred at <paramref name="at"/>.</summary>
+    public Character AddCharacter(Vector2D at) => AddCharacter(at, CharacterDef.Humanoid);
 
-    /// <summary>The <see cref="Character"/> for a raw character slot and generation (from the raw tier); fails when the character no longer exists.</summary>
-    /// <exception cref="StaleHandleException">There is no such character.</exception>
-    public Character GetCharacter(int index, int generation)
+    /// <summary>The <see cref="Character"/> for a raw handle (from <see cref="Character.RawHandle"/>, the raw tier or a saved reference).</summary>
+    /// <exception cref="InvalidHandleException">The handle is null, belongs to another world (<see cref="ForeignHandleException"/>) or refers to a removed character (<see cref="StaleHandleException"/>).</exception>
+    public Character GetCharacter(CharacterHandle handle)
     {
-        if (!_engine.CharHandles.IsAlive(index, generation)) { throw new StaleHandleException("Character #" + index.ToString(System.Globalization.CultureInfo.InvariantCulture) + " (generation " + generation.ToString(System.Globalization.CultureInfo.InvariantCulture) + ") does not exist."); }
-        return new Character(this, index, generation);
+        if (handle.IsNull) { throw new InvalidHandleException("The null character handle was used."); }
+        if (handle.World != Id) { throw new ForeignHandleException(handle + " belongs to world " + handle.World.ToString(System.Globalization.CultureInfo.InvariantCulture) + ", not world " + Id.ToString(System.Globalization.CultureInfo.InvariantCulture) + "."); }
+        if (!_engine.CharHandles.IsAlive(handle.Index, handle.Generation)) { throw new StaleHandleException(handle + " is stale: the character was removed."); }
+        return new Character(this, handle.Index, handle.Generation);
     }
+
+    /// <summary>True while the character exists in this world. False for null handles, handles of another world and removed characters (never throws). Allocates nothing.</summary>
+    public bool IsCharacterAlive(CharacterHandle handle) => !handle.IsNull && handle.World == Id && _engine.CharHandles.IsAlive(handle.Index, handle.Generation);
 
     /// <summary>The character whose body is <paramref name="body"/>, if it has one.</summary>
     public bool TryGetCharacter(Body body, out Character character)
@@ -361,10 +360,10 @@ public sealed partial class PhysicsWorld2D
 
     internal void RaiseControllerHit(int index, int generation, in ControllerColliderHit hit)
     {
-        if (_controllerHandlers.TryGetValue(index, out var h) && h.Generation == generation) { h.Handler(hit); }
+        if (_suppressed == 0 && _controllerHandlers.TryGetValue(index, out var h) && h.Generation == generation) { h.Handler(hit); }
     }
 
-    private void DropDeadControllerHandlers()
+    private void RetireDeadControllerHandlers()
     {
         var dead = _deadScratch;
         dead.Clear();
@@ -373,6 +372,11 @@ public sealed partial class PhysicsWorld2D
             if (!_engine.CharHandles.IsAlive(kv.Key, kv.Value.Generation)) { dead.Add(kv.Key); }
         }
 
-        foreach (int k in dead) { _controllerHandlers.Remove(k); }
+        foreach (int k in dead)
+        {
+            var h = _controllerHandlers[k];
+            _controllerHandlers.Remove(k);
+            if (_remembersDestroyed) { _deadControllerHandlers.Add(k, h.Generation, h.Handler); }
+        }
     }
 }

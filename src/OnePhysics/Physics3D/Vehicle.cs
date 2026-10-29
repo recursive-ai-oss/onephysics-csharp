@@ -93,6 +93,9 @@ public readonly partial struct Vehicle : IEquatable<Vehicle>
         return e.Vehicles[_index]!;
     }
 
+    /// <summary>The raw handle (world id, slot, generation); <see cref="PhysicsWorld3D.GetVehicle"/> turns it back into the vehicle.</summary>
+    public VehicleHandle RawHandle => new(_world?.Id ?? 0, _index, _generation);
+
     /// <summary>True while the vehicle exists.</summary>
     public bool IsValid => _world != null && _world.Engine.VehHandles.IsAlive(_index, _generation);
 
@@ -223,13 +226,18 @@ public sealed partial class PhysicsWorld3D
         return new Vehicle(this, v, _engine.VehHandles.GenerationOf(v));
     }
 
-    /// <summary>The <see cref="Vehicle"/> for a raw slot and generation (from the raw tier); fails when it no longer exists.</summary>
-    /// <exception cref="StaleHandleException">There is no such vehicle.</exception>
-    public Vehicle GetVehicle(int index, int generation)
+    /// <summary>The <see cref="Vehicle"/> for a raw handle (from <see cref="Vehicle.RawHandle"/>).</summary>
+    /// <exception cref="InvalidHandleException">The handle is null, belongs to another world (<see cref="ForeignHandleException"/>) or refers to a removed vehicle (<see cref="StaleHandleException"/>).</exception>
+    public Vehicle GetVehicle(VehicleHandle handle)
     {
-        if (!_engine.VehHandles.IsAlive(index, generation)) { throw new StaleHandleException("Vehicle #" + index.ToString(CultureInfo.InvariantCulture) + " (generation " + generation.ToString(CultureInfo.InvariantCulture) + ") does not exist."); }
-        return new Vehicle(this, index, generation);
+        if (handle.IsNull) { throw new InvalidHandleException("The null vehicle handle was used."); }
+        if (handle.World != Id) { throw new ForeignHandleException(handle + " belongs to world " + handle.World.ToString(CultureInfo.InvariantCulture) + ", not world " + Id.ToString(CultureInfo.InvariantCulture) + "."); }
+        if (!_engine.VehHandles.IsAlive(handle.Index, handle.Generation)) { throw new StaleHandleException(handle + " is stale: the vehicle was removed."); }
+        return new Vehicle(this, handle.Index, handle.Generation);
     }
+
+    /// <summary>True while the vehicle exists in this world. False for null handles, handles of another world and removed vehicles (never throws). Allocates nothing.</summary>
+    public bool IsVehicleAlive(VehicleHandle handle) => !handle.IsNull && handle.World == Id && _engine.VehHandles.IsAlive(handle.Index, handle.Generation);
 
     /// <summary>The vehicle whose chassis is <paramref name="body"/>, if there is one.</summary>
     public bool TryGetVehicle(Body body, out Vehicle vehicle)

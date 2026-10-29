@@ -40,11 +40,13 @@ public struct QueryFilter3D
 }
 
 /// <summary>A query result. Which fields are meaningful depends on the query; see each method.</summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "Handle fields, not properties, so that `hit.Body.LinearVelocity = v` compiles: a property result is not a variable (CS1612), a readonly field is.")]
 public readonly struct QueryHit3D
 {
     internal QueryHit3D(Shape shape, Vector3D point, Vector3F normal, float fraction, float distance, int subShape)
     {
         Shape = shape;
+        Body = shape.Body;
         Point = point;
         Normal = normal;
         Fraction = fraction;
@@ -57,10 +59,10 @@ public readonly struct QueryHit3D
     public bool IsHit { get; }
 
     /// <summary>The shape that was hit.</summary>
-    public Shape Shape { get; }
+    public readonly Shape Shape;
 
     /// <summary>The body of <see cref="Shape"/>.</summary>
-    public Body Body => Shape.Body;
+    public readonly Body Body;
 
     /// <summary>Ray and casts: the hit point on the shape (for a ray that starts inside, its origin). Overlaps and closest point: the point of the shape nearest the query's centre, or the centre itself when it is inside.</summary>
     public Vector3D Point { get; }
@@ -76,6 +78,10 @@ public readonly struct QueryHit3D
 
     /// <summary>The compound child or mesh or height-field triangle that was hit (the id the contact events use); 0 for a convex shape; -1 for overlaps, which report the shape only.</summary>
     public int SubShapeId { get; }
+
+    /// <inheritdoc/>
+    public override string ToString() =>
+        IsHit ? "QueryHit(" + Body + ", distance " + Distance.ToString(System.Globalization.CultureInfo.InvariantCulture) + ")" : "QueryHit(none)";
 }
 
 /// <summary>One ray of a batch.</summary>

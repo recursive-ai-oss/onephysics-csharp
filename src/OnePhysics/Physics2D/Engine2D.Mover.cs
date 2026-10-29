@@ -324,7 +324,7 @@ internal sealed partial class Engine2D
         int ignoreBody = -1;
         if (ignore.World != null) { ignoreBody = Core.Resolve(ignore.Handle); }
         float halfLength = 0.5f * def.Height - def.Radius;
-        double cosDeg = Math64.SinCos((double)def.SlopeLimit * (Math.PI / 180.0)).Item2;
+        double cosDeg = Math64.SinCos((double)def.SlopeLimitDegrees * (Math.PI / 180.0)).Item2;
         var c = new MoverCtx
         {
             Capsule = Shape2D.CreateCapsule(new Vec2(0f, -halfLength), new Vec2(0f, halfLength), def.Radius),

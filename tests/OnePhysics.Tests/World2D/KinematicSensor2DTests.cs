@@ -17,7 +17,7 @@ public class KinematicSensor2DTests
     private static Body SensorBody(PhysicsWorld2D w, double x, BodyType type)
     {
         var b = w.CreateBody(type, new Vector2D(x, 0));
-        w.CreateBox(b, 1f, 1f, default, 0f, 0f, new ShapeDef { IsSensor = true });
+        w.CreateBox(b, new Vector2F(2f, 2f), default, 0f, 0f, new ShapeDef { IsSensor = true });
         return b;
     }
 
@@ -77,7 +77,7 @@ public class KinematicSensor2DTests
     {
         var w = NewWorld();
         var sensor = SensorBody(w, 0, BodyType.Static);
-        var c = w.AddCharacter(new Vector2D(-4, 0), Character.Humanoid);
+        var c = w.AddCharacter(new Vector2D(-4, 0), CharacterDef.Humanoid);
         var log = new List<string>();
         sensor.OnTriggerEnter += t => log.Add("enter");
         sensor.OnTriggerExit += t => log.Add("exit");
