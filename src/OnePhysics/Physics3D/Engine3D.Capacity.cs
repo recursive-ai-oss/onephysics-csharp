@@ -46,6 +46,7 @@ internal sealed partial class Engine3D
         int batches = contacts / ConstraintColoring.Lanes + ConstraintColoring.ColorCount + 2;
         if (Wide.Length < batches * W3D.GroupFloats) { Wide = new float[batches * W3D.GroupFloats]; WideIdx = new int[batches * W3D.IdxPerGroup]; }
         if (SlotOf.Length < contacts) { SlotOf = new int[contacts]; }
+        if (BatchInfo.Length < 4 * contacts) { BatchInfo = new int[4 * contacts]; }
         if (_sortTmp.Length < contacts) { _sortTmp = new int[contacts]; }
         if (ConsNext.Length < contacts) { Array.Resize(ref ConsNext, contacts); }
         EnsureJointSlots(contacts);

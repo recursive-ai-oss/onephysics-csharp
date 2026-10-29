@@ -115,6 +115,7 @@ internal sealed partial class Engine3D
 
         int nc = Core.Constraints.HighWater;
         if (SlotOf.Length < nc) { SlotOf = new int[Math.Max(nc, SlotOf.Length * 2)]; }
+        if (BatchInfo.Length < 4 * nc) { BatchInfo = new int[Math.Max(4 * nc, BatchInfo.Length * 2)]; }
         Array.Fill(SlotOf, -1, 0, nc);
         float hertz = Opt.ContactHertz;
         float cap2 = 0.25f * ctx.InverseSubstepDt;
@@ -185,7 +186,7 @@ internal sealed partial class Engine3D
         for (int l = 0; l < W3D.Lanes; l++) { idx[l] = 0; idx[8 + l] = 0; idx[16 + l] = -1; idx[24 + l] = -1; }
         int maxPoints = 1, anyRolling = 0, anyRestitution = 0;
         float allOnes = BitConverter.Int32BitsToSingle(-1);
-        int lane = 0, jlane = 0;
+        int lane = 0, jlane = 0, scalarJoints = 0;
         Span<float> rm = stackalloc float[6];
         foreach (int c in constraints)
         {
@@ -198,7 +199,7 @@ internal sealed partial class Engine3D
                     PreparePointJoint(c, group, jlane++);
                 }
 
-                if (jt != (byte)JointType3D.Point) { PrepareJoint(c, in ctx); }
+                if (jt != (byte)JointType3D.Point) { PrepareJoint(c, in ctx); scalarJoints = 1; }
 
                 continue;
             }
@@ -259,6 +260,7 @@ internal sealed partial class Engine3D
             else { ContactKernel3D.PrepareMasses<Lanes256>(w, idx, linP, angP, Pk, maxPoints); }
         }
 
+        if (constraints.Length > 0) { var bi = BatchInfo.AsSpan(4 * constraints[0], 4); bi[0] = group; bi[1] = lane; bi[2] = jlane; bi[3] = scalarJoints; }
         idx[W3D.MaxPointsSlot] = maxPoints; idx[W3D.AnyRollingSlot] = anyRolling; idx[W3D.AnyRestitutionSlot] = anyRestitution;
     }
 
@@ -357,37 +359,28 @@ internal sealed partial class Engine3D
             return;
         }
 
-        // Contacts were packed into the first lanes of the batch's group in list order; joints (which share no dynamic body with anything else in the batch) solve one by one.
-        int first = -1, count = 0, jfirst = -1, jcount = 0;
-        for (int i = 0; i < constraints.Length; i++)
+        // Contacts were packed into the first lanes of the batch's group in list order, point joints into the first lanes of its joint group; both counts were worked out when the batch was prepared.
+        // Joints that are not point blocks (which share no dynamic body with anything else in the batch) solve one by one.
+        var info = BatchInfo.AsSpan(4 * constraints[0], 4);
+        int group = info[0], count = info[1], jcount = info[2];
+        if (info[3] != 0)
         {
-            int c = constraints[i];
-            if (cons.KindOf(c) == ConstraintKind.Joint)
+            for (int i = 0; i < constraints.Length; i++)
             {
-                if (Joints[c].Type != (byte)JointType3D.Point) { SolveJoint(c, phase, in ctx); }
-                if (SlotOf[c] >= 0)
-                {
-                    if (jcount == 0) { jfirst = SlotOf[c]; }
-                    jcount++;
-                }
-
-                continue;
+                int c = constraints[i];
+                if (cons.KindOf(c) == ConstraintKind.Joint && Joints[c].Type != (byte)JointType3D.Point) { SolveJoint(c, phase, in ctx); }
             }
-
-            if (count == 0) { first = SlotOf[c]; }
-            count++;
         }
 
         if (jcount > 0)
         {
-            int jgroup = jfirst >> 3;
+            int jgroup = group;
             if (KernelWidth == 1) { JointKernel3D.Run<Lanes1>(this, jgroup, 0, jcount, phase, in _jointParams); }
             else if (KernelWidth == 4) { JointKernel3D.Run<Lanes128>(this, jgroup, 0, jcount, phase, in _jointParams); }
             else { JointKernel3D.Run<Lanes256>(this, jgroup, 0, jcount, phase, in _jointParams); }
         }
 
-        if (count == 0 || first < 0) { return; }
-        int group = first >> 3;
+        if (count == 0) { return; }
         if (KernelWidth == 1) { ContactKernel3D.Run<Lanes1>(this, group, 0, count, phase, in kp); }
         else if (KernelWidth == 4) { ContactKernel3D.Run<Lanes128>(this, group, 0, count, phase, in kp); }
         else { ContactKernel3D.Run<Lanes256>(this, group, 0, count, phase, in kp); }

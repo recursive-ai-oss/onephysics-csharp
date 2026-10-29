@@ -51,6 +51,7 @@ internal sealed partial class Engine3D : ISnapshotSection
     public int[] WideIdx = Array.Empty<int>();
     public float[] WideJ = Array.Empty<float>();   // point-joint solver groups, one per batch (see J3D)
     public int[] WideJIdx = Array.Empty<int>();
+    public int[] BatchInfo = Array.Empty<int>();  // per batch, at its first constraint's index times four: group, contacts in the group, point joints in the joint group, whether the batch has joints solved one by one
     public int[] SlotOf = Array.Empty<int>();     // constraint -> group * 8 + lane for this step, -1 when not in a group
     public int KernelWidth = KernelWidthChoice.Default; // lanes per kernel run; results are the same at every width
 
