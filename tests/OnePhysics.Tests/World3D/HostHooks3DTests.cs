@@ -3,6 +3,7 @@ using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.LowLevel;
 using RecursiveAI.OnePhysics.Physics3D;
+using RecursiveAI.OnePhysics.Tests.Core;
 using Xunit;
 
 namespace RecursiveAI.OnePhysics.Tests.World3D;
@@ -65,9 +66,9 @@ public class HostHooks3DTests
         long Measure(Action a)
         {
             a();
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 20; i++) { a(); }
-            return GC.GetAllocatedBytesForCurrentThread() - before;
+            long total = 0;
+            for (int i = 0; i < 20; i++) { total += AllocMeter.Of(a); }
+            return total;
         }
 
         Assert.Equal(0, Measure(() => w.ComputeHash()));

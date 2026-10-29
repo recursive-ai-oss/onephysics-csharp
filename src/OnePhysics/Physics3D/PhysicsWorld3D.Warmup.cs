@@ -25,7 +25,7 @@ public sealed partial class PhysicsWorld3D
             {
                 var w = new PhysicsWorld3D(new WorldOptions3D { WorldId = 1, ThreadCount = threads });
                 w.AddBox(new Vector3F(20, 1, 20), at: new Vector3D(0, -0.5, 0), type: BodyType.Static);
-                for (int i = 0; i < 60; i++) { w.AddBox(new Vector3F(1, 1, 1), at: new Vector3D(-5 + 1.05 * (i % 10), 0.5 + 1.02 * (i / 10), 0)); }
+                for (int i = 0; i < 60; i++) { w.AddBox(new Vector3F(1, 1, 1), at: new Vector3D(-5 + 1.05 * (i % 10), 0.8 + 1.3 * (i / 10), 0)); }
                 var ball = w.AddSphere(0.5f, at: new Vector3D(2, 3, 0));
                 var zone = w.CreateBody(BodyType.Static, new Vector3D(0, 1, 0));
                 w.CreateBox(zone, new Vector3F(6, 4, 6), 0f, new ShapeDef { IsSensor = true, Density = 0f });
@@ -34,13 +34,18 @@ public sealed partial class PhysicsWorld3D
                 ball.OnCollisionEnter += _ => sink++;
                 var player = w.AddCharacter(new Vector3D(6, 1, 0));
                 var buffer = new QueryHit3D[8];
-                for (int i = 0; i < 40; i++)
+                // Long enough for the pile to land, settle and fall asleep, so the impact, resting and sleeping paths have run; each query kind a host calls runs every step.
+                for (int i = 0; i < 150; i++)
                 {
                     player.Move(new Vector3F(-0.05f, -0.1f, 0f), 1f / 60);
                     w.Step(1f / 60);
                     w.Raycast(new Vector3D(0, 10, 0), new Vector3F(0, -1, 0), out _);
                     w.RaycastAll(new Vector3D(0, 10, 0), new Vector3F(0, -1, 0), buffer);
                     w.OverlapSphereAll(new Vector3D(0, 1, 0), 2f, buffer);
+                    w.SphereCast(new Vector3D(0, 10, 0), 0.3f, new Vector3F(0.1f, -1, 0), out _);
+                    w.BoxCast(new Vector3D(1, 10, 0), new Vector3F(0.5f, 0.5f, 0.5f), QuaternionF.Identity, new Vector3F(0, -1, 0), out _);
+                    w.OverlapBoxAll(new Vector3D(0, 1, 0), new Vector3F(2, 2, 2), QuaternionF.Identity, buffer);
+                    w.OverlapCapsuleAll(new Vector3D(0, 1, 0), 1f, 0.5f, QuaternionF.Identity, buffer);
                     w.ComputeHash();
                 }
 

@@ -166,6 +166,7 @@ internal static class WorkerPool
         public int Sleeping;
         public bool Signaled; // guarded by the worker object's monitor
         public int InitSeen;  // the last thread-init version this worker ran
+        public int SampleSeen; // the last allocation sample request this worker answered
     }
 
     private static readonly object CreateLock = new();
@@ -463,6 +464,53 @@ internal static class WorkerPool
         }
     }
 
+    private static long[]? _sampleBytes;
+    private static long[]? _sampleCompiled;
+    private static int _sampleVersion;
+
+    /// <summary>
+    /// Test hook: has every pool thread record how many bytes it has allocated and how many methods the runtime has compiled on it, into slot <c>worker index</c> of the two arrays, and returns when all have answered.
+    /// A thread answers between tasks, so the numbers are exact for work done before the call.
+    /// </summary>
+    internal static void SampleWorkers(long[] allocated, long[] compiled)
+    {
+        Worker[] all;
+        int version;
+        lock (CreateLock)
+        {
+            _sampleBytes = allocated;
+            _sampleCompiled = compiled;
+            version = Interlocked.Increment(ref _sampleVersion);
+            all = _workers;
+        }
+
+        foreach (var w in all)
+        {
+            if (Interlocked.CompareExchange(ref w.Sleeping, 0, 1) == 1) { Signal(w); }
+        }
+
+        var wait = new SpinWait();
+        foreach (var w in all)
+        {
+            while (Volatile.Read(ref w.SampleSeen) != version) { wait.SpinOnce(); }
+        }
+    }
+
+    private static void RunSample(Worker w)
+    {
+        int version = Volatile.Read(ref _sampleVersion);
+        if (w.SampleSeen == version) { return; }
+        var bytes = _sampleBytes;
+        var compiled = _sampleCompiled;
+        if (bytes != null && compiled != null && w.Index < bytes.Length && w.Index < compiled.Length)
+        {
+            bytes[w.Index] = GC.GetAllocatedBytesForCurrentThread();
+            compiled[w.Index] = System.Runtime.JitInfo.GetCompiledMethodCount(currentThread: true);
+        }
+
+        Volatile.Write(ref w.SampleSeen, version);
+    }
+
     private static void RunThreadInit(Worker w)
     {
         int version = Volatile.Read(ref _initVersion);
@@ -474,17 +522,19 @@ internal static class WorkerPool
     private static void Loop(Worker w)
     {
         RunThreadInit(w);
+        RunSample(w);
         long seen = Volatile.Read(ref _claim) >> 32;
         while (true)
         {
             RunThreadInit(w);
+            RunSample(w);
             int spins = 0;
-            while ((Volatile.Read(ref _claim) >> 32) == seen && (Volatile.Read(ref _claim) & 0xFFFFFFFFL) == Closed && w.InitSeen == Volatile.Read(ref _initVersion))
+            while ((Volatile.Read(ref _claim) >> 32) == seen && (Volatile.Read(ref _claim) & 0xFFFFFFFFL) == Closed && w.InitSeen == Volatile.Read(ref _initVersion) && w.SampleSeen == Volatile.Read(ref _sampleVersion))
             {
                 if (++spins < SpinRounds) { Thread.SpinWait(4); continue; }
                 Interlocked.Exchange(ref w.Sleeping, 1);
                 long now = Volatile.Read(ref _claim);
-                if ((now >> 32) != seen || (now & 0xFFFFFFFFL) != Closed || w.InitSeen != Volatile.Read(ref _initVersion))
+                if ((now >> 32) != seen || (now & 0xFFFFFFFFL) != Closed || w.InitSeen != Volatile.Read(ref _initVersion) || w.SampleSeen != Volatile.Read(ref _sampleVersion))
                 {
                     // A call or an init arrived while going to sleep: undo, or absorb the wake-up the caller has already sent.
                     if (Interlocked.CompareExchange(ref w.Sleeping, 0, 1) != 1) { WaitSignal(w); }

@@ -55,6 +55,8 @@ public sealed partial class PhysicsWorld2D
     /// (<see cref="WorldOptions2D.QueryScratchCapacity"/>), and runs the hash, snapshot and restore paths once. Call it after the bodies exist, from the thread that will run queries.
     /// Steps, queries, <see cref="ComputeHash"/>, <see cref="TrySnapshot"/> and <see cref="Restore(ReadOnlySpan{byte})"/> then allocate nothing while the world stays within those counts and the calling thread does the querying.
     /// The world's state, events and results are unchanged (the snapshot round trip restores exactly what it saved; no callback runs). Allocates.
+    /// The first call in a process also runs a small trial world that lands, settles and sleeps a pile and runs every kind of query, character move and trigger, so those code paths are loaded before your first step.
+    /// A path the trial world does not reach is loaded by the .NET runtime on the calling thread the first time it runs, and the runtime allocates a few kilobytes doing so; that is the runtime's, not memory the world holds.
     /// </summary>
     public void Warmup() => WarmupCore(true);
 
