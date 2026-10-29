@@ -4,7 +4,7 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 **0.x previews are not bit-compatible with each other: snapshots, saved games and replays from one preview do not carry to another.**
 
-## Unreleased
+## 0.1.0-preview.4
 
 **Breaking API changes.** No result moves: world hashes, snapshot bytes and event order are the same as in preview.3 for the same inputs. Migration is by namespace, definition and exception contracts only.
 
