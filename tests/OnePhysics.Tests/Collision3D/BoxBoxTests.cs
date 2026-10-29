@@ -76,6 +76,28 @@ public class BoxBoxTests
     }
 
     [Fact]
+    public void FaceContactIsTheSameWhicheverBoxOwnsTheReferenceFace()
+    {
+        var gen = new ManifoldGenerator3D();
+        var big = ConvexShape3D.Box(new Vector3F(1f, 0.5f, 1f));
+        var small = ConvexShape3D.Box(new Vector3F(0.5f, 0.5f, 0.5f));
+        // small on big (A is the reference), then big under small (B is the reference): the same four points seen from the other side.
+        Manifold3D m1 = gen.Collide(big, small, new RigidTransformF(QuaternionF.Identity, new Vector3F(0.2f, 1.005f, -0.1f)), 0.02f);
+        Manifold3D m2 = gen.Collide(small, big, new RigidTransformF(QuaternionF.Identity, new Vector3F(-0.2f, -1.005f, 0.1f)), 0.02f);
+        Assert.Equal(4, m1.PointCount);
+        Assert.Equal(4, m2.PointCount);
+        Assert.True(m1.Normal.Y > 0.9999f);
+        Assert.True(m2.Normal.Y < -0.9999f);
+        Assert.InRange(m2.MinSeparation, 0.0049f, 0.0051f);
+        // The points are in the small box (A) frame and sit at its four lower corners.
+        for (int i = 0; i < m2.PointCount; i++)
+        {
+            Assert.InRange(Math.Abs(m2[i].Point.X), 0.49f, 0.51f);
+            Assert.InRange(Math.Abs(m2[i].Point.Z), 0.49f, 0.51f);
+        }
+    }
+
+    [Fact]
     public void CrossedEdgesMakeOnePoint()
     {
         var gen = new ManifoldGenerator3D();

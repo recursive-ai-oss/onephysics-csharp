@@ -236,6 +236,7 @@ public sealed partial class ManifoldGenerator3D
             return Empty;
         }
 
+        if (boxes && !useEdge && BoxFaceManifold(a, b, r, tB, useB, faceA, faceB, best, rA, rB, margin, out Manifold3D boxFace)) { return boxFace; }
         if (boxes) { LoadPair(a, b, r, tB); }
         ConvexContact3D c = default;
         bool haveC = false;
