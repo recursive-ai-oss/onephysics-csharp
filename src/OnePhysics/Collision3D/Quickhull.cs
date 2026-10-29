@@ -35,6 +35,7 @@ internal sealed class QuickhullBuilder
     private int _alive;
     private int[] _refCount = Array.Empty<int>();
     private int _vertexCount;
+    private bool[] _dropped = Array.Empty<bool>(); // apexes given up on because the horizon could not be walked
 
     public QuickhullBuilder(ReadOnlySpan<Vector3F> points, HullBuildOptions options)
     {
@@ -344,216 +345,265 @@ internal sealed class QuickhullBuilder
         var vertexVis = new Dictionary<int, int>();
         bool stop = false;
 
-        while (stack.Count > 0 && !stop)
+        // A point is discarded when it is within the tolerance of the faces it was tested against, but it may still be above another face by more
+        // (a thin triangle's plane reaches far). After the stack empties every point is tested against every face; strays go back into the lists.
+        _dropped = new bool[_n];
+        for (int round = 0; round < 16 && !stop; round++)
         {
-            Face seed = stack[^1];
-            stack.RemoveAt(stack.Count - 1);
-            if (seed.Dead || seed.Out == null || seed.Out.Count == 0)
+            while (stack.Count > 0 && !stop)
             {
-                continue;
-            }
-
-            int apex = seed.FarPt;
-            visibleMark++;
-            visible.Clear();
-            seed.Mark = visibleMark;
-            visible.Add(seed);
-            for (int k = 0; k < visible.Count; k++)
-            {
-                Face v = visible[k];
-                for (int e = 0; e < 3; e++)
+                Face seed = stack[^1];
+                stack.RemoveAt(stack.Count - 1);
+                if (seed.Dead || seed.Out == null || seed.Out.Count == 0)
                 {
-                    Face? g = v.Nb[e];
-                    if (g != null && g.Mark != visibleMark && SeesFace(g, apex))
+                    continue;
+                }
+
+                int apex = seed.FarPt;
+                visibleMark++;
+                visible.Clear();
+                seed.Mark = visibleMark;
+                visible.Add(seed);
+                for (int k = 0; k < visible.Count; k++)
+                {
+                    Face v = visible[k];
+                    for (int e = 0; e < 3; e++)
                     {
-                        g.Mark = visibleMark;
-                        visible.Add(g);
+                        Face? g = v.Nb[e];
+                        if (g != null && g.Mark != visibleMark && SeesFace(g, apex))
+                        {
+                            g.Mark = visibleMark;
+                            visible.Add(g);
+                        }
                     }
                 }
-            }
 
-            int h = 0;
-            bool ok = false;
-            int[] order = Array.Empty<int>();
-            for (int attempt = 0; attempt < 2 && !ok; attempt++)
-            {
-                if (attempt == 1)
+                int h = 0;
+                bool ok = false;
+                int[] order = Array.Empty<int>();
+                for (int attempt = 0; attempt < 2 && !ok; attempt++)
                 {
-                    // The horizon pinched: faces with two visible neighbours form a one-triangle notch; take them too and try again.
-                    for (bool changed = true; changed;)
+                    if (attempt == 1)
                     {
-                        changed = false;
-                        for (int k = 0; k < visible.Count; k++)
+                        // The horizon pinched: faces with two visible neighbours form a one-triangle notch; take them too and try again.
+                        for (bool changed = true; changed;)
                         {
-                            for (int e = 0; e < 3; e++)
+                            changed = false;
+                            for (int k = 0; k < visible.Count; k++)
                             {
-                                Face? g = visible[k].Nb[e];
-                                if (g != null && g.Mark != visibleMark)
+                                for (int e = 0; e < 3; e++)
                                 {
-                                    int vis = 0;
-                                    for (int q = 0; q < 3; q++)
+                                    Face? g = visible[k].Nb[e];
+                                    if (g != null && g.Mark != visibleMark)
                                     {
-                                        if (g.Nb[q]!.Mark == visibleMark)
+                                        int vis = 0;
+                                        for (int q = 0; q < 3; q++)
                                         {
-                                            vis++;
+                                            if (g.Nb[q]!.Mark == visibleMark)
+                                            {
+                                                vis++;
+                                            }
                                         }
-                                    }
 
-                                    if (vis >= 2)
-                                    {
-                                        g.Mark = visibleMark;
-                                        visible.Add(g);
-                                        changed = true;
+                                        if (vis >= 2)
+                                        {
+                                            g.Mark = visibleMark;
+                                            visible.Add(g);
+                                            changed = true;
+                                        }
                                     }
                                 }
                             }
                         }
+
+                    }
+
+                    horizonFace.Clear();
+                    horizonEdge.Clear();
+                    foreach (Face v in visible)
+                    {
+                        for (int e = 0; e < 3; e++)
+                        {
+                            if (v.Nb[e]!.Mark != visibleMark)
+                            {
+                                horizonFace.Add(v);
+                                horizonEdge.Add(e);
+                            }
+                        }
+                    }
+
+                    // Order the horizon edges into one cycle; anything else is a numerical pinch and the apex is skipped.
+                    h = horizonFace.Count;
+                    ok = h >= 3;
+                    fromIndex.Clear();
+                    for (int k = 0; k < h && ok; k++)
+                    {
+                        int from = horizonFace[k].V[horizonEdge[k]];
+                        ok = fromIndex.TryAdd(from, k);
+                    }
+
+                    order = new int[ok ? h : 0];
+                    if (ok)
+                    {
+                        bool[] seen = new bool[h];
+                        int cur = 0;
+                        order[0] = 0;
+                        seen[0] = true;
+                        for (int k = 1; k < h && ok; k++)
+                        {
+                            int to = horizonFace[cur].V[(horizonEdge[cur] + 1) % 3];
+                            ok = fromIndex.TryGetValue(to, out cur) && !seen[cur];
+                            if (ok)
+                            {
+                                seen[cur] = true;
+                                order[k] = cur;
+                            }
+                        }
+
+                        if (ok)
+                        {
+                            ok = horizonFace[cur].V[(horizonEdge[cur] + 1) % 3] == horizonFace[0].V[horizonEdge[0]];
+                        }
                     }
 
                 }
 
-                horizonFace.Clear();
-                horizonEdge.Clear();
+                if (!ok)
+                {
+                    DropPoint(seed, apex);
+                    if (seed.Out != null && seed.Out.Count > 0)
+                    {
+                        stack.Add(seed);
+                    }
+
+                    continue;
+                }
+
+                // Limits: vertices that lose every face disappear, the apex appears.
+                vertexVis.Clear();
                 foreach (Face v in visible)
                 {
                     for (int e = 0; e < 3; e++)
                     {
-                        if (v.Nb[e]!.Mark != visibleMark)
+                        vertexVis[v.V[e]] = vertexVis.GetValueOrDefault(v.V[e]) + 1;
+                    }
+                }
+
+                int removed = 0;
+                foreach (Face v in visible)
+                {
+                    for (int e = 0; e < 3; e++)
+                    {
+                        int vv = v.V[e];
+                        if (vertexVis.TryGetValue(vv, out int cnt) && cnt == _refCount[vv])
                         {
-                            horizonFace.Add(v);
-                            horizonEdge.Add(e);
+                            removed++;
+                            vertexVis.Remove(vv);
                         }
                     }
                 }
 
-                // Order the horizon edges into one cycle; anything else is a numerical pinch and the apex is skipped.
-                h = horizonFace.Count;
-                ok = h >= 3;
-                fromIndex.Clear();
-                for (int k = 0; k < h && ok; k++)
+                if (_vertexCount + 1 - removed > maxV || _alive - visible.Count + h > maxF)
                 {
-                    int from = horizonFace[k].V[horizonEdge[k]];
-                    ok = fromIndex.TryAdd(from, k);
+                    stop = true;
+                    break;
                 }
 
-                order = new int[ok ? h : 0];
-                if (ok)
+                var created = new Face[h];
+                for (int k = 0; k < h; k++)
                 {
-                    bool[] seen = new bool[h];
-                    int cur = 0;
-                    order[0] = 0;
-                    seen[0] = true;
-                    for (int k = 1; k < h && ok; k++)
+                    Face vf = horizonFace[order[k]];
+                    int e = horizonEdge[order[k]];
+                    int a = vf.V[e], b = vf.V[(e + 1) % 3];
+                    Face outside = vf.Nb[e]!;
+                    Face nf = NewFace(a, b, apex);
+                    nf.Nb[0] = outside;
+                    Link(outside, b, a, nf);
+                    created[k] = nf;
+                }
+
+                for (int k = 0; k < h; k++)
+                {
+                    created[k].Nb[1] = created[(k + 1) % h];
+                    created[k].Nb[2] = created[(k + h - 1) % h];
+                }
+
+                orphans.Clear();
+                foreach (Face v in visible)
+                {
+                    if (v.Out != null)
                     {
-                        int to = horizonFace[cur].V[(horizonEdge[cur] + 1) % 3];
-                        ok = fromIndex.TryGetValue(to, out cur) && !seen[cur];
-                        if (ok)
+                        foreach (int p in v.Out)
                         {
-                            seen[cur] = true;
-                            order[k] = cur;
+                            if (p != apex)
+                            {
+                                orphans.Add(p);
+                            }
+                        }
+                    }
+                }
+
+                foreach (Face v in visible)
+                {
+                    Kill(v);
+                    v.Out = null;
+                }
+
+                foreach (int p in orphans)
+                {
+                    Face? bestFace = null;
+                    double bestD = _eps;
+                    foreach (Face nf in created)
+                    {
+                        double d = Dist(nf, p);
+                        if (d > bestD)
+                        {
+                            bestD = d;
+                            bestFace = nf;
                         }
                     }
 
-                    if (ok)
+                    if (bestFace != null)
                     {
-                        ok = horizonFace[cur].V[(horizonEdge[cur] + 1) % 3] == horizonFace[0].V[horizonEdge[0]];
+                        Assign(bestFace, p, bestD);
                     }
                 }
 
-            }
-
-            if (!ok)
-            {
-                DropPoint(seed, apex);
-                if (seed.Out != null && seed.Out.Count > 0)
+                foreach (Face nf in created)
                 {
-                    stack.Add(seed);
-                }
-
-                continue;
-            }
-
-            // Limits: vertices that lose every face disappear, the apex appears.
-            vertexVis.Clear();
-            foreach (Face v in visible)
-            {
-                for (int e = 0; e < 3; e++)
-                {
-                    vertexVis[v.V[e]] = vertexVis.GetValueOrDefault(v.V[e]) + 1;
-                }
-            }
-
-            int removed = 0;
-            foreach (Face v in visible)
-            {
-                for (int e = 0; e < 3; e++)
-                {
-                    int vv = v.V[e];
-                    if (vertexVis.TryGetValue(vv, out int cnt) && cnt == _refCount[vv])
+                    if (nf.Out != null)
                     {
-                        removed++;
-                        vertexVis.Remove(vv);
+                        stack.Add(nf);
                     }
                 }
             }
 
-            if (_vertexCount + 1 - removed > maxV || _alive - visible.Count + h > maxF)
+            if (stop)
             {
-                stop = true;
                 break;
             }
 
-            var created = new Face[h];
-            for (int k = 0; k < h; k++)
+            for (int p = 0; p < _n; p++)
             {
-                Face vf = horizonFace[order[k]];
-                int e = horizonEdge[order[k]];
-                int a = vf.V[e], b = vf.V[(e + 1) % 3];
-                Face outside = vf.Nb[e]!;
-                Face nf = NewFace(a, b, apex);
-                nf.Nb[0] = outside;
-                Link(outside, b, a, nf);
-                created[k] = nf;
-            }
-
-            for (int k = 0; k < h; k++)
-            {
-                created[k].Nb[1] = created[(k + 1) % h];
-                created[k].Nb[2] = created[(k + h - 1) % h];
-            }
-
-            orphans.Clear();
-            foreach (Face v in visible)
-            {
-                if (v.Out != null)
+                if (_refCount[p] != 0 || _dropped[p])
                 {
-                    foreach (int p in v.Out)
-                    {
-                        if (p != apex)
-                        {
-                            orphans.Add(p);
-                        }
-                    }
+                    continue;
                 }
-            }
 
-            foreach (Face v in visible)
-            {
-                Kill(v);
-                v.Out = null;
-            }
-
-            foreach (int p in orphans)
-            {
                 Face? bestFace = null;
                 double bestD = _eps;
-                foreach (Face nf in created)
+                foreach (Face f in _all)
                 {
-                    double d = Dist(nf, p);
+                    if (f.Dead)
+                    {
+                        continue;
+                    }
+
+                    double d = Dist(f, p);
                     if (d > bestD)
                     {
                         bestD = d;
-                        bestFace = nf;
+                        bestFace = f;
                     }
                 }
 
@@ -563,12 +613,17 @@ internal sealed class QuickhullBuilder
                 }
             }
 
-            foreach (Face nf in created)
+            foreach (Face f in _all)
             {
-                if (nf.Out != null)
+                if (!f.Dead && f.Out != null && f.Out.Count > 0)
                 {
-                    stack.Add(nf);
+                    stack.Add(f);
                 }
+            }
+
+            if (stack.Count == 0)
+            {
+                break;
             }
         }
 
@@ -611,6 +666,7 @@ internal sealed class QuickhullBuilder
 
     private void DropPoint(Face f, int p)
     {
+        _dropped[p] = true;
         f.Out!.Remove(p);
         f.FarPt = -1;
         f.FarDist = 0;
