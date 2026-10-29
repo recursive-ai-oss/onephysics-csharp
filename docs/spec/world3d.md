@@ -571,3 +571,30 @@ Two substeps with one iteration take the whole step down by 1.2× (large-pile-3d
 
 * Whole-step A/B against round 17's code, interleaved, best of 5, host load 6 to 8, pinned to 8 cores for 8 threads (best / median speed-up): heightfield-terrain-3d 1.14 / 1.13 (1 thread), 1.21 / 1.20 (8); large-pile-3d 1.01 / 1.02 and 1.13 / 1.13; mesh-terrain-3d 1.03 / 1.02 and 1.07 / 1.10; sleep-wake-3d 1.01 / 1.03 and 1.04 / 1.00; queries-3d 1.00 / 1.02 and 1.08 / 0.92 (noise).
 * Hash matrix: jit, threads8, threads-all, noavx512, noavx2, tc0, scalar (world scenes), aot and wasm equal; manifest unchanged (c3c8c0dfc7d5fa51). Stability at one thread: every 3D scene inside its thresholds.
+
+### Round 23: fewer pairs and a cheaper box stage (results change)
+
+* **Broadphase defaults for 3D.** The fat-box margin is 0.03 (was 0.1), a moving shape's box is stretched by four times its last displacement (was twice), and the tree top is rebuilt every fourth time it is due and refitted in between (`EnlargedRebuildShift` 1, `EnlargedRefitSteps` 3; `broadphase.md`). The margin only decides when a pair is created and how long its box lasts; the speculative distance (0.02) and the tight-box rule decide which pairs get contacts, and a moving shape's box is refitted to its new position before the pairs are searched, so a fast body is still caught. Measured against 2, 3 and 6 for the stretch on a falling pile: 2 and 3 cost 60% and 20% more search time, 6 keeps more pairs alive than it saves.
+* **Work counts per step** (Profile configuration, one thread, indicative; live pairs / pairs revisited / passing the tight-box test / reaching the narrowphase; Bepu's revisited counts from round 19 beside them):
+
+| scene | before (margin 0.1) | after (0.03) | Bepu |
+|---|---|---|---|
+| ragdoll-pile-3d | 8535 / 8478 / 3810 / 306 | 4945 / 4869 / 3665 / 315 | 4717 |
+| sleep-wake-3d | 8663 / 6042 / 2886 / 1834 | 4231 / 4527 / 2396 / 1503 | 2630 |
+| large-pile-3d | 32135 / 32127 / 17598 / 527 | 22175 / 22167 / 17651 / 460 | 16130 |
+
+* **Stage times**, ms per step, same runs (before → after). The old "boxes" figure covered bounding boxes, tree moves and body initialisation together; the after column is the three added.
+
+| scene | bounding boxes | pair finding | narrowphase | step |
+|---|---|---|---|---|
+| ragdoll-pile-3d | 0.122 → 0.119 | 0.004 → 0.006 | 0.751 → 0.598 | 2.90 → 2.67 |
+| sleep-wake-3d | 0.172 → 0.153 | 0.369 → 0.236 | 1.638 → 1.299 | 3.57 → 2.87 |
+| large-pile-3d | 0.470 → 0.294 | 0.000 → 0.000 | 2.947 → 2.569 | 9.00 → 8.52 |
+
+* **Hull bounds in one pass.** For a hull with radius 0 the six support searches become one pass over the vertices; the result is bit-identical (a test compares them). large-pile-3d's box stage went from 0.40 to 0.23 ms; ragdoll-pile-3d and sleep-wake-3d have no large hulls and stay at about 55 ns per shape, which is the pose composition and the tree read.
+* **A stretch stops at the coordinate limit.** A fast body inside the range is no longer refused because its stretched box would pass ±2^22 (`Aabb3D.Fatten`, `Aabb2D.Fatten`); the margin-grown box must still fit.
+* **Whole-step A/B against round 21's code**, interleaved, best of 3 (best / median speed-up), one thread / eight threads pinned to 8 cores, host load 12 to 14: sleep-wake-3d 1.20 / 1.22 and 1.14 / 1.21; ragdoll-pile-3d 1.06 / 1.07 and 1.11 / 1.18; large-pile-3d 1.07 / 1.05 and 1.17 / 1.16; mesh-terrain-3d 1.05 / 1.05 and 1.04 / 0.84 (noise); heightfield-terrain-3d 1.05 / 1.06 and 1.03 / 1.04; queries-3d 1.10 / 1.05 and 1.02 / 0.94, ray / overlap / cast throughput +9 / +7 / +13% at one thread.
+* **Measured and dropped.** Doubling the recycle tolerance (0.0035 → 0.007) cut sleep-wake-3d's pairs reaching the narrowphase from 1503 to 1416 (6%) and moved results, so it stays: the fresh pairs there belong to bodies that move much further than a few millimetres per step. The remaining sleep-wake-3d gap is the box–box manifold of those pairs.
+* **A shifted origin.** `ShiftOrigin` rebuilds the tree with plain margins, so with the smaller margin a shifted world and an unshifted one agree for about 30 steps in a tumbling pile instead of indefinitely; both are deterministic.
+* Stability at one thread: every 3D scene inside its thresholds. Moved metrics (before → after): large-pile-3d maxPenetration 0.271 → 0.207, jitter 1.4e-3 → 5.4e-5; ragdoll-pile-3d maxSpeed 15.3 → 18.6, maxPenetration 0.162 → 0.129, restKE 4.5e-6 → 3.4e-5; sleep-wake-3d maxSpeed 37.3 → 38.2, maxPenetration 1.051 → 1.024, finalPenetration 0.107 → 0.091; heightfield-terrain-3d finalPenetration 0.00917 → 0.00874; mesh-terrain-3d finalPenetration 0.000344 → 0.000339. All others identical.
+* Hash matrix: jit, threads8, threads-all, scalar (world scenes), noavx512, noavx2, tc0 and aot equal (manifest f441c700f097abed, scalar 8e7f36f691ab3d95). The twelve `world3d/*` lines moved (buoyancy, characters, host-probe, joints, pile, pyramid-10, ragdolls, restore-and-shift, services, terrain, vehicle-kinds, vehicles) because pair timing and the tree schedule changed; the 2D, collision, broadphase and core lines did not.
