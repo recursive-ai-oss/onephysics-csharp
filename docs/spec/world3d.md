@@ -70,7 +70,7 @@ The reader checks every count against the bytes that remain before allocating, r
 
 ## Origin
 
-`ShiftOrigin(offset)` subtracts the offset from every body position and every broadphase box and adds it to the accumulated origin; components must be multiples of 2^-31 (`ArgumentException` otherwise). Positions are checked against ±2^21 (inclusive of the shifted origin) at creation and at the end of each step; a body outside, or with a non-finite position, raises `BodyOutOfBoundsException` naming it, and the step has no effect on the world's state (the hash is unchanged); destroying the body lets stepping continue.
+`ShiftOrigin(offset)` subtracts the offset from every body position and every broadphase box and adds it to the accumulated origin; components must be multiples of 2^-31 (`ArgumentException` otherwise). Positions passed in are checked against ±2^21 at creation. At the start of each `Step`, a moving body whose stretched shape boxes are not finite or reach beyond ±2^22, or whose position, velocity or rotation is not finite, raises `BodyOutOfBoundsException` naming it, before anything changes (the hash is unchanged); destroying or moving the body, or shifting the origin, lets stepping continue.
 
 ## Joints
 
