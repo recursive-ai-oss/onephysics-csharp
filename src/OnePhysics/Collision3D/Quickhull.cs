@@ -594,6 +594,21 @@ internal sealed class QuickhullBuilder
         return area2 <= _eps * Math.Sqrt(best);
     }
 
+    // Distance from input point v to the line through input points a and b (to the point a when they coincide).
+    private double DistanceToLine(int v, int a, int b)
+    {
+        double ux = _x[b] - _x[a], uy = _y[b] - _y[a], uz = _z[b] - _z[a];
+        double wx = _x[v] - _x[a], wy = _y[v] - _y[a], wz = _z[v] - _z[a];
+        double u2 = (ux * ux) + (uy * uy) + (uz * uz);
+        if (!(u2 > 0))
+        {
+            return Math.Sqrt((wx * wx) + (wy * wy) + (wz * wz));
+        }
+
+        double cx = (uy * wz) - (uz * wy), cy = (uz * wx) - (ux * wz), cz = (ux * wy) - (uy * wx);
+        return Math.Sqrt(((cx * cx) + (cy * cy) + (cz * cz)) / u2);
+    }
+
     private void DropPoint(Face f, int p)
     {
         f.Out!.Remove(p);
@@ -704,133 +719,233 @@ internal sealed class QuickhullBuilder
             }
         }
 
-        int[] group = new int[t];
-        for (int i = 0; i < t; i++)
+        List<int[]> polys;
+        while (true)
         {
-            group[i] = Find(i);
-        }
-
-        var members = new List<int>[t];
-        for (int i = 0; i < t; i++)
-        {
-            (members[group[i]] ??= new List<int>()).Add(i);
-        }
-
-        var polys = new List<int[]>();
-        var next = new Dictionary<int, int>();
-        for (int r = 0; r < t; r++)
-        {
-            List<int>? m = members[r];
-            if (m == null)
+            int[] group = new int[t];
+            for (int i = 0; i < t; i++)
             {
-                continue;
+                group[i] = Find(i);
             }
 
-            int[]? cycle = null;
-            if (m.Count > 1)
+            var members = new List<int>[t];
+            for (int i = 0; i < t; i++)
             {
-                next.Clear();
-                var order = new List<int>();
-                bool ok = true;
-                foreach (int ti in m)
+                (members[group[i]] ??= new List<int>()).Add(i);
+            }
+
+            polys = new List<int[]>();
+            var next = new Dictionary<int, int>();
+            for (int r = 0; r < t; r++)
+            {
+                List<int>? m = members[r];
+                if (m == null)
                 {
-                    for (int e = 0; e < 3 && ok; e++)
+                    continue;
+                }
+
+                int[]? cycle = null;
+                if (m.Count > 1)
+                {
+                    next.Clear();
+                    var order = new List<int>();
+                    bool ok = true;
+                    foreach (int ti in m)
                     {
-                        if (group[index[tris[ti].Nb[e]!.Id]] != r)
+                        for (int e = 0; e < 3 && ok; e++)
                         {
-                            int from = tris[ti].V[e];
-                            ok = next.TryAdd(from, tris[ti].V[(e + 1) % 3]);
-                            order.Add(from);
+                            if (group[index[tris[ti].Nb[e]!.Id]] != r)
+                            {
+                                int from = tris[ti].V[e];
+                                ok = next.TryAdd(from, tris[ti].V[(e + 1) % 3]);
+                                order.Add(from);
+                            }
+                        }
+                    }
+
+                    if (ok && order.Count >= 3)
+                    {
+                        var cyc = new List<int>();
+                        int start = order[0], cur = start;
+                        do
+                        {
+                            cyc.Add(cur);
+                            ok = next.TryGetValue(cur, out cur);
+                        }
+                        while (ok && cur != start && cyc.Count <= order.Count);
+                        if (ok && cyc.Count == order.Count)
+                        {
+                            cycle = cyc.ToArray();
+                        }
+                    }
+
+                    if (cycle == null)
+                    {
+                        foreach (int ti in m)
+                        {
+                            group[ti] = ti;
                         }
                     }
                 }
 
-                if (ok && order.Count >= 3)
+                if (cycle != null)
                 {
-                    var cyc = new List<int>();
-                    int start = order[0], cur = start;
-                    do
-                    {
-                        cyc.Add(cur);
-                        ok = next.TryGetValue(cur, out cur);
-                    }
-                    while (ok && cur != start && cyc.Count <= order.Count);
-                    if (ok && cyc.Count == order.Count)
-                    {
-                        cycle = cyc.ToArray();
-                    }
+                    polys.Add(cycle);
                 }
-
-                if (cycle == null)
+                else
                 {
                     foreach (int ti in m)
                     {
-                        group[ti] = ti;
+                        polys.Add(new[] { tris[ti].V[0], tris[ti].V[1], tris[ti].V[2] });
                     }
                 }
             }
 
-            if (cycle != null)
+            // A vertex lying on exactly two faces is in the middle of an edge, not a corner.
+            int[] valence = new int[_n];
+            foreach (int[] p in polys)
             {
-                polys.Add(cycle);
-            }
-            else
-            {
-                foreach (int ti in m)
+                foreach (int v in p)
                 {
-                    polys.Add(new[] { tris[ti].V[0], tris[ti].V[1], tris[ti].V[2] });
-                }
-            }
-        }
-
-        // A vertex lying on exactly two faces is in the middle of an edge, not a corner.
-        int[] valence = new int[_n];
-        foreach (int[] p in polys)
-        {
-            foreach (int v in p)
-            {
-                valence[v]++;
-            }
-        }
-
-        for (int i = 0; i < polys.Count; i++)
-        {
-            int[] p = polys[i];
-            int keep = 0;
-            foreach (int v in p)
-            {
-                if (valence[v] != 2)
-                {
-                    keep++;
+                    valence[v]++;
                 }
             }
 
-            if (keep == p.Length)
+            // A valence-2 vertex is only dropped when it really sits on the straight line between the corners at the ends of its chain
+            // (within the tolerance). A bent chain between two faces is a real feature of the hull: dropping its vertices would cut input points out of the shape.
+            bool[] dropVertex = new bool[_n];
+            bool[] bent = new bool[_n];
+            foreach (int[] p in polys)
             {
-                continue;
-            }
-
-            if (keep < 3)
-            {
-                // A sliver face squeezed between two faces; they meet along its long edge.
-                polys[i] = Array.Empty<int>();
-                continue;
-            }
-
-            int[] q = new int[keep];
-            int w = 0;
-            foreach (int v in p)
-            {
-                if (valence[v] != 2)
+                for (int k = 0; k < p.Length; k++)
                 {
-                    q[w++] = v;
+                    int v = p[k];
+                    if (valence[v] != 2 || dropVertex[v])
+                    {
+                        continue;
+                    }
+
+                    int back = k, fwd = k;
+                    int guard = 0;
+                    while (valence[p[back]] == 2 && guard++ < p.Length)
+                    {
+                        back = (back + p.Length - 1) % p.Length;
+                    }
+
+                    guard = 0;
+                    while (valence[p[fwd]] == 2 && guard++ < p.Length)
+                    {
+                        fwd = (fwd + 1) % p.Length;
+                    }
+
+                    if (valence[p[back]] == 2 || valence[p[fwd]] == 2)
+                    {
+                        continue; // a polygon made only of chain vertices cannot occur on a closed hull; keep it as it is
+                    }
+
+                    int a = p[back], b = p[fwd];
+                    bool straight = true;
+                    for (int m = (back + 1) % p.Length; m != fwd && straight; m = (m + 1) % p.Length)
+                    {
+                        straight = DistanceToLine(p[m], a, b) <= _eps;
+                    }
+
+                    for (int m = (back + 1) % p.Length; m != fwd && straight; m = (m + 1) % p.Length)
+                    {
+                        dropVertex[p[m]] = true;
+                    }
+
+                    if (!straight)
+                    {
+                        for (int m = (back + 1) % p.Length; m != fwd; m = (m + 1) % p.Length)
+                        {
+                            bent[p[m]] = true;
+                        }
+                    }
                 }
             }
 
-            polys[i] = q;
-        }
+            for (int i = 0; i < polys.Count; i++)
+            {
+                int[] p = polys[i];
+                int keep = 0;
+                foreach (int v in p)
+                {
+                    if (!dropVertex[v])
+                    {
+                        keep++;
+                    }
+                }
 
-        polys.RemoveAll(static p => p.Length == 0);
+                if (keep == p.Length)
+                {
+                    continue;
+                }
+
+                if (keep < 3)
+                {
+                    // A sliver face squeezed between two faces; they meet along its long edge.
+                    polys[i] = Array.Empty<int>();
+                    continue;
+                }
+
+                int[] q = new int[keep];
+                int w = 0;
+                foreach (int v in p)
+                {
+                    if (!dropVertex[v])
+                    {
+                        q[w++] = v;
+                    }
+                }
+
+                polys[i] = q;
+            }
+
+            polys.RemoveAll(static p => p.Length == 0);
+
+            // Two faces that share a bent chain are coplanar to within the tolerance and belong together: join their triangles and build again.
+            bool anyBent = false, joined = false;
+            for (int v = 0; v < _n; v++)
+            {
+                if (!bent[v])
+                {
+                    continue;
+                }
+
+                anyBent = true;
+                int root = -1;
+                for (int i = 0; i < t; i++)
+                {
+                    if (tris[i].V[0] != v && tris[i].V[1] != v && tris[i].V[2] != v)
+                    {
+                        continue;
+                    }
+
+                    int r = Find(i);
+                    if (root < 0)
+                    {
+                        root = r;
+                    }
+                    else if (r != root)
+                    {
+                        parent[Math.Max(r, root)] = Math.Min(r, root);
+                        root = Find(root);
+                        joined = true;
+                    }
+                }
+            }
+
+            if (!anyBent)
+            {
+                break;
+            }
+
+            if (!joined)
+            {
+                throw Degenerate("two faces that bend by less than the tolerance cannot be told apart from one face");
+            }
+        }
 
         // Canonical form: rotate each polygon to start at its lowest vertex, order polygons by that vertex then the next.
         for (int i = 0; i < polys.Count; i++)
