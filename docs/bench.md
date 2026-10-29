@@ -230,4 +230,4 @@ Same run as the proposed thresholds in `docs/scenes.md` (metric definitions ther
 
 ## Per-pass cost sweep
 
-`BAR_BEPU_ITERS=n` sets the Bepu driver's `SolveDescription(n, 1)` (default 8); with `BAR_VELITERS`, `BAR_RELAX` and `BAR_SUBSTEPS` for our engine it gives the cost of one more solver pass per constraint (slope of step time over n divided by the constraint counts our driver prints as `constraints_contacts`, `constraints_points`, `constraints_joints`). Results: docs/world3d.md, round 14.
+`BAR_BEPU_ITERS=n` sets the Bepu driver's `SolveDescription(n, 1)` (default 8); with `BAR_VELITERS`, `BAR_RELAX` and `BAR_SUBSTEPS` for our engine it gives the cost of one more solver pass per constraint (slope of step time over n divided by the constraint counts our driver prints as `constraints_contacts`, `constraints_points`, `constraints_joints`). Results: docs/world3d.md, round 15.
