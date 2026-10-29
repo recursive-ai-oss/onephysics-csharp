@@ -227,3 +227,7 @@ Same run as the proposed thresholds in `docs/spec/scenes.md` (metric definitions
 | sleep-wake-3d |  |  |  | 0 / 0 | 0 / 4 | 0 / 5 | 0 / 7 | 0 / 0 | 0 / 0 |
 
 `ragdoll-pile-3d` `restKE` per engine is in the `restKE` table above: bepu 0.0169 / 0.245, box3d 0.00897 / 0.162, jitter2 0.00486 / 0.00566, jolt 0.0315 / 0.0571, rapier3d 0.0131 / 0.131, onephysics 0.126 / 0.821.
+
+## Per-pass cost sweep
+
+`BAR_BEPU_ITERS=n` sets the Bepu driver's `SolveDescription(n, 1)` (default 8); with `BAR_VELITERS`, `BAR_RELAX` and `BAR_SUBSTEPS` for our engine it gives the cost of one more solver pass per constraint (slope of step time over n divided by the constraint counts our driver prints as `constraints_contacts`, `constraints_points`, `constraints_joints`). Results: docs/world3d.md, round 15.

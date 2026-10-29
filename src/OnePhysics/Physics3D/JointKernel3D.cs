@@ -14,7 +14,9 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 internal static class J3D
 {
     public const int RA = 0, RB = 3, D = 6, InvMassA = 9, InvMassB = 10, Impulse = 11;
-    public const int Fields = 14;
+    /// <summary>Inverse of the 3×3 block, six entries xx xy xz yy yz zz (see <see cref="JointKernel3D"/>): built in the warm start pass, read by the solve and relax passes of the same substep.</summary>
+    public const int KInv = 14;
+    public const int Fields = 20;
     public const int Lanes = 8;
     public const int StageOffset = Fields * Lanes, StageFloats = 0, OutOffset = StageOffset + StageFloats, OutFloats = 12 * 8;
     public const int GroupFloats = OutOffset + OutFloats;
@@ -158,13 +160,32 @@ internal static class JointKernel3D
     // The two passes are separate methods on purpose: the runtime stops inlining into a method once its inlining budget is spent, and with everything in Run it was spent before the arithmetic
     // was reached, leaving every vector operation of the 3x3 block as a call that returned its result through memory (a hundred of them per batch).
 
-    /// <summary>Applies the accumulated impulse of the previous step at the anchors, which turn with their bodies' rotation accumulated this step.</summary>
+    /// <summary>
+    /// Applies the accumulated impulse of the previous step at the anchors, which turn with their bodies' rotation accumulated this step, and builds the inverse of the block K for the substep.
+    /// The solve passes of a substep run before positions integrate, so their anchors and inertias are the ones used here; the relax pass, after the integration, reuses this inverse (the effective mass of a
+    /// joint changes by the rotation of one substep, which the soft step formulation tolerates, as it tolerates reusing the contact masses prepared once per step).
+    /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void WarmStart<T>(ref BodyLanes<T> a, ref BodyLanes<T> b2, ReadOnlySpan<float> wide, int l0, V3<T> imp, T two) where T : struct, ILane<T>
+    private static void WarmStart<T>(ref BodyLanes<T> a, ref BodyLanes<T> b2, Span<float> wide, int l0, V3<T> imp, T two) where T : struct, ILane<T>
     {
         var rA = Rotate(a.Qx, a.Qy, a.Qz, a.Qw, Vec<T>(wide, J3D.RA, l0), two);
         var rB = Rotate(b2.Qx, b2.Qy, b2.Qz, b2.Qw, Vec<T>(wide, J3D.RB, l0), two);
         Apply(ref a, ref b2, rA, rB, imp);
+        BuildInverse(a.InvMass + b2.InvMass, a.I, b2.I, rA, rB, wide, l0);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void BuildInverse<T>(T massSum, Sym<T> iA, Sym<T> iB, V3<T> rA, V3<T> rB, Span<float> wide, int l0) where T : struct, ILane<T>
+    {
+        T zero = T.Zero;
+        Matrix(massSum, iA, iB, rA, rB, out T k00, out T k01, out T k02, out T k11, out T k12, out T k22);
+        T c00 = k11 * k22 - k12 * k12, c01 = k02 * k12 - k01 * k22, c02 = k01 * k12 - k02 * k11;
+        T det = k00 * c00 + k01 * c01 + k02 * c02;
+        T nonZero = Lane.Or(T.GreaterThan(det, zero), T.GreaterThan(zero, det));
+        T inv = T.Select(nonZero, T.Broadcast(1f) / det, zero);
+        T c11 = k00 * k22 - k02 * k02, c12 = k01 * k02 - k00 * k12, c22 = k00 * k11 - k01 * k01;
+        (inv * c00).StoreAt(wide, (J3D.KInv + 0) * 8 + l0); (inv * c01).StoreAt(wide, (J3D.KInv + 1) * 8 + l0); (inv * c02).StoreAt(wide, (J3D.KInv + 2) * 8 + l0);
+        (inv * c11).StoreAt(wide, (J3D.KInv + 3) * 8 + l0); (inv * c12).StoreAt(wide, (J3D.KInv + 4) * 8 + l0); (inv * c22).StoreAt(wide, (J3D.KInv + 5) * 8 + l0);
     }
 
     /// <summary>One solve or relax pass of the three point rows: the block K of the current anchors and inertias, the soft or rigid impulse, applied to both bodies.</summary>
@@ -172,7 +193,7 @@ internal static class JointKernel3D
     private static void SolveBlock<T>(ref BodyLanes<T> a, ref BodyLanes<T> b2, ReadOnlySpan<float> wide, int l0, ref V3<T> imp, T ms, T kk, T isc, T two) where T : struct, ILane<T>
     {
         Anchors(in a, in b2, wide, l0, two, out var rA, out var rB, out var c, out var dv);
-        Block(a.InvMass + b2.InvMass, a.I, b2.I, rA, rB, c, dv, ms, kk, isc, ref imp, out var step);
+        Block(wide, l0, c, dv, ms, kk, isc, ref imp, out var step);
         Apply(ref a, ref b2, rA, rB, step);
     }
 
@@ -197,22 +218,17 @@ internal static class JointKernel3D
     }
 
     /// <summary>
-    /// K = (mA + mB)·1 + [rA]ᵀ·IA·[rA] + [rB]ᵀ·IB·[rB] by closed-form inverse, the soft impulse step = -K⁻¹·(Ms·Cdot + Kk·C) - Isc·accumulated, and the new accumulated impulse. Separate from its caller for the same reason.
+    /// The soft impulse step = -K⁻¹·(Ms·Cdot + Kk·C) - Isc·accumulated with the inverse of K = (mA + mB)·1 + [rA]ᵀ·IA·[rA] + [rB]ᵀ·IB·[rB] built by the warm start pass, and the new accumulated impulse.
+    /// Separate from its caller for the same reason.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void Block<T>(T massSum, Sym<T> iA, Sym<T> iB, V3<T> rA, V3<T> rB, V3<T> c, V3<T> dv, T ms, T kk, T isc, ref V3<T> imp, out V3<T> step) where T : struct, ILane<T>
+    private static void Block<T>(ReadOnlySpan<float> wide, int l0, V3<T> c, V3<T> dv, T ms, T kk, T isc, ref V3<T> imp, out V3<T> step) where T : struct, ILane<T>
     {
-        T zero = T.Zero;
-        Matrix(massSum, iA, iB, rA, rB, out T k00, out T k01, out T k02, out T k11, out T k12, out T k22);
-        T c00 = k11 * k22 - k12 * k12, c01 = k02 * k12 - k01 * k22, c02 = k01 * k12 - k02 * k11;
-        T det = k00 * c00 + k01 * c01 + k02 * c02;
-        T nonZero = Lane.Or(T.GreaterThan(det, zero), T.GreaterThan(zero, det));
-        T inv = T.Select(nonZero, T.Broadcast(1f) / det, zero);
-        T c11 = k00 * k22 - k02 * k02, c12 = k01 * k02 - k00 * k12, c22 = k00 * k11 - k01 * k01;
+        T i00 = Field<T>(wide, J3D.KInv, l0), i01 = Field<T>(wide, J3D.KInv + 1, l0), i02 = Field<T>(wide, J3D.KInv + 2, l0), i11 = Field<T>(wide, J3D.KInv + 3, l0), i12 = Field<T>(wide, J3D.KInv + 4, l0), i22 = Field<T>(wide, J3D.KInv + 5, l0);
         T r0 = ms * dv.X + kk * c.X, r1 = ms * dv.Y + kk * c.Y, r2 = ms * dv.Z + kk * c.Z;
-        T x0 = inv * (c00 * r0 + c01 * r1 + c02 * r2);
-        T x1 = inv * (c01 * r0 + c11 * r1 + c12 * r2);
-        T x2 = inv * (c02 * r0 + c12 * r1 + c22 * r2);
+        T x0 = i00 * r0 + i01 * r1 + i02 * r2;
+        T x1 = i01 * r0 + i11 * r1 + i12 * r2;
+        T x2 = i02 * r0 + i12 * r1 + i22 * r2;
         step = new V3<T>(T.Negate(x0) - isc * imp.X, T.Negate(x1) - isc * imp.Y, T.Negate(x2) - isc * imp.Z);
         imp = imp + step;
     }

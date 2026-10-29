@@ -32,6 +32,19 @@ sealed class OnePhysics3Sim : ISim3
         vy = new float[characters.Count]; gravity = (float)-s.Gy; stepNo = 0;
     }
 
+    /// <summary>Live contact constraints, their manifold points and joints at the end of the run.</summary>
+    public string Extra()
+    {
+        var cs = world.Engine.Core.Constraints;
+        int contacts = 0, points = 0, joints = 0;
+        for (int c = 0; c < cs.HighWater; c++)
+        {
+            if (!cs.IsLive(c)) continue;
+            if (cs.KindOf(c) == ConstraintKind.Joint) joints++; else { contacts++; points += cs.PointCount[c]; }
+        }
+        return $"constraints_contacts={contacts}\nconstraints_points={points}\nconstraints_joints={joints}\n";
+    }
+
     public void Step(double dt)
     {
         MoveCharacters((float)dt);
