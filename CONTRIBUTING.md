@@ -4,13 +4,13 @@ Requires the .NET SDK pinned in `global.json` (10.0.400 or a later feature band)
 
 ## Restore: getting onemath
 
-`src/OnePhysics` depends on `RecursiveAI.OneMath`. Until it is on nuget.org, copy the package into the ignored `.localfeed/` directory (restore picks the directory up when it exists):
+`src/OnePhysics` depends on `RecursiveAI.OneMath` 1.0.0, which restores from nuget.org. To build against a locally built onemath package instead, copy it into the ignored `.localfeed/` directory (restore picks the directory up when it exists):
 
 ```
-ONEMATH_FEED=<directory holding RecursiveAI.OneMath.0.1.0-preview.2.nupkg> tools/localfeed.sh
+ONEMATH_FEED=<directory holding RecursiveAI.OneMath.1.0.0.nupkg> tools/localfeed.sh
 ```
 
-That is the only setup step. `.localfeed/` is not tracked, so when building on a machine that only receives the git working tree, ship that directory along with it.
+`.localfeed/` is not tracked, so on a machine that only receives the git working tree, ship that directory along with it.
 
 ## Build, test, smoke
 
