@@ -14,6 +14,16 @@ public sealed partial class ManifoldGenerator3D
         public readonly int[] FaceAxis = new int[6];
         public readonly float[] FaceSign = new float[6];
 
+        /// <summary>The unit cube hull's outward face normals, its corners, and per face the four corners and edge codes (half-edge index / 2) in the order the face's edge loop visits them.</summary>
+        public readonly Vector3F[] FaceNormal = new Vector3F[6];
+        public readonly Vector3F[] Corner = new Vector3F[8];
+        public readonly int[] FaceCorner = new int[24];
+        public readonly int[] FaceEdge = new int[24];
+
+        /// <summary>For each edge of each face's loop: the lateral axis it runs perpendicular to inside the face (the axis on which its two corners agree) and the sign of that coordinate.</summary>
+        public readonly int[] FaceLatAxis = new int[24];
+        public readonly float[] FaceLatSign = new float[24];
+
         /// <summary>The first half-edge of the cube's edge that runs along an axis at the corner whose signs on the other two axes (in increasing axis order) are the bits of the index (bit set = positive).</summary>
         public readonly int[] Edge = new int[12];
 
@@ -22,13 +32,37 @@ public sealed partial class ManifoldGenerator3D
             // Built again here (it is deterministic, so the numbering is the shared cube's) because static fields of a partial class initialize in no fixed order across files.
             ConvexHull3D hull = BuildUnitBox();
             ReadOnlySpan<HullFace3D> faces = hull.Faces;
+            ReadOnlySpan<Vector3F> corners = hull.Vertices;
+            for (int i = 0; i < 8; i++) { Corner[i] = corners[i]; }
+            ReadOnlySpan<HullEdge3D> loopEdges = hull.Edges;
             for (int f = 0; f < faces.Length; f++)
             {
+                FaceNormal[f] = faces[f].Normal;
+                int le = faces[f].FirstEdge;
+                for (int k = 0; k < 4; k++)
+                {
+                    FaceCorner[(4 * f) + k] = loopEdges[le].Origin;
+                    FaceEdge[(4 * f) + k] = le >> 1;
+                    le = loopEdges[le].Next;
+                }
+
                 Vector3F n = faces[f].Normal;
                 int axis = Math.Abs(n.X) > 0.5f ? 0 : Math.Abs(n.Y) > 0.5f ? 1 : 2;
                 float c = axis == 0 ? n.X : axis == 1 ? n.Y : n.Z;
                 FaceAxis[f] = axis;
                 FaceSign[f] = c > 0f ? 1f : -1f;
+            }
+
+            for (int f = 0; f < 6; f++)
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    Vector3F c1 = Corner[FaceCorner[(4 * f) + i]], c2 = Corner[FaceCorner[(4 * f) + ((i + 1) & 3)]];
+                    int skip = FaceAxis[f];
+                    int ax = skip != 0 && c1.X == c2.X ? 0 : skip != 1 && c1.Y == c2.Y ? 1 : 2;
+                    FaceLatAxis[(4 * f) + i] = ax;
+                    FaceLatSign[(4 * f) + i] = (ax == 0 ? c1.X : ax == 1 ? c1.Y : c1.Z) > 0f ? 1f : -1f;
+                }
             }
 
             ReadOnlySpan<HullEdge3D> edges = hull.Edges;
