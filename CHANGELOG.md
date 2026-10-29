@@ -6,17 +6,21 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 ## [Unreleased]
 
-No result moves: world hashes, snapshot bytes and event order are the same as before for the same inputs.
+## [0.1.0-preview.5]
+
+First public release. The 2D engine and the shared core are the supported surface; the 3D engine ships as a preview marked `[Experimental("OPHYS0002")]`. A user guide is in `docs/guide/`.
+
+**Moved results:** 2D worlds are bit-identical to preview.4 for the same inputs. 3D worlds move: an exact capsule-against-box closest pair replaces the general path when the shapes are apart, and the joint solver computes each joint's block inverse once per substep. Convex hulls built from inputs that were near-coplanar or noisy can differ (see below). Snapshot layout is unchanged.
 
 - **Allocation-free from the first step, also under load and with several threads.** `Warmup()` now prepares every pool thread (including threads an earlier world started) for the narrowphase and batch queries, runs the pool's parallel paths of a throwaway world whatever their size, and stocks the island body-list pool for the world's body count. Before, a pile that kept merging and splitting islands allocated a few hundred bytes at about one step in a few hundred, and the first step of a multi-threaded 3D world allocated on the calling thread. `ComputeHash()` is documented as streaming (it always was: no snapshot copy is made).
 - **Breaking: `CharacterDef.SlopeLimit` and `Character.SlopeLimit` are `SlopeLimitRadians`** (2D and 3D); the unit is in the name. The value and its default are unchanged.
 - **`world.BodyCount`, `world.Bodies`, `world.CharacterCount`, `world.Characters`** (2D and 3D, identical): count and `foreach` over the live bodies and characters in slot order with a struct enumerator that allocates nothing.
 - **The 3D engine is `[Experimental("OPHYS0002")]`:** every public type in `RecursiveAI.OnePhysics.Physics3D`. Using it raises the diagnostic until you suppress it (`#pragma warning disable OPHYS0002` or `<NoWarn>`); its API and its results may change between previews. The 2D engine and the shared types are not marked.
 - The package now carries the README.
-
-## [0.1.0-preview.5]
-
-First public release. (Notes to be filled in from the changes since preview.4.)
+- **Convex hulls contain their input points.** `ConvexHull3D.Build` now decides face visibility with exact predicates, rescans every input point once the hull is built, and checks each merged face against every point, undoing a merge that would leave a point outside. Every input point is inside every face within the documented tolerance, or the build is refused with `HullBuildException`; before, some near-coplanar inputs gave a hull that left a point outside by up to a few centimetres. Building is about 20% slower on hostile inputs.
+- **3D, faster at 8 threads:** solve stages split into one task per constraint batch and the worker count follows the average stage width (terrain scenes about 1.5–1.8× faster at 8 threads); results do not depend on the thread count, as before.
+- **3D integration runs lane-wide** with a bit-identical scalar twin.
+- Package metadata, symbols (`.snupkg`) and Source Link for the public repository.
 
 ## [0.1.0-preview.4]
 
