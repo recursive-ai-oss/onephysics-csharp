@@ -334,7 +334,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         var q = new Rot2(rot[0], rot[1]);
         var lc = new Vec2(LocalCenter[2 * b], LocalCenter[2 * b + 1]);
         var box = shape.ComputeAabb(new Transform2(-q.Rotate(lc), q));
-        return new Aabb2D(pos[0] + (double)box.Lower.X, pos[1] + (double)box.Lower.Y, pos[0] + (double)box.Upper.X, pos[1] + (double)box.Upper.Y);
+        return new Aabb2D(pos[0] + WorldCore.GridDown(box.Lower.X), pos[1] + WorldCore.GridDown(box.Lower.Y), pos[0] + WorldCore.GridUp(box.Upper.X), pos[1] + WorldCore.GridUp(box.Upper.Y));
     }
 
     /// <summary>Farthest point of any shape of the body from the given centre of mass, radius included.</summary>
@@ -540,19 +540,8 @@ internal sealed partial class Engine2D : ISnapshotSection
         }
     }
 
-    /// <summary>After the core shifted the origin: rebuild every proxy, since the broadphase keeps boxes in origin-relative coordinates. Shapes are visited in ascending slot order.</summary>
-    public void RebuildProxies()
-    {
-        var shapes = Core.Shapes;
-        for (int s = 0; s < shapes.HighWater; s++)
-        {
-            if (!shapes.Handles.IsLive(s)) { continue; }
-            int b = shapes.Owner[s];
-            var type = Core.Bodies.TypeOf(b);
-            Bp.DestroyProxy(Proxy[s]);
-            Proxy[s] = Bp.CreateProxy(type, TightBox(b, in Geom[s]), s);
-        }
-    }
+    /// <summary>After the core shifted the origin: moves every stored broadphase box by the same offset, in place, so tree shape, stretched boxes and pair timing are those of the unshifted world.</summary>
+    public void ShiftProxies(ReadOnlySpan<double> offset) => Bp.Translate(offset);
 
     // ------------------------------------------------------------------ snapshot section
 

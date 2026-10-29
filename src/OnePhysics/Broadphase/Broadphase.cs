@@ -343,6 +343,13 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
         return true;
     }
 
+    /// <summary>Moves every stored box by <c>-offset</c> in place after the world origin shifted; tree shapes, flags, refit counts and the move buffer are untouched.</summary>
+    public void Translate(ReadOnlySpan<double> offset)
+    {
+        if (offset.Length != TBox.Axes) { throw new ArgumentException("Offset must have " + TBox.Axes.ToString(CultureInfo.InvariantCulture) + " components, got " + offset.Length.ToString(CultureInfo.InvariantCulture) + ".", nameof(offset)); }
+        foreach (var t in _trees) { t.Translate(offset); }
+    }
+
     /// <summary>Puts a live proxy in the move buffer without changing it (for example after its filter changed), so the next update re-queries its pairs.</summary>
     public void Touch(int key)
     {

@@ -43,6 +43,11 @@ public interface IBox<TSelf> where TSelf : struct, IBox<TSelf>
     /// </summary>
     TSelf Fatten(double margin, ReadOnlySpan<double> displacement, double multiplier);
 
+    /// <summary>
+    /// The box moved by <c>-offset</c> on every axis (an origin shift), each bound then clamped to ±<see cref="BoxLimits.MaxCoordinate"/>. The clamp is monotone, so a box that contained another still does.
+    /// </summary>
+    TSelf Translated(ReadOnlySpan<double> offset);
+
     /// <summary>True when every bound is finite, min is not above max and no bound is larger than <see cref="BoxLimits.MaxCoordinate"/> in magnitude. <paramref name="reason"/> says what was wrong.</summary>
     bool IsValid(out string reason);
 

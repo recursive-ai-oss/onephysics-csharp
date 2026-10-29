@@ -81,6 +81,13 @@ public readonly struct Aabb2D : IBox<Aabb2D>, IEquatable<Aabb2D>
     }
 
     /// <inheritdoc/>
+    public Aabb2D Translated(ReadOnlySpan<double> offset)
+    {
+        const double L = BoxLimits.MaxCoordinate;
+        return new Aabb2D(Math.Clamp(MinX - offset[0], -L, L), Math.Clamp(MinY - offset[1], -L, L), Math.Clamp(MaxX - offset[0], -L, L), Math.Clamp(MaxY - offset[1], -L, L));
+    }
+
+    /// <inheritdoc/>
     public bool IsValid(out string reason) =>
         BoxLimits.CheckAxis(MinX, MaxX, "x", out reason) && BoxLimits.CheckAxis(MinY, MaxY, "y", out reason);
 

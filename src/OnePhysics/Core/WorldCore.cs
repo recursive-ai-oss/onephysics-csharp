@@ -122,6 +122,18 @@ public sealed class WorldCore
 {
     private const int ChunkSize = 64;
     private const double CoordinateBound = 2097152.0; // 2^21
+    /// <summary>
+    /// A position increment rounded to the nearest multiple of 2^-32 (ties to even). Positions are doubles on that grid (a 31.32 fixed-point value is), and a grid value plus a grid increment is exact below 2^21,
+    /// so integrating never rounds and a world and its origin-shifted copy hold the same positions up to the shift. The step is 2.3e-10, far below float32's resolution at any distance a body travels in one step.
+    /// </summary>
+    internal static double Grid(double x) => Math.Round((double)x * 4294967296.0) * (1.0 / 4294967296.0);
+
+    /// <summary>A coordinate rounded down to a multiple of 2^-32 so that a box bound (position plus extent) is exact below 2^21, for the same reason as <see cref="Grid"/>; the box only grows.</summary>
+    internal static double GridDown(float x) => Math.Floor((double)x * 4294967296.0) * (1.0 / 4294967296.0);
+
+    /// <summary>A coordinate rounded up to a multiple of 2^-32; see <see cref="GridDown"/>.</summary>
+    internal static double GridUp(float x) => Math.Ceiling((double)x * 4294967296.0) * (1.0 / 4294967296.0);
+
     private const double OffsetScale = 2147483648.0;  // 2^31: shifts are multiples of 2^-31
     private const double OffsetBound = 4194304.0;     // 2^22
     private const uint Magic = 0x4E53504F; // "OPSN" little-endian

@@ -137,7 +137,7 @@ internal sealed partial class Engine2D
                 int s = movers[i];
                 int b = world.Shapes.Owner[s];
                 ref ShapeBox sb = ref _sbox[s];
-                Bp.MoveProxy(Proxy[s], new Aabb2D(sb.TMinX, sb.TMinY, sb.TMaxX, sb.TMaxY), Dp[2 * b], Dp[2 * b + 1]);
+                Bp.MoveProxy(Proxy[s], new Aabb2D(sb.TMinX, sb.TMinY, sb.TMaxX, sb.TMaxY), WorldCore.Grid(Dp[2 * b]), WorldCore.Grid(Dp[2 * b + 1]));
                 // The proxy's stored box changed: keep the copy the pair loop reads in step with it.
                 ref readonly Aabb2D fat = ref Bp.FatBoundsOfLive(Proxy[s]);
                 sb.FMinX = fat.MinX; sb.FMinY = fat.MinY; sb.FMaxX = fat.MaxX; sb.FMaxY = fat.MaxY;

@@ -28,7 +28,7 @@ public sealed partial class PhysicsWorld3D
         o.WorldId = _core.Id;
         var bp = new Broadphase3D(new BroadphaseOptions
         {
-            Margin = o.BroadphaseMargin,
+            Margin = WorldCore.Grid(o.BroadphaseMargin),
             // A moving proxy's box is stretched four steps ahead: it then lasts about four steps, and every update of a moved proxy costs a tree walk for its pairs (measured against two steps on a falling pile).
             DisplacementMultiplier = 4.0,
             // The tree top is rebuilt every fourth time it is due and refitted in between: the rebuild is serial and was most of the pair stage on a pile that is always moving.
@@ -256,7 +256,7 @@ public sealed partial class PhysicsWorld3D
         _core.ShiftOrigin(d);
         _engine.ShiftJoints(d);
         _engine.ShiftFluids(offset.X, offset.Y, offset.Z);
-        _engine.RebuildProxies();
+        _engine.ShiftProxies(d);
         InvalidateQueryPad();
     }
 

@@ -442,12 +442,24 @@ internal sealed partial class Engine3D : ISnapshotSection
     public Aabb3D TightBox(int b, int s)
     {
         var pos = Core.Bodies.PositionOf(b);
-        var pose = ShapePoseFromCom(b, s);
+        // A shape placed at its body's centre of mass with no turn of its own (every single-shape body made from the common constructors) has the body's pose; skipping the composition is exact.
+        var l = Local[s];
+        var lc = LocalCenterOf(b);
+        RigidTransformF pose;
+        if (l.Rotation.X == 0f && l.Rotation.Y == 0f && l.Rotation.Z == 0f && l.Rotation.W == 1f && l.Translation.X == lc.X && l.Translation.Y == lc.Y && l.Translation.Z == lc.Z)
+        {
+            pose = new RigidTransformF(RotationOfBody(b), default);
+        }
+        else
+        {
+            pose = ShapePoseFromCom(b, s);
+        }
+
         var g = Geoms[GeomOf[s]]!;
         Vector3F mn, mx;
         if (g.IsConvex) { ShapeBounds3D.Compute(g.Convex, pose, out mn, out mx); }
         else { BoundsOfBox(g.LocalBounds, pose, out mn, out mx); }
-        return new Aabb3D(pos[0] + (double)mn.X, pos[1] + (double)mn.Y, pos[2] + (double)mn.Z, pos[0] + (double)mx.X, pos[1] + (double)mx.Y, pos[2] + (double)mx.Z);
+        return new Aabb3D(pos[0] + WorldCore.GridDown(mn.X), pos[1] + WorldCore.GridDown(mn.Y), pos[2] + WorldCore.GridDown(mn.Z), pos[0] + WorldCore.GridUp(mx.X), pos[1] + WorldCore.GridUp(mx.Y), pos[2] + WorldCore.GridUp(mx.Z));
     }
 
     /// <summary>Bounds of a transformed box: centre moved, half sizes through |R|, padded like <see cref="ShapeBounds3D"/>.</summary>
@@ -649,19 +661,8 @@ internal sealed partial class Engine3D : ISnapshotSection
         }
     }
 
-    /// <summary>After the core shifted the origin: rebuild every proxy, since the broadphase keeps boxes in origin-relative coordinates. Shapes are visited in ascending slot order.</summary>
-    public void RebuildProxies()
-    {
-        var shapes = Core.Shapes;
-        for (int s = 0; s < shapes.HighWater; s++)
-        {
-            if (!shapes.Handles.IsLive(s)) { continue; }
-            int b = shapes.Owner[s];
-            var type = Core.Bodies.TypeOf(b);
-            Bp.DestroyProxy(Proxy[s]);
-            Proxy[s] = Bp.CreateProxy(type, TightBox(b, s), s);
-        }
-    }
+    /// <summary>After the core shifted the origin: moves every stored broadphase box by the same offset, in place, so tree shape, stretched boxes and pair timing are those of the unshifted world.</summary>
+    public void ShiftProxies(ReadOnlySpan<double> offset) => Bp.Translate(offset);
 
     // ------------------------------------------------------------------ snapshot section
 

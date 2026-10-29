@@ -6,10 +6,12 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 ## [Unreleased]
 
-**Moved results:** 3D worlds move (2D worlds are bit-identical to preview.6): the 3D broadphase keeps tighter boxes, so pairs start and end at different steps.
+**Moved results:** 3D worlds move (the broadphase keeps tighter boxes, so pairs start and end at different steps), and 2D and 3D worlds move again because positions now advance on a 2^-32 grid (see the origin shift entry).
 
 - **3D broadphase defaults:** `BroadphaseMargin` is 0.03 (was 0.1), boxes stretch over four steps of motion, and the tree is refitted between rebuilds. About half as many pairs are kept alive in piles; sleep-wake scenes step about 1.2× faster and large piles at eight threads about 1.15×. Stability is unchanged on every 3D scene.
 - A fast body still inside the supported range no longer fails the step with an argument error when its stretched box would cross the range limit; the stretch stops at the limit.
+
+- **`ShiftOrigin` is exact.** A shifted world now steps through exactly the states of the unshifted world, translated (positions differ by the offset; velocities, rotations and contact data are bit-identical), instead of drifting from it. The shift moves the stored broadphase boxes in place instead of rebuilding them. To make that true, a body's position increment each step is rounded to a multiple of 2^-32 (2.3e-10 m; a body slower than about 1.4e-8 m/s at 60 Hz does not move), shape bounds are rounded outward to the same grid, and the broadphase margin is rounded to it. Positions handed in as 31.32 fixed-point values are already on the grid.
 
 ## [0.1.0-preview.6]
 

@@ -505,6 +505,33 @@ public class World2DTests
     }
 
     [Fact]
+    public void ShiftingTheOriginIsExact()
+    {
+        // Positions and stored broadphase boxes move by the same offset and nothing else changes, so the shifted world steps through the same states as the unshifted one, translated.
+        var a = BuildScene(1, 5);
+        var b = BuildScene(1, 5);
+        foreach (var w in new[] { a, b })
+        {
+            var pos = w.Core.Bodies.Position;
+            for (int k = 0; k < pos.Length; k++) { pos[k] = Math.Round(pos[k] * 4294967296.0) / 4294967296.0; }
+        }
+
+        for (int i = 0; i < 30; i++) { a.Step(Dt); b.Step(Dt); }
+        b.ShiftOrigin(new Vector2D(64.0, -8.0));
+        for (int i = 0; i < 400; i++)
+        {
+            a.Step(Dt); b.Step(Dt);
+            var pa = a.Core.Bodies.Position; var pb = b.Core.Bodies.Position;
+            var va = a.Core.Bodies.LinearVelocity; var vb = b.Core.Bodies.LinearVelocity;
+            for (int k = 0; k < a.Core.Bodies.HighWater; k++)
+            {
+                Assert.True(pa[2 * k] - 64.0 == pb[2 * k] && pa[2 * k + 1] + 8.0 == pb[2 * k + 1], "position of body " + k + " at step " + i);
+                Assert.True(va[2 * k] == vb[2 * k] && va[2 * k + 1] == vb[2 * k + 1], "velocity of body " + k + " at step " + i);
+            }
+        }
+    }
+
+    [Fact]
     public void ChainsLetBodiesSlideOverJointsWithoutSnagging()
     {
         var w = NewWorld();

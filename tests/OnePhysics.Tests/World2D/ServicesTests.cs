@@ -433,7 +433,7 @@ public class ServicesTests
         Assert.Equal((0.0, -0.25, 1.0, 0.75), (g.Bounds[1].Min.X, g.Bounds[1].Min.Y, g.Bounds[1].Max.X, g.Bounds[1].Max.Y));
         Assert.Equal(2, g.BroadphaseBounds.Length);
         Assert.Equal(-2.0, g.BroadphaseBounds[0].Min.X); // static: no margin
-        Assert.Equal(-0.1, g.BroadphaseBounds[1].Min.X);
+        Assert.Equal(-0.1, g.BroadphaseBounds[1].Min.X, 8); // the margin is rounded to a multiple of 2^-32
         Assert.Equal(2, g.Bodies.Length);
         Assert.Equal(DebugBodyState.Static, g.Bodies[0].State);
         Assert.Equal(-1, g.Bodies[0].Island);

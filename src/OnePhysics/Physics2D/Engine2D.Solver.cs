@@ -660,7 +660,7 @@ internal sealed partial class Engine2D
             int o = (b + 1) * BS2D.Stride;
             float dx = h * st[o + BS2D.Vx], dy = h * st[o + BS2D.Vy];
             st[o + BS2D.Dpx] += dx; st[o + BS2D.Dpy] += dy;
-            pos[2 * b] += (double)dx; pos[2 * b + 1] += (double)dy;
+            pos[2 * b] += WorldCore.Grid(dx); pos[2 * b + 1] += WorldCore.Grid(dy);
             float w = st[o + BS2D.W];
             if (w != 0f)
             {
