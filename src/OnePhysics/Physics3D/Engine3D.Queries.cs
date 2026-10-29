@@ -107,6 +107,9 @@ internal sealed partial class Engine3D
     /// <summary>Test hook: false sends every candidate to the exact test, so tests can check the closed-form shortcuts and box rejections change no result.</summary>
     internal bool QuickRejects = true;
 
+    /// <summary>Test hook: false sends every ray and sphere sweep to the general GJK route instead of the closed-form leaf tests, so tests can compare the two.</summary>
+    internal bool ClosedFormLeaves = true;
+
     private double _queryPad;
     private bool _queryPadValid;
 
@@ -354,8 +357,14 @@ internal sealed partial class Engine3D
                 if (g.IsConvex)
                 {
                     if (QuickRejects && SegmentMisses(lo, lt, g.ConvexMin, g.ConvexMax, RejectSlack(Math.Max(Extent(lo) + Extent(lt), Math.Max(Extent(g.ConvexMin), Extent(g.ConvexMax)))))) { return false; }
-                    if (!Gjk3D.RayCast(g.Convex, RigidTransformF.Identity, lo, lt, 1f, out var hit)) { return false; }
-                    f = hit.Fraction; n = hit.Normal;
+                    var closed = SweepOutcome.Unsure; f = 0f; n = default;
+                    if (ClosedFormLeaves) { closed = ConvexSweep3D.Test(in g.Convex, 0f, lo, lt, out f, out n); }
+                    if (closed == SweepOutcome.Miss) { return false; }
+                    if (closed == SweepOutcome.Unsure)
+                    {
+                        if (!Gjk3D.RayCast(g.Convex, RigidTransformF.Identity, lo, lt, 1f, out var hit)) { return false; }
+                        f = hit.Fraction; n = hit.Normal;
+                    }
                 }
                 else if (g.Compound != null)
                 {
@@ -391,8 +400,19 @@ internal sealed partial class Engine3D
                         if (SegmentMisses(centre, motion, g.ConvexMin - half, g.ConvexMax + half, e)) { return false; }
                     }
 
-                    if (!Gjk3D.ShapeCast(g.Convex, q.Mover, rel, -motion, out var hit)) { return false; }
-                    f = hit.Fraction; n = hit.Normal; p = hit.PointB + motion * f; startsOverlapping = hit.StartsOverlapping;
+                    var closed = SweepOutcome.Unsure; f = 0f; n = default;
+                    if (ClosedFormLeaves && q.Mover.Kind == ConvexShapeKind3D.Sphere) { closed = ConvexSweep3D.Test(in g.Convex, q.Mover.ConvexRadius, lo, motion, out f, out n); }
+                    if (closed == SweepOutcome.Miss) { return false; }
+                    if (closed == SweepOutcome.Hit)
+                    {
+                        // The mover's centre at the contact is on the grown surface; the contact point is one radius back along the normal.
+                        p = lo + motion * f - n * q.Mover.ConvexRadius; startsOverlapping = false;
+                    }
+                    else
+                    {
+                        if (!Gjk3D.ShapeCast(g.Convex, q.Mover, rel, -motion, out var hit)) { return false; }
+                        f = hit.Fraction; n = hit.Normal; p = hit.PointB + motion * f; startsOverlapping = hit.StartsOverlapping;
+                    }
                 }
                 else if (g.Compound != null)
                 {
