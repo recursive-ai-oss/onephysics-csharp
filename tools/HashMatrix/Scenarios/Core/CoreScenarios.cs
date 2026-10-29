@@ -13,7 +13,7 @@ internal static class CoreScenarios
     [ModuleInitializer]
     internal static void Init()
     {
-        // 300 particles for 120 steps; the final hash is the regression anchor 918517127736045633.
+        // 300 particles for 120 steps; the final hash is the regression anchor 10534202668867088900.
         Scenarios.Register("core/golden", ctx =>
         {
             var scene = ParticleScene.CreatePile(300, 1234, threadCount: ctx.Threads, worldId: 1);

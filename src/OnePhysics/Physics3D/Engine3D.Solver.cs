@@ -102,11 +102,22 @@ internal sealed partial class Engine3D
     // ------------------------------------------------------------------ prepare
 
     private float _dynBias, _dynMass, _dynImpulse, _stBias, _stMass, _stImpulse;
+    private float _liteDynBias, _liteDynMass, _liteDynImpulse, _liteStBias, _liteStMass, _liteStImpulse;
     private JointKernelParams _jointParams;
 
     /// <summary>Once per step before anything is prepared: sizes the wide groups (one per batch) and the constraint-to-lane map, and computes the soft-constraint coefficients.</summary>
     public void BeginSolve(int batches, in StepContext ctx)
     {
+        if (ctx.Schedule != 0)
+        {
+            // The contact-only schedule has its own substep length, so its contacts get their own soft-constraint coefficients; nothing else is sized or ordered twice.
+            float liteCap = 0.25f * ctx.InverseSubstepDt;
+            float liteHertz = Opt.ContactHertz > liteCap ? liteCap : Opt.ContactHertz;
+            MakeSoft(liteHertz, Opt.ContactDampingRatio, ctx.SubstepDt, out _liteDynBias, out _liteDynMass, out _liteDynImpulse);
+            MakeSoft(2f * liteHertz, Opt.ContactDampingRatio, ctx.SubstepDt, out _liteStBias, out _liteStMass, out _liteStImpulse);
+            return;
+        }
+
         if (Wide.Length < batches * W3D.GroupFloats)
         {
             int cap = Math.Max(batches, Wide.Length / W3D.GroupFloats * 2);
@@ -220,7 +231,12 @@ internal sealed partial class Engine3D
             float rolling = pl[ManifoldLayout.RollingResistance];
             w[W3D.Rolling * 8 + lane] = rolling;
             w[W3D.InvMassA * 8 + lane] = mA; w[W3D.InvMassB * 8 + lane] = mB;
-            if (mA == 0f || mB == 0f) { w[W3D.BiasRate * 8 + lane] = _stBias; w[W3D.MassScale * 8 + lane] = _stMass; w[W3D.ImpulseScale * 8 + lane] = _stImpulse; }
+            if (ctx.Schedule != 0)
+            {
+                if (mA == 0f || mB == 0f) { w[W3D.BiasRate * 8 + lane] = _liteStBias; w[W3D.MassScale * 8 + lane] = _liteStMass; w[W3D.ImpulseScale * 8 + lane] = _liteStImpulse; }
+                else { w[W3D.BiasRate * 8 + lane] = _liteDynBias; w[W3D.MassScale * 8 + lane] = _liteDynMass; w[W3D.ImpulseScale * 8 + lane] = _liteDynImpulse; }
+            }
+            else if (mA == 0f || mB == 0f) { w[W3D.BiasRate * 8 + lane] = _stBias; w[W3D.MassScale * 8 + lane] = _stMass; w[W3D.ImpulseScale * 8 + lane] = _stImpulse; }
             else { w[W3D.BiasRate * 8 + lane] = _dynBias; w[W3D.MassScale * 8 + lane] = _dynMass; w[W3D.ImpulseScale * 8 + lane] = _dynImpulse; }
             if (rolling > 0f) { anyRolling = 1; RollingMass(WInvI.AsSpan(6 * a, 6), WInvI.AsSpan(6 * b, 6), rm); for (int k = 0; k < 6; k++) { w[(W3D.RollMass + k) * 8 + lane] = rm[k]; } }
             Put3(w, W3D.RollImpulse, lane, V(pl, ManifoldLayout.RollingImpulse));

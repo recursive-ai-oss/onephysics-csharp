@@ -31,10 +31,22 @@ internal sealed partial class Engine2D
 
     // Contact and joint soft coefficients of the step, computed once instead of once per batch.
     private float _dynBias, _dynMass, _dynImpulse, _stBias, _stMass, _stImpulse, _jointBias, _jointMass, _jointImpulse;
+    private float _liteDynBias, _liteDynMass, _liteDynImpulse, _liteStBias, _liteStMass, _liteStImpulse;
 
     /// <summary>Once per step before anything is prepared: computes the soft coefficients, sizes the per-step solver storage and copies every live body's velocity into <see cref="BodyState"/> with zero accumulated motion.</summary>
     public void BeginSolve(int batches, in StepContext ctx)
     {
+        if (ctx.Schedule != 0)
+        {
+            // The contact-only schedule has its own substep length, so its contacts get their own soft-constraint coefficients; nothing else is sized twice.
+            float liteHertz = Opt.ContactHertz;
+            float liteCap = 0.25f * ctx.InverseSubstepDt;
+            if (liteHertz > liteCap) { liteHertz = liteCap; }
+            MakeSoft(liteHertz, Opt.ContactDampingRatio, ctx.SubstepDt, out _liteDynBias, out _liteDynMass, out _liteDynImpulse);
+            MakeSoft(2f * liteHertz, Opt.ContactDampingRatio, ctx.SubstepDt, out _liteStBias, out _liteStMass, out _liteStImpulse);
+            return;
+        }
+
         {
             float hertz = Opt.ContactHertz;
             float cap = 0.25f * ctx.InverseSubstepDt;
@@ -171,7 +183,7 @@ internal sealed partial class Engine2D
             var kinds = Core.Constraints.Kind;
             bool joints = false;
             foreach (int c in constraints) { if (kinds[c] == (byte)ConstraintKind.Joint) { joints = true; break; } }
-            if (!joints) { PrepareContactBatch(constraints, group); return; }
+            if (!joints) { PrepareContactBatch(constraints, group, ctx.Schedule != 0); return; }
         }
 
         var core = Core;
@@ -182,6 +194,7 @@ internal sealed partial class Engine2D
         ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
         ReadOnlySpan<byte> type = bodies.Type;
         float dynBias = _dynBias, dynMass = _dynMass, dynImpulse = _dynImpulse, stBias = _stBias, stMass = _stMass, stImpulse = _stImpulse;
+        if (ctx.Schedule != 0) { dynBias = _liteDynBias; dynMass = _liteDynMass; dynImpulse = _liteDynImpulse; stBias = _liteStBias; stMass = _liteStMass; stImpulse = _liteStImpulse; }
 
         var w = Wide.AsSpan(group * W2D.GroupFloats, W2D.GroupFloats);
         var idx = WideIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup);
@@ -306,7 +319,7 @@ internal sealed partial class Engine2D
     /// the working set in registers: which bodies, then the shared coefficients, then the points. Table and group accesses go through <see cref="Mem"/> with indices bounded by construction:
     /// a lane is below the batch size (at most eight), a field is a constant, a body or constraint index comes from the constraint store.
     /// </summary>
-    private void PrepareContactBatch(ReadOnlySpan<int> constraints, int group)
+    private void PrepareContactBatch(ReadOnlySpan<int> constraints, int group, bool lite)
     {
         var core = Core;
         var cs = core.Constraints;
@@ -335,6 +348,7 @@ internal sealed partial class Engine2D
         // Pass 1: which bodies each lane touches and which of them the solve writes back (the dynamic ones), then what the two bodies and the manifold share, once per contact.
         ReadOnlySpan<float> invMass = bodies.InverseMass, invI = bodies.InverseInertia;
         float dynBias = _dynBias, dynMass = _dynMass, dynImpulse = _dynImpulse, stBias = _stBias, stMass = _stMass, stImpulse = _stImpulse;
+        if (lite) { dynBias = _liteDynBias; dynMass = _liteDynMass; dynImpulse = _liteDynImpulse; stBias = _liteStBias; stMass = _liteStMass; stImpulse = _liteStImpulse; }
         byte anyRestitution = 0, anyRolling = 0;
         for (int l = 0; l < n; l++)
         {

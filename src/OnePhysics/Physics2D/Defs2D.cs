@@ -74,6 +74,19 @@ public sealed class WorldOptions2D
     /// <summary>Substeps per step, at least 1. Default 4: soft-step substeps of dt/4.</summary>
     public int Substeps { get; set; } = 4;
 
+    /// <summary>
+    /// Substeps per step for islands that hold no joint, 0..256. Default 0 (off) in 2D; the 3D world defaults to 2 with 1 solve and 2 relax passes. An island with a joint or a touching kinematic body runs <see cref="Substeps"/>;
+    /// every other island runs this many substeps of <see cref="ContactVelocityIterations"/> and <see cref="ContactRelaxIterations"/>, which costs less where no joint needs the finer step. 0, or a value not below <see cref="Substeps"/>, runs every island on the world's schedule.
+    /// Saved in snapshots and covered by the world hash, like <see cref="Substeps"/>.
+    /// </summary>
+    public int ContactSubsteps { get; set; }
+
+    /// <summary>Biased solve passes per substep of an island on the contact-only schedule, 1..256. Default 1.</summary>
+    public int ContactVelocityIterations { get; set; } = 1;
+
+    /// <summary>Relax passes per substep of an island on the contact-only schedule, 0..256. Default 0 (the 3D world defaults to 2; used only when <see cref="ContactSubsteps"/> is set).</summary>
+    public int ContactRelaxIterations { get; set; }
+
     /// <summary>Biased solve passes per substep, at least 1. Default 1.</summary>
     public int VelocityIterations { get; set; } = 1;
 
@@ -165,6 +178,9 @@ public sealed class WorldOptions2D
         if (QueryScratchCapacity < 0 || QueryScratchCapacity > 1 << 20) { throw new ArgumentOutOfRangeException(nameof(QueryScratchCapacity), QueryScratchCapacity, "QueryScratchCapacity must be in 0..1048576."); }
         if (!float.IsFinite(Gravity.X) || !float.IsFinite(Gravity.Y)) { throw new ArgumentOutOfRangeException(nameof(Gravity), "Gravity must be finite."); }
         Positive(ContactHertz, nameof(ContactHertz), true);
+        if (ContactSubsteps < 0 || ContactSubsteps > 256) { throw new ArgumentOutOfRangeException(nameof(ContactSubsteps), ContactSubsteps, "ContactSubsteps must be in 0..256."); }
+        if (ContactVelocityIterations < 1 || ContactVelocityIterations > 256) { throw new ArgumentOutOfRangeException(nameof(ContactVelocityIterations), ContactVelocityIterations, "ContactVelocityIterations must be in 1..256."); }
+        if (ContactRelaxIterations < 0 || ContactRelaxIterations > 256) { throw new ArgumentOutOfRangeException(nameof(ContactRelaxIterations), ContactRelaxIterations, "ContactRelaxIterations must be in 0..256."); }
         Positive(ContactDampingRatio, nameof(ContactDampingRatio), true);
         Positive(PushOutVelocity, nameof(PushOutVelocity), true);
         Positive(ContactSlop, nameof(ContactSlop), true);
@@ -193,6 +209,9 @@ public sealed class WorldOptions2D
             Substeps = Substeps,
             VelocityIterations = VelocityIterations,
             RelaxIterations = RelaxIterations,
+            ContactSubsteps = ContactSubsteps,
+            ContactVelocityIterations = ContactVelocityIterations,
+            ContactRelaxIterations = ContactRelaxIterations,
             SleepEnabled = SleepEnabled,
             TimeToSleep = TimeToSleep,
             SleepThreshold = SleepThreshold,

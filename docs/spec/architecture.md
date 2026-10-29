@@ -130,7 +130,7 @@ Kinds in sort order: ContactBegin 0, ContactPersist 1, ContactEnd 2, SensorEnter
 
 **State order** (shared by snapshot and hash):
 
-1. options: layout (7 × i32: position, rotation, linear, angular, inertia lanes, max manifold points, payload floats), gravity (3 × f32), substeps, velocity iterations, relax iterations (3 × i32), sleep enabled (u8), time to sleep, sleep threshold (2 × f32), event mask (u32). Thread count and world id are not saved.
+1. options: layout (7 × i32: position, rotation, linear, angular, inertia lanes, max manifold points, payload floats), gravity (3 × f32), substeps, velocity iterations, relax iterations, contact-only substeps, velocity iterations, relax iterations (6 × i32; the contact-only schedule of islands without joints, see `world3d.md` round 28), sleep enabled (u8), time to sleep, sleep threshold (2 × f32), event mask (u32). Thread count and world id are not saved.
 2. step count (i64); origin (position lanes × f64).
 3. bodies: handle table, then the columns of the table above in the order position, rotation, linear velocity, angular velocity, inverse mass, inverse inertia, sleep time, type, flags, island, each for all slots below the high-water mark, then the slot count again as a framing check.
 4. shapes: handle table, owner (i32 per slot).

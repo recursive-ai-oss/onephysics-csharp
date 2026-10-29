@@ -127,6 +127,7 @@ public sealed partial class PhysicsWorld2D
         var c = _core.Options;
         c.Gravity = new Vector3F(o.Gravity.X, o.Gravity.Y, 0f);
         c.Substeps = o.Substeps; c.VelocityIterations = o.VelocityIterations; c.RelaxIterations = o.RelaxIterations;
+        c.ContactSubsteps = o.ContactSubsteps; c.ContactVelocityIterations = o.ContactVelocityIterations; c.ContactRelaxIterations = o.ContactRelaxIterations;
         c.SleepEnabled = o.SleepEnabled; c.TimeToSleep = o.TimeToSleep; c.SleepThreshold = o.SleepThreshold; c.Events = o.Events;
     }
 
@@ -136,6 +137,7 @@ public sealed partial class PhysicsWorld2D
         var c = _core.Options;
         o.Gravity = new Vector2F(c.Gravity.X, c.Gravity.Y);
         o.Substeps = c.Substeps; o.VelocityIterations = c.VelocityIterations; o.RelaxIterations = c.RelaxIterations;
+        o.ContactSubsteps = c.ContactSubsteps; o.ContactVelocityIterations = c.ContactVelocityIterations; o.ContactRelaxIterations = c.ContactRelaxIterations;
         o.SleepEnabled = c.SleepEnabled; o.TimeToSleep = c.TimeToSleep; o.SleepThreshold = c.SleepThreshold; o.Events = c.Events;
     }
 
@@ -189,6 +191,7 @@ public sealed partial class PhysicsWorld2D
         var before = _engine.Opt;
         var oldGravity = before.Gravity;
         int oldSubsteps = before.Substeps, oldVelocity = before.VelocityIterations, oldRelax = before.RelaxIterations;
+        int oldCSub = before.ContactSubsteps, oldCVel = before.ContactVelocityIterations, oldCRelax = before.ContactRelaxIterations;
         bool oldSleep = before.SleepEnabled;
         float oldTimeToSleep = before.TimeToSleep, oldThreshold = before.SleepThreshold;
         var oldEvents = before.Events;
@@ -226,6 +229,7 @@ public sealed partial class PhysicsWorld2D
         if (after.Substeps != oldSubsteps) { changed |= OptionChanges.Substeps; }
         if (after.VelocityIterations != oldVelocity) { changed |= OptionChanges.VelocityIterations; }
         if (after.RelaxIterations != oldRelax) { changed |= OptionChanges.RelaxIterations; }
+        if (after.ContactSubsteps != oldCSub || after.ContactVelocityIterations != oldCVel || after.ContactRelaxIterations != oldCRelax) { changed |= OptionChanges.ContactSchedule; }
         if (after.SleepEnabled != oldSleep) { changed |= OptionChanges.SleepEnabled; }
         if (BitConverter.SingleToInt32Bits(after.TimeToSleep) != BitConverter.SingleToInt32Bits(oldTimeToSleep)) { changed |= OptionChanges.TimeToSleep; }
         if (BitConverter.SingleToInt32Bits(after.SleepThreshold) != BitConverter.SingleToInt32Bits(oldThreshold)) { changed |= OptionChanges.SleepThreshold; }
