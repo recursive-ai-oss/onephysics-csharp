@@ -97,7 +97,7 @@ internal static class FuzzJoints3D
 
     private static void StepTolerant(PhysicsWorld3D w)
     {
-        try { w.Step(1f / 60f); s_steps++; }
+        try { w.StepChecked(1f / 60f); s_steps++; }
         catch (BodyOutOfBoundsException e) { e.Body.Destroy(); }
     }
 
@@ -276,7 +276,7 @@ internal static class FuzzJoints3D
         w.AddPulley(b[3], b[4], b[3].Position, b[4].Position, new Vector3D(-2, 12, 0), new Vector3D(2, 12, 0));
         var path = w.AddPath(b[0], b[6], [new Vector3D(1, 6, 0), new Vector3D(2, 6, 1), new Vector3D(3, 6.5, 2)]);
         path.EnableMotor = true; path.MotorSpeed = 1f; path.MaxMotorForce = 50f;
-        for (int i = 0; i < 20; i++) { w.Step(1f / 60f); }
+        for (int i = 0; i < 20; i++) { w.StepChecked(1f / 60f); }
         s_base = w.Snapshot();
         return s_base;
     }

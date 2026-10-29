@@ -148,7 +148,7 @@ internal static class Fuzz3DServices
                     case 12: { s_edits++; var s = bodies[r.Byte() % made].GetShapes(); if (s.Length > 0) { s[0].MaskBits = r.Byte(); s[0].CategoryBits = r.Byte(); s[0].GroupIndex = (sbyte)r.Byte(); } break; }
                     case 13: { s_edits++; if ((r.Byte() & 1) == 0) { w.SetContactFilter(new ByIndex(1 + r.Byte() % 5)); } else { w.ClearContactFilter(); } break; }
                     case 14: { s_edits++; int m = r.Byte() % 4; w.Options.PairFilter = m == 0 ? null : (a, b) => ((a.RawHandle.Index + b.RawHandle.Index) % (m + 1)) != 0; break; }
-                    case 15: { for (int k = 1 + r.Byte() % 6; k > 0; k--) { w.Step(1f / 60f); s_steps++; } break; }
+                    case 15: { for (int k = 1 + r.Byte() % 6; k > 0; k--) { w.StepChecked(1f / 60f); s_steps++; } break; }
                     case 16: { var b = bodies[r.Byte() % made]; if ((r.Byte() & 3) == 0) { b.Destroy(); } else { b.Wake(); } break; }
                     case 17: { w.GetDebugGeometry((DebugContent)r.Byte(), geometry); break; }
                     case 18: { snap = w.Snapshot(); snapHash = w.ComputeHash(); break; }

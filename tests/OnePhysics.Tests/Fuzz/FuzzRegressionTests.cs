@@ -7,6 +7,7 @@ using Xunit;
 namespace RecursiveAI.OnePhysics.Tests.Fuzz;
 
 // Every file under testdata/fuzz/<target>/ is a minimised input that once made that fuzz target fail (a crash, a hang or a world mismatch).
+// The world targets also check the round-trip property after every step they make (fuzz/Fuzz/RoundTrip.cs): the snapshot of the world restores into a fresh world and re-serializes to the same bytes.
 // Replaying them keeps each fixed finding fixed; a target must accept the input or raise only the typed error it documents.
 public class FuzzRegressionTests
 {

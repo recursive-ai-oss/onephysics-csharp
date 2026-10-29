@@ -12,8 +12,9 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <!-- First public version, so there is nothing to compare with yet; set PackageValidationBaselineVersion after this release. -->
+    <!-- Packing compares the public API with the last published preview and fails on a break that is not listed in a suppression file. -->
     <EnablePackageValidation>true</EnablePackageValidation>
+    <PackageValidationBaselineVersion>0.1.0-preview.5</PackageValidationBaselineVersion>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
     <!-- The raw tier is marked experimental for consumers (OPHYS0001), and so is the 3D engine (OPHYS0002); inside the package they are simply used. -->

@@ -58,7 +58,7 @@ internal static class FuzzRagdolls3D
 
     private static void StepTolerant(PhysicsWorld3D w)
     {
-        try { w.Step(1f / 60f); s_steps++; }
+        try { w.StepChecked(1f / 60f); s_steps++; }
         catch (BodyOutOfBoundsException e) { e.Body.Destroy(); }
     }
 
@@ -202,7 +202,7 @@ internal static class FuzzRagdolls3D
             if (i != 2) { g.DriveToPose(pose, i == 0 ? 1f : 0.4f); }
         }
 
-        for (int s = 0; s < 40; s++) { w.Step(1f / 60f); }
+        for (int s = 0; s < 40; s++) { w.StepChecked(1f / 60f); }
         return s_base = w.Snapshot();
     }
 

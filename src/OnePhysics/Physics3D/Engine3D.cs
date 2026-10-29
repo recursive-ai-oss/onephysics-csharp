@@ -535,7 +535,16 @@ internal sealed partial class Engine3D : ISnapshotSection
         pos[0] += (double)shift.X; pos[1] += (double)shift.Y; pos[2] += (double)shift.Z;
         LocalCenter[3 * b] = newLc.X; LocalCenter[3 * b + 1] = newLc.Y; LocalCenter[3 * b + 2] = newLc.Z;
 
-        float maxExt = 0f, minExt = float.MaxValue;
+        ComputeExtents(b, newLc, out float maxExt, out float minExt);
+
+        MaxExtent[b] = maxExt;
+        MinExtent[b] = minExt;
+    }
+
+    /// <summary>Farthest point of any shape of the body from <paramref name="lc"/> (its centre of mass), and the smallest half-width of any shape. A restore recomputes these to check the saved ones.</summary>
+    private void ComputeExtents(int b, Vector3F lc, out float maxExt, out float minExt)
+    {
+        maxExt = 0f; minExt = float.MaxValue;
         for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
         {
             var g = Geoms[GeomOf[s]]!;
@@ -543,15 +552,12 @@ internal sealed partial class Engine3D : ISnapshotSection
             Vector3F mn, mx;
             if (g.IsConvex) { ShapeBounds3D.Compute(g.Convex, pose, out mn, out mx); }
             else { BoundsOfBox(g.LocalBounds, pose, out mn, out mx); }
-            float dx = Math.Max(Math.Abs(mn.X - newLc.X), Math.Abs(mx.X - newLc.X)), dy = Math.Max(Math.Abs(mn.Y - newLc.Y), Math.Abs(mx.Y - newLc.Y)), dz = Math.Max(Math.Abs(mn.Z - newLc.Z), Math.Abs(mx.Z - newLc.Z));
+            float dx = Math.Max(Math.Abs(mn.X - lc.X), Math.Abs(mx.X - lc.X)), dy = Math.Max(Math.Abs(mn.Y - lc.Y), Math.Abs(mx.Y - lc.Y)), dz = Math.Max(Math.Abs(mn.Z - lc.Z), Math.Abs(mx.Z - lc.Z));
             float ext = float.Sqrt(dx * dx + dy * dy + dz * dz);
             if (ext > maxExt) { maxExt = ext; }
             float me = 0.5f * Math.Min(mx.X - mn.X, Math.Min(mx.Y - mn.Y, mx.Z - mn.Z));
             if (me < minExt) { minExt = me; }
         }
-
-        MaxExtent[b] = maxExt;
-        MinExtent[b] = minExt;
     }
 
     // ------------------------------------------------------------------ pair table
@@ -1029,6 +1035,23 @@ internal sealed partial class Engine3D : ISnapshotSection
             {
                 if (!shapes.Handles.IsLive(s) || shapes.Owner[s] != b || ++count > shapes.HighWater) { return false; }
             }
+
+            // The bounds shortcut, continuous collision and spin estimates trust the stored extents, so they must match the geometry (the stored values come from the same computation, so the band is only rounding slack).
+            if (bodies.TypeOf(b) == BodyType.Dynamic)
+            {
+                ComputeExtents(b, LocalCenterOf(b), out float maxE, out float minE);
+                if (!(MaxExtent[b] >= maxE * 0.999f - 1e-5f && MaxExtent[b] <= maxE * 1.001f + 1e-5f))
+                {
+                    ConsistencyProblem = "the stored maximum extent of body slot " + b.ToString(CultureInfo.InvariantCulture) + " (" + MaxExtent[b].ToString("R", CultureInfo.InvariantCulture) + ") does not match its shapes (" + maxE.ToString("R", CultureInfo.InvariantCulture) + ")";
+                    return false;
+                }
+
+                if (!(MinExtent[b] >= minE * 0.999f - 1e-5f && MinExtent[b] <= minE * 1.001f + 1e-5f))
+                {
+                    ConsistencyProblem = "the stored minimum extent of body slot " + b.ToString(CultureInfo.InvariantCulture) + " (" + MinExtent[b].ToString("R", CultureInfo.InvariantCulture) + ") does not match its shapes (" + minE.ToString("R", CultureInfo.InvariantCulture) + ")";
+                    return false;
+                }
+            }
         }
 
         // Every contact constraint belongs to exactly one pair chain, sorted by sub-shape pair.
@@ -1057,9 +1080,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         int contacts = 0;
         for (int c = 0; c < cons.HighWater; c++)
         {
-            if (!cons.IsLive(c) || cons.KindOf(c) != ConstraintKind.Contact) { continue; }
-            contacts++;
-            if (!WarmStartPlausible(c)) { return false; }
+            if (cons.IsLive(c) && cons.KindOf(c) == ConstraintKind.Contact) { contacts++; }
         }
 
         return contacts == seen;
@@ -1067,49 +1088,4 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     /// <summary>Why the last <see cref="IsConsistentWithCore"/> failed, when it can say.</summary>
     public string ConsistencyProblem = "";
-
-    /// <summary>The inverse mass (or inertia) of the heavier dynamic body of a pair; a static or kinematic partner (zero) leaves the other.</summary>
-    private static double HeavierInverse(double a, double b) => a <= 0.0 ? b : b <= 0.0 ? a : Math.Min(a, b);
-
-    /// <summary>
-    /// A contact's saved impulses are applied to its bodies before the first solve, so an enormous finite one would throw a body out of the world in a single step.
-    /// An impulse a solver produced changes the heavier dynamic body's velocity by no more than the speeds around it (a light body under a heavy one carries the heavy one's weight, which moves the light one a lot but the heavy one little), so impulse times the smaller inverse mass is bounded;
-    /// the limit is generous (the speed cap times 64, plus four times the bodies' own speeds) and exists only to refuse values no step could have written.
-    /// </summary>
-    private bool WarmStartPlausible(int c)
-    {
-        var cons = Core.Constraints;
-        var bodies = Core.Bodies;
-        int a = cons.BodyA[c], b = cons.BodyB[c];
-        double invMass = HeavierInverse(bodies.InverseMass[a], bodies.InverseMass[b]);
-        var va = bodies.LinearVelocityOf(a); var vb = bodies.LinearVelocityOf(b);
-        float speeds = float.Sqrt(va[0] * va[0] + va[1] * va[1] + va[2] * va[2]) + float.Sqrt(vb[0] * vb[0] + vb[1] * vb[1] + vb[2] * vb[2]);
-        double limit = 64.0 * Opt.MaxLinearSpeed + 4.0 * speeds;
-        var pl = cons.Payload(c);
-        int points = cons.PointCount[c];
-        for (int i = 0; i < points && i < 4; i++)
-        {
-            double biggest = Math.Max(Math.Max(Math.Abs(pl[ManifoldLayout.NormalImpulse(i)]), Math.Abs(pl[ManifoldLayout.Tangent1Impulse(i)])),
-                Math.Max(Math.Abs(pl[ManifoldLayout.Tangent2Impulse(i)]), Math.Abs(pl[ManifoldLayout.MaxNormalImpulse(i)])));
-            if (biggest * invMass > limit)
-            {
-                ConsistencyProblem = "contact constraint " + c.ToString(CultureInfo.InvariantCulture) + " holds an impulse of " + biggest.ToString("R", CultureInfo.InvariantCulture) + " at point " + i.ToString(CultureInfo.InvariantCulture) + ", more than any solver step could have produced";
-                return false;
-            }
-        }
-
-        // The rolling impulse is a torque impulse: bounded the same way against the bodies' inverse inertia.
-        double rolling = Math.Max(Math.Max(Math.Abs(pl[ManifoldLayout.RollingImpulse]), Math.Abs(pl[ManifoldLayout.RollingImpulse + 1])), Math.Abs(pl[ManifoldLayout.RollingImpulse + 2]));
-        double ia = 0.0, ib = 0.0;
-        foreach (float f in bodies.InverseInertiaOf(a)) { ia += Math.Abs(f); }
-        foreach (float f in bodies.InverseInertiaOf(b)) { ib += Math.Abs(f); }
-        double invInertia = HeavierInverse(ia, ib);
-        if (rolling * invInertia > limit)
-        {
-            ConsistencyProblem = "contact constraint " + c.ToString(CultureInfo.InvariantCulture) + " holds a rolling impulse of " + rolling.ToString("R", CultureInfo.InvariantCulture) + ", more than any solver step could have produced";
-            return false;
-        }
-
-        return true;
-    }
 }

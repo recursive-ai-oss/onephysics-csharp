@@ -731,9 +731,6 @@ internal sealed partial class Engine3D
         public VehicleState?[] States = Array.Empty<VehicleState?>();
     }
 
-    // Limits for restored wheel and engine state: far beyond anything a drive can reach, tight enough that no step turns them into an overflow.
-    private const float MaxRestoredSprungMass = 1e12f, MaxRestoredSpin = 1e9f;
-
     private static VehicleBlock ReadVehicles(StateReader r, int bodyCount)
     {
         var b = new VehicleBlock { Handles = HandleTable.Read(r, "vehicle") };
@@ -747,7 +744,7 @@ internal sealed partial class Engine3D
             s.Forward = r.ReadSingle(); s.Right = r.ReadSingle(); s.Brake = r.ReadSingle(); s.Handbrake = r.ReadSingle();
             s.EngineW = r.ReadSingle(); s.Gear = r.ReadInt32(); s.ShiftTimer = r.ReadSingle();
             if (!(Math.Abs(s.Forward) <= 1f) || !(Math.Abs(s.Right) <= 1f) || !(s.Brake >= 0f && s.Brake <= 1f) || !(s.Handbrake >= 0f && s.Handbrake <= 1f)) { throw r.Error("invalid vehicle inputs"); }
-            if (!float.IsFinite(s.EngineW) || s.EngineW < 0f || s.EngineW > MaxRestoredSpin || !float.IsFinite(s.ShiftTimer) || s.ShiftTimer < 0f) { throw r.Error("invalid engine state"); }
+            if (!float.IsFinite(s.EngineW) || s.EngineW < 0f || !float.IsFinite(s.ShiftTimer) || s.ShiftTimer < 0f) { throw r.Error("invalid engine state"); }
             if (s.Gear < -1 || s.Gear > s.Def.Transmission.Ratios.Length) { throw r.Error("invalid gear"); }
             try { s.Allocate(); }
             catch (ArgumentException e) { throw r.Error("invalid wheel dimensions: " + e.Message); }
@@ -761,9 +758,6 @@ internal sealed partial class Engine3D
                 float sum = s.Sprung[i] + s.Omega[i] + s.Spin[i] + s.Steer[i] + s.Length[i] + s.SpringForce[i] + s.SlipRatio[i] + s.SlipAngle[i] + s.Fx[i] + s.Fy[i] + s.Nx[i] + s.Ny[i] + s.Nz[i];
                 if (!float.IsFinite(sum) || !double.IsFinite(s.Cx[i] + s.Cy[i] + s.Cz[i])) { throw r.Error("non-finite wheel state"); }
                 if (!(s.Sprung[i] > 0f) || s.Contact[i] > 1) { throw r.Error("invalid wheel state"); }
-                // These are read by the next step before it rewrites anything: an absurd spring load or wheel speed would turn into an absurd impulse on the chassis.
-                if (s.Sprung[i] > MaxRestoredSprungMass) { throw r.Error("vehicle " + v + " wheel " + i + " sprung mass " + s.Sprung[i].ToString("R", CultureInfo.InvariantCulture) + " is beyond " + MaxRestoredSprungMass.ToString("R", CultureInfo.InvariantCulture)); }
-                if (!(Math.Abs(s.Omega[i]) <= MaxRestoredSpin)) { throw r.Error("vehicle " + v + " wheel " + i + " angular velocity " + s.Omega[i].ToString("R", CultureInfo.InvariantCulture) + " is beyond " + MaxRestoredSpin.ToString("R", CultureInfo.InvariantCulture) + " rad/s"); }
                 if (s.GroundBody[i] < -1 || s.GroundBody[i] >= bodyCount || (s.GroundBody[i] >= 0 && s.GroundGen[i] < 1)) { throw r.Error("invalid wheel ground body"); }
             }
 
