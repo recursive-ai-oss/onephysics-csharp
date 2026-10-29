@@ -511,3 +511,37 @@ Work per step (median after warm-up). Bepu: candidate pairs the broadphase hands
 * **More work or the same work slower?** Both, by stage. Solve: more passes and 4× the integrations, and a slower pass. Collision: about twice as many pairs per step at a similar cost per pair. The earlier conclusion that the passes were not the gap is withdrawn: the kernel-only marginal cost per pass (round 18) is competitive, but a step runs 12 of them plus four integrations and a preparation, and that stage is 1.3 ms of the ragdoll gap and 3.4 ms of the large-pile gap.
 * **Where this points next** (not built): (1) the solve stage's fixed costs, namely the four integrations and the preparation, which have no Bepu counterpart at one substep (at 4 substeps the joint scenes' stability needs them, round 13, so the lever is making each cheaper, not removing them); (2) the pair count (the fat-box margin and the pair life), for sleep-wake-3d first; (3) the bounding-box stage (4–5× Bepu's prediction pass on all three scenes).
 * **Gaps.** `CollisionDetection` is one public call, so broad and narrow phase cannot be split on Bepu's side; its pair and manifold counts come from the callbacks it documents, and its contact points include speculative ones, so the point counts are not like for like; our pair count is the pair table before the tight-box early-outs.
+
+### Round 20: the pass structure again (no library change; measured, nothing kept)
+
+**Tools.** `tools/bench/stab3d.sh NAME [ENV=VAL ...]` runs every 3D scene in stability mode for this library at one thread and `tools/bench/judge3d.py` applies the scene limits (the `Verdict` table plus the limits of the vehicle, character, buoyancy, tracked, motorcycle and powered-ragdoll scenes in `scenes.md`) to its `metrics.csv`; the sweep knobs are the `BAR_SUBSTEPS`, `BAR_VELITERS` and `BAR_RELAX` of round 13. Worker with light load, 4 runs in parallel on 2 cores each, tiered compilation off.
+
+**Stability by schedule** (substeps / solve iterations per substep; relax is 1 throughout; "ok" is every limit met; `ragdoll-powered-3d` sets 8 substeps itself, so the sweeps that override the substep count change that scene):
+
+| scene | 4 / 1 (default) | 3 / 1 | 2 / 1 | 2 / 2 |
+|---|---|---|---|---|
+| joint-chains-3d (jointError, limit 1.0) | ok (0.23) | 3.50 | 7.86 | 7.43 |
+| ragdoll-powered-3d (fallen, limit 0) | ok (0) | 50 | 47 | 50 |
+| pyramid-3d-30 (restKE, limit 0.0001) | ok | ok | 0.0026 | ok |
+| the other twelve scenes | ok | ok | ok | ok |
+
+So the contact scenes (both pyramids, large-pile, terrain, sleep-wake, ragdoll-pile with its joints, vehicles, characters, buoyancy, tracked, motorcycle) hold at two substeps with two solve iterations; the chain with a 500:1 end mass and the powered ragdolls do not hold at three. joint-grid-3d stays inside its limit at two substeps (jointError 0.023 against 0.006) but no longer falls asleep (its step is 0.035 ms asleep and 0.96 ms at two substeps).
+
+**Candidates built and measured (patch kept outside the repository):**
+* *Extra joint-only passes inside fewer substeps* (new solve phases that skip contacts; 2 or 3 substeps, 1 to 4 extra biased solves and/or relaxes): never better, usually worse. joint-chains-3d at 3 substeps: 1.08 with one extra solve and relax (the best), 2.1 with one extra relax, 15.8 with two; at 2 substeps 7.5 (one extra of each), 12.8 (two), 237 (four extra relaxes). More Gauss-Seidel passes on a 500:1 chain diverge when the substep is long, because the block inverse is built once per substep at the warm start and goes stale. ragdoll-powered-3d at 2 or 3 substeps: 50 fallen with every variant.
+* *Contacts on a coarser schedule than joints* (4 substeps; contacts warm started and solved in the first substep of each pair, relaxed in the last; joints every substep; contact softness at twice the substep): joint-chains-3d 0.90 (ok), ragdoll-pile-3d ok, terrain and sleep-wake ok, but pyramid-3d-30 collapses (topLateral 0.29, restKE 0.063, finalPenetration 0.0065), large-pile-3d jitter 0.0215 against 0.01 and ragdoll-powered-3d drops all 50. A body integrates gravity in the substep in which its contacts are not solved, so it sinks before the next solve; this is unlike a real two-substep step, which integrates and solves in step. A scheme in which bodies without joints take real two-substep steps while jointed bodies take four needs batches that never mix the two classes; the colouring, batching and the stage program are shared by all constraints, so it is a change to that structure, not a switch.
+* *Relax only in the last substep, warm start fused into the first solve, three substeps:* round 13, not repeated.
+
+**What the cheaper schedules buy** (worker, load 5 to 8, one thread pinned to a core and eight threads pinned to eight, tiered compilation off, median of 3 runs, step ms; base is the default 4 / 1; 2 / 1 and 2 / 2 are the stable-where-they-are-stable schedules above):
+
+| scene | t1 base / 2,1 / 2,2 | t8 base / 2,1 / 2,2 |
+|---|---|---|
+| ragdoll-pile-3d | 2.82 / 1.99 / 2.27 | 1.46–1.88 / 0.91–1.53 / 0.99–2.61 (noisy) |
+| large-pile-3d | 9.0 / 7.2 / 7.7 | 3.0–3.2 / 2.5–2.8 / 2.6–3.7 |
+| mesh-terrain-3d | 2.34 / 1.95 / 1.97 | 0.93 / 0.71 / 0.72 |
+| heightfield-terrain-3d | 2.65 / 2.03 / 2.22 | 0.96 / 0.74 / 0.79 |
+| sleep-wake-3d | 3.5 / 3.9 / 3.1 | 1.4 / 1.4 / 1.3 |
+
+Two substeps with one iteration take the whole step down by 1.2× (large-pile-3d) to 1.4× (ragdoll-pile-3d); that is 1.6× on the solve stage of large-pile-3d (about 1.75 of its 4.05 ms), not the 1.8× aimed for, and the cheaper schedule is the one that fails the joint scenes. Integration and preparation do not scale with the pass count: preparation runs once per step already, and the four integrations are 0.3 ms of the ragdoll pile's solve stage.
+
+**Result.** No schedule that is stable on every 3D scene is cheaper than the default: every cheaper one fails joint-chains-3d and the powered ragdolls, which are the scenes the four substeps are for, and two substeps also lose the sleeping of joint-grid-3d. Where a world has no joints, or joints with mass ratios near one (ragdoll-pile-3d passes at two substeps), two substeps with two iterations pass everything else and cost 1.2 to 1.4× less per step; that is the decision for the owner: a per-world setting (a preset that picks the substep count from the content, as the powered-ragdoll scene already sets 8), or a rule that depends on whether the world holds joints. The library keeps 4 / 1 as its default. The levers left that do not change results (integration staging, the body gather, preparation) are each under 3% of a step (round 19).
