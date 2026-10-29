@@ -71,7 +71,7 @@ internal static class FuzzJoints2D
 
     private static void StepTolerant(PhysicsWorld2D w)
     {
-        try { w.Step(1f / 60f); s_steps++; }
+        try { w.StepChecked(1f / 60f); s_steps++; }
         catch (BodyOutOfBoundsException e)
         {
             e.Body.Destroy();
@@ -227,7 +227,7 @@ internal static class FuzzJoints2D
         var mouse = w.AddTarget(b[0], b[6], new Vector2D(1, 6));
         mouse.Target = new Vector2D(3, 7);
         w.AddRelative(b[3], b[4], 50f, 50f).SetOffset(new Vector2F(1f, 0f), 0.1f);
-        for (int i = 0; i < 20; i++) { w.Step(1f / 60f); }
+        for (int i = 0; i < 20; i++) { w.StepChecked(1f / 60f); }
         var snap = w.Snapshot();
         if (services) { s_baseServices = snap; } else { s_base = snap; }
         return snap;

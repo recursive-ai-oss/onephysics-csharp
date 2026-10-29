@@ -71,7 +71,7 @@ internal static class FuzzFluids3D
 
     private static void StepTolerant(PhysicsWorld3D w)
     {
-        try { w.Step(1f / 60f); s_steps++; }
+        try { w.StepChecked(1f / 60f); s_steps++; }
         catch (BodyOutOfBoundsException e) { e.Body.Destroy(); }
     }
 
@@ -200,7 +200,7 @@ internal static class FuzzFluids3D
             if (i == 4) { b.BuoyancyFactor = 0f; }
         }
 
-        for (int s = 0; s < 40; s++) { w.Step(1f / 60f); }
+        for (int s = 0; s < 40; s++) { w.StepChecked(1f / 60f); }
         return s_base = w.Snapshot();
     }
 

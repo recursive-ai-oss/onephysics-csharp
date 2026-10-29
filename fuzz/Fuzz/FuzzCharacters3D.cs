@@ -73,7 +73,7 @@ internal static class FuzzCharacters3D
 
     private static void StepTolerant(PhysicsWorld3D w)
     {
-        try { w.Step(1f / 60f); s_steps++; }
+        try { w.StepChecked(1f / 60f); s_steps++; }
         catch (BodyOutOfBoundsException e) { e.Body.Destroy(); }
     }
 
@@ -242,7 +242,7 @@ internal static class FuzzCharacters3D
         for (int s = 0; s < 40; s++)
         {
             foreach (var c in w.GetCharacters()) { c.Move(new Vector3F(0.03f, c.IsGrounded ? -0.01f : -0.1f, 0f), 1f / 60f); }
-            w.Step(1f / 60f);
+            w.StepChecked(1f / 60f);
         }
 
         var bytes = w.Snapshot();

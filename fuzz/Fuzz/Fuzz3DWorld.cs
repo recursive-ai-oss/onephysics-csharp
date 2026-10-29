@@ -30,7 +30,7 @@ internal static class Fuzz3DWorld
 
         w.AddSphere(0.5f, at: new Vector3D(3, 2, 0));
         w.AddCapsule(0.5f, 0.25f, at: new Vector3D(-3, 2, 0));
-        for (int i = 0; i < 40; i++) { w.Step(1f / 60f); }
+        for (int i = 0; i < 40; i++) { w.StepChecked(1f / 60f); }
         return w;
     }
 
@@ -116,11 +116,11 @@ internal static class Fuzz3DWorld
     // A body that left the supported range is reported with a typed error naming a live body and the world is unchanged; the body is destroyed and stepping continues.
     private static void StepTolerant(PhysicsWorld3D w)
     {
-        try { w.Step(1f / 60f); s_stepped++; }
+        try { w.StepChecked(1f / 60f); s_stepped++; }
         catch (BodyOutOfBoundsException e)
         {
             ulong before = w.ComputeHash();
-            try { w.Step(1f / 60f); throw new InvalidOperationException("a step after the out-of-bounds error did not raise it again"); }
+            try { w.StepChecked(1f / 60f); throw new InvalidOperationException("a step after the out-of-bounds error did not raise it again"); }
             catch (BodyOutOfBoundsException) { }
             if (before != w.ComputeHash()) { throw new InvalidOperationException("the out-of-bounds error changed the world"); }
             e.Body.Destroy();
@@ -219,7 +219,7 @@ internal static class Fuzz3DWorld
         try { w2.Restore(snap); }
         catch (SnapshotFormatException)
         {
-            try { w.Step(1f / 60f); }
+            try { w.StepChecked(1f / 60f); }
             catch (BodyOutOfBoundsException) { s_oob++; return; }
             throw new InvalidOperationException("a snapshot of a world whose next step succeeds was refused");
         }

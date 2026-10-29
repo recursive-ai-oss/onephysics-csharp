@@ -4,10 +4,11 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 **0.x previews are not bit-compatible with each other: snapshots, saved games and replays from one preview do not carry to another.**
 
-## [Unreleased]
+## [0.1.0-preview.6]
 
-- **Fix: 0.1.0-preview.5 could refuse a snapshot of a valid 3D world.** Its `Restore` rejected saved contact impulses above a fixed plausibility limit, but the solver can legitimately produce larger ones (a very heavy body on a light one, or a tight pile, gave impulses in the trillions), so a world that stepped normally could write a snapshot the same library then refused with `SnapshotFormatException`. This release removes that check, along with the wheel and engine speed limits added with it: a snapshot the library wrote always restores, and saved impulses are checked only for being finite. A damaged snapshot that carries an enormous impulse restores, and the next step reports a body flung out of the supported range with `BodyOutOfBoundsException`, the world unchanged, as before. Results do not move.
-- **3D `Restore` refuses a dynamic body whose saved extents do not match its shapes** (`SnapshotFormatException`, world unchanged). A valid snapshot always matches.
+- **Fix: 0.1.0-preview.5 could refuse a snapshot of a valid 3D world.** Its `Restore` rejected saved contact impulses above a fixed plausibility limit, but the solver can legitimately produce larger ones (a very heavy body on a light one, or a tight pile, gave impulses in the trillions). A world that had stepped normally could therefore write a snapshot that the same library then refused with `SnapshotFormatException`, which breaks a host's rollback. This release removes that check, and the wheel and engine speed limits added with it: a snapshot the library wrote always restores, and saved impulses are checked only for being finite. A damaged snapshot that carries an enormous impulse restores, and the next step reports the flung body with `BodyOutOfBoundsException` (the world unchanged), as before. No step result moves: world hashes and snapshot bytes are the same as in preview.5 for the same inputs.
+- **3D `Restore` refuses a dynamic body whose saved extents do not match its shapes** (`SnapshotFormatException`, world unchanged). A snapshot the library wrote always matches.
+- Tests now check, after every step of every fuzz scenario (2D and 3D), that the world's snapshot restores into a fresh world and re-serializes to the same bytes.
 
 ## [0.1.0-preview.5]
 
@@ -75,3 +76,4 @@ First public release. The 2D engine and the shared core are the supported surfac
 First preview: the 2D engine, the shared core (handles, deterministic scheduler and coloring, islands and sleeping, layers and filters, events and sensors, queries, materials, snapshot and restore, world hashes, debug geometry), and the 3D rigid core with characters, vehicles, ragdolls and buoyancy in progress.
 
 [0.1.0-preview.5]: https://github.com/recursive-ai-oss/onephysics-csharp/releases/tag/v0.1.0-preview.5
+[0.1.0-preview.6]: https://github.com/recursive-ai-oss/onephysics-csharp/releases/tag/v0.1.0-preview.6

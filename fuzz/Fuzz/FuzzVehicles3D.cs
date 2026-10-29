@@ -56,7 +56,7 @@ internal static class FuzzVehicles3D
 
     private static void StepTolerant(PhysicsWorld3D w)
     {
-        try { w.Step(1f / 60f); s_steps++; }
+        try { w.StepChecked(1f / 60f); s_steps++; }
         catch (BodyOutOfBoundsException e) { e.Body.Destroy(); }
     }
 
@@ -248,7 +248,7 @@ internal static class FuzzVehicles3D
 
         var tank = w.AddTank(new Vector3D(-20, 0, 10)); tank.SetInput(0.6f, 0.3f);
         var bike = w.AddMotorcycle(new Vector3D(20, 0, 10)); bike.SetInput(0.5f, 0.2f);
-        for (int s = 0; s < 40; s++) { w.Step(1f / 60f); }
+        for (int s = 0; s < 40; s++) { w.StepChecked(1f / 60f); }
         return s_base = w.Snapshot();
     }
 
