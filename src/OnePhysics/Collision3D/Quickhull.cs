@@ -594,19 +594,13 @@ internal sealed class QuickhullBuilder
         return area2 <= _eps * Math.Sqrt(best);
     }
 
-    // Distance from input point v to the line through input points a and b (to the point a when they coincide).
-    private double DistanceToLine(int v, int a, int b)
+    // One edge's contribution to Newell's normal about the point (mx, my, mz).
+    private void AddNewell(int a, int b, double mx, double my, double mz, ref double nx, ref double ny, ref double nz)
     {
-        double ux = _x[b] - _x[a], uy = _y[b] - _y[a], uz = _z[b] - _z[a];
-        double wx = _x[v] - _x[a], wy = _y[v] - _y[a], wz = _z[v] - _z[a];
-        double u2 = (ux * ux) + (uy * uy) + (uz * uz);
-        if (!(u2 > 0))
-        {
-            return Math.Sqrt((wx * wx) + (wy * wy) + (wz * wz));
-        }
-
-        double cx = (uy * wz) - (uz * wy), cy = (uz * wx) - (ux * wz), cz = (ux * wy) - (uy * wx);
-        return Math.Sqrt(((cx * cx) + (cy * cy) + (cz * cz)) / u2);
+        double ax = _x[a] - mx, ay = _y[a] - my, az = _z[a] - mz, bx = _x[b] - mx, by = _y[b] - my, bz = _z[b] - mz;
+        nx += (ay * bz) - (az * by);
+        ny += (az * bx) - (ax * bz);
+        nz += (ax * by) - (ay * bx);
     }
 
     private void DropPoint(Face f, int p)
@@ -811,55 +805,85 @@ internal sealed class QuickhullBuilder
                 }
             }
 
-            // A valence-2 vertex is only dropped when it really sits on the straight line between the corners at the ends of its chain
-            // (within the tolerance). A bent chain between two faces is a real feature of the hull: dropping its vertices would cut input points out of the shape.
+            // A valence-2 vertex is dropped only if it stays within the tolerance of the planes of both polygons it is removed from.
+            // Otherwise it is a real feature (a bend the pairwise merge test could not see) and dropping it would cut input points out of the hull.
+            // Keeping a vertex changes the reduced polygons, so the test repeats until no further vertex has to stay.
             bool[] dropVertex = new bool[_n];
             bool[] bent = new bool[_n];
-            foreach (int[] p in polys)
+            for (bool grew = true; grew;)
             {
-                for (int k = 0; k < p.Length; k++)
+                grew = false;
+                for (int v = 0; v < _n; v++)
                 {
-                    int v = p[k];
-                    if (valence[v] != 2 || dropVertex[v])
+                    dropVertex[v] = valence[v] == 2 && !bent[v];
+                }
+
+                foreach (int[] p in polys)
+                {
+                    int kept = 0;
+                    foreach (int v in p)
+                    {
+                        if (!dropVertex[v])
+                        {
+                            kept++;
+                        }
+                    }
+
+                    if (kept < 3 || kept == p.Length)
                     {
                         continue;
                     }
 
-                    int back = k, fwd = k;
-                    int guard = 0;
-                    while (valence[p[back]] == 2 && guard++ < p.Length)
+                    // Newell's plane of the reduced polygon about its mean, as the final face planes are made.
+                    double mx = 0, my = 0, mz = 0;
+                    foreach (int v in p)
                     {
-                        back = (back + p.Length - 1) % p.Length;
-                    }
-
-                    guard = 0;
-                    while (valence[p[fwd]] == 2 && guard++ < p.Length)
-                    {
-                        fwd = (fwd + 1) % p.Length;
-                    }
-
-                    if (valence[p[back]] == 2 || valence[p[fwd]] == 2)
-                    {
-                        continue; // a polygon made only of chain vertices cannot occur on a closed hull; keep it as it is
-                    }
-
-                    int a = p[back], b = p[fwd];
-                    bool straight = true;
-                    for (int m = (back + 1) % p.Length; m != fwd && straight; m = (m + 1) % p.Length)
-                    {
-                        straight = DistanceToLine(p[m], a, b) <= _eps;
-                    }
-
-                    for (int m = (back + 1) % p.Length; m != fwd && straight; m = (m + 1) % p.Length)
-                    {
-                        dropVertex[p[m]] = true;
-                    }
-
-                    if (!straight)
-                    {
-                        for (int m = (back + 1) % p.Length; m != fwd; m = (m + 1) % p.Length)
+                        if (!dropVertex[v])
                         {
-                            bent[p[m]] = true;
+                            mx += _x[v];
+                            my += _y[v];
+                            mz += _z[v];
+                        }
+                    }
+
+                    mx /= kept;
+                    my /= kept;
+                    mz /= kept;
+                    double nx = 0, ny = 0, nz = 0;
+                    int prev = -1;
+                    int first = -1;
+                    foreach (int v in p)
+                    {
+                        if (dropVertex[v])
+                        {
+                            continue;
+                        }
+
+                        if (prev >= 0)
+                        {
+                            AddNewell(prev, v, mx, my, mz, ref nx, ref ny, ref nz);
+                        }
+                        else
+                        {
+                            first = v;
+                        }
+
+                        prev = v;
+                    }
+
+                    AddNewell(prev, first, mx, my, mz, ref nx, ref ny, ref nz);
+                    double len = Math.Sqrt((nx * nx) + (ny * ny) + (nz * nz));
+                    if (!(len > 0))
+                    {
+                        continue;
+                    }
+
+                    foreach (int v in p)
+                    {
+                        if (dropVertex[v] && !bent[v] && Math.Abs((nx * (_x[v] - mx)) + (ny * (_y[v] - my)) + (nz * (_z[v] - mz))) / len > _eps)
+                        {
+                            bent[v] = true;
+                            grew = true;
                         }
                     }
                 }
