@@ -1,4 +1,4 @@
-/* Reader for the engine-neutral 2D scene format described in docs/scenes.md. Header-only, C99. */
+/* Reader for the engine-neutral 2D scene format described in docs/spec/scenes.md. Header-only, C99. */
 #ifndef OP_SCENE_H
 #define OP_SCENE_H
 

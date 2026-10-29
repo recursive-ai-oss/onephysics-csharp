@@ -164,7 +164,7 @@ public readonly struct AcceptAllPairs : IPairFilter
 /// a moved dynamic proxy against all three trees, a moved static or kinematic proxy against the dynamic tree only (static-static never pairs; static-kinematic and kinematic-kinematic pair only when one of the two shapes is a sensor).
 /// A pair of two moved proxies is reported once. The returned pairs are sorted by (user id A, user id B, proxy A, proxy B), a total order that does not depend on thread count or traversal order.
 /// The caller keeps the set of pairs it already has (for example the contact table) and treats the output as candidates.
-/// The whole state, tree structures and the move buffer included, is a snapshot section; see docs/broadphase.md.
+/// The whole state, tree structures and the move buffer included, is a snapshot section; see docs/spec/broadphase.md.
 /// </remarks>
 /// <typeparam name="TBox">The box type: <see cref="Aabb2D"/> or <see cref="Aabb3D"/>.</typeparam>
 [Experimental("OPHYS0001")]

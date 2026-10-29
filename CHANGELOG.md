@@ -4,7 +4,11 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 **0.x previews are not bit-compatible with each other: snapshots, saved games and replays from one preview do not carry to another.**
 
-## 0.1.0-preview.4
+## [0.1.0-preview.5]
+
+First public release. (Notes to be filled in from the changes since preview.4.)
+
+## [0.1.0-preview.4]
 
 **Breaking API changes.** No result moves: world hashes, snapshot bytes and event order are the same as in preview.3 for the same inputs. Migration is by namespace, definition and exception contracts only.
 
@@ -14,7 +18,7 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 - **Exception contracts.** Argument errors are `ArgumentException`s whose `ParamName` is the caller's parameter (`at`, `size`, `radius`, `layerA`, `force`, `def`, and the second body of an `AddHinge`-style call), with messages in the caller's terms (`AddBox` reports `size`, not half extents). `InvalidJointException` now derives from `ArgumentException` instead of `PhysicsException` (catch it by its own type, or as `ArgumentException`). `InvalidShapeException.Reason` is now `Error`, like `HullBuildException`, `MeshBuildException` and `ShapeCompositionException`. `ShapeError` has a neutral zero value, `None`. `BodyOutOfBoundsException.Body` is a `Body` (2D and 3D), so recovery is `e.Body.Destroy()`. Failed `AddBox`, `AddCircle`, `AddCapsule` and `AddSegment` no longer leave a body behind.
 - The README quick start compiles (it was missing `using RecursiveAI.OnePhysics;`); a test now builds and runs the README's code blocks.
 
-**Breaking API changes, round 2.** No result moves here either: hashes, snapshot bytes and event order are unchanged. See `docs/api-names.md` for the conventions.
+**Breaking API changes, round 2.** No result moves here either: hashes, snapshot bytes and event order are unchanged. See `docs/guide/api-names.md` for the conventions.
 
 - **Handles in results are fields.** `Collision`, `Trigger`, `QueryHit2D/3D`, `ControllerColliderHit` and `JointBreak` expose `Body`, `Other`, `Shape`, `OtherShape`, `Collider`, `Joint`, `BodyA` and `BodyB` as readonly fields, so `hit.Other.LinearVelocity = v` compiles. Migration: none for reads; code that took the property as a method group or through reflection changes. New `Body.SetLinearVelocity`, `SetAngularVelocity` and `SetPosition` for places a property cannot be assigned (list elements).
 - **Full sizes.** 2D `CreateBox(body, halfWidth, halfHeight, ...)` is now `CreateBox(body, Vector2F size, ...)`; 3D `CreateBox` and `ShapeSpec3D.Box(halfExtents)` take full `size`. Migration: double the old values. `RagdollPartDef.ShapeSize` is `ShapeHalfSize` (the value is unchanged; the name now says what it is). Capsule parameters are `halfLength` in both dimensions (`ShapeSpec3D.Capsule`/`TaperedCapsule` and the 3D capsule queries were `halfHeight`); cylinders keep `halfHeight`.
@@ -26,10 +30,10 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 - **Rollback and handlers.** `using (world.SuppressCallbacks())` mutes body, joint and character handlers (polled events still work; it allocates nothing and nests). Per-body handlers now stay registered when a restore brings the same handle back: the world keeps the handlers of the last 1024 destroyed handles per kind once it has taken a snapshot, and a world that never snapshots releases handlers at destroy as before.
 - `ToString` on `PhysicsEvent`, `Collision`, `Trigger`, `JointBreak`, `ControllerColliderHit` and `QueryHit2D/3D`.
 
-## 0.1.0-preview.3
+## [0.1.0-preview.3]
 
 - **OneMath 1.0.0.** The package now depends on `RecursiveAI.OneMath` 1.0.0 (from 0.1.0-preview.5). Its results are bit-identical to the preview, so this change alone moves no world.
-- **Input limits.** Inputs that would break the world later are refused with typed errors: material coefficients beyond the limit, shapes with unrepresentable mass or inertia, convex shapes thinner than 2^-20 of their length, non-finite body state at the start of a step, invalid wheel dimensions in a snapshot. See `docs/limits.md`.
+- **Input limits.** Inputs that would break the world later are refused with typed errors: material coefficients beyond the limit, shapes with unrepresentable mass or inertia, convex shapes thinner than 2^-20 of their length, non-finite body state at the start of a step, invalid wheel dimensions in a snapshot. See `docs/guide/limits.md`.
 - **Restore exactness.** The test that skips pairs still apart is now bounded by both shapes' reach, so a restored world containing kinematic or static bodies continues exactly like the original. Host-style hash scenarios with restores in the middle of a run now cover this.
 - `ShiftOrigin` validates the shift before changing anything: a shift that would move a body out of range is refused with a typed error, and the world is unchanged.
 - **Moved results: continuous collision against compounds.** Compound sweeps are now clipped to the compound's range, and short ray and normal edge cases in the 3D narrowphase are fixed, so some worlds with fast bodies or compounds differ from preview.2.
@@ -42,12 +46,14 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 - Allocation: a deep-contact path in the 3D narrowphase allocated 96 bytes per call and no longer does; a restore of a larger world now allocates nothing after `Warmup()`.
 - **Moved results: speed rounds and fixes since preview.2.** These change the state after the same inputs, for the scenes named: the 2D pair stage (refit between tree rebuilds) moves 2D worlds with many moving bodies; the 3D solver kernels move worlds with joints and ragdolls; the character and services fixes for stale displacement move 2D worlds with characters or services.
 
-## 0.1.0-preview.2
+## [0.1.0-preview.2]
 
 - Host hooks: `TrySnapshot`, `GetSnapshotSize` and `Restore(ReadOnlySpan<byte>)` without per-call copies; allocation-free `ComputeHash`; handle liveness queries; character index and generation; typed errors for velocity and bullet settings on static bodies.
 - **Moved results: sensors for kinematic bodies and characters.** Sensors now pair with kinematic bodies and characters, so those worlds' events, constraint order and results differ from preview.1.
 - Speed rounds between preview.1 and preview.2 (pair stage, solver glue, 3D contact preparation) left the world hashes of the project's scenes unchanged; the sensor change above is what moved results in preview.2.
 
-## 0.1.0-preview.1
+## [0.1.0-preview.1]
 
 First preview: the 2D engine, the shared core (handles, deterministic scheduler and coloring, islands and sleeping, layers and filters, events and sensors, queries, materials, snapshot and restore, world hashes, debug geometry), and the 3D rigid core with characters, vehicles, ragdolls and buoyancy in progress.
+
+[0.1.0-preview.5]: https://github.com/recursive-ai-oss/onephysics-csharp/releases/tag/v0.1.0-preview.5

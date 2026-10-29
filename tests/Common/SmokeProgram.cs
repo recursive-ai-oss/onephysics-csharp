@@ -20,7 +20,7 @@ internal static class SmokeProgram
         for (int i = 0; i < 60; i++) { a.Step(dt); b.Step(dt); c.Step(dt); }
         ulong h = a.World.ComputeHash();
         bool ok = h == b.World.ComputeHash() && h == c.World.ComputeHash();
-        // The 2D collision scenario must give the same hash on every platform (see docs/collision2d.md).
+        // The 2D collision scenario must give the same hash on every platform (see docs/spec/collision2d.md).
         ulong ch = RecursiveAI.OnePhysics.LowLevel.CollisionHash2D.Compute();
         ok &= ch == 0x31E47F1BCE1B321FUL;
         Console.WriteLine("collision2d " + ch.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));

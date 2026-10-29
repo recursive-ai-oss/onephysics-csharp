@@ -25,6 +25,8 @@
   <ItemGroup>
     <Content Include="../../README.md" Link="readme/README.md" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../ReadmeExamples/Quickstart*.cs" Link="readme/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../ReadmeExamples/Guide/*.cs" Link="readme/Guide/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../docs/guide/*.md" Link="readme/guide/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../testdata/api/*.txt" Link="api/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../testdata/fuzz/**" Link="fuzz-regress/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

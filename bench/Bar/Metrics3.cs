@@ -563,7 +563,7 @@ public static class Metrics3
 
     static (double X, double Y, double Z, double W) QConj((double X, double Y, double Z, double W) a) => (-a.X, -a.Y, -a.Z, a.W);
 
-    /// <summary>The pose error of the driven swing-twist joints: for every dumped frame from step 60 on, the angle between each joint's relative rotation (frame B in frame A, frames being the bodies' orientations times the joint frame) and its drive target, collected over all joints and frames; returns the 95th percentile (docs/scenes.md).</summary>
+    /// <summary>The pose error of the driven swing-twist joints: for every dumped frame from step 60 on, the angle between each joint's relative rotation (frame B in frame A, frames being the bodies' orientations times the joint frame) and its drive target, collected over all joints and frames; returns the 95th percentile (docs/spec/scenes.md).</summary>
     static double PoseErrorP95(Scene s, List<(int step, double[] d)> frames)
     {
         var errs = new List<double>();

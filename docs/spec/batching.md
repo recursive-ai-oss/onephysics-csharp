@@ -56,7 +56,7 @@ roughly 0.05 m/s as spheres find denser packings; there is no sleeping here.
 
 ## Results
 
-See `docs/hash-matrix.md` for the harness. Every column produced the same manifest:
+See `docs/spec/hash-matrix.md` for the harness. Every column produced the same manifest:
 per-scenario hashes and manifest `a694a2895416dca5...`, 10 scenarios each (5 widths x {4096 spheres, 1000 steps; 512 spheres, 200 steps}).
 
 ## Pitfalls the kernel avoids

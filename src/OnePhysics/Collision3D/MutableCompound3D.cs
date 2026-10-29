@@ -6,7 +6,7 @@ namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>
 /// A compound whose children can be added, removed and moved between steps. Edits update the tree incrementally (removal, then reinsertion by the surface-area heuristic with rotations, see
-/// <c>docs/broadphase.md</c>), so the tree's bytes depend on the whole edit sequence but on nothing else: the same edits give the same tree on every platform. Query results depend only on the set
+/// <c>docs/spec/broadphase.md</c>), so the tree's bytes depend on the whole edit sequence but on nothing else: the same edits give the same tree on every platform. Query results depend only on the set
 /// of children (see <see cref="CompoundShape3D"/>), so they equal those of a <see cref="Compound3D"/> built from the same children; <see cref="Optimize"/> rebuilds the tree to the same shape a static compound
 /// of the same children would have. Child ids are stable: a child keeps its id until removed, and freed ids are reused lowest first.
 /// Not thread-safe against concurrent edits and queries.

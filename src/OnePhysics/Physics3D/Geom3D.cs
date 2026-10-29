@@ -90,7 +90,7 @@ internal enum GeomKind : byte { Convex = 1, Compound = 2, Mesh = 3, HeightField 
 
 /// <summary>
 /// Shared geometry of one or many shapes: the built collision object plus the recipe (bytes) it was built from. Recipes are what snapshots store; equal recipes share one object, so a thousand identical
-/// hulls cost one hull. Recipe layout: a kind byte (1..6 convex, 7 compound, 8 mesh, 9 height field) then the numbers, little-endian; see docs/world3d.md.
+/// hulls cost one hull. Recipe layout: a kind byte (1..6 convex, 7 compound, 8 mesh, 9 height field) then the numbers, little-endian; see docs/spec/world3d.md.
 /// </summary>
 internal sealed class Geom3D
 {

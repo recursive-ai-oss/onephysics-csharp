@@ -24,11 +24,13 @@ internal sealed partial class Engine3D
     /// <summary>Copies the displacement, accumulated rotation and world inverse inertia of a body into its packed row (see <see cref="Pk"/>).</summary>
     public void PackBody(int b)
     {
-        var r = Pk.AsSpan(16 * b, 16);
-        r[0] = Dp[3 * b]; r[1] = Dp[3 * b + 1]; r[2] = Dp[3 * b + 2];
-        r[3] = Dq[4 * b]; r[4] = Dq[4 * b + 1]; r[5] = Dq[4 * b + 2]; r[6] = Dq[4 * b + 3];
-        var w = WInvI.AsSpan(6 * b, 6);
-        r[7] = w[0]; r[8] = w[1]; r[9] = w[2]; r[10] = w[3]; r[11] = w[4]; r[12] = w[5];
+        // Every per-body array was sized for the world's high-water mark before any step or call that reaches here (EnsureBodies), so the unchecked accessors stay in range; the Checked build verifies each access.
+        Span<float> r = Pk;
+        ReadOnlySpan<float> dp = Dp, dq = Dq, w = WInvI;
+        int o = 16 * b, p3 = 3 * b, p4 = 4 * b, p6 = 6 * b;
+        Mem.At(r, o) = Mem.At(dp, p3); Mem.At(r, o + 1) = Mem.At(dp, p3 + 1); Mem.At(r, o + 2) = Mem.At(dp, p3 + 2);
+        Mem.At(r, o + 3) = Mem.At(dq, p4); Mem.At(r, o + 4) = Mem.At(dq, p4 + 1); Mem.At(r, o + 5) = Mem.At(dq, p4 + 2); Mem.At(r, o + 6) = Mem.At(dq, p4 + 3);
+        Mem.At(r, o + 7) = Mem.At(w, p6); Mem.At(r, o + 8) = Mem.At(w, p6 + 1); Mem.At(r, o + 9) = Mem.At(w, p6 + 2); Mem.At(r, o + 10) = Mem.At(w, p6 + 3); Mem.At(r, o + 11) = Mem.At(w, p6 + 4); Mem.At(r, o + 12) = Mem.At(w, p6 + 5);
     }
 
     /// <summary>Refreshes one body's world-axes inverse inertia from the current rotation (for impulses applied between steps).</summary>
@@ -45,23 +47,26 @@ internal sealed partial class Engine3D
     /// <summary>Inverse inertia in world axes, R · I⁻¹ · Rᵀ, from the body-frame tensor and the body's rotation. Static and kinematic bodies get zeros.</summary>
     private void RefreshWorldInertia(int b, ReadOnlySpan<float> invMass, ReadOnlySpan<float> invI, ReadOnlySpan<float> rot)
     {
-        var w = WInvI.AsSpan(6 * b, 6);
-        if (!(invMass[b] > 0f)) { w.Clear(); return; }
-        float x = rot[4 * b], y = rot[4 * b + 1], z = rot[4 * b + 2], s = rot[4 * b + 3];
+        // Callers pass arrays sized for body b (see PackBody).
+        Span<float> w = WInvI;
+        int p6 = 6 * b;
+        if (!(Mem.At(invMass, b) > 0f)) { for (int k = 0; k < 6; k++) { Mem.At(w, p6 + k) = 0f; } return; }
+        int p4 = 4 * b;
+        float x = Mem.At(rot, p4), y = Mem.At(rot, p4 + 1), z = Mem.At(rot, p4 + 2), s = Mem.At(rot, p4 + 3);
         float xx = x * x, yy = y * y, zz = z * z, xy = x * y, xz = x * z, yz = y * z, sx = s * x, sy = s * y, sz = s * z;
         float r00 = 1f - 2f * (yy + zz), r01 = 2f * (xy - sz), r02 = 2f * (xz + sy);
         float r10 = 2f * (xy + sz), r11 = 1f - 2f * (xx + zz), r12 = 2f * (yz - sx);
         float r20 = 2f * (xz - sy), r21 = 2f * (yz + sx), r22 = 1f - 2f * (xx + yy);
-        float ia = invI[6 * b], ib = invI[6 * b + 1], ic = invI[6 * b + 2], id = invI[6 * b + 3], ie = invI[6 * b + 4], ifz = invI[6 * b + 5];
+        float ia = Mem.At(invI, p6), ib = Mem.At(invI, p6 + 1), ic = Mem.At(invI, p6 + 2), id = Mem.At(invI, p6 + 3), ie = Mem.At(invI, p6 + 4), ifz = Mem.At(invI, p6 + 5);
         float t00 = r00 * ia + r01 * ib + r02 * ic, t01 = r00 * ib + r01 * id + r02 * ie, t02 = r00 * ic + r01 * ie + r02 * ifz;
         float t10 = r10 * ia + r11 * ib + r12 * ic, t11 = r10 * ib + r11 * id + r12 * ie, t12 = r10 * ic + r11 * ie + r12 * ifz;
         float t20 = r20 * ia + r21 * ib + r22 * ic, t21 = r20 * ib + r21 * id + r22 * ie, t22 = r20 * ic + r21 * ie + r22 * ifz;
-        w[0] = t00 * r00 + t01 * r01 + t02 * r02;
-        w[1] = t00 * r10 + t01 * r11 + t02 * r12;
-        w[2] = t00 * r20 + t01 * r21 + t02 * r22;
-        w[3] = t10 * r10 + t11 * r11 + t12 * r12;
-        w[4] = t10 * r20 + t11 * r21 + t12 * r22;
-        w[5] = t20 * r20 + t21 * r21 + t22 * r22;
+        Mem.At(w, p6) = t00 * r00 + t01 * r01 + t02 * r02;
+        Mem.At(w, p6 + 1) = t00 * r10 + t01 * r11 + t02 * r12;
+        Mem.At(w, p6 + 2) = t00 * r20 + t01 * r21 + t02 * r22;
+        Mem.At(w, p6 + 3) = t10 * r10 + t11 * r11 + t12 * r12;
+        Mem.At(w, p6 + 4) = t10 * r20 + t11 * r21 + t12 * r22;
+        Mem.At(w, p6 + 5) = t20 * r20 + t21 * r21 + t22 * r22;
     }
 
     /// <summary>Two unit vectors perpendicular to a unit normal and to each other, chosen by a fixed rule so the same normal always gives the same pair.</summary>
@@ -390,122 +395,20 @@ internal sealed partial class Engine3D
 
     // ------------------------------------------------------------------ integration
 
+    /// <summary>Gravity, forces, torque, the gyroscopic term, damping and the speed limits for the bodies of the list, eight at a time (see <see cref="IntegrateKernel3D"/>).</summary>
     public void IntegrateVelocities(ReadOnlySpan<int> list, in StepContext ctx)
     {
-        var bodies = Core.Bodies;
-        Span<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
-        ReadOnlySpan<float> invMass = bodies.InverseMass, rot = bodies.Rotation;
-        ReadOnlySpan<byte> type = bodies.Type;
-        ReadOnlySpan<float> gravityScale = GravityScale, force = Force, torque = Torque, linDamping = LinearDamping, angDamping = AngularDamping, wInvI = WInvI;
-        ReadOnlySpan<byte> flags = BodyFlags;
-        float h = ctx.SubstepDt;
-        var g = Core.Options.Gravity;
-        float maxSpeed = Opt.MaxLinearSpeed, maxSpeed2 = maxSpeed * maxSpeed;
-        float maxSpin = Opt.MaxRotationPerSubstep / h;
-        float maxSpin2 = maxSpin * maxSpin;
-        // Every index below is a body of the awake list (below the world's high-water mark) and every per-body array was sized for that mark when the step began, so the unchecked accessors stay in range;
-        // the Checked build verifies each access.
-        foreach (int b in list)
-        {
-            if (Mem.At(type, b) != (byte)BodyType.Dynamic) { continue; }
-            int b3 = 3 * b;
-            float gs = Mem.At(gravityScale, b), im = Mem.At(invMass, b);
-            float vx = Mem.At(lin, b3) + h * (gs * g.X + im * Mem.At(force, b3));
-            float vy = Mem.At(lin, b3 + 1) + h * (gs * g.Y + im * Mem.At(force, b3 + 1));
-            float vz = Mem.At(lin, b3 + 2) + h * (gs * g.Z + im * Mem.At(force, b3 + 2));
-            var w = new Vector3F(Mem.At(ang, b3), Mem.At(ang, b3 + 1), Mem.At(ang, b3 + 2));
-            float tx = Mem.At(torque, b3), ty = Mem.At(torque, b3 + 1), tz = Mem.At(torque, b3 + 2);
-            if (tx != 0f || ty != 0f || tz != 0f) { w += Apply(wInvI.Slice(6 * b, 6), new Vector3F(tx, ty, tz)) * h; }
-            if ((Mem.At(flags, b) & 2) != 0) { w = Gyroscopic(b, w, h, rot); }
-            // Zero damping (the default) scales by exactly one, so the divisions are skipped.
-            float ld = Mem.At(linDamping, b), ad = Mem.At(angDamping, b);
-            if (ld != 0f) { float dl = 1f / (1f + h * ld); vx *= dl; vy *= dl; vz *= dl; }
-            if (ad != 0f) { w *= 1f / (1f + h * ad); }
-            float v2 = vx * vx + vy * vy + vz * vz;
-            if (v2 > maxSpeed2)
-            {
-                float scale = maxSpeed / float.Sqrt(v2);
-                vx *= scale; vy *= scale; vz *= scale;
-            }
-
-            float w2 = w.X * w.X + w.Y * w.Y + w.Z * w.Z;
-            if (w2 > maxSpin2) { w *= maxSpin / float.Sqrt(w2); }
-            Mem.At(lin, b3) = vx; Mem.At(lin, b3 + 1) = vy; Mem.At(lin, b3 + 2) = vz;
-            Mem.At(ang, b3) = w.X; Mem.At(ang, b3 + 1) = w.Y; Mem.At(ang, b3 + 2) = w.Z;
-        }
+        if (KernelWidth == 1) { IntegrateKernel3D.Velocities<Lanes1>(this, list, ctx.SubstepDt); }
+        else if (KernelWidth == 4) { IntegrateKernel3D.Velocities<Lanes128>(this, list, ctx.SubstepDt); }
+        else { IntegrateKernel3D.Velocities<Lanes256>(this, list, ctx.SubstepDt); }
     }
 
-    /// <summary>
-    /// The gyroscopic term ω × Iω as one implicit step (Catto, "Numerical Methods", GDC 2015): in the body frame, one Newton iteration on f(ω) = I(ω − ω₀) + h ω × Iω with the exact Jacobian
-    /// J = I + h (ω̃ I − (Iω)~). It conserves angular momentum much better than an explicit step and, unlike a full solve, never blows up for a fast spin because the step is clamped by the speed limit.
-    /// </summary>
-    private Vector3F Gyroscopic(int b, Vector3F w, float h, ReadOnlySpan<float> rot)
-    {
-        float qx = rot[4 * b], qy = rot[4 * b + 1], qz = rot[4 * b + 2], qw = rot[4 * b + 3];
-        var wl = Rotate(-qx, -qy, -qz, qw, w);
-        ReadOnlySpan<float> I = Inertia.AsSpan(6 * b, 6);
-        var iw = Apply(I, wl);
-        var f = Vector3F.Cross(wl, iw) * h;
-        // J = I + h (skew(wl) I − skew(iw)); rows below.
-        float a = I[0], bb = I[1], c = I[2], d = I[3], e = I[4], ff = I[5];
-        float x = wl.X, y = wl.Y, z = wl.Z;
-        // skew(wl) · I: rows (−z·I[1,:] + y·I[2,:]), (z·I[0,:] − x·I[2,:]), (−y·I[0,:] + x·I[1,:])
-        float m00 = a + h * (-z * bb + y * c), m01 = bb + h * (-z * d + y * e), m02 = c + h * (-z * e + y * ff);
-        float m10 = bb + h * (z * a - x * c), m11 = d + h * (z * bb - x * e), m12 = e + h * (z * c - x * ff);
-        float m20 = c + h * (-y * a + x * bb), m21 = e + h * (-y * bb + x * d), m22 = ff + h * (-y * c + x * e);
-        // − skew(iw)
-        m01 -= h * (-iw.Z); m02 -= h * iw.Y; m10 -= h * iw.Z; m12 -= h * (-iw.X); m20 -= h * (-iw.Y); m21 -= h * iw.X;
-        float c00 = m11 * m22 - m12 * m21, c01 = m12 * m20 - m10 * m22, c02 = m10 * m21 - m11 * m20;
-        float det = m00 * c00 + m01 * c01 + m02 * c02;
-        if (!(Math.Abs(det) > 1e-30f) || !float.IsFinite(det)) { return w; }
-        float inv = 1f / det;
-        float dx = ((m11 * m22 - m12 * m21) * f.X + (m02 * m21 - m01 * m22) * f.Y + (m01 * m12 - m02 * m11) * f.Z) * inv;
-        float dy = (c01 * f.X + (m00 * m22 - m02 * m20) * f.Y + (m02 * m10 - m00 * m12) * f.Z) * inv;
-        float dz = (c02 * f.X + (m01 * m20 - m00 * m21) * f.Y + (m00 * m11 - m01 * m10) * f.Z) * inv;
-        var nl = new Vector3F(wl.X - dx, wl.Y - dy, wl.Z - dz);
-        if (!float.IsFinite(nl.X + nl.Y + nl.Z)) { return w; }
-        return Rotate(qx, qy, qz, qw, nl);
-    }
-
-    private static void IntegrateRotation(Span<float> q, int o, Vector3F w, float h)
-    {
-        // Baraff: q' = q + h/2 · (w, 0) · q, renormalised. The product (w, 0)·q is written out.
-        float qx = q[o], qy = q[o + 1], qz = q[o + 2], qw = q[o + 3];
-        float dx = w.X * qw + w.Y * qz - w.Z * qy;
-        float dy = w.Y * qw + w.Z * qx - w.X * qz;
-        float dz = w.Z * qw + w.X * qy - w.Y * qx;
-        float dw = -(w.X * qx + w.Y * qy + w.Z * qz);
-        float hh = 0.5f * h;
-        float nx = qx + hh * dx, ny = qy + hh * dy, nz = qz + hh * dz, nw = qw + hh * dw;
-        float mag = float.Sqrt(nx * nx + ny * ny + nz * nz + nw * nw);
-        if (!(mag > 0f) || !float.IsFinite(mag)) { return; } // a runaway state (damaged or extreme input) keeps the last valid orientation instead of becoming a zero quaternion
-        float inv = 1f / mag;
-        q[o] = nx * inv; q[o + 1] = ny * inv; q[o + 2] = nz * inv; q[o + 3] = nw * inv;
-    }
-
+    /// <summary>Displacement, rotations, world inverse inertia and the packed rows of the bodies of the list, eight at a time (see <see cref="IntegrateKernel3D"/>).</summary>
     public void IntegratePositions(ReadOnlySpan<int> list, in StepContext ctx)
     {
-        var bodies = Core.Bodies;
-        ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
-        ReadOnlySpan<float> invMass = bodies.InverseMass, invI = bodies.InverseInertia;
-        Span<double> pos = bodies.Position;
-        Span<float> rot = bodies.Rotation;
-        float h = ctx.SubstepDt;
-        foreach (int b in list)
-        {
-            float dx = h * lin[3 * b], dy = h * lin[3 * b + 1], dz = h * lin[3 * b + 2];
-            Dp[3 * b] += dx; Dp[3 * b + 1] += dy; Dp[3 * b + 2] += dz;
-            pos[3 * b] += (double)dx; pos[3 * b + 1] += (double)dy; pos[3 * b + 2] += (double)dz;
-            var w = V(ang, 3 * b);
-            if (w.X != 0f || w.Y != 0f || w.Z != 0f)
-            {
-                IntegrateRotation(Dq, 4 * b, w, h);
-                IntegrateRotation(rot, 4 * b, w, h);
-                RefreshWorldInertia(b, invMass, invI, rot);
-            }
-
-            PackBody(b);
-        }
+        if (KernelWidth == 1) { IntegrateKernel3D.Positions<Lanes1>(this, list, ctx.SubstepDt); }
+        else if (KernelWidth == 4) { IntegrateKernel3D.Positions<Lanes128>(this, list, ctx.SubstepDt); }
+        else { IntegrateKernel3D.Positions<Lanes256>(this, list, ctx.SubstepDt); }
     }
 
     // ------------------------------------------------------------------ finalize: forces and continuous collision
