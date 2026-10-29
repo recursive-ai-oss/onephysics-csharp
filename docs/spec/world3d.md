@@ -457,7 +457,7 @@ Every candidate below was built, run through all fifteen 3D stability scenes at 
 
 Round 15's 22 ns per contact point was measured while most of a pile was asleep at the end of the run and counted the wrong population; on a pile the contact pass is not slower than Bepu's. Joints are the one kind about 1.6× behind.
 
-**Where a ragdoll-pile-3d step goes** (sampled profile, one thread, inclusive share of the step): contact update 37% (narrowphase 23%, manifold writes 4%, recycling 3%), solve stage 42% (contact kernel 20%, joint kernel 9%, integration 10%), batch preparation 6%, finalize 3%. Gathering the bodies is 28% of the contact kernel and 43% of the joint kernel (the joint kernel does little arithmetic): 9% of the step. With one substep, ours costs 1.9 ms at one solver pass; Bepu's whole step at four passes costs 0.70 ms. The gap is the work outside the passes (collision, preparation, integration, warm start), not the cost of a pass: bringing both kinds of pass to Bepu's cost would move the step by about 0.1 ms of 2.9.
+**Where a ragdoll-pile-3d step goes** (sampled profile, one thread, inclusive share of the step): contact update 37% (narrowphase 23%, manifold writes 4%, recycling 3%), solve stage 42% (contact kernel 20%, joint kernel 9%, integration 10%), batch preparation 6%, finalize 3%. Gathering the bodies is 28% of the contact kernel and 43% of the joint kernel (the joint kernel does little arithmetic): 9% of the step. With one substep, ours costs 1.9 ms at one solver pass; Bepu's whole step at four passes costs 0.70 ms. *(Superseded by the stage split in round 19: this comparison set a one-pass step of ours against Bepu's whole step, and the one-substep sweep changes how the pile behaves, so it does not isolate the solver. The solve stage is in fact the largest part of the gap on ragdoll-pile-3d.)*
 
 **Built and dropped** (all bit-identical on large-pile-3d, ragdoll-pile-3d, joint-chains-3d and pyramid-3d-10 in the per-step dumps; patches kept outside the repository):
 * *Separation and anchor cache.* Positions change only between the solve and relax passes, so the separations (contacts) and the turned anchors and separation vector (joints) that a relax pass works out are the ones the next substep's solve passes need. The relax pass stored them, the solve pass read them and gathered neither displacement nor rotation, and the packed body row put the inertia first so those passes read one eight-float window per body instead of two. The cache is valid per group, written only by passes over a whole group (the overflow set runs lane by lane and never reads it) and only with a relax pass. Worker, one thread, interleaved, p20 of 600 steps: large-pile-3d 8.97 to 9.2–9.5 ms (3–5% slower), ragdoll-pile-3d and joint-chains-3d within noise (±2%). The extra branches and the extra rows streamed cost what the skipped rotation and gather saved.
@@ -465,3 +465,83 @@ Round 15's 22 ns per contact point was measured while most of a pile was asleep 
 * *Kernel width.* Eight lanes against four and one on the worker (ragdoll-pile-3d 3.1–3.4, 3.6–4.6 and 8.4–9.5 ms; large-pile-3d 9.5–11.9, 11.6–13.7 and 27–33): the default stays.
 
 **What would still move the passes** (not built, expected at most a few percent of a step each): a three-field gather for the velocity arrays (eight 16-byte loads and six shuffles instead of the 8×8 transpose's seventeen), one velocity row per body (needs the public velocity storage to change), lane-wide gyroscopic and rotation integration with a staging block that is not copied in and out. The compiled code of the friction and normal rows is already tight (no spills in `FrictionImpulse`), so a different constraint data model would not shorten them.
+
+### Round 19: fixed costs of ragdoll-pile-3d and sleep-wake-3d (no result changes)
+
+**Where the step goes.** Self-time profile at one thread (sampled, share of the run): ragdoll-pile-3d: contact kernel 11%, pair driver `CollideTask.Run` 7% and `Collide` 5%, kernel body gather 5%, position integration 4%, joint kernel 4% plus its gather 3%, batch preparation 4%, velocity integration 3%, the batch scan in `SolveBatch` 3%, capsule–box contact 3%, recycle test 3%, segment–segment 1%. sleep-wake-3d is as flat (contact kernel 8%, pair driver 6% and 6%, polyhedron loading 4%, positions 3.5%, then a long tail of 1–2.5% items). Nothing owned by the solver or the primitive manifold routines is bigger than a tenth of the step, so a 1.4× cut would need roughly two thirds of all of them to disappear.
+
+**Built and kept.** The group number, contact count, point-joint count and the "has joints solved one by one" flag of each batch are worked out when the batch is prepared (`Engine3D.BatchInfo`, at four ints per batch, indexed by the batch's first constraint) and the solve passes read them instead of scanning every constraint of the batch in each of the twelve passes. Per-step dumps are bit-identical to before on joint-chains-3d, ragdoll-pile-3d, sleep-wake-3d and pyramid-3d-10, and the hash-matrix manifest is unchanged (c3c8c0dfc7d5fa51 on jit, threads8, threads-all, noavx512, noavx2, tc0 and aot; d9c3005a3cc070f0 scalar). Worker, one thread, pinned, interleaved, four runs, p20 of 600 steps: ragdoll-pile-3d 2.82 to 2.73 ms (3%), sleep-wake-3d, large-pile-3d and joint-chains-3d within noise.
+
+**Looked at and dropped (each moves a step by under 2%):**
+* *Integration staging.* Position integration reads 30 values and writes about 40 per body; the displacement, accumulated rotation and world inertia are kept in both their own arrays and the packed row. Reading them from the packed row alone would save a third of the loads, but those arrays are also read by the snapshot writer, the joint solver and the broadphase move, so it is a wider change than the 1% it buys.
+* *Three-field velocity scatter.* The velocity arrays are three floats a body, so a four-float row store would overwrite the next body's x.
+* *Scalar rolling-resistance mass in batch preparation.* It runs for every contact (default rolling resistance is not zero) but is one fifth of a preparation that is 4% of the step.
+* *Primitive manifold routines.* All of `ManifoldGenerator3D.Collide` is 10% of the ragdoll step; capsule–box is 3% and segment–segment 1%. Halving them would be about 2%, and the pair driver around them (12%) belongs to the narrowphase work.
+
+**Result.** The 1.4× aim for these two scenes is not reachable from the solver, the integration passes, or the primitive manifold routines: the profile has no item to cut. What would move them is fewer pairs reaching the narrowphase and a cheaper pair driver, which is outside this round.
+
+
+**Stage split against Bepu** (bench only; one thread pinned to a core, tiered compilation off, worker with light load 8.5 before and 9.6 after, median of 3 runs of 600 steps after 60 of warm-up; indicative). Bepu runs at its documented defaults (8 velocity iterations, 1 substep). Its documentation gives one frame as `Sleep`, `PredictBoundingBoxes`, `CollisionDetection`, `Solve` (which includes integration and the incremental contact update), `IncrementallyOptimizeDataStructures`; `BAR_BEPU_STAGES=1` calls those in that order and times each. The sum of the stages matches the plain `Timestep` (ragdoll 0.939 against 0.952 ms, large-pile 6.92 against 6.95, sleep-wake 1.27 against 1.19, the last a scene whose first 60 steps are asleep and whose step time is bimodal). The public API does not split `CollisionDetection` into broad and narrow phase, so it is one row. Ours comes from the Profile build (`OP_PROFILE=1`); its coloring and preparation are grouped with the solve, and its boxes, pair finding, narrowphase and manifold apply with collision, to match Bepu's grouping (Bepu adds its constraints inside collision and does its contact preparation inside solve, so the grouping is close, not exact).
+
+| ms per step | ragdoll-pile-3d ours / Bepu | sleep-wake-3d ours / Bepu | large-pile-3d ours / Bepu |
+|---|---|---|---|
+| bounding boxes (ours: boxes; Bepu: predict) | 0.152 / 0.035 | 0.181 / 0.031 | 0.555 / 0.110 |
+| collision (ours: pairs + narrowphase + apply; Bepu: CollisionDetection) | 0.836 / 0.449 | 2.298 / 0.675 | 3.434 / 5.245 |
+| solve (ours: coloring + prepare + solve; Bepu: Solve) | 1.768 / 0.452 | 0.988 / 0.494 | 4.952 / 1.522 |
+| rest (ours: finalize, store, sleep, events; Bepu: sleep, optimize) | 0.140 / 0.003 | 0.092 / 0.002 | 0.322 / 0.009 |
+| step | 2.96 / 0.94 (3.1×) | 3.62 / 1.27 (2.9×) | 9.32 / 6.92 (1.35×) |
+
+Ours inside the grouped rows (ms): ragdoll narrowphase 0.694, apply 0.138, prepare 0.264, solve 1.480; sleep-wake pairs 0.384, narrowphase 1.680, apply 0.234, prepare 0.142, solve 0.836; large-pile narrowphase 2.979, apply 0.455, prepare 0.860, solve 4.048.
+
+Work per step (median after warm-up). Bepu: candidate pairs the broadphase hands to the narrowphase callback, then manifolds and contact points the callback sees (its points include speculative ones), then solver constraints. Ours: live pair-table entries with an awake body (before the tight-box early-outs), contact constraints with points, their points, joints.
+
+| per step | ragdoll-pile-3d ours / Bepu | sleep-wake-3d ours / Bepu | large-pile-3d ours / Bepu |
+|---|---|---|---|
+| awake bodies | 1500 / 1500 | 1441 / 1441 (1 for the first 120 steps, then all) | 2996 / 2996 |
+| pairs reaching the narrowphase | 8493 / 4717 | 5704 / 2630 | 32,130 / 16,130 |
+| manifolds with points (ours) / manifolds seen (Bepu) | 2378 / 3431 | 1143 / 2630 | 8943 / 16,130 |
+| contact points | 3072 / 2471 | 2668 / 5636 | 12,020 / 10,590 |
+| solver constraints (contacts + joints) | 3728 / 3412 | 1143 / 1544 | 8943 / 7848 |
+| solver passes and integrations | 12 passes, 4 integrations / 8 passes, 1 integration | same | same |
+
+**Verdict.**
+* **ragdoll-pile-3d (2.0 ms gap): the solve stage holds 65% of it** (1.77 against 0.45 ms, 3.9×). The work is the same size in constraints (3728 against 3412) and bodies, but ours runs 12 passes against 8 and integrates the bodies four times against once, so it does about 1.5× the constraint passes and 4× the integration, and each pass costs more as well (about 26 ns per constraint-pass against 15 ns, taking integration at about 0.3 ms of ours). Preparation (0.26 ms) has no separate counterpart. Collision is 0.5 ms of the gap (bounding boxes 4×, collision 1.9×) with 1.8× the pairs: the same work done slower and more of it.
+* **sleep-wake-3d (2.35 ms gap): collision holds 75%** (2.30 against 0.68 ms plus 0.15 in boxes). We bring 2.2× the pairs to the narrowphase (5704 against 2630) at a similar cost per pair (about 295 ns against 257 ns including Bepu's broadphase), so this is more work, not slower work. The pair-finding stage alone is 0.38 ms in this scene (0.004 in the ragdoll pile). The solve stage is the other 0.5 ms (2.0×).
+* **large-pile-3d (2.4 ms gap): the solve stage is all of it** and more: 4.95 against 1.52 ms (3.3×) with 14% more constraints; our collision (3.43 ms) is already faster than Bepu's (5.25 ms), whose broadphase hands over half our pairs but runs them all through its narrowphase.
+* **More work or the same work slower?** Both, by stage. Solve: more passes and 4× the integrations, and a slower pass. Collision: about twice as many pairs per step at a similar cost per pair. The earlier conclusion that the passes were not the gap is withdrawn: the kernel-only marginal cost per pass (round 18) is competitive, but a step runs 12 of them plus four integrations and a preparation, and that stage is 1.3 ms of the ragdoll gap and 3.4 ms of the large-pile gap.
+* **Where this points next** (not built): (1) the solve stage's fixed costs, namely the four integrations and the preparation, which have no Bepu counterpart at one substep (at 4 substeps the joint scenes' stability needs them, round 13, so the lever is making each cheaper, not removing them); (2) the pair count (the fat-box margin and the pair life), for sleep-wake-3d first; (3) the bounding-box stage (4–5× Bepu's prediction pass on all three scenes).
+* **Gaps.** `CollisionDetection` is one public call, so broad and narrow phase cannot be split on Bepu's side; its pair and manifold counts come from the callbacks it documents, and its contact points include speculative ones, so the point counts are not like for like; our pair count is the pair table before the tight-box early-outs.
+
+### Round 20: the pass structure again (no library change; measured, nothing kept)
+
+**Tools.** `tools/bench/stab3d.sh NAME [ENV=VAL ...]` runs every 3D scene in stability mode for this library at one thread and `tools/bench/judge3d.py` applies the scene limits (the `Verdict` table plus the limits of the vehicle, character, buoyancy, tracked, motorcycle and powered-ragdoll scenes in `scenes.md`) to its `metrics.csv`; the sweep knobs are the `BAR_SUBSTEPS`, `BAR_VELITERS` and `BAR_RELAX` of round 13. Worker with light load, 4 runs in parallel on 2 cores each, tiered compilation off.
+
+**Stability by schedule** (substeps / solve iterations per substep; relax is 1 throughout; "ok" is every limit met; `ragdoll-powered-3d` sets 8 substeps itself, so the sweeps that override the substep count change that scene):
+
+| scene | 4 / 1 (default) | 3 / 1 | 2 / 1 | 2 / 2 |
+|---|---|---|---|---|
+| joint-chains-3d (jointError, limit 1.0) | ok (0.23) | 3.50 | 7.86 | 7.43 |
+| ragdoll-powered-3d (fallen, limit 0) | ok (0) | 50 | 47 | 50 |
+| pyramid-3d-30 (restKE, limit 0.0001) | ok | ok | 0.0026 | ok |
+| the other twelve scenes | ok | ok | ok | ok |
+
+So the contact scenes (both pyramids, large-pile, terrain, sleep-wake, ragdoll-pile with its joints, vehicles, characters, buoyancy, tracked, motorcycle) hold at two substeps with two solve iterations; the chain with a 500:1 end mass and the powered ragdolls do not hold at three. joint-grid-3d stays inside its limit at two substeps (jointError 0.023 against 0.006) but no longer falls asleep (its step is 0.035 ms asleep and 0.96 ms at two substeps).
+
+**Candidates built and measured (patch kept outside the repository):**
+* *Extra joint-only passes inside fewer substeps* (new solve phases that skip contacts; 2 or 3 substeps, 1 to 4 extra biased solves and/or relaxes): never better, usually worse. joint-chains-3d at 3 substeps: 1.08 with one extra solve and relax (the best), 2.1 with one extra relax, 15.8 with two; at 2 substeps 7.5 (one extra of each), 12.8 (two), 237 (four extra relaxes). More Gauss-Seidel passes on a 500:1 chain diverge when the substep is long, because the block inverse is built once per substep at the warm start and goes stale. ragdoll-powered-3d at 2 or 3 substeps: 50 fallen with every variant.
+* *Contacts on a coarser schedule than joints* (4 substeps; contacts warm started and solved in the first substep of each pair, relaxed in the last; joints every substep; contact softness at twice the substep): joint-chains-3d 0.90 (ok), ragdoll-pile-3d ok, terrain and sleep-wake ok, but pyramid-3d-30 collapses (topLateral 0.29, restKE 0.063, finalPenetration 0.0065), large-pile-3d jitter 0.0215 against 0.01 and ragdoll-powered-3d drops all 50. A body integrates gravity in the substep in which its contacts are not solved, so it sinks before the next solve; this is unlike a real two-substep step, which integrates and solves in step. A scheme in which bodies without joints take real two-substep steps while jointed bodies take four needs batches that never mix the two classes; the colouring, batching and the stage program are shared by all constraints, so it is a change to that structure, not a switch.
+* *Relax only in the last substep, warm start fused into the first solve, three substeps:* round 13, not repeated.
+
+**What the cheaper schedules buy** (worker, load 5 to 8, one thread pinned to a core and eight threads pinned to eight, tiered compilation off, median of 3 runs, step ms; base is the default 4 / 1; 2 / 1 and 2 / 2 are the stable-where-they-are-stable schedules above):
+
+| scene | t1 base / 2,1 / 2,2 | t8 base / 2,1 / 2,2 |
+|---|---|---|
+| ragdoll-pile-3d | 2.82 / 1.99 / 2.27 | 1.46–1.88 / 0.91–1.53 / 0.99–2.61 (noisy) |
+| large-pile-3d | 9.0 / 7.2 / 7.7 | 3.0–3.2 / 2.5–2.8 / 2.6–3.7 |
+| mesh-terrain-3d | 2.34 / 1.95 / 1.97 | 0.93 / 0.71 / 0.72 |
+| heightfield-terrain-3d | 2.65 / 2.03 / 2.22 | 0.96 / 0.74 / 0.79 |
+| sleep-wake-3d | 3.5 / 3.9 / 3.1 | 1.4 / 1.4 / 1.3 |
+
+Two substeps with one iteration take the whole step down by 1.2× (large-pile-3d) to 1.4× (ragdoll-pile-3d); that is 1.6× on the solve stage of large-pile-3d (about 1.75 of its 4.05 ms), not the 1.8× aimed for, and the cheaper schedule is the one that fails the joint scenes. Integration and preparation do not scale with the pass count: preparation runs once per step already, and the four integrations are 0.3 ms of the ragdoll pile's solve stage.
+
+**Result.** No schedule that is stable on every 3D scene is cheaper than the default: every cheaper one fails joint-chains-3d and the powered ragdolls, which are the scenes the four substeps are for, and two substeps also lose the sleeping of joint-grid-3d. Where a world has no joints, or joints with mass ratios near one (ragdoll-pile-3d passes at two substeps), two substeps with two iterations pass everything else and cost 1.2 to 1.4× less per step; that is the decision for the owner: a per-world setting (a preset that picks the substep count from the content, as the powered-ragdoll scene already sets 8), or a rule that depends on whether the world holds joints. The library keeps 4 / 1 as its default. The levers left that do not change results (integration staging, the body gather, preparation) are each under 3% of a step (round 19).
