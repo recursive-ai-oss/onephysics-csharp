@@ -97,11 +97,11 @@ public sealed class WorldOptions3D
     /// </summary>
     public int ContactSubsteps { get; set; } = 2;
 
-    /// <summary>Biased solver iterations per substep of an island on the contact-only schedule, 1..256. Default 2.</summary>
-    public int ContactVelocityIterations { get; set; } = 2;
+    /// <summary>Biased solver iterations per substep of an island on the contact-only schedule, 1..256. Default 1.</summary>
+    public int ContactVelocityIterations { get; set; } = 1;
 
-    /// <summary>Relaxation iterations per substep of an island on the contact-only schedule, 0..256. Default 1.</summary>
-    public int ContactRelaxIterations { get; set; } = 1;
+    /// <summary>Relaxation iterations per substep of an island on the contact-only schedule, 0..256. Default 2.</summary>
+    public int ContactRelaxIterations { get; set; } = 2;
 
     /// <summary>Threads used by a step, 1..1024. The result never depends on it. Default 1.</summary>
     public int ThreadCount { get; set; } = 1;
