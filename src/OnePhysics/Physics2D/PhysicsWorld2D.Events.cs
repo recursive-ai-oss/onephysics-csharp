@@ -288,7 +288,7 @@ public sealed partial class PhysicsWorld2D : ICallbackGate
         if (set.IsEmpty) { _handlers.Remove(h.Index); }
     }
 
-    // ------------------------------------------------------------------ filters (see docs/world2d.md, "Layers and filters")
+    // ------------------------------------------------------------------ filters (see docs/spec/world2d.md, "Layers and filters")
 
     /// <summary>
     /// Sets whether shapes on layer <paramref name="layerA"/> collide with shapes on layer <paramref name="layerB"/> (Unity's layer collision matrix; symmetric; default: all collide).

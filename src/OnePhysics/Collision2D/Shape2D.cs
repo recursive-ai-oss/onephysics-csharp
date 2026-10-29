@@ -134,7 +134,7 @@ public struct Shape2D
     /// <summary>
     /// One segment of a chain with the vertices next to it. The solid side is to the right of the direction p1 → p2 (the side the normal (dy, -dx) points to),
     /// unless <paramref name="twoSided"/>. A ghost vertex is the neighbouring chain vertex; a missing one (<c>null</c>) marks a free end of an open chain.
-    /// Contacts a body makes with the segment's end vertex are kept only when the contact normal is one a smooth surface through the ghosts could produce (see <c>docs/collision2d.md</c>).
+    /// Contacts a body makes with the segment's end vertex are kept only when the contact normal is one a smooth surface through the ghosts could produce (see <c>docs/spec/collision2d.md</c>).
     /// </summary>
     /// <exception cref="InvalidShapeException">A value is not finite or out of range, or two consecutive vertices are closer than <see cref="Constants2D.MinShapeExtent"/>.</exception>
     public static Shape2D CreateChainSegment(Vec2? ghost1, Vec2 p1, Vec2 p2, Vec2? ghost2, bool twoSided = false)

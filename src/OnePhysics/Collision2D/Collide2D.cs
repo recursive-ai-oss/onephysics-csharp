@@ -137,7 +137,7 @@ public static class Collide2D
 
     /// <summary>
     /// Computes the manifold of two shapes. Shape B's pose in A's frame is given as one transform so the caller can subtract body positions in double precision first.
-    /// Chain segments collide with every shape except other chain segments (static geometry); the ghost-vertex rules are in <c>docs/collision2d.md</c>.
+    /// Chain segments collide with every shape except other chain segments (static geometry); the ghost-vertex rules are in <c>docs/spec/collision2d.md</c>.
     /// </summary>
     /// <param name="a">Shape A, in its own frame.</param>
     /// <param name="b">Shape B, in its own frame.</param>

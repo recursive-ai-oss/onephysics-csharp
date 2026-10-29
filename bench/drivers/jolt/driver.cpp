@@ -199,7 +199,7 @@ static VehState MakeVehicle(PhysicsSystem& physics, BodyID id, VehKind kind)
     VehState c; c.kind = kind; c.body = 0;
     if (kind == VK_CAR)
     {
-        // docs/scenes.md "car": four wheels of 0.34 m radius 0.8 m either side and 1.3 m ahead and behind the centre, suspension 0.05 to 0.5 m at 1.5 Hz and damping 0.6, front wheels steering to 0.5 rad, rear handbrake,
+        // docs/spec/scenes.md "car": four wheels of 0.34 m radius 0.8 m either side and 1.3 m ahead and behind the centre, suspension 0.05 to 0.5 m at 1.5 Hz and damping 0.6, front wheels steering to 0.5 rad, rear handbrake,
         // 400 N m engine between 1000 and 6500 rpm, six-speed automatic, one rear differential of ratio 3.4, anti-roll bars of 20 kN/m.
         const float xs[4] = { -0.8f, 0.8f, -0.8f, 0.8f }, zs[4] = { 1.3f, 1.3f, -1.3f, -1.3f };
         for (int k = 0; k < 4; k++)
@@ -228,7 +228,7 @@ static VehState MakeVehicle(PhysicsSystem& physics, BodyID id, VehKind kind)
     }
     else if (kind == VK_TANK)
     {
-        // docs/scenes.md "tank": five road wheels of 0.45 m radius and 0.5 m width a side, 1.2 m apart, 1.3 m either side of the centre and 0.2 m below it, suspension 0.1 to 0.45 m at 2 Hz and damping 0.7.
+        // docs/spec/scenes.md "tank": five road wheels of 0.45 m radius and 0.5 m width a side, 1.2 m apart, 1.3 m either side of the centre and 0.2 m below it, suspension 0.1 to 0.45 m at 2 Hz and damping 0.7.
         // The left track (the x < 0 wheels) takes wheels 0 to 4, the right track 5 to 9; the first wheel of each track is the driven one. Engine, transmission and track settings keep the library's defaults.
         TrackedVehicleControllerSettings* cs = new TrackedVehicleControllerSettings;
         for (int side = 0; side < 2; side++)
@@ -249,7 +249,7 @@ static VehState MakeVehicle(PhysicsSystem& physics, BodyID id, VehKind kind)
     }
     else
     {
-        // docs/scenes.md "bike": 0.32 m wheels 1.4 m apart, 0.1 m above the centre, suspension 0.1 to 0.4 m at 2.5 Hz and damping 0.7, front wheel steering to 0.5 rad, 90 N m engine between 1200 and 10000 rpm, five-speed
+        // docs/spec/scenes.md "bike": 0.32 m wheels 1.4 m apart, 0.1 m above the centre, suspension 0.1 to 0.4 m at 2.5 Hz and damping 0.7, front wheel steering to 0.5 rad, 90 N m engine between 1200 and 10000 rpm, five-speed
         // automatic box shifting up at 8000 and down at 3500 rpm, rear wheel drive through one differential, brakes 500 and 400 N m, lean controller on with a 40 degree limit.
         for (int k = 0; k < 2; k++)
         {
@@ -371,7 +371,7 @@ int main(int argc, char** argv)
         if (s.bodies[oj.a].type != 2 && s.bodies[oj.b].type != 2) continue;
         if (!strcmp(oj.kind, "swingtwist"))
         {
-            // The scene's joint frame has its twist axis along u (here +y) and the shortest-arc rotation from x to u, so its y axis is world -x and its z axis world z (docs/scenes.md); the Jolt constraint space
+            // The scene's joint frame has its twist axis along u (here +y) and the shortest-arc rotation from x to u, so its y axis is world -x and its z axis world z (docs/spec/scenes.md); the Jolt constraint space
             // is (twist, plane, normal) = the same three axes. The class reference of SwingTwistConstraintSettings (with its picture) measures the normal half cone angle as the tilt of the twist axis towards the
             // normal axis, a rotation about the plane axis: the scene's swing-y limit; the plane half cone angle is the swing-z limit.
             SwingTwistConstraintSettings st; st.mSpace = EConstraintSpace::LocalToBodyCOM;
@@ -431,7 +431,7 @@ int main(int argc, char** argv)
     {
         for (int w = 0; w < s.nWake; w++)
             if (s.wakes[w].step == step) for (int i = 0; i < s.nBody; i++) if (s.bodies[i].type == 2 && charOf[(size_t)i] < 0) bi.ActivateBody(ids[i]);
-        // Scripted drive as in the other drivers: throttle until the braking step, then full brake; a cosine-like triangle-wave slalom between the steering step and the braking step (docs/scenes.md).
+        // Scripted drive as in the other drivers: throttle until the braking step, then full brake; a cosine-like triangle-wave slalom between the steering step and the braking step (docs/spec/scenes.md).
         for (VehState& c : cars)
         {
             const Op3Body& ob = s.bodies[c.body];
@@ -460,7 +460,7 @@ int main(int argc, char** argv)
             else static_cast<WheeledVehicleController*>(c.ctrl)->SetDriverInput(throttle, -steer, brake, 0.0f);
             if (throttle != 0.0f || brake != 0.0f) bi.ActivateBody(ids[(size_t)c.body]);
         }
-        // Powered ragdolls: the scene's pose drive, a target rotation about one axis of the joint frame with angle amp times a triangle wave 0 to 1 to 0 over period steps (docs/scenes.md), in constraint space.
+        // Powered ragdolls: the scene's pose drive, a target rotation about one axis of the joint frame with angle amp times a triangle wave 0 to 1 to 0 over period steps (docs/spec/scenes.md), in constraint space.
         for (const Drive& d : drives)
         {
             const Op3Joint& oj = s.joints[d.joint];

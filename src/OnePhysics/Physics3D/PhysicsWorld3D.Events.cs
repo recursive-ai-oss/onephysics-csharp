@@ -373,7 +373,7 @@ public sealed partial class PhysicsWorld3D : ICallbackGate
         if (set.IsEmpty) { _handlers.Remove(h.Index); }
     }
 
-    // ------------------------------------------------------------------ filters (see docs/world3d.md, "Layers, filters and sensors")
+    // ------------------------------------------------------------------ filters (see docs/spec/world3d.md, "Layers, filters and sensors")
 
     /// <summary>
     /// Sets whether shapes on layer <paramref name="layerA"/> collide with shapes on layer <paramref name="layerB"/> (Unity's layer collision matrix; symmetric; default: all collide).

@@ -57,7 +57,7 @@ bar verdict --timing DIR[,DIR...] [--metrics FILE[,FILE...]] [--out DIR]
 
 `bar run` writes the same table (`verdict.csv` and a section of `summary.md`) after every run that measured this library; `bar verdict` builds it from any pulled result directories. Several `--timing` directories are merged in the order given (a later directory replaces an earlier row for the same scene, engine and thread count, so a pinned 8-thread run is listed after the unpinned one it replaces). Per scene and thread count it shows:
 
-- **Binding reference:** the fastest of Bepu, Jitter2 and Box2D.NET that is stable on the scene. Box2D.NET is single-threaded, so its 1-thread row is its row at every thread count. An engine is stable when its metrics (`--metrics`, a `metrics.csv` of a stability run) are within the scene's limits (`bench/Bar/Verdict.cs`, the table in `docs/scenes.md`: maximum speed, penetration, joint error and the robust jitter, rest energy and final penetration; `nan`, `escapes` and `tunnelled` must be 0). An engine with no metrics in the supplied files takes the recorded verdict of the stability sweeps (marked `recorded`; engines the sweeps never ran are marked `assumed` stable). No stable managed engine: **no binding row**, and the scene is judged on stability alone.
+- **Binding reference:** the fastest of Bepu, Jitter2 and Box2D.NET that is stable on the scene. Box2D.NET is single-threaded, so its 1-thread row is its row at every thread count. An engine is stable when its metrics (`--metrics`, a `metrics.csv` of a stability run) are within the scene's limits (`bench/Bar/Verdict.cs`, the table in `docs/spec/scenes.md`: maximum speed, penetration, joint error and the robust jitter, rest energy and final penetration; `nan`, `escapes` and `tunnelled` must be 0). An engine with no metrics in the supplied files takes the recorded verdict of the stability sweeps (marked `recorded`; engines the sweeps never ran are marked `assumed` stable). No stable managed engine: **no binding row**, and the scene is judged on stability alone.
 - **Ratio and verdict:** our median step time over the binding reference's. `PASS` at 1.15 or less, `MISS` above it.
 - **Asleep rows:** a reference median under 0.01 ms is a run in which its bodies are asleep. It is marked **asleep**, its mean is shown beside its median, and a ratio above 1.15 against it is a **SLEEP-GAP**, a sleep-timing gap and not a speed loss (the fastest awake stable managed engine's ratio is added in the verdict cell).
 - **Fastest native engine** (Box2D v3, Rapier, Jolt, Box3D) as information only, with its ratio; empty when the supplied directories hold no native rows. `timing.csv` and the old summary tables are unchanged, so the earlier columns stay available.
@@ -71,7 +71,7 @@ bar verdict --timing DIR[,DIR...] [--metrics FILE[,FILE...]] [--out DIR]
 - **Threads**: 1, 8 and the machine's logical core count (`all`). Box2D: `workerCount` set to the thread count and the library's own task system used. Rapier2D: the `parallel` feature (the documented way to multithread the whole step) and the step runs inside a rayon pool of exactly that many threads. Box2D.NET has no documented multithreading, so it runs 1 thread only.
 - **Memory**: peak resident set size of the driver process from `/usr/bin/time -v` (Linux) or `-l` (macOS), whole run including scene loading.
 - **Query throughput**: after the scene's `settle` steps, each query kind runs over all its queries `query_reps` times; the first repetition is untimed; queries per second = queries ÷ time for that kind. Hit counts are recorded so engines can be compared for agreement.
-- **Stability**: the driver dumps state every `dump_every` steps (not timed); `bar metrics` computes the metrics from the dump (docs/scenes.md).
+- **Stability**: the driver dumps state every `dump_every` steps (not timed); `bar metrics` computes the metrics from the dump (docs/spec/scenes.md).
 - **Defaults**: each reference runs with its default configuration: Box2D v3 world definition defaults with 4 substeps (the documented recommendation) and sleeping on; Rapier default integration parameters and the dt from the scene; Box2D.NET defaults with 4 substeps. Gravity and dt come from the scene. Bullets: Box2D `isBullet`, Rapier `ccd_enabled`.
 - **Machines**: x64 timing runs on the shared worker under the benchmark lock; arm64 on the Mac mini with nothing else running. A run that overlapped another project's heavy job is not publishable.
 
@@ -112,7 +112,7 @@ The `onephysics` engine runs this library's 2D world in a child process (`bar on
 
 ### Jolt drivers for the vehicle, character, ragdoll and buoyancy scenes
 
-Written from the rendered class reference pages of Jolt 5.6.0 (no header, source or sample was read) and run in stability mode: `bar run --mode stability --engines jolt,onephysics --force-engines` (the option runs the listed engines on scenes whose `engines` param names fewer). Where the reference pages did not settle a point it was settled by a black-box experiment, noted below. Rows are 1 thread, Release, Ryzen 9 7950X3D (32 logical cores, shared, load about 6), step times indicative only (not a timing run); metrics and thresholds as in `docs/scenes.md`.
+Written from the rendered class reference pages of Jolt 5.6.0 (no header, source or sample was read) and run in stability mode: `bar run --mode stability --engines jolt,onephysics --force-engines` (the option runs the listed engines on scenes whose `engines` param names fewer). Where the reference pages did not settle a point it was settled by a black-box experiment, noted below. Rows are 1 thread, Release, Ryzen 9 7950X3D (32 logical cores, shared, load about 6), step times indicative only (not a timing run); metrics and thresholds as in `docs/spec/scenes.md`.
 
 | scene | Jolt configuration | class reference pages used | Jolt | onephysics | Jolt vs the thresholds |
 |---|---|---|---|---|---|
@@ -165,7 +165,7 @@ Evidence (maxPenetration / finalPenetration / other, x64 run; the stable engines
 
 ## Stability under the robust metrics (x64, one thread; robust / raw)
 
-Same run as the proposed thresholds in `docs/scenes.md` (metric definitions there). Each cell is the robust value, then the raw (old-definition) value. Engines are listed where they ran the scene; `onephysics` is this library. These values supersede the old-metric evidence above where they differ: the old single-frame definitions were `jitterRaw`, `restKERaw`, `finalPenetrationRaw`, `escapesRaw`.
+Same run as the proposed thresholds in `docs/spec/scenes.md` (metric definitions there). Each cell is the robust value, then the raw (old-definition) value. Engines are listed where they ran the scene; `onephysics` is this library. These values supersede the old-metric evidence above where they differ: the old single-frame definitions were `jitterRaw`, `restKERaw`, `finalPenetrationRaw`, `escapesRaw`.
 
 **jitter**
 

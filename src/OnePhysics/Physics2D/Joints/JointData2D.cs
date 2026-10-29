@@ -7,7 +7,7 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics2D;
 
 /// <summary>
-/// The parameters of one joint, as the engine keeps and snapshots them (indexed by constraint slot). One record serves every joint type; the meaning of the shared fields is listed per type in docs/world2d.md.
+/// The parameters of one joint, as the engine keeps and snapshots them (indexed by constraint slot). One record serves every joint type; the meaning of the shared fields is listed per type in docs/spec/world2d.md.
 /// The last five fields are runtime bookkeeping, not part of a snapshot: the bodies' slots and generations and the joint's own generation, used to notice that the core removed the joint.
 /// </summary>
 internal struct JointData2D

@@ -1,4 +1,4 @@
-// Rapier 3D driver: runs an engine-neutral 3D scene (docs/scenes.md) through the library's public API.
+// Rapier 3D driver: runs an engine-neutral 3D scene (docs/spec/scenes.md) through the library's public API.
 use rapier3d::parry::query::ShapeCastOptions;
 use rapier3d::prelude::*;
 use std::io::Write;

@@ -7,7 +7,7 @@ namespace Bar;
 sealed record ProfileRow(string Scene, string Engine, int Threads, double StepMedianMs, Dictionary<string, double> Stages, Dictionary<string, double> Counts);
 
 /// <summary>
-/// Maps each engine's own stage names onto common buckets and renders the side-by-side table. The mapping is documented in docs/bench.md; stages that contain other stages are left out of the sums
+/// Maps each engine's own stage names onto common buckets and renders the side-by-side table. The mapping is documented in docs/spec/bench.md; stages that contain other stages are left out of the sums
 /// (they are shown in the native table) so nothing is counted twice, and "other" is the engine's own step total minus the mapped stages.
 /// </summary>
 static class ProfileReport
@@ -88,7 +88,7 @@ static class ProfileReport
     {
         var sb = new StringBuilder("# Per-stage comparison\n\n");
         sb.AppendLine("```").Append(meta).AppendLine("```\n");
-        sb.AppendLine("Medians over the measured steps, in ms. Each engine's own stage names are mapped onto common buckets (docs/bench.md); \"step total\" is the engine's own step timer, so the profile build's overhead is included in it. Ours is built in the Profile configuration.\n");
+        sb.AppendLine("Medians over the measured steps, in ms. Each engine's own stage names are mapped onto common buckets (docs/spec/bench.md); \"step total\" is the engine's own step timer, so the profile build's overhead is included in it. Ours is built in the Profile configuration.\n");
         foreach (var g in rows.GroupBy(r => (r.Scene, r.Threads)).OrderBy(g => g.Key.Scene, StringComparer.Ordinal).ThenBy(g => g.Key.Threads))
         {
             var engines = g.OrderBy(r => r.Engine, StringComparer.Ordinal).ToList();

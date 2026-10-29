@@ -144,7 +144,7 @@ public sealed partial class PhysicsWorld2D
     public int GetSnapshotSize() => _core.GetSnapshotSize();
 
     /// <summary>
-    /// Writes the snapshot into <paramref name="destination"/>: byte-exact, so restoring the bytes into a world made with the same options and continuing gives identical per-step hashes, events and snapshots. Layout in docs/architecture.md.
+    /// Writes the snapshot into <paramref name="destination"/>: byte-exact, so restoring the bytes into a world made with the same options and continuing gives identical per-step hashes, events and snapshots. Layout in docs/spec/architecture.md.
     /// When it fits, returns true and <paramref name="written"/> is its length. When it does not, nothing is written, the result is false and <paramref name="written"/> is the length needed (see <see cref="GetSnapshotSize"/>).
     /// Allocates nothing once the world's internal buffer has grown to the snapshot's size.
     /// </summary>

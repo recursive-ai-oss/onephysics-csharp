@@ -8,7 +8,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// <summary>
 /// A closed convex polyhedron with outward, counter-clockwise faces, used to cut a shape by a fluid surface exactly.
 /// Boxes and hulls are exact; round shapes (cylinders, capsules, tapered capsules) are tessellated into rings of <see cref="Segments"/> sides, with the ring radii scaled so each
-/// ring's area equals the circle's, which keeps the volume error below about 1 % for the shapes' usual proportions (see docs/world3d.md, buoyancy).
+/// ring's area equals the circle's, which keeps the volume error below about 1 % for the shapes' usual proportions (see docs/spec/world3d.md, buoyancy).
 /// </summary>
 internal sealed class BuoyancyMesh
 {

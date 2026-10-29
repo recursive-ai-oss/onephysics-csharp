@@ -5,7 +5,7 @@ One place for the choices a host has to know. The two worlds (`PhysicsWorld2D`, 
 ## Units and sizes
 
 - **Full sizes.** Every `Add*` one-liner and every `CreateBox` takes full extents (`AddBox(size)`, `CreateBox(body, size, ...)`, `ShapeSpec3D.Box(size)`). A parameter that is a half extent says so in its name: `halfLength` (capsule, both dimensions), `halfHeight` (cylinder), `RagdollPartDef.ShapeHalfSize`, and the cone's `halfAngle`.
-- **Radians everywhere.** All angles, limits, motor speeds and rates are radians (per second). A parameter that is an angle in a method that also takes other numbers is named for it: `angleRadians` on the 2D creators, queries and `SetTransform`. `CharacterDef.SlopeLimit` and `Character.SlopeLimit` are radians; Unity's degrees need converting.
+- **Radians everywhere.** All angles, limits, motor speeds and rates are radians (per second). A parameter that is an angle in a method that also takes other numbers is named for it: `angleRadians` on the 2D creators, queries and `SetTransform`. `CharacterDef.SlopeLimitRadians` and `Character.SlopeLimitRadians` are radians; Unity's degrees need converting.
 - **Meters, kilograms, seconds.** Positions cross the boundary as `double`; everything else is `float`.
 
 ## Handles
