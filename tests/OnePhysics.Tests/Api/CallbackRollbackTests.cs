@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using RecursiveAI.OneMath;
+using RecursiveAI.OnePhysics.Tests.Core;
 using Xunit;
 using P2 = RecursiveAI.OnePhysics.Physics2D;
 using P3 = RecursiveAI.OnePhysics.Physics3D;
@@ -295,14 +296,16 @@ public class CallbackRollbackTests
         w.Restore(snap);
         for (int i = 0; i < 20; i++) { w.Step(Dt); }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 100; i++) { w.Step(Dt); }
+        AllocMeter.Settle();
+        long bytes = 0;
+        Action step = () => w.Step(Dt);
+        for (int i = 0; i < 100; i++) { bytes += AllocMeter.Of(step); }
         using (w.SuppressCallbacks())
         {
-            for (int i = 0; i < 100; i++) { w.Step(Dt); }
+            for (int i = 0; i < 100; i++) { bytes += AllocMeter.Of(step); }
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, bytes);
         Assert.True(hits > 0);
 
         var w3 = new P3.PhysicsWorld3D(new P3.WorldOptions3D { WorldId = 8 });
@@ -316,13 +319,15 @@ public class CallbackRollbackTests
         w3.Warmup();
         for (int i = 0; i < 100; i++) { w3.Step(Dt); }
         using (w3.SuppressCallbacks()) { }
-        before = GC.GetAllocatedBytesForCurrentThread();
+        AllocMeter.Settle();
+        bytes = 0;
+        Action step3 = () => w3.Step(Dt);
         using (w3.SuppressCallbacks())
         {
-            for (int i = 0; i < 100; i++) { w3.Step(Dt); }
+            for (int i = 0; i < 100; i++) { bytes += AllocMeter.Of(step3); }
         }
 
-        for (int i = 0; i < 100; i++) { w3.Step(Dt); }
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        for (int i = 0; i < 100; i++) { bytes += AllocMeter.Of(step3); }
+        Assert.Equal(0, bytes);
     }
 }

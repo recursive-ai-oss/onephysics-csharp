@@ -19,28 +19,21 @@ public class WarmAllocationTests
     private const float Dt = 1f / 60f;
     private const int Steps = 5000;
 
-    // The test project turns tiered compilation off (see the csproj). With it on, the runtime compiles an on-stack-replacement version of a method with a hot loop on the calling thread the first
-    // time the loop runs long, and a background thread installs optimized code; both allocate inside the runtime, from a few hundred bytes to a few kilobytes, whatever the library does.
-    // Measured on randomized scenes: with quick JIT for loops on, about one world in ten saw such an event on the calling thread and none with it off; at one thread the background
-    // installs alone gave a few hundred bytes process-wide in about a third of the runs. With tiering off, anything counted here is the library's.
-    // What the library allocates repeats exactly in every fresh world built the same way (same bodies, same steps), so the scenario passes when one of three fresh worlds is clean; an allocation that
-    // shows up once and not in the others (a runtime event, measured on a host running other work, with the process pinned to three cores) is not the library's.
-    private static void Settled(Func<string?> run)
+    // What is counted: the calling thread's own allocations per step. The runtime's allocator reports a few KB on that thread in some early window of a world built moments ago on a busy
+    // machine, with the code under test allocating nothing; AllocMeter.Settle() after setup removes it.
+    private static void Verdict(Func<string?> scenario)
     {
-        string? last = null;
-        for (int attempt = 0; attempt < 3; attempt++)
-        {
-            last = run();
-            if (last == null) { return; }
-        }
-
-        Assert.Fail(last);
+        string? problem = scenario();
+        Assert.True(problem == null, problem);
     }
 
     [Theory]
     [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
     [InlineData(8)]
-    public void World2DAllocatesNothingAfterWarmup(int threads) => Settled(() => Run2D(threads));
+    [InlineData(32)]
+    public void World2DAllocatesNothingAfterWarmup(int threads) => Verdict(() => Run2D(threads));
 
     private static string? Run2D(int threads)
     {
@@ -56,13 +49,13 @@ public class WarmAllocationTests
         var zone = w.CreateBody(BodyType.Static, new Vector2D(-2, 1));
         w.CreateBox(zone, new Vector2F(6, 4), def: new Physics2D.ShapeDef { IsSensor = true });
         w.Warmup();
+        AllocMeter.Settle();
 
         var hits = new QueryHit2D[16];
         var scratch = new byte[1 << 22];
-        long total = 0, firstBytes = 0; int first = -1;
         for (int i = 1; i <= Steps; i++)
         {
-            long a0 = GC.GetTotalAllocatedBytes(true), t0 = GC.GetAllocatedBytesForCurrentThread();
+            var window = AllocMeter.Start();
             player.Move(new Vector2F(-0.04f, -0.1f), Dt);
             w.Step(Dt);
             w.Raycast(new Vector2D(0, 10), new Vector2F(0, -1), out _);
@@ -74,22 +67,21 @@ public class WarmAllocationTests
                     w.Restore(scratch.AsSpan(0, n));
                 }
 
-            long step = GC.GetTotalAllocatedBytes(true) - a0;
-            if (step != 0 && first < 0) { first = i; firstBytes = step; }
-            total += step;
-            long own = GC.GetAllocatedBytesForCurrentThread() - t0;
+            long own = window.Bytes();
             if (own != 0) { return $"step {i}: the calling thread allocated {own} bytes"; }
+
         }
 
-        // The calling thread must allocate nothing. The process-wide count also sees the worker threads, and a stray runtime allocation of a few bytes now and then (a timer, the test host);
-        // a worker that allocated per step would add up to far more than the allowance.
-        return total <= 512 ? null : $"the process allocated {total} bytes over {Steps} steps (first: {firstBytes} at step {first})";
+        return null;
     }
 
     [Theory]
     [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
     [InlineData(8)]
-    public void World3DAllocatesNothingAfterWarmup(int threads) => Settled(() => Run3D(threads));
+    [InlineData(32)]
+    public void World3DAllocatesNothingAfterWarmup(int threads) => Verdict(() => Run3D(threads));
 
     private static string? Run3D(int threads)
     {
@@ -105,6 +97,7 @@ public class WarmAllocationTests
         var zone = w.CreateBody(BodyType.Static, new Vector3D(-2, 1, 0));
         w.CreateBox(zone, new Vector3F(6, 4, 6), 0f, new Physics3D.ShapeDef { IsSensor = true, Density = 0f });
         w.Warmup();
+        AllocMeter.Settle();
 
         var hits = new QueryHit3D[16];
         var scratch = new byte[1 << 22];
@@ -120,11 +113,10 @@ public class WarmAllocationTests
         var rayHits = new QueryHit3D[rays.Length];
         var sphereHits = new QueryHit3D[spheres.Length];
         var counts = new int[spheres.Length];
-        long total = 0, firstBytes = 0; int first = -1;
         // The first steps cover the pile landing and settling, the phase in which deep contacts use the penetration solver; the rest are a settled pile asleep and awake.
         for (int i = 1; i <= Steps; i++)
         {
-            long a0 = GC.GetTotalAllocatedBytes(true), t0 = GC.GetAllocatedBytesForCurrentThread();
+            var window = AllocMeter.Start();
             player.Move(new Vector3F(-0.04f, -0.1f, 0), Dt);
             w.Step(Dt);
             w.Raycast(new Vector3D(0, 10, 0), new Vector3F(0, -1, 0), out _);
@@ -143,15 +135,11 @@ public class WarmAllocationTests
                     w.Restore(scratch.AsSpan(0, n));
                 }
 
-            long step = GC.GetTotalAllocatedBytes(true) - a0;
-            if (step != 0 && first < 0) { first = i; firstBytes = step; }
-            total += step;
-            long own = GC.GetAllocatedBytesForCurrentThread() - t0;
+            long own = window.Bytes();
             if (own != 0) { return $"step {i}: the calling thread allocated {own} bytes"; }
+
         }
 
-        // The calling thread must allocate nothing. The process-wide count also sees the worker threads, and a stray runtime allocation of a few bytes now and then (a timer, the test host);
-        // a worker that allocated per step would add up to far more than the allowance.
-        return total <= 512 ? null : $"the process allocated {total} bytes over {Steps} steps (first: {firstBytes} at step {first})";
+        return null;
     }
 }
