@@ -692,3 +692,27 @@ The general route's own accuracy (about 2e-4 of the segment, see collision3d.md)
 The queries-3d step-time row of the speed gate measures the 300 settling steps of its 3000-body pile, not the queries (Bepu and Jitter2 are not driven for queries), so these changes do not move it.
 
 Hash matrix lines changed by this round (manifest 50754db0777962ec to 706b503084d3ac3f on the 37-scenario set; scalar 100215fd5b6a51bc on its 19): `world3d/host-probe`, `world3d/services` and `world3d/vehicle-kinds`, which issue ray and sphere-cast queries. Every worker column (jit, threads 8, threads at 8 (light-work cap), scalar, no AVX-512, no AVX2, tiered compilation off, NativeAOT) is equal.
+
+### Round 30: the contact update of ragdoll and sleep-wake piles (no result changes)
+
+Where the narrowphase of these two scenes goes (one thread, tiered compilation off, a stopwatch around each routine, so the figures carry about 25 ns of timer cost per call; calls are over a whole run of 660 or 420 steps):
+
+| scene | routine | calls | ns per call |
+|---|---|---|---|
+| ragdoll-pile-3d | box against capsule, either order (before) | 203,000 | 770 |
+| ragdoll-pile-3d | box against capsule (after) | 203,000 | 490 |
+| ragdoll-pile-3d | capsule against capsule | 135,500 | 170 |
+| ragdoll-pile-3d | box against box | 17,200 | 1,200 |
+| sleep-wake-3d | box against box, touching | 258,000 | 780 |
+| sleep-wake-3d | box against box, apart with a clearance | 203,000 | 90 |
+| sleep-wake-3d | of those, face axes / edge search / face clipping | 438k / 186k / 197k | 60 / 205 / 240 |
+
+Pairs per step: sleep-wake-3d 1,150 run the narrowphase, 580 of them touching pairs whose manifold could not be reused, 465 apart (no constraint) and 100 other; 520 more pairs leave at the box tests and 520 reuse their manifold. In ragdoll-pile-3d 660 pairs run it and 2,100 reuse. The apart pair costs 90 ns in the shape test and about 130 ns around it.
+
+* **Capsule against box: edges that cannot win are skipped.** The closest pair of the core segment and the core box tries the segment ends, then the twelve box edges. An edge along one axis sits at fixed coordinates on the other two, so the segment is at least as far from it as the sum, over those two axes, of the squared distance from the coordinate to the segment's range on that axis. An edge whose bound exceeds the best distance so far (by 0.1% for rounding) cannot give a smaller one, and its segment-pair routine is not run. The answer is the same bits; the routine fell from about 640 to 210 ns.
+* **Box edge axes: the cone test on squares first.** Of the nine cross-product axes of two boxes, an axis is only an edge axis when both components of its direction that matter to the box it comes from exceed 1e-4 of its length. That is decided on the squares, with 0.2% for rounding, before the divide and square root of the normalization; boxes close to axis-aligned (every pile) reject most axes at once. Same bits.
+* **Separated boxes whose best axis is an edge pair** (about 3 in 10 of the separated pairs that reach the GJK check in a pile): the closest points of the two edge segments (Ericson 5.1.9) replace GJK when their distance equals the axis separation to 2e-4 of the scale and points along the axis to within a cosine of 0.9995; those are exactly the conditions under which the old code kept GJK's answer. Otherwise GJK runs as before. The test `SeparatedBoxesNearEachOtherHaveTheGjkDistanceWhateverFeatureIsNearest` compares the separation with GJK's distance for pairs a few millimetres apart.
+* **The narrowphase of a pair that needs one runs out of line.** Most pairs leave early (boxes apart, a manifold reused, shapes known to be apart), and the frame that held the shape frames and manifold for the rest was set up for all of them. The part from `sc.Fresh++` on is its own method.
+* **Tried and dropped:** `SkipLocalsInit` on the pair methods (no change beyond the split's), and a faster path for reused manifolds (already about 80 ns).
+
+Hash matrix: manifest 706b503084d3ac3f unchanged on the 37 scenarios, so no line moves.

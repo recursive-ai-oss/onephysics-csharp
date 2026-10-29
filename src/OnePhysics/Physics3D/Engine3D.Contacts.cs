@@ -642,6 +642,14 @@ internal sealed partial class Engine3D
             return;
         }
 
+        CollideFresh(i, sc, p, sa, sb, ga, gb, ba, bb, pA, pB, qA, qB);
+    }
+
+    // The pairs that need a narrowphase run are a minority (most are skipped, found apart by their boxes or reuse their manifold), so the work for them is out of line: the early exits above
+    // then run in a frame that holds none of the shape frames and manifolds this part needs.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void CollideFresh(int i, NarrowScratch sc, int p, int sa, int sb, Geom3D ga, Geom3D gb, int ba, int bb, ReadOnlySpan<double> pA, ReadOnlySpan<double> pB, QuaternionF qA, QuaternionF qB)
+    {
         sc.Fresh++;
         var la = Local[sa]; var lb = Local[sb];
         var lcA = LocalCenterOf(ba); var lcB = LocalCenterOf(bb);

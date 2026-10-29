@@ -148,6 +148,10 @@ public sealed partial class ManifoldGenerator3D
                 Vector3F l = i == 0 ? new Vector3F(0f, -c.Z, c.Y) : i == 1 ? new Vector3F(c.Z, 0f, -c.X) : new Vector3F(-c.Y, c.X, 0f);
                 float l2 = l.LengthSquared();
                 if (!(l2 > 1e-10f)) { continue; }
+                // An axis whose two components that matter to the cone test are clearly under the margin of its length fails that test below; the comparison here is on squares, with a margin of its own
+                // for rounding, so it only skips axes the normalized test rejects anyway, and the divide and square root are not spent on them.
+                float cut = ConeMargin * ConeMargin * 0.998f * l2;
+                if (i == 0 ? (l.Y * l.Y < cut || l.Z * l.Z < cut) : i == 1 ? (l.X * l.X < cut || l.Z * l.Z < cut) : (l.X * l.X < cut || l.Y * l.Y < cut)) { continue; }
                 Vector3F n = l / ConvexShape3D.Sqrt(l2);
                 float d = Vector3F.Dot(n, t);
                 if (d < 0f) { n = -n; d = -d; }
