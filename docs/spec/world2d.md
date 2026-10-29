@@ -182,7 +182,7 @@ Before any change, `Step` checks every non-static body's shape boxes, stretched 
 
 ## Origin shifting
 
-After the core shifts positions, every shape's proxy is destroyed and re-created in ascending shape slot order; the pair table is unchanged. The next step reports all overlapping pairs again, of which the existing ones are ignored.
+After the core shifts positions, every box stored in the broadphase trees is moved by the same offset in place (bounds beyond ±2^22 are clamped to it, which keeps containment); tree shape, flags, refit counts, the move buffer and the pair table are untouched. A shifted world therefore steps through the states of the unshifted one, translated: see "Exact shifting" in `world3d.md`, which applies to both engines.
 
 ## Joints
 
