@@ -21,7 +21,7 @@ static class ProfileReport
         ["onephysics"] = new()
         {
             ["boxes"] = BroadPhase, ["pairs"] = BroadPhase, ["narrowphase"] = Narrow, ["apply"] = Narrow, ["prepare"] = Prepare, ["solve"] = Solve,
-            ["finalize"] = Finalize, ["store"] = Finalize, ["sleep"] = Islands, ["coloring"] = Other, ["events"] = Other,
+            ["finalize"] = Finalize, ["store"] = Finalize, ["sleep"] = Islands, ["coloring"] = Other, ["events"] = Other, ["move"] = BroadPhase, ["init"] = BroadPhase, ["search"] = BroadPhase, ["sort"] = BroadPhase, ["alloc"] = BroadPhase,
         },
         ["box2d"] = new()
         {

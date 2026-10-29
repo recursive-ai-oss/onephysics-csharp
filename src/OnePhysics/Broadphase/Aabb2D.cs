@@ -73,8 +73,10 @@ public readonly struct Aabb2D : IBox<Aabb2D>, IEquatable<Aabb2D>
         double minX = MinX - margin, minY = MinY - margin, maxX = MaxX + margin, maxY = MaxY + margin;
         double dx = displacement.Length > 0 ? displacement[0] * multiplier : 0.0;
         double dy = displacement.Length > 1 ? displacement[1] * multiplier : 0.0;
-        if (dx < 0.0) { minX += dx; } else { maxX += dx; }
-        if (dy < 0.0) { minY += dy; } else { maxY += dy; }
+        // The stretch is a hint for fast bodies; it stops at the coordinate limit instead of refusing a body that is still inside it.
+        const double L = BoxLimits.MaxCoordinate;
+        if (dx < 0.0) { minX = Math.Min(minX, Math.Max(minX + dx, -L)); } else { maxX = Math.Max(maxX, Math.Min(maxX + dx, L)); }
+        if (dy < 0.0) { minY = Math.Min(minY, Math.Max(minY + dy, -L)); } else { maxY = Math.Max(maxY, Math.Min(maxY + dy, L)); }
         return new Aabb2D(minX, minY, maxX, maxY);
     }
 

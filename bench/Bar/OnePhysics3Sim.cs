@@ -74,13 +74,13 @@ sealed class OnePhysics3Sim : ISim3
             if (!cs.IsLive(c)) continue;
             if (cs.KindOf(c) == ConstraintKind.Joint) joints++; else if (cs.PointCount[c] > 0) { contacts++; points += cs.PointCount[c]; }
         }
-        counts.Add([core.AwakeBodies.Length, live, awakePairs, contacts, points, joints]);
+        counts.Add([core.AwakeBodies.Length, live, awakePairs, contacts, points, joints, e.StatNewPairs, e.StatUpdated, e.StatReached, e.StatFresh]);
     }
 
     string CountLines()
     {
         if (counts.Count == 0) return "";
-        string[] names = ["awake_bodies", "pairs_live", "pairs_awake", "manifolds", "points", "joints"];
+        string[] names = ["awake_bodies", "pairs_live", "pairs_awake", "manifolds", "points", "joints", "new_pairs", "pairs_revisited", "pairs_tight_pass", "pairs_narrowphase"];
         var sb = new StringBuilder();
         for (int k = 0; k < names.Length; k++)
         {

@@ -10,14 +10,14 @@ namespace Bar;
 /// </summary>
 static class StageProfile
 {
-    public static readonly string[] Names = ["boxes", "pairs", "narrowphase", "apply", "coloring", "prepare", "solve", "finalize", "store", "sleep", "events"];
+    public static readonly string[] Names = ["boxes", "pairs", "narrowphase", "apply", "coloring", "prepare", "solve", "finalize", "store", "sleep", "events", "end", "move", "init", "search", "sort", "alloc"];
 
     public static bool Requested => Environment.GetEnvironmentVariable("OP_PROFILE") != null;
 
 #if STAGE_TIMERS
     public const bool Available = true;
-    static readonly long[] stamp = new long[16];
-    static readonly int[] order = new int[16];
+    static readonly long[] stamp = new long[32];
+    static readonly int[] order = new int[32];
     static int marks;
     static readonly List<double[]> perStep = [];
     // Inside the solve stage: time and task counts per kind of stage (integration, then warm start, solve, relax and restitution, each for the colours and for the overflow set).
