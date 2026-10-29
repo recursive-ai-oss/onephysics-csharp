@@ -6,7 +6,8 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 ## [Unreleased]
 
-- **3D `Restore` refuses more damaged state.** A saved joint impulse no solver step could have produced (it would throw the joined bodies out of the world in one step) and a dynamic body whose saved extents do not match its shapes are refused with `SnapshotFormatException`, and the world is unchanged. Valid worlds, including extreme mass ratios, restore as before and no result moves.
+- **Fix: 0.1.0-preview.5 could refuse a snapshot of a valid 3D world.** Its `Restore` rejected saved contact impulses above a fixed plausibility limit, but the solver can legitimately produce larger ones (a very heavy body on a light one, or a tight pile, gave impulses in the trillions), so a world that stepped normally could write a snapshot the same library then refused with `SnapshotFormatException`. This release removes that check, along with the wheel and engine speed limits added with it: a snapshot the library wrote always restores, and saved impulses are checked only for being finite. A damaged snapshot that carries an enormous impulse restores, and the next step reports a body flung out of the supported range with `BodyOutOfBoundsException`, the world unchanged, as before. Results do not move.
+- **3D `Restore` refuses a dynamic body whose saved extents do not match its shapes** (`SnapshotFormatException`, world unchanged). A valid snapshot always matches.
 
 ## [0.1.0-preview.5]
 

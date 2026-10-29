@@ -26,8 +26,23 @@ public class RestoreBounds3DTests
         return w;
     }
 
+    // A snapshot the library wrote always restores, whatever the impulses in it: the solver can legitimately produce very large ones, so restore checks them only for being finite.
+    // What a damaged one may do is throw bodies out of the supported range, and that must end in a typed error, never an argument error from inside a step.
+    private static void RestoresAndStepsWithOnlyTypedErrors(PhysicsWorld3D fresh, byte[] snap)
+    {
+        fresh.Restore(snap);
+        Assert.Equal(snap, fresh.Snapshot());
+        foreach (var v in fresh.GetVehicles()) { v.Drive(1f); }
+        for (int i = 0; i < 3; i++)
+        {
+            byte[] before = fresh.Snapshot();
+            try { fresh.Step(Dt); }
+            catch (BodyOutOfBoundsException) { Assert.Equal(before, fresh.Snapshot()); break; }
+        }
+    }
+
     [Fact]
-    public void AnAbsurdSavedContactImpulseIsRefusedAndTheWorldIsUnchanged()
+    public void AnAbsurdSavedContactImpulseRestoresAndStepsWithOnlyTypedErrors()
     {
         var w = CarOnGround();
         var cons = w.Engine.Core.Constraints;
@@ -38,16 +53,8 @@ public class RestoreBounds3DTests
         }
 
         Assert.True(found >= 0, "the scene should have a contact");
-        float good = cons.Payload(found)[ManifoldLayout.NormalImpulse(0)];
         cons.Payload(found)[ManifoldLayout.NormalImpulse(0)] = 9e32f;
-        byte[] bad = w.Snapshot();
-        cons.Payload(found)[ManifoldLayout.NormalImpulse(0)] = good;
-
-        var other = CarOnGround();
-        byte[] before = other.Snapshot();
-        var e = Assert.Throws<SnapshotFormatException>(() => other.Restore(bad));
-        Assert.Contains("impulse", e.Message);
-        Assert.Equal(before, other.Snapshot());
+        RestoresAndStepsWithOnlyTypedErrors(NewWorld(), w.Snapshot());
     }
 
     [Fact]
@@ -130,7 +137,7 @@ public class RestoreBounds3DTests
     }
 
     [Fact]
-    public void AnAbsurdSavedJointImpulseIsRefusedAndTheWorldIsUnchanged()
+    public void AnAbsurdSavedJointImpulseRestoresAndStepsWithOnlyTypedErrors()
     {
         var w = HeavyOnLightChain(2);
         for (int i = 0; i < 30; i++) { w.Step(Dt); }
@@ -138,17 +145,8 @@ public class RestoreBounds3DTests
         int found = -1;
         for (int c = 0; c < cs.HighWater && found < 0; c++) { if (cs.IsLive(c) && cs.KindOf(c) == ConstraintKind.Joint) { found = c; } }
         Assert.True(found >= 0);
-        var payload = cs.Payload(found);
-        float good = payload[0];
-        payload[0] = 7e31f;
-        byte[] bad = w.Snapshot();
-        payload[0] = good;
-
-        var other = HeavyOnLightChain(2);
-        byte[] before = other.Snapshot();
-        var e = Assert.Throws<SnapshotFormatException>(() => other.Restore(bad));
-        Assert.Contains("impulse", e.Message);
-        Assert.Equal(before, other.Snapshot());
+        cs.Payload(found)[0] = 7e31f;
+        RestoresAndStepsWithOnlyTypedErrors(NewWorld(), w.Snapshot());
     }
 
     [Theory]

@@ -11,7 +11,6 @@ internal static class JP
 {
     public const int Spring = 10, Motor = 11, Lower = 12, Upper = 13, Swing = 14;
     public const int Drive = 3;     // swing-twist pose drive: three slots (3..5), the accumulated angular impulse along frame A's axes
-    public const int SlotCount = 30;   // slots a joint can use: the six-dof axes end at SixAxis + 24
     public const int SixAxis = 6;   // six-dof: per axis four slots (motor, spring, upper, lower); the locked axes' block impulses are compact in slots 0..2 (translation) and 3..5 (rotation)
 }
 

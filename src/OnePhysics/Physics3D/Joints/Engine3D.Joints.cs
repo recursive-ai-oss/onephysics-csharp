@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.LowLevel;
@@ -251,75 +250,6 @@ internal sealed partial class Engine3D
             bool isJoint = cs.IsLive(c) && cs.KindOf(c) == ConstraintKind.Joint;
             bool has = c < Joints.Length && Joints[c].Type != 0;
             if (isJoint != has) { return false; }
-        }
-
-        return true;
-    }
-
-    private int[] _sIslandRoot = new int[8];
-    private double[] _sIslandWeight = new double[8];
-
-    private int IslandRoot(int x)
-    {
-        var uf = _sIslandRoot;
-        while (uf[x] != x) { uf[x] = uf[uf[x]]; x = uf[x]; }
-        return x;
-    }
-
-    /// <summary>
-    /// A joint's saved impulses are applied to its bodies before the first solve, so an enormous finite one would throw them out of the world in a single step.
-    /// What a joint transmits is bounded by the momentum of everything it holds up, not by its own two bodies (a light link in a chain carries the weight hung below it),
-    /// so each joint is checked against the whole group of dynamic bodies it is connected to through joints and contacts: the group's mass, with each body's inertia taken as at most mass times extent squared,
-    /// times a generous velocity bound (64 times the speed cap, plus four times the fastest body). The limit exists only to refuse values no step could have written.
-    /// </summary>
-    private bool JointImpulsesPlausible()
-    {
-        var cs = Core.Constraints;
-        var bodies = Core.Bodies;
-        int nb = bodies.HighWater;
-        bool any = false;
-        for (int c = 0; c < cs.HighWater && !any; c++) { any = cs.IsLive(c) && cs.KindOf(c) == ConstraintKind.Joint; }
-        if (!any) { return true; }
-
-        if (_sIslandRoot.Length < nb) { _sIslandRoot = new int[Math.Max(nb, 8)]; _sIslandWeight = new double[_sIslandRoot.Length]; }
-        for (int b = 0; b < nb; b++) { _sIslandRoot[b] = b; _sIslandWeight[b] = 0.0; }
-        for (int c = 0; c < cs.HighWater; c++)
-        {
-            if (!cs.IsLive(c)) { continue; }
-            int a = cs.BodyA[c], b = cs.BodyB[c];
-            if (!bodies.IsDynamic(a) || !bodies.IsDynamic(b)) { continue; }
-            int ra = IslandRoot(a), rb = IslandRoot(b);
-            if (ra != rb) { if (ra < rb) { _sIslandRoot[rb] = ra; } else { _sIslandRoot[ra] = rb; } }
-        }
-
-        double fastest = 0.0;
-        for (int b = 0; b < nb; b++)
-        {
-            if (!bodies.IsLive(b) || bodies.TypeOf(b) == BodyType.Static) { continue; }
-            var v = bodies.LinearVelocityOf(b); var w = bodies.AngularVelocityOf(b);
-            double ext = bodies.TypeOf(b) == BodyType.Dynamic ? MaxExtent[b] : 0.0;
-            double speed = Math.Sqrt((double)v[0] * v[0] + (double)v[1] * v[1] + (double)v[2] * v[2]) + ext * Math.Sqrt((double)w[0] * w[0] + (double)w[1] * w[1] + (double)w[2] * w[2]);
-            if (speed > fastest) { fastest = speed; }
-            if (bodies.TypeOf(b) == BodyType.Dynamic) { _sIslandWeight[IslandRoot(b)] += (double)Mass[b] * (1.0 + (double)MaxExtent[b] * MaxExtent[b]); }
-        }
-
-        double velocity = 64.0 * Opt.MaxLinearSpeed + 4.0 * fastest;
-        for (int c = 0; c < cs.HighWater; c++)
-        {
-            if (!cs.IsLive(c) || cs.KindOf(c) != ConstraintKind.Joint) { continue; }
-            int a = cs.BodyA[c], b = cs.BodyB[c];
-            int dyn = bodies.IsDynamic(a) ? a : bodies.IsDynamic(b) ? b : -1;
-            if (dyn < 0) { continue; }
-            double limit = velocity * _sIslandWeight[IslandRoot(dyn)];
-            var p = cs.Payload(c);
-            for (int k = 0; k < JP.SlotCount; k++)
-            {
-                if (!(Math.Abs((double)p[k]) <= limit))
-                {
-                    ConsistencyProblem = "joint constraint " + c.ToString(CultureInfo.InvariantCulture) + " holds an impulse of " + p[k].ToString("R", CultureInfo.InvariantCulture) + " in slot " + k.ToString(CultureInfo.InvariantCulture) + ", more than the bodies it holds could have produced";
-                    return false;
-                }
-            }
         }
 
         return true;

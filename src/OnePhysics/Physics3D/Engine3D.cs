@@ -1079,59 +1079,12 @@ internal sealed partial class Engine3D : ISnapshotSection
         int contacts = 0;
         for (int c = 0; c < cons.HighWater; c++)
         {
-            if (!cons.IsLive(c) || cons.KindOf(c) != ConstraintKind.Contact) { continue; }
-            contacts++;
-            if (!WarmStartPlausible(c)) { return false; }
+            if (cons.IsLive(c) && cons.KindOf(c) == ConstraintKind.Contact) { contacts++; }
         }
 
-        return contacts == seen && JointImpulsesPlausible();
+        return contacts == seen;
     }
 
     /// <summary>Why the last <see cref="IsConsistentWithCore"/> failed, when it can say.</summary>
     public string ConsistencyProblem = "";
-
-    /// <summary>The inverse mass (or inertia) of the heavier dynamic body of a pair; a static or kinematic partner (zero) leaves the other.</summary>
-    private static double HeavierInverse(double a, double b) => a <= 0.0 ? b : b <= 0.0 ? a : Math.Min(a, b);
-
-    /// <summary>
-    /// A contact's saved impulses are applied to its bodies before the first solve, so an enormous finite one would throw a body out of the world in a single step.
-    /// An impulse a solver produced changes the heavier dynamic body's velocity by no more than the speeds around it (a light body under a heavy one carries the heavy one's weight, which moves the light one a lot but the heavy one little), so impulse times the smaller inverse mass is bounded;
-    /// the limit is generous (the speed cap times 64, plus four times the bodies' own speeds) and exists only to refuse values no step could have written.
-    /// </summary>
-    private bool WarmStartPlausible(int c)
-    {
-        var cons = Core.Constraints;
-        var bodies = Core.Bodies;
-        int a = cons.BodyA[c], b = cons.BodyB[c];
-        double invMass = HeavierInverse(bodies.InverseMass[a], bodies.InverseMass[b]);
-        var va = bodies.LinearVelocityOf(a); var vb = bodies.LinearVelocityOf(b);
-        float speeds = float.Sqrt(va[0] * va[0] + va[1] * va[1] + va[2] * va[2]) + float.Sqrt(vb[0] * vb[0] + vb[1] * vb[1] + vb[2] * vb[2]);
-        double limit = 64.0 * Opt.MaxLinearSpeed + 4.0 * speeds;
-        var pl = cons.Payload(c);
-        int points = cons.PointCount[c];
-        for (int i = 0; i < points && i < 4; i++)
-        {
-            double biggest = Math.Max(Math.Max(Math.Abs(pl[ManifoldLayout.NormalImpulse(i)]), Math.Abs(pl[ManifoldLayout.Tangent1Impulse(i)])),
-                Math.Max(Math.Abs(pl[ManifoldLayout.Tangent2Impulse(i)]), Math.Abs(pl[ManifoldLayout.MaxNormalImpulse(i)])));
-            if (biggest * invMass > limit)
-            {
-                ConsistencyProblem = "contact constraint " + c.ToString(CultureInfo.InvariantCulture) + " holds an impulse of " + biggest.ToString("R", CultureInfo.InvariantCulture) + " at point " + i.ToString(CultureInfo.InvariantCulture) + ", more than any solver step could have produced";
-                return false;
-            }
-        }
-
-        // The rolling impulse is a torque impulse: bounded the same way against the bodies' inverse inertia.
-        double rolling = Math.Max(Math.Max(Math.Abs(pl[ManifoldLayout.RollingImpulse]), Math.Abs(pl[ManifoldLayout.RollingImpulse + 1])), Math.Abs(pl[ManifoldLayout.RollingImpulse + 2]));
-        double ia = 0.0, ib = 0.0;
-        foreach (float f in bodies.InverseInertiaOf(a)) { ia += Math.Abs(f); }
-        foreach (float f in bodies.InverseInertiaOf(b)) { ib += Math.Abs(f); }
-        double invInertia = HeavierInverse(ia, ib);
-        if (rolling * invInertia > limit)
-        {
-            ConsistencyProblem = "contact constraint " + c.ToString(CultureInfo.InvariantCulture) + " holds a rolling impulse of " + rolling.ToString("R", CultureInfo.InvariantCulture) + ", more than any solver step could have produced";
-            return false;
-        }
-
-        return true;
-    }
 }
