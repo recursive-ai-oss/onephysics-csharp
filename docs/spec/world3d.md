@@ -444,3 +444,24 @@ Every candidate below was built, run through all fifteen 3D stability scenes at 
 * The first version, with the passes as single methods, was 15 to 30% slower than the scalar code: the gyroscopic step and the position pass each held 150 to 250 lane operations, past the runtime's inlining budget, so every operation became a call (see round 10). Split into `GyroSetup`/`GyroSolve` and `Displace`/`Rotations`/`WorldInertia`, with the intermediate rows passed through the staging block, they inline.
 * Whole-step A/B against round 16 (one thread, 20th percentile of 600 steps, best of 3, interleaved, shared host at load 20 to 30, indicative): joint-chains-3d 0.64 to 0.51 ms (1.26×), ragdoll-pile-3d 3.24 to 2.95 (1.10×), sleep-wake-3d 2.40 to 2.15 (1.12×), heightfield-terrain-3d 2.13 to 1.94 (1.10×), large-pile-3d 1.02×, mesh-terrain-3d 1.05×; eight threads 0.9 to 1.17× (noise about ±8%).
 * What is left in the pass: about half of the time is the scalar copy into and out of the staging block (about 60 loads and 30 stores a body); the lane arithmetic is a small part. A body-major layout read by whole-row gathers, as the contact kernel does for velocities, would remove it but changes the public velocity storage.
+
+### Round 18: is the constraint data model the gap? (no result changes; measured, nothing kept)
+
+**Per-pass cost against BepuPhysics, re-measured** the way round 15 describes (one thread, tiered compilation off, pinned to one core, 1 substep and no relax pass for ours, median of 5 runs, shared worker with light load; ns per constraint per extra pass, constraints counted at the end of the run so the figures are indicative):
+
+| scene | constraints | ours | Bepu | ratio |
+|---|---|---|---|---|
+| large-pile-3d | 9.7k manifolds, 13.1k points | 8 per manifold (6 per point) | 14 per manifold (10.5 per point) | 0.6× |
+| joint-chains-3d | 656 ball-socket joints | 17 per joint | 10.6 per joint | 1.6× |
+| ragdoll-pile-3d | 2.5k manifolds + 1.35k joints | 22 | 15 | 1.5× |
+
+Round 15's 22 ns per contact point was measured while most of a pile was asleep at the end of the run and counted the wrong population; on a pile the contact pass is not slower than Bepu's. Joints are the one kind about 1.6× behind.
+
+**Where a ragdoll-pile-3d step goes** (sampled profile, one thread, inclusive share of the step): contact update 37% (narrowphase 23%, manifold writes 4%, recycling 3%), solve stage 42% (contact kernel 20%, joint kernel 9%, integration 10%), batch preparation 6%, finalize 3%. Gathering the bodies is 28% of the contact kernel and 43% of the joint kernel (the joint kernel does little arithmetic): 9% of the step. With one substep, ours costs 1.9 ms at one solver pass; Bepu's whole step at four passes costs 0.70 ms. The gap is the work outside the passes (collision, preparation, integration, warm start), not the cost of a pass: bringing both kinds of pass to Bepu's cost would move the step by about 0.1 ms of 2.9.
+
+**Built and dropped** (all bit-identical on large-pile-3d, ragdoll-pile-3d, joint-chains-3d and pyramid-3d-10 in the per-step dumps; patches kept outside the repository):
+* *Separation and anchor cache.* Positions change only between the solve and relax passes, so the separations (contacts) and the turned anchors and separation vector (joints) that a relax pass works out are the ones the next substep's solve passes need. The relax pass stored them, the solve pass read them and gathered neither displacement nor rotation, and the packed body row put the inertia first so those passes read one eight-float window per body instead of two. The cache is valid per group, written only by passes over a whole group (the overflow set runs lane by lane and never reads it) and only with a relax pass. Worker, one thread, interleaved, p20 of 600 steps: large-pile-3d 8.97 to 9.2–9.5 ms (3–5% slower), ragdoll-pile-3d and joint-chains-3d within noise (±2%). The extra branches and the extra rows streamed cost what the skipped rotation and gather saved.
+* *Packed row with the inertia first, pose skipped in the warm start and restitution passes* (no cache): within noise on all four scenes.
+* *Kernel width.* Eight lanes against four and one on the worker (ragdoll-pile-3d 3.1–3.4, 3.6–4.6 and 8.4–9.5 ms; large-pile-3d 9.5–11.9, 11.6–13.7 and 27–33): the default stays.
+
+**What would still move the passes** (not built, expected at most a few percent of a step each): a three-field gather for the velocity arrays (eight 16-byte loads and six shuffles instead of the 8×8 transpose's seventeen), one velocity row per body (needs the public velocity storage to change), lane-wide gyroscopic and rotation integration with a staging block that is not copied in and out. The compiled code of the friction and normal rows is already tight (no spills in `FrictionImpulse`), so a different constraint data model would not shorten them.
