@@ -370,7 +370,8 @@ internal sealed partial class Engine3D : ISnapshotSection
         {
             if (!bodies.IsLive(b) || (!includeStatic && bodies.TypeOf(b) == BodyType.Static)) { continue; }
             // A sleeping body has not moved since it was last checked (teleporting wakes it), and building the box of thousands of resting bodies every step is most of the cost of a sleeping world.
-            if (movingOnly && bodies.IsDynamic(b) && !bodies.IsAwake(b)) { continue; }
+            // The exception is a sleeper far from the origin: a body can fall asleep in the same step that carried it out of range, and the next stage to wake it (a vehicle's drive input, a character) would then query from there.
+            if (movingOnly && bodies.IsDynamic(b) && !bodies.IsAwake(b) && IsNearOrigin(b)) { continue; }
             if (bodies.TypeOf(b) == BodyType.Dynamic && !VelocityFinite(b))
             {
                 handle = Core.HandleOfBody(b);
@@ -401,6 +402,12 @@ internal sealed partial class Engine3D : ISnapshotSection
         handle = default;
         message = "";
         return false;
+    }
+
+    private bool IsNearOrigin(int b)
+    {
+        var p = Core.Bodies.PositionOf(b);
+        return Math.Abs(p[0]) <= 1.0e6 && Math.Abs(p[1]) <= 1.0e6 && Math.Abs(p[2]) <= 1.0e6;   // NaN fails every comparison
     }
 
     private bool WellInsideRange(int b)
@@ -995,6 +1002,7 @@ internal sealed partial class Engine3D : ISnapshotSection
     /// <summary>Checks the section against the core after a restore; false when the two disagree (a damaged snapshot that parsed).</summary>
     public bool IsConsistentWithCore()
     {
+        ConsistencyProblem = "";
         var bodies = Core.Bodies;
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || GeomOf.Length < shapes.HighWater) { return false; }
@@ -1048,9 +1056,55 @@ internal sealed partial class Engine3D : ISnapshotSection
         int contacts = 0;
         for (int c = 0; c < cons.HighWater; c++)
         {
-            if (cons.IsLive(c) && cons.KindOf(c) == ConstraintKind.Contact) { contacts++; }
+            if (!cons.IsLive(c) || cons.KindOf(c) != ConstraintKind.Contact) { continue; }
+            contacts++;
+            if (!WarmStartPlausible(c)) { return false; }
         }
 
         return contacts == seen;
+    }
+
+    /// <summary>Why the last <see cref="IsConsistentWithCore"/> failed, when it can say.</summary>
+    public string ConsistencyProblem = "";
+
+    /// <summary>
+    /// A contact's saved impulses are applied to its bodies before the first solve, so an enormous finite one would throw a body out of the world in a single step.
+    /// An impulse a solver produced changes the bodies' relative velocity by no more than the speeds they have, so impulse times the sum of the inverse masses is bounded;
+    /// the limit is generous (the speed cap times 64, plus four times the bodies' own speeds) and exists only to refuse values no step could have written.
+    /// </summary>
+    private bool WarmStartPlausible(int c)
+    {
+        var cons = Core.Constraints;
+        var bodies = Core.Bodies;
+        int a = cons.BodyA[c], b = cons.BodyB[c];
+        float invMass = bodies.InverseMass[a] + bodies.InverseMass[b];
+        var va = bodies.LinearVelocityOf(a); var vb = bodies.LinearVelocityOf(b);
+        float speeds = float.Sqrt(va[0] * va[0] + va[1] * va[1] + va[2] * va[2]) + float.Sqrt(vb[0] * vb[0] + vb[1] * vb[1] + vb[2] * vb[2]);
+        double limit = 64.0 * Opt.MaxLinearSpeed + 4.0 * speeds;
+        var pl = cons.Payload(c);
+        int points = cons.PointCount[c];
+        for (int i = 0; i < points && i < 4; i++)
+        {
+            double biggest = Math.Max(Math.Max(Math.Abs(pl[ManifoldLayout.NormalImpulse(i)]), Math.Abs(pl[ManifoldLayout.Tangent1Impulse(i)])),
+                Math.Max(Math.Abs(pl[ManifoldLayout.Tangent2Impulse(i)]), Math.Abs(pl[ManifoldLayout.MaxNormalImpulse(i)])));
+            if (biggest * invMass > limit)
+            {
+                ConsistencyProblem = "contact constraint " + c.ToString(CultureInfo.InvariantCulture) + " holds an impulse of " + biggest.ToString("R", CultureInfo.InvariantCulture) + " at point " + i.ToString(CultureInfo.InvariantCulture) + ", more than any solver step could have produced";
+                return false;
+            }
+        }
+
+        // The rolling impulse is a torque impulse: bounded the same way against the bodies' inverse inertia.
+        double rolling = Math.Max(Math.Max(Math.Abs(pl[ManifoldLayout.RollingImpulse]), Math.Abs(pl[ManifoldLayout.RollingImpulse + 1])), Math.Abs(pl[ManifoldLayout.RollingImpulse + 2]));
+        double invInertia = 0.0;
+        foreach (float f in bodies.InverseInertiaOf(a)) { invInertia += Math.Abs(f); }
+        foreach (float f in bodies.InverseInertiaOf(b)) { invInertia += Math.Abs(f); }
+        if (rolling * invInertia > limit)
+        {
+            ConsistencyProblem = "contact constraint " + c.ToString(CultureInfo.InvariantCulture) + " holds a rolling impulse of " + rolling.ToString("R", CultureInfo.InvariantCulture) + ", more than any solver step could have produced";
+            return false;
+        }
+
+        return true;
     }
 }
