@@ -35,4 +35,7 @@ public enum OptionChanges
 
     /// <summary><c>Events</c> (the event mask) changed.</summary>
     Events = 128,
+
+    /// <summary>Any of <c>ContactSubsteps</c>, <c>ContactVelocityIterations</c> or <c>ContactRelaxIterations</c> (the 3D contact-only schedule) changed.</summary>
+    ContactSchedule = 256,
 }

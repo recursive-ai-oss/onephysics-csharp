@@ -93,7 +93,7 @@ public sealed class WorldOptions3D
     /// <summary>
     /// Substeps per step for islands that hold no joint, 0..256. Default 2. An island with a joint, a vehicle or a touching kinematic body runs <see cref="Substeps"/>; every other island runs this many substeps of
     /// <see cref="ContactVelocityIterations"/> and <see cref="ContactRelaxIterations"/>, which costs less and is stable where no joint needs the finer step. 0, or a value not below <see cref="Substeps"/>, runs every island on the world's schedule.
-    /// Not saved in snapshots, though it decides results: a host sets it the same way every run, as it does the other options it passes at creation.
+    /// Saved in snapshots and covered by the world hash, like <see cref="Substeps"/>.
     /// </summary>
     public int ContactSubsteps { get; set; } = 2;
 
@@ -235,6 +235,9 @@ public sealed class WorldOptions3D
         o.Substeps = Substeps;
         o.VelocityIterations = VelocityIterations;
         o.RelaxIterations = RelaxIterations;
+        o.ContactSubsteps = ContactSubsteps;
+        o.ContactVelocityIterations = ContactVelocityIterations;
+        o.ContactRelaxIterations = ContactRelaxIterations;
         o.SleepEnabled = SleepEnabled;
         o.TimeToSleep = TimeToSleep;
         o.SleepThreshold = SleepThreshold;

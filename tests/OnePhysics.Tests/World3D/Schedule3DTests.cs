@@ -79,7 +79,7 @@ public class Schedule3DTests
         var off = NewWorld(1, 0);
         var same = NewWorld(1, 4);
         var a = Pile(off, 0); var b = Pile(same, 0);
-        for (int i = 0; i < 120; i++) { off.Step(Dt); same.Step(Dt); Assert.Equal(off.ComputeHash(), same.ComputeHash()); }
+        for (int i = 0; i < 120; i++) { off.Step(Dt); same.Step(Dt); Assert.Equal(HashOf(a), HashOf(b)); }
         Assert.Equal(HashOf(a), HashOf(b));
         var on = NewWorld(1, 2);
         var c = Pile(on, 0);
@@ -130,6 +130,53 @@ public class Schedule3DTests
         mid.Restore(after);
         for (int i = 0; i < 40; i++) { w.Step(Dt); mid.Step(Dt); Assert.Equal(w.ComputeHash(), mid.ComputeHash()); }
         Assert.Equal(w.Snapshot(), mid.Snapshot());
+    }
+
+    [Fact]
+    public void TheContactScheduleTravelsWithTheSnapshot()
+    {
+        // Saved with non-default contact options, restored into a world built with the defaults: the continuation matches the original, and the hash covers the options.
+        var w = new PhysicsWorld3D(new WorldOptions3D { WorldId = 7, ContactSubsteps = 3, ContactVelocityIterations = 2, ContactRelaxIterations = 1, Substeps = 6 });
+        World3DTests.Floor(w);
+        var p = Pile(w, 0); var q = Pile(w, 60);
+        w.CreateJoint(new PointJointDef { BodyA = q[1], BodyB = q[2] });
+        for (int i = 0; i < 50; i++) { w.Step(Dt); }
+        var snap = w.Snapshot();
+
+        var fresh = new PhysicsWorld3D(new WorldOptions3D { WorldId = 7 });
+        var changed = fresh.Restore(snap);
+        Assert.True((changed & OptionChanges.ContactSchedule) != 0);
+        Assert.Equal(3, fresh.Options.ContactSubsteps);
+        Assert.Equal(2, fresh.Options.ContactVelocityIterations);
+        Assert.Equal(1, fresh.Options.ContactRelaxIterations);
+        Assert.Equal(w.ComputeHash(), fresh.ComputeHash());
+        for (int i = 0; i < 80; i++) { w.Step(Dt); fresh.Step(Dt); Assert.Equal(w.ComputeHash(), fresh.ComputeHash()); }
+        Assert.Equal(w.Snapshot(), fresh.Snapshot());
+
+        // The options are part of the hash.
+        var other = new PhysicsWorld3D(new WorldOptions3D { WorldId = 7, ContactSubsteps = 2 });
+        var h = other.ComputeHash();
+        var other2 = new PhysicsWorld3D(new WorldOptions3D { WorldId = 7, ContactSubsteps = 3 });
+        Assert.NotEqual(h, other2.ComputeHash());
+    }
+
+    [Fact]
+    public void ARestoreRejectsContactScheduleOptionsOutOfRange()
+    {
+        var w = NewWorld();
+        Pile(w, 0);
+        for (int i = 0; i < 5; i++) { w.Step(Dt); }
+        var snap = w.Snapshot();
+        // Options come first: magic, version, layout (7 x i32), gravity (3 x f32), three world i32, then the three contact i32.
+        int at = 8 + 7 * 4 + 3 * 4 + 3 * 4;
+        foreach (var (offset, value) in new[] { (0, 300), (0, -1), (4, 0), (4, 257), (8, -2), (8, 257) })
+        {
+            var bad = (byte[])snap.Clone();
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(bad.AsSpan(at + offset), value);
+            var before = w.ComputeHash();
+            Assert.Throws<SnapshotFormatException>(() => w.Restore(bad));
+            Assert.Equal(before, w.ComputeHash());
+        }
     }
 
     [Fact]

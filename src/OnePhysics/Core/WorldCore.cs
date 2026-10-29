@@ -599,6 +599,7 @@ public sealed class WorldCore
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Boxes);
 #endif
+        ReadContactSchedule();
         BuildAwakeBodies();
         stages.UpdateContacts(this);
         BuildAwakeBodies();
@@ -684,7 +685,7 @@ public sealed class WorldCore
     // ------------------------------------------------------------------ per-island schedules
 
     private bool _liteOn;
-    private int _liteSubsteps = 2, _liteVelocity = 2, _liteRelax = 1;
+    private int _liteSubsteps, _liteVelocity = 1, _liteRelax;
     private bool _splitActive;
     private byte[] _islandFull = new byte[16];
     private byte[] _consLite = new byte[16];
@@ -694,13 +695,12 @@ public sealed class WorldCore
     private int _forcedCount;
     private int[] _partTmp = new int[64];
 
-    /// <summary>
-    /// Sets the schedule of islands that hold no joint (and are not forced onto the joint schedule): <paramref name="substeps"/> substeps of <paramref name="velocity"/> solve and <paramref name="relax"/> relax passes.
-    /// With <paramref name="on"/> false every island runs the schedule in <see cref="Options"/>. Never saved; the host sets it the same way every run.
-    /// </summary>
-    internal void SetContactSchedule(bool on, int substeps, int velocity, int relax)
+    // The schedule of islands that hold no joint (and are not forced onto the joint schedule) comes from the options; it is off unless it has fewer substeps than the world's own.
+    private void ReadContactSchedule()
     {
-        _liteOn = on; _liteSubsteps = substeps; _liteVelocity = velocity; _liteRelax = relax;
+        var o = _options;
+        _liteOn = o.ContactSubsteps > 0 && o.ContactSubsteps < o.Substeps;
+        _liteSubsteps = o.ContactSubsteps; _liteVelocity = o.ContactVelocityIterations; _liteRelax = o.ContactRelaxIterations;
     }
 
     /// <summary>Asks for the island of a dynamic body to run the joint schedule in the next step, for bodies the engine drives with that schedule in mind (vehicles). Cleared by the step.</summary>
@@ -833,6 +833,7 @@ public sealed class WorldCore
         if (_consLite.Length < contacts) { _consLite = new byte[contacts]; }
         if (_partTmp.Length < contacts) { _partTmp = new int[contacts]; }
         // Stages of one step: per substep the two integrations and a pass over every color for warm starting, each solve and each relax pass (plus the restitution pass).
+        ReadContactSchedule();
         int passes = _options.VelocityIterations + _options.RelaxIterations + 2;
         int stages = Math.Max(_options.Substeps, _liteOn ? _liteSubsteps : 1) * (3 + Math.Max(passes, _liteVelocity + _liteRelax + 2) * (ConstraintColoring.ColorCount + 1)) + 8;
         if (_stageKind.Length < stages) { Array.Resize(ref _stageKind, stages); Array.Resize(ref _stageArg, stages); Array.Resize(ref _stageTasks, stages); }

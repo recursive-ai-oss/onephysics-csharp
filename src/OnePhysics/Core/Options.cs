@@ -165,6 +165,18 @@ public sealed class WorldOptions
     /// <summary>Relax passes without bias per substep (at least 0). Default 1.</summary>
     public int RelaxIterations { get; set; } = 1;
 
+    /// <summary>
+    /// Substeps of islands that hold no joint, 0..256 (0, or a value not below <see cref="Substeps"/>, runs every island on <see cref="Substeps"/>). Engines that run one schedule for the whole world ignore it. Default 0.
+    /// Saved in snapshots, because it decides how a world steps.
+    /// </summary>
+    public int ContactSubsteps { get; set; }
+
+    /// <summary>Solve passes with bias per substep of an island on the contact-only schedule, 1..256. Default 1.</summary>
+    public int ContactVelocityIterations { get; set; } = 1;
+
+    /// <summary>Relax passes per substep of an island on the contact-only schedule, 0..256. Default 0.</summary>
+    public int ContactRelaxIterations { get; set; }
+
     /// <summary>Whether islands may fall asleep. Default true.</summary>
     public bool SleepEnabled { get; set; } = true;
 
@@ -187,6 +199,9 @@ public sealed class WorldOptions
         if (Substeps < 1 || Substeps > 256) { throw new ArgumentOutOfRangeException(nameof(Substeps), Substeps, "Substeps must be in 1..256."); }
         if (VelocityIterations < 1 || VelocityIterations > 256) { throw new ArgumentOutOfRangeException(nameof(VelocityIterations), VelocityIterations, "VelocityIterations must be in 1..256."); }
         if (RelaxIterations < 0 || RelaxIterations > 256) { throw new ArgumentOutOfRangeException(nameof(RelaxIterations), RelaxIterations, "RelaxIterations must be in 0..256."); }
+        if (ContactSubsteps < 0 || ContactSubsteps > 256) { throw new ArgumentOutOfRangeException(nameof(ContactSubsteps), ContactSubsteps, "ContactSubsteps must be in 0..256."); }
+        if (ContactVelocityIterations < 1 || ContactVelocityIterations > 256) { throw new ArgumentOutOfRangeException(nameof(ContactVelocityIterations), ContactVelocityIterations, "ContactVelocityIterations must be in 1..256."); }
+        if (ContactRelaxIterations < 0 || ContactRelaxIterations > 256) { throw new ArgumentOutOfRangeException(nameof(ContactRelaxIterations), ContactRelaxIterations, "ContactRelaxIterations must be in 0..256."); }
         if (!(TimeToSleep > 0f) || !float.IsFinite(TimeToSleep)) { throw new ArgumentOutOfRangeException(nameof(TimeToSleep), TimeToSleep, "TimeToSleep must be positive and finite."); }
         if (!(SleepThreshold >= 0f) || !float.IsFinite(SleepThreshold)) { throw new ArgumentOutOfRangeException(nameof(SleepThreshold), SleepThreshold, "SleepThreshold must be non-negative and finite."); }
     }
@@ -194,6 +209,7 @@ public sealed class WorldOptions
     internal void CopySimulationValuesFrom(WorldOptions o)
     {
         Layout = o.Layout; Gravity = o.Gravity; Substeps = o.Substeps; VelocityIterations = o.VelocityIterations; RelaxIterations = o.RelaxIterations;
+        ContactSubsteps = o.ContactSubsteps; ContactVelocityIterations = o.ContactVelocityIterations; ContactRelaxIterations = o.ContactRelaxIterations;
         SleepEnabled = o.SleepEnabled; TimeToSleep = o.TimeToSleep; SleepThreshold = o.SleepThreshold; Events = o.Events;
     }
 
@@ -204,6 +220,7 @@ public sealed class WorldOptions
         Layout.Write(w);
         w.WriteSingle(Gravity.X); w.WriteSingle(Gravity.Y); w.WriteSingle(Gravity.Z);
         w.WriteInt32(Substeps); w.WriteInt32(VelocityIterations); w.WriteInt32(RelaxIterations);
+        w.WriteInt32(ContactSubsteps); w.WriteInt32(ContactVelocityIterations); w.WriteInt32(ContactRelaxIterations);
         w.WriteBool(SleepEnabled); w.WriteSingle(TimeToSleep); w.WriteSingle(SleepThreshold);
         w.WriteUInt32((uint)Events);
     }
@@ -219,12 +236,14 @@ public sealed class WorldOptions
             o = into;
             o.Layout = current.Layout; o.ThreadCount = current.ThreadCount; o.WorldId = current.WorldId; o.Gravity = current.Gravity;
             o.Substeps = current.Substeps; o.VelocityIterations = current.VelocityIterations; o.RelaxIterations = current.RelaxIterations;
+            o.ContactSubsteps = current.ContactSubsteps; o.ContactVelocityIterations = current.ContactVelocityIterations; o.ContactRelaxIterations = current.ContactRelaxIterations;
             o.SleepEnabled = current.SleepEnabled; o.TimeToSleep = current.TimeToSleep; o.SleepThreshold = current.SleepThreshold; o.Events = current.Events;
         }
 
         o.Layout = DimensionLayout.Read(r);
         o.Gravity = new Vector3F(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
         o.Substeps = r.ReadInt32(); o.VelocityIterations = r.ReadInt32(); o.RelaxIterations = r.ReadInt32();
+        o.ContactSubsteps = r.ReadInt32(); o.ContactVelocityIterations = r.ReadInt32(); o.ContactRelaxIterations = r.ReadInt32();
         o.SleepEnabled = r.ReadBool(); o.TimeToSleep = r.ReadSingle(); o.SleepThreshold = r.ReadSingle();
         uint ev = r.ReadUInt32();
         if ((ev & ~0x1FFu) != 0) { throw r.Error("unknown event mask bits " + ev.ToString(CultureInfo.InvariantCulture)); }
