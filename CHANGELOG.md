@@ -4,6 +4,13 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 **0.x previews are not bit-compatible with each other: snapshots, saved games and replays from one preview do not carry to another.**
 
+## [Unreleased]
+
+**Moved results:** 3D worlds move (2D worlds are bit-identical to preview.6): the 3D broadphase keeps tighter boxes, so pairs start and end at different steps.
+
+- **3D broadphase defaults:** `BroadphaseMargin` is 0.03 (was 0.1), boxes stretch over four steps of motion, and the tree is refitted between rebuilds. About half as many pairs are kept alive in piles; sleep-wake scenes step about 1.2× faster and large piles at eight threads about 1.15×. Stability is unchanged on every 3D scene.
+- A fast body still inside the supported range no longer fails the step with an argument error when its stretched box would cross the range limit; the stretch stops at the limit.
+
 ## [0.1.0-preview.6]
 
 - **Fix: 0.1.0-preview.5 could refuse a snapshot of a valid 3D world.** Its `Restore` rejected saved contact impulses above a fixed plausibility limit, but the solver can legitimately produce larger ones (a very heavy body on a light one, or a tight pile, gave impulses in the trillions). A world that had stepped normally could therefore write a snapshot that the same library then refused with `SnapshotFormatException`, which breaks a host's rollback. This release removes that check, and the wheel and engine speed limits added with it: a snapshot the library wrote always restores, and saved impulses are checked only for being finite. A damaged snapshot that carries an enormous impulse restores, and the next step reports the flung body with `BodyOutOfBoundsException` (the world unchanged), as before. No step result moves: world hashes and snapshot bytes are the same as in preview.5 for the same inputs.
