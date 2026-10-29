@@ -43,7 +43,11 @@ public sealed partial class PhysicsWorld2D
         _core.Reserve(contacts, islands, bodies);
         _core.ReserveRestore(contacts, pairs, islands, bodies);
         _engine.Reserve(pairs, contacts, bodies, shapes);
+        // Every pool thread, including those an earlier world started, prepares its query scratch now instead of at whichever step first gives it a batch query.
+        WorkerPool.AddThreadInit(PrepareWorkerThread);
     }
+
+    private static void PrepareWorkerThread() => QueryScratch.Warm(64);
 
     /// <summary>
     /// Gets the world ready for allocation-free steps: sizes the storage to <see cref="WorldOptions2D.PairCapacity"/>, <see cref="WorldOptions2D.ContactCapacity"/> and <see cref="WorldOptions2D.IslandCapacity"/>
@@ -137,7 +141,7 @@ public sealed partial class PhysicsWorld2D
 
     private readonly List<int> _deadScratch = new();
 
-    /// <summary>The 64-bit hash of the whole simulation state (bodies, shapes, contacts with their warm-start impulses, islands, broadphase, options and origin; not pending callbacks). Equal states give equal hashes on every platform. Allocates nothing.</summary>
+    /// <summary>The 64-bit hash of the whole simulation state (bodies, shapes, contacts with their warm-start impulses, islands, broadphase, options and origin; not pending callbacks). Equal states give equal hashes on every platform. The state is streamed through the hash as it is walked; no snapshot is built or copied. Allocates nothing.</summary>
     public ulong ComputeHash() => _core.ComputeHash();
 
     /// <summary>The number of bytes <see cref="TrySnapshot"/> writes for the world as it is now. Allocates nothing.</summary>

@@ -574,7 +574,7 @@ public class Character3DTests
         Assert.Throws<ArgumentOutOfRangeException>(() => c.Move(default, 0f));
         Assert.Throws<ArgumentOutOfRangeException>(() => c.Move(default, float.NaN));
         Assert.Throws<ArgumentOutOfRangeException>(() => c.Move(default, -1f));
-        Assert.Throws<ArgumentOutOfRangeException>(() => c.SlopeLimit = 91f);
+        Assert.Throws<ArgumentOutOfRangeException>(() => c.SlopeLimitRadians = 91f);
         Assert.Throws<ArgumentOutOfRangeException>(() => c.StepOffset = 100f);
         Assert.Throws<ArgumentOutOfRangeException>(() => c.Position = new Vector3D(double.NaN, 0, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => w.AddCharacter(new Vector3D(1e12, 0, 0)));

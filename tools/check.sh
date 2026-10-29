@@ -32,6 +32,11 @@ scan 'Vector<T>' 'Vector<'
 scan 'platform math' '\b(Math|MathF)\.(Sin|Cos|Tan|Asin|Acos|Atan2?|SinCos|Sinh|Cosh|Tanh|Exp|Log2?|Log10|Pow|Cbrt|Hypot)\b'
 scan 'unsafe or hardware-dependent code' 'unsafe|Unsafe\.|MemoryMarshal|ProcessorCount|IsHardwareAccelerated|Vector512'
 
+# The README is the package page on nuget.org, where relative links break.
+if grep -nE '\]\((\.|/|[A-Za-z0-9_-]+/|[A-Za-z0-9_-]+\.[a-z]+)' README.md | grep -vE '\]\((https?:|mailto:|#)'; then
+  echo "scan failed: README.md has a relative link; use absolute https://github.com/recursive-ai-oss/onephysics-csharp/... URLs"; fail=1
+fi
+
 # The package has exactly one dependency: onemath.
 refs="$(search '<PackageReference' src | grep '\.csproj:' || true)"
 count="$(printf '%s\n' "$refs" | grep -c . || true)"

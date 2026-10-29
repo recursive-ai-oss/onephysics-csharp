@@ -9,6 +9,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// so a member of another kind does not compile. A small struct that allocates nothing; once the joint is destroyed every copy fails with a <see cref="StaleHandleException"/>.
 /// Created by: AddFixed, FixedJointDef.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct FixedJoint : IEquatable<FixedJoint>
 {
     private readonly Joint _joint;
@@ -89,6 +90,7 @@ public readonly struct FixedJoint : IEquatable<FixedJoint>
 /// so a member of another kind does not compile. A small struct that allocates nothing; once the joint is destroyed every copy fails with a <see cref="StaleHandleException"/>.
 /// Created by: AddPoint, PointJointDef.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct PointJoint : IEquatable<PointJoint>
 {
     private readonly Joint _joint;
@@ -169,6 +171,7 @@ public readonly struct PointJoint : IEquatable<PointJoint>
 /// so a member of another kind does not compile. A small struct that allocates nothing; once the joint is destroyed every copy fails with a <see cref="StaleHandleException"/>.
 /// Created by: AddDistance, AddSpring, DistanceJointDef.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct DistanceJoint : IEquatable<DistanceJoint>
 {
     private readonly Joint _joint;
@@ -275,6 +278,7 @@ public readonly struct DistanceJoint : IEquatable<DistanceJoint>
 /// so a member of another kind does not compile. A small struct that allocates nothing; once the joint is destroyed every copy fails with a <see cref="StaleHandleException"/>.
 /// Created by: AddHinge, HingeJointDef.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct HingeJoint : IEquatable<HingeJoint>
 {
     private readonly Joint _joint;
@@ -387,6 +391,7 @@ public readonly struct HingeJoint : IEquatable<HingeJoint>
 /// so a member of another kind does not compile. A small struct that allocates nothing; once the joint is destroyed every copy fails with a <see cref="StaleHandleException"/>.
 /// Created by: AddSlider, SliderJointDef.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct SliderJoint : IEquatable<SliderJoint>
 {
     private readonly Joint _joint;
@@ -499,6 +504,7 @@ public readonly struct SliderJoint : IEquatable<SliderJoint>
 /// so a member of another kind does not compile. A small struct that allocates nothing; once the joint is destroyed every copy fails with a <see cref="StaleHandleException"/>.
 /// Created by: AddCone, ConeJointDef.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct ConeJoint : IEquatable<ConeJoint>
 {
     private readonly Joint _joint;
@@ -582,6 +588,7 @@ public readonly struct ConeJoint : IEquatable<ConeJoint>
 /// so a member of another kind does not compile. A small struct that allocates nothing; once the joint is destroyed every copy fails with a <see cref="StaleHandleException"/>.
 /// Created by: AddCharacterJoint, SwingTwistJointDef.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct SwingTwistJoint : IEquatable<SwingTwistJoint>
 {
     private readonly Joint _joint;
@@ -677,6 +684,7 @@ public readonly struct SwingTwistJoint : IEquatable<SwingTwistJoint>
 /// so a member of another kind does not compile. A small struct that allocates nothing; once the joint is destroyed every copy fails with a <see cref="StaleHandleException"/>.
 /// Created by: AddConfigurable, SixDofJointDef.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct SixDofJoint : IEquatable<SixDofJoint>
 {
     private readonly Joint _joint;
@@ -769,6 +777,7 @@ public readonly struct SixDofJoint : IEquatable<SixDofJoint>
 /// so a member of another kind does not compile. A small struct that allocates nothing; once the joint is destroyed every copy fails with a <see cref="StaleHandleException"/>.
 /// Created by: AddPath, PathJointDef.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct PathJoint : IEquatable<PathJoint>
 {
     private readonly Joint _joint;
@@ -858,6 +867,7 @@ public readonly struct PathJoint : IEquatable<PathJoint>
 /// so a member of another kind does not compile. A small struct that allocates nothing; once the joint is destroyed every copy fails with a <see cref="StaleHandleException"/>.
 /// Created by: AddGear, GearJointDef.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct GearJoint : IEquatable<GearJoint>
 {
     private readonly Joint _joint;
@@ -941,6 +951,7 @@ public readonly struct GearJoint : IEquatable<GearJoint>
 /// so a member of another kind does not compile. A small struct that allocates nothing; once the joint is destroyed every copy fails with a <see cref="StaleHandleException"/>.
 /// Created by: AddRackAndPinion, RackAndPinionJointDef.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct RackAndPinionJoint : IEquatable<RackAndPinionJoint>
 {
     private readonly Joint _joint;
@@ -1024,6 +1035,7 @@ public readonly struct RackAndPinionJoint : IEquatable<RackAndPinionJoint>
 /// so a member of another kind does not compile. A small struct that allocates nothing; once the joint is destroyed every copy fails with a <see cref="StaleHandleException"/>.
 /// Created by: AddPulley, PulleyJointDef.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct PulleyJoint : IEquatable<PulleyJoint>
 {
     private readonly Joint _joint;

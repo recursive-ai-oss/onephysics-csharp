@@ -9,6 +9,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// Raw-tier buoyancy geometry: how much of a convex shape lies below a plane. Spheres use the closed form for a spherical cap; boxes and hulls are cut exactly (their convex radius is ignored);
 /// cylinders, capsules and tapered capsules are cut as 24-sided polyhedra with a volume within about 1 % of the true one. All arithmetic is float32 with IEEE-exact operations, so results are the same on every platform.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public static class Buoyancy3D
 {
     private const float Pi = 3.1415927f;

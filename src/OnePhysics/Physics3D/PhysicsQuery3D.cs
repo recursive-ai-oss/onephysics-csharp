@@ -10,6 +10,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// Queries only read the world; they never change simulation state, so querying or not does not change a hash. Do not query while the world is stepping or being modified.
 /// Single queries may run concurrently from several threads; each thread has its own scratch, so steady-state queries with caller buffers allocate nothing.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class PhysicsQuery3D
 {
     private readonly PhysicsWorld3D _world;

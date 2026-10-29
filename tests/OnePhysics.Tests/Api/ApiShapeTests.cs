@@ -142,25 +142,25 @@ public class ApiShapeTests
     public void SlopeLimitIsRadiansAndKeepsTheSavedDegrees()
     {
         var def = new P2.CharacterDef();
-        Assert.Equal(MathF.PI / 4, def.SlopeLimit, 6);
-        def.SlopeLimit = 30f * MathF.PI / 180f;
-        Assert.InRange(def.SlopeLimit * 180f / MathF.PI, 29.999f, 30.001f);
-        Assert.Equal(MathF.PI / 4, P3.CharacterDef.Humanoid.SlopeLimit, 6);
-        Assert.Equal(40f * MathF.PI / 180f, P3.CharacterDef.Giant.SlopeLimit, 5);
+        Assert.Equal(MathF.PI / 4, def.SlopeLimitRadians, 6);
+        def.SlopeLimitRadians = 30f * MathF.PI / 180f;
+        Assert.InRange(def.SlopeLimitRadians * 180f / MathF.PI, 29.999f, 30.001f);
+        Assert.Equal(MathF.PI / 4, P3.CharacterDef.Humanoid.SlopeLimitRadians, 6);
+        Assert.Equal(40f * MathF.PI / 180f, P3.CharacterDef.Giant.SlopeLimitRadians, 5);
 
         var w = World2D();
-        Assert.Throws<ArgumentOutOfRangeException>(() => w.AddCharacter(default, new P2.CharacterDef { SlopeLimit = 45f }));
-        Assert.Throws<ArgumentOutOfRangeException>(() => w.AddCharacter(default, new P2.CharacterDef { SlopeLimit = -0.1f }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => w.AddCharacter(default, new P2.CharacterDef { SlopeLimitRadians = 45f }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => w.AddCharacter(default, new P2.CharacterDef { SlopeLimitRadians = -0.1f }));
         var c = w.AddCharacter(new Vector2D(0, 1));
-        c.SlopeLimit = 0.5f;
-        Assert.InRange(c.SlopeLimit, 0.4999f, 0.5001f);
-        Assert.Throws<ArgumentOutOfRangeException>(() => c.SlopeLimit = 91f);
+        c.SlopeLimitRadians = 0.5f;
+        Assert.InRange(c.SlopeLimitRadians, 0.4999f, 0.5001f);
+        Assert.Throws<ArgumentOutOfRangeException>(() => c.SlopeLimitRadians = 91f);
 
         var w3 = World3D();
         var c3 = w3.AddCharacter(new Vector3D(0, 1, 0));
-        c3.SlopeLimit = 1f;
-        Assert.InRange(c3.SlopeLimit, 0.9999f, 1.0001f);
-        Assert.Throws<ArgumentOutOfRangeException>(() => c3.SlopeLimit = 2f);
+        c3.SlopeLimitRadians = 1f;
+        Assert.InRange(c3.SlopeLimitRadians, 0.9999f, 1.0001f);
+        Assert.Throws<ArgumentOutOfRangeException>(() => c3.SlopeLimitRadians = 2f);
     }
 
     // ------------------------------------------------------------------ typed joint views

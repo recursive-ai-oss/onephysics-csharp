@@ -7,6 +7,7 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>A ragdoll definition that cannot be accepted: a parent index that does not come before its part, no parts, too many parts. The message names the part and the field. Out-of-range numbers raise <see cref="ArgumentOutOfRangeException"/> instead. Nothing has changed when this is thrown.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class InvalidRagdollException : PhysicsException
 {
     /// <summary>Creates the exception with a message naming what was wrong.</summary>
@@ -14,6 +15,7 @@ public sealed class InvalidRagdollException : PhysicsException
 }
 
 /// <summary>The geometry of a ragdoll part's body.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public enum RagdollShapeKind : byte
 {
     /// <summary>A capsule along the body's y axis: <see cref="RagdollPartDef.ShapeHalfSize"/> is (half length of the straight part, radius).</summary>
@@ -27,6 +29,7 @@ public enum RagdollShapeKind : byte
 }
 
 /// <summary>Which parts of one ragdoll collide with each other.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public enum RagdollSelfCollision : byte
 {
     /// <summary>No two parts of the ragdoll collide (they share a negative collision group).</summary>
@@ -43,6 +46,7 @@ public enum RagdollSelfCollision : byte
 /// One part of a ragdoll: a body with one shape, and the swing-twist joint that attaches it to its parent. Positions and rotations are in the ragdoll's own space in the bind pose (the pose the ragdoll is built in);
 /// <see cref="PhysicsWorld3D.AddRagdoll(RagdollDef, Vector3D, QuaternionF, ReadOnlySpan{QuaternionF})"/> places that space in the world.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class RagdollPartDef
 {
     /// <summary>A label for the host (bone name); not used by the engine. Default null.</summary>
@@ -114,6 +118,7 @@ public sealed class RagdollPartDef
 /// <summary>
 /// A skeleton as a list of parts with parents before children, plus how the ragdoll behaves as a whole. <see cref="Humanoid"/> is a thirteen-part person. Definitions are copied when a ragdoll is made, so one can be reused.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class RagdollDef
 {
     /// <summary>The most parts one ragdoll may have.</summary>

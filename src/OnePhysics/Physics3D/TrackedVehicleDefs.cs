@@ -5,6 +5,7 @@ using RecursiveAI.OneMath;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>Which controller drives a <see cref="Vehicle"/>.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public enum VehicleKind : byte
 {
     /// <summary>Engine, gearbox and differentials driving wheels with tyres (<see cref="VehicleDef"/>).</summary>
@@ -25,6 +26,7 @@ public enum VehicleKind : byte
 /// Inputs (<see cref="Vehicle.SetInput"/>): throttle −1..1 drives both tracks, steering −1..1 speeds the left track up and slows the right one (positive turns right, towards +X); with no throttle the tracks turn in opposite directions
 /// and the vehicle pivots in place. Chassis frame as for <see cref="VehicleDef"/>: +X right, +Y up, +Z forward in the presets.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class TrackedVehicleDef
 {
     /// <summary>Road wheels of the left track (−X side), 1 to 16, front to back or any fixed order. Their <see cref="WheelDef.MaxSteerAngle"/>, tyre and handbrake values are ignored.</summary>

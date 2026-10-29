@@ -6,6 +6,7 @@
     <PackageId>$(PackageBaseName)</PackageId>
     <Description>Deterministic 2D and 3D rigid-body physics for .NET with identical results on every platform.</Description>
     <PackageTags>physics;rigid-body;2d;3d;deterministic;determinism;lockstep;rollback;simulation;collision;nativeaot;trimmable</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageReleaseNotes>See CHANGELOG.md in the repository.</PackageReleaseNotes>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
@@ -15,13 +16,15 @@
     <EnablePackageValidation>true</EnablePackageValidation>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
-    <!-- The raw tier is marked experimental for consumers; inside the package it is simply used. -->
-    <NoWarn>$(NoWarn);OPHYS0001</NoWarn>
+    <!-- The raw tier is marked experimental for consumers (OPHYS0001), and so is the 3D engine (OPHYS0002); inside the package they are simply used. -->
+    <NoWarn>$(NoWarn);OPHYS0001;OPHYS0002</NoWarn>
     <!-- Only so that the SkipLocalsInit attribute compiles (the 3D solver kernels); no such code blocks are allowed in src (tools/check.sh). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The repository README is the package page on nuget.org, where relative links break: tools/check.sh rejects any link in it that is not absolute. -->
+    <None Include="../../README.md" Pack="true" PackagePath="\" Visible="false" />
     <None Include="../../CHANGELOG.md" Pack="true" PackagePath="\" Visible="false" />
     <None Include="../../LICENSE-MIT" Pack="true" PackagePath="/" Visible="false" />
     <None Include="../../LICENSE-APACHE" Pack="true" PackagePath="/" Visible="false" />

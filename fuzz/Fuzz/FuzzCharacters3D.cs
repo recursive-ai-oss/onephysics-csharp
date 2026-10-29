@@ -104,7 +104,7 @@ internal static class FuzzCharacters3D
             default:
                 return new CharacterDef
                 {
-                    Radius = r.Float(), Height = r.Float(), Up = r.Bool() ? new Vector3F(0, 1, 0) : r.V3F(), Kind = r.Bool() ? CharacterKind.Virtual : CharacterKind.Rigid, Mass = r.Float(), MaxPushForce = r.Float(), SlopeLimit = r.Float(), StepOffset = r.Float(), Skin = r.Float(),
+                    Radius = r.Float(), Height = r.Float(), Up = r.Bool() ? new Vector3F(0, 1, 0) : r.V3F(), Kind = r.Bool() ? CharacterKind.Virtual : CharacterKind.Rigid, Mass = r.Float(), MaxPushForce = r.Float(), SlopeLimitRadians = r.Float(), StepOffset = r.Float(), Skin = r.Float(),
                     LayerMask = r.Byte() < 40 ? 0u : uint.MaxValue, PushStrength = r.Float(), Layer = r.Byte() % 40 - 3, CategoryBits = (uint)r.Byte(), MaskBits = r.Bool() ? uint.MaxValue : (uint)r.Byte(),
                 };
         }
@@ -169,7 +169,7 @@ internal static class FuzzCharacters3D
                     switch (r.Byte() % 5)
                     {
                         case 4: c.MaxPushForce = r.Float(); break;
-                        case 0: c.SlopeLimit = r.Float(); break;
+                        case 0: c.SlopeLimitRadians = r.Float(); break;
                         case 1: c.StepOffset = r.Float(); break;
                         case 2: c.PushStrength = r.Float(); break;
                         default: c.LayerMask = (uint)(r.Byte() << 8 | r.Byte()); break;

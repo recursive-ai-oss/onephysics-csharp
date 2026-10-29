@@ -534,6 +534,9 @@ public abstract class TriangleSoup3D
     [ThreadStatic]
     private static TriangleShapeBuffer3D? s_castBuffer;
 
+    /// <summary>Creates the calling thread's cast scratch, which is otherwise made by its first cast.</summary>
+    internal static void PrepareThread() => s_castBuffer ??= new TriangleShapeBuffer3D();
+
     /// <summary>The cast over an explicit list of triangle ids, ascending: the filtered path of <see cref="ShapeCast"/>, and with every id the brute-force reference.</summary>
     /// <param name="shape">The moving convex shape.</param>
     /// <param name="shapeInSoup">Start placement of the shape in the soup's frame.</param>

@@ -17,9 +17,14 @@ public sealed class AllocationGroup { }
 public class WarmAllocationTests
 {
     private const float Dt = 1f / 60f;
+    private const int Steps = 5000;
 
-    // The runtime's own tiered compilation can allocate a few kilobytes on any thread in the first moments of a process, whatever the library does. An allocation the library makes
-    // repeats in every run, so the scenario passes when one of three fresh worlds is clean.
+    // The test project turns tiered compilation off (see the csproj). With it on, the runtime compiles an on-stack-replacement version of a method with a hot loop on the calling thread the first
+    // time the loop runs long, and a background thread installs optimized code; both allocate inside the runtime, from a few hundred bytes to a few kilobytes, whatever the library does.
+    // Measured on randomized scenes: with quick JIT for loops on, about one world in ten saw such an event on the calling thread and none with it off; at one thread the background
+    // installs alone gave a few hundred bytes process-wide in about a third of the runs. With tiering off, anything counted here is the library's.
+    // What the library allocates repeats exactly in every fresh world built the same way (same bodies, same steps), so the scenario passes when one of three fresh worlds is clean; an allocation that
+    // shows up once and not in the others (a runtime event, measured on a host running other work, with the process pinned to three cores) is not the library's.
     private static void Settled(Func<string?> run)
     {
         string? last = null;
@@ -54,8 +59,8 @@ public class WarmAllocationTests
 
         var hits = new QueryHit2D[16];
         var scratch = new byte[1 << 22];
-        long total = 0;
-        for (int i = 1; i <= 400; i++)
+        long total = 0, firstBytes = 0; int first = -1;
+        for (int i = 1; i <= Steps; i++)
         {
             long a0 = GC.GetTotalAllocatedBytes(true), t0 = GC.GetAllocatedBytesForCurrentThread();
             player.Move(new Vector2F(-0.04f, -0.1f), Dt);
@@ -69,14 +74,16 @@ public class WarmAllocationTests
                     w.Restore(scratch.AsSpan(0, n));
                 }
 
-            total += GC.GetTotalAllocatedBytes(true) - a0;
+            long step = GC.GetTotalAllocatedBytes(true) - a0;
+            if (step != 0 && first < 0) { first = i; firstBytes = step; }
+            total += step;
             long own = GC.GetAllocatedBytesForCurrentThread() - t0;
             if (own != 0) { return $"step {i}: the calling thread allocated {own} bytes"; }
         }
 
         // The calling thread must allocate nothing. The process-wide count also sees the worker threads, and a stray runtime allocation of a few bytes now and then (a timer, the test host);
         // a worker that allocated per step would add up to far more than the allowance.
-        return total <= 512 ? null : $"the process allocated {total} bytes over 400 steps";
+        return total <= 512 ? null : $"the process allocated {total} bytes over {Steps} steps (first: {firstBytes} at step {first})";
     }
 
     [Theory]
@@ -113,9 +120,9 @@ public class WarmAllocationTests
         var rayHits = new QueryHit3D[rays.Length];
         var sphereHits = new QueryHit3D[spheres.Length];
         var counts = new int[spheres.Length];
-        long total = 0;
-        // 400 steps cover the pile landing and settling, the phase in which deep contacts use the penetration solver.
-        for (int i = 1; i <= 400; i++)
+        long total = 0, firstBytes = 0; int first = -1;
+        // The first steps cover the pile landing and settling, the phase in which deep contacts use the penetration solver; the rest are a settled pile asleep and awake.
+        for (int i = 1; i <= Steps; i++)
         {
             long a0 = GC.GetTotalAllocatedBytes(true), t0 = GC.GetAllocatedBytesForCurrentThread();
             player.Move(new Vector3F(-0.04f, -0.1f, 0), Dt);
@@ -136,13 +143,15 @@ public class WarmAllocationTests
                     w.Restore(scratch.AsSpan(0, n));
                 }
 
-            total += GC.GetTotalAllocatedBytes(true) - a0;
+            long step = GC.GetTotalAllocatedBytes(true) - a0;
+            if (step != 0 && first < 0) { first = i; firstBytes = step; }
+            total += step;
             long own = GC.GetAllocatedBytesForCurrentThread() - t0;
             if (own != 0) { return $"step {i}: the calling thread allocated {own} bytes"; }
         }
 
         // The calling thread must allocate nothing. The process-wide count also sees the worker threads, and a stray runtime allocation of a few bytes now and then (a timer, the test host);
         // a worker that allocated per step would add up to far more than the allowance.
-        return total <= 512 ? null : $"the process allocated {total} bytes over 400 steps";
+        return total <= 512 ? null : $"the process allocated {total} bytes over {Steps} steps (first: {firstBytes} at step {first})";
     }
 }

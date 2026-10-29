@@ -1047,7 +1047,7 @@ public sealed class WorldCore
     private WorldOptions? _spOptions;
     private double[]? _spOrigin;
 
-    /// <summary>The 64-bit world hash: the hash of the canonical state in snapshot order, without the format header and without events (see <see cref="StateWriter"/> for the function). Equal states give equal hashes on every platform. Allocates nothing.</summary>
+    /// <summary>The 64-bit world hash: the hash of the canonical state in snapshot order, without the format header and without events (see <see cref="StateWriter"/> for the function). Equal states give equal hashes on every platform. The state is streamed through the hash as it is walked; no snapshot is built or copied. Allocates nothing.</summary>
     public ulong ComputeHash()
     {
         var w = _hashWriter ??= StateWriter.ForHash();

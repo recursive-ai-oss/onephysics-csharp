@@ -1,4 +1,5 @@
 using System;
+using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.LowLevel;
 
@@ -56,6 +57,31 @@ internal sealed partial class Engine3D
     /// <summary>Creates the calling thread's narrowphase scratch (it is made on first use otherwise).</summary>
     internal static void PrepareThread()
     {
-        _ = NarrowScratch.Gen;
+        var gen = NarrowScratch.Gen;
+        NarrowScratch.Children.EnsureCapacity(64);
+        NarrowScratch.Tris.EnsureCapacity(64);
+        NarrowScratch.Ids.EnsureCapacity(256);
+        _ = CastIds();
+        QueryScratch.Warm(64); // batch queries run on the pool's threads too
+        TriangleSoup3D.PrepareThread();
+
+        // A few throwaway pairs, shallow and deep, so the generator's lazily grown buffers exist on this thread before it takes a pair from a step (which pairs a worker gets depends on timing).
+        var box = ConvexShape3D.Box(new Vector3F(0.5f, 0.5f, 0.5f));
+        var ball = ConvexShape3D.Sphere(0.5f);
+        var capsule = ConvexShape3D.Capsule(0.5f, 0.25f);
+        var cylinder = ConvexShape3D.Cylinder(0.5f, 0.5f);
+        ReadOnlySpan<float> offsets = [0.9f, 0.4f, 0.1f];
+        foreach (float x in offsets)
+        {
+            var at = new RigidTransformF(QuaternionF.Identity, new Vector3F(x, 0.1f, 0f));
+            gen.Collide(box, box, at);
+            gen.Collide(box, ball, at);
+            gen.Collide(ball, box, at);
+            gen.Collide(capsule, box, at);
+            gen.Collide(box, capsule, at);
+            gen.Collide(capsule, capsule, at);
+            gen.Collide(cylinder, box, at);
+            gen.Collide(cylinder, cylinder, at);
+        }
     }
 }

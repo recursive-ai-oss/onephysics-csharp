@@ -52,9 +52,9 @@
     <RestoreAdditionalProjectSources>$(MSBuildThisFileDirectory).localfeed</RestoreAdditionalProjectSources>
   </PropertyGroup>
 
-  <!-- The raw tier (RecursiveAI.OnePhysics.LowLevel) is marked [Experimental("OPHYS0001")] for consumers. Our own tests, benchmarks and tools use it on purpose; the package itself and the README examples do not suppress it. -->
+  <!-- The raw tier (RecursiveAI.OnePhysics.LowLevel) is marked [Experimental("OPHYS0001")] and the 3D engine (RecursiveAI.OnePhysics.Physics3D) [Experimental("OPHYS0002")] for consumers. Our own tests, benchmarks and tools use it on purpose; the package itself and the README examples do not suppress it. -->
   <PropertyGroup Condition="'$(MSBuildProjectName)' != 'OnePhysics' And '$(MSBuildProjectName)' != 'ReadmeExamples'">
-    <NoWarn>$(NoWarn);OPHYS0001</NoWarn>
+    <NoWarn>$(NoWarn);OPHYS0001;OPHYS0002</NoWarn>
   </PropertyGroup>
 
   <!-- Checked: Release optimisations plus bounds-checked internal accessors (CHECKED). -->
