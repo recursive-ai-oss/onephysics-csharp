@@ -74,11 +74,17 @@ public sealed partial class ManifoldGenerator3D
             if (t0 <= t1) { return false; }
         }
 
-        // The segment against the twelve edges of the core box.
+        // The segment against the twelve edges of the core box. An edge along one axis sits at fixed coordinates on the other two, so the segment is at least as far from it as the distance, per
+        // axis, from that coordinate to the segment's range on the axis: the squares of the two add up to a lower bound, and an edge whose bound is above the best so far cannot win (the margin
+        // covers rounding), so its closest-point routine is not run.
+        float pxm = Gap1(e0.X, e1.X, -h.X), pxp = Gap1(e0.X, e1.X, h.X), pym = Gap1(e0.Y, e1.Y, -h.Y), pyp = Gap1(e0.Y, e1.Y, h.Y), pzm = Gap1(e0.Z, e1.Z, -h.Z), pzp = Gap1(e0.Z, e1.Z, h.Z);
         for (int axis = 0; axis < 3; axis++)
         {
             for (int corner = 0; corner < 4; corner++)
             {
+                bool b1 = (corner & 1) != 0, b2 = (corner & 2) != 0;
+                float bound = axis == 0 ? (b1 ? pyp : pym) + (b2 ? pzp : pzm) : axis == 1 ? (b1 ? pxp : pxm) + (b2 ? pzp : pzm) : (b1 ? pxp : pxm) + (b2 ? pyp : pym);
+                if (bound > best * 1.001f) { continue; }
                 float s1 = (corner & 1) == 0 ? -1f : 1f, s2 = (corner & 2) == 0 ? -1f : 1f;
                 Vector3F lo, hi;
                 if (axis == 0) { lo = new Vector3F(-h.X, s1 * h.Y, s2 * h.Z); hi = new Vector3F(h.X, s1 * h.Y, s2 * h.Z); }
@@ -107,6 +113,14 @@ public sealed partial class ManifoldGenerator3D
         }
 
         return true;
+    }
+
+    // Squared distance from the coordinate p to the interval spanned by a and b.
+    private static float Gap1(float a, float b, float p)
+    {
+        float lo = a < b ? a : b, hi = a < b ? b : a;
+        float g = lo > p ? lo - p : hi < p ? p - hi : 0f;
+        return g * g;
     }
 
     private static float Clamp(float x, float h) => x < -h ? -h : x > h ? h : x;

@@ -58,6 +58,44 @@ public class BoxBoxTests
     }
 
     [Fact]
+    public void SeparatedBoxesNearEachOtherHaveTheGjkDistanceWhateverFeatureIsNearest()
+    {
+        // Pairs a few millimetres apart: edge against edge, vertex against face and the cases between. The closed-form edge pair must give GJK's distance wherever it is used.
+        var rng = new TestRng(77);
+        var gen = new ManifoldGenerator3D();
+        int compared = 0;
+        for (int i = 0; i < 60000 && compared < 3000; i++)
+        {
+            var ha = new Vector3F(rng.Range(0.2f, 1.2f), rng.Range(0.2f, 1.2f), rng.Range(0.2f, 1.2f));
+            var hb = new Vector3F(rng.Range(0.2f, 1.2f), rng.Range(0.2f, 1.2f), rng.Range(0.2f, 1.2f));
+            float ra = rng.Next(3) == 0 ? rng.Range(0f, 0.15f) : 0f;
+            ConvexShape3D a = ConvexShape3D.Box(ha, ra), b = ConvexShape3D.Box(hb, 0f);
+            var q = rng.Rotation();
+            // Slide B along a random direction until it is just apart, found by bisection on GJK's distance.
+            Vector3F dir = rng.InBall(1f);
+            if (!(dir.LengthSquared() > 1e-4f)) { continue; }
+            dir = dir.Normalized();
+            float lo = 0f, hi = 4f;
+            if (Gjk3D.Distance(a, b, new RigidTransformF(q, dir * hi)).Overlapping) { continue; }
+            for (int k = 0; k < 40; k++)
+            {
+                float mid = 0.5f * (lo + hi);
+                if (Gjk3D.Distance(a, b, new RigidTransformF(q, dir * mid)).Overlapping) { lo = mid; } else { hi = mid; }
+            }
+
+            var xf = new RigidTransformF(q, dir * (hi + rng.Range(0.002f, 0.015f)));
+            ConvexDistance3D d = Gjk3D.Distance(a, b, xf);
+            if (d.Overlapping || d.Distance > 0.019f || d.Distance < 0.001f) { continue; }
+            Manifold3D m = gen.Collide(a, b, xf, 0.02f);
+            Assert.True(m.PointCount > 0, $"pose {i}: no points at distance {d.Distance}");
+            compared++;
+            Assert.True(Math.Abs(m.MinSeparation - d.Distance) < 5e-4f, $"pose {i}: separation {m.MinSeparation} against GJK {d.Distance}");
+        }
+
+        Assert.True(compared > 500, $"{compared} pairs compared");
+    }
+
+    [Fact]
     public void StackedBoxesMakeAFourPointFaceManifold()
     {
         var gen = new ManifoldGenerator3D();

@@ -250,6 +250,10 @@ public sealed partial class ManifoldGenerator3D
             c = new ConvexContact3D(best - rr, nFace, coreA + (nFace * rA), coreB - (nFace * rB));
             haveC = true;
         }
+        else if (best > 0f && useEdge && EdgeEdgeContact(pa, pb, edgeA, edgeB, axisE, best, rr, rA, rB, scale, out c))
+        {
+            haveC = true;
+        }
         else if (best > 0f)
         {
             // Separated cores: the axis test may under-estimate the gap near vertex-vertex and vertex-edge closest pairs. Ask GJK and defer to it when it disagrees.
@@ -365,6 +369,28 @@ public sealed partial class ManifoldGenerator3D
             e = edges[e].Next;
         }
 
+        return true;
+    }
+
+    // Separated cores whose best axis is an edge pair: the closest points of the two edge segments (Ericson, Real-Time Collision Detection, 5.1.9) are the closest points of the cores when the gap between
+    // them equals the axis separation and points along the axis (the axis test is a lower bound on the distance and the segment pair an upper bound, so when they meet that is the distance), which is what
+    // GJK would return. Returns false when they do not meet (a vertex or an edge end is the nearest feature), and GJK decides.
+    private static bool EdgeEdgeContact(PolyData pa, PolyData pb, int edgeA, int edgeB, Vector3F axis, float best, float rr, float rA, float rB, float scale, out ConvexContact3D c)
+    {
+        c = default;
+        ReadOnlySpan<HullEdge3D> ea = pa.Hull.Edges, eb = pb.Hull.Edges;
+        Vector3F a0 = pa.V[ea[edgeA].Origin], a1 = pa.V[ea[edgeA ^ 1].Origin];
+        Vector3F b0 = pb.V[eb[edgeB].Origin], b1 = pb.V[eb[edgeB ^ 1].Origin];
+        ClosestSegmentSegment(a0, a1, b0, b1, out float s, out float t);
+        Vector3F p = a0 + ((a1 - a0) * s), q = b0 + ((b1 - b0) * t);
+        Vector3F d = q - p;
+        float len2 = d.LengthSquared();
+        if (!(len2 > 1e-12f) || !float.IsFinite(len2)) { return false; }
+        float dist = ConvexShape3D.Sqrt(len2);
+        if (dist - best > 2e-4f * scale) { return false; }
+        Vector3F n = d / dist;
+        if (Vector3F.Dot(axis, n) < 0.9995f) { return false; }
+        c = new ConvexContact3D(dist - rr, n, p + (n * rA), q - (n * rB));
         return true;
     }
 
