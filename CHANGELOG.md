@@ -12,6 +12,7 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 - A fast body still inside the supported range no longer fails the step with an argument error when its stretched box would cross the range limit; the stretch stops at the limit.
 
 - **`ShiftOrigin` is exact.** A shifted world now steps through exactly the states of the unshifted world, translated (positions differ by the offset; velocities, rotations and contact data are bit-identical), instead of drifting from it. The shift moves the stored broadphase boxes in place instead of rebuilding them. To make that true, a body's position increment each step is rounded to a multiple of 2^-32 (2.3e-10 m; a body slower than about 1.4e-8 m/s at 60 Hz does not move), shape bounds are rounded outward to the same grid, and the broadphase margin is rounded to it. Positions handed in as 31.32 fixed-point values are already on the grid.
+- **3D box-against-box face contacts are built without loading polyhedra.** The reference face is now the one the separating axis test chose (no second choice by area), so manifolds and the worlds that contain boxes move. The box-box manifold costs about 0.78× as much per fresh manifold in a sleep-wake pile (845 against 1090 ns).
 
 ## [0.1.0-preview.6]
 
