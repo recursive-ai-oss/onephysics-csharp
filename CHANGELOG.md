@@ -6,6 +6,8 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 ## [Unreleased]
 
+- **3D `Restore` refuses more damaged state.** A saved joint impulse no solver step could have produced (it would throw the joined bodies out of the world in one step) and a dynamic body whose saved extents do not match its shapes are refused with `SnapshotFormatException`, and the world is unchanged. Valid worlds, including extreme mass ratios, restore as before and no result moves.
+
 ## [0.1.0-preview.5]
 
 First public release. The 2D engine and the shared core are the supported surface; the 3D engine ships as a preview marked `[Experimental("OPHYS0002")]`. A user guide is in `docs/guide/`.

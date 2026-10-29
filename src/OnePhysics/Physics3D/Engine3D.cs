@@ -534,7 +534,16 @@ internal sealed partial class Engine3D : ISnapshotSection
         pos[0] += (double)shift.X; pos[1] += (double)shift.Y; pos[2] += (double)shift.Z;
         LocalCenter[3 * b] = newLc.X; LocalCenter[3 * b + 1] = newLc.Y; LocalCenter[3 * b + 2] = newLc.Z;
 
-        float maxExt = 0f, minExt = float.MaxValue;
+        ComputeExtents(b, newLc, out float maxExt, out float minExt);
+
+        MaxExtent[b] = maxExt;
+        MinExtent[b] = minExt;
+    }
+
+    /// <summary>Farthest point of any shape of the body from <paramref name="lc"/> (its centre of mass), and the smallest half-width of any shape. A restore recomputes these to check the saved ones.</summary>
+    private void ComputeExtents(int b, Vector3F lc, out float maxExt, out float minExt)
+    {
+        maxExt = 0f; minExt = float.MaxValue;
         for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
         {
             var g = Geoms[GeomOf[s]]!;
@@ -542,15 +551,12 @@ internal sealed partial class Engine3D : ISnapshotSection
             Vector3F mn, mx;
             if (g.IsConvex) { ShapeBounds3D.Compute(g.Convex, pose, out mn, out mx); }
             else { BoundsOfBox(g.LocalBounds, pose, out mn, out mx); }
-            float dx = Math.Max(Math.Abs(mn.X - newLc.X), Math.Abs(mx.X - newLc.X)), dy = Math.Max(Math.Abs(mn.Y - newLc.Y), Math.Abs(mx.Y - newLc.Y)), dz = Math.Max(Math.Abs(mn.Z - newLc.Z), Math.Abs(mx.Z - newLc.Z));
+            float dx = Math.Max(Math.Abs(mn.X - lc.X), Math.Abs(mx.X - lc.X)), dy = Math.Max(Math.Abs(mn.Y - lc.Y), Math.Abs(mx.Y - lc.Y)), dz = Math.Max(Math.Abs(mn.Z - lc.Z), Math.Abs(mx.Z - lc.Z));
             float ext = float.Sqrt(dx * dx + dy * dy + dz * dz);
             if (ext > maxExt) { maxExt = ext; }
             float me = 0.5f * Math.Min(mx.X - mn.X, Math.Min(mx.Y - mn.Y, mx.Z - mn.Z));
             if (me < minExt) { minExt = me; }
         }
-
-        MaxExtent[b] = maxExt;
-        MinExtent[b] = minExt;
     }
 
     // ------------------------------------------------------------------ pair table
@@ -1028,6 +1034,23 @@ internal sealed partial class Engine3D : ISnapshotSection
             {
                 if (!shapes.Handles.IsLive(s) || shapes.Owner[s] != b || ++count > shapes.HighWater) { return false; }
             }
+
+            // The bounds shortcut, continuous collision and spin estimates trust the stored extents, so they must match the geometry (the stored values come from the same computation, so the band is only rounding slack).
+            if (bodies.TypeOf(b) == BodyType.Dynamic)
+            {
+                ComputeExtents(b, LocalCenterOf(b), out float maxE, out float minE);
+                if (!(MaxExtent[b] >= maxE * 0.999f - 1e-5f && MaxExtent[b] <= maxE * 1.001f + 1e-5f))
+                {
+                    ConsistencyProblem = "the stored maximum extent of body slot " + b.ToString(CultureInfo.InvariantCulture) + " (" + MaxExtent[b].ToString("R", CultureInfo.InvariantCulture) + ") does not match its shapes (" + maxE.ToString("R", CultureInfo.InvariantCulture) + ")";
+                    return false;
+                }
+
+                if (!(MinExtent[b] >= minE * 0.999f - 1e-5f && MinExtent[b] <= minE * 1.001f + 1e-5f))
+                {
+                    ConsistencyProblem = "the stored minimum extent of body slot " + b.ToString(CultureInfo.InvariantCulture) + " (" + MinExtent[b].ToString("R", CultureInfo.InvariantCulture) + ") does not match its shapes (" + minE.ToString("R", CultureInfo.InvariantCulture) + ")";
+                    return false;
+                }
+            }
         }
 
         // Every contact constraint belongs to exactly one pair chain, sorted by sub-shape pair.
@@ -1061,7 +1084,7 @@ internal sealed partial class Engine3D : ISnapshotSection
             if (!WarmStartPlausible(c)) { return false; }
         }
 
-        return contacts == seen;
+        return contacts == seen && JointImpulsesPlausible();
     }
 
     /// <summary>Why the last <see cref="IsConsistentWithCore"/> failed, when it can say.</summary>

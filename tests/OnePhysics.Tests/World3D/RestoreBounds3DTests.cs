@@ -96,4 +96,79 @@ public class RestoreBounds3DTests
         Assert.Equal(snap, fresh.Snapshot());
         fresh.Step(Dt);
     }
+
+    // A chain of light boxes (about 1 kg) hung from a static anchor, with a box of about 1e6 kg at the end: every link carries the heavy box's weight.
+    private static PhysicsWorld3D HeavyOnLightChain(int links = 4)
+    {
+        var w = NewWorld();
+        var anchor = w.AddBox(new Vector3F(1f, 0.2f, 1f), at: new Vector3D(0, 20, 0), type: BodyType.Static);
+        Body prev = anchor;
+        for (int i = 0; i < links; i++)
+        {
+            var link = w.AddBox(new Vector3F(0.2f, 0.8f, 0.2f), at: new Vector3D(0, 19.5 - i, 0), density: 5f);
+            w.AddPoint(prev, link, new Vector3D(0, 20 - i, 0));
+            prev = link;
+        }
+
+        var heavy = w.AddBox(new Vector3F(1f, 1f, 1f), at: new Vector3D(0, 19.5 - links, 0), density: 1e6f);
+        w.AddPoint(prev, heavy, new Vector3D(0, 20 - links, 0));
+        return w;
+    }
+
+    [Fact]
+    public void AHeavyBodyHungOnALightChainSettlesRoundTripsAndSteps()
+    {
+        var w = HeavyOnLightChain();
+        for (int i = 0; i < 240; i++) { w.Step(Dt); }
+        byte[] snap = w.Snapshot();
+        var fresh = NewWorld();
+        fresh.Restore(snap);
+        Assert.Equal(snap, fresh.Snapshot());
+        w.Step(Dt);
+        fresh.Step(Dt);
+        Assert.Equal(w.Snapshot(), fresh.Snapshot());
+    }
+
+    [Fact]
+    public void AnAbsurdSavedJointImpulseIsRefusedAndTheWorldIsUnchanged()
+    {
+        var w = HeavyOnLightChain(2);
+        for (int i = 0; i < 30; i++) { w.Step(Dt); }
+        var cs = w.Engine.Core.Constraints;
+        int found = -1;
+        for (int c = 0; c < cs.HighWater && found < 0; c++) { if (cs.IsLive(c) && cs.KindOf(c) == ConstraintKind.Joint) { found = c; } }
+        Assert.True(found >= 0);
+        var payload = cs.Payload(found);
+        float good = payload[0];
+        payload[0] = 7e31f;
+        byte[] bad = w.Snapshot();
+        payload[0] = good;
+
+        var other = HeavyOnLightChain(2);
+        byte[] before = other.Snapshot();
+        var e = Assert.Throws<SnapshotFormatException>(() => other.Restore(bad));
+        Assert.Contains("impulse", e.Message);
+        Assert.Equal(before, other.Snapshot());
+    }
+
+    [Theory]
+    [InlineData(1000f)]
+    [InlineData(0.01f)]
+    public void AWrongSavedExtentIsRefusedAndTheWorldIsUnchanged(float wrong)
+    {
+        var w = CarOnGround();
+        var e = w.Engine;
+        int slot = -1;
+        for (int b = 0; b < e.Core.Bodies.HighWater && slot < 0; b++) { if (e.Core.Bodies.IsDynamic(b)) { slot = b; } }
+        float good = e.MaxExtent[slot];
+        e.MaxExtent[slot] = wrong;
+        byte[] bad = w.Snapshot();
+        e.MaxExtent[slot] = good;
+
+        var other = CarOnGround();
+        byte[] before = other.Snapshot();
+        var ex = Assert.Throws<SnapshotFormatException>(() => other.Restore(bad));
+        Assert.Contains("extent", ex.Message);
+        Assert.Equal(before, other.Snapshot());
+    }
 }
