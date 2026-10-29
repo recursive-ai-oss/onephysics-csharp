@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
+using RecursiveAI.OneMath.Predicates;
 
 namespace RecursiveAI.OnePhysics.LowLevel;
 
@@ -29,7 +30,7 @@ internal sealed class QuickhullBuilder
     private readonly HullBuildOptions _options;
     private readonly Vector3F[] _points;
     private double _eps;
-    private double _visEps; // a face is visible from a point when it is farther above the face than this: far below the merge tolerance so that faces stay convex
+    private double _mag; // sum of the largest absolute coordinate per axis
     private readonly List<Face> _all = new();
     private int _alive;
     private int[] _refCount = Array.Empty<int>();
@@ -86,6 +87,11 @@ internal sealed class QuickhullBuilder
             _z[i] = p.Z;
         }
     }
+
+    // Whether point p is strictly above the plane of triangle f, decided exactly: the hull stays convex whatever the noise in the input, so every
+    // visible region is one disk with a simple horizon (Barber, Dobkin, Huhdanpaa 1996 assume exactly this; floating-point planes do not give it).
+    private bool SeesFace(Face f, int p) =>
+        ExactPredicates.Orient3D(_x[f.V[0]], _y[f.V[0]], _z[f.V[0]], _x[f.V[1]], _y[f.V[1]], _z[f.V[1]], _x[f.V[2]], _y[f.V[2]], _z[f.V[2]], _x[p], _y[p], _z[p]) < 0;
 
     private double Dist(Face f, int p) => f.Nx * _x[p] + f.Ny * _y[p] + f.Nz * _z[p] - f.Off;
 
@@ -195,7 +201,7 @@ internal sealed class QuickhullBuilder
             throw Degenerate("all points coincide");
         }
 
-        _visEps = _eps * 1e-3;
+        _mag = magSum;
 
         // Initial tetrahedron: the farthest pair among the axis extremes, then the point farthest from their line, then from their plane.
         int i0 = -1, i1 = -1;
@@ -358,7 +364,7 @@ internal sealed class QuickhullBuilder
                 for (int e = 0; e < 3; e++)
                 {
                     Face? g = v.Nb[e];
-                    if (g != null && g.Mark != visibleMark && Dist(g, apex) > _visEps)
+                    if (g != null && g.Mark != visibleMark && SeesFace(g, apex))
                     {
                         g.Mark = visibleMark;
                         visible.Add(g);
@@ -566,7 +572,7 @@ internal sealed class QuickhullBuilder
             }
         }
 
-        return Finish();
+        return Finish(stop);
     }
 
     // True when the triangle's smallest altitude is within the tolerance; longestEdge is the index of its longest edge (ties to the lowest).
@@ -620,7 +626,23 @@ internal sealed class QuickhullBuilder
     }
 
     // Phase 2: triangles to polygons to half-edges.
-    private ConvexHull3D Finish()
+    private ConvexHull3D Finish(bool limited)
+    {
+        // A merged face is only kept if its plane still bounds every hull vertex (Gregorius, GDC 2014: robust hulls). A face whose plane does not
+        // is taken apart into its triangles, whose planes are exact, and the merge is redone without it.
+        bool[] noMerge = new bool[_all.Count];
+        while (true)
+        {
+            ConvexHull3D? hull = FinishRound(noMerge, limited);
+            if (hull != null)
+            {
+                return hull;
+            }
+        }
+    }
+
+    // One merge-and-build attempt; null when a merged face failed the containment check and its triangles were added to noMerge (indexed by Face.Id).
+    private ConvexHull3D? FinishRound(bool[] noMerge, bool limited)
     {
         var tris = new List<Face>();
         int[] index = new int[_all.Count];
@@ -702,7 +724,7 @@ internal sealed class QuickhullBuilder
                     ok = Math.Abs(Dist(f, go)) <= _eps && Math.Abs(Dist(g, fo)) <= _eps;
                 }
 
-                if (ok)
+                if (ok && !noMerge[f.Id] && !noMerge[g.Id])
                 {
                     int ri = Find(i), rj = Find(j);
                     if (ri != rj)
@@ -714,6 +736,7 @@ internal sealed class QuickhullBuilder
         }
 
         List<int[]> polys;
+        List<int[]> polyTris; // the triangles each polygon was made of, in step with polys
         while (true)
         {
             int[] group = new int[t];
@@ -729,6 +752,7 @@ internal sealed class QuickhullBuilder
             }
 
             polys = new List<int[]>();
+            polyTris = new List<int[]>();
             var next = new Dictionary<int, int>();
             for (int r = 0; r < t; r++)
             {
@@ -785,12 +809,14 @@ internal sealed class QuickhullBuilder
                 if (cycle != null)
                 {
                     polys.Add(cycle);
+                    polyTris.Add(m.ToArray());
                 }
                 else
                 {
                     foreach (int ti in m)
                     {
                         polys.Add(new[] { tris[ti].V[0], tris[ti].V[1], tris[ti].V[2] });
+                        polyTris.Add(new[] { ti });
                     }
                 }
             }
@@ -926,7 +952,14 @@ internal sealed class QuickhullBuilder
                 polys[i] = q;
             }
 
-            polys.RemoveAll(static p => p.Length == 0);
+            for (int i = polys.Count - 1; i >= 0; i--)
+            {
+                if (polys[i].Length == 0)
+                {
+                    polys.RemoveAt(i);
+                    polyTris.RemoveAt(i);
+                }
+            }
 
             // Two faces that share a bent chain are coplanar to within the tolerance and belong together: join their triangles and build again.
             bool anyBent = false, joined = false;
@@ -941,7 +974,7 @@ internal sealed class QuickhullBuilder
                 int root = -1;
                 for (int i = 0; i < t; i++)
                 {
-                    if (tris[i].V[0] != v && tris[i].V[1] != v && tris[i].V[2] != v)
+                    if ((tris[i].V[0] != v && tris[i].V[1] != v && tris[i].V[2] != v) || noMerge[tris[i].Id])
                     {
                         continue;
                     }
@@ -969,6 +1002,67 @@ internal sealed class QuickhullBuilder
             {
                 throw Degenerate("the faces around a nearly flat vertex cannot be joined into one polygon");
             }
+        }
+
+        // Containment check: each polygon's final plane (Newell, about the mean) must bound every input point.
+        double tol = (8 * _eps) + (1.2e-7 * _mag);
+        bool retry = false;
+        for (int pi = 0; pi < polys.Count; pi++)
+        {
+            int[] p = polys[pi];
+            double mx = 0, my = 0, mz = 0;
+            foreach (int v in p)
+            {
+                mx += _x[v];
+                my += _y[v];
+                mz += _z[v];
+            }
+
+            mx /= p.Length;
+            my /= p.Length;
+            mz /= p.Length;
+            double nx = 0, ny = 0, nz = 0;
+            for (int k = 0; k < p.Length; k++)
+            {
+                AddNewell(p[k], p[(k + 1) % p.Length], mx, my, mz, ref nx, ref ny, ref nz);
+            }
+
+            double len = Math.Sqrt((nx * nx) + (ny * ny) + (nz * nz));
+            if (!(len > 0))
+            {
+                throw Degenerate("a face has no area");
+            }
+
+            bool bad = false;
+            for (int v = 0; v < _n && !bad; v++)
+            {
+                if (limited && _refCount[v] == 0)
+                {
+                    continue; // a hull cut short by MaxVertices or MaxFaces leaves points outside by design
+                }
+
+                bad = ((nx * (_x[v] - mx)) + (ny * (_y[v] - my)) + (nz * (_z[v] - mz))) / len > tol;
+            }
+
+            if (bad)
+            {
+                if (polyTris[pi].Length == 1)
+                {
+                    throw Degenerate("the triangle hull is not convex within the tolerance");
+                }
+
+                foreach (int ti in polyTris[pi])
+                {
+                    noMerge[tris[ti].Id] = true;
+                }
+
+                retry = true;
+            }
+        }
+
+        if (retry)
+        {
+            return null;
         }
 
         // Canonical form: rotate each polygon to start at its lowest vertex, order polygons by that vertex then the next.
