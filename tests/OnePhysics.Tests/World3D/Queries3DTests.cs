@@ -248,6 +248,35 @@ public class Queries3DTests
         Assert.True(hits > 300 && touching > 1000, hits + " rays hit, " + touching + " grazing queries");
     }
 
+    // The closed-form ray and sphere-sweep leaf tests against the general route over a world of every shape kind: the same shapes are hit, at the same fractions to the general route's tolerance.
+    [Fact]
+    public void ClosedFormLeavesAgreeWithTheGeneralRoute()
+    {
+        var w = MixedWorld();
+        var rng = new TestRng(11);
+        int hits = 0, casts = 0;
+        for (int i = 0; i < 30_000; i++)
+        {
+            var o = new Vector3D(rng.Range(-40, 40), rng.Range(-5, 25), rng.Range(-40, 40));
+            var d = rng.OnSphere();
+            float max = rng.Range(1, 40);
+            float radius = rng.Range(0.05f, 0.8f);
+            w.ClosedFormLeaves = true;
+            bool r1 = w.Raycast(o, d, out var a, max);
+            bool c1 = w.SphereCast(o, radius, d, out var ca, max);
+            w.ClosedFormLeaves = false;
+            bool r2 = w.Raycast(o, d, out var b, max);
+            bool c2 = w.SphereCast(o, radius, d, out var cb, max);
+            w.ClosedFormLeaves = true;
+            Assert.Equal(r2, r1);
+            if (r1) { hits++; Assert.True(a.Shape.Equals(b.Shape), "ray shape"); Assert.True(Math.Abs(a.Distance - b.Distance) < 2e-3f, "ray distance " + a.Distance + " against " + b.Distance); }
+            Assert.Equal(c2, c1);
+            if (c1) { casts++; Assert.True(ca.Shape.Equals(cb.Shape), "cast shape"); Assert.True(Math.Abs(ca.Distance - cb.Distance) < 2e-3f, "cast distance " + ca.Distance + " against " + cb.Distance); }
+        }
+
+        Assert.True(hits > 1000 && casts > 1000, hits + " rays hit, " + casts + " casts hit");
+    }
+
     [Fact]
     public void KnownAnswers()
     {
