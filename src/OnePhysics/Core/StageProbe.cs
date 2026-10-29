@@ -17,5 +17,11 @@ internal static class StageProbe
 
     /// <summary>Reports a stage boundary.</summary>
     public static void Mark(int stage) => OnMark?.Invoke(stage);
+
+    /// <summary>
+    /// Called on the stepping thread around each run of tasks of the solve program (an integration stage, or one colour or the overflow set of one pass) with the stage kind (0 integrate velocities, 1 integrate positions,
+    /// 2 overflow, 3 colour), the phase (<see cref="SolvePhase"/>, 0 for integration), the number of tasks and whether it begins. Only the single-thread executor path reports; null by default.
+    /// </summary>
+    public static Action<int, int, int, bool>? OnSolveRun { get; set; }
 }
 #endif
