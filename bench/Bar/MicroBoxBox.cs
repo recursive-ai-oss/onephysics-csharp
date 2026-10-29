@@ -77,7 +77,7 @@ static class MicroBoxBox
             ulong dg = 0;
             for (int r = 0; r < reps; r++)
             {
-                nMaking = 0; nPoints = 0; dg = 14695981039346656037UL;
+                nMaking = 0; nPoints = 0; if (r == 0) dg = 14695981039346656037UL;
                 long t0 = Stopwatch.GetTimestamp();
                 foreach (var (a, b, rel) in pairs)
                 {
