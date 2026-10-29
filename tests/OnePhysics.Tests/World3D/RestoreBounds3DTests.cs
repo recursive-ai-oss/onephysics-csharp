@@ -70,4 +70,30 @@ public class RestoreBounds3DTests
         car.Drive(1f);
         Assert.Throws<BodyOutOfBoundsException>(() => w.Step(Dt));
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AHeavyBodyOnLightOnesRoundTripsThroughSnapshot(bool tallStack)
+    {
+        var w = NewWorld();
+        w.AddBox(new Vector3F(100f, 1f, 100f), at: new Vector3D(0, -0.5, 0), type: BodyType.Static);
+        double y = 0.0;
+        int lights = tallStack ? 6 : 1;
+        for (int i = 0; i < lights; i++)
+        {
+            w.AddBox(new Vector3F(1f, 1f, 1f), at: new Vector3D(0, y + 0.5, 0), density: 1f);   // about 1 kg each
+            y += 1.0;
+        }
+
+        var heavy = new Vector3F(1f, 1f, 1f);
+        w.AddBox(heavy, at: new Vector3D(0, y + 0.5, 0), density: 1e6f);                          // about 1e6 kg on top
+        for (int i = 0; i < 120; i++) { w.Step(Dt); }
+
+        byte[] snap = w.Snapshot();
+        var fresh = NewWorld();
+        fresh.Restore(snap);
+        Assert.Equal(snap, fresh.Snapshot());
+        fresh.Step(Dt);
+    }
 }
