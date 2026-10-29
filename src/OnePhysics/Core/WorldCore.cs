@@ -821,7 +821,9 @@ public sealed class WorldCore
             int n = _coloring.Color(color).Length;
             if (n == 0) { continue; }
             int batches = (n + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
-            AddStage(StageColor, (int)phase | (color << 8), (batches + ConstraintColoring.BatchesPerTask - 1) / ConstraintColoring.BatchesPerTask);
+            // One task per batch: stages are short, and a stage cut into a few multi-batch tasks leaves most threads waiting at its boundary.
+            // Batches of a color are independent, so how they are shared out cannot change a result.
+            AddStage(StageColor, (int)phase | (color << 8), batches);
         }
 
         if (reverse && _coloring.Overflow.Length > 0) { AddStage(StageOverflow, (int)phase, 1); }
@@ -834,15 +836,21 @@ public sealed class WorldCore
 
         public int TaskCount(int stage) => _w._stageTasks[stage];
 
-        public void Run(int stage, int task)
+        public void Run(int stage, int task) => RunRange(stage, task, 1);
+
+        // The stage is decoded once for the whole range.
+        public void RunRange(int stage, int first, int count)
         {
             var w = _w;
             int kind = w._stageKind[stage], arg = w._stageArg[stage];
             if (kind <= StageIntegratePositions)
             {
-                int lo = task * ChunkSize;
-                var span = w._awake.AsSpan(lo, Math.Min(ChunkSize, w._awakeCount - lo));
-                if (kind == StageIntegrateVelocities) { _s.IntegrateVelocities(w, span, in _ctx); } else { _s.IntegratePositions(w, span, in _ctx); }
+                for (int task = first; task < first + count; task++)
+                {
+                    int lo = task * ChunkSize;
+                    var span = w._awake.AsSpan(lo, Math.Min(ChunkSize, w._awakeCount - lo));
+                    if (kind == StageIntegrateVelocities) { _s.IntegrateVelocities(w, span, in _ctx); } else { _s.IntegratePositions(w, span, in _ctx); }
+                }
             }
             else if (kind == StageOverflow)
             {
@@ -856,13 +864,12 @@ public sealed class WorldCore
             else
             {
                 int color = arg >> 8;
-                int start = w._coloring.ColorStart(color), count = w._coloring.Color(color).Length;
-                int firstBatch = task * ConstraintColoring.BatchesPerTask;
-                for (int bt = firstBatch; bt < firstBatch + ConstraintColoring.BatchesPerTask; bt++)
+                int start = w._coloring.ColorStart(color), total = w._coloring.ColorSize(color);
+                var phase = (SolvePhase)(arg & 0xFF);
+                for (int task = first; task < first + count; task++)
                 {
-                    int lo = bt * ConstraintColoring.Lanes;
-                    if (lo >= count) { break; }
-                    _s.SolveBatch(w, _list.AsSpan(start + lo, Math.Min(ConstraintColoring.Lanes, count - lo)), (SolvePhase)(arg & 0xFF), in _ctx);
+                    int lo = task * ConstraintColoring.Lanes;
+                    _s.SolveBatch(w, _list.AsSpan(start + lo, Math.Min(ConstraintColoring.Lanes, total - lo)), phase, in _ctx);
                 }
             }
         }
