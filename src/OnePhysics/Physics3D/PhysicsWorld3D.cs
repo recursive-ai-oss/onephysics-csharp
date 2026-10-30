@@ -164,6 +164,18 @@ public sealed partial class PhysicsWorld3D
     public int GetSnapshotSize() => _core.GetSnapshotSize();
 
     /// <summary>
+    /// An upper bound on <see cref="GetSnapshotSize"/>: the most bytes <see cref="TrySnapshot"/> can need however the world steps, as long as no storage grows. A host that sizes rollback buffers from it never sees one too small.
+    /// State that changes as the world steps is counted at the capacity of the storage that holds it: contact and joint slots (<see cref="WorldOptions3D.ContactCapacity"/>), shape pairs (<see cref="WorldOptions3D.PairCapacity"/>),
+    /// islands, broadphase tree nodes, and the events a step can raise for those slots and for bodies and sensor pairs (kinds the event mask drops are not counted).
+    /// Everything the host creates counts as it is now: bodies, shapes and their geometry, joints, characters, vehicles, ragdolls and fluids. So the bound changes when you create or destroy such things, change the event mask,
+    /// or when storage grows (more contacts or pairs than the capacities hold, so the arrays double); stepping alone does not change it. Set the capacity options (or call <see cref="Warmup"/>) after building the scene,
+    /// then read the bound once.
+    /// It counts the events a step delivers and the ones calls between steps raise (one sleep and wake per body, one end per slot); a host that wakes and sleeps the same bodies many times between two steps can exceed it.
+    /// Not exact: it exceeds the real size by the unused capacity. Saturates at <see cref="int.MaxValue"/>. Allocates nothing; the cost is a pass over the bodies' shapes and joints, not over contacts.
+    /// </summary>
+    public int GetSnapshotSizeBound() => _core.GetSnapshotSizeBound();
+
+    /// <summary>
     /// Writes the snapshot into <paramref name="destination"/>: byte-exact, so restoring the bytes into a world made with the same options and continuing gives identical per-step hashes, events and snapshots. Layout in docs/spec/architecture.md.
     /// When it fits, returns true and <paramref name="written"/> is its length. When it does not, nothing is written, the result is false and <paramref name="written"/> is the length needed (see <see cref="GetSnapshotSize"/>).
     /// Allocates nothing once the world's internal buffer has grown to the snapshot's size.

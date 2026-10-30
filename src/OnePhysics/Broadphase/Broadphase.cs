@@ -677,6 +677,15 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
     public void Write(StateWriter writer)
     {
         ArgumentNullException.ThrowIfNull(writer);
+        if (writer.IsBound)
+        {
+            // The move buffer holds a proxy at most once (a moved flag guards it) and is compacted when it passes twice the proxy count (and 64); a proxy takes a node slot, so the slots bound its length.
+            long nodeSlots = 0;
+            foreach (var tree in _trees) { tree.Write(writer); nodeSlots += tree.NodeCapacity; }
+            writer.AddBound(4 + 24 + 4 + (4L * Math.Max(64, nodeSlots)) + (_options.EnlargedRefitSteps > 0 ? 12 : 0));
+            return;
+        }
+
         writer.WriteInt32(Version);
         writer.WriteDouble(_options.Margin);
         writer.WriteDouble(_options.StaticMargin);

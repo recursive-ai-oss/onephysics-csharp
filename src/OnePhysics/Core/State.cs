@@ -24,11 +24,14 @@ public sealed class StateWriter
     private ulong _hash = HashSeed;
     private readonly bool _hashing;
     private readonly bool _counting;
+    private readonly bool _bound;
+    private long _extra;
 
-    private StateWriter(bool hashing, bool counting)
+    private StateWriter(bool hashing, bool counting, bool bound = false)
     {
         _hashing = hashing;
         _counting = counting;
+        _bound = bound;
         _buffer = hashing || counting ? Array.Empty<byte>() : new byte[4096];
     }
 
@@ -41,6 +44,18 @@ public sealed class StateWriter
     /// <summary>Creates a writer that only counts the bytes a snapshot would take (<see cref="Length"/>) and stores nothing.</summary>
     public static StateWriter ForCount() => new(false, true);
 
+    /// <summary>
+    /// Creates a counting writer for the snapshot size bound: it counts like <see cref="ForCount"/>, except that state which grows while a world steps (contacts, pairs, events, islands, tree nodes)
+    /// is counted at the capacity its storage holds, through <see cref="AddBound"/>, instead of at what it holds now.
+    /// </summary>
+    public static StateWriter ForBound() => new(false, true, true);
+
+    /// <summary>True when this writer computes the snapshot size bound, so a writer of growing state adds its largest size with <see cref="AddBound"/> instead of writing it.</summary>
+    public bool IsBound => _bound;
+
+    /// <summary>Adds <paramref name="bytes"/> to the count (bound mode only; the sum saturates at <see cref="int.MaxValue"/> in <see cref="Length"/>).</summary>
+    public void AddBound(long bytes) => _extra += bytes;
+
     /// <summary>True when this writer feeds the hash and produces no bytes.</summary>
     public bool IsHashing => _hashing;
 
@@ -51,7 +66,7 @@ public sealed class StateWriter
     public ulong Hash => _hash;
 
     /// <summary>Number of bytes written so far (buffer and count modes).</summary>
-    public int Length => _length;
+    public int Length => _extra == 0 ? _length : (int)Math.Min((long)_length + _extra, int.MaxValue);
 
     /// <summary>Makes room for at least <paramref name="bytes"/> bytes so writing up to that much allocates nothing. No effect on a hashing or counting writer.</summary>
     internal void EnsureCapacity(int bytes)
@@ -63,6 +78,7 @@ public sealed class StateWriter
     public void Reset()
     {
         _length = 0;
+        _extra = 0;
         _hash = HashSeed;
     }
 

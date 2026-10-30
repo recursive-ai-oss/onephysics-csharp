@@ -154,6 +154,7 @@ public sealed class WorldCore
     private readonly ConstraintColoring _coloring = new();
     private readonly EventCollector _events;
     private readonly List<ISnapshotSection> _sections = new();
+    private readonly StateWriter _boundWriter = StateWriter.ForBound();
     private double[] _origin;
     private long _stepCount;
     private int[] _awake = new int[64];
@@ -1286,6 +1287,17 @@ public sealed class WorldCore
         return w.ToArray();
     }
 
+    /// <summary>
+    /// The most bytes <see cref="TrySnapshot"/> can need while the world's storage does not grow: state that changes as the world steps (contacts, pairs, events, islands, broadphase nodes)
+    /// is counted at the capacity of the storage that holds it; everything the host creates (bodies, shapes, joints, characters, ...) as it is now. Allocates nothing. Saturates at <see cref="int.MaxValue"/>.
+    /// </summary>
+    public int GetSnapshotSizeBound()
+    {
+        var w = _boundWriter;
+        WriteSnapshot(w);
+        return w.Length;
+    }
+
     /// <summary>The number of bytes <see cref="TrySnapshot"/> would write for the world as it is now. Allocates nothing.</summary>
     public int GetSnapshotSize()
     {
@@ -1308,6 +1320,23 @@ public sealed class WorldCore
         return true;
     }
 
+    /// <summary>
+    /// Bytes of events a snapshot can hold. Delivered events are those of one step. Per step, a contact slot gives at most one begin or persist event, one end or joint-break event (a slot is vacated once)
+    /// and one hit event; a body gives at most one sleep and one wake event. Pending events are those raised by calls since the last step: a slot's end event, a body's sleep and wake once each.
+    /// Kinds the event mask drops are not counted. The engines add their sensor events.
+    /// </summary>
+    private long EventBoundBytes()
+    {
+        long slots = Math.Max(_constraints.SlotCapacity, _constraints.HighWater), bodies = _bodies.HighWater;
+        var ev = _events;
+        long starts = ev.Wants(EventKind.ContactBegin) || ev.Wants(EventKind.ContactPersist) ? slots : 0;
+        long ends = ev.Wants(EventKind.ContactEnd) || ev.Wants(EventKind.JointBreak) ? slots : 0;
+        long hits = ev.Wants(EventKind.ContactHit) ? slots : 0;
+        long rest = (ev.Wants(EventKind.Sleep) ? bodies : 0) + (ev.Wants(EventKind.Wake) ? bodies : 0);
+        long count = starts + ends + hits + rest + ends + rest;
+        return 8 + (count * PhysicsEvent.SnapshotBytes);
+    }
+
     private void WriteState(StateWriter w, bool includeEvents)
     {
         _options.Write(w);
@@ -1316,8 +1345,12 @@ public sealed class WorldCore
         _bodies.Write(w);
         _shapes.Write(w);
         _constraints.Write(w);
-        _islands.Write(w);
-        if (includeEvents) { _events.Write(w); }
+        if (w.IsBound) { _islands.WriteBound(w, _bodies.HighWater); } else { _islands.Write(w); }
+        if (includeEvents)
+        {
+            if (w.IsBound) { w.AddBound(EventBoundBytes()); } else { _events.Write(w); }
+        }
+
         w.WriteInt32(_sections.Count);
         foreach (var s in _sections)
         {

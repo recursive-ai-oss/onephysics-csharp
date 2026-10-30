@@ -127,6 +127,9 @@ public sealed class HandleTable
         w.WriteInt32s(_heap.AsSpan(0, _heapCount));
     }
 
+    /// <summary>Adds to a snapshot size bound the most <see cref="Write"/> can take for a table of up to <paramref name="slots"/> slots (never fewer than the table has): the counts, then a generation, a liveness byte and a free-heap entry per slot.</summary>
+    internal void WriteBound(StateWriter w, int slots) => w.AddBound(8 + (9L * Math.Max(slots, _highWater)));
+
     /// <summary>Reads and validates a table written by <see cref="Write"/>: generations at least 1, free list a valid min-heap of distinct dead slots, every dead slot either free or retired.</summary>
     public static HandleTable Read(StateReader r, string what)
     {
