@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.Physics3D;
@@ -7,7 +8,7 @@ using Xunit;
 
 namespace RecursiveAI.OnePhysics.Tests.World3D;
 
-/// <summary>Islands without joints run the contact-only schedule; an island with a joint runs the world's own, and adding a joint changes only the island it joins.</summary>
+/// <summary>Islands without joints, or with only mild joints, run the contact-only schedule; an island with a stiff joint (motor, spring, drive, heavy mass ratio, loops) runs the world's own, and adding a joint changes only the island it joins.</summary>
 public class Schedule3DTests
 {
     private const float Dt = 1f / 60f;
@@ -189,6 +190,66 @@ public class Schedule3DTests
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 20; i++) { w.Step(Dt); }
         Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+    }
+
+    // A short chain of boxes in a row, joined by point joints, with the given joint kind and densities; returns a hash of the bodies after some steps with the given contact-only substep count.
+    private static ulong ChainHash(int contactSubsteps, Func<int, float> density, Action<PhysicsWorld3D, Body, Body> join, bool ladder = false)
+    {
+        var w = NewWorld(1, contactSubsteps);
+        var rows = ladder ? 2 : 1;
+        var bodies = new Body[rows, 4];
+        for (int r = 0; r < rows; r++)
+        {
+            for (int i = 0; i < 4; i++) { bodies[r, i] = w.AddBox(new Vector3F(0.5f, 0.5f, 0.5f), new Vector3D(i * 0.6, 0.5 + r * 0.6, 0), density: density(i)); }
+        }
+
+        for (int r = 0; r < rows; r++)
+        {
+            for (int i = 0; i < 3; i++) { join(w, bodies[r, i], bodies[r, i + 1]); }
+        }
+
+        if (ladder) { for (int i = 0; i < 4; i++) { join(w, bodies[0, i], bodies[1, i]); } }
+        ulong h = 0;
+        for (int i = 0; i < 120; i++) { w.Step(Dt); h = h * 31 + HashOf(bodies.Cast<Body>()); }
+        return h;
+    }
+
+    private static void Point(PhysicsWorld3D w, Body a, Body b) => w.CreateJoint(new PointJointDef { BodyA = a, BodyB = b });
+
+    [Fact]
+    public void MildJointsRunOnTheContactSchedule()
+    {
+        Assert.NotEqual(ChainHash(0, _ => 1f, Point), ChainHash(2, _ => 1f, Point));
+        // A mass ratio of 20 is still mild.
+        Assert.NotEqual(ChainHash(0, i => i == 3 ? 20f : 1f, Point), ChainHash(2, i => i == 3 ? 20f : 1f, Point));
+    }
+
+    [Fact]
+    public void StiffJointsKeepTheWorldSchedule()
+    {
+        // The contact-only schedule changes nothing for these, so switching it off or on gives the same bits.
+        Assert.Equal(ChainHash(0, i => i == 3 ? 500f : 1f, Point), ChainHash(2, i => i == 3 ? 500f : 1f, Point));
+        Assert.Equal(ChainHash(0, _ => 1f, (w, a, b) => w.CreateJoint(new HingeJointDef { BodyA = a, BodyB = b, EnableMotor = true, MaxMotorTorque = 10f })),
+                     ChainHash(2, _ => 1f, (w, a, b) => w.CreateJoint(new HingeJointDef { BodyA = a, BodyB = b, EnableMotor = true, MaxMotorTorque = 10f })));
+        Assert.Equal(ChainHash(0, _ => 1f, (w, a, b) => w.CreateJoint(new HingeJointDef { BodyA = a, BodyB = b, EnableSpring = true, SpringHertz = 2f })),
+                     ChainHash(2, _ => 1f, (w, a, b) => w.CreateJoint(new HingeJointDef { BodyA = a, BodyB = b, EnableSpring = true, SpringHertz = 2f })));
+        // A ladder has more joints than bodies.
+        Assert.Equal(ChainHash(0, _ => 1f, Point, ladder: true), ChainHash(2, _ => 1f, Point, ladder: true));
+    }
+
+    [Fact]
+    public void MildJointSnapshotContinuesBitEqual()
+    {
+        var w = NewWorld();
+        var bodies = new List<Body>();
+        for (int i = 0; i < 5; i++) { bodies.Add(w.AddBox(new Vector3F(0.5f, 0.5f, 0.5f), new Vector3D(i * 0.6, 1.5, 0))); }
+        for (int i = 0; i < 4; i++) { w.CreateJoint(new PointJointDef { BodyA = bodies[i], BodyB = bodies[i + 1] }); }
+        for (int i = 0; i < 40; i++) { w.Step(Dt); }
+        var snap = w.Snapshot();
+        var fresh = NewWorld();
+        fresh.Restore(snap);
+        for (int i = 0; i < 80; i++) { w.Step(Dt); fresh.Step(Dt); Assert.Equal(w.ComputeHash(), fresh.ComputeHash()); }
+        Assert.Equal(w.Snapshot(), fresh.Snapshot());
     }
 
     [Theory]

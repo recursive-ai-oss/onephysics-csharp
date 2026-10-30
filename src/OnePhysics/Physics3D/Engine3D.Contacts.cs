@@ -36,6 +36,8 @@ internal readonly struct Stages3D : IWorldStages
 
     public void BeginSolve(WorldCore world, int batches, in StepContext context) => _e.BeginSolve(batches, in context);
 
+    public bool JointNeedsFullSchedule(WorldCore world, int constraint) => _e.JointNeedsFullSchedule(constraint);
+
     public void PrepareBatch(WorldCore world, ReadOnlySpan<int> constraints, int batch, in StepContext context) => _e.PrepareBatch(constraints, batch, in context);
 
     public float BodyMotion(WorldCore world, int body) => _e.BodyMotion(body);

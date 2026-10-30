@@ -99,6 +99,12 @@ public interface IWorldStages
     void BeginSolve(WorldCore world, int batches, in StepContext context) { }
 
     /// <summary>
+    /// Whether a joint constraint needs the world's own schedule. The default says yes, so an island holding any joint runs the world's schedule; an engine that can tell mild joints from stiff ones
+    /// (drives, motors, springs, large mass ratios) returns false for the mild ones, and an island whose joints are all mild and form no loop runs the contact-only schedule with its contacts.
+    /// </summary>
+    bool JointNeedsFullSchedule(WorldCore world, int constraint) => true;
+
+    /// <summary>
     /// Prepares one batch (after every chunk has been prepared with <see cref="Prepare"/>), cut exactly as <see cref="SolveBatch"/> will see it; <paramref name="batch"/> numbers the batches of the step from zero in solve order. Batches of one color may be prepared concurrently,
     /// so an implementation writes only data owned by its batch. The default does nothing.
     /// </summary>
@@ -614,7 +620,7 @@ public sealed class WorldCore
         int storeChunks = (active + ChunkSize - 1) / ChunkSize;
         _events.EnsureSlots(1 + storeChunks);
         var list = _coloring.ListArray;
-        bool split = _liteOn && PlanSchedules(active, list);
+        bool split = _liteOn && PlanSchedules(stages, active, list);
         _forcedCount = 0;
         _splitActive = split;
         if (!split) { CountWholeColors(); }
@@ -689,6 +695,7 @@ public sealed class WorldCore
     private int _liteSubsteps, _liteVelocity = 1, _liteRelax;
     private bool _splitActive;
     private byte[] _islandFull = new byte[16];
+    private int[] _islandJoints = new int[16];
     private byte[] _consLite = new byte[16];
     private int[] _awakeFull = new int[64], _awakeLite = new int[64];
     private int _awakeFullCount, _awakeLiteCount;
@@ -716,13 +723,14 @@ public sealed class WorldCore
 
     // Decides each island's schedule from its content at the start of the step: an island holds the joint schedule when any of its constraints is a joint, when it touches a kinematic body (which then moves on that schedule),
     // or when the engine asked for it; every other island runs the contact-only schedule. Returns false when no island is on the contact-only schedule (the step then runs as one program).
-    private bool PlanSchedules(int active, int[] list)
+    private bool PlanSchedules<TStages>(TStages stages, int active, int[] list) where TStages : IWorldStages
     {
         var bodies = _bodies;
         var cons = _constraints;
         int ni = _islands.HighWater;
         if (_islandFull.Length < ni) { _islandFull = new byte[Math.Max(ni, _islandFull.Length * 2)]; }
         Array.Clear(_islandFull, 0, ni);
+        bool anyJoint = false;
         bool anyKinematic = false;
         for (int i = 0; i < _awakeCount; i++) { if (bodies.TypeOf(_awake[i]) == BodyType.Kinematic) { anyKinematic = true; break; } }
         var island = bodies.Island;
@@ -735,9 +743,34 @@ public sealed class WorldCore
             bool joint = kind[c] == (byte)ConstraintKind.Joint;
             if (!joint && !anyKinematic) { continue; }
             int a = bodyA[c], b = bodyB[c];
+            if (joint && !stages.JointNeedsFullSchedule(this, c))
+            {
+                // A mild joint keeps its island on the contact-only schedule; the joints of the island are counted to spot loops below.
+                int ia = bodies.IsDynamic(a) ? island[a] : island[b];
+                if (!anyJoint)
+                {
+                    // Sized and cleared on first use, so worlds without mild joints never touch it.
+                    if (_islandJoints.Length < ni) { _islandJoints = new int[Math.Max(ni, _islandJoints.Length * 2)]; }
+                    Array.Clear(_islandJoints, 0, ni);
+                    anyJoint = true;
+                }
+
+                if (ia >= 0) { _islandJoints[ia]++; }
+                continue;
+            }
+
             if (!joint && bodies.TypeOf(a) != BodyType.Kinematic && bodies.TypeOf(b) != BodyType.Kinematic) { continue; }
             if (island[a] >= 0) { _islandFull[island[a]] = 1; }
             if (island[b] >= 0) { _islandFull[island[b]] = 1; }
+        }
+
+        if (anyJoint)
+        {
+            // More joints than bodies means loops (a mesh of joints, not a tree): redundant rows need the world's schedule to converge.
+            for (int i = 0; i < ni; i++)
+            {
+                if (_islandJoints[i] > 0 && _islands.IsLive(i) && _islandJoints[i] > _islands.Bodies(i).Length) { _islandFull[i] = 1; }
+            }
         }
 
         for (int i = 0; i < _forcedCount; i++)
@@ -760,7 +793,7 @@ public sealed class WorldCore
 
         _awakeFullCount = nf; _awakeLiteCount = nl;
         if (nl == 0) { return false; }
-        // Constraints: those of an island on the contact-only schedule; a joint, or a constraint with no dynamic body, stays on the joint schedule.
+        // Constraints: those of an island on the contact-only schedule; a constraint with no dynamic body stays on the world's schedule.
         int nc = cons.HighWater;
         if (_consLite.Length < nc) { _consLite = new byte[Math.Max(nc, _consLite.Length * 2)]; }
         Array.Clear(_consLite, 0, nc);
@@ -772,7 +805,6 @@ public sealed class WorldCore
             for (int k = 0; k < n; k++)
             {
                 int c = list[start + k];
-                if (kind[c] == (byte)ConstraintKind.Joint) { continue; }
                 int a = bodyA[c];
                 int isl = bodies.IsDynamic(a) ? island[a] : island[bodyB[c]];
                 if (isl >= 0 && _islandFull[isl] == 0) { _consLite[c] = 1; lite++; }
