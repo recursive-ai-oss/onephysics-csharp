@@ -771,6 +771,8 @@ Round 28 put every island that holds a joint on the world's schedule (4 substeps
 * **Tests:** a chain of boxes with point joints (also at a mass ratio of 20) steps differently with the contact-only schedule on than off, i.e. it is on it; a ratio of 500, hinge motors, hinge springs and a ladder of point joints step identically with it on or off, i.e. they are not.
 * **Not tried:** a different joint formulation that holds the 500:1 chain and the powered ragdolls at fewer substeps (position-level correction between substeps, shock propagation). The rule only moves the islands that already pass.
 
-### Round 34: more tasks for the serial parts of the step (no result changes)
+### Round 34: more tasks for the serial parts of the step and a lighter wait (no result changes)
 
 Profile build, large-pile-3d at eight threads (indicative): the sleep timers (0.18 ms) ran serially in 3D though they only read, and the colouring split 9000 constraints into three blocks of 4096, so eight threads shared three tasks. The sleep timers now run in parallel blocks, as in 2D (`BodyMotionIsConcurrent`), and colouring blocks are 512 constraints. The bucket layout is by block in constraint order, so the lists are the same. Sleep stage 0.18 to 0.05 ms, colouring 0.11 to 0.08 ms. Hash matrix unchanged.
+
+Waiting threads (a stage boundary, the end of a staged call, the end of a parallel loop) pause one to eight instructions a round (`Thread.SpinWait`, growing by one every 16 rounds) and call `Thread.Yield` only after 4096 rounds; `SpinWait.SpinOnce` backed off exponentially and yielded after ten rounds, which overshoots a short wait and, on a host with other work, costs a system call per round. The staged-call thread cap and the task hand-out are unchanged. Who runs which task never reaches a result, so no hash moves.

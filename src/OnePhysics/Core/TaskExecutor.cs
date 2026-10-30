@@ -211,8 +211,8 @@ internal static class WorkerPool
             }
 
             Work(-1);
-            var wait = new SpinWait();
-            while (Volatile.Read(ref _completed) < taskCount) { wait.SpinOnce(-1); }
+            int spins = 0;
+            while (Volatile.Read(ref _completed) < taskCount) { Pause(ref spins); }
             Volatile.Write(ref _claim, (call << 32) | Closed);
             job.Body = default!;
             _job = null;
@@ -287,8 +287,8 @@ internal static class WorkerPool
                 if (Interlocked.CompareExchange(ref _stagedState, st | ClosedBit, st) == st) { break; }
             }
 
-            var wait = new SpinWait();
-            while ((Volatile.Read(ref _stagedState) & 0x7FFFFFFFL) > 1) { wait.SpinOnce(-1); }
+            int spins = 0;
+            while ((Volatile.Read(ref _stagedState) & 0x7FFFFFFFL) > 1) { Pause(ref spins); }
             job.Body = default!;
             _job = null;
             var error = _error;
@@ -300,6 +300,18 @@ internal static class WorkerPool
             Volatile.Write(ref _owner, 0);
         }
     }
+
+    // A short busy wait for something another thread is about to finish. SpinWait.SpinOnce backs off exponentially and yields after ten rounds, which overshoots a release that is a microsecond away
+    // and costs a system call when it is not. Here a round is one to eight pause instructions (growing by one every 16 rounds, so that thirty waiters do not hammer the line the last finisher is writing),
+    // and only a wait of tens of microseconds gives the core up.
+    private static void Pause(ref int spins)
+    {
+        if (++spins < PauseRounds) { Thread.SpinWait(Math.Min(1 + (spins >> 4), PauseMax)); }
+        else { Thread.Yield(); }
+    }
+
+    private const int PauseRounds = 4096;
+    private const int PauseMax = 8;
 
     private const int CounterStride = 8; // longs per slot: one 64-byte cache line, so a thread working through its own tasks never shares a line with another
 
@@ -352,8 +364,8 @@ internal static class WorkerPool
                 int c = baseIndex + (owner * CounterStride) + 1;
                 if (Volatile.Read(ref counters[c]) < count)
                 {
-                    var wait = new SpinWait();
-                    while (Volatile.Read(ref counters[c]) < count) { wait.SpinOnce(-1); }
+                    int spins = 0;
+                    while (Volatile.Read(ref counters[c]) < count) { Pause(ref spins); }
                 }
             }
         }
