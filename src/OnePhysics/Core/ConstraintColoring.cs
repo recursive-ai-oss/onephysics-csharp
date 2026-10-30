@@ -180,7 +180,7 @@ public sealed class ConstraintColoring
     }
 
     private const byte Inactive = 255;
-    private const int ActiveBlock = 4096;
+    private const int ActiveBlock = 512;
     private byte[] _bucketOf = new byte[64];
 
     private readonly struct ActiveBlockTask : IParallelBody
