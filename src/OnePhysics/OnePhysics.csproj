@@ -14,7 +14,7 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <!-- Packing compares the public API with the last published preview and fails on a break that is not listed in a suppression file. -->
     <EnablePackageValidation>true</EnablePackageValidation>
-    <PackageValidationBaselineVersion>0.1.0-preview.6</PackageValidationBaselineVersion>
+    <PackageValidationBaselineVersion>0.2.0-preview.1</PackageValidationBaselineVersion>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
     <!-- The raw tier is marked experimental for consumers (OPHYS0001), and so is the 3D engine (OPHYS0002); inside the package they are simply used. -->

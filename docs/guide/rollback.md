@@ -22,7 +22,7 @@ const int Ring = 8;
 var ring = new byte[Ring][];
 var lengths = new int[Ring];
 var hashes = new ulong[Ring];
-for (int i = 0; i < Ring; i++) ring[i] = new byte[world.GetSnapshotSize() * 2];   // headroom for a world that grows
+for (int i = 0; i < Ring; i++) ring[i] = new byte[world.GetSnapshotSizeBound()];   // never too small while the capacities hold
 
 int frame = 0;
 void Advance()
@@ -52,6 +52,7 @@ Apply the late input to your game state (and set body velocities or call `Move` 
 ## The pieces
 
 - **`TrySnapshot(span, out written)`** writes into your buffer and returns false if it is too small; `GetSnapshotSize()` is the current size. `Snapshot()` allocates a new array. The same world writes the same bytes on every platform. Snapshots hold contact caches, warm-start impulses, sleep state and the events of the last step, which is why a restored world continues bit for bit.
+- **`GetSnapshotSizeBound()`** is an upper bound on `GetSnapshotSize()` for sizing rollback buffers once: it holds at every step of a world whose storage does not grow, including the step a pile first makes contact (the size can jump by more than half then, because contacts are saved). Set `ContactCapacity` and `PairCapacity` (or call `Warmup()`) after building the scene, read the bound, and allocate that. It is fixed while you only step; it changes when you create or destroy bodies, shapes, joints, characters and the like, change the event mask, or exceed a capacity (the arrays then double). It exceeds the real size by the unused capacity, and it assumes at most one round of sleep and wake calls between two steps. It allocates nothing and costs a pass over the bodies' shapes and the constraint slots, not over contacts.
 - **`Restore(bytes)`** validates the whole snapshot first and changes nothing if it is invalid (`SnapshotFormatException`). It returns an **`OptionChanges`** flags value naming which saved options (gravity, substeps, iterations, sleep settings, event mask) the snapshot replaced in this world, or `None`. Options that are not part of the saved state (`ThreadCount`, capacities, solver tuning, the pair filter delegate and struct filter) are left alone: install a struct contact filter again after a restore.
 - **`WorldId` and handle validity.** A handle carries the id of the world that made it. Handles taken before a snapshot stay valid in a world with the same `WorldId` that holds the same bodies, so you can keep `Body` values across a restore, or restore into a freshly built world (a new peer joining). With the default `WorldId` of 0 the world takes the next number from a process-wide counter, which depends on creation order; set it explicitly when you need stable ids.
 - **Handlers across a restore.** Per-body handlers belong to the handle. A restore that brings a body back keeps its handlers. The world remembers the handlers of the 1024 most recently destroyed bodies, joints and characters of each kind, and only once it has taken a snapshot; anything older is released, so rolling back past more than 1024 destroys of one kind loses those handlers.

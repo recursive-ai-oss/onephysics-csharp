@@ -545,6 +545,14 @@ internal sealed partial class Engine2D : ISnapshotSection
 
     // ------------------------------------------------------------------ snapshot section
 
+    // Sensor events a snapshot can hold: per step one enter and one exit per pair slot, and the exits raised by calls since the last step.
+    private void AddSensorEventBound(StateWriter w, long pairs)
+    {
+        var ev = Core.Events;
+        long count = (ev.Wants(EventKind.SensorEnter) ? pairs : 0) + (ev.Wants(EventKind.SensorExit) ? 2 * pairs : 0);
+        w.AddBound(count * PhysicsEvent.SnapshotBytes);
+    }
+
     public void Write(StateWriter w)
     {
         bool services = HasServiceState();
@@ -577,17 +585,27 @@ internal sealed partial class Engine2D : ISnapshotSection
             w.WriteUInt32(Category[s]); w.WriteUInt32(Mask[s]); w.WriteInt32(Group[s]); w.WriteInt32(NextShape[s]);
         }
 
-        w.WriteInt32(PairHigh);
-        for (int p = 0; p < PairHigh; p++)
+        if (w.IsBound)
         {
-            w.WriteBool(Pairs[p].Live);
-            if (Pairs[p].Live) { w.WriteInt32(Pairs[p].A); w.WriteInt32(Pairs[p].B); w.WriteInt32(Pairs[p].Cons); }
+            // A live pair takes 13 bytes; a dead slot 1 byte and a free-stack word.
+            long pairs = Math.Max(Pairs.Length, PairHigh);
+            w.AddBound(8 + (13 * pairs));
+            AddSensorEventBound(w, pairs);
         }
+        else
+        {
+            w.WriteInt32(PairHigh);
+            for (int p = 0; p < PairHigh; p++)
+            {
+                w.WriteBool(Pairs[p].Live);
+                if (Pairs[p].Live) { w.WriteInt32(Pairs[p].A); w.WriteInt32(Pairs[p].B); w.WriteInt32(Pairs[p].Cons); }
+            }
 
-        // The contact stack bottom to top, then the sensor stack as complements (~slot); a world without sensor pairs writes the same bytes as before.
-        w.WriteInt32(PairFreeCount + SensorFreeCount);
-        w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
-        for (int i = 0; i < SensorFreeCount; i++) { w.WriteInt32(~SensorFree[i]); }
+            // The contact stack bottom to top, then the sensor stack as complements (~slot); a world without sensor pairs writes the same bytes as before.
+            w.WriteInt32(PairFreeCount + SensorFreeCount);
+            w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
+            for (int i = 0; i < SensorFreeCount; i++) { w.WriteInt32(~SensorFree[i]); }
+        }
         if (chars)
         {
             // Version 4: a presence-flags word, then the flagged blocks in a fixed order.

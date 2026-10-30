@@ -197,6 +197,18 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     /// <summary>Number of node slots ever handed out; node indices are below this.</summary>
     public int NodeSlots => _used;
 
+    /// <summary>Node slots the tree can hold without growing.</summary>
+    internal int NodeCapacity => _nodes.Length;
+
+    private static readonly int BoxBytes = MeasureBox();
+
+    private static int MeasureBox()
+    {
+        var w = StateWriter.ForCount();
+        default(TBox).Write(w);
+        return w.Length;
+    }
+
     /// <summary>Height of the tree: 0 for a single leaf, -1 when empty.</summary>
     public int Height => _root == NullNode ? -1 : _nodes[_root].Height;
 
@@ -1134,6 +1146,13 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     public void Write(StateWriter writer)
     {
         ArgumentNullException.ThrowIfNull(writer);
+        if (writer.IsBound)
+        {
+            // Node slots only grow into the array, and every slot is written at its largest (a live node with its box).
+            writer.AddBound(12L + ((long)_nodes.Length * (24 + BoxBytes)));
+            return;
+        }
+
         writer.WriteInt32(_used);
         writer.WriteInt32(_root);
         writer.WriteInt32(_free);

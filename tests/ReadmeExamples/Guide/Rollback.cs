@@ -26,7 +26,7 @@ public static class Rollback
         var ring = new byte[Ring][];
         var lengths = new int[Ring];
         var hashes = new ulong[Ring];
-        for (int i = 0; i < Ring; i++) ring[i] = new byte[world.GetSnapshotSize() * 2];   // headroom for a world that grows
+        for (int i = 0; i < Ring; i++) ring[i] = new byte[world.GetSnapshotSizeBound()];   // never too small while the capacities hold
 
         int frame = 0;
         void Advance()

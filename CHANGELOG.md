@@ -6,6 +6,27 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 ## [Unreleased]
 
+- **`GetSnapshotSizeBound()` on `PhysicsWorld2D` and `PhysicsWorld3D`** returns an upper bound on `GetSnapshotSize()` that holds however the world steps while no storage grows, so a host can size rollback buffers once. Contacts and joints, shape pairs, islands, broadphase nodes and events are counted at the capacity that holds them (`ContactCapacity`, `PairCapacity`); what the host creates (bodies, shapes, joints, characters, vehicles, ragdolls, fluids) is counted as it is now. Additive; the snapshot format and every world hash are unchanged.
+- **3D box-against-box edge axes are tested without normalizing each axis** (about 9% off the box–box routine on pairs from a sleep-wake pile). Separations can differ from the previous preview in the last bit in some poses, so 3D world hashes and snapshot bytes move.
+
+## [0.2.0-preview.1]
+
+- **The snapshot format is frozen at version 1.** Its layout (header, options, bodies, shapes, constraints, islands and registered sections, `docs/spec/architecture.md`) no longer changes within version 1. A later change is a new format version. Results may still move between previews.
+- **Raw tier (`[Experimental("OPHYS0001")]`): `IBox<TSelf>` gains `Translated(ReadOnlySpan<double>)`**, which the exact origin shift uses. A type that implements `IBox<TSelf>` outside the library must add it.
+- **The 3D engine stays `[Experimental("OPHYS0002")]`.** It meets the speed bar on most scenes but not all yet: within 1.15x of the fastest stable managed engine (BepuPhysics v2, Jitter2), per scene and thread count. Measured on a Ryzen 9 7950X3D (ours / reference median step time, t1 / t8 on one core complex / t32):
+
+  | scene | t1 | t8 | t32 |
+  |---|---|---|---|
+  | large-pile-3d | 1.10 | 1.23 | 1.47 |
+  | ragdoll-pile-3d | 2.75 | 1.42 | 2.17 |
+  | sleep-wake-3d | 2.75 | 1.60 | 1.41 |
+  | queries-3d (settle phase) | 1.31 | 1.42 | 1.38 |
+  | heightfield-terrain-3d | 1.17 | 0.95 | 0.68 |
+  | mesh-terrain-3d | 1.10 | 0.92 | 0.68 |
+  | joint-grid-3d | 0.10 | 0.16 | 0.06 |
+
+  joint-chains-3d and pyramid-3d-30 have no stable managed reference and are judged on their stability limits, which they meet. Every 3D scene is within its stability limits, and every 2D scene is within the bar at every thread count. These rows predate the narrowphase entry below, which takes 3-6% off the ragdoll, box-pile and sleep-wake rows.
+
 - **`Warmup` primes more of the process.** Its trial world now drops a pile that lands, settles and falls asleep (150 steps) and runs box and sphere casts and box and capsule overlaps, so those paths are loaded before a host's first step. Worlds, hashes and snapshots are unchanged.
 
 **Moved results:** 3D worlds move (the broadphase keeps tighter boxes, so pairs start and end at different steps), and 2D and 3D worlds move again because positions now advance on a 2^-32 grid (see the origin shift entry).

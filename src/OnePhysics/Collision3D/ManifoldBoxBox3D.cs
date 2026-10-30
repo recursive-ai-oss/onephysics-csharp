@@ -131,6 +131,8 @@ public sealed partial class ManifoldGenerator3D
 
     // The nine edge-edge axes (an edge of A crossed with an edge of B). The axis is oriented from A towards B; its separation is the distance between the centres along it minus the reach of each box. The edges
     // reported are the ones that support each box along the axis (A's along the axis, B's against it). Parallel pairs have no axis. Returns negative infinity and edge -1 when no pair has one.
+    // The cone tests, the reaches and the centre distance are worked out for the unnormalized axis l = e_i x c_j (Ericson, Real-Time Collision Detection, 4.4.1) and are all multiples of |l|, so the square root
+    // and the divide are paid only by an axis that survives the cone tests.
     private static float BoxEdges(Vector3F hA, Vector3F hB, in Matrix3x3F r, Vector3F t, out int edgeA, out int edgeB, out Vector3F axis)
     {
         BoxTopology topo = s_boxTopo;
@@ -139,6 +141,9 @@ public sealed partial class ManifoldGenerator3D
         axis = default;
         float best = float.NegativeInfinity;
         int bi = 0, bj = 0;
+        float bs = 1f, bl = 1f;
+        float bl0 = 0f, bl1 = 0f, bl2 = 0f, bm0 = 0f, bm1 = 0f, bm2 = 0f;
+        const float cutMargin = ConeMargin * ConeMargin * 0.998f;
         for (int i = 0; i < 3; i++)
         {
             for (int j = 0; j < 3; j++)
@@ -148,37 +153,43 @@ public sealed partial class ManifoldGenerator3D
                 Vector3F l = i == 0 ? new Vector3F(0f, -c.Z, c.Y) : i == 1 ? new Vector3F(c.Z, 0f, -c.X) : new Vector3F(-c.Y, c.X, 0f);
                 float l2 = l.LengthSquared();
                 if (!(l2 > 1e-10f)) { continue; }
-                // An axis whose two components that matter to the cone test are clearly under the margin of its length fails that test below; the comparison here is on squares, with a margin of its own
-                // for rounding, so it only skips axes the normalized test rejects anyway, and the divide and square root are not spent on them.
-                float cut = ConeMargin * ConeMargin * 0.998f * l2;
+                float cut = cutMargin * l2;
                 if (i == 0 ? (l.Y * l.Y < cut || l.Z * l.Z < cut) : i == 1 ? (l.X * l.X < cut || l.Z * l.Z < cut) : (l.X * l.X < cut || l.Y * l.Y < cut)) { continue; }
-                Vector3F n = l / ConvexShape3D.Sqrt(l2);
-                float d = Vector3F.Dot(n, t);
-                if (d < 0f) { n = -n; d = -d; }
-                float m0 = (r.M11 * n.X) + (r.M21 * n.Y) + (r.M31 * n.Z);
-                float m1 = (r.M12 * n.X) + (r.M22 * n.Y) + (r.M32 * n.Z);
-                float m2 = (r.M13 * n.X) + (r.M23 * n.Y) + (r.M33 * n.Z);
+                // The axis in B's frame, times |l|: the dot product of each of B's axes with l.
+                float m0 = (r.M11 * l.X) + (r.M21 * l.Y) + (r.M31 * l.Z);
+                float m1 = (r.M12 * l.X) + (r.M22 * l.Y) + (r.M32 * l.Z);
+                float m2 = (r.M13 * l.X) + (r.M23 * l.Y) + (r.M33 * l.Z);
                 // Only an axis that lies strictly inside the normal cones of both edges is a face of the Minkowski difference (Gregorius: the arcs of the adjacent face normals must cross). An axis on a cone's rim is
                 // a face axis of one of the boxes, which the face queries already measured, so it is not an edge axis.
-                float nx = Math.Abs(n.X), ny = Math.Abs(n.Y), nz = Math.Abs(n.Z), mx = Math.Abs(m0), my = Math.Abs(m1), mz = Math.Abs(m2);
-                bool insideA = i == 0 ? ny > ConeMargin && nz > ConeMargin : i == 1 ? nx > ConeMargin && nz > ConeMargin : nx > ConeMargin && ny > ConeMargin;
-                bool insideB = j == 0 ? my > ConeMargin && mz > ConeMargin : j == 1 ? mx > ConeMargin && mz > ConeMargin : mx > ConeMargin && my > ConeMargin;
-                if (!(insideA && insideB)) { continue; }
-                float reachA = (Math.Abs(n.X) * hA.X) + (Math.Abs(n.Y) * hA.Y) + (Math.Abs(n.Z) * hA.Z);
+                float mx = m0 * m0, my = m1 * m1, mz = m2 * m2;
+                if (j == 0 ? (my < cut || mz < cut) : j == 1 ? (mx < cut || mz < cut) : (mx < cut || my < cut)) { continue; }
+                float du = Vector3F.Dot(l, t);
+                float s = 1f;
+                if (du < 0f) { du = -du; s = -1f; }
+                float reachA = (Math.Abs(l.X) * hA.X) + (Math.Abs(l.Y) * hA.Y) + (Math.Abs(l.Z) * hA.Z);
                 float reachB = (Math.Abs(m0) * hB.X) + (Math.Abs(m1) * hB.Y) + (Math.Abs(m2) * hB.Z);
-                float sep = d - reachA - reachB;
+                float len = ConvexShape3D.Sqrt(l2);
+                float sep = (du - reachA - reachB) / len;
                 if (sep > best)
                 {
                     best = sep;
-                    bi = i; bj = j;
-                    axis = n;
-                    // Corner signs of the supporting edges on the two axes each edge does not run along.
-                    int ka = (bi == 0 ? (n.Y > 0f ? 1 : 0) + (n.Z > 0f ? 2 : 0) : bi == 1 ? (n.X > 0f ? 1 : 0) + (n.Z > 0f ? 2 : 0) : (n.X > 0f ? 1 : 0) + (n.Y > 0f ? 2 : 0));
-                    int kb = (bj == 0 ? (m1 < 0f ? 1 : 0) + (m2 < 0f ? 2 : 0) : bj == 1 ? (m0 < 0f ? 1 : 0) + (m2 < 0f ? 2 : 0) : (m0 < 0f ? 1 : 0) + (m1 < 0f ? 2 : 0));
-                    edgeA = topo.Edge[(bi * 4) + ka];
-                    edgeB = topo.Edge[(bj * 4) + kb];
+                    bi = i; bj = j; bs = s; bl = len;
+                    bl0 = l.X; bl1 = l.Y; bl2 = l.Z; bm0 = m0; bm1 = m1; bm2 = m2;
                 }
             }
+        }
+
+        if (best > float.NegativeInfinity)
+        {
+            // The winner is normalized once: n = s l / |l|, and B's axis components m = s m_u / |l|.
+            float nx = bs * bl0 / bl, ny = bs * bl1 / bl, nz = bs * bl2 / bl;
+            float x0 = bs * bm0 / bl, x1 = bs * bm1 / bl, x2 = bs * bm2 / bl;
+            axis = new Vector3F(nx, ny, nz);
+            // Corner signs of the supporting edges on the two axes each edge does not run along.
+            int ka = (bi == 0 ? (ny > 0f ? 1 : 0) + (nz > 0f ? 2 : 0) : bi == 1 ? (nx > 0f ? 1 : 0) + (nz > 0f ? 2 : 0) : (nx > 0f ? 1 : 0) + (ny > 0f ? 2 : 0));
+            int kb = (bj == 0 ? (x1 < 0f ? 1 : 0) + (x2 < 0f ? 2 : 0) : bj == 1 ? (x0 < 0f ? 1 : 0) + (x2 < 0f ? 2 : 0) : (x0 < 0f ? 1 : 0) + (x1 < 0f ? 2 : 0));
+            edgeA = topo.Edge[(bi * 4) + ka];
+            edgeB = topo.Edge[(bj * 4) + kb];
         }
 
         return best;

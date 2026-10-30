@@ -252,6 +252,45 @@ public class Schedule3DTests
         Assert.Equal(w.Snapshot(), fresh.Snapshot());
     }
 
+    // A box hanging from a static one by a point joint that breaks under its weight; the joint is mild, so it is solved on the contact-only schedule.
+    private static (PhysicsWorld3D World, Body Hanging) BreakingWorld()
+    {
+        var w = NewWorld();
+        var anchor = w.AddBox(new Vector3F(0.5f, 0.5f, 0.5f), new Vector3D(0, 3, 0), type: BodyType.Static);
+        var hang = w.AddBox(new Vector3F(0.5f, 0.5f, 0.5f), new Vector3D(0.6, 3, 0), density: 100f);
+        w.CreateJoint(new PointJointDef { BodyA = anchor, BodyB = hang, BreakForce = 60f });
+        return (w, hang);
+    }
+
+    [Fact]
+    public void MildJointBreaksAndTheBreakStepSurvivesSnapshotRestore()
+    {
+        var (probe, _) = BreakingWorld();
+        int breakStep = -1;
+        for (int i = 0; i < 200 && breakStep < 0; i++)
+        {
+            probe.Step(Dt);
+            if (probe.GetEvents(EventKind.JointBreak).Length > 0) { breakStep = i; }
+        }
+
+        Assert.True(breakStep >= 0, "the joint should break under the hanging box's weight");
+
+        var (w, hang) = BreakingWorld();
+        for (int i = 0; i < breakStep; i++) { w.Step(Dt); Assert.Empty(w.GetEvents(EventKind.JointBreak).ToArray()); }
+        var snap = w.Snapshot();
+        var fresh = NewWorld();
+        fresh.Restore(snap);
+        w.Step(Dt); fresh.Step(Dt);
+        var ea = w.GetEvents(EventKind.JointBreak).ToArray();
+        var eb = fresh.GetEvents(EventKind.JointBreak).ToArray();
+        Assert.Single(ea);
+        Assert.Equal(ea.Length, eb.Length);
+        Assert.Equal(ea[0].Value, eb[0].Value);
+        Assert.Equal(w.ComputeHash(), fresh.ComputeHash());
+        Assert.Equal(w.Snapshot(), fresh.Snapshot());
+        for (int i = 0; i < 60; i++) { w.Step(Dt); fresh.Step(Dt); Assert.Equal(w.ComputeHash(), fresh.ComputeHash()); }
+    }
+
     [Theory]
     [InlineData(-1, 2, 1)]
     public void ContactScheduleOptionsAreRangeChecked(int substeps, int velocity, int relax)

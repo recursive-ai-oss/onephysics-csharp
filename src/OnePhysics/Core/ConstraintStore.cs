@@ -262,8 +262,20 @@ public sealed class ConstraintStore
 
     // ---- snapshot ----
 
+    /// <summary>Constraint slots the arrays hold now: the most the store can write without growing.</summary>
+    internal int SlotCapacity => Capacity;
+
     internal void Write(StateWriter w)
     {
+        if (w.IsBound)
+        {
+            // Every slot the arrays hold, live or not, is written in full at its largest.
+            int slots = Math.Max(Capacity, HighWater);
+            Handles.WriteBound(w, slots);
+            w.AddBound((long)slots * BytesPerSlot(_layout) + 4);
+            return;
+        }
+
         Handles.Write(w);
         int n = HighWater;
         w.WriteBytes(_kind.AsSpan(0, n));
