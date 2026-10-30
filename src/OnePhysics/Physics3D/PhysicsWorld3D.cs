@@ -38,6 +38,7 @@ public sealed partial class PhysicsWorld3D
         _engine = new Engine3D(_core, bp, o) { World = this };
         _core.AddSection(bp);
         _core.AddSection(_engine);
+        _core.AddSection(_engine.SoftSnapshotSection);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -119,10 +120,14 @@ public sealed partial class PhysicsWorld3D
     {
         _engine.Opt.Validate();
         _engine.CheckBounds();
+        _engine.CheckSoftBounds();
         SyncCoreOptions();
         _engine.StepVehicles(this, dt);
         _engine.StepFluids(dt);
+        bool soft = _engine.SoftHandles.Count > 0;
+        if (soft) { _engine.BeginSoftStep(); }
         _core.Step(new Stages3D(_engine), dt);
+        if (soft) { _engine.StepSoft(dt); }
         _engine.ReconcileJoints();
         InvalidateQueryPad();
         BuildPublicEvents();
@@ -274,6 +279,7 @@ public sealed partial class PhysicsWorld3D
         _core.ShiftOrigin(d);
         _engine.ShiftJoints(d);
         _engine.ShiftFluids(offset.X, offset.Y, offset.Z);
+        _engine.ShiftSoft(offset.X, offset.Y, offset.Z);
         _engine.ShiftProxies(d);
         InvalidateQueryPad();
     }

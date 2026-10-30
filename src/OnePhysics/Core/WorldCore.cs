@@ -1283,6 +1283,7 @@ public sealed class WorldCore
     private byte[] _inputBuffer = Array.Empty<byte>();
     private int _inputLength;
     private int[] _sectionRange = new int[16];
+    private bool[] _sectionPresent = new bool[16];
 
     // A restore reads the snapshot into spare copies of the core's state and swaps them in only when everything validated; the replaced state becomes the next spare.
     private BodyStore? _spBodies;
@@ -1383,9 +1384,12 @@ public sealed class WorldCore
             if (w.IsBound) { w.AddBound(EventBoundBytes()); } else { _events.Write(w); }
         }
 
-        w.WriteInt32(_sections.Count);
+        int written = 0;
+        foreach (var s in _sections) { if (!s.IsOptional || s.IsPresent) { written++; } }
+        w.WriteInt32(written);
         foreach (var s in _sections)
         {
+            if (s.IsOptional && !s.IsPresent) { continue; }
             w.WriteInt32(s.SectionId);
             if (w.IsHashing)
             {
@@ -1496,22 +1500,45 @@ public sealed class WorldCore
         events.Read(r);
 
         int sections = r.ReadInt32();
-        if (sections != _sections.Count) { throw r.Error("snapshot has " + sections.ToString(CultureInfo.InvariantCulture) + " sections, this world registers " + _sections.Count.ToString(CultureInfo.InvariantCulture)); }
-        if (_sectionRange.Length < 2 * sections) { _sectionRange = new int[2 * sections]; }
-        for (int i = 0; i < _sections.Count; i++)
+        int registered = _sections.Count;
+        if (_sectionRange.Length < 2 * registered) { _sectionRange = new int[2 * registered]; }
+        if (_sectionPresent.Length < registered) { _sectionPresent = new bool[registered]; }
+        if (sections < 0 || sections > registered) { throw r.Error("snapshot has " + sections.ToString(CultureInfo.InvariantCulture) + " sections, this world registers " + registered.ToString(CultureInfo.InvariantCulture)); }
+        // Sections come in registration order; an optional one may be missing from the snapshot, any other must be there.
+        int read = 0, pendingId = 0, pendingLen = 0, pendingStart = 0;
+        bool havePending = false;
+        for (int i = 0; i < registered; i++)
         {
-            if (r.ReadInt32() != _sections[i].SectionId) { throw r.Error("section id mismatch"); }
-            int len = r.ReadCount(1, "section bytes");
-            _sectionRange[2 * i] = r.Skip(len);
-            _sectionRange[2 * i + 1] = len;
+            var sec = _sections[i];
+            if (!havePending && read < sections)
+            {
+                pendingId = r.ReadInt32();
+                pendingLen = r.ReadCount(1, "section bytes");
+                pendingStart = r.Skip(pendingLen);
+                read++;
+                havePending = true;
+            }
+
+            if (havePending && pendingId == sec.SectionId)
+            {
+                _sectionRange[2 * i] = pendingStart;
+                _sectionRange[2 * i + 1] = pendingLen;
+                _sectionPresent[i] = true;
+                havePending = false;
+            }
+            else if (sec.IsOptional) { _sectionPresent[i] = false; }
+            else if (havePending) { throw r.Error("section id mismatch"); }
+            else { throw r.Error("snapshot has " + sections.ToString(CultureInfo.InvariantCulture) + " sections, this world registers " + registered.ToString(CultureInfo.InvariantCulture)); }
         }
 
+        if (havePending || read < sections) { throw r.Error("section id mismatch"); }
         if (r.Remaining != 0) { throw r.Error("trailing bytes after the snapshot"); }
 
         // Everything the core owns validated: now the sections (each all-or-nothing), then swap the core state in.
         var sub = _subReader ??= new StateReader(Array.Empty<byte>());
-        for (int i = 0; i < _sections.Count; i++)
+        for (int i = 0; i < registered; i++)
         {
+            if (!_sectionPresent[i]) { _sections[i].Reset(); continue; }
             sub.Reset(data, _sectionRange[2 * i], _sectionRange[2 * i + 1]);
             _sections[i].Read(sub);
             if (sub.Remaining != 0) { throw new SnapshotFormatException("section " + _sections[i].SectionId.ToString(CultureInfo.InvariantCulture) + " left unread bytes", r.Position); }
