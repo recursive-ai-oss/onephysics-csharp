@@ -113,6 +113,7 @@ internal sealed partial class Engine3D
         }
 
         if (_awakeSoftCount == 0) { return; }
+        for (int a = 0; a < _awakeSoftCount; a++) { if (_awakeSoft[a].IsSkinned) { PrepareSkin(_awakeSoft[a]); } }
         var g = Opt.Gravity;
         float gmag = float.Sqrt(g.X * g.X + g.Y * g.Y + g.Z * g.Z);
         float margin = maxTravel + 0.5f * gmag * dt * dt + Opt.SpeculativeDistance;
@@ -134,13 +135,19 @@ internal sealed partial class Engine3D
         for (int k = 0; k < substeps; k++)
         {
             float t0 = (float)k / substeps, t1 = (float)(k + 1) / substeps;
+            float tSkin = k == substeps - 1 ? 1f : t1;
             for (int c = 0; c < _candCount; c++)
             {
                 Array.Copy(_cPos, 3 * c, _cPos0, 3 * c, 3);
                 CandidatePose(c, t1);
             }
 
-            for (int a = 0; a < _awakeSoftCount; a++) { PredictSoft(_awakeSoft[a], h, g); }
+            for (int a = 0; a < _awakeSoftCount; a++)
+            {
+                PredictSoft(_awakeSoft[a], h, g);
+                if (_awakeSoft[a].IsSkinned) { PredictSkin(_awakeSoft[a], tSkin); }
+            }
+
             _scCount = 0;
             for (int a = 0; a < _awakeSoftCount; a++) { DetectContacts(_awakeSoft[a], h); }
             BuildPairs();
@@ -151,6 +158,7 @@ internal sealed partial class Engine3D
                 for (int a = 0; a < _awakeSoftCount; a++) { SolveConstraints(_awakeSoft[a], h); }
                 SolveContacts(h, invH);
                 SolvePairs();
+                for (int a = 0; a < _awakeSoftCount; a++) { if (_awakeSoft[a].IsSkinned) { SolveSkin(_awakeSoft[a], tSkin); } }
             }
 
             ExcludeDepenetration();
@@ -162,6 +170,7 @@ internal sealed partial class Engine3D
 
         ApplyRigidReactions();
         UpdateSoftSleep(dt);
+        for (int a = 0; a < _awakeSoftCount; a++) { if (_awakeSoft[a].IsSkinned) { EndSkinStep(_awakeSoft[a]); } }
     }
 
     private static void ComputeSoftBounds(SoftBodyData d)

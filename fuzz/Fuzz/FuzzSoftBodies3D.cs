@@ -7,6 +7,7 @@ using RecursiveAI.OnePhysics.Physics3D;
 // Fuzz targets for 3D soft bodies.
 // "world3d-softbodies" turns bytes into a program: hostile meshes (NaN and infinite coordinates, repeated, negative and out-of-range indices, degenerate and non-manifold triangles and tetrahedra, huge and tiny scales),
 // hostile definitions (compliances, damping, pressure, radius, mass, pins), stale handles, impulses and teleports, stepping, origin shifts and snapshot round trips. Only argument errors and typed physics errors may come out.
+// Skinning is in both: hostile skeletons, weights, limits and normals in the definition, hostile poses and teleports, and skinned bodies in the snapshot that is mutated.
 // "world3d-softbody-snapshot" flips bytes in the snapshot of a world with soft bodies: rejected with the world unchanged, or accepted and re-serialized to the same bytes.
 internal static class FuzzSoftBodies3D
 {
@@ -116,6 +117,43 @@ internal static class FuzzSoftBodies3D
         }
     }
 
+    // A skin from hostile arrays: mostly sane, sometimes wrong lengths, joint numbers, weights, limits or normals. Argument errors are fine.
+    private static SoftSkin? Skin(Reader r, SoftBodyMesh? mesh)
+    {
+        if (mesh == null || r.Byte() < 160) { return null; }
+        int n = mesh.VertexCount, nj = 1 + r.Byte() % 4;
+        if (r.Byte() >= 250) { nj = r.Byte() % 300; }
+        var parents = new int[nj];
+        for (int j = 0; j < nj; j++) { parents[j] = j == 0 ? -1 : (r.Byte() >= 245 ? r.Index(nj) : r.Byte() % j); }
+        var bind = new Vector3F[r.Byte() >= 250 ? r.Byte() % 5 : nj];
+        for (int j = 0; j < bind.Length; j++) { bind[j] = r.Byte() >= 240 ? r.V3F() : new Vector3F(0f, j * 0.3f, 0f); }
+        int c = 4 * n + (r.Byte() >= 250 ? r.Byte() % 3 : 0);
+        var idx = new int[c]; var w = new float[c];
+        for (int i = 0; i < c; i++)
+        {
+            idx[i] = r.Byte() >= 245 ? r.Index(nj) : (r.Byte() % nj);
+            w[i] = r.Byte() >= 240 ? r.Float() : (i % 4 < 2 ? 0.5f : 0f);
+        }
+
+        var max = new float[n + (r.Byte() >= 250 ? 1 : 0)];
+        for (int i = 0; i < max.Length; i++) { max[i] = r.Byte() >= 240 ? r.Float() : (i % 5 == 0 ? 0f : 0.05f); }
+        float[] bd = Array.Empty<float>(), br = Array.Empty<float>();
+        if (r.Bool())
+        {
+            bd = new float[n]; br = new float[n];
+            for (int i = 0; i < n; i++) { bd[i] = r.Byte() >= 240 ? r.Float() : 0.04f; br[i] = r.Byte() >= 240 ? r.Float() : 0.03f; }
+        }
+
+        Vector3F[] nrm = Array.Empty<Vector3F>();
+        if (r.Byte() >= 200)
+        {
+            nrm = new Vector3F[n];
+            for (int i = 0; i < n; i++) { nrm[i] = r.Byte() >= 240 ? r.V3F() : new Vector3F(0f, 1f, 0f); }
+        }
+
+        return SoftSkin.Create(mesh, parents, bind, idx, w, max, bd, br, nrm);
+    }
+
     private static SoftBodyDef Def(Reader r)
     {
         var d = new SoftBodyDef
@@ -134,6 +172,7 @@ internal static class FuzzSoftBodies3D
             SelfCollision = r.Bool(),
             LinearVelocity = r.Byte() >= 240 ? r.V3F() : default,
         };
+        d.Skin = Skin(r, d.Mesh);
         int pins = r.Byte() % 4;
         if (pins > 0)
         {
@@ -180,7 +219,7 @@ internal static class FuzzSoftBodies3D
 
     private static void Op(PhysicsWorld3D w, List<SoftBody> softs, Reader r)
     {
-        switch (r.Byte() % 12)
+        switch (r.Byte() % 14)
         {
             case 0:
             case 1: { softs.Add(w.AddSoftBody(Def(r))); break; }
@@ -212,6 +251,27 @@ internal static class FuzzSoftBodies3D
                     w.ShiftOrigin(new Vector3D(Off(), Off(), Off()));
                     break;
                 }
+            case 12:
+                {
+                    var s = Pick(softs, r);
+                    if (s.IsValid && !s.HasSkin) { break; }
+                    int nj = s.IsValid ? s.SkeletonJointCount : 2;
+                    var pose = new QuaternionF[nj + (r.Byte() >= 250 ? 1 : 0)];
+                    for (int i = 0; i < pose.Length; i++) { pose[i] = r.Byte() >= 200 ? new QuaternionF(r.Float(), r.Float(), r.Float(), r.Float()) : QuaternionF.CreateFromAxisAngle(new Vector3F(0f, 0f, 1f), r.Float() % 3f); }
+                    s.SetSkeletonPose(pose, new Vector3D(r.Double() % 8.0, r.Double() % 8.0 + 1.0, r.Double() % 8.0), r.Byte() >= 200 ? new QuaternionF(r.Float(), r.Float(), r.Float(), r.Float()) : default, r.Byte() >= 200);
+                    break;
+                }
+            case 13:
+                {
+                    var s = Pick(softs, r);
+                    if (s.IsValid && !s.HasSkin) { break; }
+                    int nj = s.IsValid ? s.SkeletonJointCount : 2;
+                    var joints = new SkinJointPose[nj + (r.Byte() >= 250 ? 1 : 0)];
+                    for (int i = 0; i < joints.Length; i++) { joints[i] = new SkinJointPose(new Vector3D(r.Double() % 8.0, r.Double() % 8.0 + 1.0, r.Double() % 8.0), new QuaternionF(r.Float(), r.Float(), r.Float(), r.Float())); }
+                    s.SetSkeletonTransforms(joints, r.Byte() >= 200);
+                    if (s.IsValid) { _ = s.GetSkinnedPosition(r.Index(s.ParticleCount)); }
+                    break;
+                }
             default:
                 {
                     var s = Pick(softs, r);
@@ -232,7 +292,18 @@ internal static class FuzzSoftBodies3D
         w.AddSoftBox(new Vector3F(0.5f, 0.5f, 0.5f), new Vector3D(1.6, 1.0, 0), SoftMaterial.Jelly, 2);
         w.AddSoftBall(0.3f, new Vector3D(-1.6, 1.0, 0), SoftMaterial.Rubber, 2);
         w.AddBox(new Vector3F(0.4f, 0.4f, 0.4f), new Vector3D(1.6, 2.4, 0));
-        for (int s = 0; s < 30; s++) { w.StepChecked(1f / 60f); }
+        var sheet = SoftBodyMesh.Cloth(1f, 1f, 5, 5);
+        int nv = sheet.VertexCount;
+        var ji = new int[4 * nv]; var jw = new float[4 * nv]; var jm = new float[nv]; var jb = new float[nv]; var jr = new float[nv];
+        for (int i = 0; i < nv; i++) { ji[4 * i + 1] = 1; jw[4 * i] = 1f - (i % 6) / 5f; jw[4 * i + 1] = (i % 6) / 5f; jm[i] = i < 6 ? 0f : 0.06f; jb[i] = 0.04f; jr[i] = 0.03f; }
+        var skin = SoftSkin.Create(sheet, new[] { -1, 0 }, new[] { new Vector3F(0, 0, 0), new Vector3F(0, 0, 0.5f) }, ji, jw, jm, jb, jr);
+        var banner = w.AddSoftBody(new SoftBodyDef { Mesh = sheet, Skin = skin, Position = new Vector3D(0, 2.5, 3) });
+        for (int s = 0; s < 30; s++)
+        {
+            banner.SetSkeletonPose(new[] { QuaternionF.Identity, QuaternionF.CreateFromAxisAngle(new Vector3F(1f, 0f, 0f), 0.02f * s) }, new Vector3D(0, 2.5, 3));
+            w.StepChecked(1f / 60f);
+        }
+
         return s_base = w.Snapshot();
     }
 

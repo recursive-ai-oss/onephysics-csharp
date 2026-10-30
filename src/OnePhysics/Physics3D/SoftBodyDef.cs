@@ -90,6 +90,10 @@ public sealed class SoftBodyDef
     /// <summary>Indices of particles held where they are (infinite mass) until released; see <see cref="SoftBody.SetPinned"/>. Default none. Indices must be valid and are de-duplicated.</summary>
     public IReadOnlyList<int>? PinnedParticles { get; set; }
 
+    /// <summary>Skinning to a skeleton: per-particle joint weights, maximum distance and back-stop (see <see cref="SoftSkin"/>). Default none. The skin must have been made for this mesh (same particle count). A skinned body starts in its bind pose at
+    /// <see cref="Position"/> and <see cref="Rotation"/>; drive it with <see cref="SoftBody.SetSkeletonPose"/> or <see cref="SoftBody.SetSkeletonTransforms"/>. Particles with a maximum distance of 0 are kinematic.</summary>
+    public SoftSkin? Skin { get; set; }
+
     /// <summary>Collision category bits of the body (what it is). Default 1.</summary>
     public uint CategoryBits { get; set; } = 1u;
 
@@ -170,6 +174,11 @@ public sealed class SoftBodyDef
         if (InternalPressure != 0f && !Mesh.IsClosed)
         {
             throw new SoftBodyException(SoftBodyError.NotClosed, "SoftBodyDef.InternalPressure is " + InternalPressure.ToString("R", CultureInfo.InvariantCulture) + " but the mesh is not a closed, consistently oriented triangle surface.", nameof(InternalPressure));
+        }
+
+        if (Skin != null && Skin.ParticleCount != Mesh.VertexCount)
+        {
+            throw new SoftBodyException(SoftBodyError.BadCount, "SoftBodyDef.Skin was made for " + Skin.ParticleCount.ToString(CultureInfo.InvariantCulture) + " particles; the mesh has " + Mesh.VertexCount.ToString(CultureInfo.InvariantCulture) + ".", nameof(Skin));
         }
 
         if (PinnedParticles != null)

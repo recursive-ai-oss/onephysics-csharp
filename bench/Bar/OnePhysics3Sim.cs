@@ -30,6 +30,7 @@ sealed class OnePhysics3Sim : ISim3
         this.threads = threads;
         (world, bodies, _) = SceneBuilder3D.Build(s, threads, out characters, out vehicles, out drives);
         softs = SceneBuilder3D.AddSofts(s, world);
+        skinDefs = s.Softs.Select(f => f.Kind == "sleeve" ? f : null).ToArray();
         vy = new float[characters.Count]; gravity = (float)-s.Gy; stepNo = 0;
     }
 
@@ -51,6 +52,12 @@ sealed class OnePhysics3Sim : ISim3
         MoveCharacters((float)dt);
         DriveVehicles();
         DriveJoints();
+        for (int i = 0; i < softs.Length; i++)
+        {
+            if (!softs[i].HasSkin) continue;
+            var d = skinDefs[i]!;
+            softs[i].SetSkeletonTransforms(SleeveRig.Pose(stepNo, new Vector3D(d.X, d.Y, d.Z), d.P[1]));
+        }
         world.Step((float)dt);
         if (StageProfile.Requested && stepNo >= 60) Count();
         stepNo++;
@@ -128,6 +135,7 @@ sealed class OnePhysics3Sim : ISim3
     }
 
     P3.SoftBody[] softs = [];
+    SoftDef?[] skinDefs = [];
     public int SoftDoubles { get { int n = 0; foreach (var f in softs) n += 6 * f.ParticleCount; return n; } }
     public void SoftSnapshot(double[] d)
     {

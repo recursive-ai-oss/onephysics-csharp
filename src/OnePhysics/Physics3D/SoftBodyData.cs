@@ -9,7 +9,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// The state of one soft body: particles in structure-of-arrays form and the constraints derived from its mesh. Positions are doubles (so a body far from the origin keeps its precision, like rigid bodies),
 /// everything else float32. The constraint lists are derived data: they are rebuilt from the mesh and the definition whenever a body is created or restored, never saved.
 /// </summary>
-internal sealed class SoftBodyData
+internal sealed partial class SoftBodyData
 {
     public SoftBodyDef Def = null!;
     public int N;
@@ -40,6 +40,18 @@ internal sealed class SoftBodyData
     public int[] Tris = Array.Empty<int>();           // surface triangles, for pressure
     public float PressureRest;                        // rest volume of the closed surface; 0 when there is no pressure constraint
     public float[] Lambda = Array.Empty<float>();     // per constraint, scratch of the current substep
+
+    // Skinning (null Def.Skin: none). Joint poses are state; targets and normals are scratch recomputed from them.
+    public float[] Bind = Array.Empty<float>();            // joint bind positions, scaled with the mesh, 3 per joint
+    public double[] JointPos = Array.Empty<double>();      // current joint positions, 3 per joint
+    public float[] JointRot = Array.Empty<float>();        // current joint rotations x y z w, 4 per joint
+    public double[] JointPosPrev = Array.Empty<double>();  // the same at the end of the previous step
+    public float[] JointRotPrev = Array.Empty<float>();
+    public double[] TgtPrev = Array.Empty<double>();       // skinned positions for the previous pose, 3 per particle (scratch)
+    public double[] TgtCur = Array.Empty<double>();        // skinned positions for the current pose (scratch)
+    public float[] NrmCur = Array.Empty<float>();          // skinned normals for the current pose (scratch)
+    public bool SkinMoved;                                 // the pose changed since the last step (scratch)
+    public bool IsSkinned => Def.Skin != null;
 
     // Sleep.
     public bool Asleep;
@@ -79,6 +91,16 @@ internal sealed class SoftBodyData
 
         d.Def.PinnedParticles = null;
         _ = mesh;
+        if (d.IsSkinned)
+        {
+            d.SetBindPose(p, q);
+            for (int i = 0; i < d.N; i++) { d.RefreshInvMass(i); }
+            // Start exactly on the skinned surface: the bind pose carries the rest shape to the definition's pose.
+            d.ComputeTargets(d.JointPos, d.JointRot, d.TgtCur, null);
+            Array.Copy(d.TgtCur, d.Pos, d.Pos.Length);
+            Array.Copy(d.TgtCur, d.Prev, d.Prev.Length);
+        }
+
         return d;
     }
 
@@ -207,6 +229,14 @@ internal sealed class SoftBodyData
         for (int i = 0; i < ne; i++) { edgeSum += EdgeRest[i]; }
         Radius = Def.ParticleRadius != 0f ? Def.ParticleRadius : (float)Math.Max(1e-4, 0.25 * edgeSum / Math.Max(1, ne));
         Lambda = new float[ConstraintCount];
+        if (Def.Skin != null)
+        {
+            int nj = Def.Skin.JointCount;
+            Bind = new float[3 * nj];
+            for (int j = 0; j < 3 * nj; j++) { Bind[j] = Def.Skin.BindArray[j] * s; }
+            JointPos = new double[3 * nj]; JointRot = new float[4 * nj]; JointPosPrev = new double[3 * nj]; JointRotPrev = new float[4 * nj];
+            TgtPrev = new double[3 * N]; TgtCur = new double[3 * N]; NrmCur = new float[3 * N];
+        }
         SphereShape = ConvexShape3D.Sphere(Radius);
     }
 

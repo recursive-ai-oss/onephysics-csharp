@@ -2,7 +2,7 @@
 using System;
 using RecursiveAI.OneMath;               // Vector3F, Vector3D
 using RecursiveAI.OnePhysics;            // BodyType
-using RecursiveAI.OnePhysics.Physics3D;  // PhysicsWorld3D, SoftBody, SoftBodyDef, SoftBodyMesh
+using RecursiveAI.OnePhysics.Physics3D;  // PhysicsWorld3D, SoftBody, SoftBodyDef, SoftBodyMesh, SoftSkin
 
 namespace GuideExamples;
 
@@ -35,6 +35,19 @@ public static class SoftBodies
         def.PinnedParticles = [0];       // particle 0 does not move
         SoftBody custom = world.AddSoftBody(def);
         world.Step(1f / 60);
+
+        // Skinning: a cloth that follows a bone and may stray at most 5 cm from where the bone carries it; its first row is kinematic.
+        var sheet = SoftBodyMesh.Cloth(1f, 1f, 4, 4);
+        int n = sheet.VertexCount;
+        var joints = new int[4 * n];        // four joint numbers per particle (all joint 0 here)
+        var weights = new float[4 * n];     // and four weights
+        var maxDistance = new float[n];
+        for (int i = 0; i < n; i++) { weights[4 * i] = 1f; maxDistance[i] = i < 5 ? 0f : 0.05f; }
+        var skin = SoftSkin.Create(sheet, [-1], [new Vector3F(0, 0, 0)], joints, weights, maxDistance);
+        SoftBody banner = world.AddSoftBody(new SoftBodyDef { Mesh = sheet, Skin = skin, Position = new Vector3D(0, 4, 3) });
+        banner.SetSkeletonPose([QuaternionF.Identity], at: new Vector3D(0.5, 4, 3));   // move the bone; the targets follow over the next step
+        world.Step(1f / 60);
+        Console.WriteLine($"banner corner {banner.GetPosition(0)}, skinned {banner.GetSkinnedPosition(0)}");
         return (middle.Y, cube.Volume / cube.RestVolume, world.ComputeHash() + (ulong)custom.ParticleCount);
     }
 }

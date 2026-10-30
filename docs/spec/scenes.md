@@ -65,6 +65,7 @@ A `soft` record follows the bodies (3D only): `soft preset kind x y z qx qy qz q
 | `cloth` | width depth n pinMode | an (n+1) x (n+1) grid in the xz plane, centred, two triangles per cell; `pinMode` 0 pins nothing, 1 the four corners, 2 the two corners of the edge at the lowest z |
 | `box` | sx sy sz nx ny nz | a lattice of full extents sx x sy x sz with nx x ny x nz cells, six tetrahedra per cell (Kuhn subdivision, positive orientation), and the outward boundary triangles |
 | `ball` | radius n | the lattice of an n x n x n cube with every point pulled onto the sphere by max-norm over length |
+| `sleeve` | radius length around rings | an open tube along y from 0 to `length`, `rings` rings of `around` points (a multiple of 4, at least 8) starting at (radius, 0) and going round in the xz plane from +x towards +z, each quadrant by the rational parametrisation (1 - t^2, 2t) / (1 + t^2) with t = k / (around / 4); two triangles per quad. Skinned: see `soft-skinned-3d` (`bench/Bar/SleeveRig.cs`) |
 
 A driver builds one soft body per record, in record order, and dumps six doubles per particle (x y z vx vy vz) after the bodies' data, particles in vertex order, bodies in record order (the extra channel that vehicles use for wheels).
 
@@ -115,8 +116,11 @@ The `character` record applies in 3D too: the last `body` must be a single y-ali
 | `soft-pile-3d` | 1 (+24 soft) | 600 | twelve `jelly` cubes (0.6 m, 3 x 3 x 3 cells, 3 kg) and twelve `rubber` balls (radius 0.35, 3 kg) dropped in a walled 5 x 5 m yard in two layers |
 | `soft-rigid-3d` | 7 (+6 soft) | 600 | six `jelly` cushions (1.6 x 0.4 x 1.6 m, 6 x 2 x 6 cells, 8 kg) with a 0.5 m rigid box of 5 kg (density 40) released 1.25 to 1.75 m above each (0.8 to 1.3 m above the cushion): the cushions stop the boxes and push them back |
 | `soft-mesh-3d` | 1 (+20 soft) | 600 | the triangle-mesh terrain of `mesh-terrain-3d` with ten `jelly` cubes (0.6 m, 2.5 kg) and ten `rubber` cubes (0.5 m, 2 kg) dropped 1 to 1.6 m above its hills near the origin |
+| `soft-skinned-3d` | 3 (+1 soft) | 600 | a skinned `cloth` sleeve (`sleeve` kind: radius 0.1, length 1, 12 around x 11 rings, 0.5 kg) on a two-joint arm that swings (joint 0 about z by 0.5 x tri(step, 90), joint 1 about x by a further 0.9 x tri(step + 20, 70), tri a triangle wave from -1 to 1) above a floor, with a static sphere (radius 0.2) at (0.6, 0.9, 0) and a 0.15 m box (density 30) dropped on the top. The base ring is kinematic; the other rings may stray 0.06 m from their skinned position and keep out of a back-stop sphere of radius 0.04 centred 0.04 m behind it along the skinned normal. Only `onephysics` runs it |
 
-All four list `onephysics` and `jitter2` as their engines. Metrics (soft bodies; computed from the particle dump by `Metrics3Soft.cs`; the particle sphere radius is a quarter of the body's mean rest edge length for every engine):
+The first four list `onephysics` and `jitter2` as their engines; `soft-skinned-3d` lists `onephysics` only (no other engine skins soft bodies). Its extra metrics: `skinMaxDistance` (the largest amount by which a free particle is farther from its skinned position than 0.06 m, over the dumped frames after the first, against an independent double-precision skinning of the pose set before the frame's last step), `skinBackstop` (the largest amount by which a free particle is inside the back-stop sphere), `skinCuffError` (the largest distance of a kinematic particle from its skinned position). Thresholds: `soft-skinned-3d` softMaxSpeed 5, softPenetration 0.02, softFinalPenetration 0.005, edgeStrain 0.15 (1.5 x ours, 2.6 / 0.0118 / 0 / 0.077 on the development machine, rounded up), skinMaxDistance 1e-4, skinBackstop 1e-4, skinCuffError 1e-5 (the limits are hard; ours measure 3e-8, 7e-8 and 6e-9, float32 rounding). Jolt's rendered documentation describes skinned soft bodies but its driver is not written, so there is no reference row.
+
+ Metrics (soft bodies; computed from the particle dump by `Metrics3Soft.cs`; the particle sphere radius is a quarter of the body's mean rest edge length for every engine):
 
 | metric | definition |
 |---|---|

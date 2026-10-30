@@ -779,5 +779,21 @@ public static class Gen3
         return s;
     }
 
-    public static List<Scene> All() => [Pyramid(10), Pyramid(30), LargePile(), JointChains(), JointGrid(), RagdollPile(), RagdollPowered(), TerrainScene(false), TerrainScene(true), SleepWake(), Queries(), Characters3(), Vehicles3(), Buoyancy(), Tracked3(), Motorcycle3(), ClothDrape(), SoftPile(), SoftRigid(), SoftMesh()];
+    // A skinned cloth sleeve (an open tube, radius 0.1, length 1, 12 x 11 particles, 0.5 kg, `cloth` preset) on a two-joint arm that swings (see SleeveRig). The base ring is kinematic; the rest may stray 0.06 m and keeps out of a back-stop.
+    // A static sphere stands where the swing brings the sleeve against it, and a 0.15 m box (density 30) drops onto the top.
+    static Scene SoftSkinned()
+    {
+        var s = Base3("soft-skinned-3d", 600, ["softMaxSpeed", "softPenetration", "softFinalPenetration", "softEscapes", "softTunnelled", "softNan", "edgeStrain", "skinMaxDistance", "skinBackstop", "skinCuffError"]);
+        s.DumpEvery = 30;
+        s.Params["engines"] = ["onephysics"]; // no other engine has skinned soft bodies
+        Box3(Add3(s, "static", 0, -1, 0), 40, 1, 40);
+        Sh(Add3(s, "static", 0.6, 0.9, 0), "sphere", 0, 0.2, 0, 0, 0);
+        Box3(Add3(s, "dynamic", -0.05, 1.7, 0.02), 0.075, 0.075, 0.075, 0, 0, 0, 30);
+        Soft(s, "cloth", "sleeve", 0, 0.4, 0, 0.5, 0.1, 1, 12, 11);
+        s.Params["container"] = ["-8", "-5", "8", "10"];
+        s.Params["floor"] = ["-1"];
+        return s;
+    }
+
+    public static List<Scene> All() => [Pyramid(10), Pyramid(30), LargePile(), JointChains(), JointGrid(), RagdollPile(), RagdollPowered(), TerrainScene(false), TerrainScene(true), SleepWake(), Queries(), Characters3(), Vehicles3(), Buoyancy(), Tracked3(), Motorcycle3(), ClothDrape(), SoftPile(), SoftRigid(), SoftMesh(), SoftSkinned()];
 }

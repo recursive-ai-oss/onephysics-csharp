@@ -83,6 +83,18 @@ public sealed partial class PhysicsWorld3D
         return _engine.AddSoftBody(def);
     }
 
+    /// <summary>The handle of the soft body in a slot (<see cref="SoftBody.Slot"/>). Use it to get at the bodies of a world after <c>Restore</c>, which replaces them: a handle from before the restore belongs to the old state.</summary>
+    /// <param name="slot">The slot number, 0 or more.</param>
+    /// <exception cref="ArgumentOutOfRangeException">The slot is negative or beyond every slot the world has used.</exception>
+    /// <exception cref="StaleHandleException">The slot holds no soft body.</exception>
+    public SoftBody GetSoftBody(int slot)
+    {
+        var e = _engine;
+        if ((uint)slot >= (uint)e.SoftHandles.HighWater) { throw new ArgumentOutOfRangeException(nameof(slot), slot, "soft body slot " + slot.ToString(System.Globalization.CultureInfo.InvariantCulture) + " is outside 0 to " + (e.SoftHandles.HighWater - 1).ToString(System.Globalization.CultureInfo.InvariantCulture) + "."); }
+        if (!e.SoftHandles.IsLive(slot)) { throw new StaleHandleException("Soft body slot " + slot.ToString(System.Globalization.CultureInfo.InvariantCulture) + " holds no soft body."); }
+        return new SoftBody(this, slot, e.SoftHandles.GenerationOf(slot));
+    }
+
     /// <summary>Number of soft bodies in the world.</summary>
     public int SoftBodyCount => _engine.SoftHandles.Count;
 }

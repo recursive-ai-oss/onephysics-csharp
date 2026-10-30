@@ -813,7 +813,7 @@ internal sealed partial class Engine3D
                 if (v2 > vmax2) { vmax2 = v2; }
             }
 
-            if (!Opt.SleepEnabled || !d.Def.AllowSleep || d.HadMovingContact || !(vmax2 < thr2)) { d.SleepTime = 0f; continue; }
+            if (!Opt.SleepEnabled || !d.Def.AllowSleep || d.HadMovingContact || d.SkinMoved || !(vmax2 < thr2)) { d.SleepTime = 0f; continue; }
             d.SleepTime += dt;
             if (d.SleepTime >= Opt.TimeToSleep)
             {
