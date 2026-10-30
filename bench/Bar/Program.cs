@@ -315,12 +315,19 @@ static class SweepTweaks
 {
     static float Get(string name, float d) => float.TryParse(Environment.GetEnvironmentVariable(name), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : d;
 
-    /// <summary>Task sizes of the soft step (BAR_SOFT_BIG, BAR_SOFT_TASK, BAR_SOFT_DETECT, BAR_SOFT_PAIR) and the lane switch (BAR_SOFT_LANES=0): they change the speed only, never the result.</summary>
+    /// <summary>Task sizes of the soft step (BAR_SOFT_CHUNK, BAR_SOFT_PAD, BAR_SOFT_TASK, BAR_SOFT_DETECT, BAR_SOFT_PAIR) the soft iteration and substep counts (BAR_SOFT_ITERS, BAR_SOFT_SUBSTEPS; these are options, not tuning) and the lane switch (BAR_SOFT_LANES=0): they change the speed only, never the result.</summary>
     public static void InstallSoft()
     {
-        int big = (int)Get("BAR_SOFT_BIG", 0f), task = (int)Get("BAR_SOFT_TASK", 0f), det = (int)Get("BAR_SOFT_DETECT", 0f), pair = (int)Get("BAR_SOFT_PAIR", 0f);
-        if (big > 0) RecursiveAI.OnePhysics.Physics3D.Engine3D.SoftBigBody = big;
-        if (task > 0) RecursiveAI.OnePhysics.Physics3D.Engine3D.SoftTaskSize = task;
+        int det = (int)Get("BAR_SOFT_DETECT", 0f), pair = (int)Get("BAR_SOFT_PAIR", 0f);
+        int chunk = (int)Get("BAR_SOFT_CHUNK", 0f), iters = (int)Get("BAR_SOFT_ITERS", 0f), subs = (int)Get("BAR_SOFT_SUBSTEPS", 0f);
+        if (iters > 0 || subs > 0)
+        {
+            var prev = SceneBuilder3D.Tweak;
+            SceneBuilder3D.Tweak = o => { prev?.Invoke(o); if (iters > 0) o.SoftIterations = iters; if (subs > 0) o.SoftSubsteps = subs; };
+        }
+
+        if (chunk > 0) RecursiveAI.OnePhysics.Physics3D.Engine3D.SoftContactChunk = chunk;
+        if (Environment.GetEnvironmentVariable("BAR_SOFT_PAD") is { } padText && int.TryParse(padText, out int pad)) RecursiveAI.OnePhysics.Physics3D.Engine3D.SoftPadTasks = pad;
         if (det > 0) RecursiveAI.OnePhysics.Physics3D.Engine3D.DetectChunk = det;
         if (pair > 0) RecursiveAI.OnePhysics.Physics3D.Engine3D.PairChunk = pair;
         if (Get("BAR_SOFT_LANES", 1f) == 0f) RecursiveAI.OnePhysics.Physics3D.Engine3D.SoftLanes = false;

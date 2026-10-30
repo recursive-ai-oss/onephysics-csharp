@@ -10,8 +10,8 @@ internal sealed partial class Engine3D
 {
     // Extended position-based dynamics in small steps: Müller et al. 2007 (position based dynamics), Macklin, Müller, Chentanez 2016 (XPBD: compliance and the multiplier update),
     // Macklin et al. 2019 (small steps: many substeps with a single Gauss–Seidel pass each beats many iterations of one large step).
-    // The kernels work on the float32 copies X / XP of the positions (relative to the body's origin for the step). Constraints are grouped by colour (SoftBodyColoring): the colours are solved one
-    // after another, the constraints of a colour in any order or at once in vector lanes, and every path does the same float operations in the same order per constraint, so the bits are the same.
+    // The kernels work on the float32 copies X / XP of the positions (relative to the body's origin for the step). Constraints are stored in blocks and in groups of four that share no particle (SoftBodyBlocks):
+    // the groups are solved one after another, the four constraints of a group in any order or at once in vector lanes, and every path does the same float operations in the same order per constraint, so the bits are the same.
 
     /// <summary>Whether constraint kernels may use <see cref="Vector128"/> lanes. The lanes and the scalar loops give the same bits; this switch exists so a test can compare them.</summary>
     internal static bool SoftLanes = Vector128.IsHardwareAccelerated;

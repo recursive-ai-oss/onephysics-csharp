@@ -6,84 +6,122 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 
 internal sealed partial class Engine3D
 {
-    // The solve of one substep: SoftIterations passes, each a sequence of stages. A stage runs the tasks of one solver phase of every body (the colours of the edges, then of the bends, then of the
-    // tetrahedra, then pressure) in parallel; a body that is small runs all its phases as one task in the first stage. Then a stage for the contacts with shapes and one for the particle pairs,
-    // each a single task in a fixed order. The split into tasks comes from the bodies' constraint graphs alone, so the result is the same on any number of threads.
+    // The solve of one substep: SoftIterations passes, each a sequence of stages.
+    //   stage 0          the interior constraints of every block of every body, one task per block (no wait inside a block);
+    //   boundary stages  the constraints that cross blocks, one colour per stage (or one task per body), then the pressure constraint;
+    //   contacts         the contacts with shapes, in tasks of whole particles; contacts that move a rigid body are one serial task, in detection order;
+    //   pairs            the particle pairs, one task in the order listed;
+    //   skin             the skin limits, one task per skinned body.
+    // The split into tasks comes from the bodies' blocks and constraint graphs alone, so the result is the same on any number of threads.
 
-    // The three sizes below only decide how the work is cut into tasks; the result is the same for any value (a test and the hash matrix check that), so a benchmark may change them.
+    // The sizes below only decide how the work is cut into tasks; the result is the same for any value (a test and the hash matrix check that), so a benchmark may change them.
+    // (The size of a block is different: it decides the constraint order, so it is fixed when a body is created; see SoftBodyData.DefaultBlockSize.)
 
-    /// <summary>Bodies with at least this many particles are split across tasks by colour; smaller ones are solved by one task, because below this size the waits between colours cost more than the shared work saves.</summary>
-    internal static int SoftBigBody = 1024;
+    /// <summary>The executor takes as many workers as there is one task each in the average stage. A pass has a stage of blocks, then stages of one task (boundary, pairs) or none, so the average undercounts the blocks;
+    /// a stage with tasks reports at least this many (the extra tasks do nothing), which only keeps more workers for the block stage. Speed only; the result does not depend on it.</summary>
+    internal static int SoftPadTasks = 8;
 
-    /// <summary>Constraints per task within a colour (a multiple of the lane width).</summary>
-    internal static int SoftTaskSize = 64;
+    /// <summary>Contacts per task (whole particles).</summary>
+    internal static int SoftContactChunk = 16;
 
-    private int[] _stBody = new int[64], _stPhase = new int[64], _stFirst = new int[64], _stEnd = new int[64];
-    private int[] _stStart = new int[32];
+    private int[] _stBody = new int[64], _stRegion = new int[64];
+    private int[] _stStart = new int[4];
     private int _stStages, _stMost;
+    private int[] _ctIdx = new int[64], _ctStart = new int[16];
+    private int _ctTasks;
 
-    // Lists the tasks of every constraint stage of a pass. The table depends on the awake bodies only.
+    // Lists the tasks of the constraint stages of a pass: stage 0 has a task for every block of every body that has interior constraints, stage 1 one task per body for its boundary constraints and its pressure
+    // constraint. The table depends on the awake bodies only.
     private void BuildSoftTasks()
     {
-        int stages = 1;
+        GrowTo(ref _stStart, 3);
+        int n = 0;
+        _stStart[0] = 0;
         for (int a = 0; a < _awakeSoftCount; a++)
         {
             var d = _awakeSoft[a];
-            if (d.N >= SoftBigBody && d.Phases > stages) { stages = d.Phases; }
+            for (int b = 0; b < d.BlockCount; b++) { if (d.StepStart[b + 1] > d.StepStart[b]) { AddSoftTask(ref n, a, b); } }
         }
 
-        GrowTo(ref _stStart, stages + 1);
-        int n = 0, most = 1;
-        for (int s = 0; s < stages; s++)
+        _stStart[1] = n;
+        for (int a = 0; a < _awakeSoftCount; a++)
         {
-            _stStart[s] = n;
-            for (int a = 0; a < _awakeSoftCount; a++)
-            {
-                var d = _awakeSoft[a];
-                if (d.N < SoftBigBody)
-                {
-                    if (s == 0) { AddSoftTask(ref n, a, -1, 0, 0); }
-                    continue;
-                }
-
-                if (s >= d.Phases) { continue; }
-                d.Phase(s, out _, out int first, out int end, out bool serial);
-                if (serial) { AddSoftTask(ref n, a, s, first, end); continue; }
-                for (int f = first; f < end; f += SoftTaskSize) { AddSoftTask(ref n, a, s, f, Math.Min(end, f + SoftTaskSize)); }
-            }
-
-            if (n - _stStart[s] > most) { most = n - _stStart[s]; }
+            var d = _awakeSoft[a];
+            if (d.BoundarySteps > 0 || d.HasPressure) { AddSoftTask(ref n, a, d.BlockCount); }
         }
 
-        _stStart[stages] = n;
-        _stStages = stages;
-        _stMost = most;
+        _stStart[2] = n;
+        _stStages = 2;
+        _stMost = Math.Max(_stStart[1], _stStart[2] - _stStart[1]);
     }
 
-    private void AddSoftTask(ref int n, int body, int phase, int first, int end)
+    private void AddSoftTask(ref int n, int body, int region)
     {
-        GrowTo(ref _stBody, n + 1); GrowTo(ref _stPhase, n + 1); GrowTo(ref _stFirst, n + 1); GrowTo(ref _stEnd, n + 1);
-        _stBody[n] = body; _stPhase[n] = phase; _stFirst[n] = first; _stEnd[n] = end;
+        GrowTo(ref _stBody, n + 1); GrowTo(ref _stRegion, n + 1);
+        _stBody[n] = body; _stRegion[n] = region;
         n++;
     }
 
+    // Solves the steps of one region of a body: for each kind, the groups of four in lanes, then the singles; the boundary set ends with the pressure constraint.
     private void RunSoftTask(int t, float h)
     {
         var d = _awakeSoft[_stBody[t]];
-        int ph = _stPhase[t];
-        if (ph < 0)
+        int r = _stRegion[t];
+        for (int s = d.StepStart[r]; s < d.StepStart[r + 1]; s++)
         {
-            for (int p = 0; p < d.Phases; p++)
-            {
-                d.Phase(p, out int kind, out int first, out int end, out bool serial);
-                SolveRange(d, kind, first, end, h, !serial);
-            }
-
-            return;
+            int kind = d.StepKind[s];
+            SolveRange(d, kind, d.StepFirst[s], d.StepQuadEnd[s], h, true);
+            SolveRange(d, kind, d.StepQuadEnd[s], d.StepEnd[s], h, false);
         }
 
-        d.Phase(ph, out int k, out _, out _, out bool ser);
-        SolveRange(d, k, _stFirst[t], _stEnd[t], h, !ser);
+        if (r == d.BlockCount && d.HasPressure) { SolveRange(d, 3, 0, 1, h, false); }
+    }
+
+    // The contacts of the substep cut into tasks. A particle's contacts stay together and in order. Particles with a contact that moves a rigid body (shared state) form the first task, in detection order;
+    // the other particles are independent of each other and are cut into chunks of about SoftContactChunk contacts.
+    private void BuildContactTasks()
+    {
+        GrowTo(ref _ctIdx, _scCount + 1);
+        int n = 0, tasks = 0;
+        GrowTo(ref _ctStart, 2);
+        _ctStart[0] = 0;
+        for (int i = 0; i < _scCount;)
+        {
+            int j = i + 1;
+            bool coupled = _sc[i].Coupled;
+            while (j < _scCount && _sc[j].Particle == _sc[i].Particle && _sc[j].Body == _sc[i].Body) { coupled |= _sc[j].Coupled; j++; }
+            if (coupled) { for (int k = i; k < j; k++) { _ctIdx[n++] = k; } }
+            i = j;
+        }
+
+        if (n > 0) { tasks = 1; _ctStart[1] = n; }
+        int chunkStart = n;
+        for (int i = 0; i < _scCount;)
+        {
+            int j = i + 1;
+            bool coupled = _sc[i].Coupled;
+            while (j < _scCount && _sc[j].Particle == _sc[i].Particle && _sc[j].Body == _sc[i].Body) { coupled |= _sc[j].Coupled; j++; }
+            if (!coupled)
+            {
+                for (int k = i; k < j; k++) { _ctIdx[n++] = k; }
+                if (n - chunkStart >= SoftContactChunk)
+                {
+                    GrowTo(ref _ctStart, tasks + 2);
+                    _ctStart[++tasks] = n; chunkStart = n;
+                }
+            }
+
+            i = j;
+        }
+
+        if (n > chunkStart)
+        {
+            GrowTo(ref _ctStart, tasks + 2);
+            _ctStart[++tasks] = n;
+        }
+
+        _ctTasks = tasks;
+        if (tasks > _stMost) { _stMost = tasks; }
     }
 
     private readonly struct SoftSolveProgram : IStagedBody
@@ -92,25 +130,33 @@ internal sealed partial class Engine3D
         private readonly float _h, _invH;
         private readonly int _perPass;
         private readonly float _tSkin;
+        private readonly int _pad;
 
         public SoftSolveProgram(Engine3D e, float h, float invH, float tSkin)
         {
-            _e = e; _h = h; _invH = invH; _tSkin = tSkin; _perPass = e._stStages + 3;
+            _e = e; _h = h; _invH = invH; _tSkin = tSkin; _perPass = e._stStages + 3; _pad = SoftPadTasks;
         }
 
         public int TaskCount(int stage)
         {
-            int k = stage % _perPass;
-            if (k == _e._stStages + 2) { return _e._skinCount; }
-            if (k >= _e._stStages) { return 1; }
-            return _e._stStart[k + 1] - _e._stStart[k];
+            int r = Real(stage % _perPass);
+            return r > 0 && r < _pad ? _pad : r;
+        }
+
+        private int Real(int k)
+        {
+            if (k < _e._stStages) { return _e._stStart[k + 1] - _e._stStart[k]; }
+            if (k == _e._stStages) { return _e._ctTasks; }
+            if (k == _e._stStages + 1) { return _e._pairCount > 0 ? 1 : 0; }
+            return _e._skinCount;
         }
 
         public void Run(int stage, int task)
         {
             int k = stage % _perPass;
+            if (task >= Real(k)) { return; }
             if (k < _e._stStages) { _e.RunSoftTask(_e._stStart[k] + task, _h); }
-            else if (k == _e._stStages) { _e.SolveContacts(_h, _invH); }
+            else if (k == _e._stStages) { _e.SolveContactTask(task, _h, _invH); }
             else if (k == _e._stStages + 1) { _e.SolvePairs(); }
             else { SolveSkin(_e._awakeSoft[_e._skinBody[task]], _tSkin); }
         }
@@ -129,6 +175,7 @@ internal sealed partial class Engine3D
     {
         if (iterations <= 0) { return; }
         BuildSoftTasks();
+        BuildContactTasks();
         // The skin limits come last in every pass, after the contacts and pairs, one task per skinned body.
         _skinCount = 0;
         for (int a = 0; a < _awakeSoftCount; a++)
@@ -138,6 +185,7 @@ internal sealed partial class Engine3D
             _skinBody[_skinCount++] = a;
         }
 
+        if (_skinCount > _stMost) { _stMost = _skinCount; }
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.SoftConstraints);
 #endif
@@ -147,7 +195,7 @@ internal sealed partial class Engine3D
     // ------------------------------------------------------------------ contact detection and pair search in tasks
 
     /// <summary>Particles per detection task.</summary>
-    internal static int DetectChunk = 128;
+    internal static int DetectChunk = 32;
 
     private SoftTaskBuf[] _tb = new SoftTaskBuf[8];
     private int[] _dtBody = new int[16], _dtFrom = new int[16], _dtTo = new int[16];
