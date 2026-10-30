@@ -82,9 +82,9 @@ internal static class SmokeProgram
         bool fSame = f1 == f3 && f1 == fr;
         Console.WriteLine((fSame ? "OK softbodies3d " : "FAIL softbodies3d ") + f1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         // A skinned soft body (a sleeve on a swinging arm): same state on one and three threads and after a restore.
-        ulong k1 = SoftSkinned3DScene.Run(1, false), k3 = SoftSkinned3DScene.Run(3, false), kr = SoftSkinned3DScene.Run(1, true);
-        bool skSame = k1 == k3 && k1 == kr;
-        Console.WriteLine((skSame ? "OK softskinned3d " : "FAIL softskinned3d ") + k1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        ulong sk1 = SoftSkinned3DScene.Run(1, false), sk3 = SoftSkinned3DScene.Run(3, false), skr = SoftSkinned3DScene.Run(1, true);
+        bool skSame = sk1 == sk3 && sk1 == skr;
+        Console.WriteLine((skSame ? "OK softskinned3d " : "FAIL softskinned3d ") + sk1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         return ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
     }
 
