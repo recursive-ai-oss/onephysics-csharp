@@ -4,7 +4,9 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 **0.x previews are not bit-compatible with each other: snapshots, saved games and replays from one preview do not carry to another.**
 
-## [Unreleased]
+## [0.3.0-preview.1]
+
+- **Characters, vehicles, ragdolls and buoyancy are complete for this preview line.** The rigid and virtual 3D characters, wheeled, tracked and motorcycle vehicles, ragdolls with powered pose matching, and buoyancy and drag in fluid volumes are within their stability limits on every scene, with identical results on x64 and arm64: `characters-3d` (every stair climbed, character jitter under 1e-6 m/s, no slope violations), `vehicles-3d` (no rollovers, no wheel through the ground, suspension jitter 0.002), `tracked-3d`, `motorcycle-3d` (none fallen, lean error 0.006), `ragdoll-powered-3d` (95th-percentile pose error 0.058 rad, none fallen) and `buoyancy-3d` (equilibrium depth error 0.0026). No managed .NET engine covers these scenes, so they are judged on their stability limits. They stay under `[Experimental("OPHYS0002")]` with the rest of the 3D engine until every 3D speed row meets the bar.
 
 - **`GetSnapshotSizeBound()` on `PhysicsWorld2D` and `PhysicsWorld3D`** returns an upper bound on `GetSnapshotSize()` that holds however the world steps while no storage grows, so a host can size rollback buffers once. Contacts and joints, shape pairs, islands, broadphase nodes and events are counted at the capacity that holds them (`ContactCapacity`, `PairCapacity`); what the host creates (bodies, shapes, joints, characters, vehicles, ragdolls, fluids) is counted as it is now. Additive; the snapshot format and every world hash are unchanged.
 - **3D box-against-box edge axes are tested without normalizing each axis** (about 9% off the box–box routine on pairs from a sleep-wake pile). Separations can differ from the previous preview in the last bit in some poses, so 3D world hashes and snapshot bytes move.
