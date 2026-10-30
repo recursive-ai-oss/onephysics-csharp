@@ -344,6 +344,7 @@ internal sealed partial class Engine3D
         var inv = rw.Conjugated();
         double sx = _cPos[3 * c], sy = _cPos[3 * c + 1], sz = _cPos[3 * c + 2];
         var sphere = d.SphereShape;
+        if (!(Math.Abs(x - sx) < 2e6 && Math.Abs(y - sy) < 2e6 && Math.Abs(z - sz) < 2e6 && Math.Abs(px - sx) < 2e6 && Math.Abs(py - sy) < 2e6 && Math.Abs(pz - sz) < 2e6)) { return; }
 
         if (fast)
         {
@@ -355,6 +356,8 @@ internal sealed partial class Engine3D
         }
 
         var rel = inv.Rotate(new Vector3F((float)(x - sx), (float)(y - sy), (float)(z - sz)));
+        // A particle flung far away by a degenerate body (this step's constraints can overshoot) makes no contact; the next step reports it as out of bounds. The collision routines accept 4194304 at most.
+        if (!(float.Abs(rel.X) < 4e6f && float.Abs(rel.Y) < 4e6f && float.Abs(rel.Z) < 4e6f)) { return; }
         var gen = NarrowScratch.Gen;
         var pose = new RigidTransformF(QuaternionF.Identity, rel);
         if (g.IsConvex)
