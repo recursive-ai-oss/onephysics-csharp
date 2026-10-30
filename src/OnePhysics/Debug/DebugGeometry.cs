@@ -39,8 +39,11 @@ public enum DebugContent
     /// <summary>One entry per wheel of every vehicle (<see cref="DebugGeometry.Wheels"/>): suspension top, wheel centre, contact point and normal. Ignored by 2D worlds.</summary>
     Vehicles = 256,
 
+    /// <summary>One entry per soft body with its particles and edges (<see cref="DebugGeometry.SoftBodies"/>, <see cref="DebugGeometry.Points"/>, <see cref="DebugGeometry.Indices"/>). Ignored by 2D worlds.</summary>
+    SoftBodies = 512,
+
     /// <summary>Everything.</summary>
-    All = 511,
+    All = 1023,
 }
 
 /// <summary>The kind of a <see cref="DebugShape"/>. The same enum serves 2D and 3D worlds; a 2D world emits the first five.</summary>
@@ -197,6 +200,40 @@ public readonly struct DebugContact
 
     /// <summary>The solver's accumulated normal impulse of the last substep at this point.</summary>
     public float NormalImpulse { get; }
+}
+
+/// <summary>A soft body for drawing: its particle positions are <see cref="DebugGeometry.Points"/>[FirstPoint .. FirstPoint + ParticleCount) and its edges are pairs of particle numbers in <see cref="DebugGeometry.Indices"/>[FirstIndex .. FirstIndex + 2 * EdgeCount).</summary>
+public readonly struct DebugSoftBody
+{
+    /// <summary>Creates an entry.</summary>
+    public DebugSoftBody(int index, int generation, bool isAsleep, float particleRadius, int firstPoint, int particleCount, int firstIndex, int edgeCount)
+    {
+        Index = index; Generation = generation; IsAsleep = isAsleep; ParticleRadius = particleRadius; FirstPoint = firstPoint; ParticleCount = particleCount; FirstIndex = firstIndex; EdgeCount = edgeCount;
+    }
+
+    /// <summary>The soft body's slot in its world.</summary>
+    public int Index { get; }
+
+    /// <summary>The slot's generation.</summary>
+    public int Generation { get; }
+
+    /// <summary>True while the body sleeps.</summary>
+    public bool IsAsleep { get; }
+
+    /// <summary>Radius of the sphere each particle collides as, metres.</summary>
+    public float ParticleRadius { get; }
+
+    /// <summary>Index of particle 0 in <see cref="DebugGeometry.Points"/>.</summary>
+    public int FirstPoint { get; }
+
+    /// <summary>Number of particles.</summary>
+    public int ParticleCount { get; }
+
+    /// <summary>Index of the first edge corner in <see cref="DebugGeometry.Indices"/>.</summary>
+    public int FirstIndex { get; }
+
+    /// <summary>Number of edges (two particle numbers each).</summary>
+    public int EdgeCount { get; }
 }
 
 /// <summary>A body for drawing centres of mass, sleep state and islands.</summary>
@@ -367,9 +404,10 @@ public sealed class DebugGeometry
     private DebugJoint[] _joints = new DebugJoint[4];
     private DebugCharacter[] _characters = new DebugCharacter[4];
     private DebugWheel[] _wheels = new DebugWheel[4];
+    private DebugSoftBody[] _soft = new DebugSoftBody[4];
     private int[] _indices = new int[64];
     private int _nIndices;
-    private int _nShapes, _nPoints, _nBounds, _nFat, _nContacts, _nBodies, _nJoints, _nCharacters, _nWheels;
+    private int _nShapes, _nPoints, _nBounds, _nFat, _nContacts, _nBodies, _nJoints, _nCharacters, _nWheels, _nSoft;
 
     /// <summary>The shapes in world space.</summary>
     public ReadOnlySpan<DebugShape> Shapes => _shapes.AsSpan(0, _nShapes);
@@ -401,8 +439,11 @@ public sealed class DebugGeometry
     /// <summary>Vehicle wheels, by vehicle slot then wheel index.</summary>
     public ReadOnlySpan<DebugWheel> Wheels => _wheels.AsSpan(0, _nWheels);
 
+    /// <summary>Soft bodies, by slot.</summary>
+    public ReadOnlySpan<DebugSoftBody> SoftBodies => _soft.AsSpan(0, _nSoft);
+
     /// <summary>Empties every list (capacity is kept).</summary>
-    public void Clear() => _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = 0;
+    public void Clear() => _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0;
 
     private static void Push<T>(ref T[] a, ref int n, in T v)
     {
@@ -436,6 +477,9 @@ public sealed class DebugGeometry
 
     /// <summary>Appends a wheel entry.</summary>
     public void Add(in DebugWheel w) => Push(ref _wheels, ref _nWheels, in w);
+
+    /// <summary>Appends a soft body entry.</summary>
+    public void Add(in DebugSoftBody b) => Push(ref _soft, ref _nSoft, in b);
 
     /// <summary>Appends a joint entry.</summary>
     public void Add(in DebugJoint j) => Push(ref _joints, ref _nJoints, in j);

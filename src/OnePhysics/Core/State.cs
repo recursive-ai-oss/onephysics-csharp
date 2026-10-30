@@ -418,4 +418,16 @@ public interface ISnapshotSection
 
     /// <summary>Reads state written by <see cref="Write"/>, validating it, and either replaces the section's state completely or throws <see cref="SnapshotFormatException"/> leaving it unchanged.</summary>
     void Read(StateReader reader);
+
+    /// <summary>
+    /// True for a section that is written only while it holds state (and left out of the snapshot, the hash and the section count otherwise), so a world that never uses the feature keeps the bytes and hashes it always had.
+    /// A restore of a snapshot that lacks an optional section calls <see cref="Reset"/> on it. Default false.
+    /// </summary>
+    bool IsOptional => false;
+
+    /// <summary>For an optional section: whether it holds state now and so must be written. Ignored for a required section.</summary>
+    bool IsPresent => true;
+
+    /// <summary>For an optional section: returns it to the empty state when a restored snapshot has no such section.</summary>
+    void Reset() { }
 }

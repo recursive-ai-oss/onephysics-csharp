@@ -3,7 +3,7 @@ using System.Globalization;
 namespace Bar;
 
 /// <summary>3D stability metrics from pose dumps. Penetration uses a small GJK distance routine with an EPA fallback written for this tool.</summary>
-public static class Metrics3
+public static partial class Metrics3
 {
     const int St = 14; // x y z qx qy qz qw vx vy vz wx wy wz awake
 
@@ -514,6 +514,7 @@ public static class Metrics3
             r["tunnelled"] = worst;
         }
         if (s.Params.ContainsKey("cars")) VehicleMetrics(s, frames, wheelFrames, want, r);
+        if (s.Softs.Count > 0) SoftMetrics(s, frames, wheelFrames, want, r);
         if (want.Contains("collapse") && s.Params.ContainsKey("top"))
         {
             int t = (int)P("top");

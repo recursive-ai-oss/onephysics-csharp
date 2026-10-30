@@ -27,6 +27,8 @@ internal static class World3DScenarios
         Scenarios.Register("world3d/vehicle-kinds", ctx => VehicleKinds3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
         Scenarios.Register("world3d/ragdolls", ctx => Ragdolls3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
         Scenarios.Register("world3d/buoyancy", RunBuoyancy);
+        Scenarios.Register("world3d/softbody", RunSoftBodies);
+        Scenarios.Register("world3d/softbodies", ctx => SoftBodies3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
         Scenarios.Register("world3d/services", ctx => Services3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
     }
 
@@ -75,6 +77,41 @@ internal static class World3DScenarios
             world.Step(dt);
             ctx.Write((long)world.ComputeHash());
             ctx.EndStep();
+        }
+    }
+
+    /// <summary>
+    /// The soft-body scenes: cushions under falling boxes (snapshotted at step 40, restored at 70, the origin shifted at 100, 150 steps), then the draped cloth for 120 steps and the soft bodies on mesh terrain for 80 steps,
+    /// the world hash after every step. Soft bodies are solved serially in a fixed order, so the thread count must not change a bit.
+    /// </summary>
+    private static void RunSoftBodies(ScenarioContext ctx)
+    {
+        var scene = Gen.All().First(s => s.Name == "soft-rigid-3d");
+        var (world, _, _) = SceneBuilder3D.Build(scene, ctx.Threads);
+        SceneBuilder3D.AddSofts(scene, world);
+        float dt = (float)scene.Dt;
+        byte[]? snap = null;
+        for (int i = 0; i < 150; i++)
+        {
+            if (i == 40) { snap = world.Snapshot(); ctx.Write(snap); }
+            if (i == 70) { world.Restore(snap!); }
+            if (i == 100) { world.ShiftOrigin(new Vector3D(32.0, -8.0, 16.0)); }
+            world.Step(dt);
+            ctx.Write((long)world.ComputeHash());
+            ctx.EndStep();
+        }
+
+        foreach (var (name, steps) in new[] { ("cloth-drape-3d", 120), ("soft-mesh-3d", 80) })
+        {
+            var sc = Gen.All().First(s => s.Name == name);
+            var (w, _, _) = SceneBuilder3D.Build(sc, ctx.Threads);
+            SceneBuilder3D.AddSofts(sc, w);
+            for (int i = 0; i < steps; i++)
+            {
+                w.Step((float)sc.Dt);
+                ctx.Write((long)w.ComputeHash());
+                ctx.EndStep();
+            }
         }
     }
 

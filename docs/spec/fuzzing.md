@@ -1,6 +1,6 @@
 # Fuzzing
 
-Every input that crosses the public boundary has a fuzz target in `fuzz/Fuzz`: hull and mesh construction, height fields and compounds, the broadphase, 2D and 3D manifolds, both worlds' definitions, services, joints, characters, vehicles, ragdolls and fluids, and every snapshot reader (`tools/fuzz.sh list` prints them). A target takes a byte array and decodes it into an input. Its allowed outcomes are success or the typed error the API documents; any other exception, a hang, or a result that breaks an invariant (a non-finite number, a normal that is not a unit vector, a snapshot that does not re-serialise to the bytes it was restored from, a rejected snapshot that changed the world) is a finding.
+Every input that crosses the public boundary has a fuzz target in `fuzz/Fuzz`: hull and mesh construction, height fields and compounds, the broadphase, 2D and 3D manifolds, both worlds' definitions, services, joints, characters, vehicles, ragdolls, fluids and soft bodies, and every snapshot reader (`tools/fuzz.sh list` prints them). A target takes a byte array and decodes it into an input. Its allowed outcomes are success or the typed error the API documents; any other exception, a hang, or a result that breaks an invariant (a non-finite number, a normal that is not a unit vector, a snapshot that does not re-serialise to the bytes it was restored from, a rejected snapshot that changed the world) is a finding.
 
 ## Modes
 

@@ -33,6 +33,8 @@ public sealed partial class PhysicsWorld3D
                 zone.OnTriggerEnter += _ => sink++;
                 ball.OnCollisionEnter += _ => sink++;
                 var player = w.AddCharacter(new Vector3D(6, 1, 0));
+                w.AddSoftBall(0.3f, new Vector3D(-7, 1.5, 3));
+                w.AddCloth(1.2f, 1.2f, 6, new Vector3D(-7, 1.5, -3), pinCorners: false);
                 var buffer = new QueryHit3D[8];
                 // Long enough for the pile to land, settle and fall asleep, so the impact, resting and sleeping paths have run; each query kind a host calls runs every step.
                 for (int i = 0; i < 150; i++)

@@ -78,6 +78,12 @@ public delegate bool PairPredicate(Shape a, Shape b);
 [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class WorldOptions3D
 {
+    /// <summary>Substeps of the soft-body solver per step, 1..64. Many small steps with one pass each beat few large steps with many passes (Macklin et al. 2019). Default 4. Saved with the soft bodies.</summary>
+    public int SoftSubsteps { get; set; } = 4;
+
+    /// <summary>Gauss–Seidel passes over the soft-body constraints per soft substep, 1..32. Default 3. Saved with the soft bodies.</summary>
+    public int SoftIterations { get; set; } = 3;
+
     /// <summary>Gravity in m/s². Default (0, -9.81, 0).</summary>
     public Vector3F Gravity { get; set; } = new(0f, -9.81f, 0f);
 
@@ -186,6 +192,8 @@ public sealed class WorldOptions3D
     /// <exception cref="ArgumentOutOfRangeException">A value is outside its range.</exception>
     public void Validate()
     {
+        if (SoftSubsteps < 1 || SoftSubsteps > 64) { throw new ArgumentOutOfRangeException(nameof(SoftSubsteps), SoftSubsteps, "SoftSubsteps must be in 1..64."); }
+        if (SoftIterations < 1 || SoftIterations > 32) { throw new ArgumentOutOfRangeException(nameof(SoftIterations), SoftIterations, "SoftIterations must be in 1..32."); }
         if (ContactSubsteps < 0 || ContactSubsteps > 256) { throw new ArgumentOutOfRangeException(nameof(ContactSubsteps), ContactSubsteps, "ContactSubsteps must be in 0..256."); }
         if (ContactVelocityIterations < 1 || ContactVelocityIterations > 256) { throw new ArgumentOutOfRangeException(nameof(ContactVelocityIterations), ContactVelocityIterations, "ContactVelocityIterations must be in 1..256."); }
         if (ContactRelaxIterations < 0 || ContactRelaxIterations > 256) { throw new ArgumentOutOfRangeException(nameof(ContactRelaxIterations), ContactRelaxIterations, "ContactRelaxIterations must be in 0..256."); }

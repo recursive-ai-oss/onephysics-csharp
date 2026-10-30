@@ -89,6 +89,7 @@ public sealed class Scene
     public List<JointDef> Joints = [];
     public List<QueryDef> Queries = [];
     public List<EventDef> Events = [];
+    public List<SoftDef> Softs = [];
 
     static string F(double v) => v.ToString("R", CultureInfo.InvariantCulture);
     static double D(string s) => double.Parse(s, NumberStyles.Float, CultureInfo.InvariantCulture);
@@ -163,6 +164,9 @@ public sealed class Scene
                     }
                     s.Joints.Add(j); break;
                 case "query": s.Queries.Add(new QueryDef { Kind = t[1], P = t.Skip(2).Select(D).ToArray() }); break;
+                case "soft":
+                    s.Softs.Add(new SoftDef { Preset = t[1], Kind = t[2], X = D(t[3]), Y = D(t[4]), Z = D(t[5]), Qx = D(t[6]), Qy = D(t[7]), Qz = D(t[8]), Qw = D(t[9]), Mass = D(t[10]), P = t.Skip(11).Select(D).ToArray() });
+                    break;
                 case "event": s.Events.Add(new EventDef { Step = I(t[1]), Kind = t[2] }); break;
                 default: throw new InvalidDataException("unknown record " + t[0]);
             }
@@ -218,6 +222,13 @@ public sealed class Scene
             sb.Append('\n');
         }
         foreach (var q in Queries) { sb.Append("query ").Append(q.Kind); foreach (var v in q.P) sb.Append(' ').Append(F(v)); sb.Append('\n'); }
+        foreach (var f in Softs)
+        {
+            sb.Append("soft ").Append(f.Preset).Append(' ').Append(f.Kind).Append(' ').Append(F(f.X)).Append(' ').Append(F(f.Y)).Append(' ').Append(F(f.Z)).Append(' ')
+              .Append(F(f.Qx)).Append(' ').Append(F(f.Qy)).Append(' ').Append(F(f.Qz)).Append(' ').Append(F(f.Qw)).Append(' ').Append(F(f.Mass));
+            foreach (var v in f.P) sb.Append(' ').Append(F(v));
+            sb.Append('\n');
+        }
         foreach (var e in Events) sb.Append("event ").Append(e.Step).Append(' ').Append(e.Kind).Append('\n');
         File.WriteAllText(path, sb.ToString());
     }

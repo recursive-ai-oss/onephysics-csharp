@@ -92,6 +92,49 @@ public class SnapshotTests
         Assert.Equal(5, sec.Value); // a failed restore leaves everything as it was
     }
 
+    [Fact]
+    public void AnOptionalSectionLeavesBytesAndHashesAloneUntilItHoldsState()
+    {
+        var plain = ParticleScene.CreatePile(30, 2, worldId: 3);
+        var scene = ParticleScene.CreatePile(30, 2, worldId: 3);
+        var opt = new OptionalSection();
+        scene.World.AddSection(opt);
+        // Empty: the snapshot and the hash are those of a world without the section.
+        Assert.Equal(plain.World.Snapshot(), scene.World.Snapshot());
+        Assert.Equal(plain.World.ComputeHash(), scene.World.ComputeHash());
+
+        opt.Value = 9;
+        byte[] snap = scene.World.Snapshot();
+        Assert.True(snap.Length > plain.World.Snapshot().Length);
+        Assert.NotEqual(plain.World.ComputeHash(), scene.World.ComputeHash());
+
+        // A world that does not know the section refuses the snapshot with a typed error.
+        var old = ParticleScene.CreatePile(30, 2, worldId: 3);
+        Assert.Throws<SnapshotFormatException>(() => old.World.Restore(snap));
+
+        // A world that knows it restores the value, and a snapshot without the section resets it.
+        var other = ParticleScene.CreatePile(30, 2, worldId: 3);
+        var otherOpt = new OptionalSection();
+        other.World.AddSection(otherOpt);
+        other.World.Restore(snap);
+        Assert.Equal(9, otherOpt.Value);
+        other.World.Restore(plain.World.Snapshot());
+        Assert.Equal(0, otherOpt.Value);
+        Assert.Equal(1, otherOpt.Resets);
+    }
+
+    private sealed class OptionalSection : ISnapshotSection
+    {
+        public int Value;
+        public int Resets;
+        public int SectionId => 101;
+        public bool IsOptional => true;
+        public bool IsPresent => Value != 0;
+        public void Reset() { Value = 0; Resets++; }
+        public void Write(StateWriter writer) { writer.WriteInt32(Value); }
+        public void Read(StateReader reader) { Value = reader.ReadInt32(); }
+    }
+
     private sealed class CounterSection : ISnapshotSection
     {
         public int Value;
