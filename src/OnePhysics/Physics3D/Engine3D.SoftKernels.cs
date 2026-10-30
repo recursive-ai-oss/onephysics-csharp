@@ -219,12 +219,13 @@ internal sealed partial class Engine3D
         return true;
     }
 
-    private void SolveContacts(float h, float invH)
+    // Solves the contacts of one task (see BuildContactTasks), in the order listed.
+    private void SolveContactTask(int task, float h, float invH)
     {
         var bodies = Core.Bodies;
-        for (int ci = 0; ci < _scCount; ci++)
+        for (int ii = _ctStart[task]; ii < _ctStart[task + 1]; ii++)
         {
-            ref SoftContact c = ref _sc[ci];
+            ref SoftContact c = ref _sc[_ctIdx[ii]];
             var d = c.Body;
             int k = 3 * c.Particle;
             float wp = d.InvMass[c.Particle];
@@ -506,7 +507,7 @@ internal sealed partial class Engine3D
     private double _pgIcsz;
     private int _pgMask, _pgTotal;
     private float _pgReach;
-    internal static int PairChunk = 256;
+    internal static int PairChunk = 32;
 
     // Pairs for the particles g0..g1-1 against the grid built by BuildPairs: the particle's nearest 2 x 2 x 2 cells, other particles with a larger number only (each pair once).
     private void FindPairs(int g0, int g1, SoftTaskBuf buf)
@@ -577,8 +578,11 @@ internal sealed partial class Engine3D
     // Particles that share an edge or a hinge, or rest closer than their spheres, never collide with each other.
     private static bool Neighbours(SoftBodyData d, int a, int b)
     {
-        long key = a < b ? ((long)a << 20) | (long)b : ((long)b << 20) | (long)a;
-        if (Array.BinarySearch(d.EdgeKey, key) >= 0 || Array.BinarySearch(d.HingeKey, key) >= 0) { return true; }
+        // The shorter of the two neighbour lists is scanned.
+        int la = d.NbrStart[a + 1] - d.NbrStart[a], lb = d.NbrStart[b + 1] - d.NbrStart[b];
+        int p = la <= lb ? a : b, q = la <= lb ? b : a;
+        var nl = d.NbrList;
+        for (int i = d.NbrStart[p], e = d.NbrStart[p + 1]; i < e; i++) { if (nl[i] == q) { return true; } }
         float dx = d.Rest[3 * a] - d.Rest[3 * b], dy = d.Rest[3 * a + 1] - d.Rest[3 * b + 1], dz = d.Rest[3 * a + 2] - d.Rest[3 * b + 2];
         float rr = 2f * d.Radius * 1.05f;
         return dx * dx + dy * dy + dz * dz < rr * rr;

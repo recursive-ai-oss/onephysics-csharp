@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.Physics3D;
@@ -402,7 +403,7 @@ public class SoftBody3DTests
         Assert.Equal(a, c);
     }
 
-    // Bodies big enough to be split across tasks by colour: a cloth, a jelly box with tetrahedra and a pressurised ball over a sphere and a box.
+    // Bodies big enough to be split into blocks that run as tasks: a cloth, a jelly box with tetrahedra and a pressurised ball over a sphere and a box.
     private static PhysicsWorld3D BigSoftScene(int threads)
     {
         var w = World3DTests.NewWorld(threads, 31, o => { o.SoftSubsteps = 4; });
@@ -418,12 +419,13 @@ public class SoftBody3DTests
     [Fact]
     public void BigBodiesGiveTheSameWorldOnAnyThreadCountAndWithOrWithoutLanes()
     {
-        var worlds = new[] { BigSoftScene(1), BigSoftScene(8), BigSoftScene(3) };
         bool lanes = Engine3D.SoftLanes;
-        int big = Engine3D.SoftBigBody, task = Engine3D.SoftTaskSize;
-        Engine3D.SoftBigBody = 64; Engine3D.SoftTaskSize = 16; // split every body by colour, in small tasks, which is what this test is about
+        int block = SoftBodyData.SoftBlockSize, chunk = Engine3D.SoftContactChunk;
+        SoftBodyData.SoftBlockSize = 24; Engine3D.SoftContactChunk = 4; // many small blocks and contact tasks, which is what this test is about
         try
         {
+            var worlds = new[] { BigSoftScene(1), BigSoftScene(8), BigSoftScene(3) };
+            Assert.True(worlds[0].Engine.SoftData[0]!.BlockCount > 4);
             for (int i = 0; i < 90; i++)
             {
                 foreach (var w in worlds) { w.Step(Dt); }
@@ -445,10 +447,10 @@ public class SoftBody3DTests
             Assert.Equal(vec.ComputeHash(), scalar.ComputeHash());
             Assert.Equal(worlds[0].ComputeHash(), vec.ComputeHash());
         }
-        finally { Engine3D.SoftLanes = lanes; Engine3D.SoftBigBody = big; Engine3D.SoftTaskSize = task; }
+        finally { Engine3D.SoftLanes = lanes; SoftBodyData.SoftBlockSize = block; Engine3D.SoftContactChunk = chunk; }
     }
 
-    // A fan of triangles around one particle: the hub has more constraints than there are colours, so the last ones land in the overflow set, which is solved in index order without lanes.
+    // A fan of triangles around one particle: the hub's edges share a particle, so they cannot be grouped in fours and are solved one by one.
     private static PhysicsWorld3D FanScene(int threads)
     {
         const int blades = 80;
@@ -469,27 +471,33 @@ public class SoftBody3DTests
     }
 
     [Fact]
-    public void AHubWithMoreConstraintsThanColoursIsTheSameOnAnyThreadCountAndWithOrWithoutLanes()
+    public void AHubWhoseEdgesCannotBeGroupedIsTheSameOnAnyThreadCountAndWithOrWithoutLanes()
     {
-        var a = FanScene(1);
-        var b = FanScene(4);
-        Assert.Equal(SoftBodyData.MaxColours + 1, a.Engine.SoftData[0]!.EdgeColours);
-        Assert.True(a.Engine.SoftData[0]!.EdgeOverflow);
         bool lanes = Engine3D.SoftLanes;
-        int big = Engine3D.SoftBigBody;
-        Engine3D.SoftBigBody = 16;
+        int block = SoftBodyData.SoftBlockSize;
         try
         {
+            SoftBodyData.SoftBlockSize = 1000; // one block, so that all the hub's edges are interior to it
+            var a = FanScene(1);
+            var b = FanScene(4);
+            var d = a.Engine.SoftData[0]!;
+            Assert.Contains(Enumerable.Range(0, d.StepKind.Length), s => d.StepKind[s] == 0 && d.StepQuadEnd[s] < d.StepEnd[s]); // the hub's edges cannot all be grouped in fours
+            SoftBodyData.SoftBlockSize = 16;
             var c = FanScene(1);
+            Assert.True(c.Engine.SoftData[0]!.BlockCount > 2);
+            SoftBodyData.SoftBlockSize = 1000;
+            var a2 = FanScene(1);
             for (int i = 0; i < 60; i++)
             {
-                Engine3D.SoftLanes = false; a.Step(Dt);
-                Engine3D.SoftLanes = true; b.Step(Dt); c.Step(Dt);
+                Engine3D.SoftLanes = false; a.Step(Dt); a2.Step(Dt);
+                Engine3D.SoftLanes = true; b.Step(Dt);
             }
 
             Assert.Equal(a.ComputeHash(), b.ComputeHash());
-            Assert.Equal(a.ComputeHash(), c.ComputeHash());
+            Assert.Equal(a.ComputeHash(), a2.ComputeHash());
+            for (int i = 0; i < 60; i++) { c.Step(Dt); }
+            Assert.True(c.Engine.SoftData[0]!.X.All(float.IsFinite));
         }
-        finally { Engine3D.SoftLanes = lanes; Engine3D.SoftBigBody = big; }
+        finally { Engine3D.SoftLanes = lanes; SoftBodyData.SoftBlockSize = block; }
     }
 }
