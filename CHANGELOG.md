@@ -6,6 +6,8 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 ## [Unreleased]
 
+- **3D soft bodies are solved in blocks, so a body of a few hundred particles can use several threads. Moved results (soft bodies only; rigid worlds and 2D are unchanged).** Each body is cut once, from its mesh, into at most 32 blocks of at most 80 particles (larger bodies get larger blocks); the constraints inside a block are solved by one task with no wait between them, the few that cross blocks follow in one phase, and constraints are grouped four at a time in `Vector128` lanes without colouring (so there is no limit on the constraints a particle can have). Contact detection and the particle pair search run in tasks of 32 particles, contacts are solved in tasks of whole particles, and the pair filter uses per-particle neighbour lists instead of binary searches. The order in which constraints are solved changes, so soft-body states, snapshot bytes and hashes differ from the previous preview; the snapshot layout is unchanged. Details in `docs/spec/softbody.md`.
+
 ## [0.4.0-preview.1]
 
 - **Soft bodies complete the 3D feature set for this preview line; the 3D engine stays `[Experimental("OPHYS0002")]`.** Every 3D scene, soft bodies included, is within its stability limits on x64 and arm64 with identical metrics, and results are bit-identical across x64, arm64, WebAssembly, vector widths and thread counts. Not every speed row meets the bar yet (within 1.15x of the fastest stable managed engine, BepuPhysics v2 or Jitter2, per scene and thread count). Measured on a Ryzen 9 7950X3D (ours / reference median step time, t1 / t8 on one core complex / t32):
