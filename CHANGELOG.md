@@ -6,6 +6,8 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 ## [Unreleased]
 
+- **3D box-against-box edge axes are tested without normalizing each axis** (about 9% off the box–box routine on pairs from a sleep-wake pile). Separations can differ from the previous preview in the last bit in some poses, so 3D world hashes and snapshot bytes move.
+
 ## [0.2.0-preview.1]
 
 - **The snapshot format is frozen at version 1.** Its layout (header, options, bodies, shapes, constraints, islands and registered sections, `docs/spec/architecture.md`) no longer changes within version 1. A later change is a new format version. Results may still move between previews.
