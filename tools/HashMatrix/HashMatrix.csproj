@@ -30,7 +30,7 @@
     <Compile Include="../../tests/Common/Vehicles3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/VehicleKinds3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Ragdolls3DScene.cs" LinkBase="Checks" />
-    <Compile Include="../../bench/Bar/Scene.cs;../../bench/Bar/Gen.cs;../../bench/Bar/Gen3.cs;../../bench/Bar/SceneBuilder2D.cs;../../bench/Bar/SceneBuilder3D.cs;../../bench/Bar/SoftGen.cs" LinkBase="Scenes" />
+    <Compile Include="../../bench/Bar/Scene.cs;../../bench/Bar/Gen.cs;../../bench/Bar/Gen3.cs;../../bench/Bar/SceneBuilder2D.cs;../../bench/Bar/SceneBuilder3D.cs;../../bench/Bar/SoftGen.cs;../../bench/Bar/SleeveRig.cs" LinkBase="Scenes" />
   </ItemGroup>
 
 </Project>
