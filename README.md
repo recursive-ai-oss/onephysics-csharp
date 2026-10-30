@@ -72,16 +72,16 @@ ulong hash = world.ComputeHash();
 
 ## Guide
 
-- [Install](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/install.md) and [quick start](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/quick-start.md)
-- [The three tiers](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/tiers.md)
-- [Events](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/events.md)
-- [Queries, layers and filters](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/queries-and-layers.md)
-- [Rollback and lockstep](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/rollback.md)
-- [Determinism guarantees](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/determinism.md)
-- [Units and sizes](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/units.md), [names and conventions](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/api-names.md), [input limits](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/limits.md)
-- [Coming from Unity](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/unity-mapping.md)
-- [Port specifications](https://github.com/recursive-ai-oss/onephysics-csharp/tree/main/docs/spec): the normative, language-neutral description of every choice that affects the bits.
-- [Changelog](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/CHANGELOG.md) and [contributing](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/CONTRIBUTING.md)
+- [Install](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/install.md) and [quick start](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/quick-start.md)
+- [The three tiers](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/tiers.md)
+- [Events](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/events.md)
+- [Queries, layers and filters](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/queries-and-layers.md)
+- [Rollback and lockstep](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/rollback.md)
+- [Determinism guarantees](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/determinism.md)
+- [Units and sizes](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/units.md), [names and conventions](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/api-names.md), [input limits](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/limits.md)
+- [Coming from Unity](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/unity-mapping.md)
+- [Port specifications](https://github.com/recursive-ai-oss/onephysics-csharp/tree/v0.4.0-preview.1/docs/spec): the normative, language-neutral description of every choice that affects the bits.
+- [Changelog](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/CHANGELOG.md) and [contributing](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/CONTRIBUTING.md)
 
 ## Licence
 
