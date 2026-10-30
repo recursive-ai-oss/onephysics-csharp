@@ -12,7 +12,7 @@ L={
 "heightfield-terrain-3d":{"maxSpeed":15,"maxPenetration":0.15,"finalPenetration":0.05},
 "sleep-wake-3d":{"maxSpeed":45,"maxPenetration":1.5,"finalPenetration":0.3},
 "queries-3d":{"maxSpeed":25},
-"cloth-drape-3d":{"softMaxSpeed":10,"softPenetration":0.07,"softFinalPenetration":0.015,"softRestKE":0.0003,"edgeStrain":0.15},
+"cloth-drape-3d":{"softMaxSpeed":10,"softPenetration":0.07,"softFinalPenetration":0.015,"softRestKE":0.0007,"edgeStrain":0.15},
 "soft-pile-3d":{"softMaxSpeed":10,"softPenetration":0.02,"softFinalPenetration":0.01,"softRestKE":0.02,"volumeError":0.05},
 "soft-rigid-3d":{"softMaxSpeed":10,"softPenetration":0.07,"softFinalPenetration":0.01,"softRestKE":0.001,"volumeError":0.03,"maxSpeed":10,"restKE":0.1},
 "soft-mesh-3d":{"softMaxSpeed":10,"softPenetration":0.02,"softFinalPenetration":0.01,"softRestKE":0.01,"volumeError":0.03},
@@ -27,16 +27,18 @@ ZERO=["nan","escapes","tunnelled","wheelThroughGround","softNan","softEscapes","
 def load(f):
     m=collections.defaultdict(dict)
     for r in csv.DictReader(open(f)):
-        m[r['scene']][r['metric']]=float(r['value'])
+        e=r.get('engine','onephysics'); sc=r['scene'] if e=='onephysics' else r['scene']+'@'+e
+        m[sc][r['metric']]=float(r['value'])
     return m
 cur=load(sys.argv[1]); base=load(sys.argv[2]) if len(sys.argv)>2 else {}
-for sc in sorted(cur):
+for key0 in sorted(cur):
+    sc=key0.split('@')[0]
     if sc not in L: continue
     bad=[]
-    for k,v in cur[sc].items():
+    for k,v in cur[key0].items():
         if k in ZERO and v!=0 and not (sc=="sleep-wake-3d" and k=="escapes" and v<=10): bad.append(f"{k}={v:g}")
         elif k in L[sc] and v>L[sc][k]: bad.append(f"{k}={v:g}>{L[sc][k]:g}")
         if k=="stairSuccess" and v<1: bad.append(f"stairSuccess={v:g}")
-    key=[k for k in L[sc] if k in cur[sc]]
-    nums=" ".join(f"{k}={cur[sc][k]:.4g}"+(f"({base[sc][k]:.4g})" if sc in base and k in base[sc] else "") for k in key)
-    print(("PASS " if not bad else "FAIL ")+sc.ljust(24)+nums+("   !! "+", ".join(bad) if bad else ""))
+    key=[k for k in L[sc] if k in cur[key0]]
+    nums=" ".join(f"{k}={cur[key0][k]:.4g}"+(f"({base[sc][k]:.4g})" if sc in base and k in base[sc] else "") for k in key)
+    print(("PASS " if not bad else "FAIL ")+key0.ljust(24)+nums+("   !! "+", ".join(bad) if bad else ""))

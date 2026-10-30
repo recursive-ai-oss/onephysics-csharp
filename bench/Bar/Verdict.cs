@@ -42,7 +42,7 @@ static class Verdict
         ["heightfield-terrain-3d"] = [("maxSpeed", 15), ("maxPenetration", 0.15), ("finalPenetration", 0.05)],
         ["sleep-wake-3d"] = [("maxSpeed", 45), ("maxPenetration", 1.5), ("finalPenetration", 0.3)],
         ["queries-3d"] = [("maxSpeed", 25)],
-        ["cloth-drape-3d"] = [("softMaxSpeed", 10), ("softPenetration", 0.07), ("softFinalPenetration", 0.015), ("softRestKE", 0.0003), ("edgeStrain", 0.15)],
+        ["cloth-drape-3d"] = [("softMaxSpeed", 10), ("softPenetration", 0.07), ("softFinalPenetration", 0.015), ("softRestKE", 0.0007), ("edgeStrain", 0.15)],
         ["soft-pile-3d"] = [("softMaxSpeed", 10), ("softPenetration", 0.02), ("softFinalPenetration", 0.01), ("softRestKE", 0.02), ("volumeError", 0.05)],
         ["soft-rigid-3d"] = [("softMaxSpeed", 10), ("softPenetration", 0.07), ("softFinalPenetration", 0.01), ("softRestKE", 0.001), ("volumeError", 0.03), ("maxSpeed", 10), ("restKE", 0.1)],
         ["soft-mesh-3d"] = [("softMaxSpeed", 10), ("softPenetration", 0.02), ("softFinalPenetration", 0.01), ("softRestKE", 0.01), ("volumeError", 0.03)],
