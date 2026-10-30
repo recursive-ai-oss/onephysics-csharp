@@ -131,7 +131,7 @@ internal static class FuzzSoftBodies3D
         var idx = new int[c]; var w = new float[c];
         for (int i = 0; i < c; i++)
         {
-            idx[i] = r.Byte() >= 245 ? r.Index(nj) : (r.Byte() % nj);
+            idx[i] = r.Byte() >= 245 ? r.Index(nj) : (r.Byte() % Math.Max(nj, 1));
             w[i] = r.Byte() >= 240 ? r.Float() : (i % 4 < 2 ? 0.5f : 0f);
         }
 
