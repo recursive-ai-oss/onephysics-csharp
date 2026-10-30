@@ -58,7 +58,17 @@ Shape kinds (3D, local to the body; `radius` is the skin radius where one applie
 - `mesh nv ni v… i…`: `nv` vertices (x y z each) then `ni` indices (three per triangle, counter-clockwise seen from above for terrain); static bodies only.
 - `heightfield nx nz cell ox oy oz h…`: `nx × nz` samples, row-major with `nx` samples along x per row, cell size `cell` in x and z, lower corner at body-local `(ox, oy, oz)`, heights `h` added to `oy`; static bodies only, split into two triangles per cell with the diagonal from `(i, j+1)` to `(i+1, j)`.
 
-The `character` record applies in 3D too: the last `body` must be a single y-aligned capsule (the character is centred on the body origin); the 3D scripts walk along +x. Vehicles and soft bodies get their own records when their stages arrive.
+A `soft` record follows the bodies (3D only): `soft preset kind x y z qx qy qz qw mass p…`. `preset` is `cloth`, `rubber` or `jelly` (each engine's own starting values for that kind of material); the pose places the mesh's origin; `mass` is the total mass in kg. `kind` and its parameters:
+
+| kind | parameters | mesh (built by `bench/Bar/SoftGen.cs`, the same for every engine) |
+|---|---|---|
+| `cloth` | width depth n pinMode | an (n+1) x (n+1) grid in the xz plane, centred, two triangles per cell; `pinMode` 0 pins nothing, 1 the four corners, 2 the two corners of the edge at the lowest z |
+| `box` | sx sy sz nx ny nz | a lattice of full extents sx x sy x sz with nx x ny x nz cells, six tetrahedra per cell (Kuhn subdivision, positive orientation), and the outward boundary triangles |
+| `ball` | radius n | the lattice of an n x n x n cube with every point pulled onto the sphere by max-norm over length |
+
+A driver builds one soft body per record, in record order, and dumps six doubles per particle (x y z vx vy vz) after the bodies' data, particles in vertex order, bodies in record order (the extra channel that vehicles use for wheels).
+
+The `character` record applies in 3D too: the last `body` must be a single y-aligned capsule (the character is centred on the body origin); the 3D scripts walk along +x. Vehicles get their own records.
 
 ## Scene set
 
@@ -97,7 +107,30 @@ The `character` record applies in 3D too: the last `body` must be a single y-ali
 
 | `ragdoll-powered-3d` | 661 | 600 | 50 powered humanoids of thirteen parts (swing-twist joints with limits, pose drive on the hips and shoulders tracking a looping pose) standing on a ground slab, substeps 8; every fifth is hit by a 1.56 kg box at 6 m/s | poseErrorP95, fallen, jointError, maxSpeed, nan, escapes |
 
-Soft bodies are defined when their stage arrives.
+### Soft bodies
+
+| scene | bodies | steps | content |
+|---|---|---|---|
+| `cloth-drape-3d` | 3 (+1 soft) | 600 | a 4 x 4 m cloth of 24 x 24 cells (2 kg, `cloth` preset), pinned at the two corners of one edge, 2 m above a floor with a static sphere (radius 0.8) and a static box (1.2 m cube) under it: it falls over both and hangs from its pins |
+| `soft-pile-3d` | 1 (+24 soft) | 600 | twelve `jelly` cubes (0.6 m, 3 x 3 x 3 cells, 3 kg) and twelve `rubber` balls (radius 0.35, 3 kg) dropped in a walled 5 x 5 m yard in two layers |
+| `soft-rigid-3d` | 7 (+6 soft) | 600 | six `jelly` cushions (1.6 x 0.4 x 1.6 m, 6 x 2 x 6 cells, 8 kg) with a 0.5 m rigid box of 5 kg (density 40) released 1.25 to 1.75 m above each (0.8 to 1.3 m above the cushion): the cushions stop the boxes and push them back |
+| `soft-mesh-3d` | 1 (+20 soft) | 600 | the triangle-mesh terrain of `mesh-terrain-3d` with ten `jelly` cubes (0.6 m, 2.5 kg) and ten `rubber` cubes (0.5 m, 2 kg) dropped 1 to 1.6 m above its hills near the origin |
+
+All four list `onephysics` and `jitter2` as their engines. Metrics (soft bodies; computed from the particle dump by `Metrics3Soft.cs`; the particle sphere radius is a quarter of the body's mean rest edge length for every engine):
+
+| metric | definition |
+|---|---|
+| `softMaxSpeed` | largest particle speed over all dumped frames, m/s |
+| `softPenetration` | deepest particle sphere into any rigid shape over all dumped frames, m |
+| `softFinalPenetration` | the median over the last 3 frames of the 95th-percentile particle depth |
+| `softRestKE` | the median over the last 3 frames of the 90th-percentile per-particle kinetic energy per unit mass |
+| `edgeStrain` | 95th percentile of abs(length / rest length - 1) over all edges in the last frame |
+| `volumeError` | largest abs(V / V0 - 1) over the soft volumes in the last frame (sum of signed tetrahedron volumes) |
+| `softEscapes` | particles outside the scene's container grown by the escape margin, worst frame (0 required) |
+| `softTunnelled` | particles whose centre is inside a solid rigid shape in the last frame (triangle soups are not solid; 0 required) |
+| `softNan` | non-finite particle values (0 required) |
+
+Thresholds (maximum): `cloth-drape-3d` softMaxSpeed 10, softPenetration 0.07, softFinalPenetration 0.015, softRestKE 0.0003, edgeStrain 0.15 (1.5 x Jitter2's values 6.1, 0.040, 0.010, 0.00018, 0.095, rounded up: Jitter2 is stable here, so this scene binds). `soft-pile-3d`: softMaxSpeed 10, softPenetration 0.02, softFinalPenetration 0.01, softRestKE 0.02, volumeError 0.05. `soft-rigid-3d`: softMaxSpeed 10, softPenetration 0.07, softFinalPenetration 0.01, softRestKE 0.001, volumeError 0.03, maxSpeed 10, restKE 0.1. `soft-mesh-3d`: softMaxSpeed 10, softPenetration 0.02, softFinalPenetration 0.01, softRestKE 0.01, volumeError 0.03. In the last three Jitter2 is not stable (its tetrahedra collapse and particles end inside the floor, walls and boxes: `softTunnelled` 340 to 380 in the pile and the cushions, volumeError 0.45 to 0.97), so these thresholds are this library's values with a margin and no reference binds them. Jitter2 is driven from its published API reference as vertices that are rigid bodies (mass spread evenly), one spring constraint per edge (20 Hz, damping ratio 0.5; 8 Hz and 0.3 for `jelly`; the documentation gives no stiffness values), triangle shapes (thickness half the mean edge length) or tetrahedron shapes, and its soft-body collision filters. Jolt's soft bodies are not driven yet.
 
 ## Step-state dump
 

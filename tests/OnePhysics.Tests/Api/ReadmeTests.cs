@@ -95,6 +95,11 @@ public class ReadmeTests
         var q3 = GuideExamples.QuickStart3D.Run();
         Assert.Equal(q3, GuideExamples.QuickStart3D.Run());
 
+        var soft = GuideExamples.SoftBodies.Run();
+        Assert.Equal(soft, GuideExamples.SoftBodies.Run());
+        Assert.InRange(soft.ClothY, 0.0, 1.8);
+        Assert.InRange(soft.CubeVolumeRatio, 0.9, 1.1);
+
         var t = GuideExamples.Tiers.Run();
         Assert.Equal(t, GuideExamples.Tiers.Run());
         Assert.True(t.Contacts > 0);
