@@ -17,6 +17,7 @@ internal struct SoftContact
     public float C0;           // separation of the particle surface from the shape at detection (negative when overlapping)
     public double X, Y, Z;     // particle centre at detection
     public float Mu;
+    public float Applied;      // sum of the contact multipliers applied so far in this substep
     public float Rx, Ry, Rz;   // contact point relative to the rigid body's centre of mass
 }
 
@@ -143,6 +144,7 @@ internal sealed partial class Engine3D
             _scCount = 0;
             for (int a = 0; a < _awakeSoftCount; a++) { DetectContacts(_awakeSoft[a], h); }
             BuildPairs();
+            SoftenDepenetration(h);
             for (int a = 0; a < _awakeSoftCount; a++) { Array.Clear(_awakeSoft[a].Lambda); }
             for (int it = 0; it < iterations; it++)
             {

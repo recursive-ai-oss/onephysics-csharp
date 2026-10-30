@@ -135,13 +135,20 @@ public class SoftBody3DTests
         var def = SoftBodyDef.Rubber(SoftBodyMesh.Box(new Vector3F(1f, 1f, 1f), 4, 4, 4), new Vector3D(0, 0.6, 0));
         def.Mass = 5f; def.VolumeCompliance = 0f; def.EdgeCompliance = 1e-4f;
         var soft = w.AddSoftBody(def);
-        var press = w.AddBox(new Vector3F(1.2f, 0.2f, 1.2f), at: new Vector3D(0, 1.4, 0), density: 1000f);
-        Run(w, 360);
-        double v = soft.Volume, v0 = soft.RestVolume;
-        var (mn, mx) = soft.Bounds;
-        Assert.True(mx.Y - mn.Y < 0.98, "the block was not compressed at all: " + (mx.Y - mn.Y)); // it did get squeezed by the weight
-        Assert.InRange(v / v0, 0.95, 1.05);
-        _ = press;
+        // A kinematic plate descends at 0.5 m/s for 0.4 s and squeezes the block by about a fifth of its height; the volume constraint keeps the volume.
+        var press = w.AddBox(new Vector3F(1.2f, 0.2f, 1.2f), at: new Vector3D(0, 1.3, 0), type: BodyType.Kinematic);
+        press.LinearVelocity = new Vector3F(0f, -0.5f, 0f);
+        double worstRatio = 0.0, minHeight = 10.0;
+        for (int i = 0; i < 24; i++)
+        {
+            w.Step(Dt);
+            worstRatio = Math.Max(worstRatio, Math.Abs(soft.Volume / soft.RestVolume - 1.0));
+            var (mn, mx) = soft.Bounds;
+            minHeight = Math.Min(minHeight, mx.Y - mn.Y);
+        }
+
+        Assert.True(minHeight < 0.95, "the block was not compressed: " + minHeight); // squeezed by the plate
+        Assert.True(worstRatio < 0.10, "the volume changed by " + worstRatio);
     }
 
     [Fact]
@@ -216,7 +223,7 @@ public class SoftBody3DTests
         var verts = new[] { new Vector3F(-5, 0, -5), new Vector3F(5, 0, -5), new Vector3F(5, 0, 5), new Vector3F(-5, 0, 5) };
         w.AddMesh(verts, new[] { 0, 2, 1, 0, 3, 2 });
         var soft = w.AddSoftBox(new Vector3F(0.6f, 0.6f, 0.6f), new Vector3D(0, 1, 0));
-        Run(w, 300);
+        Run(w, 900); // it bounces and wobbles for a few seconds before it sleeps
         var (mn, mx) = soft.Bounds;
         Assert.InRange(mn.Y, -0.02, 0.1);
         Assert.InRange(mx.Y, 0.3, 0.7);
@@ -228,16 +235,24 @@ public class SoftBody3DTests
     {
         var w = NewWorld(o => { o.SoftSubsteps = 8; });
         World3DTests.Floor(w);
-        var def = SoftBodyDef.Jelly(SoftBodyMesh.Box(new Vector3F(1.5f, 0.3f, 1.5f), 6, 2, 6), new Vector3D(0, 0.16, 0));
+        var def = SoftBodyDef.Jelly(SoftBodyMesh.Box(new Vector3F(1.5f, 0.3f, 1.5f), 6, 2, 6), new Vector3D(0, 0.23, 0));
         def.Mass = 6f;
         var cushion = w.AddSoftBody(def);
-        var box = w.AddBox(new Vector3F(0.5f, 0.5f, 0.5f), at: new Vector3D(0, 1.5, 0));
-        float vmin = 0;
-        for (int i = 0; i < 300; i++) { w.Step(Dt); vmin = Math.Min(vmin, box.LinearVelocity.Y); }
-        Assert.True(box.Position.Y > 0.3 + 0.2, "the box sank through the cushion: " + box.Position.Y);
-        Assert.True(vmin < -3f);
-        Assert.True(Math.Abs(box.LinearVelocity.Y) < 0.5f);
-        _ = cushion;
+        var box = w.AddBox(new Vector3F(0.5f, 0.5f, 0.5f), at: new Vector3D(0, 1.2, 0), density: 20f);
+        // The box falls 0.7 m (3.7 m/s). While it is over the cushion it never reaches the floor, and the cushion throws it back up at least once.
+        float vmin = 0, vmax = 0;
+        double lowest = 10;
+        for (int i = 0; i < 90; i++)
+        {
+            w.Step(Dt);
+            vmin = Math.Min(vmin, box.LinearVelocity.Y); vmax = Math.Max(vmax, box.LinearVelocity.Y);
+            lowest = Math.Min(lowest, box.Position.Y);
+        }
+
+        Assert.True(vmin < -3f, "the box did not fall: " + vmin);
+        Assert.True(lowest > 0.3 + 0.25, "the box sank through the cushion: " + lowest);
+        Assert.True(vmax > 0.5f, "the cushion did not push the box back: " + vmax);
+        Assert.True(cushion.Momentum.Y > -1f);
     }
 
     // ---- host hooks

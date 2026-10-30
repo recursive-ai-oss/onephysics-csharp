@@ -266,10 +266,6 @@ internal sealed partial class Engine3D
         }
     }
 
-    internal static bool SoftNoSweep;
-    internal int DebugContactCount => _scCount;
-    internal int DebugCandidates => _candCount;
-
     private void AddContact(int first, in SoftContact sc)
     {
         if (_scCount - first < 4)
@@ -349,7 +345,7 @@ internal sealed partial class Engine3D
         double sx = _cPos[3 * c], sy = _cPos[3 * c + 1], sz = _cPos[3 * c + 2];
         var sphere = d.SphereShape;
 
-        if (fast && !SoftNoSweep)
+        if (fast)
         {
             // Continuous: sweep the particle from where it started the substep, relative to the shape's own motion in the substep, against the shape's pose at the end.
             double ex = sx - _cPos0[3 * c], ey = sy - _cPos0[3 * c + 1], ez = sz - _cPos0[3 * c + 2];
@@ -452,9 +448,6 @@ internal sealed partial class Engine3D
             var d = c.Body;
             int k = 3 * c.Particle;
             float wp = d.InvMass[c.Particle];
-            float dx = (float)(d.Pos[k] - c.X), dy = (float)(d.Pos[k + 1] - c.Y), dz = (float)(d.Pos[k + 2] - c.Z);
-            float cv = c.C0 + c.Nx * dx + c.Ny * dy + c.Nz * dz;
-            if (!(cv < 0f)) { continue; }
             float nx = c.Nx, ny = c.Ny, nz = c.Nz;
             float wb = 0f, invM = 0f;
             float rnx = 0f, rny = 0f, rnz = 0f, iwx = 0f, iwy = 0f, iwz = 0f;
@@ -468,9 +461,14 @@ internal sealed partial class Engine3D
                 wb = invM + rnx * iwx + rny * iwy + rnz * iwz;
             }
 
+            float dx = (float)(d.Pos[k] - c.X), dy = (float)(d.Pos[k + 1] - c.Y), dz = (float)(d.Pos[k + 2] - c.Z);
+            // The body has already moved away by wb times what earlier passes applied (c.Applied), which opens the gap as well.
+            float cv = c.C0 + c.Nx * dx + c.Ny * dy + c.Nz * dz + wb * c.Applied;
+            if (!(cv < 0f)) { continue; }
             float wsum = wp + wb;
             if (!(wsum > 0f)) { continue; }
             float lam = -cv / wsum;
+            c.Applied += lam;
             float sp = wp * lam;
             d.Pos[k] += nx * sp; d.Pos[k + 1] += ny * sp; d.Pos[k + 2] += nz * sp;
             if (c.Coupled)
@@ -486,6 +484,26 @@ internal sealed partial class Engine3D
             }
 
             if (c.Mu > 0f) { Friction3(ref c, d, k, wp, lam, h, invH); }
+        }
+    }
+
+    // Split-impulse style push-out: a particle that starts a substep inside a surface (a body placed resting on a floor, a cloth laid on a box) is only brought out at SoftPushOutSpeed, so the
+    // neighbours it is connected to are not dragged along. The contact's constant term is raised by the depth that is not allowed to be removed this substep.
+    private const float SoftPushOutSpeed = 1f;
+
+    private void SoftenDepenetration(float h)
+    {
+        float allowed = SoftPushOutSpeed * h;
+        for (int ci = 0; ci < _scCount; ci++)
+        {
+            ref SoftContact c = ref _sc[ci];
+            if (c.Coupled) { continue; }
+            var d = c.Body;
+            int k = 3 * c.Particle;
+            if (d.InvMass[c.Particle] == 0f) { continue; }
+            float dx = (float)(d.Prev[k] - c.X), dy = (float)(d.Prev[k + 1] - c.Y), dz = (float)(d.Prev[k + 2] - c.Z);
+            float cp = c.C0 + c.Nx * dx + c.Ny * dy + c.Nz * dz;
+            if (cp < -allowed) { c.C0 += -cp - allowed; }
         }
     }
 
@@ -608,6 +626,18 @@ internal sealed partial class Engine3D
             ApplyIw(b, _rbL[kb], _rbL[kb + 1], _rbL[kb + 2], out float wx, out float wy, out float wz);
             w[0] += wx; w[1] += wy; w[2] += wz;
             bodies.SleepTime[b] = 0f;
+            // The body ends the step where the particles met it: the displacement the reactions gave it is applied to its pose as well, so that no overlap is left to be pushed out next step
+            // (an overlap resolved there would turn into velocity and give the body energy).
+            var pos = bodies.PositionOf(b);
+            pos[0] += WorldCore.Grid(_rbDp[kb]); pos[1] += WorldCore.Grid(_rbDp[kb + 1]); pos[2] += WorldCore.Grid(_rbDp[kb + 2]);
+            var rot = bodies.RotationOf(b);
+            float dx = _rbDr[kb], dy = _rbDr[kb + 1], dz = _rbDr[kb + 2];
+            float qx = rot[0], qy = rot[1], qz = rot[2], qw = rot[3];
+            // q += ½ (ω_virtual, 0) ⊗ q
+            float nx = qw * dx + (dy * qz - dz * qy), ny = qw * dy + (dz * qx - dx * qz), nz = qw * dz + (dx * qy - dy * qx), nw = -(dx * qx + dy * qy + dz * qz);
+            qx += 0.5f * nx; qy += 0.5f * ny; qz += 0.5f * nz; qw += 0.5f * nw;
+            float len = float.Sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
+            if (len > 0f) { rot[0] = qx / len; rot[1] = qy / len; rot[2] = qz / len; rot[3] = qw / len; }
         }
     }
 
