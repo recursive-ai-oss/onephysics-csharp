@@ -15,6 +15,7 @@
   <ItemGroup>
     <Compile Include="../Common/SmokeProgram.cs" LinkBase="Common" />
     <Compile Include="../Common/Services3DScene.cs" LinkBase="Common" />
+    <Compile Include="../Common/SoftBodies3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Characters3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Vehicles3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/VehicleKinds3DScene.cs" LinkBase="Common" />

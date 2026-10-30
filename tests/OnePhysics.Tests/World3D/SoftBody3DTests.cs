@@ -393,4 +393,12 @@ public class SoftBody3DTests
         Assert.True(w.GetSnapshotSizeBound() >= w.GetSnapshotSize());
         Assert.Equal(w.Snapshot().Length, w.GetSnapshotSize());
     }
+
+    [Fact]
+    public void TheSharedSceneIsTheSameOnAnyThreadCountAndAfterARestore()
+    {
+        ulong a = SoftBodies3DScene.Run(1, false), b = SoftBodies3DScene.Run(3, false), c = SoftBodies3DScene.Run(1, true);
+        Assert.Equal(a, b);
+        Assert.Equal(a, c);
+    }
 }

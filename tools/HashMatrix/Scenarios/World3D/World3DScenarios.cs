@@ -28,6 +28,7 @@ internal static class World3DScenarios
         Scenarios.Register("world3d/ragdolls", ctx => Ragdolls3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
         Scenarios.Register("world3d/buoyancy", RunBuoyancy);
         Scenarios.Register("world3d/softbody", RunSoftBodies);
+        Scenarios.Register("world3d/softbodies", ctx => SoftBodies3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
         Scenarios.Register("world3d/services", ctx => Services3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
     }
 
