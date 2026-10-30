@@ -123,6 +123,8 @@ internal sealed partial class Engine3D
 
         public void Reset()
         {
+            // A world that never made a soft body restores without allocating.
+            if (_e.SoftHandles.HighWater == 0 && _e._softParticles == 0) { return; }
             _e.SoftHandles = new HandleTable();
             _e.SoftData = new SoftBodyData?[4];
             _e._softParticles = 0;
@@ -189,6 +191,8 @@ internal sealed partial class Engine3D
             try
             {
                 def.Mesh = tets ? SoftBodyMesh.FromTetrahedra(verts, idx) : SoftBodyMesh.FromTriangles(verts, idx);
+                // The mesh repairs a tetrahedron of negative volume by swapping two indices. A written snapshot never holds one, so a changed index list means the bytes are not ours and would not write back the same.
+                if (tets && !def.Mesh.Tetrahedra.SequenceEqual(idx)) { throw r.Error("soft-body tetrahedron with negative volume"); }
                 def.Position = new Vector3D(r.ReadDouble(), r.ReadDouble(), r.ReadDouble());
                 def.Rotation = new QuaternionF(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
                 def.Scale = r.ReadSingle();

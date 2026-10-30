@@ -640,7 +640,8 @@ internal sealed partial class Engine3D
             float nx = qw * dx + (dy * qz - dz * qy), ny = qw * dy + (dz * qx - dx * qz), nz = qw * dz + (dx * qy - dy * qx), nw = -(dx * qx + dy * qy + dz * qz);
             qx += 0.5f * nx; qy += 0.5f * ny; qz += 0.5f * nz; qw += 0.5f * nw;
             float len = float.Sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
-            if (len > 0f) { rot[0] = qx / len; rot[1] = qy / len; rot[2] = qz / len; rot[3] = qw / len; }
+            // A body with a damaged inverse inertia can overflow here; its rotation is then kept, so the pose stays a unit quaternion and the next step reports the body.
+            if (len > 0f && float.IsFinite(len)) { rot[0] = qx / len; rot[1] = qy / len; rot[2] = qz / len; rot[3] = qw / len; }
         }
     }
 
