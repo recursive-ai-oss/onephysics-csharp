@@ -290,6 +290,14 @@ public sealed class IslandSet
         return components;
     }
 
+    /// <summary>Adds to a snapshot size bound the most <see cref="Write"/> can take. Every island holds at least one body and no body is in two, so a table never has more slots than the world has bodies.</summary>
+    internal void WriteBound(StateWriter w, int bodySlots)
+    {
+        int slots = Math.Max(_ids.HighWater, bodySlots);
+        _ids.WriteBound(w, slots);
+        w.AddBound(5L * slots);
+    }
+
     internal void Write(StateWriter w)
     {
         _ids.Write(w);

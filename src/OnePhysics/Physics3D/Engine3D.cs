@@ -666,6 +666,14 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     // ------------------------------------------------------------------ snapshot section
 
+    // Sensor events a snapshot can hold: per step one enter and one exit per pair slot, and the exits raised by calls since the last step.
+    private void AddSensorEventBound(StateWriter w, long pairs)
+    {
+        var ev = Core.Events;
+        long count = (ev.Wants(EventKind.SensorEnter) ? pairs : 0) + (ev.Wants(EventKind.SensorExit) ? 2 * pairs : 0);
+        w.AddBound(count * PhysicsEvent.SnapshotBytes);
+    }
+
     public void Write(StateWriter w)
     {
         bool joints = LiveJointCount() > 0;
@@ -714,23 +722,34 @@ internal sealed partial class Engine3D : ISnapshotSection
             w.WriteUInt32(Category[s]); w.WriteUInt32(Mask[s]); w.WriteInt32(Group[s]); w.WriteInt32(NextShape[s]);
         }
 
-        w.WriteInt32(PairHigh);
-        for (int p = 0; p < PairHigh; p++)
+        if (w.IsBound)
         {
-            w.WriteBool(PairLive[p]);
-            if (!PairLive[p]) { continue; }
-            w.WriteInt32(PairA[p]); w.WriteInt32(PairB[p]);
-            if (PairCons[p] == SensorOverlap) { w.WriteInt32(1); w.WriteInt32(SensorOverlap); continue; } // an overlapping sensor pair: a chain holding the marker
-            int n = 0;
-            for (int c = PairCons[p]; c >= 0; c = ConsNext[c]) { n++; }
-            w.WriteInt32(n);
-            for (int c = PairCons[p]; c >= 0; c = ConsNext[c]) { w.WriteInt32(c); }
+            // A live pair takes 13 bytes and one word per constraint in its chain (a sensor overlap one word for its marker); a dead slot 1 byte and a free-stack word. The chains hold each constraint once.
+            long pairs = Math.Max(PairLive.Length, PairHigh), slots = Math.Max(Core.Constraints.SlotCapacity, Core.Constraints.HighWater);
+            w.AddBound(8 + (17 * pairs) + (4 * slots));
+            AddSensorEventBound(w, pairs);
+        }
+        else
+        {
+            w.WriteInt32(PairHigh);
+            for (int p = 0; p < PairHigh; p++)
+            {
+                w.WriteBool(PairLive[p]);
+                if (!PairLive[p]) { continue; }
+                w.WriteInt32(PairA[p]); w.WriteInt32(PairB[p]);
+                if (PairCons[p] == SensorOverlap) { w.WriteInt32(1); w.WriteInt32(SensorOverlap); continue; } // an overlapping sensor pair: a chain holding the marker
+                int n = 0;
+                for (int c = PairCons[p]; c >= 0; c = ConsNext[c]) { n++; }
+                w.WriteInt32(n);
+                for (int c = PairCons[p]; c >= 0; c = ConsNext[c]) { w.WriteInt32(c); }
+            }
+
+            // The contact stack bottom to top, then the sensor stack as complements (~slot); a world without sensor pairs writes the same bytes as before.
+            w.WriteInt32(PairFreeCount + SensorFreeCount);
+            w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
+            for (int i = 0; i < SensorFreeCount; i++) { w.WriteInt32(~SensorFree[i]); }
         }
 
-        // The contact stack bottom to top, then the sensor stack as complements (~slot); a world without sensor pairs writes the same bytes as before.
-        w.WriteInt32(PairFreeCount + SensorFreeCount);
-        w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
-        for (int i = 0; i < SensorFreeCount; i++) { w.WriteInt32(~SensorFree[i]); }
         if (joints || services || chars || vehs || rags || fluids)
         {
             // Version 2: a presence-flags word, then the flagged blocks in a fixed order: joints, services (layers, filters, sensors), characters.

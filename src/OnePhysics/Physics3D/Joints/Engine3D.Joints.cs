@@ -216,6 +216,9 @@ internal sealed partial class Engine3D
             w.WriteBool(live);
             if (live) { Joints[c].Write(w); }
         }
+
+        // A slot that holds a contact now can hold a joint's flag byte without the table growing.
+        if (w.IsBound) { w.AddBound(Math.Max(0, cs.SlotCapacity - n)); }
     }
 
     private JointData3D[] ReadJoints(StateReader r)
