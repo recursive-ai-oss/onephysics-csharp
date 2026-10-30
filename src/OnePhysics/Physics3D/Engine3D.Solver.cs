@@ -103,7 +103,7 @@ internal sealed partial class Engine3D
 
     private float _dynBias, _dynMass, _dynImpulse, _stBias, _stMass, _stImpulse;
     private float _liteDynBias, _liteDynMass, _liteDynImpulse, _liteStBias, _liteStMass, _liteStImpulse;
-    private JointKernelParams _jointParams;
+    private JointKernelParams _jointParams, _liteJointParams;
 
     /// <summary>Once per step before anything is prepared: sizes the wide groups (one per batch) and the constraint-to-lane map, and computes the soft-constraint coefficients.</summary>
     public void BeginSolve(int batches, in StepContext ctx)
@@ -115,6 +115,9 @@ internal sealed partial class Engine3D
             float liteHertz = Opt.ContactHertz > liteCap ? liteCap : Opt.ContactHertz;
             MakeSoft(liteHertz, Opt.ContactDampingRatio, ctx.SubstepDt, out _liteDynBias, out _liteDynMass, out _liteDynImpulse);
             MakeSoft(2f * liteHertz, Opt.ContactDampingRatio, ctx.SubstepDt, out _liteStBias, out _liteStMass, out _liteStImpulse);
+            float liteJh = Opt.JointHertz > liteCap ? liteCap : Opt.JointHertz;
+            MakeSoft(liteJh, Opt.JointDampingRatio, ctx.SubstepDt, out float lbias, out float lmass, out float limp);
+            _liteJointParams = new JointKernelParams(lmass, lmass * lbias, limp);
             return;
         }
 
@@ -356,6 +359,7 @@ internal sealed partial class Engine3D
     {
         if (constraints.Length == 0) { return; }
         var kp = new KernelParams(ctx.InverseSubstepDt, Opt.PushOutVelocity, Opt.ContactSlop, Opt.RestitutionThreshold);
+        var jp = ctx.Schedule != 0 ? _liteJointParams : _jointParams;
         var cons = Core.Constraints;
         if (cons.Color[constraints[0]] == ConstraintStore.Overflow)
         {
@@ -367,7 +371,7 @@ internal sealed partial class Engine3D
                 {
                     // A joint's own rows first, then its point block, as the joint's rows have always been ordered.
                     if (Joints[c].Type != (byte)JointType3D.Point) { SolveJoint(c, phase, in ctx); }
-                    if (slot >= 0) { JointKernel3D.Run<Lanes1>(this, slot >> 3, slot & 7, 1, phase, in _jointParams); }
+                    if (slot >= 0) { JointKernel3D.Run<Lanes1>(this, slot >> 3, slot & 7, 1, phase, in jp); }
                 }
                 else if (slot >= 0) { ContactKernel3D.Run<Lanes1>(this, slot >> 3, slot & 7, 1, phase, in kp); }
             }
@@ -391,9 +395,9 @@ internal sealed partial class Engine3D
         if (jcount > 0)
         {
             int jgroup = group;
-            if (KernelWidth == 1) { JointKernel3D.Run<Lanes1>(this, jgroup, 0, jcount, phase, in _jointParams); }
-            else if (KernelWidth == 4) { JointKernel3D.Run<Lanes128>(this, jgroup, 0, jcount, phase, in _jointParams); }
-            else { JointKernel3D.Run<Lanes256>(this, jgroup, 0, jcount, phase, in _jointParams); }
+            if (KernelWidth == 1) { JointKernel3D.Run<Lanes1>(this, jgroup, 0, jcount, phase, in jp); }
+            else if (KernelWidth == 4) { JointKernel3D.Run<Lanes128>(this, jgroup, 0, jcount, phase, in jp); }
+            else { JointKernel3D.Run<Lanes256>(this, jgroup, 0, jcount, phase, in jp); }
         }
 
         if (count == 0) { return; }

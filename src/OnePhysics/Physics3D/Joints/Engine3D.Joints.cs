@@ -288,6 +288,32 @@ internal sealed partial class Engine3D
         stiffness = (float)((2.0 - ms - trace) / h);
     }
 
+    /// <summary>The largest mass ratio between the two dynamic bodies of a joint that still runs on the contact-only schedule; a heavier end needs the world's four substeps (Guendelman et al., "Nonconvex rigid bodies with stacking", 2003, on heavy-light chains).</summary>
+    private const float MildMassRatio = 50f;
+
+    /// <summary>
+    /// Whether a joint needs the world's own schedule. Mild joints (no motor, spring or pose drive, a mass ratio of at most <see cref="MildMassRatio"/>, no kinematic end) are solved on the contact-only schedule
+    /// of their island; the others (and any island with more joints than bodies) keep the world's.
+    /// </summary>
+    public bool JointNeedsFullSchedule(int c)
+    {
+        var cs = Core.Constraints;
+        var bodies = Core.Bodies;
+        ref JointData3D j = ref Joints[c];
+        int a = cs.BodyA[c], b = cs.BodyB[c];
+        if (bodies.TypeOf(a) == BodyType.Kinematic || bodies.TypeOf(b) == BodyType.Kinematic) { return true; }
+        if ((j.Flags & (JointData3D.FlagMotor | JointData3D.FlagSpring | JointData3D.FlagDrive)) != 0) { return true; }
+        switch ((JointType3D)j.Type)
+        {
+            case JointType3D.Path: case JointType3D.Gear: case JointType3D.RackAndPinion: case JointType3D.Pulley: return true;
+            case JointType3D.SixDof: if ((j.Six.MotorMask | j.Six.SpringMask) != 0) { return true; } break;
+        }
+
+        float mA = bodies.InverseMass[a], mB = bodies.InverseMass[b];
+        if (mA > 0f && mB > 0f && (mA > MildMassRatio * mB || mB > MildMassRatio * mA)) { return true; }
+        return false;
+    }
+
     private void PrepareJoint(int c, in StepContext ctx)
     {
         var core = Core;
@@ -399,10 +425,12 @@ internal sealed partial class Engine3D
     public void StoreJointResults(ReadOnlySpan<int> constraints, in StepContext ctx)
     {
         var cs = Core.Constraints;
-        float inv = ctx.InverseSubstepDt;
         foreach (int c in constraints)
         {
             if (cs.KindOf(c) != ConstraintKind.Joint) { continue; }
+            // The impulse is per substep of the schedule the joint ran on.
+            int subs = Core.SubstepsOf(c);
+            float inv = subs == ctx.Substeps ? ctx.InverseSubstepDt : subs / ctx.Dt;
             ref JointData3D j = ref Joints[c];
             var p = cs.Payload(c);
             JointReaction(in j, p, out float lin, out float ang);
