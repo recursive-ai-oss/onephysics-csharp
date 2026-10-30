@@ -28,6 +28,7 @@ public static class SoftGen
         "cloth" => Cloth(d.P[0], d.P[1], (int)d.P[2], (int)d.P[3]),
         "box" => Box(d.P[0], d.P[1], d.P[2], (int)d.P[3], (int)d.P[4], (int)d.P[5]),
         "ball" => Ball(d.P[0], (int)d.P[1]),
+        "sleeve" => SleeveRig.Mesh(d.P[0], d.P[1], (int)d.P[2], (int)d.P[3]),
         _ => throw new InvalidDataException("unknown soft kind " + d.Kind),
     };
 

@@ -182,10 +182,12 @@ public static class SceneBuilder3D
             for (int k = 0; k < verts.Length; k++) verts[k] = new Vector3F(m.V[3 * k], m.V[3 * k + 1], m.V[3 * k + 2]);
             var mesh = m.Tets.Length > 0 ? P3.SoftBodyMesh.FromTetrahedra(verts, m.Tets) : P3.SoftBodyMesh.FromTriangles(verts, m.Tris);
             var at = new Vector3D(d.X, d.Y, d.Z);
+            P3.SoftSkin? skin = d.Kind == "sleeve" ? SleeveRig.MakeSkin(d, mesh) : null;
             var def = d.Preset switch { "cloth" => P3.SoftBodyDef.Cloth(mesh, at), "rubber" => P3.SoftBodyDef.Rubber(mesh, at), _ => P3.SoftBodyDef.Jelly(mesh, at) };
             def.Rotation = new QuaternionF((float)d.Qx, (float)d.Qy, (float)d.Qz, (float)d.Qw);
             def.Mass = (float)d.Mass;
             if (m.Pins.Length > 0) def.PinnedParticles = m.Pins;
+            if (skin != null) { def.Skin = skin; def.ParticleRadius = 0.01f; def.AllowSleep = false; }
             result[i] = world.AddSoftBody(def);
         }
 

@@ -211,6 +211,16 @@ public readonly struct DebugSoftBody
         Index = index; Generation = generation; IsAsleep = isAsleep; ParticleRadius = particleRadius; FirstPoint = firstPoint; ParticleCount = particleCount; FirstIndex = firstIndex; EdgeCount = edgeCount;
     }
 
+    /// <summary>Creates an entry for a skinned body, with its skinned target positions in <see cref="DebugGeometry.Points"/>[FirstTargetPoint .. FirstTargetPoint + ParticleCount).</summary>
+    public DebugSoftBody(int index, int generation, bool isAsleep, float particleRadius, int firstPoint, int particleCount, int firstIndex, int edgeCount, int firstTargetPoint)
+        : this(index, generation, isAsleep, particleRadius, firstPoint, particleCount, firstIndex, edgeCount)
+    {
+        FirstTargetPoint = firstTargetPoint;
+    }
+
+    /// <summary>Index in <see cref="DebugGeometry.Points"/> of the skinned position (the target) of particle 0, or -1 when the body has no skin. The targets of the other particles follow it, in particle order.</summary>
+    public int FirstTargetPoint { get; } = -1;
+
     /// <summary>The soft body's slot in its world.</summary>
     public int Index { get; }
 

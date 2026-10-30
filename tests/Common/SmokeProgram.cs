@@ -81,7 +81,11 @@ internal static class SmokeProgram
         ulong f1 = SoftBodies3DScene.Run(1, false), f3 = SoftBodies3DScene.Run(3, false), fr = SoftBodies3DScene.Run(1, true);
         bool fSame = f1 == f3 && f1 == fr;
         Console.WriteLine((fSame ? "OK softbodies3d " : "FAIL softbodies3d ") + f1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
-        return ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame ? 0 : 1;
+        // A skinned soft body (a sleeve on a swinging arm): same state on one and three threads and after a restore.
+        ulong sk1 = SoftSkinned3DScene.Run(1, false), sk3 = SoftSkinned3DScene.Run(3, false), skr = SoftSkinned3DScene.Run(1, true);
+        bool skSame = sk1 == sk3 && sk1 == skr;
+        Console.WriteLine((skSame ? "OK softskinned3d " : "FAIL softskinned3d ") + sk1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        return ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
     }
 
     private static ulong World2DJoints(int threads, bool restoreHalfway)

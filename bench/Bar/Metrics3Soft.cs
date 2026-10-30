@@ -80,6 +80,33 @@ public static partial class Metrics3
             if (want.Contains("volumeError")) r["volumeError"] = volErr;
         }
 
+        if (want.Contains("skinMaxDistance") || want.Contains("skinBackstop") || want.Contains("skinCuffError"))
+        {
+            // Each skinned sleeve against an independent double-precision skinning of the pose that was set before the last step of the frame.
+            double excess = 0, deficit = 0, cuff = 0;
+            for (int b = 0; b < s.Softs.Count; b++)
+            {
+                var d = s.Softs[b];
+                if (d.Kind != "sleeve") continue;
+                int around = (int)d.P[2];
+                for (int f = 1; f < extra.Count; f++)
+                {
+                    var pose = SleeveRig.Pose(frames[f].step - 1, new RecursiveAI.OneMath.Vector3D(d.X, d.Y, d.Z), d.P[1]);
+                    for (int i = 0; i < meshes[b].Count; i++)
+                    {
+                        var t = SleeveRig.Skin(d, meshes[b], i, pose);
+                        double dx = Pd(f, starts[b] + i, 0) - t.X, dy = Pd(f, starts[b] + i, 1) - t.Y, dz = Pd(f, starts[b] + i, 2) - t.Z;
+                        double dist = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                        if (i < around) { cuff = Math.Max(cuff, dist); continue; }
+                        excess = Math.Max(excess, dist - SleeveRig.MaxDistance);
+                        double ex = dx + t.Nx * SleeveRig.BackstopDistance, ey = dy + t.Ny * SleeveRig.BackstopDistance, ez = dz + t.Nz * SleeveRig.BackstopDistance;
+                        deficit = Math.Max(deficit, SleeveRig.BackstopRadius - Math.Sqrt(ex * ex + ey * ey + ez * ez));
+                    }
+                }
+            }
+            r["skinMaxDistance"] = excess; r["skinBackstop"] = deficit; r["skinCuffError"] = cuff;
+        }
+
         if (want.Contains("softEscapes") && s.Params.ContainsKey("container"))
         {
             double m0 = Robust.EscapeMargin(s);

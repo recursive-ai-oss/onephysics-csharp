@@ -46,6 +46,7 @@ static class Verdict
         ["soft-pile-3d"] = [("softMaxSpeed", 10), ("softPenetration", 0.02), ("softFinalPenetration", 0.01), ("softRestKE", 0.02), ("volumeError", 0.05)],
         ["soft-rigid-3d"] = [("softMaxSpeed", 10), ("softPenetration", 0.07), ("softFinalPenetration", 0.01), ("softRestKE", 0.001), ("volumeError", 0.03), ("maxSpeed", 10), ("restKE", 0.1)],
         ["soft-mesh-3d"] = [("softMaxSpeed", 10), ("softPenetration", 0.02), ("softFinalPenetration", 0.01), ("softRestKE", 0.01), ("volumeError", 0.03)],
+        ["soft-skinned-3d"] = [("softMaxSpeed", 5), ("softPenetration", 0.02), ("softFinalPenetration", 0.005), ("edgeStrain", 0.15), ("skinMaxDistance", 1e-4), ("skinBackstop", 1e-4), ("skinCuffError", 1e-5)],
     };
     static readonly string[] MustBeZero = ["nan", "escapes", "tunnelled", "softNan", "softEscapes", "softTunnelled"];
 

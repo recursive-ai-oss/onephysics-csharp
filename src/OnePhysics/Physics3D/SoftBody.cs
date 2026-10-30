@@ -57,6 +57,9 @@ public readonly struct SoftBody : IEquatable<SoftBody>
         return d;
     }
 
+    /// <summary>The body's slot in its world (see <see cref="PhysicsWorld3D.GetSoftBody"/>).</summary>
+    public int Slot => _index;
+
     /// <summary>True while the body exists.</summary>
     public bool IsValid => _world != null && _world.Engine.SoftHandles.IsAlive(_index, _generation);
 
@@ -229,13 +232,172 @@ public readonly struct SoftBody : IEquatable<SoftBody>
         }
     }
 
+    // ------------------------------------------------------------------ skinning
+
+    private SoftBodyData ResolveSkinned()
+    {
+        var d = Resolve();
+        if (d.Def.Skin == null) { throw new InvalidOperationException("This soft body has no skin: set SoftBodyDef.Skin when you create it."); }
+        return d;
+    }
+
+    /// <summary>True when the body was made with a <see cref="SoftBodyDef.Skin"/>.</summary>
+    public bool HasSkin => Resolve().Def.Skin != null;
+
+    /// <summary>Number of joints of the skin's skeleton.</summary>
+    /// <exception cref="InvalidOperationException">The body has no skin.</exception>
+    public int SkeletonJointCount => ResolveSkinned().Def.Skin!.JointCount;
+
+    /// <summary>
+    /// Poses the skeleton the way ragdoll poses are given (<see cref="Ragdoll.SetPose"/>): one rotation per joint, each relative to its parent in the bind pose's axes (the identity is the bind pose), entry 0 turning the whole figure
+    /// about the root joint, and <paramref name="at"/> and <paramref name="rotation"/> placing the mesh's own space in the world (the bind pose of a body made at <see cref="SoftBodyDef.Position"/> and <see cref="SoftBodyDef.Rotation"/> is
+    /// <c>at</c> = that position and <c>rotation</c> = that rotation). Call it before <see cref="PhysicsWorld3D.Step"/>; the skinned targets move linearly to this pose over the step. Wakes the body if the pose changed.
+    /// </summary>
+    /// <param name="pose">One finite, non-zero rotation per joint (normalised on use).</param>
+    /// <param name="at">Where the mesh space's origin goes, world coordinates, finite and within ±2^21.</param>
+    /// <param name="rotation">Orientation of the mesh space; the default (zero) value means no rotation.</param>
+    /// <param name="teleport">True to put the particles on their skinned positions at once, with zero velocity, instead of letting the step move the targets (use it to place or reset a body).</param>
+    /// <exception cref="InvalidOperationException">The body has no skin.</exception>
+    /// <exception cref="ArgumentException">The pose has the wrong number of entries.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">An entry or <paramref name="rotation"/> is not a usable rotation, or <paramref name="at"/> is not finite or beyond ±2^21.</exception>
+    /// <exception cref="StaleHandleException">The body was destroyed.</exception>
+    public void SetSkeletonPose(ReadOnlySpan<QuaternionF> pose, Vector3D at, QuaternionF rotation = default, bool teleport = false)
+    {
+        var d = ResolveSkinned();
+        int nj = d.Def.Skin!.JointCount;
+        if (pose.Length != nj) { throw new ArgumentException("The pose has " + pose.Length.ToString(CultureInfo.InvariantCulture) + " rotations; the skeleton has " + nj.ToString(CultureInfo.InvariantCulture) + " joints.", nameof(pose)); }
+        for (int i = 0; i < nj; i++)
+        {
+            float l2 = pose[i].LengthSquared();
+            if (!float.IsFinite(l2) || !(l2 > 1e-30f)) { throw new ArgumentOutOfRangeException(nameof(pose), pose[i], "Pose entry " + i.ToString(CultureInfo.InvariantCulture) + " must be a finite, non-zero quaternion."); }
+        }
+
+        CheckPosition(at, nameof(at));
+        QuaternionF qRoot = default;
+        if (rotation.X != 0f || rotation.Y != 0f || rotation.Z != 0f || rotation.W != 0f) { qRoot = Unit(rotation, nameof(rotation)); }
+        else { qRoot = QuaternionF.Identity; }
+        bool changed = false;
+        var parents = d.Def.Skin.ParentArray;
+        for (int j = 0; j < nj; j++)
+        {
+            var dj = Unit(pose[j], nameof(pose));
+            QuaternionF rj, rp;
+            Vector3D pj;
+            if (parents[j] < 0)
+            {
+                rp = qRoot;
+                var o = qRoot.Rotate(new Vector3F(d.Bind[0], d.Bind[1], d.Bind[2]));
+                pj = new Vector3D(at.X + o.X, at.Y + o.Y, at.Z + o.Z);
+            }
+            else
+            {
+                int p = parents[j];
+                rp = new QuaternionF(d.JointRot[4 * p], d.JointRot[4 * p + 1], d.JointRot[4 * p + 2], d.JointRot[4 * p + 3]);
+                // The joint's bind position carried by the parent: parent position plus the parent's rotation of the bind offset.
+                var o = rp.Rotate(new Vector3F(d.Bind[3 * j] - d.Bind[3 * p], d.Bind[3 * j + 1] - d.Bind[3 * p + 1], d.Bind[3 * j + 2] - d.Bind[3 * p + 2]));
+                pj = new Vector3D(d.JointPos[3 * p] + o.X, d.JointPos[3 * p + 1] + o.Y, d.JointPos[3 * p + 2] + o.Z);
+            }
+
+            rj = Unit(rp * dj, nameof(pose));
+            changed |= StoreJoint(d, j, pj, rj);
+        }
+
+        Finish(d, changed, teleport);
+    }
+
+    /// <summary>Sets the world pose of every joint directly (for an animation system that already has joint transforms): joint j carries a point bound to it from <c>x</c> to <c>Position + Rotation * (x - bindPosition_j)</c>. Otherwise as <see cref="SetSkeletonPose"/>.</summary>
+    /// <param name="joints">One pose per joint; positions finite and within ±2^21, rotations finite and non-zero (normalised on use).</param>
+    /// <param name="teleport">True to put the particles on their skinned positions at once, with zero velocity.</param>
+    /// <exception cref="InvalidOperationException">The body has no skin.</exception>
+    /// <exception cref="ArgumentException">The array has the wrong number of entries.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">An entry is not usable.</exception>
+    /// <exception cref="StaleHandleException">The body was destroyed.</exception>
+    public void SetSkeletonTransforms(ReadOnlySpan<SkinJointPose> joints, bool teleport = false)
+    {
+        var d = ResolveSkinned();
+        int nj = d.Def.Skin!.JointCount;
+        if (joints.Length != nj) { throw new ArgumentException("The pose has " + joints.Length.ToString(CultureInfo.InvariantCulture) + " joints; the skeleton has " + nj.ToString(CultureInfo.InvariantCulture) + ".", nameof(joints)); }
+        for (int j = 0; j < nj; j++)
+        {
+            CheckPosition(joints[j].Position, nameof(joints));
+            float l2 = joints[j].Rotation.LengthSquared();
+            if (!float.IsFinite(l2) || !(l2 > 1e-30f)) { throw new ArgumentOutOfRangeException(nameof(joints), joints[j].Rotation, "Joint " + j.ToString(CultureInfo.InvariantCulture) + " needs a finite, non-zero rotation."); }
+        }
+
+        bool changed = false;
+        for (int j = 0; j < nj; j++) { changed |= StoreJoint(d, j, joints[j].Position, Unit(joints[j].Rotation, nameof(joints))); }
+        Finish(d, changed, teleport);
+    }
+
+    /// <summary>The skinned position of a particle for the pose last set (not where the particle is). Zero allocations.</summary>
+    /// <exception cref="InvalidOperationException">The body has no skin.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="particle"/> is out of range.</exception>
+    public Vector3D GetSkinnedPosition(int particle)
+    {
+        var d = ResolveSkinned();
+        if ((uint)particle >= (uint)d.N) { throw new ArgumentOutOfRangeException(nameof(particle), particle, "particle index " + particle.ToString(CultureInfo.InvariantCulture) + " is outside 0 to " + (d.N - 1).ToString(CultureInfo.InvariantCulture) + "."); }
+        d.ComputeTargets(d.JointPos, d.JointRot, d.TgtCur, null, particle, particle + 1);
+        return new Vector3D(d.TgtCur[3 * particle], d.TgtCur[3 * particle + 1], d.TgtCur[3 * particle + 2]);
+    }
+
+    /// <summary>Copies every particle's skinned position for the pose last set into <paramref name="destination"/> without allocating.</summary>
+    /// <exception cref="InvalidOperationException">The body has no skin.</exception>
+    /// <exception cref="ArgumentException"><paramref name="destination"/> is shorter than <see cref="ParticleCount"/>.</exception>
+    public void CopySkinnedPositions(Span<Vector3D> destination)
+    {
+        var d = ResolveSkinned();
+        if (destination.Length < d.N) { throw new ArgumentException("destination holds " + destination.Length.ToString(CultureInfo.InvariantCulture) + " positions; " + d.N.ToString(CultureInfo.InvariantCulture) + " are needed.", nameof(destination)); }
+        d.ComputeTargets(d.JointPos, d.JointRot, d.TgtCur, null);
+        for (int i = 0; i < d.N; i++) { destination[i] = new Vector3D(d.TgtCur[3 * i], d.TgtCur[3 * i + 1], d.TgtCur[3 * i + 2]); }
+    }
+
+    private static void CheckPosition(Vector3D p, string name)
+    {
+        const double Bound = 2097152.0;
+        if (!double.IsFinite(p.X) || !double.IsFinite(p.Y) || !double.IsFinite(p.Z) || Math.Abs(p.X) > Bound || Math.Abs(p.Y) > Bound || Math.Abs(p.Z) > Bound)
+        {
+            throw new ArgumentOutOfRangeException(name, p, "Position " + p + " is outside the supported range of ±2^21 (2097152).");
+        }
+    }
+
+    private static QuaternionF Unit(QuaternionF q, string name)
+    {
+        float l = float.Sqrt(q.X * q.X + q.Y * q.Y + q.Z * q.Z + q.W * q.W);
+        if (!(l > 1e-15f) || !float.IsFinite(l)) { throw new ArgumentOutOfRangeException(name, q, "The rotation " + q + " is not a usable (finite, non-zero) quaternion."); }
+        return new QuaternionF(q.X / l, q.Y / l, q.Z / l, q.W / l);
+    }
+
+    private static bool StoreJoint(SoftBodyData d, int j, Vector3D p, QuaternionF q)
+    {
+        bool changed = d.JointPos[3 * j] != p.X || d.JointPos[3 * j + 1] != p.Y || d.JointPos[3 * j + 2] != p.Z
+            || d.JointRot[4 * j] != q.X || d.JointRot[4 * j + 1] != q.Y || d.JointRot[4 * j + 2] != q.Z || d.JointRot[4 * j + 3] != q.W;
+        d.JointPos[3 * j] = p.X; d.JointPos[3 * j + 1] = p.Y; d.JointPos[3 * j + 2] = p.Z;
+        d.JointRot[4 * j] = q.X; d.JointRot[4 * j + 1] = q.Y; d.JointRot[4 * j + 2] = q.Z; d.JointRot[4 * j + 3] = q.W;
+        return changed;
+    }
+
+    private void Finish(SoftBodyData d, bool changed, bool teleport)
+    {
+        if (teleport)
+        {
+            d.JointPos.CopyTo(d.JointPosPrev, 0);
+            d.JointRot.CopyTo(d.JointRotPrev, 0);
+            d.ComputeTargets(d.JointPos, d.JointRot, d.TgtCur, null);
+            Array.Copy(d.TgtCur, d.Pos, d.Pos.Length);
+            Array.Copy(d.TgtCur, d.Prev, d.Prev.Length);
+            Array.Clear(d.Vel);
+            WakeUp();
+        }
+        else if (changed) { WakeUp(); }
+    }
+
     /// <summary>Holds a particle where it is (infinite mass) or releases it. A pinned particle can still be moved with <see cref="SetPosition"/>. Wakes the body.</summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="particle"/> is out of range.</exception>
     public void SetPinned(int particle, bool pinned)
     {
         var d = ResolveParticle(particle, nameof(particle));
         d.Pinned[particle] = pinned ? (byte)1 : (byte)0;
-        d.InvMass[particle] = pinned ? 0f : d.InvMass0[particle];
+        d.RefreshInvMass(particle);
         d.Vel[3 * particle] = 0f; d.Vel[3 * particle + 1] = 0f; d.Vel[3 * particle + 2] = 0f;
         WakeUp();
     }
