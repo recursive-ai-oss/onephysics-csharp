@@ -315,11 +315,10 @@ static class SweepTweaks
 {
     static float Get(string name, float d) => float.TryParse(Environment.GetEnvironmentVariable(name), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : d;
 
-    /// <summary>Task sizes of the soft step (BAR_SOFT_BIG is the block size and moves results; BAR_SOFT_CHUNK, BAR_SOFT_PAD, BAR_SOFT_TASK, BAR_SOFT_DETECT, BAR_SOFT_PAIR) the soft iteration and substep counts (BAR_SOFT_ITERS, BAR_SOFT_SUBSTEPS; these are options, not tuning) and the lane switch (BAR_SOFT_LANES=0): they change the speed only, never the result.</summary>
+    /// <summary>Task sizes of the soft step (BAR_SOFT_CHUNK, BAR_SOFT_PAD, BAR_SOFT_TASK, BAR_SOFT_DETECT, BAR_SOFT_PAIR) the soft iteration and substep counts (BAR_SOFT_ITERS, BAR_SOFT_SUBSTEPS; these are options, not tuning) and the lane switch (BAR_SOFT_LANES=0): they change the speed only, never the result.</summary>
     public static void InstallSoft()
     {
-        int big = (int)Get("BAR_SOFT_BIG", 0f), det = (int)Get("BAR_SOFT_DETECT", 0f), pair = (int)Get("BAR_SOFT_PAIR", 0f);
-        if (big > 0) RecursiveAI.OnePhysics.Physics3D.SoftBodyData.SoftBlockSize = big;
+        int det = (int)Get("BAR_SOFT_DETECT", 0f), pair = (int)Get("BAR_SOFT_PAIR", 0f);
         int chunk = (int)Get("BAR_SOFT_CHUNK", 0f), iters = (int)Get("BAR_SOFT_ITERS", 0f), subs = (int)Get("BAR_SOFT_SUBSTEPS", 0f);
         if (iters > 0 || subs > 0)
         {

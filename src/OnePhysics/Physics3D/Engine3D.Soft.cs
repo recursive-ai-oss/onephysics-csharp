@@ -35,6 +35,9 @@ internal sealed partial class Engine3D
 
     public HandleTable SoftHandles = new();
     public SoftBodyData?[] SoftData = new SoftBodyData?[4];
+
+    /// <summary>Block size for the soft bodies this world creates or restores. Always the default outside tests, which set it on their own world (it decides constraint order, so it must never be process-wide).</summary>
+    internal int SoftBlockSizeForTests = SoftBodyData.DefaultBlockSize;
     private int _softParticles;
 
     public bool HasSoftBodies => SoftHandles.HighWater > 0;
@@ -49,7 +52,7 @@ internal sealed partial class Engine3D
             throw new SoftBodyException(SoftBodyError.BadCount, "the world would hold " + total.ToString(CultureInfo.InvariantCulture) + " soft-body particles; the limit is " + MaxSoftParticles.ToString(CultureInfo.InvariantCulture) + ".", "def");
         }
 
-        var data = SoftBodyData.Create(copy);
+        var data = SoftBodyData.Create(copy, SoftBlockSizeForTests);
         int i = SoftHandles.Allocate();
         if (i >= SoftData.Length) { Array.Resize(ref SoftData, Math.Max(i + 1, SoftData.Length * 2)); }
         SoftData[i] = data;
@@ -230,7 +233,7 @@ internal sealed partial class Engine3D
             }
             catch (SoftBodyException ex) { throw r.Error("invalid soft body: " + ex.Message); }
 
-            var d = new SoftBodyData { Def = def };
+            var d = new SoftBodyData { Def = def, BlockSize = SoftBlockSizeForTests };
             try { d.Build(); }
             catch (SoftBodyException ex) { throw r.Error("invalid soft body: " + ex.Message); }
             particles += d.N;

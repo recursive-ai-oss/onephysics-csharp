@@ -13,8 +13,11 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// </summary>
 internal sealed partial class SoftBodyData
 {
-    /// <summary>Most particles in a block. The blocks of a body are what the solver can run in parallel, so the block size trades parallelism against boundary constraints. A change moves results.</summary>
-    internal static int SoftBlockSize = 80;
+    /// <summary>Most particles in a block. The blocks of a body are what the solver can run in parallel, so the block size trades parallelism against boundary constraints. A change moves results, so it is a constant.</summary>
+    internal const int DefaultBlockSize = 80;
+
+    /// <summary>The block size this body was built with: always <see cref="DefaultBlockSize"/> except in tests that ask their own world for smaller blocks (see <c>Engine3D.SoftBlockSizeForTests</c>).</summary>
+    internal int BlockSize = DefaultBlockSize;
 
     /// <summary>Most blocks of a body: a bigger body gets bigger blocks, because the boundary between blocks grows with their number and the solve is only as parallel as the threads there are.</summary>
     internal const int MaxBlocks = 32;
@@ -191,11 +194,11 @@ internal sealed partial class SoftBodyData
         return order;
     }
 
-    // Cuts the particles into blocks of at most SoftBlockSize by recursive bisection along the longest axis of the rest positions (median split; ties broken by particle number, so the cut is a pure
+    // Cuts the particles into blocks of at most BlockSize by recursive bisection along the longest axis of the rest positions (median split; ties broken by particle number, so the cut is a pure
     // function of the mesh). Blocks are numbered in the order the recursion meets them.
     private void PartitionParticles()
     {
-        int size = Math.Max(Math.Max(1, SoftBlockSize), (N + MaxBlocks - 1) / MaxBlocks);
+        int size = Math.Max(Math.Max(1, BlockSize), (N + MaxBlocks - 1) / MaxBlocks);
         BlockOf = new int[N];
         var items = new int[N];
         for (int i = 0; i < N; i++) { items[i] = i; }

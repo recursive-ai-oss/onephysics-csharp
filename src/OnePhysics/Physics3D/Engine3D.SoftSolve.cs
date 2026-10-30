@@ -15,7 +15,7 @@ internal sealed partial class Engine3D
     // The split into tasks comes from the bodies' blocks and constraint graphs alone, so the result is the same on any number of threads.
 
     // The sizes below only decide how the work is cut into tasks; the result is the same for any value (a test and the hash matrix check that), so a benchmark may change them.
-    // (The size of a block is different: it decides the constraint order, so it is fixed when a body is created; see SoftBlockSize.)
+    // (The size of a block is different: it decides the constraint order, so it is fixed when a body is created; see SoftBodyData.DefaultBlockSize.)
 
     /// <summary>The executor takes as many workers as there is one task each in the average stage. A pass has a stage of blocks, then stages of one task (boundary, pairs) or none, so the average undercounts the blocks;
     /// a stage with tasks reports at least this many (the extra tasks do nothing), which only keeps more workers for the block stage. Speed only; the result does not depend on it.</summary>

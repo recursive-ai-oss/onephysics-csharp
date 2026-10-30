@@ -404,9 +404,10 @@ public class SoftBody3DTests
     }
 
     // Bodies big enough to be split into blocks that run as tasks: a cloth, a jelly box with tetrahedra and a pressurised ball over a sphere and a box.
-    private static PhysicsWorld3D BigSoftScene(int threads)
+    private static PhysicsWorld3D BigSoftScene(int threads, int block = SoftBodyData.DefaultBlockSize)
     {
         var w = World3DTests.NewWorld(threads, 31, o => { o.SoftSubsteps = 4; });
+        w.Engine.SoftBlockSizeForTests = block; // this world only
         World3DTests.Floor(w);
         w.AddSphere(0.5f, at: new Vector3D(0, 0.5, 0), type: BodyType.Static);
         w.AddCloth(2.4f, 2.4f, 24, new Vector3D(0, 1.6, 0), pinCorners: true);
@@ -420,11 +421,12 @@ public class SoftBody3DTests
     public void BigBodiesGiveTheSameWorldOnAnyThreadCountAndWithOrWithoutLanes()
     {
         bool lanes = Engine3D.SoftLanes;
-        int block = SoftBodyData.SoftBlockSize, chunk = Engine3D.SoftContactChunk;
-        SoftBodyData.SoftBlockSize = 24; Engine3D.SoftContactChunk = 4; // many small blocks and contact tasks, which is what this test is about
+        int chunk = Engine3D.SoftContactChunk;
+        Engine3D.SoftContactChunk = 4; // small contact tasks cannot change a bit; the worlds below use small blocks of their own, which is what this test is about
+        const int block = 24;
         try
         {
-            var worlds = new[] { BigSoftScene(1), BigSoftScene(8), BigSoftScene(3) };
+            var worlds = new[] { BigSoftScene(1, block), BigSoftScene(8, block), BigSoftScene(3, block) };
             Assert.True(worlds[0].Engine.SoftData[0]!.BlockCount > 4);
             for (int i = 0; i < 90; i++)
             {
@@ -435,9 +437,9 @@ public class SoftBody3DTests
 
             // The same scene with the scalar kernels only.
             Engine3D.SoftLanes = false;
-            var scalar = BigSoftScene(1);
+            var scalar = BigSoftScene(1, block);
             Engine3D.SoftLanes = true;
-            var vec = BigSoftScene(1);
+            var vec = BigSoftScene(1, block);
             for (int i = 0; i < 90; i++)
             {
                 Engine3D.SoftLanes = false; scalar.Step(Dt);
@@ -447,7 +449,7 @@ public class SoftBody3DTests
             Assert.Equal(vec.ComputeHash(), scalar.ComputeHash());
             Assert.Equal(worlds[0].ComputeHash(), vec.ComputeHash());
         }
-        finally { Engine3D.SoftLanes = lanes; SoftBodyData.SoftBlockSize = block; Engine3D.SoftContactChunk = chunk; }
+        finally { Engine3D.SoftLanes = lanes; Engine3D.SoftContactChunk = chunk; }
     }
 
     [Theory]
@@ -463,7 +465,7 @@ public class SoftBody3DTests
     }
 
     // A fan of triangles around one particle: the hub's edges share a particle, so they cannot be grouped in fours and are solved one by one.
-    private static PhysicsWorld3D FanScene(int threads)
+    private static PhysicsWorld3D FanScene(int threads, int block = SoftBodyData.DefaultBlockSize)
     {
         const int blades = 80;
         var v = new Vector3F[blades + 1];
@@ -477,6 +479,7 @@ public class SoftBody3DTests
         var tri = new int[3 * (blades - 1)];
         for (int i = 0; i < blades - 1; i++) { tri[3 * i] = 0; tri[3 * i + 1] = i + 1; tri[3 * i + 2] = i + 2; }
         var w = World3DTests.NewWorld(threads, 31, o => { o.SoftSubsteps = 4; });
+        w.Engine.SoftBlockSizeForTests = block;
         World3DTests.Floor(w);
         w.AddSoftBody(new SoftBodyDef { Mesh = SoftBodyMesh.FromTriangles(v, tri), Mass = 1f, Position = new Vector3D(0, 1, 0), SelfCollision = true });
         return w;
@@ -486,19 +489,16 @@ public class SoftBody3DTests
     public void AHubWhoseEdgesCannotBeGroupedIsTheSameOnAnyThreadCountAndWithOrWithoutLanes()
     {
         bool lanes = Engine3D.SoftLanes;
-        int block = SoftBodyData.SoftBlockSize;
         try
         {
-            SoftBodyData.SoftBlockSize = 1000; // one block, so that all the hub's edges are interior to it
-            var a = FanScene(1);
-            var b = FanScene(4);
+            const int one = 1000; // one block, so that all the hub's edges are interior to it
+            var a = FanScene(1, one);
+            var b = FanScene(4, one);
             var d = a.Engine.SoftData[0]!;
             Assert.Contains(Enumerable.Range(0, d.StepKind.Length), s => d.StepKind[s] == 0 && d.StepQuadEnd[s] < d.StepEnd[s]); // the hub's edges cannot all be grouped in fours
-            SoftBodyData.SoftBlockSize = 16;
-            var c = FanScene(1);
+            var c = FanScene(1, 16);
             Assert.True(c.Engine.SoftData[0]!.BlockCount > 2);
-            SoftBodyData.SoftBlockSize = 1000;
-            var a2 = FanScene(1);
+            var a2 = FanScene(1, one);
             for (int i = 0; i < 60; i++)
             {
                 Engine3D.SoftLanes = false; a.Step(Dt); a2.Step(Dt);
@@ -510,6 +510,6 @@ public class SoftBody3DTests
             for (int i = 0; i < 60; i++) { c.Step(Dt); }
             Assert.True(c.Engine.SoftData[0]!.X.All(float.IsFinite));
         }
-        finally { Engine3D.SoftLanes = lanes; SoftBodyData.SoftBlockSize = block; }
+        finally { Engine3D.SoftLanes = lanes; }
     }
 }

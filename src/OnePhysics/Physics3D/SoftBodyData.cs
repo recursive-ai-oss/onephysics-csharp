@@ -72,9 +72,9 @@ internal sealed partial class SoftBodyData
     public int ConstraintCount => EdgeA.Length + BendS.Length + Tets.Length / 4 + (PressureRest > 0f ? 1 : 0);
 
     /// <summary>Builds a body from a validated definition: particles at the mesh vertices placed by the definition's pose, masses, and the constraint lists.</summary>
-    public static SoftBodyData Create(SoftBodyDef def)
+    public static SoftBodyData Create(SoftBodyDef def, int blockSize = DefaultBlockSize)
     {
-        var d = new SoftBodyData { Def = def };
+        var d = new SoftBodyData { Def = def, BlockSize = blockSize };
         d.Build();
         var mesh = def.Mesh!;
         var p = def.Position;
