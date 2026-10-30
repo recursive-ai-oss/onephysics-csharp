@@ -7,6 +7,7 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 ## [Unreleased]
 
 - **`GetSnapshotSizeBound()` on `PhysicsWorld2D` and `PhysicsWorld3D`** returns an upper bound on `GetSnapshotSize()` that holds however the world steps while no storage grows, so a host can size rollback buffers once. Contacts and joints, shape pairs, islands, broadphase nodes and events are counted at the capacity that holds them (`ContactCapacity`, `PairCapacity`); what the host creates (bodies, shapes, joints, characters, vehicles, ragdolls, fluids) is counted as it is now. Additive; the snapshot format and every world hash are unchanged.
+- **3D box-against-box edge axes are tested without normalizing each axis** (about 9% off the box–box routine on pairs from a sleep-wake pile). Separations can differ from the previous preview in the last bit in some poses, so 3D world hashes and snapshot bytes move.
 
 ## [0.2.0-preview.1]
 
