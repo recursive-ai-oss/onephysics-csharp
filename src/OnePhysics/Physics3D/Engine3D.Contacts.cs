@@ -500,14 +500,23 @@ internal sealed partial class Engine3D
                 if (!bodies.IsLive(b)) { continue; }
                 for (int s = e.ShapeHead[b]; s >= 0; s = e.NextShape[s])
                 {
-                    var tight = e.TightBox(b, s);
+                    e.TightBoxCore(b, s, out double x0, out double y0, out double z0, out double x1, out double y1, out double z1);
                     int o = 6 * s;
-                    e._boxes[o] = tight.MinX; e._boxes[o + 1] = tight.MinY; e._boxes[o + 2] = tight.MinZ; e._boxes[o + 3] = tight.MaxX; e._boxes[o + 4] = tight.MaxY; e._boxes[o + 5] = tight.MaxZ;
+                    var boxes = e._boxes;
+                    boxes[o] = x0; boxes[o + 1] = y0; boxes[o + 2] = z0; boxes[o + 3] = x1; boxes[o + 4] = y1; boxes[o + 5] = z1;
                     e._boxStamp[s] = e._stamp;
                     // Most moving shapes stay inside their stored box; the test reads the tree, which nothing changes until the serial pass. A box with a NaN never counts as inside, and a displacement that is not
                     // finite is left to the tree update, which rejects it.
                     int b3 = 3 * b;
-                    e._boxInside[s] = float.IsFinite(e.Dp[b3]) && float.IsFinite(e.Dp[b3 + 1]) && float.IsFinite(e.Dp[b3 + 2]) && Aabb3D.Contains(e.Bp.FatBoundsOfLive(e.Proxy[s]), tight) ? (byte)1 : (byte)0;
+                    var dp = e.Dp;
+                    byte inside = 0;
+                    if (float.IsFinite(dp[b3]) && float.IsFinite(dp[b3 + 1]) && float.IsFinite(dp[b3 + 2]))
+                    {
+                        ref readonly var fat = ref e.Bp.FatBoundsOfLive(e.Proxy[s]);
+                        if (fat.MinX <= x0 && fat.MinY <= y0 && fat.MinZ <= z0 && z1 <= fat.MaxZ && y1 <= fat.MaxY && x1 <= fat.MaxX) { inside = 1; }
+                    }
+
+                    e._boxInside[s] = inside;
                 }
             }
         }

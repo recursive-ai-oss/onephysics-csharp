@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Runtime.Intrinsics;
 using RecursiveAI.OneMath;
 using RecursiveAI.OneMath.Physics;
 using RecursiveAI.OnePhysics;
@@ -441,25 +442,109 @@ internal sealed partial class Engine3D : ISnapshotSection
     /// <summary>The body's shape bounds in world space, tight (no margin).</summary>
     public Aabb3D TightBox(int b, int s)
     {
-        var pos = Core.Bodies.PositionOf(b);
+        TightBoxCore(b, s, out double x0, out double y0, out double z0, out double x1, out double y1, out double z1);
+        return new Aabb3D(x0, y0, z0, x1, y1, z1);
+    }
+
+    /// <summary><see cref="TightBox"/> with the six bounds as outputs, read straight from the body arrays.</summary>
+    internal void TightBoxCore(int b, int s, out double minX, out double minY, out double minZ, out double maxX, out double maxY, out double maxZ)
+    {
+        var bodies = Core.Bodies;
+        var posA = bodies.Position;
+        var rotA = bodies.Rotation;
+        int b3 = 3 * b, b4 = 4 * b;
         // A shape placed at its body's centre of mass with no turn of its own (every single-shape body made from the common constructors) has the body's pose; skipping the composition is exact.
-        var l = Local[s];
-        var lc = LocalCenterOf(b);
-        RigidTransformF pose;
-        if (l.Rotation.X == 0f && l.Rotation.Y == 0f && l.Rotation.Z == 0f && l.Rotation.W == 1f && l.Translation.X == lc.X && l.Translation.Y == lc.Y && l.Translation.Z == lc.Z)
+        ref readonly RigidTransformF l = ref Local[s];
+        float qx, qy, qz, qw, tx, ty, tz;
+        if (l.Rotation.X == 0f && l.Rotation.Y == 0f && l.Rotation.Z == 0f && l.Rotation.W == 1f && l.Translation.X == LocalCenter[b3] && l.Translation.Y == LocalCenter[b3 + 1] && l.Translation.Z == LocalCenter[b3 + 2])
         {
-            pose = new RigidTransformF(RotationOfBody(b), default);
+            qx = rotA[b4]; qy = rotA[b4 + 1]; qz = rotA[b4 + 2]; qw = rotA[b4 + 3];
+            tx = 0f; ty = 0f; tz = 0f;
         }
         else
         {
-            pose = ShapePoseFromCom(b, s);
+            // ShapePoseFromCom written out: rotation q * local rotation, translation q.Rotate(local translation - centre of mass), with the operations of the quaternion product and of Rotate in their order.
+            float bx = rotA[b4], by = rotA[b4 + 1], bz = rotA[b4 + 2], bw = rotA[b4 + 3];
+            float lqx = l.Rotation.X, lqy = l.Rotation.Y, lqz = l.Rotation.Z, lqw = l.Rotation.W;
+            qx = bw * lqx + bx * lqw + by * lqz - bz * lqy;
+            qy = bw * lqy - bx * lqz + by * lqw + bz * lqx;
+            qz = bw * lqz + bx * lqy - by * lqx + bz * lqw;
+            qw = bw * lqw - bx * lqx - by * lqy - bz * lqz;
+            float vx = l.Translation.X - LocalCenter[b3], vy = l.Translation.Y - LocalCenter[b3 + 1], vz = l.Translation.Z - LocalCenter[b3 + 2];
+            float cx = (by * vz - bz * vy) * 2, cy = (bz * vx - bx * vz) * 2, cz = (bx * vy - by * vx) * 2;
+            tx = vx + cx * bw + (by * cz - bz * cy);
+            ty = vy + cy * bw + (bz * cx - bx * cz);
+            tz = vz + cz * bw + (bx * cy - by * cx);
         }
 
         var g = Geoms[GeomOf[s]]!;
-        Vector3F mn, mx;
-        if (g.IsConvex) { ShapeBounds3D.Compute(g.Convex, pose, out mn, out mx); }
-        else { BoundsOfBox(g.LocalBounds, pose, out mn, out mx); }
-        return new Aabb3D(pos[0] + WorldCore.GridDown(mn.X), pos[1] + WorldCore.GridDown(mn.Y), pos[2] + WorldCore.GridDown(mn.Z), pos[0] + WorldCore.GridUp(mx.X), pos[1] + WorldCore.GridUp(mx.Y), pos[2] + WorldCore.GridUp(mx.Z));
+        float lox, loy, loz, hix, hiy, hiz;
+        if (g.FastKind != 0)
+        {
+            // Spheres, boxes, capsules and sharp hulls: the same operations as ShapeBounds3D.Compute (rotation to matrix, half extents through |R| or one pass over the vertices, padding), with only the matrix
+            // entries the shape needs and no intermediate structs.
+            float xx = qx * qx, yy = qy * qy, zz = qz * qz, xy = qx * qy, xz = qx * qz, yz = qy * qz, wx = qw * qx, wy = qw * qy, wz = qw * qz;
+            float x0, x1, y0, y1, z0, z1;
+            if (g.FastKind == 4)
+            {
+                float m11 = 1 - 2 * (yy + zz), m12 = 2 * (xy - wz), m13 = 2 * (xz + wy);
+                float m21 = 2 * (xy + wz), m22 = 1 - 2 * (xx + zz), m23 = 2 * (yz - wx);
+                float m31 = 2 * (xz - wy), m32 = 2 * (yz + wx), m33 = 1 - 2 * (xx + yy);
+                var v = g.FastHull!;
+                // The three dot products of a vertex with the rows of the matrix are the three lanes of one vector: lane k is (vx * m_k1 + vy * m_k2) + vz * m_k3, the scalar expression in the same order, and
+                // the extremes keep the first value on ties and ignore NaN as the scalar compares do (compare then select; no vector min or max).
+                var c0 = Vector128.Create(m11, m21, m31, 0f); var c1 = Vector128.Create(m12, m22, m32, 0f); var c2 = Vector128.Create(m13, m23, m33, 0f);
+                var hi = Vector128.Create(v[0]) * c0 + Vector128.Create(v[1]) * c1 + Vector128.Create(v[2]) * c2;
+                var lo = hi;
+                for (int i = 3; i + 2 < v.Length; i += 3)
+                {
+                    var d = Vector128.Create(v[i]) * c0 + Vector128.Create(v[i + 1]) * c1 + Vector128.Create(v[i + 2]) * c2;
+                    hi = Vector128.ConditionalSelect(Vector128.GreaterThan(d, hi), d, hi);
+                    lo = Vector128.ConditionalSelect(Vector128.LessThan(d, lo), d, lo);
+                }
+
+                float lx = lo.GetElement(0), ly = lo.GetElement(1), lz = lo.GetElement(2), hx = hi.GetElement(0), hy = hi.GetElement(1), hz = hi.GetElement(2);
+                x0 = lx + tx; x1 = hx + tx; y0 = ly + ty; y1 = hy + ty; z0 = lz + tz; z1 = hz + tz;
+            }
+            else
+            {
+                float r = g.FastR, ex, ey, ez;
+                if (g.FastKind == 1) { ex = r; ey = r; ez = r; }
+                else if (g.FastKind == 2)
+                {
+                    float hx = g.FastX, hy = g.FastY, hz = g.FastZ;
+                    float m11 = 1 - 2 * (yy + zz), m12 = 2 * (xy - wz), m13 = 2 * (xz + wy);
+                    float m21 = 2 * (xy + wz), m22 = 1 - 2 * (xx + zz), m23 = 2 * (yz - wx);
+                    float m31 = 2 * (xz - wy), m32 = 2 * (yz + wx), m33 = 1 - 2 * (xx + yy);
+                    ex = Math.Abs(m11) * hx + Math.Abs(m12) * hy + Math.Abs(m13) * hz + r;
+                    ey = Math.Abs(m21) * hx + Math.Abs(m22) * hy + Math.Abs(m23) * hz + r;
+                    ez = Math.Abs(m31) * hx + Math.Abs(m32) * hy + Math.Abs(m33) * hz + r;
+                }
+                else
+                {
+                    float hy = g.FastY;
+                    float m12 = 2 * (xy - wz), m22 = 1 - 2 * (xx + zz), m32 = 2 * (yz + wx);
+                    ex = Math.Abs(m12) * hy + r; ey = Math.Abs(m22) * hy + r; ez = Math.Abs(m32) * hy + r;
+                }
+
+                x0 = tx - ex; x1 = tx + ex; y0 = ty - ey; y1 = ty + ey; z0 = tz - ez; z1 = tz + ez;
+            }
+
+            float px = ShapeBounds3D.Pad(x0, x1), py = ShapeBounds3D.Pad(y0, y1), pz = ShapeBounds3D.Pad(z0, z1);
+            lox = x0 - px; loy = y0 - py; loz = z0 - pz; hix = x1 + px; hiy = y1 + py; hiz = z1 + pz;
+        }
+        else
+        {
+            var pose = new RigidTransformF(new QuaternionF(qx, qy, qz, qw), new Vector3F(tx, ty, tz));
+            Vector3F mn, mx;
+            if (g.IsConvex) { ShapeBounds3D.Compute(g.Convex, pose, out mn, out mx); }
+            else { BoundsOfBox(g.LocalBounds, pose, out mn, out mx); }
+            lox = mn.X; loy = mn.Y; loz = mn.Z; hix = mx.X; hiy = mx.Y; hiz = mx.Z;
+        }
+
+        double ox = posA[b3], oy = posA[b3 + 1], oz = posA[b3 + 2];
+        minX = ox + WorldCore.GridDown(lox); minY = oy + WorldCore.GridDown(loy); minZ = oz + WorldCore.GridDown(loz);
+        maxX = ox + WorldCore.GridUp(hix); maxY = oy + WorldCore.GridUp(hiy); maxZ = oz + WorldCore.GridUp(hiz);
     }
 
     /// <summary>Bounds of a transformed box: centre moved, half sizes through |R|, padded like <see cref="ShapeBounds3D"/>.</summary>

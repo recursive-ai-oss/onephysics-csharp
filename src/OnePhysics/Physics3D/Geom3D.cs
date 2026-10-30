@@ -106,6 +106,9 @@ internal sealed class Geom3D
     public MassPropertiesF UnitMass;      // unit density, in the geometry's own frame (convex and compound only)
     public Bounds3F LocalBounds;          // the geometry's bounds in its own frame (convex shapes use ShapeBounds3D instead)
     public Vector3F ConvexMin, ConvexMax; // convex only: padded bounds of the shape in its own frame, for rejecting query candidates before the narrow phase (derived, never saved)
+    public byte FastKind;                 // convex only: 1 sphere, 2 box, 3 capsule (the shapes whose world box is a closed form of the rotation), else 0; derived, never saved
+    public float[]? FastHull;             // FastKind 4 (a sharp hull): its vertices as x, y, z triples
+    public float FastX, FastY, FastZ, FastR; // box half extents of the core and the convex radius, or the capsule's half height in FastY
     public int Refs;
     public BuoyancyCache? Buoyancy;       // polyhedra for fluid cutting, built on first use (derived, never saved)
 
@@ -122,6 +125,22 @@ internal sealed class Geom3D
             g.Kind = GeomKind.Convex;
             g.Convex = ReadConvex(r, kind);
             g.UnitMass = g.Convex.GetMassProperties();
+            switch (g.Convex.Kind)
+            {
+                case ConvexShapeKind3D.Sphere: g.FastKind = 1; g.FastR = g.Convex.ConvexRadius; break;
+                case ConvexShapeKind3D.Box: g.FastKind = 2; g.FastX = g.Convex.CoreSize.X; g.FastY = g.Convex.CoreSize.Y; g.FastZ = g.Convex.CoreSize.Z; g.FastR = g.Convex.ConvexRadius; break;
+                case ConvexShapeKind3D.Hull when g.Convex.ConvexRadius == 0f && g.Convex.Hull is { } hull:
+                    {
+                        var vs = hull.Vertices;
+                        var flat = new float[3 * vs.Length];
+                        for (int i = 0; i < vs.Length; i++) { flat[3 * i] = vs[i].X; flat[3 * i + 1] = vs[i].Y; flat[3 * i + 2] = vs[i].Z; }
+                        g.FastKind = 4; g.FastHull = flat;
+                        break;
+                    }
+
+                case ConvexShapeKind3D.Capsule: g.FastKind = 3; g.FastY = g.Convex.CoreSize.Y; g.FastR = g.Convex.ConvexRadius; break;
+            }
+
             ShapeBounds3D.Compute(g.Convex, RigidTransformF.Identity, out g.ConvexMin, out g.ConvexMax);
         }
         else if (kind == KCompound)

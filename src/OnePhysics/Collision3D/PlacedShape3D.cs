@@ -92,7 +92,7 @@ public static class ShapeBounds3D
         max = new Vector3F(x1 + Pad(x0, x1), y1 + Pad(y0, y1), z1 + Pad(z0, z1));
     }
 
-    private static void Symmetric(Vector3F t, float ex, float ey, float ez, out Vector3F min, out Vector3F max)
+    internal static void Symmetric(Vector3F t, float ex, float ey, float ez, out Vector3F min, out Vector3F max)
     {
         float x0 = t.X - ex, x1 = t.X + ex, y0 = t.Y - ey, y1 = t.Y + ey, z0 = t.Z - ez, z1 = t.Z + ez;
         min = new Vector3F(x0 - Pad(x0, x1), y0 - Pad(y0, y1), z0 - Pad(z0, z1));
@@ -106,7 +106,7 @@ public static class ShapeBounds3D
         return (Vector3F.Dot(row, p)) + t;
     }
 
-    private static float Pad(float lo, float hi) => (Math.Abs(lo) + Math.Abs(hi) + (hi - lo)) * PadFactor;
+    internal static float Pad(float lo, float hi) => (Math.Abs(lo) + Math.Abs(hi) + (hi - lo)) * PadFactor;
 }
 
 /// <summary>
