@@ -4,3 +4,5 @@
 # Speed-only choices between code that computes the same lanes: the default kernel width and the way the separating-axis search loads shape B's points (docs/spec/world2d.md, Performance).
 ^src/OnePhysics/Core/KernelWidthChoice\.cs:.*IsHardwareAccelerated
 ^src/OnePhysics/Collision2D/Collide2D\.cs:[0-9]+:\s*if \(Vector256\.IsHardwareAccelerated\)
+# Soft-body constraint lanes: Vector128 lanes or the scalar loop, the same bits either way (docs/spec/softbody.md, Solver).
+^src/OnePhysics/Physics3D/Engine3D\.SoftConstraints\.cs:[0-9]+:.*SoftLanes = Vector128\.IsHardwareAccelerated

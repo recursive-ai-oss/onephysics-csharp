@@ -28,7 +28,7 @@ public static class Program
             case "box2dnet-driver": return Box2DNetDriver.Run(opts);
             case "bepu-driver": return BepuDriver.Run(opts);
             case "jitter2-driver": return Jitter2Driver.Run(opts);
-            case "onephysics-driver": SweepTweaks.Install(); return Scene.Load(opts.Get("scene", "")).Dim == 3 ? Driver3.Run(opts, new OnePhysics3Sim()) : OnePhysicsDriver.Run(opts);
+            case "onephysics-driver": SweepTweaks.Install(); SweepTweaks.InstallSoft(); return Scene.Load(opts.Get("scene", "")).Dim == 3 ? Driver3.Run(opts, new OnePhysics3Sim()) : OnePhysicsDriver.Run(opts);
             default: return Usage();
         }
     }
@@ -314,6 +314,17 @@ static class Runner
 static class SweepTweaks
 {
     static float Get(string name, float d) => float.TryParse(Environment.GetEnvironmentVariable(name), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : d;
+
+    /// <summary>Task sizes of the soft step (BAR_SOFT_BIG, BAR_SOFT_TASK, BAR_SOFT_DETECT, BAR_SOFT_PAIR) and the lane switch (BAR_SOFT_LANES=0): they change the speed only, never the result.</summary>
+    public static void InstallSoft()
+    {
+        int big = (int)Get("BAR_SOFT_BIG", 0f), task = (int)Get("BAR_SOFT_TASK", 0f), det = (int)Get("BAR_SOFT_DETECT", 0f), pair = (int)Get("BAR_SOFT_PAIR", 0f);
+        if (big > 0) RecursiveAI.OnePhysics.Physics3D.Engine3D.SoftBigBody = big;
+        if (task > 0) RecursiveAI.OnePhysics.Physics3D.Engine3D.SoftTaskSize = task;
+        if (det > 0) RecursiveAI.OnePhysics.Physics3D.Engine3D.DetectChunk = det;
+        if (pair > 0) RecursiveAI.OnePhysics.Physics3D.Engine3D.PairChunk = pair;
+        if (Get("BAR_SOFT_LANES", 1f) == 0f) RecursiveAI.OnePhysics.Physics3D.Engine3D.SoftLanes = false;
+    }
 
     public static void Install()
     {

@@ -9,8 +9,11 @@ namespace RecursiveAI.OnePhysics.LowLevel;
 /// </summary>
 internal static class StageProbe
 {
+    /// <summary>Soft step counts of the last substep, for the benchmark: particles, constraints, contacts, candidate shapes, particle pairs, colours.</summary>
+    public static readonly int[] SoftCounts = new int[8];
+
     /// <summary>Stage numbers; <see cref="Mark"/> says the named stage starts now (and the previous one ended).</summary>
-    public const int Boxes = 0, Pairs = 1, Narrowphase = 2, Apply = 3, Coloring = 4, Prepare = 5, Solve = 6, Finalize = 7, Store = 8, Sleep = 9, Events = 10, End = 11, Move = 12, Init = 13, Search = 14, Sort = 15, Alloc = 16, Count = 17;
+    public const int Boxes = 0, Pairs = 1, Narrowphase = 2, Apply = 3, Coloring = 4, Prepare = 5, Solve = 6, Finalize = 7, Store = 8, Sleep = 9, Events = 10, End = 11, Move = 12, Init = 13, Search = 14, Sort = 15, Alloc = 16, SoftSetup = 17, SoftPredict = 18, SoftDetect = 19, SoftPairs = 20, SoftConstraints = 21, SoftContacts = 22, SoftPairSolve = 23, SoftFinish = 24, SoftEnd = 25, Count = 26;
 
     /// <summary>Called on the stepping thread at each stage boundary. Null by default.</summary>
     public static Action<int>? OnMark { get; set; }

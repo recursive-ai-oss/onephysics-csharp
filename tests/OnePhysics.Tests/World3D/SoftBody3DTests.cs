@@ -401,4 +401,95 @@ public class SoftBody3DTests
         Assert.Equal(a, b);
         Assert.Equal(a, c);
     }
+
+    // Bodies big enough to be split across tasks by colour: a cloth, a jelly box with tetrahedra and a pressurised ball over a sphere and a box.
+    private static PhysicsWorld3D BigSoftScene(int threads)
+    {
+        var w = World3DTests.NewWorld(threads, 31, o => { o.SoftSubsteps = 4; });
+        World3DTests.Floor(w);
+        w.AddSphere(0.5f, at: new Vector3D(0, 0.5, 0), type: BodyType.Static);
+        w.AddCloth(2.4f, 2.4f, 24, new Vector3D(0, 1.6, 0), pinCorners: true);
+        w.AddSoftBox(new Vector3F(0.6f, 0.6f, 0.6f), new Vector3D(1.6, 1.0, 0.1), cells: 7);
+        w.AddSoftBall(0.35f, new Vector3D(-1.6, 1.4, 0.0), segments: 10);
+        w.AddBox(new Vector3F(0.4f, 0.4f, 0.4f), at: new Vector3D(1.6, 2.6, 0.1));
+        return w;
+    }
+
+    [Fact]
+    public void BigBodiesGiveTheSameWorldOnAnyThreadCountAndWithOrWithoutLanes()
+    {
+        var worlds = new[] { BigSoftScene(1), BigSoftScene(8), BigSoftScene(3) };
+        bool lanes = Engine3D.SoftLanes;
+        int big = Engine3D.SoftBigBody, task = Engine3D.SoftTaskSize;
+        Engine3D.SoftBigBody = 64; Engine3D.SoftTaskSize = 16; // split every body by colour, in small tasks, which is what this test is about
+        try
+        {
+            for (int i = 0; i < 90; i++)
+            {
+                foreach (var w in worlds) { w.Step(Dt); }
+                Assert.Equal(worlds[0].ComputeHash(), worlds[1].ComputeHash());
+                Assert.Equal(worlds[0].ComputeHash(), worlds[2].ComputeHash());
+            }
+
+            // The same scene with the scalar kernels only.
+            Engine3D.SoftLanes = false;
+            var scalar = BigSoftScene(1);
+            Engine3D.SoftLanes = true;
+            var vec = BigSoftScene(1);
+            for (int i = 0; i < 90; i++)
+            {
+                Engine3D.SoftLanes = false; scalar.Step(Dt);
+                Engine3D.SoftLanes = true; vec.Step(Dt);
+            }
+
+            Assert.Equal(vec.ComputeHash(), scalar.ComputeHash());
+            Assert.Equal(worlds[0].ComputeHash(), vec.ComputeHash());
+        }
+        finally { Engine3D.SoftLanes = lanes; Engine3D.SoftBigBody = big; Engine3D.SoftTaskSize = task; }
+    }
+
+    // A fan of triangles around one particle: the hub has more constraints than there are colours, so the last ones land in the overflow set, which is solved in index order without lanes.
+    private static PhysicsWorld3D FanScene(int threads)
+    {
+        const int blades = 80;
+        var v = new Vector3F[blades + 1];
+        v[0] = new Vector3F(0, 0, 0);
+        for (int i = 0; i < blades; i++)
+        {
+            double a = 2.0 * Math.PI * i / blades;
+            v[i + 1] = new Vector3F((float)Math.Cos(a) * 0.5f, 0.03f * (i % 3), (float)Math.Sin(a) * 0.5f);
+        }
+
+        var tri = new int[3 * (blades - 1)];
+        for (int i = 0; i < blades - 1; i++) { tri[3 * i] = 0; tri[3 * i + 1] = i + 1; tri[3 * i + 2] = i + 2; }
+        var w = World3DTests.NewWorld(threads, 31, o => { o.SoftSubsteps = 4; });
+        World3DTests.Floor(w);
+        w.AddSoftBody(new SoftBodyDef { Mesh = SoftBodyMesh.FromTriangles(v, tri), Mass = 1f, Position = new Vector3D(0, 1, 0), SelfCollision = true });
+        return w;
+    }
+
+    [Fact]
+    public void AHubWithMoreConstraintsThanColoursIsTheSameOnAnyThreadCountAndWithOrWithoutLanes()
+    {
+        var a = FanScene(1);
+        var b = FanScene(4);
+        Assert.Equal(SoftBodyData.MaxColours + 1, a.Engine.SoftData[0]!.EdgeColours);
+        Assert.True(a.Engine.SoftData[0]!.EdgeOverflow);
+        bool lanes = Engine3D.SoftLanes;
+        int big = Engine3D.SoftBigBody;
+        Engine3D.SoftBigBody = 16;
+        try
+        {
+            var c = FanScene(1);
+            for (int i = 0; i < 60; i++)
+            {
+                Engine3D.SoftLanes = false; a.Step(Dt);
+                Engine3D.SoftLanes = true; b.Step(Dt); c.Step(Dt);
+            }
+
+            Assert.Equal(a.ComputeHash(), b.ComputeHash());
+            Assert.Equal(a.ComputeHash(), c.ComputeHash());
+        }
+        finally { Engine3D.SoftLanes = lanes; Engine3D.SoftBigBody = big; }
+    }
 }

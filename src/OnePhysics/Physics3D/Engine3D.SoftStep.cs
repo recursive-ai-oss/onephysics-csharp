@@ -15,7 +15,7 @@ internal struct SoftContact
     public bool Coupled;       // the rigid body is awake and dynamic: it takes the reaction
     public float Nx, Ny, Nz;   // outward normal of the shape (towards the particle)
     public float C0;           // separation of the particle surface from the shape at detection (negative when overlapping)
-    public double X, Y, Z;     // particle centre at detection
+    public float X, Y, Z;       // particle centre at detection, relative to the body origin of the step
     public float Mu;
     public float Applied;      // sum of the contact multipliers applied so far in this substep
     public float Rx, Ry, Rz;   // contact point relative to the rigid body's centre of mass
@@ -55,8 +55,6 @@ internal sealed partial class Engine3D
     private int[] _gridStart = new int[64], _gridTable = new int[64];
     private long[] _gridCell = new long[64];
     private float[] _gradP = Array.Empty<float>();
-    private readonly System.Collections.Generic.List<int> _softIds = new();
-    private readonly System.Collections.Generic.List<SoupTriangle3D> _softTris = new();
 
     private static void GrowTo<T>(ref T[] a, int n)
     {
@@ -84,6 +82,9 @@ internal sealed partial class Engine3D
     public void StepSoft(float dt)
     {
         if (SoftHandles.Count == 0) { return; }
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.SoftSetup);
+#endif
         var bodies = Core.Bodies;
         int substeps = Opt.SoftSubsteps, iterations = Opt.SoftIterations;
         float h = dt / substeps, invH = 1f / h;
@@ -114,6 +115,7 @@ internal sealed partial class Engine3D
 
         if (_awakeSoftCount == 0) { return; }
         for (int a = 0; a < _awakeSoftCount; a++) { if (_awakeSoft[a].IsSkinned) { PrepareSkin(_awakeSoft[a]); } }
+        for (int a = 0; a < _awakeSoftCount; a++) { BeginSoftBody(_awakeSoft[a]); }
         var g = Opt.Gravity;
         float gmag = float.Sqrt(g.X * g.X + g.Y * g.Y + g.Z * g.Z);
         float margin = maxTravel + 0.5f * gmag * dt * dt + Opt.SpeculativeDistance;
@@ -132,6 +134,11 @@ internal sealed partial class Engine3D
         for (int c = 0; c < _candCount; c++) { CandidatePose(c, 0f); }
         Array.Copy(_cBoxNow, _cBoxEnd, 6 * _candCount);
 
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.SoftPairs);
+#endif
+        BuildDetectTasks();
+        BuildPairs(margin);
         for (int k = 0; k < substeps; k++)
         {
             float t0 = (float)k / substeps, t1 = (float)(k + 1) / substeps;
@@ -142,25 +149,34 @@ internal sealed partial class Engine3D
                 CandidatePose(c, t1);
             }
 
+#if STAGE_TIMERS
+            StageProbe.Mark(StageProbe.SoftPredict);
+#endif
             for (int a = 0; a < _awakeSoftCount; a++)
             {
                 PredictSoft(_awakeSoft[a], h, g);
                 if (_awakeSoft[a].IsSkinned) { PredictSkin(_awakeSoft[a], tSkin); }
             }
-
-            _scCount = 0;
-            for (int a = 0; a < _awakeSoftCount; a++) { DetectContacts(_awakeSoft[a], h); }
-            BuildPairs();
+#if STAGE_TIMERS
+            StageProbe.Mark(StageProbe.SoftDetect);
+#endif
+            DetectAll();
+#if STAGE_TIMERS
+            StageProbe.Mark(StageProbe.SoftPairs);
+#endif
             SoftenDepenetration(h);
             for (int a = 0; a < _awakeSoftCount; a++) { Array.Clear(_awakeSoft[a].Lambda); }
-            for (int it = 0; it < iterations; it++)
-            {
-                for (int a = 0; a < _awakeSoftCount; a++) { SolveConstraints(_awakeSoft[a], h); }
-                SolveContacts(h, invH);
-                SolvePairs();
-                for (int a = 0; a < _awakeSoftCount; a++) { if (_awakeSoft[a].IsSkinned) { SolveSkin(_awakeSoft[a], tSkin); } }
-            }
+            SolveSubstep(h, invH, iterations, tSkin);
 
+#if STAGE_TIMERS
+            StageProbe.Mark(StageProbe.SoftFinish);
+            {
+                var sc = StageProbe.SoftCounts;
+                sc[0] = total; sc[2] = _scCount; sc[3] = _candCount; sc[4] = _pairCount;
+                int cc = 0; for (int a = 0; a < _awakeSoftCount; a++) { cc += _awakeSoft[a].ConstraintCount; }
+                sc[1] = cc;
+            }
+#endif
             ExcludeDepenetration();
             for (int a = 0; a < _awakeSoftCount; a++) { FinishSubstep(_awakeSoft[a], invH); }
             RemoveApproachVelocity();
@@ -168,9 +184,42 @@ internal sealed partial class Engine3D
             _ = t0;
         }
 
+        for (int a = 0; a < _awakeSoftCount; a++) { EndSoftBody(_awakeSoft[a]); }
         ApplyRigidReactions();
         UpdateSoftSleep(dt);
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.SoftEnd);
+#endif
         for (int a = 0; a < _awakeSoftCount; a++) { if (_awakeSoft[a].IsSkinned) { EndSkinStep(_awakeSoft[a]); } }
+    }
+
+    // The step's float32 positions are relative to the middle of the body's bounds, rounded by the double subtraction alone, so they depend on the body's state only.
+    private static void BeginSoftBody(SoftBodyData d)
+    {
+        d.Ox = 0.5 * (d.MinX + d.MaxX); d.Oy = 0.5 * (d.MinY + d.MaxY); d.Oz = 0.5 * (d.MinZ + d.MaxZ);
+        var pos = d.Pos; var x = d.X; var xp = d.XP;
+        for (int i = 0; i < d.N; i++)
+        {
+            int k = 3 * i;
+            x[k] = (float)(pos[k] - d.Ox); x[k + 1] = (float)(pos[k + 1] - d.Oy); x[k + 2] = (float)(pos[k + 2] - d.Oz);
+            xp[k] = x[k]; xp[k + 1] = x[k + 1]; xp[k + 2] = x[k + 2];
+        }
+    }
+
+    // Writes the step's result back to the double state between steps.
+    private static void EndSoftBody(SoftBodyData d)
+    {
+        var pos = d.Pos; var prev = d.Prev; var x = d.X; var xp = d.XP;
+        for (int i = 0; i < d.N; i++)
+        {
+            int k = 3 * i;
+            // A pinned particle never moves in the step; keeping its double position as given stops the rounding to float from walking it.
+            if (d.Pinned[i] != 0) { prev[k] = pos[k]; prev[k + 1] = pos[k + 1]; prev[k + 2] = pos[k + 2]; continue; }
+            // A skin-kinematic particle ends the step exactly on its skinned target.
+            if (d.IsSkinKinematic(i)) { pos[k] = d.TgtCur[k]; pos[k + 1] = d.TgtCur[k + 1]; pos[k + 2] = d.TgtCur[k + 2]; prev[k] = d.Ox + xp[k]; prev[k + 1] = d.Oy + xp[k + 1]; prev[k + 2] = d.Oz + xp[k + 2]; continue; }
+            pos[k] = d.Ox + x[k]; pos[k + 1] = d.Oy + x[k + 1]; pos[k + 2] = d.Oz + x[k + 2];
+            prev[k] = d.Ox + xp[k]; prev[k + 1] = d.Oy + xp[k + 1]; prev[k + 2] = d.Oz + xp[k + 2];
+        }
     }
 
     private static void ComputeSoftBounds(SoftBodyData d)

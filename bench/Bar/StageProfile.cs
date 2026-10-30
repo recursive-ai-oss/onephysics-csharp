@@ -10,14 +10,14 @@ namespace Bar;
 /// </summary>
 static class StageProfile
 {
-    public static readonly string[] Names = ["boxes", "pairs", "narrowphase", "apply", "coloring", "prepare", "solve", "finalize", "store", "sleep", "events", "end", "move", "init", "search", "sort", "alloc"];
+    public static readonly string[] Names = ["boxes", "pairs", "narrowphase", "apply", "coloring", "prepare", "solve", "finalize", "store", "sleep", "events", "end", "move", "init", "search", "sort", "alloc", "softSetup", "softPredict", "softDetect", "softPairs", "softConstraints", "softContacts", "softPairSolve", "softFinish"];
 
     public static bool Requested => Environment.GetEnvironmentVariable("OP_PROFILE") != null;
 
 #if STAGE_TIMERS
     public const bool Available = true;
-    static readonly long[] stamp = new long[32];
-    static readonly int[] order = new int[32];
+    static readonly long[] stamp = new long[256];
+    static readonly int[] order = new int[256];
     static int marks;
     static readonly List<double[]> perStep = [];
     // Inside the solve stage: time and task counts per kind of stage (integration, then warm start, solve, relax and restitution, each for the colours and for the overflow set).
@@ -66,6 +66,8 @@ static class StageProfile
             sb.Append(CultureInfo.InvariantCulture, $"prof_{Names[k]}_ms={col[col.Length / 2]:F5}\n");
         }
         sb.Append(CultureInfo.InvariantCulture, $"prof_step_ms={total:F5}\n");
+        var sc = RecursiveAI.OnePhysics.LowLevel.StageProbe.SoftCounts;
+        sb.Append(CultureInfo.InvariantCulture, $"prof_soft_counts=particles {sc[0]} constraints {sc[1]} contacts {sc[2]} candidates {sc[3]} pairs {sc[4]} colours {sc[5]}\n");
         for (int k = 0; k < 10; k++)
         {
             var ms = perStepSolve.Select(d => d[k]).OrderBy(x => x).ToArray(); var tk = perStepSolve.Select(d => d[10 + k]).OrderBy(x => x).ToArray(); var cl = perStepSolve.Select(d => d[20 + k]).OrderBy(x => x).ToArray();

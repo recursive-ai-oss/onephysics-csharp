@@ -32,7 +32,7 @@ internal sealed partial class Engine3D
             if (!d.IsSkinKinematic(i)) { continue; }
             d.TargetAt(i, t, out double x, out double y, out double z);
             int k = 3 * i;
-            d.Pos[k] = x; d.Pos[k + 1] = y; d.Pos[k + 2] = z;
+            d.X[k] = (float)(x - d.Ox); d.X[k + 1] = (float)(y - d.Oy); d.X[k + 2] = (float)(z - d.Oz);
         }
     }
 
@@ -44,7 +44,7 @@ internal sealed partial class Engine3D
     private static void SolveSkin(SoftBodyData d, float t)
     {
         var skin = d.Def.Skin!;
-        var pos = d.Pos;
+        var x = d.X;
         for (int i = 0; i < d.N; i++)
         {
             if (d.InvMass[i] == 0f) { continue; }
@@ -52,7 +52,7 @@ internal sealed partial class Engine3D
             float radius = skin.BackRadiusArray[i];
             d.TargetAt(i, t, out double tx, out double ty, out double tz);
             int k = 3 * i;
-            float dx = (float)(pos[k] - tx), dy = (float)(pos[k + 1] - ty), dz = (float)(pos[k + 2] - tz);
+            float dx = (float)((d.Ox + x[k]) - tx), dy = (float)((d.Oy + x[k + 1]) - ty), dz = (float)((d.Oz + x[k + 2]) - tz);
             bool changed = false;
             float nx = d.NrmCur[k], ny = d.NrmCur[k + 1], nz = d.NrmCur[k + 2];
             bool back = radius > 0f && (nx != 0f || ny != 0f || nz != 0f);
@@ -105,7 +105,7 @@ internal sealed partial class Engine3D
                 }
             }
 
-            if (changed) { pos[k] = tx + dx; pos[k + 1] = ty + dy; pos[k + 2] = tz + dz; }
+            if (changed) { x[k] = (float)((tx + dx) - d.Ox); x[k + 1] = (float)((ty + dy) - d.Oy); x[k + 2] = (float)((tz + dz) - d.Oz); }
         }
     }
 

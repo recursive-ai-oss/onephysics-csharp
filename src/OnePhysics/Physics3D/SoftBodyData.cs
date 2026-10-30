@@ -39,7 +39,13 @@ internal sealed partial class SoftBodyData
     public float[] TetRest = Array.Empty<float>();    // six times the rest volume
     public int[] Tris = Array.Empty<int>();           // surface triangles, for pressure
     public float PressureRest;                        // rest volume of the closed surface; 0 when there is no pressure constraint
-    public float[] Lambda = Array.Empty<float>();     // per constraint, scratch of the current substep
+    public float[] Lambda = Array.Empty<float>();     // per constraint in solver order (edges, bends, tetrahedra, pressure), scratch of the current substep
+
+    // The step works on float32 copies of the positions relative to an origin near the body (X, XP: current and substep-start positions), so the constraint kernels run on floats and
+    // vector lanes without converting; Pos and Prev (double) are the state between steps and are written back at the end of each step.
+    public float[] X = Array.Empty<float>(), XP = Array.Empty<float>();
+    public double Ox, Oy, Oz;
+    public float[] GradP = Array.Empty<float>();      // gradient scratch of the pressure constraint (closed surfaces)
 
     // Skinning (null Def.Skin: none). Joint poses are state; targets and normals are scratch recomputed from them.
     public float[] Bind = Array.Empty<float>();            // joint bind positions, scaled with the mesh, 3 per joint
@@ -237,6 +243,9 @@ internal sealed partial class SoftBodyData
             JointPos = new double[3 * nj]; JointRot = new float[4 * nj]; JointPosPrev = new double[3 * nj]; JointRotPrev = new float[4 * nj];
             TgtPrev = new double[3 * N]; TgtCur = new double[3 * N]; NrmCur = new float[3 * N];
         }
+        X = new float[3 * N]; XP = new float[3 * N];
+        GradP = PressureRest > 0f ? new float[3 * N] : Array.Empty<float>();   // the pressure may be switched on later through the handle
+        ColourConstraints();
         SphereShape = ConvexShape3D.Sphere(Radius);
     }
 

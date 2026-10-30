@@ -28,6 +28,7 @@ internal static class World3DScenarios
         Scenarios.Register("world3d/ragdolls", ctx => Ragdolls3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
         Scenarios.Register("world3d/buoyancy", RunBuoyancy);
         Scenarios.Register("world3d/softbody", RunSoftBodies);
+        Scenarios.Register("world3d/softbig", RunSoftBig);
         Scenarios.Register("world3d/softbodies", ctx => SoftBodies3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
         Scenarios.Register("world3d/softskinned", ctx => SoftSkinned3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
         Scenarios.Register("world3d/services", ctx => Services3DScene.Run(ctx.Threads, true, h => { ctx.Write((long)h); ctx.EndStep(); }));
@@ -83,7 +84,7 @@ internal static class World3DScenarios
 
     /// <summary>
     /// The soft-body scenes: cushions under falling boxes (snapshotted at step 40, restored at 70, the origin shifted at 100, 150 steps), then the draped cloth for 120 steps and the soft bodies on mesh terrain for 80 steps,
-    /// the world hash after every step. Soft bodies are solved serially in a fixed order, so the thread count must not change a bit.
+    /// the world hash after every step. Soft bodies are solved colour by colour in tasks cut from the constraint graph, so neither the thread count nor the vector width may change a bit.
     /// </summary>
     private static void RunSoftBodies(ScenarioContext ctx)
     {
@@ -113,6 +114,30 @@ internal static class World3DScenarios
                 ctx.Write((long)w.ComputeHash());
                 ctx.EndStep();
             }
+        }
+    }
+
+    /// <summary>
+    /// Soft bodies large enough to be solved in tasks by colour: a 36 x 36 cloth (1369 particles, pinned at two corners) over a sphere and a box, and a jelly cube of 10 x 10 x 10 cells (1331 particles, tetrahedra) falling onto it,
+    /// a pressurised ball beside them. Snapshotted at step 30 and restored at step 50; the world hash after every step, 90 steps.
+    /// </summary>
+    private static void RunSoftBig(ScenarioContext ctx)
+    {
+        var w = new PhysicsWorld3D(new WorldOptions3D { ThreadCount = ctx.Threads, WorldId = 23, SoftSubsteps = 4 });
+        w.AddBox(new Vector3F(40f, 1f, 40f), at: new Vector3D(0, -1, 0), type: BodyType.Static);
+        w.AddSphere(0.8f, at: new Vector3D(-0.6, 0.8, 0.2), type: BodyType.Static);
+        w.AddBox(new Vector3F(0.6f, 0.6f, 0.6f), at: new Vector3D(1.4, 0.6, 0.4), type: BodyType.Static);
+        w.AddCloth(4f, 4f, 36, new Vector3D(0, 1.8, 0), pinCorners: true);
+        w.AddSoftBox(new Vector3F(0.8f, 0.8f, 0.8f), new Vector3D(0.3, 3.0, 0.1), cells: 10);
+        w.AddSoftBall(0.4f, new Vector3D(-2.6, 1.0, 0.0), segments: 12);
+        byte[]? snap = null;
+        for (int i = 0; i < 90; i++)
+        {
+            if (i == 30) { snap = w.Snapshot(); ctx.Write(snap); }
+            if (i == 50) { w.Restore(snap!); }
+            w.Step(1f / 60f);
+            ctx.Write((long)w.ComputeHash());
+            ctx.EndStep();
         }
     }
 
