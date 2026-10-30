@@ -6,6 +6,8 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 ## [Unreleased]
 
+- **3D: the bounding-box stage takes about half the time, with identical results.** The world box of a sphere, box, capsule or sharp hull is computed straight from the body arrays with only the rotation-matrix entries the shape needs, and a hull's six extremes come from one pass with the three axes as lanes of one 128-bit vector (the same operations in the same order as the scalar code, so every platform and vector width gives the same bits). Profile build, one thread, indicative: large-pile-3d 0.24 to 0.11 ms, ragdoll-pile-3d 0.08 to 0.04, sleep-wake-3d 0.07 to 0.035. No world hash moves. See `docs/spec/world3d.md`, round 35.
+
 ## [0.3.0-preview.1]
 
 - **Characters, vehicles, ragdolls and buoyancy are complete for this preview line.** The rigid and virtual 3D characters, wheeled, tracked and motorcycle vehicles, ragdolls with powered pose matching, and buoyancy and drag in fluid volumes are within their stability limits on every scene, with identical results on x64 and arm64: `characters-3d` (every stair climbed, character jitter under 1e-6 m/s, no slope violations), `vehicles-3d` (no rollovers, no wheel through the ground, suspension jitter 0.002), `tracked-3d`, `motorcycle-3d` (none fallen, lean error 0.006), `ragdoll-powered-3d` (95th-percentile pose error 0.058 rad, none fallen) and `buoyancy-3d` (equilibrium depth error 0.0026). No managed .NET engine covers these scenes, so they are judged on their stability limits. They stay under `[Experimental("OPHYS0002")]` with the rest of the 3D engine until every 3D speed row meets the bar.
