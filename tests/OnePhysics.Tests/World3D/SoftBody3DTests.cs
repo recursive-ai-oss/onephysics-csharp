@@ -450,6 +450,18 @@ public class SoftBody3DTests
         finally { Engine3D.SoftLanes = lanes; SoftBodyData.SoftBlockSize = block; Engine3D.SoftContactChunk = chunk; }
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    public void SteadySoftStepsAllocateNothingOnTheSteppingThread(int threads)
+    {
+        var w = BigSoftScene(threads);
+        for (int i = 0; i < 150; i++) { w.Step(Dt); }
+        AllocMeter.Settle();
+        long bytes = AllocMeter.Of(() => { for (int i = 0; i < 30; i++) { w.Step(Dt); } });
+        Assert.Equal(0, bytes);
+    }
+
     // A fan of triangles around one particle: the hub's edges share a particle, so they cannot be grouped in fours and are solved one by one.
     private static PhysicsWorld3D FanScene(int threads)
     {

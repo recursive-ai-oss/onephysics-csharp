@@ -17,11 +17,12 @@ internal sealed partial class Engine3D
     // The sizes below only decide how the work is cut into tasks; the result is the same for any value (a test and the hash matrix check that), so a benchmark may change them.
     // (The size of a block is different: it decides the constraint order, so it is fixed when a body is created; see SoftBlockSize.)
 
+    /// <summary>The executor takes as many workers as there is one task each in the average stage. A pass has a stage of blocks, then stages of one task (boundary, pairs) or none, so the average undercounts the blocks;
+    /// a stage with tasks reports at least this many (the extra tasks do nothing), which only keeps more workers for the block stage. Speed only; the result does not depend on it.</summary>
+    internal static int SoftPadTasks = 8;
+
     /// <summary>Contacts per task (whole particles).</summary>
     internal static int SoftContactChunk = 16;
-
-    /// <summary>Experiment: tasks every stage reports so that the executor keeps its workers.</summary>
-    internal static int SoftPadTasks = 8;
 
     private int[] _stBody = new int[64], _stRegion = new int[64];
     private int[] _stStart = new int[4];
@@ -136,18 +137,18 @@ internal sealed partial class Engine3D
             _e = e; _h = h; _invH = invH; _tSkin = tSkin; _perPass = e._stStages + 3; _pad = SoftPadTasks;
         }
 
+        public int TaskCount(int stage)
+        {
+            int r = Real(stage % _perPass);
+            return r > 0 && r < _pad ? _pad : r;
+        }
+
         private int Real(int k)
         {
             if (k < _e._stStages) { return _e._stStart[k + 1] - _e._stStart[k]; }
             if (k == _e._stStages) { return _e._ctTasks; }
             if (k == _e._stStages + 1) { return _e._pairCount > 0 ? 1 : 0; }
             return _e._skinCount;
-        }
-
-        public int TaskCount(int stage)
-        {
-            int r = Real(stage % _perPass);
-            return r > 0 && r < _pad ? _pad : r;
         }
 
         public void Run(int stage, int task)
