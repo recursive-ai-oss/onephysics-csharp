@@ -12,6 +12,10 @@ L={
 "heightfield-terrain-3d":{"maxSpeed":15,"maxPenetration":0.15,"finalPenetration":0.05},
 "sleep-wake-3d":{"maxSpeed":45,"maxPenetration":1.5,"finalPenetration":0.3},
 "queries-3d":{"maxSpeed":25},
+"cloth-drape-3d":{"softMaxSpeed":10,"softPenetration":0.07,"softFinalPenetration":0.015,"softRestKE":0.0003,"edgeStrain":0.15},
+"soft-pile-3d":{"softMaxSpeed":10,"softPenetration":0.02,"softFinalPenetration":0.01,"softRestKE":0.02,"volumeError":0.05},
+"soft-rigid-3d":{"softMaxSpeed":10,"softPenetration":0.07,"softFinalPenetration":0.01,"softRestKE":0.001,"volumeError":0.03,"maxSpeed":10,"restKE":0.1},
+"soft-mesh-3d":{"softMaxSpeed":10,"softPenetration":0.02,"softFinalPenetration":0.01,"softRestKE":0.01,"volumeError":0.03},
 "ragdoll-powered-3d":{"maxSpeed":10,"poseErrorP95":0.10,"fallen":0,"jointError":0.05},
 "vehicles-3d":{"maxSpeed":25,"maxPenetration":0.05,"rollovers":0,"wheelThroughGround":0,"suspensionJitter":0.01},
 "characters-3d":{"maxSpeed":25,"maxPenetration":0.05,"charJitter":0.01,"slopeViolations":0},
@@ -19,7 +23,7 @@ L={
 "tracked-3d":{"maxSpeed":8,"maxPenetration":0.05,"suspensionJitter":0.01,"rollovers":0},
 "motorcycle-3d":{"maxSpeed":12,"maxPenetration":0.05,"suspensionJitter":0.01,"fallen":0,"leanError":0.05},
 }
-ZERO=["nan","escapes","tunnelled","wheelThroughGround"]
+ZERO=["nan","escapes","tunnelled","wheelThroughGround","softNan","softEscapes","softTunnelled"]
 def load(f):
     m=collections.defaultdict(dict)
     for r in csv.DictReader(open(f)):

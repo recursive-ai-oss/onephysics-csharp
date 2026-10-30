@@ -113,7 +113,7 @@ public sealed class SoftBodyDef
     /// <summary>A cloth: thin, inextensible, bends easily (mass 0.3 kg/m², 1 cm-scale particles, friction 0.5, self-collision on).</summary>
     public static SoftBodyDef Cloth(SoftBodyMesh mesh, Vector3D at = default) => new()
     {
-        Mesh = mesh, Position = at, EdgeCompliance = 0f, BendCompliance = 2e-3f, BendDamping = 0.002f, Friction = 0.5f, LinearDamping = 0.2f, SelfCollision = true,
+        Mesh = mesh, Position = at, EdgeCompliance = 0f, EdgeDamping = 0.03f, BendCompliance = 2e-3f, BendDamping = 0.03f, Friction = 0.5f, LinearDamping = 0.2f, SelfCollision = true,
     };
 
     /// <summary>Rubber: a stiff elastic volume that springs back quickly.</summary>

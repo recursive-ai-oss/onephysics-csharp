@@ -755,7 +755,7 @@ public static class Gen3
         return s;
     }
 
-    // The mesh terrain of mesh-terrain-3d with ten jelly cubes and ten rubber balls dropped on its hills near the origin.
+    // The mesh terrain of mesh-terrain-3d with ten jelly cubes and ten rubber cubes dropped on its hills near the origin.
     static Scene SoftMesh()
     {
         var s = TerrainScene(false);
@@ -771,7 +771,7 @@ public static class Gen3
             double x = -4.5 + (i % 5) * 2.2 + r.Range(-0.2, 0.2), z = -3.5 + (i / 5) * 2.2 + r.Range(-0.2, 0.2);
             double top = Bilinear(h, n, n, cell, x - o, z - o);
             if (i % 2 == 0) Soft(s, "jelly", "box", x, top + 1.0 + (i % 3) * 0.3, z, 2.5, 0.6, 0.6, 0.6, 3, 3, 3);
-            else Soft(s, "rubber", "ball", x, top + 1.0 + (i % 3) * 0.3, z, 2.5, 0.35, 3);
+            else Soft(s, "rubber", "box", x, top + 1.0 + (i % 3) * 0.3, z, 2.0, 0.5, 0.5, 0.5, 3, 3, 3);
         }
         s.Params["engines"] = ["onephysics", "jitter2"];
         s.Params["container"] = ["-70", "-20", "70", "60"];

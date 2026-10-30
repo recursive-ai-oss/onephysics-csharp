@@ -5,6 +5,7 @@ using Jitter2.Collision.Shapes;
 using Jitter2.Dynamics;
 using Jitter2.Dynamics.Constraints;
 using Jitter2.LinearMath;
+using Jitter2.SoftBodies;
 
 namespace Bar;
 
@@ -37,6 +38,7 @@ static class Jitter2Driver
         Vector3[] shapeOffset = [];
         Scene scene = null!;
         int threads;
+        readonly List<RigidBody[]> softVertices = [];
 
         public void Build(Scene s, int threadCount)
         {
@@ -99,6 +101,67 @@ static class Jitter2Driver
                 var c = world.CreateConstraint<BallSocket>(bodies[j.A], bodies[j.B]);
                 c.Initialize(ToJ(anchor)); // world-space anchor, taken from the first body's pose at build time
             }
+            BuildSofts(s);
+        }
+
+        // Soft bodies as the documentation describes them: every vertex a rigid body (a mass point), every edge a spring, and a triangle or tetrahedron shape per face or cell for collision.
+        // The documentation gives no stiffness values, so the springs use 20 Hz and a damping ratio of 0.5 (cloth, rubber) or 8 Hz and 0.3 (jelly) at the step's time step.
+        void BuildSofts(Scene s)
+        {
+            if (s.Softs.Count == 0) return;
+            world.BroadPhaseFilter = new BroadPhaseCollisionFilter(world);
+            world.DynamicTree.Filter = DynamicTreeCollisionFilter.Filter;
+            foreach (var d in s.Softs)
+            {
+                var m = SoftGen.Build(d);
+                var sb = new SoftBody(world);
+                var q = new Quaternion((float)d.Qx, (float)d.Qy, (float)d.Qz, (float)d.Qw);
+                var origin = new Vector3((float)d.X, (float)d.Y, (float)d.Z);
+                var verts = new RigidBody[m.Count];
+                var edges = SoftGen.Edges(m);
+                double meanEdge = 0; foreach (var (a, b) in edges) meanEdge += Math.Sqrt(Dist2(m, a, b));
+                meanEdge /= edges.Count;
+                for (int i = 0; i < verts.Length; i++)
+                {
+                    var rb = world.CreateRigidBody();
+                    rb.Position = ToJ(origin + Vector3.Transform(new Vector3(m.V[3 * i], m.V[3 * i + 1], m.V[3 * i + 2]), q));
+                    rb.SetMassInertia((float)(d.Mass / m.Count));
+                    verts[i] = rb; sb.Vertices.Add(rb);
+                }
+                foreach (int pin in m.Pins) verts[pin].MotionType = MotionType.Static;
+                float freq = d.Preset == "jelly" ? 8f : 20f, damp = d.Preset == "jelly" ? 0.3f : 0.5f;
+                foreach (var (a, b) in edges)
+                {
+                    var spring = world.CreateConstraint<SpringConstraint>(verts[a], verts[b]);
+                    spring.Initialize(verts[a].Position, verts[b].Position);
+                    spring.SetSpringParameters(freq, damp, (float)s.Dt);
+                    sb.AddSpring(spring);
+                }
+
+                if (m.Tets.Length > 0)
+                    for (int t = 0; t < m.Tets.Length; t += 4) sb.AddShape(new SoftBodyTetrahedron(sb, verts[m.Tets[t]], verts[m.Tets[t + 1]], verts[m.Tets[t + 2]], verts[m.Tets[t + 3]]));
+                else
+                    for (int t = 0; t < m.Tris.Length; t += 3) sb.AddShape(new SoftBodyTriangle(sb, verts[m.Tris[t]], verts[m.Tris[t + 1]], verts[m.Tris[t + 2]]) { Thickness = (float)(0.5 * meanEdge) });
+                softVertices.Add(verts);
+            }
+        }
+
+        static double Dist2(SoftMeshData m, int a, int b)
+        {
+            double dx = m.V[3 * a] - m.V[3 * b], dy = m.V[3 * a + 1] - m.V[3 * b + 1], dz = m.V[3 * a + 2] - m.V[3 * b + 2];
+            return dx * dx + dy * dy + dz * dz;
+        }
+
+        public int SoftDoubles { get { int n = 0; foreach (var v in softVertices) n += 6 * v.Length; return n; } }
+
+        public void SoftSnapshot(double[] d)
+        {
+            int k = 0;
+            foreach (var verts in softVertices)
+                foreach (var rb in verts)
+                {
+                    d[k++] = rb.Position.X; d[k++] = rb.Position.Y; d[k++] = rb.Position.Z; d[k++] = rb.Velocity.X; d[k++] = rb.Velocity.Y; d[k++] = rb.Velocity.Z;
+                }
         }
 
         static JVector ToJ(Vector3 v) => new(v.X, v.Y, v.Z);
