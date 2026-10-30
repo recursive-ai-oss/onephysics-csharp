@@ -169,4 +169,26 @@ public static class SceneBuilder3D
             default: throw new InvalidDataException("unknown shape " + sh.Kind);
         }
     }
+
+    /// <summary>Adds the scene's soft bodies to the world, in record order, with this library's presets for their material (docs/spec/scenes.md). Meshes are built by <see cref="SoftGen"/>, the same ones every engine gets.</summary>
+    public static P3.SoftBody[] AddSofts(Scene s, P3.PhysicsWorld3D world)
+    {
+        var result = new P3.SoftBody[s.Softs.Count];
+        for (int i = 0; i < result.Length; i++)
+        {
+            var d = s.Softs[i];
+            var m = SoftGen.Build(d);
+            var verts = new Vector3F[m.Count];
+            for (int k = 0; k < verts.Length; k++) verts[k] = new Vector3F(m.V[3 * k], m.V[3 * k + 1], m.V[3 * k + 2]);
+            var mesh = m.Tets.Length > 0 ? P3.SoftBodyMesh.FromTetrahedra(verts, m.Tets) : P3.SoftBodyMesh.FromTriangles(verts, m.Tris);
+            var at = new Vector3D(d.X, d.Y, d.Z);
+            var def = d.Preset switch { "cloth" => P3.SoftBodyDef.Cloth(mesh, at), "rubber" => P3.SoftBodyDef.Rubber(mesh, at), _ => P3.SoftBodyDef.Jelly(mesh, at) };
+            def.Rotation = new QuaternionF((float)d.Qx, (float)d.Qy, (float)d.Qz, (float)d.Qw);
+            def.Mass = (float)d.Mass;
+            if (m.Pins.Length > 0) def.PinnedParticles = m.Pins;
+            result[i] = world.AddSoftBody(def);
+        }
+
+        return result;
+    }
 }

@@ -29,6 +29,7 @@ sealed class OnePhysics3Sim : ISim3
     {
         this.threads = threads;
         (world, bodies, _) = SceneBuilder3D.Build(s, threads, out characters, out vehicles, out drives);
+        softs = SceneBuilder3D.AddSofts(s, world);
         vy = new float[characters.Count]; gravity = (float)-s.Gy; stepNo = 0;
     }
 
@@ -123,6 +124,22 @@ sealed class OnePhysics3Sim : ISim3
         {
             var (throttle, steer, brake) = sc.At(stepNo);
             car.Drive((float)throttle, (float)steer, (float)brake);
+        }
+    }
+
+    P3.SoftBody[] softs = [];
+    public int SoftDoubles { get { int n = 0; foreach (var f in softs) n += 6 * f.ParticleCount; return n; } }
+    public void SoftSnapshot(double[] d)
+    {
+        int k = 0;
+        foreach (var f in softs)
+        {
+            var v = f.RawVelocities;
+            for (int i = 0; i < f.ParticleCount; i++)
+            {
+                var p = f.GetPosition(i);
+                d[k++] = p.X; d[k++] = p.Y; d[k++] = p.Z; d[k++] = v[3 * i]; d[k++] = v[3 * i + 1]; d[k++] = v[3 * i + 2];
+            }
         }
     }
 

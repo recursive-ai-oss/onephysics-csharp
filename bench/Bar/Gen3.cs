@@ -693,5 +693,91 @@ public static class Gen3
         return s;
     }
 
-    public static List<Scene> All() => [Pyramid(10), Pyramid(30), LargePile(), JointChains(), JointGrid(), RagdollPile(), RagdollPowered(), TerrainScene(false), TerrainScene(true), SleepWake(), Queries(), Characters3(), Vehicles3(), Buoyancy(), Tracked3(), Motorcycle3()];
+
+    // ---- soft bodies ----
+
+    static void Soft(Scene s, string preset, string kind, double x, double y, double z, double mass, params double[] p) =>
+        s.Softs.Add(new SoftDef { Preset = preset, Kind = kind, X = x, Y = y, Z = z, Mass = mass, P = p });
+
+    static readonly string[] SoftMetricNames = ["softMaxSpeed", "softPenetration", "softFinalPenetration", "softRestKE", "softEscapes", "softTunnelled", "softNan"];
+
+    static Scene SoftBase(string name, int steps, params string[] metrics)
+    {
+        var s = Base3(name, steps, [.. SoftMetricNames, .. metrics]);
+        s.DumpEvery = 30;
+        s.Params["engines"] = ["onephysics", "jitter2"]; // the engines that have a soft-body driver
+        return s;
+    }
+
+    // A 4 x 4 m cloth of 24 x 24 cells, pinned at the two corners of one edge, held 2 m above a floor with a sphere (radius 0.8) and a box (1.2 m) under it: it falls over both and hangs from its pins.
+    static Scene ClothDrape()
+    {
+        var s = SoftBase("cloth-drape-3d", 600, "edgeStrain");
+        Box3(Add3(s, "static", 0, -1, 0), 40, 1, 40);
+        Sh(Add3(s, "static", -0.8, 0.8, 0.3), "sphere", 0, 0.8, 0, 0, 0);
+        Box3(Add3(s, "static", 1.1, 0.6, 0.5), 0.6, 0.6, 0.6);
+        Soft(s, "cloth", "cloth", 0, 2.0, 0, 2, 4, 4, 24, 2);
+        s.Params["container"] = ["-8", "-5", "8", "10"];
+        s.Params["floor"] = ["-1"];
+        return s;
+    }
+
+    // Twelve jelly cubes (0.6 m, 3 x 3 x 3 cells, 3 kg) and twelve rubber balls (radius 0.35, 3 kg) dropped in a walled 5 x 5 m yard.
+    static Scene SoftPile()
+    {
+        var s = SoftBase("soft-pile-3d", 600, "volumeError");
+        Container(s, 2.5, 6);
+        var r = new Gen.Rng(87);
+        for (int i = 0; i < 24; i++)
+        {
+            double x = -1.5 + (i % 4) * 1.0 + r.Range(-0.1, 0.1), z = -1.5 + ((i / 4) % 3) * 1.5 + r.Range(-0.1, 0.1), y = 0.8 + (i / 12) * 1.2 + (i % 2) * 0.5;
+            if (i % 2 == 0) Soft(s, "jelly", "box", x, y, z, 3, 0.6, 0.6, 0.6, 3, 3, 3);
+            else Soft(s, "rubber", "ball", x, y, z, 3, 0.35, 3);
+        }
+        s.Params["container"] = ["-3", "-2", "3", "12"];
+        s.Params["floor"] = ["-1"];
+        return s;
+    }
+
+    // Six jelly cushions (1.6 x 0.4 x 1.6 m, 8 kg) with a 0.5 m rigid box of 5 kg released 0.8 m above each: the cushions stop the boxes and push them back.
+    static Scene SoftRigid()
+    {
+        var s = SoftBase("soft-rigid-3d", 600, "volumeError", "maxSpeed", "nan", "restKE");
+        Box3(Add3(s, "static", 0, -1, 0), 40, 1, 40);
+        for (int i = 0; i < 6; i++)
+        {
+            double x = (i % 3 - 1) * 3.0, z = (i / 3 - 0.5) * 3.0;
+            Soft(s, "jelly", "box", x, 0.25, z, 8, 1.6, 0.4, 1.6, 6, 2, 6);
+            Box3(Add3(s, "dynamic", x, 1.5 + 0.1 * i, z), 0.25, 0.25, 0.25, 0, 0, 0, 40);
+        }
+        s.Params["container"] = ["-10", "-5", "10", "10"];
+        s.Params["floor"] = ["-1"];
+        return s;
+    }
+
+    // The mesh terrain of mesh-terrain-3d with ten jelly cubes and ten rubber balls dropped on its hills near the origin.
+    static Scene SoftMesh()
+    {
+        var s = TerrainScene(false);
+        s.Name = "soft-mesh-3d";
+        s.Bodies.RemoveRange(1, s.Bodies.Count - 1);
+        s.Metrics.Clear(); s.Metrics.AddRange([.. SoftMetricNames, "volumeError"]);
+        s.Steps = 600; s.DumpEvery = 30;
+        var (h, n, cell) = Terrain();
+        double o = -n * cell / 2;
+        var r = new Gen.Rng(88);
+        for (int i = 0; i < 20; i++)
+        {
+            double x = -4.5 + (i % 5) * 2.2 + r.Range(-0.2, 0.2), z = -3.5 + (i / 5) * 2.2 + r.Range(-0.2, 0.2);
+            double top = Bilinear(h, n, n, cell, x - o, z - o);
+            if (i % 2 == 0) Soft(s, "jelly", "box", x, top + 1.0 + (i % 3) * 0.3, z, 2.5, 0.6, 0.6, 0.6, 3, 3, 3);
+            else Soft(s, "rubber", "ball", x, top + 1.0 + (i % 3) * 0.3, z, 2.5, 0.35, 3);
+        }
+        s.Params["engines"] = ["onephysics", "jitter2"];
+        s.Params["container"] = ["-70", "-20", "70", "60"];
+        s.Params["floor"] = ["-15"];
+        return s;
+    }
+
+    public static List<Scene> All() => [Pyramid(10), Pyramid(30), LargePile(), JointChains(), JointGrid(), RagdollPile(), RagdollPowered(), TerrainScene(false), TerrainScene(true), SleepWake(), Queries(), Characters3(), Vehicles3(), Buoyancy(), Tracked3(), Motorcycle3(), ClothDrape(), SoftPile(), SoftRigid(), SoftMesh()];
 }

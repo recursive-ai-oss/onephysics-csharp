@@ -21,6 +21,9 @@ interface ISim3
     void Snapshot(double[] d);
     /// <summary>Runs the scene's queries (closest ray hits, sphere overlaps counting shapes, sphere casts to the closest hit) and appends query_* lines; engines without queries append nothing.</summary>
     void Queries(Scene s, StringBuilder sb) { }
+    /// <summary>Number of doubles <see cref="SoftSnapshot"/> fills: six per soft particle (x y z vx vy vz), the soft bodies of the scene in record order; 0 for engines without soft bodies.</summary>
+    int SoftDoubles => 0;
+    void SoftSnapshot(double[] d) { }
     /// <summary>Extra result lines (key=value) appended after the run, such as final constraint counts.</summary>
     string Extra() => "";
 }
@@ -41,8 +44,14 @@ static class Driver3
             dump = new BinaryWriter(File.Create(o.Get("dump", "")));
             dump.Write(Encoding.ASCII.GetBytes("OPDUMP01")); dump.Write((uint)n); dump.Write((uint)3);
         }
-        var wd = new double[sim.WheelDoubles];
-        void Frame(int step) { sim.Snapshot(d); sim.Wheels(wd); dump!.Write((uint)step); dump.Write((uint)wd.Length); foreach (var v in d) dump.Write(v); foreach (var v in wd) dump.Write(v); }
+        var wd = new double[sim.WheelDoubles + sim.SoftDoubles];
+        var wheelPart = new double[sim.WheelDoubles]; var softPart = new double[sim.SoftDoubles];
+        void Frame(int step)
+        {
+            sim.Snapshot(d); sim.Wheels(wheelPart); sim.SoftSnapshot(softPart);
+            wheelPart.CopyTo(wd, 0); softPart.CopyTo(wd, wheelPart.Length);
+            dump!.Write((uint)step); dump.Write((uint)wd.Length); foreach (var v in d) dump.Write(v); foreach (var v in wd) dump.Write(v);
+        }
         if (dump != null) Frame(0);
         bool prof = StageProfile.Requested && sim.Name == "onephysics"; if (prof) StageProfile.Install();
         var stepNs = new double[s.Steps]; var allocB = new long[s.Steps]; double nsPerTick = 1e9 / Stopwatch.Frequency;
