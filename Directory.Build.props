@@ -5,7 +5,7 @@
     <PackagePrefix>RecursiveAI</PackagePrefix>
     <PackageBaseName>$(PackagePrefix).OnePhysics</PackageBaseName>
     <!-- The one place the package version lives. -->
-    <Version>0.3.0-preview.2</Version>
+    <Version>0.4.0-preview.1</Version>
     <Authors>Recursive AI, LLC</Authors>
     <Company>Recursive AI, LLC</Company>
     <Copyright>Copyright (c) Recursive AI, LLC</Copyright>

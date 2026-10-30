@@ -6,6 +6,23 @@ What changed for hosts in each preview, newest first. "Moved results" lists the 
 
 ## [Unreleased]
 
+## [0.4.0-preview.1]
+
+- **Soft bodies complete the 3D feature set for this preview line; the 3D engine stays `[Experimental("OPHYS0002")]`.** Every 3D scene, soft bodies included, is within its stability limits on x64 and arm64 with identical metrics, and results are bit-identical across x64, arm64, WebAssembly, vector widths and thread counts. Not every speed row meets the bar yet (within 1.15x of the fastest stable managed engine, BepuPhysics v2 or Jitter2, per scene and thread count). Measured on a Ryzen 9 7950X3D (ours / reference median step time, t1 / t8 on one core complex / t32):
+
+  | scene | t1 | t8 | t32 |
+  |---|---|---|---|
+  | large-pile-3d | 1.05 | 1.08 | 1.25 |
+  | ragdoll-pile-3d | 2.19 | 1.12 | 1.70 |
+  | sleep-wake-3d | 2.51 | 1.51 | 1.40 |
+  | queries-3d (settle phase) | 1.27 | 1.26 | 1.19 |
+  | cloth-drape-3d (soft body, against Jitter2) | 0.93 | 3.9 | 2.5 |
+  | heightfield-terrain-3d | 1.13 | 0.89 | 0.64 |
+  | mesh-terrain-3d | 1.08 | 0.89 | 0.85 |
+  | joint-grid-3d | 0.10 | 0.16 | 0.09 |
+
+  On an Apple M2 (t1 / t8) every 3D row meets the bar except ragdoll-pile-3d t1 (1.27) and sleep-wake-3d t1 (1.64), and cloth-drape-3d is 0.84 / 1.87. joint-chains-3d and pyramid-3d-30 have no stable managed reference, and the other soft-body scenes (soft-pile-3d, soft-rigid-3d, soft-mesh-3d, soft-skinned-3d) have none either; they are judged on their stability limits, which they meet. Every 2D scene is within the bar at every thread count.
+
 - **3D soft bodies solve about 2.5 times faster on a cloth (indicative, one thread), and large bodies use several threads. Moved results (soft bodies only; rigid worlds and 2D are unchanged).** The step works on float32 positions relative to each body, the constraints are coloured once at creation (edges, bends and tetrahedra solved colour by colour, in `Vector128` lanes where four constraints of a colour are available, with the same bits as the scalar loop), bodies of 1024 particles or more are split across threads by colour, contact detection and the particle pair search run in tasks that are joined in particle order, and particle pairs are searched once per step instead of once per substep. The order in which constraints are solved changes, so soft-body states, snapshot bytes and hashes differ from the previous preview; the snapshot layout is unchanged. Details in `docs/spec/softbody.md` (Solver).
 
 - **3D soft bodies follow a skeleton (skinning).** `SoftSkin.Create` builds per-particle joint weights (four influences, linear blend skinning), a maximum distance and an optional back-stop sphere from a skeleton and the mesh; set it as `SoftBodyDef.Skin`. `SoftBody.SetSkeletonPose` (ragdoll-style local rotations) or `SetSkeletonTransforms` (world joint poses) drives it before each step, with `teleport` to place or reset; `GetSkinnedPosition`, `CopySkinnedPositions`, `HasSkin`, `Slot` and `PhysicsWorld3D.GetSoftBody(slot)` (to find the bodies again after `Restore`) are new. A particle with maximum distance 0 is kinematic and equals its linearly blended position bit for bit; the others are held within their distance (and out of the back-stop) after every step, and win against contacts. Snapshot section version 2 is written only while a skinned body exists, so other worlds keep their bytes and hashes; version 1 sections still load. `DebugSoftBody.FirstTargetPoint` carries the targets. New scene `soft-skinned-3d` (a sleeve on a swinging arm) with `skinMaxDistance`, `skinBackstop` and `skinCuffError` metrics. See `docs/spec/softbody.md`.
