@@ -234,4 +234,30 @@ internal sealed partial class Engine3D
         SoftData = data;
         _softParticles = (int)particles;
     }
+
+    /// <summary>Emits one entry per soft body, in slot order: the particles as points and the edges as index pairs.</summary>
+    public void AddDebugSoftBodies(Debug.DebugGeometry g)
+    {
+        for (int i = 0; i < SoftHandles.HighWater; i++)
+        {
+            if (!SoftHandles.IsLive(i)) { continue; }
+            var d = SoftData[i]!;
+            int first = -1;
+            for (int p = 0; p < d.N; p++)
+            {
+                int k = g.AddPoint(new Vector3D(d.Pos[3 * p], d.Pos[3 * p + 1], d.Pos[3 * p + 2]));
+                if (p == 0) { first = k; }
+            }
+
+            int firstIndex = -1;
+            for (int e = 0; e < d.EdgeA.Length; e++)
+            {
+                int k = g.AddIndex(d.EdgeA[e]);
+                g.AddIndex(d.EdgeB[e]);
+                if (e == 0) { firstIndex = k; }
+            }
+
+            g.Add(new Debug.DebugSoftBody(i, SoftHandles.GenerationOf(i), d.Asleep, d.Radius, first, d.N, firstIndex, d.EdgeA.Length));
+        }
+    }
 }

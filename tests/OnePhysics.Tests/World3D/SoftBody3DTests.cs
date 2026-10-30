@@ -372,4 +372,25 @@ public class SoftBody3DTests
         ulong h = w.ComputeHash();
         Assert.Equal(h, w.ComputeHash());
     }
+
+    [Fact]
+    public void DebugGeometryListsParticlesAndEdgesAndTheSizeBoundCoversTheSnapshot()
+    {
+        var w = SoftScene();
+        Run(w, 10);
+        var g = new RecursiveAI.OnePhysics.Debug.DebugGeometry();
+        w.GetDebugGeometry(RecursiveAI.OnePhysics.Debug.DebugContent.SoftBodies, g);
+        Assert.Equal(w.SoftBodyCount, g.SoftBodies.Length);
+        int particles = 0;
+        foreach (var sb in g.SoftBodies)
+        {
+            particles += sb.ParticleCount;
+            Assert.True(sb.EdgeCount > 0);
+            for (int e = 0; e < 2 * sb.EdgeCount; e++) { Assert.InRange(g.Indices[sb.FirstIndex + e], 0, sb.ParticleCount - 1); }
+        }
+
+        Assert.Equal(particles, g.Points.Length);
+        Assert.True(w.GetSnapshotSizeBound() >= w.GetSnapshotSize());
+        Assert.Equal(w.Snapshot().Length, w.GetSnapshotSize());
+    }
 }
