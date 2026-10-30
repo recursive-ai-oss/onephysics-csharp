@@ -47,7 +47,7 @@ internal readonly struct Stages3D : IWorldStages
     // Spelled out because calling a default interface member on a struct boxes it: that was 48 bytes allocated by every step.
     public void AfterFinalize(WorldCore world, in StepContext context) { }
 
-    public bool BodyMotionIsConcurrent => false;
+    public bool BodyMotionIsConcurrent => true;
 }
 
 [InlineArray(28)]

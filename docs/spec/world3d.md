@@ -770,3 +770,7 @@ Round 28 put every island that holds a joint on the world's schedule (4 substeps
 * **Cost** (local, indicative, host load about 23, one pinned core, tiered compilation off, interleaved): ragdoll-pile-3d step 3.4–3.75 → 2.7–3.0 ms (best of 3 each), and by the profile build 3.9 → 3.1 ms, with solve+integrate 1.96 → 1.32 ms (0.67×). Other scenes have no mild joint islands and are unchanged.
 * **Tests:** a chain of boxes with point joints (also at a mass ratio of 20) steps differently with the contact-only schedule on than off, i.e. it is on it; a ratio of 500, hinge motors, hinge springs and a ladder of point joints step identically with it on or off, i.e. they are not.
 * **Not tried:** a different joint formulation that holds the 500:1 chain and the powered ragdolls at fewer substeps (position-level correction between substeps, shock propagation). The rule only moves the islands that already pass.
+
+### Round 34: more tasks for the serial parts of the step (no result changes)
+
+Profile build, large-pile-3d at eight threads (indicative): the sleep timers (0.18 ms) ran serially in 3D though they only read, and the colouring split 9000 constraints into three blocks of 4096, so eight threads shared three tasks. The sleep timers now run in parallel blocks, as in 2D (`BodyMotionIsConcurrent`), and colouring blocks are 512 constraints. The bucket layout is by block in constraint order, so the lists are the same. Sleep stage 0.18 to 0.05 ms, colouring 0.11 to 0.08 ms. Hash matrix unchanged.
