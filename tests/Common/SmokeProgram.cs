@@ -85,9 +85,49 @@ internal static class SmokeProgram
         ulong sk1 = SoftSkinned3DScene.Run(1, false), sk3 = SoftSkinned3DScene.Run(3, false), skr = SoftSkinned3DScene.Run(1, true);
         bool skSame = sk1 == sk3 && sk1 == skr;
         Console.WriteLine((skSame ? "OK softskinned3d " : "FAIL softskinned3d ") + sk1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        bool contacts = ContactModifiers();
+        Console.WriteLine(contacts ? "OK contact modifiers" : "FAIL contact modifiers");
         bool formats = FileFormats();
         Console.WriteLine(formats ? "OK formats" : "FAIL formats");
-        return formats && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+        return contacts && formats && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+    }
+
+    private readonly struct SmokeContactModifier : IContactModifier
+    {
+        public void Modify(ref ContactModification c)
+        {
+            c.TangentSpeed = 0.5f;
+            c.NormalImpulseLimit = 0.2f;
+            c.Friction = 0.5f;
+            c.Enabled = c.ShapeB.Index % 3 != 0;
+            c.SetSeparation(0, c.GetSeparation(0) + 0.001f);
+        }
+    }
+    private static bool ContactModifiers()
+    {
+        var a = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new() { WorldId = 3200, ThreadCount = 1 });
+        var b = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new() { WorldId = 3200, ThreadCount = 3 });
+        foreach (var w in new[] { a, b })
+        {
+            w.AddBox(new(20, 1), at: new(0, -0.5), type: BodyType.Static);
+            for (int i = 0; i < 8; i++) w.AddBox(new(1, 1), at: new(i * 2 - 7, 0.49));
+            w.SetContactModifier(new SmokeContactModifier());
+        }
+        var c = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new() { WorldId = 3201, ThreadCount = 1 });
+        var d = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new() { WorldId = 3201, ThreadCount = 3 });
+        foreach (var w in new[] { c, d })
+        {
+            w.AddBox(new(20, 1, 20), at: new(0, -0.5, 0), type: BodyType.Static);
+            for (int i = 0; i < 8; i++) w.AddBox(new(1, 1, 1), at: new(i * 2 - 7, 0.49, 0));
+            w.SetContactModifier(new SmokeContactModifier());
+        }
+        for (int i = 0; i < 20; i++)
+        {
+            if (i == 10) { a.Restore(a.Snapshot()); c.Restore(c.Snapshot()); }
+            a.Step(1f / 60); b.Step(1f / 60); c.Step(1f / 60); d.Step(1f / 60);
+            if (a.ComputeHash() != b.ComputeHash() || c.ComputeHash() != d.ComputeHash()) return false;
+        }
+        return true;
     }
 
     private static bool FileFormats()

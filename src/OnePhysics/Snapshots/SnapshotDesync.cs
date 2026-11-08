@@ -141,6 +141,8 @@ public static class SnapshotDesync
         HeaderProbe? bp = null;
         foreach (var section in schema.SnapshotSections)
         {
+            // The contact-edit marker is a built-in core section, already registered by the constructor.
+            if (section.SectionId == core.ContactModifications.SectionId) { continue; }
             var probe = new HeaderProbe(section.SectionId, section.IsOptional);
             core.AddSection(probe);
             if (section.SectionId is 0x42503244 or 0x42503344) { bp = probe; }

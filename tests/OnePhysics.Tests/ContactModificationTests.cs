@@ -60,6 +60,10 @@ public sealed class ContactModificationTests
             }
         }
         byte[] saved = a.Snapshot();
+        Assert.Empty(a.FindDifferences(saved).Differences);
+        string scene = a.SaveScene();
+        var sceneCopy = P2.PhysicsWorld2D.LoadScene(new StringReader(scene));
+        Assert.Equal(saved, sceneCopy.Snapshot());
         a.Step(1f / 60); ulong expected = a.ComputeHash();
         a.Restore(saved); a.Step(1f / 60);
         Assert.Equal(expected, a.ComputeHash());
