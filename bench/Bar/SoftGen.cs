@@ -1,15 +1,5 @@
 namespace Bar;
 
-/// <summary>A soft body of a scene: a generator kind with its parameters (docs/spec/scenes.md, "soft" records). Every engine builds the same mesh from <see cref="SoftGen"/>.</summary>
-public sealed class SoftDef
-{
-    public string Preset = "jelly";   // cloth, rubber, jelly: each engine's own starting values for that kind of material
-    public string Kind = "box";       // cloth, box, ball
-    public double X, Y, Z, Qx, Qy, Qz, Qw = 1;
-    public double Mass = 1;
-    public double[] P = [];           // cloth: width depth n pinMode (0 none, 1 four corners); box: sx sy sz nx ny nz; ball: radius n
-}
-
 /// <summary>A mesh in the body's own frame: float32 vertices (x y z per vertex), surface triangles (cloth and the boundary of volumes) and tetrahedra (volumes, positive orientation).</summary>
 public sealed class SoftMeshData
 {
