@@ -3,6 +3,8 @@ using System.Text;
 
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+
 /// <summary>One engine's per-stage medians on one scene, as the driver reported them under the engine's own stage names.</summary>
 sealed record ProfileRow(string Scene, string Engine, int Threads, double StepMedianMs, Dictionary<string, double> Stages, Dictionary<string, double> Counts);
 

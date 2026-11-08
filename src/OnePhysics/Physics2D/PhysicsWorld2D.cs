@@ -58,7 +58,7 @@ public sealed partial class PhysicsWorld2D
     /// The first call in a process also runs a small trial world that lands, settles and sleeps a pile and runs every kind of query, character move and trigger, so those code paths are loaded before your first step.
     /// A path the trial world does not reach is loaded by the .NET runtime on the calling thread the first time it runs, and the runtime allocates a few kilobytes doing so; that is the runtime's, not memory the world holds.
     /// </summary>
-    public void Warmup() => WarmupCore(true);
+    public void Warmup() { using var replayMutation = RecordMutation("PhysicsWorld2D.Warmup"); WarmupCore(true); }
 
     private void WarmupCore(bool prime)
     {
@@ -111,9 +111,17 @@ public sealed partial class PhysicsWorld2D
         _engine.Opt.Validate();
         _engine.CheckBounds();
         SyncCoreOptions();
+        if (_recorder != null) { RecordPreparedStep(dt); return; }
+        StepPrepared(dt);
+    }
+
+    // The unrecorded path has no recording scope or exception region in its simulation body.
+    private void StepPrepared(float dt)
+    {
         _core.Step(new Stages2D(_engine), dt);
         InvalidateQueryPad();
         _engine.ReconcileJoints();
+        _recorder?.SimulationEnded();
         if (_suppressed == 0)
         {
             if (_handlers.Count > 0 || _jointHandlers.Count > 0) { DispatchEvents(); }
@@ -187,6 +195,7 @@ public sealed partial class PhysicsWorld2D
     /// <exception cref="SnapshotFormatException">The bytes are not a valid snapshot of a 2D world; the world is unchanged.</exception>
     public OptionChanges Restore(byte[] snapshot)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.Restore");
         ArgumentNullException.ThrowIfNull(snapshot);
         return Restore((ReadOnlySpan<byte>)snapshot);
     }
@@ -200,6 +209,7 @@ public sealed partial class PhysicsWorld2D
     /// <exception cref="SnapshotFormatException">The bytes are not a valid snapshot of a 2D world; the world is unchanged.</exception>
     public OptionChanges Restore(ReadOnlySpan<byte> snapshot)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.Restore");
         var before = _engine.Opt;
         var oldGravity = before.Gravity;
         int oldSubsteps = before.Substeps, oldVelocity = before.VelocityIterations, oldRelax = before.RelaxIterations;
@@ -258,6 +268,7 @@ public sealed partial class PhysicsWorld2D
     /// </summary>
     public void ShiftOrigin(Vector2D offset)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.ShiftOrigin");
         double[] d = [offset.X, offset.Y];
         _core.ValidateShift(d);
         _engine.CheckShift(d);
@@ -287,10 +298,10 @@ public sealed partial class PhysicsWorld2D
 
     /// <summary>Creates a body from a definition.</summary>
     /// <exception cref="ArgumentOutOfRangeException">A value is not finite or the position is beyond +-2^21 from the origin (the message names it).</exception>
-    public Body CreateBody(in BodyDef def) => new(this, _engine.CreateBody(in def));
+    public Body CreateBody(in BodyDef def) { using var replayMutation = RecordMutation("PhysicsWorld2D.CreateBody"); return new(this, _engine.CreateBody(in def)); }
 
     /// <summary>Creates a body from a definition; the one-liner form of <see cref="CreateBody(in BodyDef)"/>.</summary>
-    public Body CreateBody(BodyType type, Vector2D position, float angleRadians = 0f) => CreateBody(type, position, angleRadians, nameof(position));
+    public Body CreateBody(BodyType type, Vector2D position, float angleRadians = 0f) { using var replayMutation = RecordMutation("PhysicsWorld2D.CreateBody"); return CreateBody(type, position, angleRadians, nameof(position)); }
 
     // positionParam names the caller's parameter in the error: the happy-path methods call this with their own "at".
     private Body CreateBody(BodyType type, Vector2D position, float angleRadians, string positionParam)
@@ -309,15 +320,18 @@ public sealed partial class PhysicsWorld2D
     /// <summary>Adds a circle (centre in the body's frame).</summary>
     /// <exception cref="InvalidShapeException">The radius or centre is not valid.</exception>
     public Shape CreateCircle(Body body, float radius, Vector2F center = default, ShapeDef? def = null)
-        => AddShape(body, Shape2D.CreateCircle(new Vec2(center.X, center.Y), radius), def);
+        {
+            using var replayMutation = RecordMutation("PhysicsWorld2D.CreateCircle"); return AddShape(body, Shape2D.CreateCircle(new Vec2(center.X, center.Y), radius), def); }
 
     /// <summary>Adds a capsule between two points of the body's frame.</summary>
     public Shape CreateCapsule(Body body, Vector2F p1, Vector2F p2, float radius, ShapeDef? def = null)
-        => AddShape(body, Shape2D.CreateCapsule(new Vec2(p1.X, p1.Y), new Vec2(p2.X, p2.Y), radius), def);
+        {
+            using var replayMutation = RecordMutation("PhysicsWorld2D.CreateCapsule"); return AddShape(body, Shape2D.CreateCapsule(new Vec2(p1.X, p1.Y), new Vec2(p2.X, p2.Y), radius), def); }
 
     /// <summary>Adds the convex hull of up to 8 points, rounded by <paramref name="radius"/>. Hostile point sets (duplicates, collinear, NaN) throw <see cref="InvalidShapeException"/>.</summary>
     public Shape CreatePolygon(Body body, ReadOnlySpan<Vector2F> points, float radius = 0f, ShapeDef? def = null)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.CreatePolygon");
         var v = new Vec2[points.Length];
         for (int i = 0; i < points.Length; i++) { v[i] = new Vec2(points[i].X, points[i].Y); }
         return AddShape(body, Shape2D.CreatePolygon(v, radius), def);
@@ -332,13 +346,15 @@ public sealed partial class PhysicsWorld2D
     /// <param name="def">Shape settings; null means the defaults.</param>
     public Shape CreateBox(Body body, Vector2F size, Vector2F center = default, float angleRadians = 0f, float radius = 0f, ShapeDef? def = null)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.CreateBox");
         var (s, c) = RecursiveAI.OneMath.Math64.SinCos(angleRadians);
         return AddShape(body, Shape2D.CreateBox(0.5f * size.X, 0.5f * size.Y, new Vec2(center.X, center.Y), new Rot2((float)c, (float)s), radius), def);
     }
 
     /// <summary>Adds a two-sided segment with no thickness (it has no area, so it adds no mass).</summary>
     public Shape CreateSegment(Body body, Vector2F p1, Vector2F p2, ShapeDef? def = null)
-        => AddShape(body, Shape2D.CreateSegment(new Vec2(p1.X, p1.Y), new Vec2(p2.X, p2.Y)), def);
+        {
+            using var replayMutation = RecordMutation("PhysicsWorld2D.CreateSegment"); return AddShape(body, Shape2D.CreateSegment(new Vec2(p1.X, p1.Y), new Vec2(p2.X, p2.Y)), def); }
 
     /// <summary>
     /// Adds a chain: one chain-segment shape per link, with ghost vertices so bodies slide over the joints without snagging. At least 2 points (3 for a loop). One-sided chains are solid on the right of the direction of travel.
@@ -346,6 +362,7 @@ public sealed partial class PhysicsWorld2D
     /// </summary>
     public Shape CreateChain(Body body, ReadOnlySpan<Vector2F> points, bool loop = false, bool twoSided = true, ShapeDef? def = null)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.CreateChain");
         var v = new Vec2[points.Length];
         for (int i = 0; i < points.Length; i++) { v[i] = new Vec2(points[i].X, points[i].Y); }
         var chain = new Chain2D(v, loop, twoSided);
@@ -374,6 +391,7 @@ public sealed partial class PhysicsWorld2D
     /// <exception cref="InvalidShapeException">A side of <paramref name="size"/> is not finite or is smaller than 2E-05 (its <see cref="ArgumentException.ParamName"/> is <c>size</c>).</exception>
     public Body AddBox(Vector2F size, Vector2D at = default, float angleRadians = 0f, BodyType type = BodyType.Dynamic, Material2D? material = null, float density = 1f)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.AddBox");
         CheckSize(size, nameof(size));
         var body = CreateBody(type, at, angleRadians, nameof(at));
         try { CreateBox(body, size, default, 0f, 0f, ShapeFor(material, density)); }
@@ -400,6 +418,7 @@ public sealed partial class PhysicsWorld2D
     /// <summary>Adds a circle centred at <paramref name="at"/>. Dynamic by default.</summary>
     public Body AddCircle(float radius, Vector2D at = default, BodyType type = BodyType.Dynamic, Material2D? material = null, float density = 1f)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.AddCircle");
         var body = CreateBody(type, at, 0f, nameof(at));
         try { CreateCircle(body, radius, default, ShapeFor(material, density)); }
         catch (InvalidShapeException e) { body.Destroy(); throw e.ForParameter(nameof(radius)); }
@@ -410,6 +429,7 @@ public sealed partial class PhysicsWorld2D
     /// <summary>Adds a capsule whose axis runs from (-halfLength, 0) to (halfLength, 0) in the body's frame. Dynamic by default.</summary>
     public Body AddCapsule(float halfLength, float radius, Vector2D at = default, float angleRadians = 0f, BodyType type = BodyType.Dynamic, Material2D? material = null, float density = 1f)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.AddCapsule");
         var body = CreateBody(type, at, angleRadians, nameof(at));
         try { CreateCapsule(body, new Vector2F(-halfLength, 0f), new Vector2F(halfLength, 0f), radius, ShapeFor(material, density)); }
         catch (InvalidShapeException e)
@@ -424,6 +444,7 @@ public sealed partial class PhysicsWorld2D
     /// <summary>Adds the convex hull of up to 8 points (in the body's frame), rounded by <paramref name="radius"/>. Dynamic by default.</summary>
     public Body AddPolygon(ReadOnlySpan<Vector2F> points, Vector2D at = default, float angleRadians = 0f, float radius = 0f, BodyType type = BodyType.Dynamic, Material2D? material = null, float density = 1f)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.AddPolygon");
         var body = CreateBody(type, at, angleRadians, nameof(at));
         try { CreatePolygon(body, points, radius, ShapeFor(material, density)); }
         catch (InvalidShapeException e) { body.Destroy(); throw e.ForParameter(e.Message.StartsWith("radius", StringComparison.Ordinal) ? nameof(radius) : nameof(points)); }
@@ -434,6 +455,7 @@ public sealed partial class PhysicsWorld2D
     /// <summary>Adds a static two-sided segment between two world points.</summary>
     public Body AddSegment(Vector2D a, Vector2D b, Material2D? material = null)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.AddSegment");
         var body = CreateBody(BodyType.Static, default);
         try { CreateSegment(body, a.ToSingle(), b.ToSingle(), ShapeFor(material, 0f)); }
         catch (InvalidShapeException e) { body.Destroy(); throw e.ForParameter(nameof(a)); }
@@ -444,6 +466,7 @@ public sealed partial class PhysicsWorld2D
     /// <summary>Adds a static chain through world points (two-sided unless <paramref name="twoSided"/> is false, then solid on the right of the direction of travel).</summary>
     public Body AddChain(ReadOnlySpan<Vector2D> points, bool loop = false, bool twoSided = true, Material2D? material = null)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.AddChain");
         var p = new Vector2F[points.Length];
         for (int i = 0; i < p.Length; i++) { p[i] = points[i].ToSingle(); }
         var body = CreateBody(BodyType.Static, default);

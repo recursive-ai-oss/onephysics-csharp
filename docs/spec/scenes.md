@@ -340,3 +340,55 @@ The comments list, per scene, which engines were counted stable.
 - `heightfield-terrain-3d`: Box3D (0.195 deep, an alpha height-field finding) is not counted. `sleep-wake-3d`: all engines pass with `escapeMargin` 60; with the old 0.5 m margin Bepu, Box3D and Rapier3D threw 7, 4 and 5 boxes out of the container (`escapesRaw`).
 - `pyramid-100` `jitter`: Box2D's robust value (0.115) is higher than its raw one (0.01): the window includes an earlier interval in which the pyramid was still settling.
 - Scenes without a row (`joint-grid`, `chain`, `bullets`, `queries`, `characters`, vehicles) carry none of the four metrics except `escapes`, which is 0 for every stable engine.
+
+## Public loading and exact-state scenes (version 2)
+
+`RecursiveAI.OnePhysics.Scene.Scene` is the shared public version 1 model and
+reader; the benchmark uses this reader, not a private copy. `Read(TextReader,
+inputName)` validates record arities, finite numbers, material and joint
+references, geometry and bounded generator sizes. `CreateWorld2D/3D` constructs
+the world and validates engine-specific definitions. `SceneFormatException`
+names the input, one-based line and expected value. Lines are bounded to 1 MiB,
+total text to 128 MiB, bodies/joints to 100000 each, and saved snapshot payloads
+to 64 MiB. Full-state snapshot contents also pass the world's existing validator.
+
+`world.SaveScene()` or `SaveScene(TextWriter)` writes version 2. This is the
+full-state form, not a lossy geometry export: it includes every currently
+supported shape, joint, service, material, filter, option, soft body, solver
+cache, slot generation, sleeping state, origin and pending event that snapshots
+preserve. Contact/solver delegates and host code are not serialized. Pending live
+simulation options are stored separately without synchronizing the core early. This form allows exact
+save → load → save and hash equality even for a world already in motion.
+
+The canonical records, in order, are:
+
+```
+scene 2
+dim 2
+world_id 24
+state 1234
+data <base64 chunk>
+end
+```
+
+`dim` is 2 or 3. `world_id` is positive and preserves handle identity in event
+payloads when creating the destination world. An optional `options <base64>` record before `state` uses the dimension-specific
+LiveOptions layout in replay.md. World-produced scenes include it, preserving
+pending option edits and fixed creation margins without mutating the source.
+`state` is the exact nonzero
+snapshot byte count. There are as many `data` records as needed; each encodes
+3072 bytes (4096 base64 characters), except the last, which may be shorter.
+Base64 is RFC 4648's standard alphabet and padding. The concatenated decoded
+bytes are the complete little-endian world snapshot, unchanged, with its own
+independent version. `end` is mandatory and no records may follow it. All record
+terminators are LF and the encoding is UTF-8 without a BOM. The reader also
+accepts CRLF and comments. A world id is file input, not a process-global id
+allocation. Caller-selected thread count is not saved and does not change results.
+
+`PhysicsWorld2D.LoadScene(reader)` and its identical 3D counterpart accept both
+versions. The authoring vocabulary in version 1 remains unchanged for every
+reference driver and the generated scene checksums do not change. Version 2 is
+an exact-state interchange extension understood by this library and viewers
+using it; reference benchmark drivers continue to consume version 1 authoring
+records. A viewer can load either form and inspect the resulting world without
+reflecting over scene or world types.

@@ -5,6 +5,8 @@ using System.Text;
 
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+
 public static class Program
 {
     public static int Main(string[] args)
@@ -21,6 +23,7 @@ public static class Program
                 return 0;
             }
             case "micro-boxbox": return MicroBoxBox.Run(opts);
+            case "recording-indicative": return RecordingTiming.Run(opts);
             case "selftest": return Metrics.SelfTest() + Metrics3.SelfTest() + Robust.SelfTest() + ProfileReport.SelfTest() + Verdict.SelfTest();
             case "run": return Runner.Run(opts);
             case "summarize": Runner.Summarize(opts.Pos(0)); return 0;

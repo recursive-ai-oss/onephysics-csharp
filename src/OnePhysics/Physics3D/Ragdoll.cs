@@ -122,6 +122,7 @@ public readonly struct Ragdoll : IEquatable<Ragdoll>
     /// <exception cref="StaleHandleException">The ragdoll was removed.</exception>
     public void DriveToPose(ReadOnlySpan<QuaternionF> pose, float strength = 1f)
     {
+        using var replayMutation = _world?.RecordMutation("Ragdoll.DriveToPose");
         var s = Resolve();
         CheckPose(s, pose);
         if (!(strength >= 0f && strength <= 1f)) { throw new ArgumentOutOfRangeException(nameof(strength), strength, "The strength must be within 0..1."); }
@@ -167,6 +168,7 @@ public readonly struct Ragdoll : IEquatable<Ragdoll>
     /// <exception cref="StaleHandleException">The ragdoll was removed.</exception>
     public void SetPose(ReadOnlySpan<QuaternionF> pose, Vector3D at, QuaternionF rotation = default)
     {
+        using var replayMutation = _world?.RecordMutation("Ragdoll.SetPose");
         var s = Resolve();
         CheckPose(s, pose);
         Kinematics(s, pose, at, rotation);
@@ -191,6 +193,7 @@ public readonly struct Ragdoll : IEquatable<Ragdoll>
     /// <exception cref="StaleHandleException">The ragdoll was removed.</exception>
     public void MoveToPose(ReadOnlySpan<QuaternionF> pose, Vector3D at, QuaternionF rotation, float dt)
     {
+        using var replayMutation = _world?.RecordMutation("Ragdoll.MoveToPose");
         var s = Resolve();
         if (!(dt > 0f) || !float.IsFinite(dt)) { throw new ArgumentOutOfRangeException(nameof(dt), dt, "dt must be finite and above 0."); }
         CheckPose(s, pose);
@@ -243,6 +246,7 @@ public readonly struct Ragdoll : IEquatable<Ragdoll>
     /// <exception cref="StaleHandleException">The ragdoll was removed already.</exception>
     public void Remove()
     {
+        using var replayMutation = _world?.RecordMutation("Ragdoll.Remove");
         var s = Resolve();
         var w = _world!;
         var bodies = new BodyHandle[s.Parts];
@@ -319,6 +323,7 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="ArgumentOutOfRangeException">A value in the definition, or <paramref name="at"/>, is out of range; the message names the part and the field. Nothing has been added.</exception>
     public Ragdoll AddRagdoll(RagdollDef def, Vector3D at = default, QuaternionF rotation = default, ReadOnlySpan<QuaternionF> pose = default)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.AddRagdoll");
         ArgumentNullException.ThrowIfNull(def);
         var d = def.Clone();
         d.Validate();

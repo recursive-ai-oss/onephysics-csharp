@@ -7,6 +7,10 @@ using P2 = RecursiveAI.OnePhysics.Physics2D;
 
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+using ShapeDef = RecursiveAI.OnePhysics.Scene.ShapeDef;
+using CharacterScript = RecursiveAI.OnePhysics.Scene.CharacterScript;
+
 /// <summary>Builds a 2D world from a scene definition. Shared by the bar runner and the hash-matrix scenarios. Revolute joints (the only 2D kind the scene format has) are created; a joint between two non-dynamic bodies is dropped.</summary>
 public static class SceneBuilder2D
 {

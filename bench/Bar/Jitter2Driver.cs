@@ -9,6 +9,9 @@ using Jitter2.SoftBodies;
 
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+using ShapeDef = RecursiveAI.OnePhysics.Scene.ShapeDef;
+
 /// <summary>Jitter2 driver, written from the project's published documentation and API reference.</summary>
 static class Jitter2Driver
 {

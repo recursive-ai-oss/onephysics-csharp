@@ -5,6 +5,12 @@ using P3 = RecursiveAI.OnePhysics.Physics3D;
 
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+using ShapeDef = RecursiveAI.OnePhysics.Scene.ShapeDef;
+using JointDef = RecursiveAI.OnePhysics.Scene.JointDef;
+using CharacterScript = RecursiveAI.OnePhysics.Scene.CharacterScript;
+using VehicleScript = RecursiveAI.OnePhysics.Scene.VehicleScript;
+
 /// <summary>Builds a 3D world from a scene definition. Shared by the bar runner and the hash-matrix scenarios. Point joints are built from the scene (the only 3D joint kind the scenes use); queries are not run.</summary>
 public static class SceneBuilder3D
 {

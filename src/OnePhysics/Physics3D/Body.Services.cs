@@ -101,6 +101,7 @@ public readonly partial struct Body
         }
         set
         {
+            using var replayMutation = _world?.RecordMutation("Body.Layer");
             var (w, b) = Resolve();
             Engine3D.CheckLayer(value, nameof(value));
             for (int s = w.Engine.ShapeHead[b]; s >= 0; s = w.Engine.NextShape[s]) { w.Engine.ShapeLayer[s] = (byte)value; }
@@ -118,6 +119,7 @@ public readonly partial struct Shape
         get { int s = Resolve(); return _world!.Engine.ShapeLayer[s]; }
         set
         {
+            using var replayMutation = _world?.RecordMutation("Shape.Layer");
             int s = Resolve();
             Engine3D.CheckLayer(value, nameof(value));
             _world!.Engine.ShapeLayer[s] = (byte)value;
@@ -132,20 +134,20 @@ public readonly partial struct Shape
     public uint CategoryBits
     {
         get { int s = Resolve(); return _world!.Engine.Category[s]; }
-        set { int s = Resolve(); _world!.Engine.Category[s] = value; _world.Engine.FilterDirty = true; }
+        set { using var replayMutation = _world?.RecordMutation("Shape.CategoryBits");  int s = Resolve(); _world!.Engine.Category[s] = value; _world.Engine.FilterDirty = true; }
     }
 
     /// <summary>The categories this shape collides with; two shapes collide when each one's mask includes the other's category. A change takes effect at the next step.</summary>
     public uint MaskBits
     {
         get { int s = Resolve(); return _world!.Engine.Mask[s]; }
-        set { int s = Resolve(); _world!.Engine.Mask[s] = value; _world.Engine.FilterDirty = true; }
+        set { using var replayMutation = _world?.RecordMutation("Shape.MaskBits");  int s = Resolve(); _world!.Engine.Mask[s] = value; _world.Engine.FilterDirty = true; }
     }
 
     /// <summary>Group index: shapes sharing a non-zero group always collide when it is positive and never when it is negative, overriding category and mask. A change takes effect at the next step.</summary>
     public int GroupIndex
     {
         get { int s = Resolve(); return _world!.Engine.Group[s]; }
-        set { int s = Resolve(); _world!.Engine.Group[s] = value; _world.Engine.FilterDirty = true; }
+        set { using var replayMutation = _world?.RecordMutation("Shape.GroupIndex");  int s = Resolve(); _world!.Engine.Group[s] = value; _world.Engine.FilterDirty = true; }
     }
 }

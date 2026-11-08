@@ -78,115 +78,151 @@ public delegate bool PairPredicate(Shape a, Shape b);
 [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class WorldOptions3D
 {
+    internal Action<string>? ReplayChanged;
+
     /// <summary>Substeps of the soft-body solver per step, 1..64. Many small steps with one pass each beat few large steps with many passes (Macklin et al. 2019). Default 4. Saved with the soft bodies.</summary>
-    public int SoftSubsteps { get; set; } = 4;
+    public int SoftSubsteps { get => _replaySoftSubsteps; set { _replaySoftSubsteps = value; ReplayChanged?.Invoke("WorldOptions3D.SoftSubsteps"); } }
+    private int _replaySoftSubsteps = 4;
 
     /// <summary>Gauss–Seidel passes over the soft-body constraints per soft substep, 1..32. Default 3. Saved with the soft bodies.</summary>
-    public int SoftIterations { get; set; } = 3;
+    public int SoftIterations { get => _replaySoftIterations; set { _replaySoftIterations = value; ReplayChanged?.Invoke("WorldOptions3D.SoftIterations"); } }
+    private int _replaySoftIterations = 3;
 
     /// <summary>Gravity in m/s². Default (0, -9.81, 0).</summary>
-    public Vector3F Gravity { get; set; } = new(0f, -9.81f, 0f);
+    public Vector3F Gravity { get => _replayGravity; set { _replayGravity = value; ReplayChanged?.Invoke("WorldOptions3D.Gravity"); } }
+    private Vector3F _replayGravity = new(0f, -9.81f, 0f);
 
     /// <summary>Substeps per step, 1..256. Default 4.</summary>
-    public int Substeps { get; set; } = 4;
+    public int Substeps { get => _replaySubsteps; set { _replaySubsteps = value; ReplayChanged?.Invoke("WorldOptions3D.Substeps"); } }
+    private int _replaySubsteps = 4;
 
     /// <summary>Biased solver iterations per substep, 1..256. Default 1.</summary>
-    public int VelocityIterations { get; set; } = 1;
+    public int VelocityIterations { get => _replayVelocityIterations; set { _replayVelocityIterations = value; ReplayChanged?.Invoke("WorldOptions3D.VelocityIterations"); } }
+    private int _replayVelocityIterations = 1;
 
     /// <summary>Relaxation iterations per substep, 0..256. Default 1.</summary>
-    public int RelaxIterations { get; set; } = 1;
+    public int RelaxIterations { get => _replayRelaxIterations; set { _replayRelaxIterations = value; ReplayChanged?.Invoke("WorldOptions3D.RelaxIterations"); } }
+    private int _replayRelaxIterations = 1;
 
     /// <summary>
     /// Substeps per step for islands that hold no joint, 0..256. Default 2. An island with a joint, a vehicle or a touching kinematic body runs <see cref="Substeps"/>; every other island runs this many substeps of
     /// <see cref="ContactVelocityIterations"/> and <see cref="ContactRelaxIterations"/>, which costs less and is stable where no joint needs the finer step. 0, or a value not below <see cref="Substeps"/>, runs every island on the world's schedule.
     /// Saved in snapshots and covered by the world hash, like <see cref="Substeps"/>.
     /// </summary>
-    public int ContactSubsteps { get; set; } = 2;
+    public int ContactSubsteps { get => _replayContactSubsteps; set { _replayContactSubsteps = value; ReplayChanged?.Invoke("WorldOptions3D.ContactSubsteps"); } }
+    private int _replayContactSubsteps = 2;
 
     /// <summary>Biased solver iterations per substep of an island on the contact-only schedule, 1..256. Default 1.</summary>
-    public int ContactVelocityIterations { get; set; } = 1;
+    public int ContactVelocityIterations { get => _replayContactVelocityIterations; set { _replayContactVelocityIterations = value; ReplayChanged?.Invoke("WorldOptions3D.ContactVelocityIterations"); } }
+    private int _replayContactVelocityIterations = 1;
 
     /// <summary>Relaxation iterations per substep of an island on the contact-only schedule, 0..256. Default 2.</summary>
-    public int ContactRelaxIterations { get; set; } = 2;
+    public int ContactRelaxIterations { get => _replayContactRelaxIterations; set { _replayContactRelaxIterations = value; ReplayChanged?.Invoke("WorldOptions3D.ContactRelaxIterations"); } }
+    private int _replayContactRelaxIterations = 2;
 
     /// <summary>Threads used by a step, 1..1024. The result never depends on it. Default 1.</summary>
-    public int ThreadCount { get; set; } = 1;
+    public int ThreadCount { get => _replayThreadCount; set { _replayThreadCount = value; ReplayChanged?.Invoke("WorldOptions3D.ThreadCount"); } }
+    private int _replayThreadCount = 1;
 
     /// <summary>World id used in handles; 0 picks one. Default 0.</summary>
-    public int WorldId { get; set; }
+    public int WorldId { get => _replayWorldId; set { _replayWorldId = value; ReplayChanged?.Invoke("WorldOptions3D.WorldId"); } }
+    private int _replayWorldId;
 
     /// <summary>Pairs of shapes with overlapping boxes the world should have room for (0..16777216). With <see cref="PhysicsWorld3D.Warmup"/> or at creation, the pair table and the per-step pair lists are sized to it so steps within it allocate nothing. 0 (the default) grows on demand; <c>Warmup()</c> then assumes eight per body. Never changes a result; not saved.</summary>
-    public int PairCapacity { get; set; }
+    public int PairCapacity { get => _replayPairCapacity; set { _replayPairCapacity = value; ReplayChanged?.Invoke("WorldOptions3D.PairCapacity"); } }
+    private int _replayPairCapacity;
 
     /// <summary>Contact constraints (and joints) the world should have room for (0..16777216): constraint storage, colors, solver rows and event buffers. 0 (the default) grows on demand; <c>Warmup()</c> then assumes six per body. Never changes a result; not saved.</summary>
-    public int ContactCapacity { get; set; }
+    public int ContactCapacity { get => _replayContactCapacity; set { _replayContactCapacity = value; ReplayChanged?.Invoke("WorldOptions3D.ContactCapacity"); } }
+    private int _replayContactCapacity;
 
     /// <summary>Islands the world should have room for (0..16777216). 0 (the default) grows on demand; <c>Warmup()</c> then assumes one per body. Never changes a result; not saved.</summary>
-    public int IslandCapacity { get; set; }
+    public int IslandCapacity { get => _replayIslandCapacity; set { _replayIslandCapacity = value; ReplayChanged?.Invoke("WorldOptions3D.IslandCapacity"); } }
+    private int _replayIslandCapacity;
 
     /// <summary>Hits the query scratch of the thread that calls <c>Warmup()</c> should hold (0..1048576), so the first queries of up to that many hits allocate nothing. 0 keeps the default of 64. Never changes a result; not saved.</summary>
-    public int QueryScratchCapacity { get; set; }
+    public int QueryScratchCapacity { get => _replayQueryScratchCapacity; set { _replayQueryScratchCapacity = value; ReplayChanged?.Invoke("WorldOptions3D.QueryScratchCapacity"); } }
+    private int _replayQueryScratchCapacity;
 
     internal const int MaxCapacity = 1 << 24;
 
     /// <summary>Whether resting bodies fall asleep. Default true.</summary>
-    public bool SleepEnabled { get; set; } = true;
+    public bool SleepEnabled { get => _replaySleepEnabled; set { _replaySleepEnabled = value; ReplayChanged?.Invoke("WorldOptions3D.SleepEnabled"); } }
+    private bool _replaySleepEnabled = true;
 
     /// <summary>Seconds a body must stay below the threshold to sleep. Default 0.5.</summary>
-    public float TimeToSleep { get; set; } = 0.5f;
+    public float TimeToSleep { get => _replayTimeToSleep; set { _replayTimeToSleep = value; ReplayChanged?.Invoke("WorldOptions3D.TimeToSleep"); } }
+    private float _replayTimeToSleep = 0.5f;
 
     /// <summary>Speed (m/s, linear plus rotation at the farthest point) under which a body counts as resting. Default 0.05.</summary>
-    public float SleepThreshold { get; set; } = 0.05f;
+    public float SleepThreshold { get => _replaySleepThreshold; set { _replaySleepThreshold = value; ReplayChanged?.Invoke("WorldOptions3D.SleepThreshold"); } }
+    private float _replaySleepThreshold = 0.05f;
 
     /// <summary>Which events are recorded. Default: everything but contact persist.</summary>
-    public EventMask Events { get; set; } = EventMask.Default;
+    public EventMask Events { get => _replayEvents; set { _replayEvents = value; ReplayChanged?.Invoke("WorldOptions3D.Events"); } }
+    private EventMask _replayEvents = EventMask.Default;
 
     /// <summary>Contact stiffness in Hz (capped at a quarter of the substep rate). Default 30.</summary>
-    public float ContactHertz { get; set; } = 30f;
+    public float ContactHertz { get => _replayContactHertz; set { _replayContactHertz = value; ReplayChanged?.Invoke("WorldOptions3D.ContactHertz"); } }
+    private float _replayContactHertz = 30f;
 
     /// <summary>Contact damping ratio. Default 10.</summary>
-    public float ContactDampingRatio { get; set; } = 10f;
+    public float ContactDampingRatio { get => _replayContactDampingRatio; set { _replayContactDampingRatio = value; ReplayChanged?.Invoke("WorldOptions3D.ContactDampingRatio"); } }
+    private float _replayContactDampingRatio = 10f;
 
     /// <summary>Largest speed at which penetration is pushed out, m/s. Default 3.</summary>
-    public float PushOutVelocity { get; set; } = 3f;
+    public float PushOutVelocity { get => _replayPushOutVelocity; set { _replayPushOutVelocity = value; ReplayChanged?.Invoke("WorldOptions3D.PushOutVelocity"); } }
+    private float _replayPushOutVelocity = 3f;
 
     /// <summary>Penetration tolerated before the soft contact pushes, metres. Default 0.</summary>
-    public float ContactSlop { get; set; }
+    public float ContactSlop { get => _replayContactSlop; set { _replayContactSlop = value; ReplayChanged?.Invoke("WorldOptions3D.ContactSlop"); } }
+    private float _replayContactSlop;
 
     /// <summary>Approach speed under which restitution is ignored, m/s. Default 1.</summary>
-    public float RestitutionThreshold { get; set; } = 1f;
+    public float RestitutionThreshold { get => _replayRestitutionThreshold; set { _replayRestitutionThreshold = value; ReplayChanged?.Invoke("WorldOptions3D.RestitutionThreshold"); } }
+    private float _replayRestitutionThreshold = 1f;
 
     /// <summary>Speed limit, m/s. Default 400.</summary>
-    public float MaxLinearSpeed { get; set; } = 400f;
+    public float MaxLinearSpeed { get => _replayMaxLinearSpeed; set { _replayMaxLinearSpeed = value; ReplayChanged?.Invoke("WorldOptions3D.MaxLinearSpeed"); } }
+    private float _replayMaxLinearSpeed = 400f;
 
     /// <summary>Rotation limit per substep, radians. Default π/4.</summary>
-    public float MaxRotationPerSubstep { get; set; } = 0.7853982f;
+    public float MaxRotationPerSubstep { get => _replayMaxRotationPerSubstep; set { _replayMaxRotationPerSubstep = value; ReplayChanged?.Invoke("WorldOptions3D.MaxRotationPerSubstep"); } }
+    private float _replayMaxRotationPerSubstep = 0.7853982f;
 
     /// <summary>Whether fast bodies are stopped at static geometry. Default true.</summary>
-    public bool ContinuousEnabled { get; set; } = true;
+    public bool ContinuousEnabled { get => _replayContinuousEnabled; set { _replayContinuousEnabled = value; ReplayChanged?.Invoke("WorldOptions3D.ContinuousEnabled"); } }
+    private bool _replayContinuousEnabled = true;
 
     /// <summary>Stiffness of the rigid rows of joints in Hz (capped at a quarter of the substep rate). Default 60.</summary>
-    public float JointHertz { get; set; } = 60f;
+    public float JointHertz { get => _replayJointHertz; set { _replayJointHertz = value; ReplayChanged?.Invoke("WorldOptions3D.JointHertz"); } }
+    private float _replayJointHertz = 60f;
 
     /// <summary>Damping ratio of the rigid rows of joints. Default 2.</summary>
-    public float JointDampingRatio { get; set; } = 2f;
+    public float JointDampingRatio { get => _replayJointDampingRatio; set { _replayJointDampingRatio = value; ReplayChanged?.Invoke("WorldOptions3D.JointDampingRatio"); } }
+    private float _replayJointDampingRatio = 2f;
 
     /// <summary>Approach speed (m/s, along the contact normal at the start of the step) above which a contact reports a hit event, when <see cref="EventMask.ContactHit"/> is on. At least 0. Default 1.</summary>
-    public float HitSpeedThreshold { get; set; } = 1f;
+    public float HitSpeedThreshold { get => _replayHitSpeedThreshold; set { _replayHitSpeedThreshold = value; ReplayChanged?.Invoke("WorldOptions3D.HitSpeedThreshold"); } }
+    private float _replayHitSpeedThreshold = 1f;
 
     /// <summary>Distance at which surfaces get a speculative contact, metres. Default 0.02.</summary>
-    public float SpeculativeDistance { get; set; } = 0.02f;
+    public float SpeculativeDistance { get => _replaySpeculativeDistance; set { _replaySpeculativeDistance = value; ReplayChanged?.Invoke("WorldOptions3D.SpeculativeDistance"); } }
+    private float _replaySpeculativeDistance = 0.02f;
 
     /// <summary>Margin of the broadphase boxes, metres. Fixed at construction. Default 0.03: a little over the speculative distance, so a contact can start while the boxes of its two bodies already overlap, and few pairs are kept that cannot touch.</summary>
-    public double BroadphaseMargin { get; set; } = 0.03;
+    public double BroadphaseMargin { get => _replayBroadphaseMargin; set { _replayBroadphaseMargin = value; ReplayChanged?.Invoke("WorldOptions3D.BroadphaseMargin"); } }
+    private double _replayBroadphaseMargin = 0.03;
 
     /// <summary>Replaces the default material combination (friction: geometric mean; restitution and rolling resistance: maximum). Never saved.</summary>
-    public MaterialMixer? MaterialMixer { get; set; }
+    public MaterialMixer? MaterialMixer { get => _replayMaterialMixer; set { _replayMaterialMixer = value; ReplayChanged?.Invoke("WorldOptions3D.MaterialMixer"); } }
+    private MaterialMixer? _replayMaterialMixer;
 
     /// <summary>Optional veto on new shape pairs. Never saved.</summary>
-    public PairPredicate? PairFilter { get; set; }
+    public PairPredicate? PairFilter { get => _replayPairFilter; set { _replayPairFilter = value; ReplayChanged?.Invoke("WorldOptions3D.PairFilter"); } }
+    private PairPredicate? _replayPairFilter;
 
-    internal WorldOptions3D Clone() => (WorldOptions3D)MemberwiseClone();
+    internal WorldOptions3D Clone() { var copy = (WorldOptions3D)MemberwiseClone(); copy.ReplayChanged = null; return copy; }
 
     /// <summary>Checks every value.</summary>
     /// <exception cref="ArgumentOutOfRangeException">A value is outside its range.</exception>

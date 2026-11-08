@@ -5,6 +5,9 @@ using System.Text;
 
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+using ShapeDef = RecursiveAI.OnePhysics.Scene.ShapeDef;
+
 /// <summary>What an in-process 3D engine adapter provides to the shared driver loop.</summary>
 interface ISim3
 {

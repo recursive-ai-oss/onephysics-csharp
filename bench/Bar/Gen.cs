@@ -3,6 +3,14 @@ using System.Text;
 
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+using BodyDef = RecursiveAI.OnePhysics.Scene.BodyDef;
+using ShapeDef = RecursiveAI.OnePhysics.Scene.ShapeDef;
+using JointDef = RecursiveAI.OnePhysics.Scene.JointDef;
+using QueryDef = RecursiveAI.OnePhysics.Scene.QueryDef;
+using EventDef = RecursiveAI.OnePhysics.Scene.EventDef;
+using CharacterScript = RecursiveAI.OnePhysics.Scene.CharacterScript;
+
 /// <summary>Deterministic 2D scene generators. Only IEEE-exact arithmetic is used, so the files are byte-identical on every platform.</summary>
 public static class Gen
 {

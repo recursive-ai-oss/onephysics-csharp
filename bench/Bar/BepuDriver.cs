@@ -8,6 +8,9 @@ using BepuUtilities.Memory;
 
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+using ShapeDef = RecursiveAI.OnePhysics.Scene.ShapeDef;
+
 static class BepuDriver
 {
     public static int Run(Opts o) => Driver3.Run(o, new BepuSim());

@@ -18,6 +18,8 @@ internal static class Program
         ["snapshot-region"] = FuzzSnapshotEncoding.Region,
         ["snapshot-delta"] = FuzzSnapshotEncoding.Delta,
         ["snapshot-compressed"] = FuzzSnapshotEncoding.Compressed,
+        ["replay"] = FuzzReplay.Run,
+        ["scene"] = FuzzScene.Run,
         ["mesh"] = FuzzMesh.MeshTarget,
         ["heightfield"] = FuzzMesh.HeightFieldTarget,
         ["meshquery"] = FuzzMesh.QueryTarget,

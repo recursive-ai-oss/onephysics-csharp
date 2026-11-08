@@ -68,106 +68,139 @@ public delegate bool PairPredicate(Shape a, Shape b);
 /// <summary>Options of a <see cref="PhysicsWorld2D"/>. Every value that influences the simulation is saved in snapshots and covered by the world hash; only <see cref="ThreadCount"/> and <see cref="WorldId"/> are not.</summary>
 public sealed class WorldOptions2D
 {
+    internal Action<string>? ReplayChanged;
+
     /// <summary>Gravity in metres per second squared. Default (0, -9.81).</summary>
-    public Vector2F Gravity { get; set; } = new(0f, -9.81f);
+    public Vector2F Gravity { get => _replayGravity; set { _replayGravity = value; ReplayChanged?.Invoke("WorldOptions2D.Gravity"); } }
+    private Vector2F _replayGravity = new(0f, -9.81f);
 
     /// <summary>Substeps per step, at least 1. Default 4: soft-step substeps of dt/4.</summary>
-    public int Substeps { get; set; } = 4;
+    public int Substeps { get => _replaySubsteps; set { _replaySubsteps = value; ReplayChanged?.Invoke("WorldOptions2D.Substeps"); } }
+    private int _replaySubsteps = 4;
 
     /// <summary>
     /// Substeps per step for islands that hold no joint, 0..256. Default 0 (off) in 2D; the 3D world defaults to 2 with 1 solve and 2 relax passes. An island with a joint or a touching kinematic body runs <see cref="Substeps"/>;
     /// every other island runs this many substeps of <see cref="ContactVelocityIterations"/> and <see cref="ContactRelaxIterations"/>, which costs less where no joint needs the finer step. 0, or a value not below <see cref="Substeps"/>, runs every island on the world's schedule.
     /// Saved in snapshots and covered by the world hash, like <see cref="Substeps"/>.
     /// </summary>
-    public int ContactSubsteps { get; set; }
+    public int ContactSubsteps { get => _replayContactSubsteps; set { _replayContactSubsteps = value; ReplayChanged?.Invoke("WorldOptions2D.ContactSubsteps"); } }
+    private int _replayContactSubsteps;
 
     /// <summary>Biased solve passes per substep of an island on the contact-only schedule, 1..256. Default 1.</summary>
-    public int ContactVelocityIterations { get; set; } = 1;
+    public int ContactVelocityIterations { get => _replayContactVelocityIterations; set { _replayContactVelocityIterations = value; ReplayChanged?.Invoke("WorldOptions2D.ContactVelocityIterations"); } }
+    private int _replayContactVelocityIterations = 1;
 
     /// <summary>Relax passes per substep of an island on the contact-only schedule, 0..256. Default 0 (the 3D world defaults to 2; used only when <see cref="ContactSubsteps"/> is set).</summary>
-    public int ContactRelaxIterations { get; set; }
+    public int ContactRelaxIterations { get => _replayContactRelaxIterations; set { _replayContactRelaxIterations = value; ReplayChanged?.Invoke("WorldOptions2D.ContactRelaxIterations"); } }
+    private int _replayContactRelaxIterations;
 
     /// <summary>Biased solve passes per substep, at least 1. Default 1.</summary>
-    public int VelocityIterations { get; set; } = 1;
+    public int VelocityIterations { get => _replayVelocityIterations; set { _replayVelocityIterations = value; ReplayChanged?.Invoke("WorldOptions2D.VelocityIterations"); } }
+    private int _replayVelocityIterations = 1;
 
     /// <summary>Bias-free relax passes per substep, at least 0. Default 1.</summary>
-    public int RelaxIterations { get; set; } = 1;
+    public int RelaxIterations { get => _replayRelaxIterations; set { _replayRelaxIterations = value; ReplayChanged?.Invoke("WorldOptions2D.RelaxIterations"); } }
+    private int _replayRelaxIterations = 1;
 
     /// <summary>Worker threads for the parallel phases; never changes a result. Default 1.</summary>
-    public int ThreadCount { get; set; } = 1;
+    public int ThreadCount { get => _replayThreadCount; set { _replayThreadCount = value; ReplayChanged?.Invoke("WorldOptions2D.ThreadCount"); } }
+    private int _replayThreadCount = 1;
 
     /// <summary>Id stamped into handles; 0 takes the next number of a process-wide counter. Not saved.</summary>
-    public int WorldId { get; set; }
+    public int WorldId { get => _replayWorldId; set { _replayWorldId = value; ReplayChanged?.Invoke("WorldOptions2D.WorldId"); } }
+    private int _replayWorldId;
 
     /// <summary>Pairs of shapes with overlapping boxes the world should have room for (0..16777216). With <see cref="PhysicsWorld2D.Warmup"/> or at creation, the pair table and the per-step pair lists are sized to it so steps within it allocate nothing. 0 (the default) grows on demand; <c>Warmup()</c> then assumes eight per body. Never changes a result; not saved.</summary>
-    public int PairCapacity { get; set; }
+    public int PairCapacity { get => _replayPairCapacity; set { _replayPairCapacity = value; ReplayChanged?.Invoke("WorldOptions2D.PairCapacity"); } }
+    private int _replayPairCapacity;
 
     /// <summary>Contact constraints (and joints) the world should have room for (0..16777216): constraint storage, colors, solver rows and event buffers. 0 (the default) grows on demand; <c>Warmup()</c> then assumes six per body. Never changes a result; not saved.</summary>
-    public int ContactCapacity { get; set; }
+    public int ContactCapacity { get => _replayContactCapacity; set { _replayContactCapacity = value; ReplayChanged?.Invoke("WorldOptions2D.ContactCapacity"); } }
+    private int _replayContactCapacity;
 
     /// <summary>Islands the world should have room for (0..16777216). 0 (the default) grows on demand; <c>Warmup()</c> then assumes one per body. Never changes a result; not saved.</summary>
-    public int IslandCapacity { get; set; }
+    public int IslandCapacity { get => _replayIslandCapacity; set { _replayIslandCapacity = value; ReplayChanged?.Invoke("WorldOptions2D.IslandCapacity"); } }
+    private int _replayIslandCapacity;
 
     /// <summary>Hits the query scratch of the thread that calls <c>Warmup()</c> should hold (0..1048576), so the first queries of up to that many hits allocate nothing. 0 keeps the default of 64. Never changes a result; not saved.</summary>
-    public int QueryScratchCapacity { get; set; }
+    public int QueryScratchCapacity { get => _replayQueryScratchCapacity; set { _replayQueryScratchCapacity = value; ReplayChanged?.Invoke("WorldOptions2D.QueryScratchCapacity"); } }
+    private int _replayQueryScratchCapacity;
 
     internal const int MaxCapacity = 1 << 24;
 
     /// <summary>Whether resting islands fall asleep. Default true.</summary>
-    public bool SleepEnabled { get; set; } = true;
+    public bool SleepEnabled { get => _replaySleepEnabled; set { _replaySleepEnabled = value; ReplayChanged?.Invoke("WorldOptions2D.SleepEnabled"); } }
+    private bool _replaySleepEnabled = true;
 
     /// <summary>Seconds at rest before an island sleeps. Default 0.5.</summary>
-    public float TimeToSleep { get; set; } = 0.5f;
+    public float TimeToSleep { get => _replayTimeToSleep; set { _replayTimeToSleep = value; ReplayChanged?.Invoke("WorldOptions2D.TimeToSleep"); } }
+    private float _replayTimeToSleep = 0.5f;
 
     /// <summary>Speed (including the rim speed of rotation) at or below which a body counts as resting, in metres per second. Default 0.05.</summary>
-    public float SleepThreshold { get; set; } = 0.05f;
+    public float SleepThreshold { get => _replaySleepThreshold; set { _replaySleepThreshold = value; ReplayChanged?.Invoke("WorldOptions2D.SleepThreshold"); } }
+    private float _replaySleepThreshold = 0.05f;
 
     /// <summary>Which events the world records. Default: everything but per-step contact persist events (needed for <c>OnCollisionStay</c>).</summary>
-    public EventMask Events { get; set; } = EventMask.Default;
+    public EventMask Events { get => _replayEvents; set { _replayEvents = value; ReplayChanged?.Invoke("WorldOptions2D.Events"); } }
+    private EventMask _replayEvents = EventMask.Default;
 
     /// <summary>Natural frequency of soft contacts in Hz, capped at a quarter of the substep rate. Default 36.</summary>
-    public float ContactHertz { get; set; } = 36f;
+    public float ContactHertz { get => _replayContactHertz; set { _replayContactHertz = value; ReplayChanged?.Invoke("WorldOptions2D.ContactHertz"); } }
+    private float _replayContactHertz = 36f;
 
     /// <summary>Damping ratio of soft contacts. Default 10 (heavily overdamped).</summary>
-    public float ContactDampingRatio { get; set; } = 10f;
+    public float ContactDampingRatio { get => _replayContactDampingRatio; set { _replayContactDampingRatio = value; ReplayChanged?.Invoke("WorldOptions2D.ContactDampingRatio"); } }
+    private float _replayContactDampingRatio = 10f;
 
     /// <summary>Largest speed at which penetration is pushed out, metres per second. Default 3.</summary>
-    public float PushOutVelocity { get; set; } = 3f;
+    public float PushOutVelocity { get => _replayPushOutVelocity; set { _replayPushOutVelocity = value; ReplayChanged?.Invoke("WorldOptions2D.PushOutVelocity"); } }
+    private float _replayPushOutVelocity = 3f;
 
     /// <summary>Penetration in metres that the soft contact tolerates before it starts pushing out. Default 0: any penetration is pushed out. A positive slop lets contacts rest quietly but every layer of a stack then sinks by about that much.</summary>
-    public float ContactSlop { get; set; }
+    public float ContactSlop { get => _replayContactSlop; set { _replayContactSlop = value; ReplayChanged?.Invoke("WorldOptions2D.ContactSlop"); } }
+    private float _replayContactSlop;
 
     /// <summary>Natural frequency in Hz of the soft rigid rows of joints (position error correction), capped at a quarter of the substep rate. Default 60.</summary>
-    public float JointHertz { get; set; } = 60f;
+    public float JointHertz { get => _replayJointHertz; set { _replayJointHertz = value; ReplayChanged?.Invoke("WorldOptions2D.JointHertz"); } }
+    private float _replayJointHertz = 60f;
 
     /// <summary>Damping ratio of the soft rigid rows of joints. Default 2.</summary>
-    public float JointDampingRatio { get; set; } = 2f;
+    public float JointDampingRatio { get => _replayJointDampingRatio; set { _replayJointDampingRatio = value; ReplayChanged?.Invoke("WorldOptions2D.JointDampingRatio"); } }
+    private float _replayJointDampingRatio = 2f;
 
     /// <summary>Approach speed below which restitution is ignored, metres per second. Default 1.</summary>
-    public float RestitutionThreshold { get; set; } = 1f;
+    public float RestitutionThreshold { get => _replayRestitutionThreshold; set { _replayRestitutionThreshold = value; ReplayChanged?.Invoke("WorldOptions2D.RestitutionThreshold"); } }
+    private float _replayRestitutionThreshold = 1f;
 
     /// <summary>Speed limit applied to every dynamic body each substep, metres per second. Default 400.</summary>
-    public float MaxLinearSpeed { get; set; } = 400f;
+    public float MaxLinearSpeed { get => _replayMaxLinearSpeed; set { _replayMaxLinearSpeed = value; ReplayChanged?.Invoke("WorldOptions2D.MaxLinearSpeed"); } }
+    private float _replayMaxLinearSpeed = 400f;
 
     /// <summary>Largest rotation per substep in radians; faster spin is clamped. Default 0.25 pi (an eighth of a turn).</summary>
-    public float MaxRotationPerSubstep { get; set; } = 0.7853982f;
+    public float MaxRotationPerSubstep { get => _replayMaxRotationPerSubstep; set { _replayMaxRotationPerSubstep = value; ReplayChanged?.Invoke("WorldOptions2D.MaxRotationPerSubstep"); } }
+    private float _replayMaxRotationPerSubstep = 0.7853982f;
 
     /// <summary>Whether fast bodies get continuous collision against static shapes. Default true.</summary>
-    public bool ContinuousEnabled { get; set; } = true;
+    public bool ContinuousEnabled { get => _replayContinuousEnabled; set { _replayContinuousEnabled = value; ReplayChanged?.Invoke("WorldOptions2D.ContinuousEnabled"); } }
+    private bool _replayContinuousEnabled = true;
 
     /// <summary>How far a moving body's broadphase box extends past its shapes, in metres. Fixed at world creation (not changed by restoring a snapshot). Default 0.1.</summary>
-    public double BroadphaseMargin { get; set; } = 0.1;
+    public double BroadphaseMargin { get => _replayBroadphaseMargin; set { _replayBroadphaseMargin = value; ReplayChanged?.Invoke("WorldOptions2D.BroadphaseMargin"); } }
+    private double _replayBroadphaseMargin = 0.1;
 
     /// <summary>Approach speed in metres per second above which a contact raises a hit event (<c>EventMask.ContactHit</c>, <c>OnCollisionHit</c>). Default 1. Saved in snapshots when it differs from the default.</summary>
-    public float HitSpeedThreshold { get; set; } = 1f;
+    public float HitSpeedThreshold { get => _replayHitSpeedThreshold; set { _replayHitSpeedThreshold = value; ReplayChanged?.Invoke("WorldOptions2D.HitSpeedThreshold"); } }
+    private float _replayHitSpeedThreshold = 1f;
 
     /// <summary>Replaces the default material combine rule (geometric mean of friction, maximum of restitution and of rolling resistance). Null keeps the default.</summary>
-    public MaterialMixer? MaterialMixer { get; set; }
+    public MaterialMixer? MaterialMixer { get => _replayMaterialMixer; set { _replayMaterialMixer = value; ReplayChanged?.Invoke("WorldOptions2D.MaterialMixer"); } }
+    private MaterialMixer? _replayMaterialMixer;
 
     /// <summary>Extra rule applied when a pair of shapes is first found; return false to keep them from colliding. Null accepts every pair the category/mask/group rule accepts.</summary>
-    public PairPredicate? PairFilter { get; set; }
+    public PairPredicate? PairFilter { get => _replayPairFilter; set { _replayPairFilter = value; ReplayChanged?.Invoke("WorldOptions2D.PairFilter"); } }
+    private PairPredicate? _replayPairFilter;
 
-    internal WorldOptions2D Clone() => (WorldOptions2D)MemberwiseClone();
+    internal WorldOptions2D Clone() { var copy = (WorldOptions2D)MemberwiseClone(); copy.ReplayChanged = null; return copy; }
 
     /// <summary>Checks every value; throws <see cref="ArgumentOutOfRangeException"/> naming the first bad one.</summary>
     internal void Validate()

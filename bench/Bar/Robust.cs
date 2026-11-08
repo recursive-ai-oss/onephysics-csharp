@@ -1,5 +1,7 @@
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+
 /// <summary>Order statistics behind the stability metrics. A pile has chaotic contact order: a rounding-sized change moves which body is deepest, fastest or flung furthest in one frame, without the pile being any less stable. The robust metrics therefore take a high percentile across bodies (or pairs) and a median across a short window of frames. Real instability (an explosion, sinking, sustained shaking) moves the whole distribution and still shows.</summary>
 static class Robust
 {

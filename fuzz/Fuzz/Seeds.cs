@@ -39,6 +39,12 @@ internal static class Seeds
         File.WriteAllBytes(Path.Combine(root, "snapshot-region", "valid"), regionWorld.SnapshotRegion(new RecursiveAI.OneMath.Vector2D(-1, -1), new RecursiveAI.OneMath.Vector2D(1, 1)));
 
         File.WriteAllBytes(Path.Combine(root, "snapshot-desync", "valid"), regionWorld.Snapshot());
+        File.WriteAllBytes(Path.Combine(root, "scene", "authoring"), FuzzScene.Authoring());
+        File.WriteAllBytes(Path.Combine(root, "scene", "state"), FuzzScene.State());
+        File.WriteAllBytes(Path.Combine(root, "replay", "planar"), FuzzReplay.Seed(2));
+        File.WriteAllBytes(Path.Combine(root, "replay", "spatial"), FuzzReplay.Seed(3));
+        File.WriteAllBytes(Path.Combine(root, "replay", "recorded-planar"), FuzzReplay.CommandSeed(2));
+        File.WriteAllBytes(Path.Combine(root, "replay", "recorded-spatial"), FuzzReplay.CommandSeed(3));
 
         // The raw snapshot reader starts from a real snapshot so that mutations get past the header.
         File.WriteAllBytes(Path.Combine(root, "snapshot-raw", "valid"), Program.BaseSnapshot());

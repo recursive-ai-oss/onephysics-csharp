@@ -9,6 +9,9 @@ using P2 = RecursiveAI.OnePhysics.Physics2D;
 
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+using CharacterScript = RecursiveAI.OnePhysics.Scene.CharacterScript;
+
 /// <summary>Runs a scene through this library's 2D world, following the same driver protocol as the reference drivers. Revolute joints are built from the scene; other joint types are skipped (reported on stderr). Queries run through the world's query API, single-threaded, like the reference drivers.</summary>
 static class OnePhysicsDriver
 {

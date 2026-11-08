@@ -67,6 +67,7 @@ public readonly struct SoftBody : IEquatable<SoftBody>
     /// <exception cref="StaleHandleException">The body was already destroyed.</exception>
     public void Destroy()
     {
+        using var replayMutation = _world?.RecordMutation("SoftBody.Destroy");
         Resolve();
         _world!.Engine.RemoveSoftBody(_index);
     }
@@ -103,6 +104,7 @@ public readonly struct SoftBody : IEquatable<SoftBody>
     /// <summary>Wakes the body and restarts its sleep timer.</summary>
     public void WakeUp()
     {
+        using var replayMutation = _world?.RecordMutation("SoftBody.WakeUp");
         var d = Resolve();
         d.Asleep = false;
         d.SleepTime = 0f;
@@ -263,6 +265,7 @@ public readonly struct SoftBody : IEquatable<SoftBody>
     /// <exception cref="StaleHandleException">The body was destroyed.</exception>
     public void SetSkeletonPose(ReadOnlySpan<QuaternionF> pose, Vector3D at, QuaternionF rotation = default, bool teleport = false)
     {
+        using var replayMutation = _world?.RecordMutation("SoftBody.SetSkeletonPose");
         var d = ResolveSkinned();
         int nj = d.Def.Skin!.JointCount;
         if (pose.Length != nj) { throw new ArgumentException("The pose has " + pose.Length.ToString(CultureInfo.InvariantCulture) + " rotations; the skeleton has " + nj.ToString(CultureInfo.InvariantCulture) + " joints.", nameof(pose)); }
@@ -314,6 +317,7 @@ public readonly struct SoftBody : IEquatable<SoftBody>
     /// <exception cref="StaleHandleException">The body was destroyed.</exception>
     public void SetSkeletonTransforms(ReadOnlySpan<SkinJointPose> joints, bool teleport = false)
     {
+        using var replayMutation = _world?.RecordMutation("SoftBody.SetSkeletonTransforms");
         var d = ResolveSkinned();
         int nj = d.Def.Skin!.JointCount;
         if (joints.Length != nj) { throw new ArgumentException("The pose has " + joints.Length.ToString(CultureInfo.InvariantCulture) + " joints; the skeleton has " + nj.ToString(CultureInfo.InvariantCulture) + ".", nameof(joints)); }
@@ -395,6 +399,7 @@ public readonly struct SoftBody : IEquatable<SoftBody>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="particle"/> is out of range.</exception>
     public void SetPinned(int particle, bool pinned)
     {
+        using var replayMutation = _world?.RecordMutation("SoftBody.SetPinned");
         var d = ResolveParticle(particle, nameof(particle));
         d.Pinned[particle] = pinned ? (byte)1 : (byte)0;
         d.RefreshInvMass(particle);
@@ -410,6 +415,7 @@ public readonly struct SoftBody : IEquatable<SoftBody>
     /// <exception cref="ArgumentOutOfRangeException">The index is out of range or the position is not finite or beyond ±2^21.</exception>
     public void SetPosition(int particle, Vector3D position)
     {
+        using var replayMutation = _world?.RecordMutation("SoftBody.SetPosition");
         var d = ResolveParticle(particle, nameof(particle));
         const double Bound = 2097152.0;
         if (!double.IsFinite(position.X) || !double.IsFinite(position.Y) || !double.IsFinite(position.Z) || Math.Abs(position.X) > Bound || Math.Abs(position.Y) > Bound || Math.Abs(position.Z) > Bound)
@@ -428,6 +434,7 @@ public readonly struct SoftBody : IEquatable<SoftBody>
     /// <exception cref="ArgumentOutOfRangeException">The index is out of range or the impulse is not finite.</exception>
     public void ApplyImpulse(int particle, Vector3F impulse)
     {
+        using var replayMutation = _world?.RecordMutation("SoftBody.ApplyImpulse");
         var d = ResolveParticle(particle, nameof(particle));
         if (!float.IsFinite(impulse.X) || !float.IsFinite(impulse.Y) || !float.IsFinite(impulse.Z)) { throw new ArgumentOutOfRangeException(nameof(impulse), impulse, "impulse must be finite."); }
         float w = d.InvMass[particle];
@@ -440,6 +447,7 @@ public readonly struct SoftBody : IEquatable<SoftBody>
     /// <exception cref="ArgumentOutOfRangeException">The velocity is not finite.</exception>
     public void AddVelocity(Vector3F velocity)
     {
+        using var replayMutation = _world?.RecordMutation("SoftBody.AddVelocity");
         var d = Resolve();
         if (!float.IsFinite(velocity.X) || !float.IsFinite(velocity.Y) || !float.IsFinite(velocity.Z)) { throw new ArgumentOutOfRangeException(nameof(velocity), velocity, "velocity must be finite."); }
         for (int i = 0; i < d.N; i++)
@@ -452,13 +460,13 @@ public readonly struct SoftBody : IEquatable<SoftBody>
     }
 
     /// <summary>Compliance of the edge (stretch) constraints, m/N; 0 to 10^6. Takes effect on the next step and wakes the body.</summary>
-    public float EdgeCompliance { get => Resolve().Def.EdgeCompliance; set { var d = Resolve(); Check(value, nameof(EdgeCompliance), 0f, SoftBodyDef.MaxCompliance); d.Def.EdgeCompliance = value; WakeUp(); } }
+    public float EdgeCompliance { get => Resolve().Def.EdgeCompliance; set { using var replayMutation = _world?.RecordMutation("SoftBody.EdgeCompliance");  var d = Resolve(); Check(value, nameof(EdgeCompliance), 0f, SoftBodyDef.MaxCompliance); d.Def.EdgeCompliance = value; WakeUp(); } }
 
     /// <summary>Compliance of the bend constraints, m/N; 0 to 10^6.</summary>
-    public float BendCompliance { get => Resolve().Def.BendCompliance; set { var d = Resolve(); Check(value, nameof(BendCompliance), 0f, SoftBodyDef.MaxCompliance); d.Def.BendCompliance = value; WakeUp(); } }
+    public float BendCompliance { get => Resolve().Def.BendCompliance; set { using var replayMutation = _world?.RecordMutation("SoftBody.BendCompliance");  var d = Resolve(); Check(value, nameof(BendCompliance), 0f, SoftBodyDef.MaxCompliance); d.Def.BendCompliance = value; WakeUp(); } }
 
     /// <summary>Compliance of the volume and pressure constraints; 0 to 10^6.</summary>
-    public float VolumeCompliance { get => Resolve().Def.VolumeCompliance; set { var d = Resolve(); Check(value, nameof(VolumeCompliance), 0f, SoftBodyDef.MaxCompliance); d.Def.VolumeCompliance = value; WakeUp(); } }
+    public float VolumeCompliance { get => Resolve().Def.VolumeCompliance; set { using var replayMutation = _world?.RecordMutation("SoftBody.VolumeCompliance");  var d = Resolve(); Check(value, nameof(VolumeCompliance), 0f, SoftBodyDef.MaxCompliance); d.Def.VolumeCompliance = value; WakeUp(); } }
 
     /// <summary>The enclosed volume a closed surface tries to hold as a multiple of its rest volume; 0 turns pressure off.</summary>
     /// <exception cref="SoftBodyException">Setting a value above 0 on a mesh that is not a closed surface.</exception>
@@ -467,6 +475,7 @@ public readonly struct SoftBody : IEquatable<SoftBody>
         get => Resolve().Def.InternalPressure;
         set
         {
+            using var replayMutation = _world?.RecordMutation("SoftBody.InternalPressure");
             var d = Resolve();
             Check(value, nameof(InternalPressure), 0f, 100f);
             if (value > 0f && d.PressureRest <= 0f) { throw new SoftBodyException(SoftBodyError.NotClosed, "InternalPressure " + value.ToString("R", CultureInfo.InvariantCulture) + " needs a closed, consistently oriented triangle surface.", nameof(value)); }
@@ -476,10 +485,10 @@ public readonly struct SoftBody : IEquatable<SoftBody>
     }
 
     /// <summary>Coulomb friction coefficient against shapes; 0 to 100.</summary>
-    public float Friction { get => Resolve().Def.Friction; set { var d = Resolve(); Check(value, nameof(Friction), 0f, 100f); d.Def.Friction = value; } }
+    public float Friction { get => Resolve().Def.Friction; set { using var replayMutation = _world?.RecordMutation("SoftBody.Friction");  var d = Resolve(); Check(value, nameof(Friction), 0f, 100f); d.Def.Friction = value; } }
 
     /// <summary>Multiplier on gravity.</summary>
-    public float GravityScale { get => Resolve().Def.GravityScale; set { var d = Resolve(); Check(value, nameof(GravityScale), -1e6f, 1e6f); d.Def.GravityScale = value; WakeUp(); } }
+    public float GravityScale { get => Resolve().Def.GravityScale; set { using var replayMutation = _world?.RecordMutation("SoftBody.GravityScale");  var d = Resolve(); Check(value, nameof(GravityScale), -1e6f, 1e6f); d.Def.GravityScale = value; WakeUp(); } }
 
     private static void Check(float v, string name, float lo, float hi)
     {

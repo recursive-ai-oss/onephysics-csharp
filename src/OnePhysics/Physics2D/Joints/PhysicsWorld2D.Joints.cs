@@ -105,7 +105,7 @@ public sealed partial class PhysicsWorld2D
     /// <exception cref="InvalidJointException">Same body twice, no dynamic body, or limits the wrong way round.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A value is not finite or out of range (the message names it).</exception>
     /// <exception cref="InvalidHandleException">A body is the default value, destroyed (<see cref="StaleHandleException"/>) or from another world.</exception>
-    public HingeJoint CreateJoint(in RevoluteJointDef def) => new(CreateRevoluteJointDef(in def));
+    public HingeJoint CreateJoint(in RevoluteJointDef def) { using var replayMutation = RecordMutation("PhysicsWorld2D.CreateJoint"); return new(CreateRevoluteJointDef(in def)); }
 
     private Joint CreateRevoluteJointDef(in RevoluteJointDef def) => Make(def.BodyA, def.BodyB, new JointData2D
     {
@@ -116,7 +116,7 @@ public sealed partial class PhysicsWorld2D
     });
 
     /// <summary>Creates a prismatic (slider) joint. Throws as <see cref="CreateJoint(in RevoluteJointDef)"/>, and <see cref="InvalidJointException"/> for a zero axis.</summary>
-    public SliderJoint CreateJoint(in PrismaticJointDef def) => new(CreatePrismaticJointDef(in def));
+    public SliderJoint CreateJoint(in PrismaticJointDef def) { using var replayMutation = RecordMutation("PhysicsWorld2D.CreateJoint"); return new(CreatePrismaticJointDef(in def)); }
 
     private Joint CreatePrismaticJointDef(in PrismaticJointDef def) => Make(def.BodyA, def.BodyB, new JointData2D
     {
@@ -127,7 +127,7 @@ public sealed partial class PhysicsWorld2D
     });
 
     /// <summary>Creates a weld joint. Throws as <see cref="CreateJoint(in RevoluteJointDef)"/>.</summary>
-    public FixedJoint CreateJoint(in WeldJointDef def) => new(CreateWeldJointDef(in def));
+    public FixedJoint CreateJoint(in WeldJointDef def) { using var replayMutation = RecordMutation("PhysicsWorld2D.CreateJoint"); return new(CreateWeldJointDef(in def)); }
 
     private Joint CreateWeldJointDef(in WeldJointDef def) => Make(def.BodyA, def.BodyB, new JointData2D
     {
@@ -138,7 +138,7 @@ public sealed partial class PhysicsWorld2D
     });
 
     /// <summary>Creates a wheel joint. Throws as <see cref="CreateJoint(in PrismaticJointDef)"/>.</summary>
-    public WheelJoint CreateJoint(in WheelJointDef def) => new(CreateWheelJointDef(in def));
+    public WheelJoint CreateJoint(in WheelJointDef def) { using var replayMutation = RecordMutation("PhysicsWorld2D.CreateJoint"); return new(CreateWheelJointDef(in def)); }
 
     private Joint CreateWheelJointDef(in WheelJointDef def) => Make(def.BodyA, def.BodyB, new JointData2D
     {
@@ -149,7 +149,7 @@ public sealed partial class PhysicsWorld2D
     });
 
     /// <summary>Creates a distance joint. Throws as <see cref="CreateJoint(in RevoluteJointDef)"/>.</summary>
-    public DistanceJoint CreateJoint(in DistanceJointDef def) => new(CreateDistanceJointDef(in def));
+    public DistanceJoint CreateJoint(in DistanceJointDef def) { using var replayMutation = RecordMutation("PhysicsWorld2D.CreateJoint"); return new(CreateDistanceJointDef(in def)); }
 
     private Joint CreateDistanceJointDef(in DistanceJointDef def) => Make(def.BodyA, def.BodyB, new JointData2D
     {
@@ -160,7 +160,7 @@ public sealed partial class PhysicsWorld2D
     });
 
     /// <summary>Creates a motor (relative pose) joint. Throws as <see cref="CreateJoint(in RevoluteJointDef)"/>.</summary>
-    public RelativeJoint CreateJoint(in MotorJointDef def) => new(CreateMotorJointDef(in def));
+    public RelativeJoint CreateJoint(in MotorJointDef def) { using var replayMutation = RecordMutation("PhysicsWorld2D.CreateJoint"); return new(CreateMotorJointDef(in def)); }
 
     private Joint CreateMotorJointDef(in MotorJointDef def) => Make(def.BodyA, def.BodyB, new JointData2D
     {
@@ -170,7 +170,7 @@ public sealed partial class PhysicsWorld2D
     });
 
     /// <summary>Creates a mouse (target) joint. Throws as <see cref="CreateJoint(in RevoluteJointDef)"/>.</summary>
-    public TargetJoint CreateJoint(in MouseJointDef def) => new(CreateMouseJointDef(in def));
+    public TargetJoint CreateJoint(in MouseJointDef def) { using var replayMutation = RecordMutation("PhysicsWorld2D.CreateJoint"); return new(CreateMouseJointDef(in def)); }
 
     private Joint CreateMouseJointDef(in MouseJointDef def) => Make(def.BodyA, def.BodyB, new JointData2D
     {
@@ -218,6 +218,7 @@ public sealed partial class PhysicsWorld2D
     /// <exception cref="InvalidJointException">Same body twice, or neither body dynamic.</exception>
     public HingeJoint AddHinge(Body a, Body b, Vector2D anchor, bool collideConnected = false)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.AddHinge");
         var d = new RevoluteJointDef { BodyA = a, BodyB = b, LocalAnchorA = ToLocal(a, anchor, "anchor"), LocalAnchorB = ToLocal(b, anchor, "anchor"), CollideConnected = collideConnected };
         d.ReferenceAngle = RelativeAngle(a, b);
         try { return CreateJoint(in d); }
@@ -227,6 +228,7 @@ public sealed partial class PhysicsWorld2D
     /// <summary>A slider: B moves along <paramref name="axis"/> (a world direction, normalized) through <paramref name="anchor"/>, rotation locked as it is now.</summary>
     public SliderJoint AddSlider(Body a, Body b, Vector2D anchor, Vector2F axis, bool collideConnected = false)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.AddSlider");
         var d = new PrismaticJointDef { BodyA = a, BodyB = b, LocalAnchorA = ToLocal(a, anchor, "anchor"), LocalAnchorB = ToLocal(b, anchor, "anchor"), LocalAxisA = DirToLocal(a, axis, "axis"), CollideConnected = collideConnected };
         d.ReferenceAngle = RelativeAngle(a, b);
         try { return CreateJoint(in d); }
@@ -236,6 +238,7 @@ public sealed partial class PhysicsWorld2D
     /// <summary>Welds the bodies together as they are now: position and rotation locked at <paramref name="anchor"/>. Make it springy with <see cref="Joint.SetWeldSprings"/>.</summary>
     public FixedJoint AddFixed(Body a, Body b, Vector2D anchor, bool collideConnected = false)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.AddFixed");
         var d = new WeldJointDef { BodyA = a, BodyB = b, LocalAnchorA = ToLocal(a, anchor, "anchor"), LocalAnchorB = ToLocal(b, anchor, "anchor"), CollideConnected = collideConnected };
         d.ReferenceAngle = RelativeAngle(a, b);
         try { return CreateJoint(in d); }
@@ -245,6 +248,7 @@ public sealed partial class PhysicsWorld2D
     /// <summary>A spring between two world points (one on each body): rest length is their current distance, frequency <paramref name="hertz"/> and damping ratio <paramref name="dampingRatio"/>; the length is free to change.</summary>
     public DistanceJoint AddSpring(Body a, Body b, Vector2D anchorA, Vector2D anchorB, float hertz = 4f, float dampingRatio = 0.5f, bool collideConnected = false)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.AddSpring");
         var la = ToLocal(a, anchorA, "anchorA"); var lb = ToLocal(b, anchorB, "anchorB");
         double dx = anchorB.X - anchorA.X, dy = anchorB.Y - anchorA.Y;
         float len = (float)Math.Sqrt(dx * dx + dy * dy);
@@ -260,6 +264,7 @@ public sealed partial class PhysicsWorld2D
     /// <summary>A rigid rod between two world points, at their current distance.</summary>
     public DistanceJoint AddDistance(Body a, Body b, Vector2D anchorA, Vector2D anchorB, bool collideConnected = false)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.AddDistance");
         var la = ToLocal(a, anchorA, "anchorA"); var lb = ToLocal(b, anchorB, "anchorB");
         double dx = anchorB.X - anchorA.X, dy = anchorB.Y - anchorA.Y;
         float len = (float)Math.Sqrt(dx * dx + dy * dy);
@@ -271,6 +276,7 @@ public sealed partial class PhysicsWorld2D
     /// <summary>A suspension: <paramref name="wheel"/> slides along <paramref name="axis"/> (a world direction) through <paramref name="anchor"/> on <paramref name="chassis"/> with a spring (default 1 Hz, damping ratio 0.7) and spins freely; add a motor through the <see cref="Joint"/>.</summary>
     public WheelJoint AddWheel(Body chassis, Body wheel, Vector2D anchor, Vector2F axis, bool collideConnected = false)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.AddWheel");
         var d = new WheelJointDef { BodyA = chassis, BodyB = wheel, LocalAnchorA = ToLocal(chassis, anchor, "anchor"), LocalAnchorB = ToLocal(wheel, anchor, "anchor"), LocalAxisA = DirToLocal(chassis, axis, "axis"), CollideConnected = collideConnected };
         try { return CreateJoint(in d); }
         catch (InvalidJointException e) { throw new InvalidJointException(e.Message, nameof(wheel)); }
@@ -282,6 +288,7 @@ public sealed partial class PhysicsWorld2D
     /// </summary>
     public TargetJoint AddTarget(Body ground, Body body, Vector2D target, float hertz = 5f, float dampingRatio = 0.7f, float maxForce = 0f)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.AddTarget");
         float mass = body.Mass;
         var d = new MouseJointDef
         {
@@ -295,6 +302,7 @@ public sealed partial class PhysicsWorld2D
     /// <summary>A motor joint that keeps B's pose relative to A as it is now, with force and torque capped at <paramref name="maxForce"/> and <paramref name="maxTorque"/>.</summary>
     public RelativeJoint AddRelative(Body a, Body b, float maxForce = 1000f, float maxTorque = 1000f, bool collideConnected = false)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.AddRelative");
         var pa = a.Position; var pb = b.Position;
         var off = a.Rotation.InverseRotate(new Vec2((float)(pb.X - pa.X), (float)(pb.Y - pa.Y)));
         var d = new MotorJointDef { BodyA = a, BodyB = b, LinearOffset = new Vector2F(off.X, off.Y), AngularOffset = RelativeAngle(a, b), MaxForce = maxForce, MaxTorque = maxTorque, CollideConnected = collideConnected };
