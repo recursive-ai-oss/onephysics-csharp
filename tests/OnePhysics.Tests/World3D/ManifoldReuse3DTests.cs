@@ -68,11 +68,11 @@ public class ManifoldReuse3DTests
     [Fact]
     public void SeparatingPlaneBudgetIgnoresTangentialMotionButRejectsClosingMotion()
     {
-        var frame = new Engine3D.SkipFrame3 { X = 1.06f, Qw = 1f, Clear = 0.04f, Reach = 0.867f, Nx = 1f, AxisLength = 1f };
+        var frame = new Engine3D.SkipFrame3 { X = 1.06f, Qw = 1f, Clear = 0.04f, Reach = 0.867f, Nx = 1f };
         Assert.True(Engine3D.StillApart(in frame, QuaternionF.Identity, QuaternionF.Identity, 1.06f, 2f, 0f));
         Assert.True(Engine3D.StillApart(in frame, QuaternionF.Identity, QuaternionF.Identity, 3f, 0f, 0f));
         Assert.False(Engine3D.StillApart(in frame, QuaternionF.Identity, QuaternionF.Identity, 1.01f, 0f, 0f));
-        frame.Nx = 0f; frame.AxisLength = 0f; // Without an axis, the Euclidean motion budget is the conservative fallback.
+        frame.Nx = 0f; // Without an axis, the Euclidean motion budget is the conservative fallback.
         Assert.False(Engine3D.StillApart(in frame, QuaternionF.Identity, QuaternionF.Identity, 1.06f, 2f, 0f));
     }
 
@@ -82,7 +82,7 @@ public class ManifoldReuse3DTests
         var random = new Random(9721);
         var normal = new Vector3F(0.6f, 0.8f, 0f);
         var start = normal * 1.46f; // Both half-unit boxes reach 0.7 along this axis; gap 0.06.
-        var frame = new Engine3D.SkipFrame3 { X = start.X, Y = start.Y, Qw = 1f, Clear = 0.04f, Reach = 0.867f, Nx = normal.X, Ny = normal.Y, AxisLength = 1f };
+        var frame = new Engine3D.SkipFrame3 { X = start.X, Y = start.Y, Qw = 1f, Clear = 0.04f, Reach = 0.867f, Nx = normal.X, Ny = normal.Y };
         int accepted = 0;
         for (int i = 0; i < 2000; i++)
         {
