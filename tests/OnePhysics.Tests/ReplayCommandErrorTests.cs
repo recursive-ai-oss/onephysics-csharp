@@ -37,6 +37,16 @@ public sealed class ReplayCommandErrorTests
         var e=Assert.Throws<ReplayFormatException>(()=>player.CreateWorld2D());Assert.Equal("options",e.InputName);
     }
     [Fact]
+    public void AutomaticConstructionTreatsCapacityValuesAsHintsNotAllocationCommands()
+    {
+        var world=new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new RecursiveAI.OnePhysics.Physics3D.WorldOptions3D{WorldId=105});
+        world.AddSphere(0.5f,at:new(0,3,0));world.Options.ContactCapacity=1<<24;
+        using var stream=new MemoryStream();using(var recorder=world.StartRecording(stream))world.Step(1f/60);
+        stream.Position=0;var player=new ReplayPlayer(stream);var copy=player.CreateWorld3D();
+        Assert.Equal(1<<24,copy.Options.ContactCapacity);Assert.True(player.ReadNextStep(copy));Assert.Equal(world.ComputeHash(),copy.ComputeHash());
+    }
+
+    [Fact]
     public void IncompleteAndNestedCommandFramesCannotBeWritten()
     {
         using var stream=new MemoryStream();var w=new ReplayWriter(stream,2,0,new byte[]{1},commandTrack:true);

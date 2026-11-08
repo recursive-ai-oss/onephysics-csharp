@@ -111,7 +111,13 @@ public sealed partial class PhysicsWorld2D
         _engine.Opt.Validate();
         _engine.CheckBounds();
         SyncCoreOptions();
-        using var replayStep = RecordStep(dt);
+        if (_recorder != null) { RecordPreparedStep(dt); return; }
+        StepPrepared(dt);
+    }
+
+    // The unrecorded path has no recording scope or exception region in its simulation body.
+    private void StepPrepared(float dt)
+    {
         _core.Step(new Stages2D(_engine), dt);
         InvalidateQueryPad();
         _engine.ReconcileJoints();

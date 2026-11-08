@@ -57,6 +57,7 @@ public sealed partial class Scene
             {
                 var options = new P2.WorldOptions2D { ThreadCount = threadCount, WorldId = _worldId };
                 if (_liveOptions != null) options.BroadphaseMargin = Replay.ReplayOptions2D.Read(_liveOptions, options, out _);
+                Replay.ReplayOptions2D.PrepareCreation(options);
                 var w = new P2.PhysicsWorld2D(options); w.Restore(_state);
                 if (_liveOptions != null) ((Replay.IRecordedWorld)w).ApplyReplayOptions(_liveOptions);
                 return w;
@@ -77,6 +78,7 @@ public sealed partial class Scene
             {
                 var options = new P3.WorldOptions3D { ThreadCount = threadCount, WorldId = _worldId };
                 if (_liveOptions != null) options.BroadphaseMargin = Replay.ReplayOptions3D.Read(_liveOptions, options, out _);
+                Replay.ReplayOptions3D.PrepareCreation(options);
                 var w = new P3.PhysicsWorld3D(options); w.Restore(_state);
                 if (_liveOptions != null) ((Replay.IRecordedWorld)w).ApplyReplayOptions(_liveOptions);
                 return w;

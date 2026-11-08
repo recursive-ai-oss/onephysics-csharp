@@ -24,6 +24,14 @@ public sealed class SceneTests
         Assert.Equal(1, scene.CreateWorld2D().BodyCount);
     }
 
+    [Fact]
+    public void DefaultAuthoringSceneRoundTripsAndInvalidCollectionsFailTyped()
+    {
+        var scene=new Document();using var text=new StringWriter();scene.Write(text);
+        var copy=Document.Read(new StringReader(text.ToString()));using var second=new StringWriter();copy.Write(second);Assert.Equal(text.ToString(),second.ToString());
+        scene.Metrics=null!;Assert.Throws<SceneFormatException>(()=>scene.Write(new StringWriter()));
+    }
+
     [Theory]
     [InlineData("scene 1\ndim 2\nbody dynamic 0 0\n",3)]
     [InlineData("scene 1\ndim 2\nshape circle 0 1 1 0 0\n",3)]
@@ -79,6 +87,19 @@ public sealed class SceneTests
         var copy=P3.PhysicsWorld3D.LoadScene(new StringReader(text));
         Assert.Equal(w.ComputeHash(),copy.ComputeHash()); Assert.Equal(text,copy.SaveScene());
         for(int i=0;i<8;i++){w.Step(1f/60);copy.Step(1f/60);Assert.Equal(w.ComputeHash(),copy.ComputeHash());}
+    }
+
+    [Fact]
+    public void UntrustedPreallocationHintsDoNotAllocateLargePoolsOnLoad()
+    {
+        var w=new P2.PhysicsWorld2D(new P2.WorldOptions2D{WorldId=104,BroadphaseMargin=0.25});
+        w.AddCircle(0.5f,at:new(0,3));
+        w.Options.PairCapacity=1<<24;w.Options.ContactCapacity=1<<24;
+        string text=w.SaveScene();
+        var copy=P2.PhysicsWorld2D.LoadScene(new StringReader(text));
+        Assert.Equal(1<<24,copy.Options.ContactCapacity);
+        Assert.Equal(text,copy.SaveScene());
+        w.Step(1f/60);copy.Step(1f/60);Assert.Equal(w.ComputeHash(),copy.ComputeHash());
     }
 
     [Fact]

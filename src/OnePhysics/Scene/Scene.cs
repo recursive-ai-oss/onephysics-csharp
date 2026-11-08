@@ -378,9 +378,12 @@ public sealed partial class Scene
     public void Write(TextWriter output)
     {
         ArgumentNullException.ThrowIfNull(output);
+        Validate();
         if (Version == 2) { WriteState(output); return; }
         var sb = new StringBuilder();
-        sb.Append("scene 1\nname ").Append(Name).Append("\ndim ").Append(Dim).Append('\n');
+        sb.Append("scene 1\n");
+        if (Name.Length > 0) sb.Append("name ").Append(Name).Append('\n');
+        sb.Append("dim ").Append(Dim).Append('\n');
         sb.Append("dt ").Append(F(Dt)).Append("\nsteps ").Append(Steps).Append('\n');
         sb.Append("gravity ").Append(F(Gx)).Append(' ').Append(F(Gy)); if (Dim == 3) sb.Append(' ').Append(F(Gz)); sb.Append('\n');
         if (Substeps > 0) sb.Append("substeps ").Append(Substeps).Append('\n');

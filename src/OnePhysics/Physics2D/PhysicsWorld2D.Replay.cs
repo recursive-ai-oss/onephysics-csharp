@@ -23,7 +23,7 @@ public sealed partial class PhysicsWorld2D : IRecordedWorld
         return new HistoryRecorder(this, options ?? new HistoryOptions());
     }
     internal ReplayMutationScope RecordMutation(string operation) => _recorder?.Enter(operation) ?? default;
-    private ReplayStepScope RecordStep(float dt) => _recorder?.BeginStep(dt) ?? default;
+    private void RecordPreparedStep(float dt) { using var step = _recorder?.BeginStep(dt) ?? default; StepPrepared(dt); }
     void IRecordedWorld.PrepareHistory() => _remembersDestroyed = true;
     int IRecordedWorld.ReplayDimension => 2;
     long IRecordedWorld.ReplayStepCount => StepCount;

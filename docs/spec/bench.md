@@ -233,3 +233,42 @@ Same run as the proposed thresholds in `docs/spec/scenes.md` (metric definitions
 ## Per-pass cost sweep
 
 `BAR_BEPU_ITERS=n` sets the Bepu driver's `SolveDescription(n, 1)` (default 8); with `BAR_VELITERS`, `BAR_RELAX` and `BAR_SUBSTEPS` for our engine it gives the cost of one more solver pass per constraint (slope of step time over n divided by the constraint counts our driver prints as `constraints_contacts`, `constraints_points`, `constraints_joints`). Results: docs/world3d.md, round 15.
+
+## Indicative recording overhead
+
+`bar recording-indicative --variant off|on --reps 3` (build the current benchmark
+with `-p:DefineConstants=RECORDER_TIMING`) times only this engine. The same source
+builds against a baseline without that symbol for the `base` row. This is not a
+managed-engine bar comparison or an exclusive-machine timing claim.
+
+The generated `large-pile` and `large-pile-3d` definitions run 60 warmup steps,
+then 90 timed steps at float32 1/60 on one simulation thread. Recording writes to
+Stream.Null with hash tracking enabled: it measures serialization/hash CPU cost,
+not disk or network throughput. Runtime compilation of recorder paths is primed
+before timing. Three separate repetitions alternate base/off/on on the same
+logical CPU (affinity 0), with tiered compilation disabled. Each row records the
+system load before, halfway through, and after. The timer excludes those load
+reads. The baseline is commit `983bb06`; current and baseline use the same SDK,
+runtime, definitions and source for the indicative runner.
+
+Observed on x64, AMD Ryzen 9 7950X3D, 32 logical cores, .NET 10.0.14 and SDK
+10.0.403, with shared system load 11.87–12.66. Milliseconds per step below are
+median per-run means; brackets are the three-run range:
+
+| Scene | Base | Recording off | Recording on |
+| --- | --- | --- | --- |
+| large-pile | 1.689 [1.687–2.179] | 1.691 [1.668–1.856] | 5.365 [5.048–5.682] |
+| large-pile-3d | 12.986 [12.376–17.074] | 14.266 [12.841–17.158] | 22.685 [20.031–22.921] |
+
+These shared-load rows do not resolve a small default-path cost: ranges overlap,
+and 3D varies substantially even in the baseline. Paired off/base ratios are
+0.988/1.003/0.852 in 2D and 1.038/1.099/1.005 in 3D. The unrecorded Step path
+has a null check, not the recorder's exception/cleanup region. Recording currently
+uses complete state effects and is deliberately not a compact argument log.
+
+`testdata/replay/recording-indicative.csv` contains every repetition and load
+sample. Final world hashes are identical in base/off/on for both definitions.
+2D allocates zero bytes during these timed steps. All three 3D variants allocate
+36,677,432 bytes over 90 steps identically; this is pre-existing scene behavior,
+not additional recorder allocation. Separate warmed recorder/history tests verify
+zero per-step recorder allocation, including keyframe cadence and mutation calls.

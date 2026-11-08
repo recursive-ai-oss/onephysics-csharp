@@ -205,3 +205,9 @@ full snapshots, so a different storage representation does not change public API
 
 - 2D: `Gravity`, `Substeps`, `ContactSubsteps`, `ContactVelocityIterations`, `ContactRelaxIterations`, `VelocityIterations`, `RelaxIterations`, `PairCapacity`, `ContactCapacity`, `IslandCapacity`, `QueryScratchCapacity`, `SleepEnabled`, `TimeToSleep`, `SleepThreshold`, `Events`, `ContactHertz`, `ContactDampingRatio`, `PushOutVelocity`, `ContactSlop`, `JointHertz`, `JointDampingRatio`, `RestitutionThreshold`, `MaxLinearSpeed`, `MaxRotationPerSubstep`, `ContinuousEnabled`, `BroadphaseMargin`, `HitSpeedThreshold`.
 - 3D: `SoftSubsteps`, `SoftIterations`, `Gravity`, `Substeps`, `VelocityIterations`, `RelaxIterations`, `ContactSubsteps`, `ContactVelocityIterations`, `ContactRelaxIterations`, `PairCapacity`, `ContactCapacity`, `IslandCapacity`, `QueryScratchCapacity`, `SleepEnabled`, `TimeToSleep`, `SleepThreshold`, `Events`, `ContactHertz`, `ContactDampingRatio`, `PushOutVelocity`, `ContactSlop`, `RestitutionThreshold`, `MaxLinearSpeed`, `MaxRotationPerSubstep`, `ContinuousEnabled`, `JointHertz`, `JointDampingRatio`, `HitSpeedThreshold`, `SpeculativeDistance`, `BroadphaseMargin`.
+
+Creation from files treats capacity values as preallocation hints, not allocation
+commands: the world is initially constructed without reserving those pools, then
+restored according to actual snapshot contents. Live hint values are retained for
+round-trip fidelity. An explicit later Warmup may honor them, so a host loading
+untrusted files should choose its own capacity policy before requesting warmup.

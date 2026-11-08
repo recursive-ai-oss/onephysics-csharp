@@ -37,8 +37,14 @@ public sealed partial class Scene
         if (Dim != 2 && Dim != 3) throw Error("dimension 2 or 3");
         if (Version == 2) { if (_state == null || !_stateEnd || _stateWritten != _state.Length || !_dimSeen || !_idSeen) throw Error("complete state and end record"); return; }
         if (!(Dt > 0 && Dt <= float.MaxValue) || !double.IsFinite(Dt) || Steps < 0 || Warmup < 0 || Settle < 0 || DumpEvery < 1 || QueryReps < 1 || Substeps < 0 || Substeps > 64) throw Error("positive finite dt and valid step counts");
-        if (Bodies == null || Joints == null || Softs == null || Materials == null || Queries == null || Events == null || Params == null) throw Error("non-null scene collections");
+        if (Bodies == null || Joints == null || Softs == null || Materials == null || Queries == null || Events == null || Params == null || Metrics == null) throw Error("non-null scene collections");
         if (Bodies.Count > 100000 || Joints.Count > 100000 || Softs.Count > 10000) throw Error("at most 100000 bodies/joints and 10000 soft bodies");
+        if (Name == null || Name.Any(c => char.IsWhiteSpace(c) || c == '#')) throw Error("single-token scene name");
+        foreach (var metric in Metrics) if (string.IsNullOrEmpty(metric) || metric.Any(c => char.IsWhiteSpace(c) || c == '#')) throw Error("single-token metric names");
+        foreach (var param in Params)
+        {
+            if (string.IsNullOrEmpty(param.Key) || param.Key.Any(c => char.IsWhiteSpace(c) || c == '#') || param.Value == null || param.Value.Length == 0 || param.Value.Any(v => string.IsNullOrEmpty(v) || v.Any(c => char.IsWhiteSpace(c) || c == '#'))) throw Error("single-token parameter keys and values");
+        }
         Finite([Gx, Gy, Gz]);
         foreach (var m in Materials) if (!(m.Friction >= 0 && m.Friction <= 1e15 && m.Restitution >= 0 && m.Restitution <= 1)) throw Error("friction in [0,1e15] and restitution in [0,1]");
         foreach (var b in Bodies)

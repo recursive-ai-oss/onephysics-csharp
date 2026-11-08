@@ -98,6 +98,7 @@ public sealed class ReplayPlayer
         {
             var options = new WorldOptions2D { ThreadCount = threadCount };
             if (initial.Options != null) { options.BroadphaseMargin = ReplayOptions2D.Read(initial.Options,options,out int id); options.WorldId=id; }
+            ReplayOptions2D.PrepareCreation(options);
             var world = new PhysicsWorld2D(options);
             world.Restore(initial.Snapshot);
             if(initial.Options!=null)((IRecordedWorld)world).ApplyReplayOptions(initial.Options);
@@ -117,6 +118,7 @@ public sealed class ReplayPlayer
         {
             var options = new WorldOptions3D { ThreadCount = threadCount };
             if (initial.Options != null) { options.BroadphaseMargin = ReplayOptions3D.Read(initial.Options,options,out int id); options.WorldId=id; }
+            ReplayOptions3D.PrepareCreation(options);
             var world = new PhysicsWorld3D(options);
             world.Restore(initial.Snapshot);
             if(initial.Options!=null)((IRecordedWorld)world).ApplyReplayOptions(initial.Options);

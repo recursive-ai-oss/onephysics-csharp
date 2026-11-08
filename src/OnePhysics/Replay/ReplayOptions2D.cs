@@ -80,6 +80,16 @@ internal static class ReplayOptions2D
         o.Validate();
         return margin;
     }
+    // Capacity hints describe host preallocation, not simulation state. File loading must not
+    // allocate a potentially enormous pool solely because a tiny input requests one.
+    internal static void PrepareCreation(WorldOptions2D options)
+    {
+        options.PairCapacity = 0;
+        options.ContactCapacity = 0;
+        options.IslandCapacity = 0;
+        options.QueryScratchCapacity = 0;
+    }
+
     internal static void Copy(WorldOptions2D from, WorldOptions2D to)
     {
         to.Gravity = from.Gravity;

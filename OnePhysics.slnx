@@ -12,6 +12,7 @@
     <Project Path="tests/OnePhysics.Tests/OnePhysics.Tests.csproj" />
     <Project Path="tests/ReadmeExamples/ReadmeExamples.csproj" />
     <Project Path="tests/AotSmoke/AotSmoke.csproj" />
+    <Project Path="tests/PlanarTrimSmoke/PlanarTrimSmoke.csproj" />
     <Project Path="tests/WasmSmoke/WasmSmoke.csproj" />
   </Folder>
   <Folder Name="/fuzz/">

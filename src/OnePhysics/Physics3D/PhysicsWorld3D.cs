@@ -122,7 +122,13 @@ public sealed partial class PhysicsWorld3D
         _engine.CheckBounds();
         _engine.CheckSoftBounds();
         SyncCoreOptions();
-        using var replayStep = RecordStep(dt);
+        if (_recorder != null) { RecordPreparedStep(dt); return; }
+        StepPrepared(dt);
+    }
+
+    // The unrecorded path has no recording scope or exception region in its simulation body.
+    private void StepPrepared(float dt)
+    {
         _engine.StepVehicles(this, dt);
         _engine.StepFluids(dt);
         bool soft = _engine.SoftHandles.Count > 0;

@@ -63,3 +63,26 @@ Apply the late input to your game state (and set body velocities or call `Move` 
 ## Lockstep without rollback
 
 The same pieces work without a ring: step every peer with the same inputs and dt, exchange `ComputeHash()` every N steps, and on a mismatch send a snapshot from the authority to the peer and `Restore` it. A mismatch is a bug in your inputs or in the engine, never a platform difference (see [determinism](determinism.md)).
+
+## Files and scrubbing
+
+`world.SaveScene()` produces canonical full-state scene text; use
+`PhysicsWorld2D.LoadScene(TextReader)` or its 3D counterpart to load it. The public
+`RecursiveAI.OnePhysics.Scene.Scene` model also reads the engine-neutral authoring
+format used by the benchmark. Full-state scenes preserve caches, slots, origin,
+services, pending events and pending live option edits, not just geometry.
+
+Use `world.StartRecording(stream)` in a `using` scope to record mutation effects
+and steps, then construct `ReplayPlayer(stream)`, call `CreateWorld2D()` or
+`CreateWorld3D()`, and repeatedly call `ReadNextStep(destination)`. Playback checks
+each recorded hash and reports the first mismatch. Streams are caller-owned.
+Mutation commands store complete state effects, so recording has a documented
+CPU/file-size cost rather than a compact argument log. Host delegate code is not
+serialized; event-callback mutations are recorded separately after simulation.
+
+`world.StartHistory(new HistoryOptions { KeyframeInterval = 30,
+MemoryBudgetBytes = 32 * 1024 * 1024 })` records into bounded storage. Its `Seek`
+overloads restore a retained logical step into an existing world; `FirstStep` and
+`LastStep` describe the retained range. Step 0 is the starting state. `Stop()`
+keeps history available to seek; `Dispose()` releases ownership and invalidates
+further seeks. See the scene and replay specifications for limits and wire layout.
