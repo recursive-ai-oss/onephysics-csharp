@@ -56,7 +56,7 @@ static class Driver3
             dump!.Write((uint)step); dump.Write((uint)wd.Length); foreach (var v in d) dump.Write(v); foreach (var v in wd) dump.Write(v);
         }
         if (dump != null) Frame(0);
-        bool prof = StageProfile.Requested && sim.Name == "onephysics"; if (prof) StageProfile.Install();
+        bool prof = StageProfile.Requested && sim.Name == "onephysics"; if (prof) StageProfile.Install(((OnePhysics3Sim)sim).Profile);
         var stepNs = new double[s.Steps]; var allocB = new long[s.Steps]; double nsPerTick = 1e9 / Stopwatch.Frequency;
         for (int step = 0; step < s.Steps; step++)
         {

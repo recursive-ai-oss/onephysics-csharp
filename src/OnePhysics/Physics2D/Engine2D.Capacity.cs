@@ -28,6 +28,7 @@ internal sealed partial class Engine2D
         if (_updateList.Length < need) { _updateList = new int[need]; _results = new PairResult[need]; _actItems = new int[need]; }
         if (_actCounts.Length < need / 64) { _actCounts = new int[need / 64]; _recycledCounts = new int[need / 64]; }
         int chunks = (pairs + 63) / 64;
+        if (_testedCounts.Length < chunks) { _testedCounts = new int[chunks]; _recycledPointCounts = new int[chunks]; }
         if (_blockCounts.Length < chunks) { _blockCounts = new int[chunks]; }
         int boxTasks = (bodies + 63) / 64;
         if (_moverLists.Length < boxTasks) { Array.Resize(ref _moverLists, boxTasks); Array.Resize(ref _moverCounts, boxTasks); }
@@ -47,6 +48,7 @@ internal sealed partial class Engine2D
         int blocks = (bodies + BeginBlock - 1) / BeginBlock;
         if (_beginMoving.Length < blocks) { _beginMoving = new int[blocks]; }
         EnsureJointSlots(contacts);
+        if (LiveJointCount() != 0) { Core.JointReadback.ReserveSlots(Math.Max(contacts, Core.Constraints.HighWater)); Core.JointReadback.ReserveWide(batches); }
         if (JScratch.Length < contacts * JRow.Stride) { JScratch = new float[contacts * JRow.Stride]; }
         Bp.Reserve(shapes, pairs);
     }

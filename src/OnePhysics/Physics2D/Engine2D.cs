@@ -99,6 +99,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     public Engine2D(WorldCore core, Broadphase2D bp, WorldOptions2D opt)
     {
         Core = core;
+        bp.Profile = core.Profile;
         Bp = bp;
         Opt = opt;
     }

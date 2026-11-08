@@ -5,7 +5,7 @@ using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics2D;
 
-/// <summary>What a joint-break callback is told. The joint is already destroyed, so <see cref="Joint"/> is stale and only identifies it (compare handles, or read <see cref="Joint.RawHandle"/>).</summary>
+/// <summary>What a joint-break callback is told. The joint is already destroyed, so <see cref="Joint"/> is stale and identifies it; <see cref="Joint.Inspect"/> can also read the latest-step break record when detailed inspection is enabled (until the next step or slot reuse).</summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "Handle fields, not properties, so that `hit.Body.LinearVelocity = v` compiles: a property result is not a variable (CS1612), a readonly field is.")]
 public readonly struct JointBreak
 {
@@ -35,11 +35,12 @@ public readonly struct JointBreak
 }
 
 /// <summary>
+/// With detailed inspection enabled, Inspect can read a latest-step break record until the next step or slot reuse.
 /// A handle to a joint: world, slot and generation. A small struct that allocates nothing; once the joint is destroyed (by <see cref="Destroy"/>, by breaking, or because a body was destroyed)
-/// every copy fails with a <see cref="StaleHandleException"/> naming the joint. Properties that a joint type does not have throw <see cref="InvalidJointException"/>.
+/// every copy (except Inspect for a latest-step break record) fails with a <see cref="StaleHandleException"/> naming the joint. Properties that a joint type does not have throw <see cref="InvalidJointException"/>.
 /// Edits take effect at the next step and wake the joint's bodies. The <c>Add*</c> one-liners and <c>CreateJoint</c> return a typed view (for example <c>HingeJoint</c>) that has only the members its kind has and converts implicitly to <see cref="Joint"/>; use <see cref="Joint"/> to hold joints of any kind in one collection (the explicit conversion back checks the kind).
 /// </summary>
-public readonly struct Joint : IEquatable<Joint>
+public readonly partial struct Joint : IEquatable<Joint>
 {
     private readonly PhysicsWorld2D? _world;
     private readonly JointHandle _handle;

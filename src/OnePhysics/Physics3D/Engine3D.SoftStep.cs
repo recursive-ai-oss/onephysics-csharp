@@ -82,6 +82,8 @@ internal sealed partial class Engine3D
     public void StepSoft(float dt)
     {
         if (SoftHandles.Count == 0) { return; }
+        Core.Profile.BeginSoft();
+        Core.Profile.Mark(StepStage.SoftSetup);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.SoftSetup);
 #endif
@@ -113,7 +115,7 @@ internal sealed partial class Engine3D
             if (d.MaxSpeed * dt > maxTravel) { maxTravel = d.MaxSpeed * dt; }
         }
 
-        if (_awakeSoftCount == 0) { return; }
+        if (_awakeSoftCount == 0) { Core.Profile.Mark(StepStage.SoftEnd); return; }
         for (int a = 0; a < _awakeSoftCount; a++) { if (_awakeSoft[a].IsSkinned) { PrepareSkin(_awakeSoft[a]); } }
         for (int a = 0; a < _awakeSoftCount; a++) { BeginSoftBody(_awakeSoft[a]); }
         var g = Opt.Gravity;
@@ -123,6 +125,8 @@ internal sealed partial class Engine3D
 
         int total = 0;
         for (int a = 0; a < _awakeSoftCount; a++) { _awakeSoft[a].Base = total; total += _awakeSoft[a].N; }
+        Core.Counters.SoftParticles = total;
+        for (int a = 0; a < _awakeSoftCount; a++) { Core.Counters.SoftBlocks += _awakeSoft[a].BlockCount; }
         GrowTo(ref _gData, total); GrowTo(ref _gPart, total); GrowTo(ref _gridKeys, total); GrowTo(ref _gridStart, total + 1);
         for (int a = 0; a < _awakeSoftCount; a++)
         {
@@ -134,6 +138,7 @@ internal sealed partial class Engine3D
         for (int c = 0; c < _candCount; c++) { CandidatePose(c, 0f); }
         Array.Copy(_cBoxNow, _cBoxEnd, 6 * _candCount);
 
+        Core.Profile.Mark(StepStage.SoftPairs);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.SoftPairs);
 #endif
@@ -149,6 +154,7 @@ internal sealed partial class Engine3D
                 CandidatePose(c, t1);
             }
 
+        Core.Profile.Mark(StepStage.SoftPredict);
 #if STAGE_TIMERS
             StageProbe.Mark(StageProbe.SoftPredict);
 #endif
@@ -157,10 +163,12 @@ internal sealed partial class Engine3D
                 PredictSoft(_awakeSoft[a], h, g);
                 if (_awakeSoft[a].IsSkinned) { PredictSkin(_awakeSoft[a], tSkin); }
             }
+        Core.Profile.Mark(StepStage.SoftDetect);
 #if STAGE_TIMERS
             StageProbe.Mark(StageProbe.SoftDetect);
 #endif
             DetectAll();
+        Core.Profile.Mark(StepStage.SoftPairs);
 #if STAGE_TIMERS
             StageProbe.Mark(StageProbe.SoftPairs);
 #endif
@@ -168,6 +176,7 @@ internal sealed partial class Engine3D
             for (int a = 0; a < _awakeSoftCount; a++) { Array.Clear(_awakeSoft[a].Lambda); }
             SolveSubstep(h, invH, iterations, tSkin);
 
+        Core.Profile.Mark(StepStage.SoftFinish);
 #if STAGE_TIMERS
             StageProbe.Mark(StageProbe.SoftFinish);
             {
@@ -187,6 +196,7 @@ internal sealed partial class Engine3D
         for (int a = 0; a < _awakeSoftCount; a++) { EndSoftBody(_awakeSoft[a]); }
         ApplyRigidReactions();
         UpdateSoftSleep(dt);
+        Core.Profile.Mark(StepStage.SoftEnd);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.SoftEnd);
 #endif

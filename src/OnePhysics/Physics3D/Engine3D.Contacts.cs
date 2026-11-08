@@ -109,6 +109,7 @@ internal sealed class NarrowScratch
     public static TriangleShapeBuffer3D TriBuf => H.TriBuf;
     public ContactOut[] Out = new ContactOut[128];
     public int OutCount;
+    public int Recycled, RecycledPoints, FreshQueries;
     /// <summary>Pairs of this chunk that passed the tight-box test, and those among them that ran the narrowphase (not skipped as apart, not reusing a manifold); read by the work counters.</summary>
     public int Reached, Fresh;
 
@@ -182,6 +183,7 @@ internal sealed partial class Engine3D
         var awakeList = world.AwakeBodies;
         int boxChunks = (awakeList.Length + BoxChunk - 1) / BoxChunk;
         world.Executor.For(boxChunks, new TightBoxTask(this, boxChunks));
+        Core.Profile.Mark(StepStage.Move);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Move);
 #endif
@@ -198,6 +200,7 @@ internal sealed partial class Engine3D
         }
 
         // 2. Start-of-step pose, zero accumulated motion and world-axes inverse inertia for every body (sleeping bodies may wake during the stage).
+        Core.Profile.Mark(StepStage.Init);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Init);
 #endif
@@ -216,11 +219,13 @@ internal sealed partial class Engine3D
             if (_isSleeper[b] != 0) { _sleepers[_sleeperCount++] = b; }
         }
 
+        Core.Profile.Mark(StepStage.Pairs);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Pairs);
 #endif
         // 3. New pairs from the broadphase, in its sorted order.
         var found = Bp.UpdatePairs(new PairFilter(this), world.Executor);
+        world.Counters.BroadphasePairs = found.Length;
         bool anyFresh = false;
         for (int i = 0; i < found.Length; i++)
         {
@@ -238,6 +243,7 @@ internal sealed partial class Engine3D
         // Most pairs end up with one constraint; making room for them (and half as many again) at once saves the repeated doubling when thousands of pairs appear in one step.
         world.Constraints.Reserve(PairHigh + (PairHigh >> 1));
         if (_skip.Length < PairHigh) { Array.Resize(ref _skip, Math.Max(PairHigh, _skip.Length * 2)); }
+        Core.Profile.Mark(StepStage.Narrowphase);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Narrowphase);
 #endif
@@ -280,7 +286,7 @@ internal sealed partial class Engine3D
         StatNewPairs = found.Length;
         if (_applyCount.Length < chunks) { _applyCount = new int[Math.Max(chunks, _applyCount.Length * 2)]; }
         if (_applyIdx.Length < chunks * 64) { _applyIdx = new int[Math.Max(chunks * 64, _applyIdx.Length * 2)]; }
-        for (int i = 0; i < chunks; i++) { _scratch[i].OutCount = 0; _scratch[i].Reached = 0; _scratch[i].Fresh = 0; }
+        for (int i = 0; i < chunks; i++) { _scratch[i].OutCount = 0; _scratch[i].Reached = 0; _scratch[i].Fresh = 0; _scratch[i].Recycled = 0; }
         StatUpdated = _updateCount;
         StatReached = 0; StatFresh = 0;
         // The serial pass only adds, matches and removes constraints (their order fixes the colors); writing the manifolds into the payloads is independent per constraint and runs afterwards in parallel.
@@ -288,6 +294,15 @@ internal sealed partial class Engine3D
         _deferWrite = Opt.MaterialMixer == null && _updateCount >= 64;
         world.Executor.For(chunks, new CollideTask(this));
         for (int i = 0; i < chunks; i++) { StatReached += _scratch[i].Reached; StatFresh += _scratch[i].Fresh; }
+        world.Counters.UpdatedPairs = _updateCount;
+        for (int i = 0; i < chunks; i++)
+        {
+            world.Counters.NarrowphasePairs += _scratch[i].FreshQueries;
+            world.Counters.RecycledManifolds += _scratch[i].Recycled;
+            world.Counters.RecycledContactPoints += _scratch[i].RecycledPoints;
+        }
+
+        Core.Profile.Mark(StepStage.Apply);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Apply);
 #endif
@@ -593,15 +608,24 @@ internal sealed partial class Engine3D
             int lo = task * 64, hi = Math.Min(lo + 64, _e._updateCount);
             var sc = _e._scratch[task];
             var e = _e;
-            int listed = 0;
+            int listed = 0, recycled = 0, recycledPoints = 0, soupReuse = 0;
             for (int i = lo; i < hi; i++)
             {
                 e.Collide(i, sc);
+                int count = e._resCount[i];
+                if (count != 0 && sc.Out[e._resFirst[i]].Recycled)
+                {
+                    recycled += count;
+                    for (int k = 0; k < count; k++) { recycledPoints += sc.Out[e._resFirst[i] + k].Count; }
+                    int pair = e._updateList[i];
+                    if (e.Geoms[e.GeomOf[e.PairA[pair]]]!.Soup != null || e.Geoms[e.GeomOf[e.PairB[pair]]]!.Soup != null) { soupReuse++; }
+                }
                 // Worth the serial pass: the boxes no longer overlap (the pair goes), or the pair has points or a constraint to match.
                 // A pair whose new contacts are exactly its constraints, one for one, changes nothing the serial pass owns (no constraint is added or removed, so no color moves); it only needs its payloads written.
                 if ((e._resStatus[i] == 2 || e._resCount[i] != 0 || e.PairCons[e._updateList[i]] != -1) && !(e._deferWrite && e.MatchesInPlace(i, sc))) { e._applyIdx[lo + listed++] = i; }
             }
 
+            sc.Recycled = recycled; sc.RecycledPoints = recycledPoints; sc.FreshQueries = sc.Fresh - soupReuse;
             e._applyCount[task] = listed;
         }
     }
@@ -960,6 +984,7 @@ internal sealed partial class Engine3D
         var ids = cs.FeatureIdsOf(c);
         int oldCount = cs.PointCount[c];
         // Warm starting: impulses of the old point with the same feature id carry over.
+        int matchedMask = 0;
         var old = default(ImpulseBuffer);
         for (int k = 0; k < res.Count; k++)
         {
@@ -967,11 +992,13 @@ internal sealed partial class Engine3D
             for (int j = 0; j < oldCount; j++)
             {
                 if (ids[j] != id) { continue; }
+                matchedMask |= 1 << k;
                 old[k] = pl[ManifoldLayout.NormalImpulse(j)]; old[4 + k] = pl[ManifoldLayout.Tangent1Impulse(j)]; old[8 + k] = pl[ManifoldLayout.Tangent2Impulse(j)];
                 break;
             }
         }
 
+        Core.InspectContactBirth(c, res.Count, matchedMask);
         float r0 = 0f, r1 = 0f, r2 = 0f;
         if (oldCount > 0) { r0 = pl[ManifoldLayout.RollingImpulse]; r1 = pl[ManifoldLayout.RollingImpulse + 1]; r2 = pl[ManifoldLayout.RollingImpulse + 2]; }
         pl.Clear();

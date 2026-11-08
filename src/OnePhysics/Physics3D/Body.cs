@@ -234,6 +234,7 @@ public readonly partial struct Body : IEquatable<Body>
         var v = bodies.LinearVelocityOf(b);
         float m = bodies.InverseMass[b];
         v[0] += m * impulse.X; v[1] += m * impulse.Y; v[2] += m * impulse.Z;
+        if (w.Options.DetailedInspection) { w.Core.BodyReadback.Pending(b, new(impulse.X, impulse.Y, impulse.Z), default); }
         WakeBody(w, b);
     }
 
@@ -251,6 +252,7 @@ public readonly partial struct Body : IEquatable<Body>
         float m = bodies.InverseMass[b];
         v[0] += m * impulse.X; v[1] += m * impulse.Y; v[2] += m * impulse.Z;
         AddAngular(w, b, Vector3F.Cross(r, impulse));
+        if (w.Options.DetailedInspection) { w.Core.BodyReadback.Pending(b, new(impulse.X, impulse.Y, impulse.Z), default); }
         WakeBody(w, b);
     }
 
@@ -267,6 +269,7 @@ public readonly partial struct Body : IEquatable<Body>
 
     private static void AddAngular(PhysicsWorld3D w, int b, Vector3F angularImpulse)
     {
+        if (w.Options.DetailedInspection) { w.Core.BodyReadback.Pending(b, default, new(angularImpulse.X, angularImpulse.Y, angularImpulse.Z)); }
         var e = w.Engine;
         e.RefreshWorldInertia(b);
         var dw = e.ApplyWorldInertia(b, angularImpulse);
