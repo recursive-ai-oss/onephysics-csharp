@@ -23,6 +23,47 @@ public class ManifoldReuse3DTests
         return w;
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(8)]
+    public void ReusedContactsMatchSerialMaterialWrites(int threads)
+    {
+        PhysicsWorld3D Build(bool serial)
+        {
+            var w = new PhysicsWorld3D(new WorldOptions3D { ThreadCount = threads, WorldId = 91, Events = EventMask.All });
+            if (serial)
+            {
+                // The equivalent user mixer keeps all payload writes on the serial matching path.
+                w.Options.MaterialMixer = (a, b) => new Material3D(
+                    float.Sqrt(a.Friction * b.Friction),
+                    a.Restitution > b.Restitution ? a.Restitution : b.Restitution,
+                    a.RollingResistance > b.RollingResistance ? a.RollingResistance : b.RollingResistance);
+            }
+
+            w.AddBox(new Vector3F(60, 1, 60), new Vector3D(0, -0.5, 0), type: BodyType.Static);
+            // More than 64 simultaneous pairs exercise parallel payload writes, including four-point
+            // box contacts and one-point sphere contacts. Both worlds use the same sleep settings.
+            for (int i = 0; i < 100; i++)
+            {
+                var at = new Vector3D((i % 10) * 2 - 9, 0.5, (i / 10) * 2 - 9);
+                if (i % 2 == 0) { w.AddBox(new Vector3F(1, 1, 1), at); }
+                else { w.AddSphere(0.5f, at); }
+            }
+
+            return w;
+        }
+
+        var parallel = Build(false);
+        var serial = Build(true);
+        for (int i = 0; i < 120; i++)
+        {
+            parallel.Step(Dt); serial.Step(Dt);
+            Assert.Equal(serial.ComputeHash(), parallel.ComputeHash());
+        }
+
+        Assert.Equal(serial.Snapshot(), parallel.Snapshot());
+    }
+
     [Fact]
     public void ReusedManifoldsRestWhereFreshOnesDo()
     {

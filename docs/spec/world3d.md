@@ -787,3 +787,22 @@ Before this round the per-body box update (the tight world box of every shape of
 * **The comparison with the stored box** reads the tree's box by reference and compares six doubles, as `Aabb3D.Contains` does.
 
 Measured (profile build, one thread, tiered compilation off, interleaved, indicative): boxes bucket large-pile-3d 0.24 to 0.10-0.13 ms, ragdoll-pile-3d 0.08 to 0.037, sleep-wake-3d 0.07 to 0.035. What is left of the bucket on ragdoll and sleep-wake is fixed cost: the awake list (3-6 us, built twice a step), joint reconciliation (3-4 us) and the per-step bookkeeping. Pose dumps of nine scenes (large-pile, ragdoll-pile, sleep-wake, mesh terrain, height field, joint chains, pyramid, characters, vehicles) are byte-identical to the previous build, with and without hardware intrinsics.
+
+### Contact-write locality experiment
+
+An indicative comparison of the existing deferred payload writes against immediate writes during narrowphase matching used three interleaved Release runs per scene and engine, tiered compilation off, one or eight threads restricted to one eight-logical-CPU core complex. Values below are the best median step times, in milliseconds. The reference was BepuPhysics 2.5.0-beta.33 at the harness defaults. The machine was a Ryzen 9 7950X3D (32 logical processors), using SDK 10.0.403 and runtime .NET 10.0.14. One-minute load was 12.65 before, 13.79–15.50 during and 14.96 after. These are loaded-machine design-selection measurements, not performance-gate rows.
+
+| scene | threads | existing | immediate writes | reference |
+|---|---:|---:|---:|---:|
+| sleep-wake-3d | 1 | 2.889 | 2.940 | 1.205 |
+| sleep-wake-3d | 8 | 0.740 | 0.706 | 0.583 |
+| ragdoll-pile-3d | 1 | 1.991 | 2.016 | 0.956 |
+| ragdoll-pile-3d | 8 | 0.567 | 0.682 | 0.485 |
+| large-pile-3d | 1 | 7.125 | 6.986 | 6.976 |
+| large-pile-3d | 8 | 1.641 | 1.606 | 1.488 |
+| queries-3d | 1 | 9.706 | 8.413 | 7.022 |
+| queries-3d | 8 | 1.963 | 1.876 | 1.744 |
+
+The immediate-write variant required an unchanged constraint chain, no sleeping dynamic end and no user material mixer. It kept arithmetic and hashes unchanged but moved most payload-write time into the narrowphase rather than removing it. A narrower variant that fused only reused convex contacts also failed to improve both headline scenes consistently. Neither variant is retained.
+
+In the existing pipeline, one-thread stage medians were about 0.037 ms for tight bounds, 1.406 ms for narrowphase and 0.256 ms for contact application on sleep-wake; ragdoll was 0.039, 0.502 and 0.092 ms respectively. Ragdoll preparation plus solve/integration was already about 1.183 ms, exceeding 1.15 times the reference's 0.956 ms whole step even before bounds and contact updates. Tight-bounds arithmetic and contact-write locality alone therefore cannot close that scene's gap. Sleep-wake still ran about 2,204 fresh narrowphase queries per measured step (median), against 307 for ragdoll; reducing fresh collision cost remains more promising there than optimizing bounds arithmetic.
