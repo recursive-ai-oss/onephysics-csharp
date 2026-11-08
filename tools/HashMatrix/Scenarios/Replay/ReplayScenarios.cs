@@ -15,12 +15,13 @@ internal static class ReplayScenarios
         Scenarios.Register("replay/checkpoint-3d", Spatial);
     }
 
+    // Explicit ids keep these scenarios independent of the auto-id sequence used by other scenarios.
     private static void Planar(ScenarioContext context)
     {
         using var input = typeof(ReplayScenarios).Assembly.GetManifestResourceStream("replay.planar")
             ?? throw new InvalidOperationException("Missing planar replay fixture.");
         var player = new ReplayPlayer(input, "planar.oppr");
-        var world = new PhysicsWorld2D(new WorldOptions2D { ThreadCount = context.Threads });
+        var world = new PhysicsWorld2D(new WorldOptions2D { WorldId = 24, ThreadCount = context.Threads });
         while (player.ReadNextStep(world))
         {
             context.Write(world.StepCount);
@@ -34,7 +35,7 @@ internal static class ReplayScenarios
         using var input = typeof(ReplayScenarios).Assembly.GetManifestResourceStream("replay.spatial")
             ?? throw new InvalidOperationException("Missing spatial replay fixture.");
         var player = new ReplayPlayer(input, "spatial.oppr");
-        var world = new PhysicsWorld3D(new WorldOptions3D { ThreadCount = context.Threads });
+        var world = new PhysicsWorld3D(new WorldOptions3D { WorldId = 24, ThreadCount = context.Threads });
         while (player.ReadNextStep(world))
         {
             context.Write(world.StepCount);
