@@ -128,7 +128,7 @@ public interface IWorldStages
 /// All mutation happens on one thread between or inside steps as documented; only the phases that call the stages run in parallel.
 /// </summary>
 [Experimental("OPHYS0001")]
-public sealed class WorldCore
+public sealed partial class WorldCore
 {
     private const int ChunkSize = 64;
     private const double CoordinateBound = 2097152.0; // 2^21
@@ -440,6 +440,7 @@ public sealed class WorldCore
         _islands.SetAsleep(island, false);
         foreach (int b in _islands.Bodies(island))
         {
+            if (_collectTransitions) { Counters.WakeTransitions++; }
             _bodies.Flags[b] |= (byte)BodyBits.Awake;
             _bodies.SleepTime[b] = 0f;
             _events.Emit(0, new PhysicsEvent(EventKind.Wake, HandleOfBody(b), default, default, default, 0, 0, default, 0f));
@@ -451,6 +452,7 @@ public sealed class WorldCore
         _islands.SetAsleep(island, true);
         foreach (int b in _islands.Bodies(island))
         {
+            if (_collectTransitions) { Counters.SleepTransitions++; }
             _bodies.Flags[b] &= unchecked((byte)~(byte)BodyBits.Awake);
             _bodies.LinearVelocityOf(b).Clear();
             _bodies.AngularVelocityOf(b).Clear();
@@ -603,91 +605,112 @@ public sealed class WorldCore
         if (!(dt > 0f) || !float.IsFinite(dt)) { throw new ArgumentOutOfRangeException(nameof(dt), dt, "dt must be finite and positive."); }
         _options.Validate();
         _events.ClearDelivered();
-#if STAGE_TIMERS
-        StageProbe.Mark(StageProbe.Boxes);
-#endif
-        ReadContactSchedule();
-        BuildAwakeBodies();
-        stages.UpdateContacts(this);
-        BuildAwakeBodies();
-#if STAGE_TIMERS
-        StageProbe.Mark(StageProbe.Coloring);
-#endif
-        _coloring.EnsureBodies(_bodies.HighWater);
-        _coloring.BuildActive(_bodies, _constraints, Executor, _awakeCount > 0);
-        var ctx = new StepContext(dt, _options.Substeps, 0);
-        var ctxLite = new StepContext(dt, _liteSubsteps, 1);
-        int active = _coloring.ActiveCount;
-        int storeChunks = (active + ChunkSize - 1) / ChunkSize;
-        _events.EnsureSlots(1 + storeChunks);
-        var list = _coloring.ListArray;
-        bool split = _liteOn && PlanSchedules(stages, active, list);
-        _forcedCount = 0;
-        _splitActive = split;
-        if (!split) { CountWholeColors(); }
-
-#if STAGE_TIMERS
-        StageProbe.Mark(StageProbe.Prepare);
-#endif
-        Executor.For(storeChunks, new PrepareTask<TStages>(this, stages, list, 0, active, ctx));
-        PrepareBatches(stages, ctx, ctxLite, split);
-
-#if STAGE_TIMERS
-        StageProbe.Mark(StageProbe.Solve);
-#endif
-        // Each program (the joint schedule's islands, then the contact-only schedule's) runs as one staged call: the stage boundaries (integrate, then each color of each pass) are crossed by polling inside the executor
-        // instead of one fork and join per stage. Islands share no dynamic body, so running the programs one after the other gives what running them together would.
-        for (int prog = 0; prog < (split ? 2 : 1); prog++)
+        Counters.Reset();
+        _collectTransitions = true;
+        try
         {
-            if (split && (prog == 0 ? _awakeFullCount : _awakeLiteCount) == 0 && _progConstraints[prog] == 0) { continue; }
-            var pctx = prog == 0 ? ctx : ctxLite;
-            int subs = prog == 0 ? _options.Substeps : _liteSubsteps;
-            int vel = prog == 0 ? _options.VelocityIterations : _liteVelocity;
-            int relax = prog == 0 ? _options.RelaxIterations : _liteRelax;
-            var progBodies = split ? (prog == 0 ? _awakeFull : _awakeLite) : _awake;
-            int progCount = split ? (prog == 0 ? _awakeFullCount : _awakeLiteCount) : _awakeCount;
-            int progChunks = (progCount + ChunkSize - 1) / ChunkSize;
-            _stageCount = 0;
-            _stageMostTasks = 0;
-            for (int s = 0; s < subs; s++)
+            Profile.Begin();
+            Profile.Mark(StepStage.Boxes);
+#if STAGE_TIMERS
+            StageProbe.Mark(StageProbe.Boxes);
+#endif
+            ReadContactSchedule();
+            BuildAwakeBodies();
+            stages.UpdateContacts(this);
+            BuildAwakeBodies();
+            Profile.Mark(StepStage.Coloring);
+#if STAGE_TIMERS
+            StageProbe.Mark(StageProbe.Coloring);
+#endif
+            _coloring.EnsureBodies(_bodies.HighWater);
+            _coloring.BuildActive(_bodies, _constraints, Executor, _awakeCount > 0);
+            var ctx = new StepContext(dt, _options.Substeps, 0);
+            var ctxLite = new StepContext(dt, _liteSubsteps, 1);
+            int active = _coloring.ActiveCount;
+            CaptureSolverCounters();
+            int storeChunks = (active + ChunkSize - 1) / ChunkSize;
+            _events.EnsureSlots(1 + storeChunks);
+            var list = _coloring.ListArray;
+            bool split = _liteOn && PlanSchedules(stages, active, list);
+            _forcedCount = 0;
+            _splitActive = split;
+            if (!split) { CountWholeColors(); }
+
+            Profile.Mark(StepStage.Prepare);
+#if STAGE_TIMERS
+            StageProbe.Mark(StageProbe.Prepare);
+#endif
+            Executor.For(storeChunks, new PrepareTask<TStages>(this, stages, list, 0, active, ctx));
+            PrepareBatches(stages, ctx, ctxLite, split);
+
+            Profile.Mark(StepStage.Solve);
+#if STAGE_TIMERS
+            StageProbe.Mark(StageProbe.Solve);
+#endif
+            // Each program (the joint schedule's islands, then the contact-only schedule's) runs as one staged call: the stage boundaries (integrate, then each color of each pass) are crossed by polling inside the executor
+            // instead of one fork and join per stage. Islands share no dynamic body, so running the programs one after the other gives what running them together would.
+            for (int prog = 0; prog < (split ? 2 : 1); prog++)
             {
-                _flipSweep = (s & 1) == 1;
-                AddStage(StageIntegrateVelocities, 0, progChunks);
-                AddSolvePass(prog, SolvePhase.WarmStart);
-                for (int i = 0; i < vel; i++) { AddSolvePass(prog, SolvePhase.Solve); }
-                AddStage(StageIntegratePositions, 0, progChunks);
-                for (int i = 0; i < relax; i++) { AddSolvePass(prog, SolvePhase.Relax); }
+                if (split && (prog == 0 ? _awakeFullCount : _awakeLiteCount) == 0 && _progConstraints[prog] == 0) { continue; }
+                var pctx = prog == 0 ? ctx : ctxLite;
+                int subs = prog == 0 ? _options.Substeps : _liteSubsteps;
+                int vel = prog == 0 ? _options.VelocityIterations : _liteVelocity;
+                int relax = prog == 0 ? _options.RelaxIterations : _liteRelax;
+                var progBodies = split ? (prog == 0 ? _awakeFull : _awakeLite) : _awake;
+                int progCount = split ? (prog == 0 ? _awakeFullCount : _awakeLiteCount) : _awakeCount;
+                if (prog == 0) { Counters.WorldSubsteps = subs; Counters.WorldSolvePasses = subs * vel; Counters.WorldRelaxPasses = subs * relax; }
+                else { Counters.ContactSubsteps = subs; Counters.ContactSolvePasses = subs * vel; Counters.ContactRelaxPasses = subs * relax; }
+                int progChunks = (progCount + ChunkSize - 1) / ChunkSize;
+                _stageCount = 0;
+                _stageMostTasks = 0;
+                for (int s = 0; s < subs; s++)
+                {
+                    _flipSweep = (s & 1) == 1;
+                    AddStage(StageIntegrateVelocities, 0, progChunks);
+                    AddSolvePass(prog, SolvePhase.WarmStart);
+                    for (int i = 0; i < vel; i++) { AddSolvePass(prog, SolvePhase.Solve); }
+                    AddStage(StageIntegratePositions, 0, progChunks);
+                    for (int i = 0; i < relax; i++) { AddSolvePass(prog, SolvePhase.Relax); }
+                }
+
+                AddSolvePass(prog, SolvePhase.Restitution);
+                Executor.ForStages(_stageCount, new SolveProgram<TStages>(this, stages, list, pctx, prog, progBodies, progCount), _stageMostTasks);
             }
 
-            AddSolvePass(prog, SolvePhase.Restitution);
-            Executor.ForStages(_stageCount, new SolveProgram<TStages>(this, stages, list, pctx, prog, progBodies, progCount), _stageMostTasks);
+            Profile.Mark(StepStage.Finalize);
+#if STAGE_TIMERS
+            StageProbe.Mark(StageProbe.Finalize);
+#endif
+            int bodyChunks = (_awakeCount + ChunkSize - 1) / ChunkSize;
+            Executor.For(bodyChunks, new FinalizeTask<TStages>(this, stages, _awake, _awakeCount, ctx));
+            stages.AfterFinalize(this, ctx);
+            Profile.Mark(StepStage.Store);
+#if STAGE_TIMERS
+            StageProbe.Mark(StageProbe.Store);
+#endif
+            Executor.For(storeChunks, new StoreTask<TStages>(this, stages, list, active, ctx));
+
+            Profile.Mark(StepStage.Sleep);
+#if STAGE_TIMERS
+            StageProbe.Mark(StageProbe.Sleep);
+#endif
+            ProcessBreaks();
+            UpdateSleep(stages, dt);
+            Profile.Mark(StepStage.Events);
+#if STAGE_TIMERS
+            StageProbe.Mark(StageProbe.Events);
+#endif
+            EmitPersist();
+            _events.Deliver();
+            Profile.Mark(StepStage.End);
+#if STAGE_TIMERS
+            StageProbe.Mark(StageProbe.End);
+#endif
+            _collectTransitions = false;
+            CapturePopulationCounters();
+            _stepCount++;
         }
-
-#if STAGE_TIMERS
-        StageProbe.Mark(StageProbe.Finalize);
-#endif
-        int bodyChunks = (_awakeCount + ChunkSize - 1) / ChunkSize;
-        Executor.For(bodyChunks, new FinalizeTask<TStages>(this, stages, _awake, _awakeCount, ctx));
-        stages.AfterFinalize(this, ctx);
-#if STAGE_TIMERS
-        StageProbe.Mark(StageProbe.Store);
-#endif
-        Executor.For(storeChunks, new StoreTask<TStages>(this, stages, list, active, ctx));
-
-#if STAGE_TIMERS
-        StageProbe.Mark(StageProbe.Sleep);
-#endif
-        ProcessBreaks();
-        UpdateSleep(stages, dt);
-#if STAGE_TIMERS
-        StageProbe.Mark(StageProbe.Events);
-#endif
-        EmitPersist();
-        _events.Deliver();
-#if STAGE_TIMERS
-        StageProbe.Mark(StageProbe.End);
-#endif
-        _stepCount++;
+        finally { _collectTransitions = false; }
     }
 
     // ------------------------------------------------------------------ per-island schedules

@@ -41,7 +41,7 @@ static class OnePhysicsDriver
         void Frame(int step) { Snap(); dump!.Write((uint)step); dump.Write((uint)0); foreach (var v in d) dump.Write(v); }
         if (dump != null) Frame(0);
 
-        bool prof = StageProfile.Requested; if (prof) StageProfile.Install();
+        bool prof = StageProfile.Requested; if (prof) StageProfile.Install(world.Profile);
         var stepNs = new double[s.Steps];
         double nsPerTick = 1e9 / Stopwatch.Frequency;
         float dt = (float)s.Dt;

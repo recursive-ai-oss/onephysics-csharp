@@ -145,11 +145,13 @@ internal sealed partial class Engine2D
         }
         // 2. Start-of-step pose and zero accumulated motion for every body (sleeping bodies may wake during the stage). Bodies are independent, so this runs in blocks.
         world.Executor.For((nb + 1023) / 1024, new StartPoseTask(this, nb));
+        Core.Profile.Mark(StepStage.Pairs);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Pairs);
 #endif
         // 3. New pairs from the broadphase, in its sorted order.
         var found = Bp.UpdatePairs(new PairFilter(this), world.Executor);
+        world.Counters.BroadphasePairs = found.Length;
         bool anyFresh = false;
         for (int i = 0; i < found.Length; i++)
         {
@@ -163,6 +165,7 @@ internal sealed partial class Engine2D
             _fresh[np] = IsSensor(a) || IsSensor(b);
             anyFresh |= _fresh[np];
         }
+        Core.Profile.Mark(StepStage.Narrowphase);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Narrowphase);
 #endif
@@ -178,8 +181,10 @@ internal sealed partial class Engine2D
         _collideBlocks = chunks;
         world.Executor.For(chunks, new CollideTask(this, anyFresh));
         RecycledCount = 0;
-        for (int t = 0; t < chunks; t++) { RecycledCount += _recycledCounts[t]; }
+        for (int t = 0; t < chunks; t++) { RecycledCount += _recycledCounts[t]; world.Counters.UpdatedPairs += _blockCounts[t]; }
+        world.Counters.RecycledManifolds = RecycledCount;
         if (anyFresh) { Array.Clear(_fresh, 0, Math.Min(PairHigh, _fresh.Length)); }
+        Core.Profile.Mark(StepStage.Apply);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Apply);
 #endif

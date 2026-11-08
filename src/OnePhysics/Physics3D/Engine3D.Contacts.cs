@@ -109,6 +109,7 @@ internal sealed class NarrowScratch
     public static TriangleShapeBuffer3D TriBuf => H.TriBuf;
     public ContactOut[] Out = new ContactOut[128];
     public int OutCount;
+    public int Recycled;
     /// <summary>Pairs of this chunk that passed the tight-box test, and those among them that ran the narrowphase (not skipped as apart, not reusing a manifold); read by the work counters.</summary>
     public int Reached, Fresh;
 
@@ -178,6 +179,7 @@ internal sealed partial class Engine3D
         var awakeList = world.AwakeBodies;
         int boxChunks = (awakeList.Length + BoxChunk - 1) / BoxChunk;
         world.Executor.For(boxChunks, new TightBoxTask(this, boxChunks));
+        Core.Profile.Mark(StepStage.Move);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Move);
 #endif
@@ -194,6 +196,7 @@ internal sealed partial class Engine3D
         }
 
         // 2. Start-of-step pose, zero accumulated motion and world-axes inverse inertia for every body (sleeping bodies may wake during the stage).
+        Core.Profile.Mark(StepStage.Init);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Init);
 #endif
@@ -212,11 +215,13 @@ internal sealed partial class Engine3D
             if (_isSleeper[b] != 0) { _sleepers[_sleeperCount++] = b; }
         }
 
+        Core.Profile.Mark(StepStage.Pairs);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Pairs);
 #endif
         // 3. New pairs from the broadphase, in its sorted order.
         var found = Bp.UpdatePairs(new PairFilter(this), world.Executor);
+        world.Counters.BroadphasePairs = found.Length;
         bool anyFresh = false;
         for (int i = 0; i < found.Length; i++)
         {
@@ -234,6 +239,7 @@ internal sealed partial class Engine3D
         // Most pairs end up with one constraint; making room for them (and half as many again) at once saves the repeated doubling when thousands of pairs appear in one step.
         world.Constraints.Reserve(PairHigh + (PairHigh >> 1));
         if (_skip.Length < PairHigh) { Array.Resize(ref _skip, Math.Max(PairHigh, _skip.Length * 2)); }
+        Core.Profile.Mark(StepStage.Narrowphase);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Narrowphase);
 #endif
@@ -276,7 +282,7 @@ internal sealed partial class Engine3D
         StatNewPairs = found.Length;
         if (_applyCount.Length < chunks) { _applyCount = new int[Math.Max(chunks, _applyCount.Length * 2)]; }
         if (_applyIdx.Length < chunks * 64) { _applyIdx = new int[Math.Max(chunks * 64, _applyIdx.Length * 2)]; }
-        for (int i = 0; i < chunks; i++) { _scratch[i].OutCount = 0; _scratch[i].Reached = 0; _scratch[i].Fresh = 0; }
+        for (int i = 0; i < chunks; i++) { _scratch[i].OutCount = 0; _scratch[i].Reached = 0; _scratch[i].Fresh = 0; _scratch[i].Recycled = 0; }
         StatUpdated = _updateCount;
         StatReached = 0; StatFresh = 0;
         // The serial pass only adds, matches and removes constraints (their order fixes the colors); writing the manifolds into the payloads is independent per constraint and runs afterwards in parallel.
@@ -284,6 +290,9 @@ internal sealed partial class Engine3D
         _deferWrite = Opt.MaterialMixer == null && _updateCount >= 64;
         world.Executor.For(chunks, new CollideTask(this));
         for (int i = 0; i < chunks; i++) { StatReached += _scratch[i].Reached; StatFresh += _scratch[i].Fresh; }
+        world.Counters.UpdatedPairs = _updateCount;
+        for (int i = 0; i < chunks; i++) { world.Counters.RecycledManifolds += _scratch[i].Recycled; }
+        Core.Profile.Mark(StepStage.Apply);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Apply);
 #endif
@@ -649,6 +658,7 @@ internal sealed partial class Engine3D
         if (RecycleManifolds && existingCons >= 0 && ga.Soup == null && gb.Soup == null && ga.IsConvex && gb.IsConvex
             && TryRecycle(sc, existingCons, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))))
         {
+            sc.Recycled++;
             _resCount[i] = 1;
             return;
         }
@@ -685,6 +695,7 @@ internal sealed partial class Engine3D
             if (RecycleManifolds && other.IsConvex && PairCons[p] >= 0 && TryRecycleSoup(sc, p, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])), soupIsA ? 1 : 2))
             {
                 _resCount[i] = sc.OutCount - _resFirst[i];
+                sc.Recycled += _resCount[i];
                 return;
             }
 

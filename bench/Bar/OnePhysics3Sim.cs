@@ -21,6 +21,8 @@ sealed class OnePhysics3Sim : ISim3
     float gravity;
     int stepNo;
 
+    public StepProfile Profile => world.Profile;
+
     public string Name => "onephysics";
     public string Version => "0.1.0-dev";
     public string Config => $"threads={threads}, substeps=4, default options";

@@ -92,6 +92,7 @@ internal sealed partial class Engine3D : ISnapshotSection
     public Engine3D(WorldCore core, Broadphase3D bp, WorldOptions3D opt)
     {
         Core = core;
+        bp.Profile = core.Profile;
         Bp = bp;
         Opt = opt;
     }
