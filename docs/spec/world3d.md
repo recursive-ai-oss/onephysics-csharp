@@ -818,3 +818,45 @@ The `ragdoll-pile-3d` scene contains 1,350 **point joints**, not swing-twist joi
 The median step had 17 nonempty colours, no overflow work, 34 colour runs for warm starting, 34 for the biased solve and 68 for relaxation. Its two substeps each use four passes; the final restitution pass adds 17 colour runs. Colours 14 and 16 frequently contained only one constraint, while the static-contact colour 20 contained about 1,115 constraints when active. Several other singleton colours appeared only briefly. The colour count is not uniformly small work: most constraints remain in the large early colours and static-contact colour.
 
 Exact-pose reuse of point-joint anchors was bit-identical in targeted tests but slower once the extra cached rows, writes and phase bookkeeping were counted: best indicative ragdoll medians were 2.035 versus 2.160 ms at one thread and 0.648 versus 0.726 ms at eight threads. The point-block warm-start bucket grew from about 0.057 to 0.080 ms. That experiment was discarded. Compact kernel-width dispatch was also discarded: its loaded-machine comparison did not establish a no-regression result, including a 5.9% sleep-wake slowdown at eight threads. The fixed-width kernels, batching, colour order and schedules remain unchanged.
+
+### Fresh small-manifold evaluation
+
+The small-manifold paths in `collision3d.md` preserve the SAT winners, feature IDs,
+point coordinates and point order. An indicative Release comparison used three
+interleaved runs per engine, tiered compilation off, one or eight threads restricted
+to one eight-logical-CPU core complex. Hardware was a Ryzen 9 7950X3D (32 logical
+processors), SDK 10.0.403, runtime 10.0.14. Load remained high after a five-minute
+quiet wait: 10.50 before, 9.98–13.19 during, 12.59 after. These are design-selection
+measurements, not performance-gate rows. The reference was BepuPhysics
+2.5.0-beta.33 at the harness defaults.
+
+| scene | threads | previous ms | small-manifold ms | reference ms |
+|---|---:|---:|---:|---:|
+| sleep-wake-3d | 1 | 2.8622 | 2.7677 | 1.1443 |
+| sleep-wake-3d | 8 | 0.7962 | 0.7685 | 0.5759 |
+| ragdoll-pile-3d | 1 | 1.9668 | 1.9725 | 0.9307 |
+| ragdoll-pile-3d | 8 | 0.5658 | 0.4994 | 0.4822 |
+| large-pile-3d | 1 | 6.4571 | 6.5014 | 6.6483 |
+| large-pile-3d | 8 | 1.4565 | 1.4367 | 1.4135 |
+| queries-3d | 1 | 7.9202 | 8.0098 | 6.7362 |
+| queries-3d | 8 | 1.8443 | 1.6732 | 1.5044 |
+
+Values are the best of three per-run median step times. The variable load and
+spread of the eight-thread repetitions do not establish a whole-step improvement
+there. The one-thread ragdoll and queries results are effectively flat, not wins.
+The two headline one-thread rows still miss the reference-relative speed target.
+
+The fresh box microbenchmark on the same scene poses (steps 150, 250, 300 and 340;
+40 inner repetitions, three interleaved invocations) was more consistent.
+Sleep-wake's best aggregate cost fell from 164.7 to 154.4 ns per call; ragdoll's
+from 185.1 to 176.5 ns. The micro includes empty pairs: dividing total time by the
+number of nonempty manifolds gives 662.6 to 621.0 ns for sleep-wake and 545.5 to
+520.2 ns for ragdoll, **not** isolated timings of successful calls. Manifold and
+point counts and all digests were unchanged. This modest local saving is not a
+several-fold collision improvement and cannot close the whole-step gap alone.
+
+Moving the existing zero-restitution-group rejection from the contact kernel up to
+batch dispatch did not establish a useful whole-step gain and was discarded. It
+still left all colour-stage boundaries in place and added a test to every other
+pass. No solver, colour packing, schedule or manifold-reuse threshold change is
+retained by this comparison.
