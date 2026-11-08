@@ -13,8 +13,8 @@ internal static class EncodingScenarios
 
     private static void Run(ScenarioContext ctx)
     {
-        var w2 = new PhysicsWorld2D(new WorldOptions2D { ThreadCount = ctx.Threads });
-        var w3 = new PhysicsWorld3D(new WorldOptions3D { ThreadCount = ctx.Threads });
+        var w2 = new PhysicsWorld2D(new WorldOptions2D { ThreadCount = ctx.Threads, WorldId = 93 });
+        var w3 = new PhysicsWorld3D(new WorldOptions3D { ThreadCount = ctx.Threads, WorldId = 94 });
         w2.AddBox(new Vector2F(1, 1), new Vector2D(0, 4));
         w3.AddBox(new Vector3F(1, 1, 1), new Vector3D(0, 4, 0));
         w3.AddSoftBall(0.5f, new Vector3D(2, 5, 0), segments: 2);
