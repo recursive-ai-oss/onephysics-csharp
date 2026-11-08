@@ -95,10 +95,10 @@ public readonly struct Aabb2D : IBox<Aabb2D>, IEquatable<Aabb2D>
     public void Write(StateWriter writer)
     {
         ArgumentNullException.ThrowIfNull(writer);
-        writer.WriteDouble(MinX);
-        writer.WriteDouble(MinY);
-        writer.WriteDouble(MaxX);
-        writer.WriteDouble(MaxY);
+        writer.NamedDouble(MinX);
+        writer.NamedDouble(MinY);
+        writer.NamedDouble(MaxX);
+        writer.NamedDouble(MaxY);
     }
 
     /// <summary>True when all four bounds are bit-identical.</summary>

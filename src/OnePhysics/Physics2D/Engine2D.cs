@@ -558,31 +558,32 @@ internal sealed partial class Engine2D : ISnapshotSection
         bool services = HasServiceState();
         bool joints = LiveJointCount() > 0;
         bool chars = CharHandles.Count > 0;
-        w.WriteUInt32(chars ? WithCharacters : joints ? Extended : services ? Services : Version);
-        w.WriteSingle(Opt.ContactHertz); w.WriteSingle(Opt.ContactDampingRatio); w.WriteSingle(Opt.PushOutVelocity); w.WriteSingle(Opt.RestitutionThreshold);
-        w.WriteSingle(Opt.MaxLinearSpeed); w.WriteSingle(Opt.MaxRotationPerSubstep); w.WriteBool(Opt.ContinuousEnabled); w.WriteSingle(Opt.ContactSlop);
+        w.NamedUInt32(chars ? WithCharacters : joints ? Extended : services ? Services : Version);
+        w.NamedSingle(Opt.ContactHertz); w.NamedSingle(Opt.ContactDampingRatio); w.NamedSingle(Opt.PushOutVelocity); w.NamedSingle(Opt.RestitutionThreshold);
+        w.NamedSingle(Opt.MaxLinearSpeed); w.NamedSingle(Opt.MaxRotationPerSubstep); w.NamedBool(Opt.ContinuousEnabled); w.NamedSingle(Opt.ContactSlop);
         int nb = Core.Bodies.HighWater;
-        w.WriteInt32(nb);
-        w.WriteSingles(LocalCenter.AsSpan(0, 2 * nb));
-        w.WriteSingles(Mass.AsSpan(0, nb)); w.WriteSingles(Inertia.AsSpan(0, nb));
-        w.WriteSingles(MaxExtent.AsSpan(0, nb)); w.WriteSingles(MinExtent.AsSpan(0, nb));
-        w.WriteSingles(LinearDamping.AsSpan(0, nb)); w.WriteSingles(AngularDamping.AsSpan(0, nb)); w.WriteSingles(GravityScale.AsSpan(0, nb));
-        w.WriteSingles(Force.AsSpan(0, 2 * nb)); w.WriteSingles(Torque.AsSpan(0, nb));
-        w.WriteBytes(BodyFlags.AsSpan(0, nb));
-        w.WriteInt32s(ShapeHead.AsSpan(0, nb)); w.WriteInt32s(ShapeTail.AsSpan(0, nb));
-        w.WriteSingles(Dp.AsSpan(0, 2 * nb));
+        w.NamedInt32(nb);
+        w.NamedSingles(LocalCenter.AsSpan(0, 2 * nb));
+        w.NamedSingles(Mass.AsSpan(0, nb)); w.NamedSingles(Inertia.AsSpan(0, nb));
+        w.NamedSingles(MaxExtent.AsSpan(0, nb)); w.NamedSingles(MinExtent.AsSpan(0, nb));
+        w.NamedSingles(LinearDamping.AsSpan(0, nb)); w.NamedSingles(AngularDamping.AsSpan(0, nb)); w.NamedSingles(GravityScale.AsSpan(0, nb));
+        w.NamedSingles(Force.AsSpan(0, 2 * nb)); w.NamedSingles(Torque.AsSpan(0, nb));
+        w.NamedBytes(BodyFlags.AsSpan(0, nb));
+        w.NamedInt32s(ShapeHead.AsSpan(0, nb)); w.NamedInt32s(ShapeTail.AsSpan(0, nb));
+        w.NamedSingles(Dp.AsSpan(0, 2 * nb));
 
         int ns = Core.Shapes.HighWater;
-        w.WriteInt32(ns);
+        w.NamedInt32(ns);
         for (int s = 0; s < ns; s++)
         {
+            w.DescribeEntity("shape", s, Core.Shapes.Handles.GenerationOf(s));
             bool live = Core.Shapes.Handles.IsLive(s);
-            w.WriteBool(live);
+            w.NamedBool(live);
             if (!live) { continue; }
             WriteShape(w, in Geom[s]);
-            w.WriteInt32(Proxy[s]);
-            w.WriteSingle(Friction[s]); w.WriteSingle(Restitution[s]); w.WriteSingle(Rolling[s]); w.WriteSingle(Density[s]);
-            w.WriteUInt32(Category[s]); w.WriteUInt32(Mask[s]); w.WriteInt32(Group[s]); w.WriteInt32(NextShape[s]);
+            w.NamedInt32(Proxy[s]);
+            w.NamedSingle(Friction[s]); w.NamedSingle(Restitution[s]); w.NamedSingle(Rolling[s]); w.NamedSingle(Density[s]);
+            w.NamedUInt32(Category[s]); w.NamedUInt32(Mask[s]); w.NamedInt32(Group[s]); w.NamedInt32(NextShape[s]);
         }
 
         if (w.IsBound)
@@ -594,29 +595,31 @@ internal sealed partial class Engine2D : ISnapshotSection
         }
         else
         {
-            w.WriteInt32(PairHigh);
+            w.NamedInt32(PairHigh);
             for (int p = 0; p < PairHigh; p++)
             {
-                w.WriteBool(Pairs[p].Live);
-                if (Pairs[p].Live) { w.WriteInt32(Pairs[p].A); w.WriteInt32(Pairs[p].B); w.WriteInt32(Pairs[p].Cons); }
+                w.DescribeEntity("pair", p);
+                w.NamedBool(Pairs[p].Live);
+                if (Pairs[p].Live) { w.NamedInt32(Pairs[p].A); w.NamedInt32(Pairs[p].B); w.NamedInt32(Pairs[p].Cons); }
             }
 
             // The contact stack bottom to top, then the sensor stack as complements (~slot); a world without sensor pairs writes the same bytes as before.
-            w.WriteInt32(PairFreeCount + SensorFreeCount);
-            w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
-            for (int i = 0; i < SensorFreeCount; i++) { w.WriteInt32(~SensorFree[i]); }
+            w.NamedInt32(PairFreeCount + SensorFreeCount);
+            w.NamedInt32s(PairFree.AsSpan(0, PairFreeCount));
+            for (int i = 0; i < SensorFreeCount; i++) { w.NamedInt32(~SensorFree[i]); }
         }
+        w.DescribeEntity("world", -1);
         if (chars)
         {
             // Version 4: a presence-flags word, then the flagged blocks in a fixed order.
-            w.WriteUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u) | BlockCharacters);
+            w.NamedUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u) | BlockCharacters);
             if (joints) { WriteJoints(w); }
             if (services) { WriteServices(w, ns); }
             WriteCharacters(w);
         }
         else if (joints)
         {
-            w.WriteBool(services);
+            w.NamedBool(services);
             WriteJoints(w);
             if (services) { WriteServices(w, ns); }
         }
@@ -625,12 +628,12 @@ internal sealed partial class Engine2D : ISnapshotSection
 
     private static void WriteShape(StateWriter w, in Shape2D g)
     {
-        w.WriteByte((byte)g._kind); w.WriteInt32(g._count); w.WriteSingle(g._radius); w.WriteByte(g._flags);
-        w.WriteSingle(g._centroid.X); w.WriteSingle(g._centroid.Y);
-        w.WriteSingle(g._ghost1.X); w.WriteSingle(g._ghost1.Y); w.WriteSingle(g._ghost2.X); w.WriteSingle(g._ghost2.Y);
+        w.NamedByte((byte)g._kind); w.NamedInt32(g._count); w.NamedSingle(g._radius); w.NamedByte(g._flags);
+        w.NamedSingle(g._centroid.X); w.NamedSingle(g._centroid.Y);
+        w.NamedSingle(g._ghost1.X); w.NamedSingle(g._ghost1.Y); w.NamedSingle(g._ghost2.X); w.NamedSingle(g._ghost2.Y);
         for (int i = 0; i < Constants2D.MaxPolygonVertices; i++)
         {
-            w.WriteSingle(g._v[i].X); w.WriteSingle(g._v[i].Y); w.WriteSingle(g._n[i].X); w.WriteSingle(g._n[i].Y);
+            w.NamedSingle(g._v[i].X); w.NamedSingle(g._v[i].Y); w.NamedSingle(g._n[i].X); w.NamedSingle(g._n[i].Y);
         }
     }
 

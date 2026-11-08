@@ -10,7 +10,7 @@ namespace RecursiveAI.OnePhysics.LowLevel;
 /// Events raised between steps (destroying a body, creating a joint) wait in the collector and are delivered at the end of the next step.
 /// </summary>
 [Experimental("OPHYS0001")]
-public sealed class EventCollector
+public sealed partial class EventCollector
 {
     private PhysicsEvent[][] _slots = new PhysicsEvent[1][];
     private int[] _counts = new int[1];
@@ -98,12 +98,14 @@ public sealed class EventCollector
 
     internal void Write(StateWriter w)
     {
-        w.WriteInt32(_deliveredCount);
-        for (int i = 0; i < _deliveredCount; i++) { _delivered[i].Write(w); }
-        w.WriteInt32(PendingCount);
+        w.NamedInt32(_deliveredCount);
+        for (int i = 0; i < _deliveredCount; i++) { w.DescribeEvent(i, _delivered[i].BodyA.Index, _delivered[i].BodyB.Index, false); _delivered[i].Write(w); }
+        w.DescribeEntity("world", -1);
+        w.NamedInt32(PendingCount);
+        int pendingIndex = 0;
         for (int s = 0; s < _slots.Length; s++)
         {
-            for (int i = 0; i < _counts[s]; i++) { _slots[s][i].Write(w); }
+            for (int i = 0; i < _counts[s]; i++) { w.DescribeEvent(pendingIndex++, _slots[s][i].BodyA.Index, _slots[s][i].BodyB.Index, true); _slots[s][i].Write(w); }
         }
     }
 

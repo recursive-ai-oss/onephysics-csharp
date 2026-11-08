@@ -15,7 +15,7 @@ namespace RecursiveAI.OnePhysics.LowLevel;
 /// Nothing here refers to thread count or vector width: <see cref="Lanes"/> only says how many consecutive constraints of one color form a batch, and kernels of any hardware width process a batch.
 /// </remarks>
 [Experimental("OPHYS0001")]
-public sealed class ConstraintColoring
+public sealed partial class ConstraintColoring
 {
     /// <summary>Number of colors before constraints overflow.</summary>
     public const int ColorCount = 24;

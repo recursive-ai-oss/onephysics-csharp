@@ -14,7 +14,7 @@ namespace RecursiveAI.OnePhysics.LowLevel;
 /// h = (h xor w) * 0x9E3779B97F4A7C15, then h = h xor (h >> 32).
 /// </remarks>
 [Experimental("OPHYS0001")]
-public sealed class StateWriter
+public sealed partial class StateWriter
 {
     private const ulong HashSeed = 0xCBF29CE484222325UL;
     private const ulong HashMul = 0x9E3779B97F4A7C15UL;
@@ -418,6 +418,10 @@ public interface ISnapshotSection
 
     /// <summary>Reads state written by <see cref="Write"/>, validating it, and either replaces the section's state completely or throws <see cref="SnapshotFormatException"/> leaving it unchanged.</summary>
     void Read(StateReader reader);
+
+    /// <summary>Structurally copies a custom section for a fork. The destination core has already copied its stores. Return an independent section with the same id; immutable data may be shared. Custom sections must implement this when their world uses Fork; the default rejects the operation rather than silently losing state.</summary>
+    /// <exception cref="NotSupportedException">This custom section does not implement structural copying.</exception>
+    ISnapshotSection Fork(WorldCore destination) => throw new NotSupportedException("Snapshot section " + SectionId.ToString(System.Globalization.CultureInfo.InvariantCulture) + " must implement ISnapshotSection.Fork before its world can be forked.");
 
     /// <summary>
     /// True for a section that is written only while it holds state (and left out of the snapshot, the hash and the section count otherwise), so a world that never uses the feature keeps the bytes and hashes it always had.

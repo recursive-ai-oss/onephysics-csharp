@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TieredCompilation>false</TieredCompilation>
+    <!-- Linked scene definitions are plain data, not a package API. -->
+    <NoWarn>$(NoWarn);CS1591;CA1051</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/OnePhysics/OnePhysics.csproj" />
+    <Compile Include="../Bar/Scene.cs;../Bar/Gen.cs;../Bar/Gen3.cs;../Bar/SceneBuilder2D.cs;../Bar/SceneBuilder3D.cs;../Bar/SoftGen.cs;../Bar/SleeveRig.cs" LinkBase="Scenes" />
+  </ItemGroup>
+</Project>

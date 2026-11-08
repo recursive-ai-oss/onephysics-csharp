@@ -66,14 +66,14 @@ public readonly struct PhysicsEvent
 
     internal void Write(StateWriter w)
     {
-        w.WriteByte((byte)Kind);
-        w.WriteInt32(BodyA.World); w.WriteInt32(BodyA.Index); w.WriteInt32(BodyA.Generation);
-        w.WriteInt32(BodyB.World); w.WriteInt32(BodyB.Index); w.WriteInt32(BodyB.Generation);
-        w.WriteInt32(ShapeA.World); w.WriteInt32(ShapeA.Index); w.WriteInt32(ShapeA.Generation);
-        w.WriteInt32(ShapeB.World); w.WriteInt32(ShapeB.Index); w.WriteInt32(ShapeB.Generation);
-        w.WriteInt32(SubShapeA); w.WriteInt32(SubShapeB);
-        w.WriteInt32(Joint.World); w.WriteInt32(Joint.Index); w.WriteInt32(Joint.Generation);
-        w.WriteSingle(Value);
+        w.NamedByte((byte)Kind);
+        w.NamedInt32(BodyA.World); w.NamedInt32(BodyA.Index); w.NamedInt32(BodyA.Generation);
+        w.NamedInt32(BodyB.World); w.NamedInt32(BodyB.Index); w.NamedInt32(BodyB.Generation);
+        w.NamedInt32(ShapeA.World); w.NamedInt32(ShapeA.Index); w.NamedInt32(ShapeA.Generation);
+        w.NamedInt32(ShapeB.World); w.NamedInt32(ShapeB.Index); w.NamedInt32(ShapeB.Generation);
+        w.NamedInt32(SubShapeA); w.NamedInt32(SubShapeB);
+        w.NamedInt32(Joint.World); w.NamedInt32(Joint.Index); w.NamedInt32(Joint.Generation);
+        w.NamedSingle(Value);
     }
 
     internal const int SnapshotBytes = 1 + 4 * 17 + 4;

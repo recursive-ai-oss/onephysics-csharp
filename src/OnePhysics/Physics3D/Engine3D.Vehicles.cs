@@ -7,7 +7,7 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>The saved and live state of one vehicle: the definition (copied at creation), the driver's inputs, the drivetrain and one record per wheel.</summary>
-internal sealed class VehicleState
+internal sealed partial class VehicleState
 {
     public int Body, BodyGen;
     public VehicleDef Def = new();
@@ -626,61 +626,63 @@ internal sealed partial class Engine3D
 
     private void WriteVehicles(StateWriter w)
     {
+        w.DescribeTable("vehicle");
         VehHandles.Write(w);
         for (int v = 0; v < VehHandles.HighWater; v++)
         {
+            w.DescribeEntity("vehicle", v, VehHandles.GenerationOf(v));
             if (!VehHandles.IsLive(v)) { continue; }
             var s = Vehicles[v]!;
-            w.WriteInt32(s.Body); w.WriteInt32(s.BodyGen);
+            w.NamedInt32(s.Body); w.NamedInt32(s.BodyGen);
             WriteVehicleDef(w, s.Def);
-            w.WriteSingle(s.Forward); w.WriteSingle(s.Right); w.WriteSingle(s.Brake); w.WriteSingle(s.Handbrake);
-            w.WriteSingle(s.EngineW); w.WriteInt32(s.Gear); w.WriteSingle(s.ShiftTimer);
+            w.NamedSingle(s.Forward); w.NamedSingle(s.Right); w.NamedSingle(s.Brake); w.NamedSingle(s.Handbrake);
+            w.NamedSingle(s.EngineW); w.NamedInt32(s.Gear); w.NamedSingle(s.ShiftTimer);
             int n = s.Wheels;
             for (int i = 0; i < n; i++)
             {
-                w.WriteSingle(s.Sprung[i]); w.WriteSingle(s.Omega[i]); w.WriteSingle(s.Spin[i]); w.WriteSingle(s.Steer[i]); w.WriteSingle(s.Length[i]);
-                w.WriteSingle(s.SpringForce[i]); w.WriteSingle(s.SlipRatio[i]); w.WriteSingle(s.SlipAngle[i]); w.WriteSingle(s.Fx[i]); w.WriteSingle(s.Fy[i]);
-                w.WriteSingle(s.Nx[i]); w.WriteSingle(s.Ny[i]); w.WriteSingle(s.Nz[i]);
-                w.WriteDouble(s.Cx[i]); w.WriteDouble(s.Cy[i]); w.WriteDouble(s.Cz[i]);
-                w.WriteByte(s.Contact[i]); w.WriteInt32(s.GroundBody[i]); w.WriteInt32(s.GroundGen[i]);
+                w.NamedSingle(s.Sprung[i]); w.NamedSingle(s.Omega[i]); w.NamedSingle(s.Spin[i]); w.NamedSingle(s.Steer[i]); w.NamedSingle(s.Length[i]);
+                w.NamedSingle(s.SpringForce[i]); w.NamedSingle(s.SlipRatio[i]); w.NamedSingle(s.SlipAngle[i]); w.NamedSingle(s.Fx[i]); w.NamedSingle(s.Fy[i]);
+                w.NamedSingle(s.Nx[i]); w.NamedSingle(s.Ny[i]); w.NamedSingle(s.Nz[i]);
+                w.NamedDouble(s.Cx[i]); w.NamedDouble(s.Cy[i]); w.NamedDouble(s.Cz[i]);
+                w.NamedByte(s.Contact[i]); w.NamedInt32(s.GroundBody[i]); w.NamedInt32(s.GroundGen[i]);
             }
         }
     }
 
-    private static void WriteVec(StateWriter w, Vector3F v) { w.WriteSingle(v.X); w.WriteSingle(v.Y); w.WriteSingle(v.Z); }
+    private static void WriteVec(StateWriter w, Vector3F v) { w.NamedSingle(v.X); w.NamedSingle(v.Y); w.NamedSingle(v.Z); }
 
     private static Vector3F ReadVec(StateReader r) => new(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
 
     private static void WriteVehicleDef(StateWriter w, VehicleDef d)
     {
-        w.WriteInt32(d.Wheels.Length);
+        w.NamedInt32(d.Wheels.Length);
         foreach (var wd in d.Wheels)
         {
             WriteVec(w, wd.Position); WriteVec(w, wd.SuspensionDirection); WriteVec(w, wd.SteerAxis); WriteVec(w, wd.AxleDirection); WriteVec(w, wd.ForwardDirection);
-            w.WriteSingle(wd.Radius); w.WriteSingle(wd.Width); w.WriteSingle(wd.SuspensionMinLength); w.WriteSingle(wd.SuspensionMaxLength); w.WriteSingle(wd.SpringFrequency);
-            w.WriteSingle(wd.DampingRatio); w.WriteSingle(wd.PreloadLength); w.WriteSingle(wd.SprungMass); w.WriteSingle(wd.Inertia); w.WriteSingle(wd.AngularDamping);
-            w.WriteSingle(wd.MaxSteerAngle); w.WriteSingle(wd.MaxBrakeTorque); w.WriteSingle(wd.MaxHandbrakeTorque); w.WriteByte((byte)wd.CastShape);
+            w.NamedSingle(wd.Radius); w.NamedSingle(wd.Width); w.NamedSingle(wd.SuspensionMinLength); w.NamedSingle(wd.SuspensionMaxLength); w.NamedSingle(wd.SpringFrequency);
+            w.NamedSingle(wd.DampingRatio); w.NamedSingle(wd.PreloadLength); w.NamedSingle(wd.SprungMass); w.NamedSingle(wd.Inertia); w.NamedSingle(wd.AngularDamping);
+            w.NamedSingle(wd.MaxSteerAngle); w.NamedSingle(wd.MaxBrakeTorque); w.NamedSingle(wd.MaxHandbrakeTorque); w.NamedByte((byte)wd.CastShape);
             var t = wd.Tyre;
-            w.WriteSingle(t.Friction); w.WriteSingle(t.LongitudinalB); w.WriteSingle(t.LongitudinalC); w.WriteSingle(t.LongitudinalE);
-            w.WriteSingle(t.LateralB); w.WriteSingle(t.LateralC); w.WriteSingle(t.LateralE); w.WriteSingle(t.LowSpeed);
+            w.NamedSingle(t.Friction); w.NamedSingle(t.LongitudinalB); w.NamedSingle(t.LongitudinalC); w.NamedSingle(t.LongitudinalE);
+            w.NamedSingle(t.LateralB); w.NamedSingle(t.LateralC); w.NamedSingle(t.LateralE); w.NamedSingle(t.LowSpeed);
         }
 
         var e = d.Engine;
-        w.WriteSingle(e.MaxTorque); w.WriteSingle(e.MinRpm); w.WriteSingle(e.MaxRpm); w.WriteSingle(e.Inertia); w.WriteSingle(e.EngineBraking); w.WriteSingle(e.ClutchStrength);
+        w.NamedSingle(e.MaxTorque); w.NamedSingle(e.MinRpm); w.NamedSingle(e.MaxRpm); w.NamedSingle(e.Inertia); w.NamedSingle(e.EngineBraking); w.NamedSingle(e.ClutchStrength);
         var curve = e.Curve;
-        w.WriteInt32(curve.Length); w.WriteSingles(curve);
+        w.NamedInt32(curve.Length); w.NamedSingles(curve);
         var tr = d.Transmission;
-        w.WriteBool(tr.Automatic); w.WriteSingle(tr.ReverseRatio); w.WriteSingle(tr.SwitchTime); w.WriteSingle(tr.ShiftUpRpm); w.WriteSingle(tr.ShiftDownRpm);
+        w.NamedBool(tr.Automatic); w.NamedSingle(tr.ReverseRatio); w.NamedSingle(tr.SwitchTime); w.NamedSingle(tr.ShiftUpRpm); w.NamedSingle(tr.ShiftDownRpm);
         var ratios = tr.Ratios;
-        w.WriteInt32(ratios.Length); w.WriteSingles(ratios);
-        w.WriteInt32(d.Differentials.Length);
+        w.NamedInt32(ratios.Length); w.NamedSingles(ratios);
+        w.NamedInt32(d.Differentials.Length);
         foreach (var df in d.Differentials)
         {
-            w.WriteInt32(df.Left); w.WriteInt32(df.Right); w.WriteSingle(df.Ratio); w.WriteSingle(df.LeftRightSplit); w.WriteSingle(df.LimitedSlipRatio); w.WriteSingle(df.EngineTorqueRatio);
+            w.NamedInt32(df.Left); w.NamedInt32(df.Right); w.NamedSingle(df.Ratio); w.NamedSingle(df.LeftRightSplit); w.NamedSingle(df.LimitedSlipRatio); w.NamedSingle(df.EngineTorqueRatio);
         }
 
-        w.WriteInt32(d.AntiRollBars.Length);
-        foreach (var ab in d.AntiRollBars) { w.WriteInt32(ab.Left); w.WriteInt32(ab.Right); w.WriteSingle(ab.Stiffness); }
+        w.NamedInt32(d.AntiRollBars.Length);
+        foreach (var ab in d.AntiRollBars) { w.NamedInt32(ab.Left); w.NamedInt32(ab.Right); w.NamedSingle(ab.Stiffness); }
     }
 
     private static VehicleDef ReadVehicleDef(StateReader r)

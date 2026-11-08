@@ -138,14 +138,16 @@ internal sealed partial class Engine2D
 
     private void WriteServices(StateWriter w, int shapeCount)
     {
-        w.WriteUInt32s(LayerMatrix);
-        w.WriteSingle(Opt.HitSpeedThreshold);
-        w.WriteBool(FilterDirty);
+        w.DescribeEntity("world", -1);
+        w.NamedUInt32s(LayerMatrix);
+        w.NamedSingle(Opt.HitSpeedThreshold);
+        w.NamedBool(FilterDirty);
         for (int s = 0; s < shapeCount; s++)
         {
+            w.DescribeEntity("shape", s, Core.Shapes.Handles.GenerationOf(s));
             bool live = Core.Shapes.Handles.IsLive(s);
-            w.WriteByte(live ? ShapeFlags[s] : (byte)0);
-            w.WriteByte(live ? ShapeLayer[s] : (byte)0);
+            w.NamedByte(live ? ShapeFlags[s] : (byte)0);
+            w.NamedByte(live ? ShapeLayer[s] : (byte)0);
         }
     }
 

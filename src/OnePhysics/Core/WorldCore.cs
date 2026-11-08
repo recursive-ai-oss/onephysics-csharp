@@ -128,7 +128,7 @@ public interface IWorldStages
 /// All mutation happens on one thread between or inside steps as documented; only the phases that call the stages run in parallel.
 /// </summary>
 [Experimental("OPHYS0001")]
-public sealed class WorldCore
+public sealed partial class WorldCore
 {
     private const int ChunkSize = 64;
     private const double CoordinateBound = 2097152.0; // 2^21
@@ -1307,8 +1307,8 @@ public sealed class WorldCore
     private void WriteSnapshot(StateWriter w)
     {
         w.Reset();
-        w.WriteUInt32(Magic);
-        w.WriteUInt32(FormatVersion);
+        w.NamedUInt32(Magic);
+        w.NamedUInt32(FormatVersion);
         WriteState(w, true);
     }
 
@@ -1372,25 +1372,38 @@ public sealed class WorldCore
 
     private void WriteState(StateWriter w, bool includeEvents)
     {
+        w.DescribeSection("options");
         _options.Write(w);
-        w.WriteInt64(_stepCount);
-        w.WriteDoubles(_origin);
+        w.DescribeSection("world");
+        w.NamedInt64(_stepCount);
+        w.NamedDoubles(_origin);
+        w.DescribeSection("bodies");
+        w.DescribeTable("body");
         _bodies.Write(w);
+        w.DescribeSection("shapes");
+        w.DescribeTable("shape");
         _shapes.Write(w);
+        w.DescribeSection("constraints");
+        w.DescribeTable("constraint");
         _constraints.Write(w);
+        w.DescribeSection("islands");
+        w.DescribeTable("island");
         if (w.IsBound) { _islands.WriteBound(w, _bodies.HighWater); } else { _islands.Write(w); }
+        w.DescribeSection("events");
         if (includeEvents)
         {
             if (w.IsBound) { w.AddBound(EventBoundBytes()); } else { _events.Write(w); }
         }
 
+        w.DescribeSection("framing");
         int written = 0;
         foreach (var s in _sections) { if (!s.IsOptional || s.IsPresent) { written++; } }
-        w.WriteInt32(written);
+        w.NamedInt32(written);
         foreach (var s in _sections)
         {
             if (s.IsOptional && !s.IsPresent) { continue; }
-            w.WriteInt32(s.SectionId);
+            w.DescribeSection(s.SectionId switch { 0x42503244 => "broadphase2d", 0x42503344 => "broadphase3d", 0x32445747 => "engine2d", 0x33445747 => "engine3d", 0x534F4654 => "softbody3d", _ => "section " + s.SectionId.ToString(CultureInfo.InvariantCulture) });
+            w.NamedInt32(s.SectionId);
             if (w.IsHashing)
             {
                 s.Write(w);
@@ -1577,5 +1590,12 @@ public sealed class WorldCore
     {
         bool ok = shape == -1 ? generation == 0 : shapes.Handles.IsAlive(shape, generation);
         if (!ok) { throw r.Error("constraint " + c.ToString(CultureInfo.InvariantCulture) + " refers to a dead shape"); }
+    }
+    internal SnapshotDescription DescribeSnapshot()
+    {
+        var writer = StateWriter.ToBuffer();
+        writer.Describe(this);
+        WriteSnapshot(writer);
+        return writer.Description();
     }
 }

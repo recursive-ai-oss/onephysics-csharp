@@ -25,8 +25,8 @@ public readonly struct ShapeSpec3D
     private static ShapeSpec3D Make(byte kind, params float[] v)
     {
         var w = StateWriter.ToBuffer();
-        w.WriteByte(kind);
-        foreach (float f in v) { w.WriteSingle(f); }
+        w.NamedByte(kind);
+        foreach (float f in v) { w.NamedSingle(f); }
         return new ShapeSpec3D(w.ToArray());
     }
 
@@ -55,10 +55,10 @@ public readonly struct ShapeSpec3D
     public static ShapeSpec3D ConvexHull(ReadOnlySpan<Vector3F> points, float convexRadius = 0f)
     {
         var w = StateWriter.ToBuffer();
-        w.WriteByte(KHull);
-        w.WriteSingle(convexRadius);
-        w.WriteInt32(points.Length);
-        foreach (var p in points) { w.WriteSingle(p.X); w.WriteSingle(p.Y); w.WriteSingle(p.Z); }
+        w.NamedByte(KHull);
+        w.NamedSingle(convexRadius);
+        w.NamedInt32(points.Length);
+        foreach (var p in points) { w.NamedSingle(p.X); w.NamedSingle(p.Y); w.NamedSingle(p.Z); }
         return new ShapeSpec3D(w.ToArray());
     }
 }
@@ -94,7 +94,7 @@ internal enum GeomKind : byte { Convex = 1, Compound = 2, Mesh = 3, HeightField 
 /// Shared geometry of one or many shapes: the built collision object plus the recipe (bytes) it was built from. Recipes are what snapshots store; equal recipes share one object, so a thousand identical
 /// hulls cost one hull. Recipe layout: a kind byte (1..6 convex, 7 compound, 8 mesh, 9 height field) then the numbers, little-endian; see docs/spec/world3d.md.
 /// </summary>
-internal sealed class Geom3D
+internal sealed partial class Geom3D
 {
     public const byte KCompound = 7, KMesh = 8, KHeightField = 9;
 
@@ -242,13 +242,13 @@ internal sealed class Geom3D
     public static byte[] CompoundRecipe(ReadOnlySpan<CompoundPart> parts)
     {
         var w = StateWriter.ToBuffer();
-        w.WriteByte(KCompound);
-        w.WriteInt32(parts.Length);
+        w.NamedByte(KCompound);
+        w.NamedInt32(parts.Length);
         foreach (var p in parts)
         {
-            w.WriteSingle(p.Rotation.X); w.WriteSingle(p.Rotation.Y); w.WriteSingle(p.Rotation.Z); w.WriteSingle(p.Rotation.W);
-            w.WriteSingle(p.Position.X); w.WriteSingle(p.Position.Y); w.WriteSingle(p.Position.Z);
-            w.WriteBytes(p.Shape.Recipe);
+            w.NamedSingle(p.Rotation.X); w.NamedSingle(p.Rotation.Y); w.NamedSingle(p.Rotation.Z); w.NamedSingle(p.Rotation.W);
+            w.NamedSingle(p.Position.X); w.NamedSingle(p.Position.Y); w.NamedSingle(p.Position.Z);
+            w.NamedBytes(p.Shape.Recipe);
         }
 
         return w.ToArray();
@@ -257,25 +257,25 @@ internal sealed class Geom3D
     public static byte[] MeshRecipe(ReadOnlySpan<Vector3F> vertices, ReadOnlySpan<int> indices, double flatTolerance)
     {
         var w = StateWriter.ToBuffer();
-        w.WriteByte(KMesh);
-        w.WriteDouble(flatTolerance);
-        w.WriteInt32(vertices.Length);
-        foreach (var v in vertices) { w.WriteSingle(v.X); w.WriteSingle(v.Y); w.WriteSingle(v.Z); }
-        w.WriteInt32(indices.Length);
-        w.WriteInt32s(indices);
+        w.NamedByte(KMesh);
+        w.NamedDouble(flatTolerance);
+        w.NamedInt32(vertices.Length);
+        foreach (var v in vertices) { w.NamedSingle(v.X); w.NamedSingle(v.Y); w.NamedSingle(v.Z); }
+        w.NamedInt32(indices.Length);
+        w.NamedInt32s(indices);
         return w.ToArray();
     }
 
     public static byte[] HeightFieldRecipe(ReadOnlySpan<float> heights, int nx, int nz, Vector3F scale, ReadOnlySpan<bool> holes, double flatTolerance)
     {
         var w = StateWriter.ToBuffer();
-        w.WriteByte(KHeightField);
-        w.WriteDouble(flatTolerance);
-        w.WriteInt32(nx); w.WriteInt32(nz);
-        w.WriteSingle(scale.X); w.WriteSingle(scale.Y); w.WriteSingle(scale.Z);
-        w.WriteBool(holes.Length > 0);
-        w.WriteSingles(heights);
-        foreach (bool b in holes) { w.WriteBool(b); }
+        w.NamedByte(KHeightField);
+        w.NamedDouble(flatTolerance);
+        w.NamedInt32(nx); w.NamedInt32(nz);
+        w.NamedSingle(scale.X); w.NamedSingle(scale.Y); w.NamedSingle(scale.Z);
+        w.NamedBool(holes.Length > 0);
+        w.NamedSingles(heights);
+        foreach (bool b in holes) { w.NamedBool(b); }
         return w.ToArray();
     }
 }

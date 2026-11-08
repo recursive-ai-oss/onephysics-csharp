@@ -72,8 +72,8 @@ public readonly struct DimensionLayout : IEquatable<DimensionLayout>
 
     internal void Write(StateWriter w)
     {
-        w.WriteInt32(PositionLanes); w.WriteInt32(RotationLanes); w.WriteInt32(LinearLanes); w.WriteInt32(AngularLanes);
-        w.WriteInt32(InertiaLanes); w.WriteInt32(MaxManifoldPoints); w.WriteInt32(PayloadFloats);
+        w.NamedInt32(PositionLanes); w.NamedInt32(RotationLanes); w.NamedInt32(LinearLanes); w.NamedInt32(AngularLanes);
+        w.NamedInt32(InertiaLanes); w.NamedInt32(MaxManifoldPoints); w.NamedInt32(PayloadFloats);
     }
 
     internal static DimensionLayout Read(StateReader r)
@@ -218,11 +218,11 @@ public sealed class WorldOptions
     internal void Write(StateWriter w)
     {
         Layout.Write(w);
-        w.WriteSingle(Gravity.X); w.WriteSingle(Gravity.Y); w.WriteSingle(Gravity.Z);
-        w.WriteInt32(Substeps); w.WriteInt32(VelocityIterations); w.WriteInt32(RelaxIterations);
-        w.WriteInt32(ContactSubsteps); w.WriteInt32(ContactVelocityIterations); w.WriteInt32(ContactRelaxIterations);
-        w.WriteBool(SleepEnabled); w.WriteSingle(TimeToSleep); w.WriteSingle(SleepThreshold);
-        w.WriteUInt32((uint)Events);
+        w.NamedSingle(Gravity.X); w.NamedSingle(Gravity.Y); w.NamedSingle(Gravity.Z);
+        w.NamedInt32(Substeps); w.NamedInt32(VelocityIterations); w.NamedInt32(RelaxIterations);
+        w.NamedInt32(ContactSubsteps); w.NamedInt32(ContactVelocityIterations); w.NamedInt32(ContactRelaxIterations);
+        w.NamedBool(SleepEnabled); w.NamedSingle(TimeToSleep); w.NamedSingle(SleepThreshold);
+        w.NamedUInt32((uint)Events);
     }
 
     /// <summary>Reads the saved options into a copy of <paramref name="current"/> (keeping its thread count and world id) and validates them.</summary>

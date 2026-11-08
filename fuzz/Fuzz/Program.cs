@@ -14,6 +14,10 @@ internal static class Program
 {
     internal static readonly Dictionary<string, Action<byte[]>> Targets = new(StringComparer.Ordinal)
     {
+        ["snapshot-desync"] = FuzzSnapshotEncoding.Desync,
+        ["snapshot-region"] = FuzzSnapshotEncoding.Region,
+        ["snapshot-delta"] = FuzzSnapshotEncoding.Delta,
+        ["snapshot-compressed"] = FuzzSnapshotEncoding.Compressed,
         ["mesh"] = FuzzMesh.MeshTarget,
         ["heightfield"] = FuzzMesh.HeightFieldTarget,
         ["meshquery"] = FuzzMesh.QueryTarget,

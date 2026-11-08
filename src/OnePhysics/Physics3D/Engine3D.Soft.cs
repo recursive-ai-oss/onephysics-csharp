@@ -140,6 +140,7 @@ internal sealed partial class Engine3D
             _e._softParticles = 0;
         }
 
+        public ISnapshotSection Fork(WorldCore destination) => ((Engine3D)destination.GetSnapshotSection(Id)).SoftSnapshotSection;
         public void Write(StateWriter w) => _e.WriteSoft(w);
 
         public void Read(StateReader r) => _e.ReadSoft(r);
@@ -149,46 +150,48 @@ internal sealed partial class Engine3D
     {
         bool anySkin = false;
         for (int i = 0; i < SoftHandles.HighWater && !anySkin; i++) { anySkin = SoftHandles.IsLive(i) && SoftData[i]!.IsSkinned; }
-        w.WriteInt32(anySkin ? SoftSectionVersion : 1);
-        w.WriteInt32(Opt.SoftSubsteps); w.WriteInt32(Opt.SoftIterations);
+        w.NamedInt32(anySkin ? SoftSectionVersion : 1);
+        w.NamedInt32(Opt.SoftSubsteps); w.NamedInt32(Opt.SoftIterations);
+        w.DescribeTable("softbody");
         SoftHandles.Write(w);
         for (int i = 0; i < SoftHandles.HighWater; i++)
         {
+            w.DescribeEntity("softbody", i, SoftHandles.GenerationOf(i));
             if (!SoftHandles.IsLive(i)) { continue; }
             var d = SoftData[i]!;
             var def = d.Def;
             var mesh = def.Mesh!;
             bool tets = mesh.TetrahedronCount > 0;
-            w.WriteBool(tets);
-            w.WriteInt32(mesh.VertexCount);
-            for (int k = 0; k < mesh.VertexCount; k++) { var v = mesh.Vertices[k]; w.WriteSingle(v.X); w.WriteSingle(v.Y); w.WriteSingle(v.Z); }
-            if (tets) { w.WriteInt32(mesh.TetrahedronCount); w.WriteInt32s(mesh.Tetrahedra); }
-            else { w.WriteInt32(mesh.TriangleCount); w.WriteInt32s(mesh.Triangles); }
-            w.WriteDouble(def.Position.X); w.WriteDouble(def.Position.Y); w.WriteDouble(def.Position.Z);
-            w.WriteSingle(def.Rotation.X); w.WriteSingle(def.Rotation.Y); w.WriteSingle(def.Rotation.Z); w.WriteSingle(def.Rotation.W);
-            w.WriteSingle(def.Scale);
-            w.WriteSingle(def.LinearVelocity.X); w.WriteSingle(def.LinearVelocity.Y); w.WriteSingle(def.LinearVelocity.Z);
-            w.WriteSingle(def.Mass); w.WriteSingle(def.ParticleRadius);
-            w.WriteSingle(def.EdgeCompliance); w.WriteSingle(def.EdgeDamping); w.WriteSingle(def.BendCompliance); w.WriteSingle(def.BendDamping);
-            w.WriteSingle(def.VolumeCompliance); w.WriteSingle(def.VolumeDamping); w.WriteSingle(def.InternalPressure);
-            w.WriteSingle(def.Friction); w.WriteSingle(def.LinearDamping); w.WriteSingle(def.GravityScale);
-            w.WriteBool(def.SelfCollision); w.WriteBool(def.AllowSleep);
-            w.WriteUInt32(def.CategoryBits); w.WriteUInt32(def.MaskBits); w.WriteInt32(def.GroupIndex); w.WriteInt32(def.Layer);
+            w.NamedBool(tets);
+            w.NamedInt32(mesh.VertexCount);
+            for (int k = 0; k < mesh.VertexCount; k++) { var v = mesh.Vertices[k]; w.NamedSingle(v.X); w.NamedSingle(v.Y); w.NamedSingle(v.Z); }
+            if (tets) { w.NamedInt32(mesh.TetrahedronCount); w.NamedInt32s(mesh.Tetrahedra); }
+            else { w.NamedInt32(mesh.TriangleCount); w.NamedInt32s(mesh.Triangles); }
+            w.NamedDouble(def.Position.X); w.NamedDouble(def.Position.Y); w.NamedDouble(def.Position.Z);
+            w.NamedSingle(def.Rotation.X); w.NamedSingle(def.Rotation.Y); w.NamedSingle(def.Rotation.Z); w.NamedSingle(def.Rotation.W);
+            w.NamedSingle(def.Scale);
+            w.NamedSingle(def.LinearVelocity.X); w.NamedSingle(def.LinearVelocity.Y); w.NamedSingle(def.LinearVelocity.Z);
+            w.NamedSingle(def.Mass); w.NamedSingle(def.ParticleRadius);
+            w.NamedSingle(def.EdgeCompliance); w.NamedSingle(def.EdgeDamping); w.NamedSingle(def.BendCompliance); w.NamedSingle(def.BendDamping);
+            w.NamedSingle(def.VolumeCompliance); w.NamedSingle(def.VolumeDamping); w.NamedSingle(def.InternalPressure);
+            w.NamedSingle(def.Friction); w.NamedSingle(def.LinearDamping); w.NamedSingle(def.GravityScale);
+            w.NamedBool(def.SelfCollision); w.NamedBool(def.AllowSleep);
+            w.NamedUInt32(def.CategoryBits); w.NamedUInt32(def.MaskBits); w.NamedInt32(def.GroupIndex); w.NamedInt32(def.Layer);
             if (anySkin)
             {
-                w.WriteBool(d.IsSkinned);
+                w.NamedBool(d.IsSkinned);
                 if (d.IsSkinned)
                 {
                     var sk = def.Skin!;
-                    w.WriteInt32(sk.JointCount);
-                    w.WriteInt32s(sk.ParentArray); w.WriteSingles(sk.BindArray); w.WriteInt32s(sk.JointArray); w.WriteSingles(sk.WeightArray);
-                    w.WriteSingles(sk.MaxArray); w.WriteSingles(sk.BackDistArray); w.WriteSingles(sk.BackRadiusArray); w.WriteSingles(sk.NormalArray);
+                    w.NamedInt32(sk.JointCount);
+                    w.NamedInt32s(sk.ParentArray); w.NamedSingles(sk.BindArray); w.NamedInt32s(sk.JointArray); w.NamedSingles(sk.WeightArray);
+                    w.NamedSingles(sk.MaxArray); w.NamedSingles(sk.BackDistArray); w.NamedSingles(sk.BackRadiusArray); w.NamedSingles(sk.NormalArray);
                 }
             }
 
-            w.WriteBool(d.Asleep); w.WriteSingle(d.SleepTime);
-            w.WriteDoubles(d.Pos); w.WriteDoubles(d.Prev); w.WriteSingles(d.Vel); w.WriteBytes(d.Pinned);
-            if (d.IsSkinned) { w.WriteDoubles(d.JointPos); w.WriteSingles(d.JointRot); w.WriteDoubles(d.JointPosPrev); w.WriteSingles(d.JointRotPrev); }
+            w.NamedBool(d.Asleep); w.NamedSingle(d.SleepTime);
+            w.NamedDoubles(d.Pos); w.NamedDoubles(d.Prev); w.NamedSingles(d.Vel); w.NamedBytes(d.Pinned);
+            if (d.IsSkinned) { w.NamedDoubles(d.JointPos); w.NamedSingles(d.JointRot); w.NamedDoubles(d.JointPosPrev); w.NamedSingles(d.JointRotPrev); }
         }
     }
 

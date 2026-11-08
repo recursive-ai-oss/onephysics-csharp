@@ -235,29 +235,29 @@ internal struct JointData3D
 
     public readonly void Write(StateWriter w)
     {
-        w.WriteByte(Type); w.WriteByte(Flags); w.WriteByte(Aux);
-        w.WriteSingle(LAx); w.WriteSingle(LAy); w.WriteSingle(LAz); w.WriteSingle(LBx); w.WriteSingle(LBy); w.WriteSingle(LBz);
-        w.WriteSingle(QA.X); w.WriteSingle(QA.Y); w.WriteSingle(QA.Z); w.WriteSingle(QA.W);
-        w.WriteSingle(QB.X); w.WriteSingle(QB.Y); w.WriteSingle(QB.Z); w.WriteSingle(QB.W);
-        w.WriteSingle(Lower); w.WriteSingle(Upper); w.WriteSingle(Swing1); w.WriteSingle(Swing2);
-        w.WriteSingle(MotorSpeed); w.WriteSingle(MaxMotor); w.WriteSingle(Hertz); w.WriteSingle(Damping);
-        w.WriteSingle(Length); w.WriteSingle(Ratio);
-        w.WriteSingle(UpX); w.WriteSingle(UpY); w.WriteSingle(UpZ);
-        w.WriteDouble(FxA); w.WriteDouble(FyA); w.WriteDouble(FzA); w.WriteDouble(FxB); w.WriteDouble(FyB); w.WriteDouble(FzB);
-        for (int i = 0; i < 6; i++) { w.WriteByte(Six.Mode[i]); }
-        for (int i = 0; i < 6; i++) { w.WriteSingle(Six.Lo[i]); }
-        for (int i = 0; i < 6; i++) { w.WriteSingle(Six.Hi[i]); }
-        for (int i = 0; i < 6; i++) { w.WriteSingle(Six.MotorSpeed[i]); }
-        for (int i = 0; i < 6; i++) { w.WriteSingle(Six.MaxMotor[i]); }
-        for (int i = 0; i < 6; i++) { w.WriteSingle(Six.Hertz[i]); }
-        for (int i = 0; i < 6; i++) { w.WriteSingle(Six.Damping[i]); }
-        w.WriteByte(Six.MotorMask); w.WriteByte(Six.SpringMask);
-        w.WriteSingle(BreakForce); w.WriteSingle(BreakTorque);
+        w.NamedByte(Type); w.NamedByte(Flags); w.NamedByte(Aux);
+        w.NamedSingle(LAx); w.NamedSingle(LAy); w.NamedSingle(LAz); w.NamedSingle(LBx); w.NamedSingle(LBy); w.NamedSingle(LBz);
+        w.NamedSingle(QA.X); w.NamedSingle(QA.Y); w.NamedSingle(QA.Z); w.NamedSingle(QA.W);
+        w.NamedSingle(QB.X); w.NamedSingle(QB.Y); w.NamedSingle(QB.Z); w.NamedSingle(QB.W);
+        w.NamedSingle(Lower); w.NamedSingle(Upper); w.NamedSingle(Swing1); w.NamedSingle(Swing2);
+        w.NamedSingle(MotorSpeed); w.NamedSingle(MaxMotor); w.NamedSingle(Hertz); w.NamedSingle(Damping);
+        w.NamedSingle(Length); w.NamedSingle(Ratio);
+        w.NamedSingle(UpX); w.NamedSingle(UpY); w.NamedSingle(UpZ);
+        w.NamedDouble(FxA); w.NamedDouble(FyA); w.NamedDouble(FzA); w.NamedDouble(FxB); w.NamedDouble(FyB); w.NamedDouble(FzB);
+        for (int i = 0; i < 6; i++) { w.NamedByte(Six.Mode[i]); }
+        for (int i = 0; i < 6; i++) { w.NamedSingle(Six.Lo[i]); }
+        for (int i = 0; i < 6; i++) { w.NamedSingle(Six.Hi[i]); }
+        for (int i = 0; i < 6; i++) { w.NamedSingle(Six.MotorSpeed[i]); }
+        for (int i = 0; i < 6; i++) { w.NamedSingle(Six.MaxMotor[i]); }
+        for (int i = 0; i < 6; i++) { w.NamedSingle(Six.Hertz[i]); }
+        for (int i = 0; i < 6; i++) { w.NamedSingle(Six.Damping[i]); }
+        w.NamedByte(Six.MotorMask); w.NamedByte(Six.SpringMask);
+        w.NamedSingle(BreakForce); w.NamedSingle(BreakTorque);
         int n = Path?.Length ?? 0;
-        w.WriteInt32(n);
-        for (int i = 0; i < n; i++) { w.WriteSingle(Path![i].X); w.WriteSingle(Path[i].Y); w.WriteSingle(Path[i].Z); }
+        w.NamedInt32(n);
+        for (int i = 0; i < n; i++) { w.NamedSingle(Path![i].X); w.NamedSingle(Path[i].Y); w.NamedSingle(Path[i].Z); }
         // The pose drive's target follows only when the flag is set, so a joint without one keeps its bytes.
-        if ((Flags & FlagDrive) != 0) { w.WriteSingle(DriveTarget.X); w.WriteSingle(DriveTarget.Y); w.WriteSingle(DriveTarget.Z); w.WriteSingle(DriveTarget.W); }
+        if ((Flags & FlagDrive) != 0) { w.NamedSingle(DriveTarget.X); w.NamedSingle(DriveTarget.Y); w.NamedSingle(DriveTarget.Z); w.NamedSingle(DriveTarget.W); }
     }
 
     public static JointData3D Read(StateReader r)

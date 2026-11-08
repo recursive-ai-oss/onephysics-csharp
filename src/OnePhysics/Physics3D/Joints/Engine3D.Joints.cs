@@ -206,14 +206,16 @@ internal sealed partial class Engine3D
 
     private void WriteJoints(StateWriter w)
     {
+        w.DescribeEntity("world", -1);
         var cs = Core.Constraints;
-        w.WriteSingle(Opt.JointHertz); w.WriteSingle(Opt.JointDampingRatio);
+        w.NamedSingle(Opt.JointHertz); w.NamedSingle(Opt.JointDampingRatio);
         int n = cs.HighWater;
-        w.WriteInt32(n);
+        w.NamedInt32(n);
         for (int c = 0; c < n; c++)
         {
+            w.DescribeEntity("joint", c, cs.Handles.GenerationOf(c));
             bool live = cs.IsLive(c) && cs.KindOf(c) == ConstraintKind.Joint && Joints[c].Type != 0;
-            w.WriteBool(live);
+            w.NamedBool(live);
             if (live) { Joints[c].Write(w); }
         }
 
