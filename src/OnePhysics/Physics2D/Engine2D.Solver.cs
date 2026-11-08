@@ -240,6 +240,11 @@ internal sealed partial class Engine2D
             float tx = ny, ty = -nx;
             Mem.At(w, W2D.NormalX * 8 + lane) = nx; Mem.At(w, W2D.NormalY * 8 + lane) = ny;
             Mem.At(w, W2D.Friction * 8 + lane) = Mem.At(pl, ManifoldLayout.Friction);
+            if (ContactModifications.Extended)
+            {
+                Mem.At(w, W2D.TangentSpeed * 8 + lane) = ContactModifications.TangentSpeed(c);
+                Mem.At(w, W2D.ImpulseLimit * 8 + lane) = ContactModifications.ImpulseLimit(c);
+            }
             float restitution = Mem.At(pl, ManifoldLayout.Restitution);
             Mem.At(w, W2D.Restitution * 8 + lane) = restitution;
             if (restitution > 0f) { anyRestitution = 1; }
@@ -366,6 +371,11 @@ internal sealed partial class Engine2D
             ref float wl = ref Mem.Lane(ref W, l);
             Mem.Field(ref wl, W2D.NormalX) = Mem.At(pl, ManifoldLayout.Normal); Mem.Field(ref wl, W2D.NormalY) = Mem.At(pl, ManifoldLayout.Normal + 1);
             Mem.Field(ref wl, W2D.Friction) = Mem.At(pl, ManifoldLayout.Friction);
+            if (ContactModifications.Extended)
+            {
+                Mem.Field(ref wl, W2D.TangentSpeed) = ContactModifications.TangentSpeed(c);
+                Mem.Field(ref wl, W2D.ImpulseLimit) = ContactModifications.ImpulseLimit(c);
+            }
             float restitution = Mem.At(pl, ManifoldLayout.Restitution);
             Mem.Field(ref wl, W2D.Restitution) = restitution;
             if (restitution > 0f) { anyRestitution = 1; }

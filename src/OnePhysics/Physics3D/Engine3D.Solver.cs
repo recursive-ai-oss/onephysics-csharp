@@ -228,6 +228,11 @@ internal sealed partial class Engine3D
             Tangents(n, out var t1, out var t2);
             Put3(w, W3D.N, lane, n); Put3(w, W3D.T1, lane, t1); Put3(w, W3D.T2, lane, t2);
             w[W3D.Friction * 8 + lane] = pl[ManifoldLayout.Friction];
+            if (ContactModifications.Extended)
+            {
+                w[W3D.TangentSpeed * 8 + lane] = ContactModifications.TangentSpeed(c);
+                w[W3D.ImpulseLimit * 8 + lane] = ContactModifications.ImpulseLimit(c);
+            }
             float restitution = pl[ManifoldLayout.Restitution];
             w[W3D.Restitution * 8 + lane] = restitution;
             if (restitution != 0f) { anyRestitution = 1; }

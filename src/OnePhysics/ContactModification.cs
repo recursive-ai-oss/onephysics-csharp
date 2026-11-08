@@ -18,10 +18,12 @@ public interface IContactModifier
 public ref struct ContactModification
 {
     private readonly Span<float> _payload;
+    private readonly Span<float> _extra;
     private readonly int _count;
     private readonly int _dimension;
-    internal ContactModification(WorldCore world, int constraint)
+    internal ContactModification(WorldCore world, int constraint, Span<float> extra)
     {
+        _extra = extra;
         _dimension = world.Layout.PositionLanes;
         var store = world.Constraints;
         _payload = store.Payload(constraint);
@@ -68,6 +70,18 @@ public ref struct ContactModification
         get => _payload[ManifoldLayout.Restitution];
         set { Validate(value, 1f, nameof(Restitution)); _payload[ManifoldLayout.Restitution] = value; }
     }
+    /// <summary>Desired relative surface speed along Tangent1, in metres/second; default zero. Throws ArgumentOutOfRangeException for non-finite values.</summary>
+    public float TangentSpeed
+    {
+        get => _extra[0];
+        set { if (!float.IsFinite(value)) throw new ArgumentOutOfRangeException(nameof(TangentSpeed), value, "Tangent speed must be finite."); _extra[0] = value; }
+    }
+    /// <summary>Maximum accumulated normal impulse per point per substep, in newton seconds; default float.MaxValue (unlimited). Applies to warm start, solve, relax and restitution. Throws ArgumentOutOfRangeException unless finite and nonnegative.</summary>
+    public float NormalImpulseLimit
+    {
+        get => _extra[1];
+        set { Validate(value, float.MaxValue, nameof(NormalImpulseLimit)); _extra[1] = value; }
+    }
     /// <summary>Reads a point's separation in metres. Throws ArgumentOutOfRangeException if point is outside 0..PointCount-1.</summary>
     public float GetSeparation(int point) { CheckPoint(point); return _payload[ManifoldLayout.Separation(point)]; }
     /// <summary>Changes a point's separation in metres. Throws ArgumentOutOfRangeException for an invalid point or a non-finite value.</summary>
@@ -94,6 +108,10 @@ internal sealed class ContactModificationPipeline : IComparer<int>, ISnapshotSec
     private bool _modified;
     private int[] _order = Array.Empty<int>();
     private ConstraintStore? _store;
+    private float[] _extra = Array.Empty<float>();
+    public bool Extended { get; private set; }
+    public float TangentSpeed(int c) => _extra[2 * c];
+    public float ImpulseLimit(int c) => _extra[2 * c + 1];
     public bool Refresh => _callback != null || _reset || _modified;
     public ContactModifier? Callback
     {
@@ -104,9 +122,11 @@ internal sealed class ContactModificationPipeline : IComparer<int>, ISnapshotSec
     {
         _reset = false;
         _modified = false;
+        Extended = false;
         if (_callback == null) return;
         var cs = world.Constraints;
         if (_order.Length < cs.Count) Array.Resize(ref _order, Math.Max(cs.Count, Math.Max(16, _order.Length * 2)));
+        if (_extra.Length < cs.HighWater * 2) Array.Resize(ref _extra, cs.HighWater * 2);
         int n = 0;
         for (int c = 0; c < cs.HighWater; c++)
             if (cs.IsLive(c) && cs.KindOf(c) == ConstraintKind.Contact && cs.PointCount[c] != 0) _order[n++] = c;
@@ -116,8 +136,20 @@ internal sealed class ContactModificationPipeline : IComparer<int>, ISnapshotSec
         for (int i = 0; i < n; i++)
         {
             int c = _order[i];
-            var view = new ContactModification(world, c);
+            var extra = _extra.AsSpan(2 * c, 2);
+            extra[0] = 0f; extra[1] = float.MaxValue;
+            var view = new ContactModification(world, c, extra);
             _callback(ref view);
+            if (view.TangentSpeed != 0f || view.NormalImpulseLimit != float.MaxValue)
+            {
+                Extended = true;
+                var payload = cs.Payload(c);
+                for (int p = 0; p < view.PointCount; p++)
+                {
+                    int offset = ManifoldLayout.NormalImpulse(p);
+                    payload[offset] = Math.Min(payload[offset], view.NormalImpulseLimit);
+                }
+            }
             if (!view.Enabled)
             {
                 // Zero points suppress all linear impulses; rolling warm starts must be cleared too.
@@ -140,7 +172,7 @@ internal sealed class ContactModificationPipeline : IComparer<int>, ISnapshotSec
         if (reader.ReadInt32() != 1) throw reader.Error("Unsupported contact modification section version.");
         _modified = true;
     }
-    public void Reset() { _modified = false; _reset = false; }
+    public void Reset() { _modified = false; _reset = false; Extended = false; }
     internal void CopyState(ContactModificationPipeline source) { _modified = source._modified; _reset = source._reset; }
     public ISnapshotSection Fork(WorldCore destination)
     {

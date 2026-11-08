@@ -51,3 +51,26 @@ Recording a step with an installed modifier emits a named
 `ContactModification` whole-state effect after simulation and before event
 handlers, so playback does not need the original callback code. Worlds without
 a modifier emit no extra effect and execute no contact sorting pass.
+
+### Tangent speed and normal impulse limits
+
+The callback may set `TangentSpeed`, a finite relative surface velocity in
+metres/second, and `NormalImpulseLimit`, a finite nonnegative maximum accumulated
+normal impulse per point per substep (newton seconds). Defaults are zero and
+`float.MaxValue` respectively. A zero limit prevents all normal response without
+changing the point count. Limits clamp the warm start as well as solve, relax
+and restitution. Tangent speed subtracts from relative velocity in the first
+friction equation; positive speed makes B move in the first tangent direction
+relative to A.
+
+In 2D the first tangent is `(normal.y, -normal.x)`. In 3D form
+`t = (normal.y, -normal.x, 0)` when `abs(normal.x) >= 0.57735`, otherwise
+`t = (0, normal.z, -normal.y)`, normalize it to get tangent 1 and use
+`cross(normal, tangent1)` for tangent 2. Thus a floor whose A-to-B normal is +Y
+has tangent +X in 2D and -Z in 3D.
+
+These two callback outputs are solver scratch regenerated on each invocation,
+not persistent configuration. Their resulting impulses, positions and velocities
+are already snapshot state. Extended solver arithmetic is bypassed when no
+callback used either output, preserving the original default arithmetic,
+including signed zeros. Scalar and wide kernels use identical lane operations.

@@ -150,10 +150,52 @@ public sealed class ContactModificationTests
         Assert.Equal(a.Snapshot(), fork.Snapshot());
     }
 
+    [Fact]
+    public void ConveyorTargetsRelativeTangentSpeedInBothDimensions()
+    {
+        var a = new P2.PhysicsWorld2D(new() { SleepEnabled = false });
+        a.AddBox(new(100, 1), at: new(0, -0.5), type: BodyType.Static);
+        var box = a.AddBox(new(1, 1), at: new(0, 0.5));
+        a.ContactModifier = (ref ContactModification c) => c.TangentSpeed = 2f;
+        for (int i = 0; i < 180; i++) a.Step(1f / 60);
+        Assert.InRange(box.LinearVelocity.X, 1.98f, 2.02f);
+
+        var b = new P3.PhysicsWorld3D(new() { SleepEnabled = false });
+        b.AddBox(new(100, 1, 100), at: new(0, -0.5, 0), type: BodyType.Static);
+        var cube = b.AddBox(new(1, 1, 1), at: new(0, 0.5, 0));
+        b.ContactModifier = (ref ContactModification c) => c.TangentSpeed = 2f;
+        for (int i = 0; i < 180; i++) b.Step(1f / 60);
+        Assert.InRange(cube.LinearVelocity.Z, -2.02f, -1.98f);
+    }
+
+    [Fact]
+    public void ZeroImpulseLimitPreventsNormalResponse()
+    {
+        var a = Make2(1); var b = Make3(1);
+        a.ContactModifier = (ref ContactModification c) => c.NormalImpulseLimit = 0;
+        b.ContactModifier = (ref ContactModification c) => c.NormalImpulseLimit = 0;
+        for (int i = 0; i < 10; i++) { a.Step(1f / 60); b.Step(1f / 60); }
+        foreach (var core in new[] { a.Core, b.Core })
+        {
+            var store = core.Constraints;
+            int contacts = 0;
+            for (int c = 0; c < store.HighWater; c++)
+            {
+                if (!store.IsLive(c) || store.KindOf(c) != LowLevel.ConstraintKind.Contact) continue;
+                contacts++;
+                var payload = store.Payload(c);
+                for (int pt = 0; pt < store.PointCount[c]; pt++) Assert.Equal(0f, payload[LowLevel.ManifoldLayout.NormalImpulse(pt)]);
+            }
+            Assert.True(contacts > 0);
+            Assert.InRange(core.Bodies.LinearVelocityOf(1)[1], -1.64f, -1.62f);
+        }
+    }
+
     private static void Edit(ref ContactModification c, List<long> order)
     {
         order.Add(((long)c.ShapeA.Index << 32) | (uint)c.ShapeB.Index);
         c.Friction = 0.1f; c.Restitution = 0.2f;
+        c.TangentSpeed = 0.3f; c.NormalImpulseLimit = 0.25f;
         for (int i = 0; i < c.PointCount; i++) c.SetSeparation(i, c.GetSeparation(i) + 0.001f);
     }
     private readonly struct Modifier(List<long> order) : IContactModifier
