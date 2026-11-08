@@ -143,6 +143,7 @@ public sealed partial class PhysicsWorld3D
     {
         var o = _engine.Opt;
         var c = _core.Options;
+        c.DetailedInspection = o.DetailedInspection;
         c.Gravity = o.Gravity;
         c.Substeps = o.Substeps; c.VelocityIterations = o.VelocityIterations; c.RelaxIterations = o.RelaxIterations;
         c.SleepEnabled = o.SleepEnabled; c.TimeToSleep = o.TimeToSleep; c.SleepThreshold = o.SleepThreshold; c.Events = o.Events;

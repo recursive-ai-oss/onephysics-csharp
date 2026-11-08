@@ -6,6 +6,27 @@ hash. Both worlds expose `Counters` and `Profile`; both body handles expose
 These APIs do not require callbacks with struct constraints. They allocate only
 when the world is created, not when a step or inspection runs.
 
+## Optional detail collection
+
+`Options.DetailedInspection` is false by default, in both dimensions and in the
+raw world options. Counters, host-timestamp profiling, body sleep/island state,
+and stored contact payload views remain available without it. Enable it before
+stepping to collect whole-step body impulses, per-substep damping impulses,
+joint reactions and joint row errors. Enable it before applying public direct
+impulses as well if those inputs must be recorded. Changing the option between
+steps takes effect on the next step. It is a host diagnostic setting: snapshots
+and world hashes exclude it, and restore preserves the receiving world's setting.
+Simulation bytes, events and hashes are identical with collection on and off.
+
+Detail getters (including raw impulse/row spans) throw
+`DetailedInspectionDisabledException`, with a message naming
+`Options.DetailedInspection`, unless enabled for the latest step. A joint view
+may be obtained before the first step when enabled; its detail values become
+available after stepping. Disabling and stepping invalidates the previous detail.
+The inspection debug overlay always includes constraint metadata and stored
+contact impulses, but omits joint force/torque arrows and row labels when detail
+collection is off. No detail is reconstructed by running the solver on demand.
+
 ## Counters
 
 `StepCounters` is a world-owned object reused by each step. Copy values if they

@@ -16,8 +16,8 @@ public class InspectionDetailTests
     [Fact]
     public void GravityDampingAndExternalImpulsesBalanceLinearMomentum()
     {
-        var a = new P2.PhysicsWorld2D(new P2.WorldOptions2D { Gravity = new Vector2F(0, -10), SleepEnabled = false });
-        var b = new P3.PhysicsWorld3D(new P3.WorldOptions3D { Gravity = new Vector3F(0, -10, 0), SleepEnabled = false });
+        var a = new P2.PhysicsWorld2D(new P2.WorldOptions2D { DetailedInspection = true, Gravity = new Vector2F(0, -10), SleepEnabled = false });
+        var b = new P3.PhysicsWorld3D(new P3.WorldOptions3D { DetailedInspection = true, Gravity = new Vector3F(0, -10, 0), SleepEnabled = false });
         var body2 = a.CreateBody(new P2.BodyDef { LinearDamping = 1, AngularDamping = 2, LinearVelocity = new Vector2F(2, 3) });
         a.CreateBox(body2, new Vector2F(1, 1));
         var body3 = b.CreateBody(new P3.BodyDef { LinearDamping = 1, AngularDamping = 2, LinearVelocity = new Vector3F(2, 3, 0) });
@@ -48,7 +48,7 @@ public class InspectionDetailTests
     [Fact]
     public void TinyContactAndPendulumCountersHaveKnownAnswers()
     {
-        var a = new P2.PhysicsWorld2D(new P2.WorldOptions2D { SleepEnabled = false });
+        var a = new P2.PhysicsWorld2D(new P2.WorldOptions2D { DetailedInspection = true, SleepEnabled = false });
         var floor = a.AddBox(new Vector2F(10, 1), new Vector2D(0, -0.5), type: BodyType.Static);
         a.AddBox(new Vector2F(1, 1), new Vector2D(0, 0.5));
         a.Step(Dt);
@@ -58,7 +58,7 @@ public class InspectionDetailTests
         Assert.Equal(0, a.Counters.NewManifolds);
         Assert.Equal(1, a.Counters.PersistedManifolds + a.Counters.RecycledManifolds);
         Assert.True(floor.Inspect().ConstraintColorMask != 0);
-        var b = new P2.PhysicsWorld2D(new P2.WorldOptions2D { SleepEnabled = false });
+        var b = new P2.PhysicsWorld2D(new P2.WorldOptions2D { DetailedInspection = true, SleepEnabled = false });
         var top = b.AddCircle(0.1f, default, BodyType.Static);
         var mass = b.AddCircle(0.2f, new Vector2D(0, -1));
         b.AddHinge(top, mass, default);
@@ -72,7 +72,7 @@ public class InspectionDetailTests
     [Fact]
     public void SoftControllerAndCcdCountersAndProfilingAreAvailable()
     {
-        var world = new P3.PhysicsWorld3D(new P3.WorldOptions3D { SleepEnabled = false });
+        var world = new P3.PhysicsWorld3D(new P3.WorldOptions3D { DetailedInspection = true, SleepEnabled = false });
         world.AddCloth(1, 1, 2, new Vector3D(0, 4, 0), pinCorners: true);
         world.AddCharacter(new Vector3D(10, 5, 0), P3.CharacterDef.Humanoid);
         var chassis = world.AddBox(new Vector3F(2, 0.5f, 4), new Vector3D(20, 5, 0));
@@ -82,7 +82,7 @@ public class InspectionDetailTests
         Assert.Equal(9, world.Counters.SoftParticles); Assert.Equal(1, world.Counters.SoftBlocks);
         Assert.Equal(1, world.Counters.Characters); Assert.Equal(1, world.Counters.Vehicles);
         Assert.True(world.Profile.Durations[(int)StepStage.SoftConstraints] > 0);
-        var w = new P2.PhysicsWorld2D(new P2.WorldOptions2D { Gravity = default });
+        var w = new P2.PhysicsWorld2D(new P2.WorldOptions2D { DetailedInspection = true, Gravity = default });
         w.AddBox(new Vector2F(0.1f, 20), new Vector2D(10, 0), type: BodyType.Static);
         var bullet = w.AddCircle(0.1f, default); bullet.IsBullet = true; bullet.LinearVelocity = new Vector2F(300, 0);
         bool hit = false;
@@ -93,7 +93,7 @@ public class InspectionDetailTests
     [Fact]
     public void SpatialInspectionAndOverlaysAllocateNothingInSteadyState()
     {
-        var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { SleepEnabled = false });
+        var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { DetailedInspection = true, SleepEnabled = false });
         var anchor = w.AddSphere(0.1f, new Vector3D(0, 3, 0), BodyType.Static);
         var mass = w.AddBox(new Vector3F(1, 1, 1), new Vector3D(0, 2, 0));
         var joint = w.AddPoint(anchor, mass, anchor.Position);

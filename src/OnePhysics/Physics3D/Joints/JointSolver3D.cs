@@ -53,6 +53,7 @@ internal sealed partial class Engine3D
         public int Constraint;
         public void Row(int slot, in JointRow r, float error, JointRowBits flags)
         {
+            if (!Readback.Enabled) { return; }
             bool angular = r.LA.X == 0f && r.LA.Y == 0f && r.LA.Z == 0f && r.LB.X == 0f && r.LB.Y == 0f && r.LB.Z == 0f;
             Readback.Row(Constraint, slot, error, flags | (angular ? JointRowBits.Angular : 0));
         }
@@ -63,7 +64,7 @@ internal sealed partial class Engine3D
 
         public void Apply(in JointRow r, float l)
         {
-            Readback.Add(Constraint, r.LA, r.AA, r.LB, r.AB, l);
+            if (Readback.Enabled) { Readback.Add(Constraint, r.LA, r.AA, r.LB, r.AB, l); }
             VA += r.LA * (MA * l); WA += IA.Mul(r.AA) * l;
             VB += r.LB * (MB * l); WB += IB.Mul(r.AB) * l;
         }

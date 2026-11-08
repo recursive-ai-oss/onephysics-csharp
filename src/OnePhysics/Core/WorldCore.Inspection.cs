@@ -7,7 +7,7 @@ public sealed partial class WorldCore
     private bool _collectTransitions;
 
     /// <summary>Unsaved body input and damping impulses of the last step, in world axes.</summary>
-    public BodyReadback BodyReadback { get; } = new();
+    public BodyReadback BodyReadback { get; }
 
     /// <summary>Unsaved whole-step joint impulses and last-pass row data, shared by both engines.</summary>
     public JointReadback JointReadback { get; }
@@ -55,7 +55,7 @@ public sealed partial class WorldCore
         for (int i = 0; i < ConstraintColoring.ColorCount; i++) { Counters.Colors[i] = _coloring.Color(i).Length; }
         foreach (int c in _coloring.Active)
         {
-            if (_constraints.KindOf(c) == ConstraintKind.Joint) { JointReadback.Track(c, true); Counters.Joints++; }
+            if (_constraints.KindOf(c) == ConstraintKind.Joint) { if (_options.DetailedInspection) { JointReadback.Track(c, true); } Counters.Joints++; }
             else if (_constraints.KindOf(c) == ConstraintKind.Contact)
             {
                 Counters.Manifolds++;

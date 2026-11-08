@@ -16,12 +16,12 @@ public class JointInspectionTests
     [InlineData(8, 8)]
     public void HangingMassHasWholeStepWeightInBothDimensions(int threads, int width)
     {
-        var a = new P2.PhysicsWorld2D(new P2.WorldOptions2D { ThreadCount = threads, SleepEnabled = false });
+        var a = new P2.PhysicsWorld2D(new P2.WorldOptions2D { DetailedInspection = true, ThreadCount = threads, SleepEnabled = false });
         a.Engine.KernelWidth = width;
         var pivot = a.AddCircle(0.05f, default, BodyType.Static);
         var bob = a.AddBox(new Vector2F(0.5f, 0.5f), new Vector2D(0, -1));
         var hinge = a.AddHinge(pivot, bob, default);
-        var b = new P3.PhysicsWorld3D(new P3.WorldOptions3D { ThreadCount = threads, SleepEnabled = false });
+        var b = new P3.PhysicsWorld3D(new P3.WorldOptions3D { DetailedInspection = true, ThreadCount = threads, SleepEnabled = false });
         b.Engine.KernelWidth = width;
         var top = b.AddSphere(0.05f, default, BodyType.Static);
         var mass = b.AddBox(new Vector3F(0.5f, 0.5f, 0.5f), new Vector3D(0, -1, 0));
@@ -42,15 +42,31 @@ public class JointInspectionTests
     }
 
     [Fact]
+    public void DetailCollectionDoesNotChangeAnyJointScene()
+    {
+        var a = World2D.JointTests.BuildJointScene(1, kernelWidth: 1);
+        var b = World2D.JointTests.BuildJointScene(1, kernelWidth: 1);
+        var c = World3D.Joint3DTests.BuildJointScene(8);
+        var d = World3D.Joint3DTests.BuildJointScene(8);
+        a.Options.DetailedInspection = true; c.Options.DetailedInspection = true;
+        for (int i = 0; i < 120; i++)
+        {
+            a.Step(Dt); b.Step(Dt); c.Step(Dt); d.Step(Dt);
+            Assert.Equal(a.ComputeHash(), b.ComputeHash()); Assert.Equal(c.ComputeHash(), d.ComputeHash());
+        }
+        Assert.Equal(a.Snapshot(), b.Snapshot()); Assert.Equal(c.Snapshot(), d.Snapshot());
+    }
+
+    [Fact]
     public void SymmetricTwoJointTrussCarriesHalfTheWeightPerRod()
     {
-        var a = new P2.PhysicsWorld2D(new P2.WorldOptions2D { SleepEnabled = false });
+        var a = new P2.PhysicsWorld2D(new P2.WorldOptions2D { DetailedInspection = true, SleepEnabled = false });
         var l = a.AddCircle(0.05f, new Vector2D(-1, 1), BodyType.Static);
         var r = a.AddCircle(0.05f, new Vector2D(1, 1), BodyType.Static);
         var bob = a.AddBox(new Vector2F(0.2f, 0.2f), default);
         var left = a.AddDistance(l, bob, l.Position, bob.Position);
         var right = a.AddDistance(r, bob, r.Position, bob.Position);
-        var b = new P3.PhysicsWorld3D(new P3.WorldOptions3D { SleepEnabled = false });
+        var b = new P3.PhysicsWorld3D(new P3.WorldOptions3D { DetailedInspection = true, SleepEnabled = false });
         var l3 = b.AddSphere(0.05f, new Vector3D(-1, 1, 0), BodyType.Static);
         var r3 = b.AddSphere(0.05f, new Vector3D(1, 1, 0), BodyType.Static);
         var bob3 = b.AddBox(new Vector3F(0.2f, 0.2f, 0.2f), default);
@@ -71,11 +87,11 @@ public class JointInspectionTests
     [Fact]
     public void ConstrainedTorqueReadbackBalancesAnAppliedCouple()
     {
-        var a = new P2.PhysicsWorld2D(new P2.WorldOptions2D { Gravity = default, SleepEnabled = false });
+        var a = new P2.PhysicsWorld2D(new P2.WorldOptions2D { DetailedInspection = true, Gravity = default, SleepEnabled = false });
         var anchor = a.AddCircle(0.1f, new Vector2D(0, 2), BodyType.Static);
         var body = a.AddBox(new Vector2F(1, 1), default);
         var weld = a.AddFixed(anchor, body, body.Position);
-        var b = new P3.PhysicsWorld3D(new P3.WorldOptions3D { Gravity = default, SleepEnabled = false });
+        var b = new P3.PhysicsWorld3D(new P3.WorldOptions3D { DetailedInspection = true, Gravity = default, SleepEnabled = false });
         var top = b.AddSphere(0.1f, new Vector3D(0, 2, 0), BodyType.Static);
         var mass = b.AddBox(new Vector3F(1, 1, 1), default);
         var gear = b.AddGear(top, mass, new Vector3F(0, 0, 1), new Vector3F(0, 0, 1));
@@ -91,7 +107,7 @@ public class JointInspectionTests
     [Fact]
     public void HeldViewRetainsBreakReadbackAndRejectsReusedJointGeneration()
     {
-        var world = new P3.PhysicsWorld3D(new P3.WorldOptions3D { SleepEnabled = false });
+        var world = new P3.PhysicsWorld3D(new P3.WorldOptions3D { DetailedInspection = true, SleepEnabled = false });
         var a = world.AddSphere(0.1f, new Vector3D(0, 1, 0), BodyType.Static);
         var b = world.AddSphere(0.2f, default);
         var joint = world.AddPoint(a, b, a.Position);
@@ -112,14 +128,14 @@ public class JointInspectionTests
     [Fact]
     public void LimitsAndMotorsReportActivityIncludingZeroCapacity()
     {
-        var a = new P2.PhysicsWorld2D(new P2.WorldOptions2D { SleepEnabled = false });
+        var a = new P2.PhysicsWorld2D(new P2.WorldOptions2D { DetailedInspection = true, SleepEnabled = false });
         var pivot = a.AddCircle(0.1f, new Vector2D(0, 3), BodyType.Static);
         var body = a.AddBox(new Vector2F(0.2f, 0.2f), default);
         var hinge = a.AddHinge(pivot, body, body.Position);
         hinge.SetLimits(0, 0); hinge.EnableLimit = true; hinge.EnableMotor = true; hinge.MotorSpeed = 1; hinge.MaxMotorTorque = 1;
         var free = a.AddBox(new Vector2F(0.2f, 0.2f), new Vector2D(5, 0));
         var zero = a.AddRelative(pivot, free, maxForce: 0, maxTorque: 0);
-        var b = new P3.PhysicsWorld3D(new P3.WorldOptions3D { SleepEnabled = false });
+        var b = new P3.PhysicsWorld3D(new P3.WorldOptions3D { DetailedInspection = true, SleepEnabled = false });
         var top = b.AddSphere(0.1f, new Vector3D(0, 3, 0), BodyType.Static);
         var mass = b.AddBox(new Vector3F(0.2f, 0.2f, 0.2f), default);
         var h3 = b.AddHinge(top, mass, mass.Position, new Vector3F(0, 0, 1));
@@ -143,6 +159,7 @@ public class JointInspectionTests
         var b = World2D.JointTests.BuildJointScene(8, kernelWidth: 8);
         var c = World3D.Joint3DTests.BuildJointScene(1);
         var d = World3D.Joint3DTests.BuildJointScene(8);
+        a.Options.DetailedInspection = true; b.Options.DetailedInspection = true; c.Options.DetailedInspection = true; d.Options.DetailedInspection = true;
         c.Engine.KernelWidth = 1; d.Engine.KernelWidth = 8;
         c.Options.SleepEnabled = false; d.Options.SleepEnabled = false;
         foreach (var world in new[] { c, d })

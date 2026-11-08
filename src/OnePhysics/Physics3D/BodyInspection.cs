@@ -9,14 +9,19 @@ public readonly struct BodyInspection
     private readonly RecursiveAI.OnePhysics.BodyInspection _raw;
     internal BodyInspection(RecursiveAI.OnePhysics.BodyInspection raw) { _raw = raw; }
     /// <summary>Gravity before damping, kg m/s. World axes.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public Vector3D GravityImpulse => _raw.GravityImpulse;
     /// <summary>Integrated public force and direct impulse inputs, kg m/s; excludes solver and service-internal impulses. World axes.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public Vector3D ExternalImpulse => _raw.ExternalImpulse;
     /// <summary>Momentum removed by damping before speed clamps, kg m/s. World axes.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public Vector3D DampingImpulse => _raw.DampingImpulse;
     /// <summary>Integrated public torque and angular impulse inputs, kg m squared/s, about the centre of mass in world axes.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public Vector3D ExternalAngularImpulse => _raw.ExternalAngularImpulse;
     /// <summary>Angular momentum removed by damping before speed clamps, kg m squared/s, about the centre of mass in world axes.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public Vector3D DampingAngularImpulse => _raw.DampingAngularImpulse;
     /// <summary>Current dynamic island, or -1.</summary>
     public int Island => _raw.Island;

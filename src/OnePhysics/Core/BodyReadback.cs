@@ -19,7 +19,11 @@ public sealed class BodyReadback
     private int _pendingCount, _bodyCount;
     private Vector3F _gravity;
     internal byte[] CcdState = Array.Empty<byte>();
-    internal BodyReadback() { }
+    private readonly WorldCore _world;
+    private bool _available;
+    internal BodyReadback(WorldCore world) { _world = world; }
+    private void RequireDetail()
+    { if (!_world.Options.DetailedInspection || !_available) { throw new DetailedInspectionDisabledException(); } }
     internal void Reserve(int count)
     {
         if (CcdState.Length >= count) { return; }
@@ -35,6 +39,9 @@ public sealed class BodyReadback
     internal void Begin(int count, Vector3F gravity)
     {
         Reserve(count); _gravity = gravity;
+        Array.Clear(CcdState);
+        if (!_world.Options.DetailedInspection && !_available) { return; }
+        _available = _world.Options.DetailedInspection;
         int slots = Math.Max(_bodyCount, count);
         for (int b = 0; b < slots; b++)
         {
@@ -78,7 +85,7 @@ public sealed class BodyReadback
     { destination[offset] += value.X; destination[offset + 1] += value.Y; destination[offset + 2] += value.Z; }
     /// <summary>Read-only last-step impulses in the documented fifteen-double body stride; excludes contacts, joints, speed clamps, gyroscopic correction and service-internal impulses. Projects cached inputs without allocating.</summary>
     public ReadOnlySpan<double> Impulses
-    { get { for (int b = 0; b < _bodyCount; b++) { Project(b); } return _values.AsSpan(0, _bodyCount * 15); } }
+    { get { RequireDetail(); for (int b = 0; b < _bodyCount; b++) { Project(b); } return _values.AsSpan(0, _bodyCount * 15); } }
     internal Vector3D Vector(int b, int field)
-    { if ((uint)b >= (uint)_inputFlags.Length) { return default; } Project(b); int o = b * 15 + field; return new(_values[o], _values[o + 1], _values[o + 2]); }
+    { RequireDetail(); if ((uint)b >= (uint)_inputFlags.Length) { return default; } Project(b); int o = b * 15 + field; return new(_values[o], _values[o + 1], _values[o + 2]); }
 }

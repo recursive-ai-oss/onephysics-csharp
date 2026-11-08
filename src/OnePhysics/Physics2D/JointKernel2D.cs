@@ -39,9 +39,9 @@ internal static class JointKernel2D
         if (phase == SolvePhase.Restitution) { return; } // joints have no restitution pass
         var wide = e.JWide.AsSpan(group * J2D.GroupFloats, J2D.GroupFloats);
         var idx = e.JIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup);
-        if (phase == SolvePhase.WarmStart) { RunWarm<T>(e.BodyState, wide, idx, e.Core.JointReadback.WideScratch.AsSpan(group * 96, 96), lane0, lanes); }
-        else { RunSolve<T>(e.BodyState, wide, idx, e.Core.JointReadback.WideScratch.AsSpan(group * 96, 96), lane0, lanes, phase == SolvePhase.Solve); }
-        e.Core.JointReadback.ReadWide(group, lane0, lanes, 2);
+        if (phase == SolvePhase.WarmStart) { RunWarm<T>(e.BodyState, wide, idx, (e.Opt.DetailedInspection ? e.Core.JointReadback.WideScratch.AsSpan(group * 96, 96) : Span<float>.Empty), lane0, lanes); }
+        else { RunSolve<T>(e.BodyState, wide, idx, (e.Opt.DetailedInspection ? e.Core.JointReadback.WideScratch.AsSpan(group * 96, 96) : Span<float>.Empty), lane0, lanes, phase == SolvePhase.Solve); }
+        if (e.Opt.DetailedInspection) { e.Core.JointReadback.ReadWide(group, lane0, lanes, 2); }
     }
 
     private static void RunWarm<T>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, Span<float> diagnostics, int lane0, int lanes) where T : struct, ILane<T>
@@ -115,6 +115,7 @@ internal static class JointKernel2D
 
     private static void Report<T>(Span<float> target, int lane, T px, T py, T rax, T ray, T rbx, T rby, T cx, T cy) where T : struct, ILane<T>
     {
+        if (target.IsEmpty) { return; }
         T zero = T.Zero;
         px.StoreAt(target, lane); py.StoreAt(target, 8 + lane); zero.StoreAt(target, 16 + lane);
         zero.StoreAt(target, 24 + lane); zero.StoreAt(target, 32 + lane); (rax * py - ray * px).StoreAt(target, 40 + lane);

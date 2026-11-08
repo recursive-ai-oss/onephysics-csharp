@@ -73,7 +73,7 @@ internal sealed partial class Engine2D
             JWide = new float[cap * J2D.GroupFloats]; JIdx = new int[cap * W2D.IdxPerGroup];
         }
 
-        if (JWide.Length != 0) { Core.JointReadback.ReserveWide(batches); }
+        if (Opt.DetailedInspection && LiveJointCount() != 0) { Core.JointReadback.ReserveWide(batches); }
         int nc = core.Constraints.HighWater;
         if (SlotOf.Length < nc) { SlotOf = new int[Math.Max(nc, SlotOf.Length * 2)]; JSlotOf = new int[SlotOf.Length]; BatchSimple = new byte[SlotOf.Length]; }
         // Every live body's velocity goes into its solver row. Blocks write their own rows and their own flag, so they run on several threads.
@@ -513,7 +513,7 @@ internal sealed partial class Engine2D
         var p = cs.Payload(c);
         int a = cs.BodyA[c], b = cs.BodyB[c];
         JSlotOf[c] = group * J2D.Lanes + lane;
-        Core.JointReadback.WideSlots[group * 8 + lane] = c;
+        if (Opt.DetailedInspection) { Core.JointReadback.WideSlots[group * 8 + lane] = c; }
         idx[lane] = (a + 1) * BS2D.Stride; idx[8 + lane] = (b + 1) * BS2D.Stride;
         idx[16 + lane] = bodies.TypeOf(a) == BodyType.Dynamic ? (a + 1) * BS2D.Stride : -1;
         idx[24 + lane] = bodies.TypeOf(b) == BodyType.Dynamic ? (b + 1) * BS2D.Stride : -1;
@@ -652,7 +652,7 @@ internal sealed partial class Engine2D
             float da = 1f / (1f + h * AngularDamping[b]);
             float undampedX = vx, undampedY = vy, undampedW = w;
             vx *= dl; vy *= dl; w *= da;
-            if (LinearDamping[b] != 0f || AngularDamping[b] != 0f)
+            if (Opt.DetailedInspection && (LinearDamping[b] != 0f || AngularDamping[b] != 0f))
             {
                 double mass = 1.0 / invMass[b];
                 Core.BodyReadback.Damping(b, new((vx - undampedX) * mass, (vy - undampedY) * mass, 0), new(0, 0, invI[b] > 0f ? (w - undampedW) / (double)invI[b] : 0));
@@ -705,7 +705,7 @@ internal sealed partial class Engine2D
             Dp[2 * b] = BodyState[o + BS2D.Dpx]; Dp[2 * b + 1] = BodyState[o + BS2D.Dpy];
             if (bodies.TypeOf(b) != BodyType.Dynamic) { continue; }
             lin[2 * b] = BodyState[o + BS2D.Vx]; lin[2 * b + 1] = BodyState[o + BS2D.Vy]; ang[b] = BodyState[o + BS2D.W];
-            Core.BodyReadback.Inputs(b, bodies.InverseMass[b], GravityScale[b], new(Force[2 * b], Force[2 * b + 1], 0), new(0, 0, Torque[b]), Core.IntegratedTimeOfBody(b));
+            if (Opt.DetailedInspection) { Core.BodyReadback.Inputs(b, bodies.InverseMass[b], GravityScale[b], new(Force[2 * b], Force[2 * b + 1], 0), new(0, 0, Torque[b]), Core.IntegratedTimeOfBody(b)); }
             Force[2 * b] = 0f; Force[2 * b + 1] = 0f; Torque[b] = 0f;
             // Bullets are swept after every body has finished (RunBullets), against static and moving shapes alike.
             if (Opt.ContinuousEnabled && !IsBullet(b)) { Continuous(b); }

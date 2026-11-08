@@ -10,8 +10,8 @@ internal static class InspectionSmoke
 {
     internal static bool Run(out ulong digest)
     {
-        var a = new P2.PhysicsWorld2D(new P2.WorldOptions2D { SleepEnabled = false });
-        var b = new P3.PhysicsWorld3D(new P3.WorldOptions3D { SleepEnabled = false });
+        var a = new P2.PhysicsWorld2D(new P2.WorldOptions2D { DetailedInspection = true, SleepEnabled = false });
+        var b = new P3.PhysicsWorld3D(new P3.WorldOptions3D { DetailedInspection = true, SleepEnabled = false });
         var pivot = a.AddCircle(0.1f, new Vector2D(0, 2), BodyType.Static);
         var mass = a.AddBox(new Vector2F(1, 1), default);
         var hinge = a.AddHinge(pivot, mass, pivot.Position);

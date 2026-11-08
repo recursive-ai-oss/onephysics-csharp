@@ -203,7 +203,7 @@ internal static class IntegrateKernel3D
                 st[VForce * Lanes + l] = Mem.At(force, b3); st[(VForce + 1) * Lanes + l] = Mem.At(force, b3 + 1); st[(VForce + 2) * Lanes + l] = Mem.At(force, b3 + 2);
                 st[VTorque * Lanes + l] = Mem.At(torque, b3); st[(VTorque + 1) * Lanes + l] = Mem.At(torque, b3 + 1); st[(VTorque + 2) * Lanes + l] = Mem.At(torque, b3 + 2);
                 st[VLinDamp * Lanes + l] = Mem.At(linDamping, b); st[VAngDamp * Lanes + l] = Mem.At(angDamping, b);
-                observeDamping |= st[VLinDamp * Lanes + l] != 0f || st[VAngDamp * Lanes + l] != 0f;
+                observeDamping |= e.Opt.DetailedInspection && (st[VLinDamp * Lanes + l] != 0f || st[VAngDamp * Lanes + l] != 0f);
                 for (int k = 0; k < 6; k++) { st[(VWInvI + k) * Lanes + l] = Mem.At(wInvI, b6 + k); }
                 bool gyro = (flags[b] & 2) != 0;
                 st[VGyro * Lanes + l] = gyro ? allOnes : 0f;

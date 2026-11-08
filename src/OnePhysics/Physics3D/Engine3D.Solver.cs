@@ -147,7 +147,7 @@ internal sealed partial class Engine3D
             WideJ = new float[jcap * J3D.GroupFloats]; WideJIdx = new int[jcap * J3D.IdxPerGroup];
         }
 
-        if (_trackedJoints > 0) { Core.JointReadback.ReserveWide(batches); }
+        if (Opt.DetailedInspection && _trackedJoints > 0) { Core.JointReadback.ReserveWide(batches); }
         float jh = Opt.JointHertz > cap2 ? cap2 : Opt.JointHertz;
         MakeSoft(jh, Opt.JointDampingRatio, ctx.SubstepDt, out float jbias, out float jmass, out float jimp);
         _jointParams = new JointKernelParams(jmass, jmass * jbias, jimp);
@@ -370,7 +370,7 @@ internal sealed partial class Engine3D
                 int slot = SlotOf[c];
                 if (cons.KindOf(c) == ConstraintKind.Joint)
                 {
-                    if (phase != SolvePhase.Restitution) { Core.JointReadback.ClearRows(c); }
+                    if (Opt.DetailedInspection && phase != SolvePhase.Restitution) { Core.JointReadback.ClearRows(c); }
                     // A joint's own rows first, then its point block, as the joint's rows have always been ordered.
                     if (Joints[c].Type != (byte)JointType3D.Point) { SolveJoint(c, phase, in ctx); }
                     if (slot >= 0) { JointKernel3D.Run<Lanes1>(this, slot >> 3, slot & 7, 1, phase, in jp); }
@@ -385,7 +385,7 @@ internal sealed partial class Engine3D
         // Joints that are not point blocks (which share no dynamic body with anything else in the batch) solve one by one.
         var info = BatchInfo.AsSpan(4 * constraints[0], 4);
         int group = info[0], count = info[1], jcount = info[2];
-        if (phase != SolvePhase.Restitution && (jcount != 0 || info[3] != 0)) { foreach (int c in constraints) { if (cons.KindOf(c) == ConstraintKind.Joint) { Core.JointReadback.ClearRows(c); } } }
+        if (Opt.DetailedInspection && phase != SolvePhase.Restitution && (jcount != 0 || info[3] != 0)) { foreach (int c in constraints) { if (cons.KindOf(c) == ConstraintKind.Joint) { Core.JointReadback.ClearRows(c); } } }
         if (info[3] != 0)
         {
             for (int i = 0; i < constraints.Length; i++)
@@ -435,7 +435,7 @@ internal sealed partial class Engine3D
         foreach (int b in list)
         {
             if (bodies.TypeOf(b) != BodyType.Dynamic) { continue; }
-            Core.BodyReadback.Inputs(b, bodies.InverseMass[b], GravityScale[b], new(Force[3 * b], Force[3 * b + 1], Force[3 * b + 2]), new(Torque[3 * b], Torque[3 * b + 1], Torque[3 * b + 2]), Core.IntegratedTimeOfBody(b));
+            if (Opt.DetailedInspection) { Core.BodyReadback.Inputs(b, bodies.InverseMass[b], GravityScale[b], new(Force[3 * b], Force[3 * b + 1], Force[3 * b + 2]), new(Torque[3 * b], Torque[3 * b + 1], Torque[3 * b + 2]), Core.IntegratedTimeOfBody(b)); }
             Force[3 * b] = 0f; Force[3 * b + 1] = 0f; Force[3 * b + 2] = 0f; Torque[3 * b] = 0f; Torque[3 * b + 1] = 0f; Torque[3 * b + 2] = 0f;
             if (Opt.ContinuousEnabled) { Continuous(b); }
         }

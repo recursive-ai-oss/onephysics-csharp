@@ -171,6 +171,7 @@ public sealed partial class WorldCore
     public WorldCore(WorldOptions? options = null)
     {
         JointReadback = new JointReadback(this);
+        BodyReadback = new BodyReadback(this);
         _options = (options ?? new WorldOptions()).Clone();
         _options.Validate();
         if (_options.WorldId == 0)

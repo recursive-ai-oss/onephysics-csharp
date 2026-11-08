@@ -14,7 +14,7 @@ public class InspectionTests
 
     private static P2.PhysicsWorld2D Scene2(int threads, int width)
     {
-        var w = new P2.PhysicsWorld2D(new P2.WorldOptions2D { ThreadCount = threads, SleepEnabled = false });
+        var w = new P2.PhysicsWorld2D(new P2.WorldOptions2D { DetailedInspection = true, ThreadCount = threads, SleepEnabled = false });
         w.Engine.KernelWidth = width;
         w.AddBox(new Vector2F(20, 1), new Vector2D(0, -0.5), type: BodyType.Static);
         for (int i = 0; i < 12; i++) { w.AddBox(new Vector2F(1, 1), new Vector2D((i % 4) * 1.2, 0.5 + i / 4)); }
@@ -23,11 +23,40 @@ public class InspectionTests
 
     private static P3.PhysicsWorld3D Scene3(int threads, int width)
     {
-        var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { ThreadCount = threads, SleepEnabled = false });
+        var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { DetailedInspection = true, ThreadCount = threads, SleepEnabled = false });
         w.Engine.KernelWidth = width;
         w.AddBox(new Vector3F(20, 1, 20), new Vector3D(0, -0.5, 0), type: BodyType.Static);
         for (int i = 0; i < 12; i++) { w.AddBox(new Vector3F(1, 1, 1), new Vector3D((i % 4) * 1.2, 0.5 + i / 4, 0)); }
         return w;
+    }
+
+    [Fact]
+    public void DetailOptionIsObservationalAndRequiredForImpulseReadback()
+    {
+        var a = Scene2(1, 1); var b = Scene2(1, 1);
+        var c = Scene3(1, 1); var d = Scene3(1, 1);
+        b.Options.DetailedInspection = false; d.Options.DetailedInspection = false;
+        for (int i = 0; i < 120; i++)
+        {
+            a.Step(Dt); b.Step(Dt); c.Step(Dt); d.Step(Dt);
+            Assert.Equal(a.ComputeHash(), b.ComputeHash()); Assert.Equal(c.ComputeHash(), d.ComputeHash());
+            EqualCounters(a.Counters, b.Counters); EqualCounters(c.Counters, d.Counters);
+        }
+        Assert.Equal(a.Snapshot(), b.Snapshot()); Assert.Equal(c.Snapshot(), d.Snapshot());
+        var error = Assert.Throws<DetailedInspectionDisabledException>(() => { _ = b.Core.BodyReadback.Impulses.Length; });
+        Assert.Contains("Options.DetailedInspection", error.Message);
+        Assert.Throws<DetailedInspectionDisabledException>(() => { _ = d.Core.JointReadback.Rows.Length; });
+        b.Options.DetailedInspection = true; d.Options.DetailedInspection = true;
+        b.Step(Dt); d.Step(Dt);
+        Assert.True(b.Core.BodyReadback.Impulses.Length > 0 && d.Core.BodyReadback.Impulses.Length > 0);
+        // Restore keeps the host's diagnostic setting, including the reused spare-options path.
+        b.Restore(a.Snapshot()); d.Restore(c.Snapshot());
+        b.Restore(a.Snapshot()); d.Restore(c.Snapshot());
+        Assert.True(b.Options.DetailedInspection && d.Options.DetailedInspection);
+        b.Options.DetailedInspection = false; d.Options.DetailedInspection = false;
+        b.Step(Dt); d.Step(Dt);
+        Assert.Throws<DetailedInspectionDisabledException>(() => { _ = b.Core.BodyReadback.Impulses.Length; });
+        Assert.Throws<DetailedInspectionDisabledException>(() => { _ = d.Core.JointReadback.Impulses.Length; });
     }
 
     private static void EqualCounters(StepCounters a, StepCounters b)
@@ -107,7 +136,7 @@ public class InspectionTests
     [Fact]
     public void TinyRestingBoxesExposeKnownCountsAndReadOnlyContactImpulses()
     {
-        var w = new P2.PhysicsWorld2D(new P2.WorldOptions2D { SleepEnabled = false });
+        var w = new P2.PhysicsWorld2D(new P2.WorldOptions2D { DetailedInspection = true, SleepEnabled = false });
         var floor = w.AddBox(new Vector2F(10, 1), new Vector2D(0, -0.5), type: BodyType.Static);
         var box = w.AddBox(new Vector2F(1, 1), new Vector2D(0, 0.5));
         for (int i = 0; i < 120; i++) { w.Step(Dt); }
@@ -143,7 +172,7 @@ public class InspectionTests
     [Fact]
     public void SpatialRestingBoxAndStackSupportWeight()
     {
-        var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { SleepEnabled = false });
+        var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { DetailedInspection = true, SleepEnabled = false });
         var floor = w.AddBox(new Vector3F(10, 1, 10), new Vector3D(0, -0.5, 0), type: BodyType.Static);
         var lower = w.AddBox(new Vector3F(1, 1, 1), new Vector3D(0, 0.5, 0));
         var upper = w.AddBox(new Vector3F(1, 1, 1), new Vector3D(0, 1.5, 0));

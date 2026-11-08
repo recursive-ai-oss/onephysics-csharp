@@ -140,7 +140,7 @@ internal static class ManifoldLayout
     public static int MaxNormalImpulse(int i) => Header + i * PointStride + 10;
 }
 
-/// <summary>Options of a <see cref="WorldCore"/>. All values are inputs to the simulation except <see cref="ThreadCount"/> and <see cref="WorldId"/>, which never change a result and are not saved in snapshots.</summary>
+/// <summary>Options of a <see cref="WorldCore"/>. All values are inputs to the simulation except <see cref="DetailedInspection"/>, <see cref="ThreadCount"/> and <see cref="WorldId"/>, which never change a result and are not saved in snapshots.</summary>
 [Experimental("OPHYS0001")]
 public sealed class WorldOptions
 {
@@ -149,6 +149,9 @@ public sealed class WorldOptions
 
     /// <summary>Worker threads for the parallel phases; 1 runs everything on the calling thread. Never decided by the machine; default 1. Results do not depend on it.</summary>
     public int ThreadCount { get; set; } = 1;
+
+    /// <summary>Collect whole-step body input/damping impulses and joint reactions/row errors. Default false. Set before stepping (and before direct impulses to record them). Not saved or hashed; does not change simulation results. Detail getters throw DetailedInspectionDisabledException unless enabled for the latest step.</summary>
+    public bool DetailedInspection { get; set; }
 
     /// <summary>Id stamped into handles to detect handles from another world. At least 1. Default 0 picks the next number from a process-wide counter; hosts that want ids independent of creation order set it.</summary>
     public int WorldId { get; set; }
@@ -234,7 +237,7 @@ public sealed class WorldOptions
         {
             // A spare object is reused so a restore allocates nothing.
             o = into;
-            o.Layout = current.Layout; o.ThreadCount = current.ThreadCount; o.WorldId = current.WorldId; o.Gravity = current.Gravity;
+            o.DetailedInspection = current.DetailedInspection; o.Layout = current.Layout; o.ThreadCount = current.ThreadCount; o.WorldId = current.WorldId; o.Gravity = current.Gravity;
             o.Substeps = current.Substeps; o.VelocityIterations = current.VelocityIterations; o.RelaxIterations = current.RelaxIterations;
             o.ContactSubsteps = current.ContactSubsteps; o.ContactVelocityIterations = current.ContactVelocityIterations; o.ContactRelaxIterations = current.ContactRelaxIterations;
             o.SleepEnabled = current.SleepEnabled; o.TimeToSleep = current.TimeToSleep; o.SleepThreshold = current.SleepThreshold; o.Events = current.Events;

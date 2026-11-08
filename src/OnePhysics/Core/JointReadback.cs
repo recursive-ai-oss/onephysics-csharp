@@ -48,6 +48,10 @@ public sealed class JointReadback
     internal int[] WideSlots = Array.Empty<int>();
     internal float[] WideScratch = Array.Empty<float>();
     internal double InverseDt;
+    internal bool Enabled => _world.Options.DetailedInspection;
+    private bool _available;
+    private void RequireDetail()
+    { if (!Enabled || !_available) { throw new DetailedInspectionDisabledException(); } }
     internal JointReadback(WorldCore world) { _world = world; }
     internal void Track(int c, bool refreshMetadata = false)
     {
@@ -77,6 +81,8 @@ public sealed class JointReadback
     }
     internal void Begin(float dt)
     {
+        if (!Enabled && !_available) { return; }
+        _available = Enabled;
         InverseDt = 1.0 / dt;
         if (_generation.Length == 0) { return; }
         Array.Clear(_impulses); Array.Clear(_rows); Array.Clear(_broken);
@@ -129,6 +135,7 @@ public sealed class JointReadback
     internal void MarkBroken(int c) { if ((uint)c < (uint)_broken.Length) { _broken[c] = true; } }
     internal void Validate(JointHandle handle)
     {
+        RequireDetail();
         if (handle.World != _world.Id || (uint)handle.Index >= (uint)_generation.Length || _generation[handle.Index] != handle.Generation)
         { throw new StaleHandleException("Joint inspection no longer identifies the recorded joint."); }
         if (_world.Constraints.IsLive(handle.Index) && _world.Constraints.Handles.GenerationOf(handle.Index) != handle.Generation)
@@ -136,12 +143,16 @@ public sealed class JointReadback
         if (!_broken[handle.Index]) { _world.Resolve(handle); }
     }
     /// <summary>Read-only whole-step impulses in slot order: 12 doubles per constraint, A linear xyz, A angular xyz, B linear xyz, B angular xyz. Multiply by inverse step dt for mean force/COM torque.</summary>
-    public ReadOnlySpan<double> Impulses => _impulses;
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
+    public ReadOnlySpan<double> Impulses { get { RequireDetail(); return _impulses; } }
     /// <summary>Read-only row data, 32 entries per constraint slot; disabled entries have Flags=None.</summary>
-    public ReadOnlySpan<JointRowInspection> Rows => _rows;
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
+    public ReadOnlySpan<JointRowInspection> Rows { get { RequireDetail(); return _rows; } }
     /// <summary>Inspects a live joint or a matching joint that broke during the latest step. Break records expire on the next step or slot reuse.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public JointInspectionView Inspect(JointHandle joint)
     {
+        if (!Enabled) { throw new DetailedInspectionDisabledException(); }
         if (joint.World == _world.Id && (uint)joint.Index < (uint)_generation.Length && _generation[joint.Index] == joint.Generation && _broken[joint.Index])
         {
             Validate(joint);
@@ -164,14 +175,19 @@ public readonly struct JointInspectionView
     private int Slot { get { if (_store == null) { throw new InvalidHandleException("Default joint inspection has no world."); } _store.Validate(_handle); return _handle.Index; } }
     private Vector3D Vector(int offset) { int c = Slot; var p = _store.Impulses; int o = c * 12 + offset; double inv = _store.InverseDt; return new(p[o] * inv, p[o + 1] * inv, p[o + 2] * inv); }
     /// <summary>Mean world-space force on A in N, summed over every substep and warm/solve/relax pass.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public Vector3D ForceA => Vector(0);
     /// <summary>Mean world-space torque on A about its centre of mass, in N m, including the force moment.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public Vector3D TorqueA => Vector(3);
     /// <summary>Mean world-space force on B in N.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public Vector3D ForceB => Vector(6);
     /// <summary>Mean world-space torque on B about its centre of mass, in N m, including the force moment.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public Vector3D TorqueB => Vector(9);
     /// <summary>Thirty-two last-pass row entries; disabled entries have Flags=None.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public ReadOnlySpan<JointRowInspection> Rows { get { int c = Slot; return _store.Rows.Slice(c * 32, 32); } }
     /// <summary>True if this recorded joint broke during the latest step.</summary>
     public bool IsBroken => _store.Broken(Slot);

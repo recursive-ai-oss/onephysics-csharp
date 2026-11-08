@@ -97,6 +97,7 @@ public sealed partial class DebugGeometry
             bool joint = cs.KindOf(c) == ConstraintKind.Joint;
             var entry = new DebugConstraintInspection(c, joint, cs.Color[c], bodies.Island[a], bodies.Island[b], posA, posB);
             Push(ref _constraintInspection, ref _nConstraintInspection, in entry);
+            if (joint && !world.Options.DetailedInspection) { continue; }
             if (joint)
             {
                 var view = world.JointReadback.Inspect(world.HandleOfJoint(c));

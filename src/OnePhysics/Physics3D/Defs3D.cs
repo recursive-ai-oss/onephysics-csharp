@@ -112,6 +112,9 @@ public sealed class WorldOptions3D
     /// <summary>Threads used by a step, 1..1024. The result never depends on it. Default 1.</summary>
     public int ThreadCount { get; set; } = 1;
 
+    /// <summary>Collect whole-step body input/damping impulses and joint reactions/row errors. Default false. Set before stepping (and before direct impulses to record them). Not saved or hashed; does not change simulation results. Detail getters throw DetailedInspectionDisabledException unless enabled for the latest step.</summary>
+    public bool DetailedInspection { get; set; }
+
     /// <summary>World id used in handles; 0 picks one. Default 0.</summary>
     public int WorldId { get; set; }
 
@@ -237,7 +240,7 @@ public sealed class WorldOptions3D
     private void FillCore(WorldOptions o)
     {
         o.Layout = DimensionLayout.Spatial;
-        o.ThreadCount = ThreadCount;
+        o.ThreadCount = ThreadCount; o.DetailedInspection = DetailedInspection;
         o.WorldId = WorldId;
         o.Gravity = Gravity;
         o.Substeps = Substeps;

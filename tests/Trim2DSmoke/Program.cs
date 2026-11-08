@@ -9,7 +9,7 @@ internal static class Program
 {
     private static int Main()
     {
-        var world = new PhysicsWorld2D(new WorldOptions2D { SleepEnabled = false });
+        var world = new PhysicsWorld2D(new WorldOptions2D { DetailedInspection = true, SleepEnabled = false });
         var anchor = world.AddCircle(0.1f, new Vector2D(0, 2), BodyType.Static);
         var body = world.AddBox(new Vector2F(1, 1), default);
         var joint = world.AddHinge(anchor, body, anchor.Position);

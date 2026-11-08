@@ -11,12 +11,16 @@ public readonly struct JointInspection
     private readonly JointInspectionView _view;
     internal JointInspection(JointInspectionView view) { _view = view; }
     /// <summary>Whole-step mean force in N applied to body A, in world axes. Includes every warm/solve/relax pass.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public Vector2D ForceA => new(_view.ForceA.X, _view.ForceA.Y);
     /// <summary>Whole-step mean force in N applied to body B, in world axes. Includes every warm/solve/relax pass.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public Vector2D ForceB => new(_view.ForceB.X, _view.ForceB.Y);
     /// <summary>Whole-step mean COM torque in N m applied to body A, in world axes. Includes every warm/solve/relax pass.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public double TorqueA => _view.TorqueA.Z;
     /// <summary>Whole-step mean COM torque in N m applied to body B, in world axes. Includes every warm/solve/relax pass.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public double TorqueB => _view.TorqueB.Z;
     /// <summary>Recorded IsBroken from the joint inspection; read between steps.</summary>
     public bool IsBroken => _view.IsBroken;
@@ -30,17 +34,20 @@ public readonly struct JointInspection
     public int Island => _view.Island;
 
     /// <summary>Last evaluated solver errors per impulse slot (32 entries, unused entries have Flags=None).</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public ReadOnlySpan<JointRowInspection> Rows => _view.Rows;
 }
 
 public readonly partial struct Joint
 {
     /// <summary>Reads whole-step force/torque, row errors and solver state. A matching last-step break record can be read after destruction; other stale or default handles throw.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public JointInspection Inspect() { if (_world == null) { throw new InvalidHandleException("The default Joint is not attached to a world."); } return new(_world.Core.JointReadback.Inspect(RawHandle)); }
 }
 
 public sealed partial class PhysicsWorld2D
 {
     /// <summary>Inspects a live joint of this world. Throws for a stale, default or foreign handle.</summary>
+    /// <exception cref="DetailedInspectionDisabledException">Enable Options.DetailedInspection before stepping to collect these values.</exception>
     public JointInspection InspectJoint(Joint joint) => new(_core.JointReadback.Inspect(joint.RawHandle));
 }

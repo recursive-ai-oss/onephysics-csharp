@@ -238,6 +238,7 @@ internal static class JointKernel3D
 
     private static void Report<T>(Span<float> target, int lane, V3<T> p, V3<T> ra, V3<T> rb, V3<T> c) where T : struct, ILane<T>
     {
+        if (target.IsEmpty) { return; }
         var ta = V3<T>.Cross(ra, p); var tb = V3<T>.Cross(rb, p);
         p.X.StoreAt(target, lane); p.Y.StoreAt(target, 8 + lane); p.Z.StoreAt(target, 16 + lane);
         ta.X.StoreAt(target, 24 + lane); ta.Y.StoreAt(target, 32 + lane); ta.Z.StoreAt(target, 40 + lane);
@@ -253,7 +254,7 @@ internal static class JointKernel3D
     {
         if (phase == SolvePhase.Restitution) { return; }
         int width = T.Count;
-        var diagnostics = e.Core.JointReadback.WideScratch.AsSpan(group * 96, 96);
+        var diagnostics = e.Opt.DetailedInspection ? e.Core.JointReadback.WideScratch.AsSpan(group * 96, 96) : Span<float>.Empty;
         var wide = e.WideJ.AsSpan(group * J3D.GroupFloats, J3D.GroupFloats);
         var idx = e.WideJIdx.AsSpan(group * J3D.IdxPerGroup, J3D.IdxPerGroup);
         var bodies = e.Core.Bodies;
@@ -292,6 +293,6 @@ internal static class JointKernel3D
             if (warm) { continue; }
             imp.X.StoreAt(wide, (J3D.Impulse + 0) * 8 + l0); imp.Y.StoreAt(wide, (J3D.Impulse + 1) * 8 + l0); imp.Z.StoreAt(wide, (J3D.Impulse + 2) * 8 + l0);
         }
-        e.Core.JointReadback.ReadWide(group, lane0, n, 3);
+        if (e.Opt.DetailedInspection) { e.Core.JointReadback.ReadWide(group, lane0, n, 3); }
     }
 }
