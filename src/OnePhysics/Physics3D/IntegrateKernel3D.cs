@@ -112,7 +112,7 @@ internal static class IntegrateKernel3D
 
     /// <summary>One group of up to eight bodies: velocities after gravity, forces, torque, the gyroscopic term, damping and the speed limits. Lanes with <c>write[lane]</c> false are not written back.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void VelocityLanes<T>(Span<float> st, int l0, T hh, T maxSpeed, T maxSpeed2, T maxSpin, T maxSpin2, T gx, T gy, T gz) where T : struct, ILane<T>
+    private static void VelocityLanes<T>(Span<float> st, int l0, T hh, T maxSpeed, T maxSpeed2, T maxSpin, T maxSpin2, T gx, T gy, T gz, bool observeDamping) where T : struct, ILane<T>
     {
         T two = T.Broadcast(2f), one = T.Broadcast(1f);
         T gs = Row<T>(st, VGravityScale, l0), im = Row<T>(st, VInvMass, l0);
@@ -130,8 +130,21 @@ internal static class IntegrateKernel3D
         w = new V3<T>(T.Select(gyro, g.X, w.X), T.Select(gyro, g.Y, w.Y), T.Select(gyro, g.Z, w.Z));
         // Zero damping scales by exactly one (the division of 1 by 1 + h·0 is exact), so every lane takes the same multiplication.
         T dl = one / (one + hh * Row<T>(st, VLinDamp, l0)), da = one / (one + hh * Row<T>(st, VAngDamp, l0));
-        vx = vx * dl; vy = vy * dl; vz = vz * dl;
-        w = new V3<T>(w.X * da, w.Y * da, w.Z * da);
+        if (observeDamping)
+        {
+            T undampedX = vx, undampedY = vy, undampedZ = vz;
+            var undampedW = w;
+            vx = vx * dl; vy = vy * dl; vz = vz * dl;
+            w = new V3<T>(w.X * da, w.Y * da, w.Z * da);
+            // The gyroscopic scratch is dead here; its first six rows now hold damping observations.
+            (vx - undampedX).StoreAt(st, VScratch * Lanes + l0); (vy - undampedY).StoreAt(st, (VScratch + 1) * Lanes + l0); (vz - undampedZ).StoreAt(st, (VScratch + 2) * Lanes + l0);
+            (w.X - undampedW.X).StoreAt(st, (VScratch + 3) * Lanes + l0); (w.Y - undampedW.Y).StoreAt(st, (VScratch + 4) * Lanes + l0); (w.Z - undampedW.Z).StoreAt(st, (VScratch + 5) * Lanes + l0);
+        }
+        else
+        {
+            vx = vx * dl; vy = vy * dl; vz = vz * dl;
+            w = new V3<T>(w.X * da, w.Y * da, w.Z * da);
+        }
         T v2 = vx * vx + vy * vy + vz * vz;
         T fast = T.GreaterThan(v2, maxSpeed2);
         T scale = maxSpeed / T.Sqrt(v2);
@@ -166,6 +179,7 @@ internal static class IntegrateKernel3D
         {
             int n = Math.Min(Lanes, list.Length - i0);
             int live = 0;
+            bool observeDamping = false;
             for (int l = 0; l < Lanes; l++)
             {
                 int b = -1;
@@ -189,6 +203,7 @@ internal static class IntegrateKernel3D
                 st[VForce * Lanes + l] = Mem.At(force, b3); st[(VForce + 1) * Lanes + l] = Mem.At(force, b3 + 1); st[(VForce + 2) * Lanes + l] = Mem.At(force, b3 + 2);
                 st[VTorque * Lanes + l] = Mem.At(torque, b3); st[(VTorque + 1) * Lanes + l] = Mem.At(torque, b3 + 1); st[(VTorque + 2) * Lanes + l] = Mem.At(torque, b3 + 2);
                 st[VLinDamp * Lanes + l] = Mem.At(linDamping, b); st[VAngDamp * Lanes + l] = Mem.At(angDamping, b);
+                observeDamping |= st[VLinDamp * Lanes + l] != 0f || st[VAngDamp * Lanes + l] != 0f;
                 for (int k = 0; k < 6; k++) { st[(VWInvI + k) * Lanes + l] = Mem.At(wInvI, b6 + k); }
                 bool gyro = (flags[b] & 2) != 0;
                 st[VGyro * Lanes + l] = gyro ? allOnes : 0f;
@@ -197,12 +212,18 @@ internal static class IntegrateKernel3D
             }
 
             if (live == 0) { continue; }
-            for (int l0 = 0; l0 < Lanes; l0 += width) { VelocityLanes<T>(st, l0, hh, ms, ms2, mw, mw2, gx, gy, gz); }
+            for (int l0 = 0; l0 < Lanes; l0 += width) { VelocityLanes<T>(st, l0, hh, ms, ms2, mw, mw2, gx, gy, gz, observeDamping); }
             for (int l = 0; l < Lanes; l++)
             {
                 int b = ids[l];
                 if (b < 0) { continue; }
                 int b3 = 3 * b;
+                if (observeDamping && (linDamping[b] != 0f || angDamping[b] != 0f))
+                {
+                    double mass = 1.0 / invMass[b];
+                    var dw = new RecursiveAI.OneMath.Vector3F(st[(VScratch + 3) * Lanes + l], st[(VScratch + 4) * Lanes + l], st[(VScratch + 5) * Lanes + l]);
+                    e.Core.BodyReadback.Damping(b, new(st[VScratch * Lanes + l] * mass, st[(VScratch + 1) * Lanes + l] * mass, st[(VScratch + 2) * Lanes + l] * mass), e.InspectionDampingTorque(b, dw));
+                }
                 Mem.At(lin, b3) = st[VLinX * Lanes + l]; Mem.At(lin, b3 + 1) = st[(VLinX + 1) * Lanes + l]; Mem.At(lin, b3 + 2) = st[(VLinX + 2) * Lanes + l];
                 Mem.At(ang, b3) = st[VAngX * Lanes + l]; Mem.At(ang, b3 + 1) = st[(VAngX + 1) * Lanes + l]; Mem.At(ang, b3 + 2) = st[(VAngX + 2) * Lanes + l];
             }

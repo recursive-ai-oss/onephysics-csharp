@@ -114,6 +114,7 @@ public sealed partial class PhysicsWorld2D
         _core.Step(new Stages2D(_engine), dt);
         InvalidateQueryPad();
         _engine.ReconcileJoints();
+        UpdateInspectionCounters();
         if (_suppressed == 0)
         {
             if (_handlers.Count > 0 || _jointHandlers.Count > 0) { DispatchEvents(); }

@@ -129,6 +129,7 @@ public sealed partial class PhysicsWorld3D
         _core.Step(new Stages3D(_engine), dt);
         if (soft) { _engine.StepSoft(dt); }
         _engine.ReconcileJoints();
+        UpdateInspectionCounters();
         InvalidateQueryPad();
         BuildPublicEvents();
         if (_suppressed == 0)

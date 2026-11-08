@@ -39,7 +39,7 @@ public readonly struct JointBreak
 /// every copy fails with a <see cref="StaleHandleException"/> naming the joint. Properties that a joint type does not have throw <see cref="InvalidJointException"/>.
 /// Edits take effect at the next step and wake the joint's bodies. The <c>Add*</c> one-liners and <c>CreateJoint</c> return a typed view (for example <c>HingeJoint</c>) that has only the members its kind has and converts implicitly to <see cref="Joint"/>; use <see cref="Joint"/> to hold joints of any kind in one collection (the explicit conversion back checks the kind).
 /// </summary>
-public readonly struct Joint : IEquatable<Joint>
+public readonly partial struct Joint : IEquatable<Joint>
 {
     private readonly PhysicsWorld2D? _world;
     private readonly JointHandle _handle;

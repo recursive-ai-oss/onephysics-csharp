@@ -7,6 +7,7 @@ using Xunit;
 
 namespace RecursiveAI.OnePhysics.Tests.Core;
 
+[Collection("Allocation")]
 public class InspectionTests
 {
     private const float Dt = 1f / 60f;
@@ -31,6 +32,23 @@ public class InspectionTests
 
     private static void EqualCounters(StepCounters a, StepCounters b)
     {
+        Assert.Equal(a.NarrowphasePairs, b.NarrowphasePairs);
+        Assert.Equal(a.NewManifolds, b.NewManifolds);
+        Assert.Equal(a.PersistedManifolds, b.PersistedManifolds);
+        Assert.Equal(a.NewContactPoints, b.NewContactPoints);
+        Assert.Equal(a.PersistedContactPoints, b.PersistedContactPoints);
+        Assert.Equal(a.RecycledContactPoints, b.RecycledContactPoints);
+        Assert.Equal(a.WorldWarmStartPasses, b.WorldWarmStartPasses);
+        Assert.Equal(a.WorldRestitutionPasses, b.WorldRestitutionPasses);
+        Assert.Equal(a.ContactWarmStartPasses, b.ContactWarmStartPasses);
+        Assert.Equal(a.ContactRestitutionPasses, b.ContactRestitutionPasses);
+        Assert.Equal(a.CcdBodies, b.CcdBodies);
+        Assert.Equal(a.CcdHits, b.CcdHits);
+        Assert.Equal(a.BulletBodies, b.BulletBodies);
+        Assert.Equal(a.SoftParticles, b.SoftParticles);
+        Assert.Equal(a.SoftBlocks, b.SoftBlocks);
+        Assert.Equal(a.Characters, b.Characters);
+        Assert.Equal(a.Vehicles, b.Vehicles);
         Assert.Equal(a.AwakeBodies, b.AwakeBodies);
         Assert.Equal(a.AwakeIslands, b.AwakeIslands);
         Assert.Equal(a.AsleepIslands, b.AsleepIslands);
@@ -52,11 +70,13 @@ public class InspectionTests
         Assert.Equal(a.WakeTransitions, b.WakeTransitions);
     }
 
-    [Fact]
-    public void CountersAndHashesAgreeAcrossThreadsWidthsAndProfiling()
+    [Theory]
+    [InlineData(4)]
+    [InlineData(8)]
+    public void CountersAndHashesAgreeAcrossThreadsWidthsAndProfiling(int width)
     {
-        var a = Scene2(1, 1); var b = Scene2(8, 8);
-        var c = Scene3(1, 1); var d = Scene3(8, 8);
+        var a = Scene2(1, 1); var b = Scene2(8, width);
+        var c = Scene3(1, 1); var d = Scene3(8, width);
         long tick2 = 0, tick3 = 0;
         b.Profile.TimestampSource = () => ++tick2;
         d.Profile.TimestampSource = () => ++tick3;
@@ -64,6 +84,14 @@ public class InspectionTests
         {
             a.Step(Dt); b.Step(Dt); c.Step(Dt); d.Step(Dt);
             EqualCounters(a.Counters, b.Counters); EqualCounters(c.Counters, d.Counters);
+            Assert.True(a.Core.BodyReadback.Impulses.SequenceEqual(b.Core.BodyReadback.Impulses));
+            Assert.True(c.Core.BodyReadback.Impulses.SequenceEqual(d.Core.BodyReadback.Impulses));
+            foreach (var counts in new[] { a.Counters, c.Counters })
+            {
+                Assert.Equal(counts.Manifolds, counts.NewManifolds + counts.PersistedManifolds + counts.RecycledManifolds);
+                Assert.Equal(counts.ContactPoints, counts.NewContactPoints + counts.PersistedContactPoints + counts.RecycledContactPoints);
+                Assert.True(counts.PersistedManifolds >= 0 && counts.PersistedContactPoints >= 0 && counts.NarrowphasePairs >= 0);
+            }
             Assert.Equal(a.ComputeHash(), b.ComputeHash()); Assert.Equal(c.ComputeHash(), d.ComputeHash());
         }
         Assert.True(tick2 > 0 && tick3 > 0);

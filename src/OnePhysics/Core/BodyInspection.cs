@@ -17,6 +17,21 @@ public readonly struct BodyInspection
     public bool IsAwake { get { int b = Slot; return _world.Bodies.IsAwake(b); } }
     /// <summary>Accumulated resting time in seconds; reset on wake.</summary>
     public float SleepTime { get { int b = Slot; return _world.Bodies.SleepTime[b]; } }
+    /// <summary>Gravity impulse before damping, kg m/s. World axes; 2D uses xy for linear and z for angular.</summary>
+    public RecursiveAI.OneMath.Vector3D GravityImpulse { get { int b = Slot; return _world.BodyReadback.Vector(b, 0); } }
+    /// <summary>Integrated applied-force impulse plus public direct impulses since the preceding step, kg m/s; excludes solver and service-internal impulses. World axes; 2D uses xy for linear and z for angular.</summary>
+    public RecursiveAI.OneMath.Vector3D ExternalImpulse { get { int b = Slot; return _world.BodyReadback.Vector(b, 3); } }
+    /// <summary>Integrated applied torque plus public direct angular impulses, kg m squared/s. World axes; 2D uses xy for linear and z for angular.</summary>
+    public RecursiveAI.OneMath.Vector3D ExternalAngularImpulse { get { int b = Slot; return _world.BodyReadback.Vector(b, 6); } }
+    /// <summary>Linear momentum removed by damping, kg m/s, before speed clamps. World axes; 2D uses xy for linear and z for angular.</summary>
+    public RecursiveAI.OneMath.Vector3D DampingImpulse { get { int b = Slot; return _world.BodyReadback.Vector(b, 9); } }
+    /// <summary>Angular momentum removed by damping about the centre of mass, kg m squared/s, before speed clamps. World axes; 2D uses xy for linear and z for angular.</summary>
+    public RecursiveAI.OneMath.Vector3D DampingAngularImpulse { get { int b = Slot; return _world.BodyReadback.Vector(b, 12); } }
+    /// <summary>Bit mask of colours in Constraints: bits 0..23 are colours, bit 24 is serial overflow. Uncoloured constraints contribute no bit. No allocation.</summary>
+    public uint ConstraintColorMask
+    {
+        get { uint result = 0; foreach (var c in Constraints) { if (c.Color < 24) { result |= 1u << c.Color; } else if (c.Color == 255) { result |= 1u << 24; } } return result; }
+    }
     /// <summary>Contact and joint constraints touching the body, in ascending slot order, including sleeping contacts; excludes sensors.</summary>
     public BodyConstraintEnumerable Constraints { get { _ = Slot; return new(_world, _body); } }
     /// <summary>Number of contact and joint constraints. Linear in the world's constraint slot count; no allocation.</summary>

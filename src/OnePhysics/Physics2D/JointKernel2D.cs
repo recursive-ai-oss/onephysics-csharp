@@ -39,11 +39,12 @@ internal static class JointKernel2D
         if (phase == SolvePhase.Restitution) { return; } // joints have no restitution pass
         var wide = e.JWide.AsSpan(group * J2D.GroupFloats, J2D.GroupFloats);
         var idx = e.JIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup);
-        if (phase == SolvePhase.WarmStart) { RunWarm<T>(e.BodyState, wide, idx, lane0, lanes); }
-        else { RunSolve<T>(e.BodyState, wide, idx, lane0, lanes, phase == SolvePhase.Solve); }
+        if (phase == SolvePhase.WarmStart) { RunWarm<T>(e.BodyState, wide, idx, e.Core.JointReadback.WideScratch.AsSpan(group * 96, 96), lane0, lanes); }
+        else { RunSolve<T>(e.BodyState, wide, idx, e.Core.JointReadback.WideScratch.AsSpan(group * 96, 96), lane0, lanes, phase == SolvePhase.Solve); }
+        e.Core.JointReadback.ReadWide(group, lane0, lanes, 2);
     }
 
-    private static void RunWarm<T>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, int lane0, int lanes) where T : struct, ILane<T>
+    private static void RunWarm<T>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, Span<float> diagnostics, int lane0, int lanes) where T : struct, ILane<T>
     {
         int width = T.Count;
         T zero = T.Zero;
@@ -59,6 +60,9 @@ internal static class JointKernel2D
             rx = W<T>(wide, J2D.RBx, l0); ry = W<T>(wide, J2D.RBy, l0);
             T rBx = rb.R6 * rx - rb.R7 * ry, rBy = rb.R7 * rx + rb.R6 * ry;
             T lx = W<T>(wide, J2D.P0, l0), ly = W<T>(wide, J2D.P1, l0);
+            T cx = W<T>(wide, J2D.Dx, l0) + (rb.R4 - ra.R4) + rBx - rAx;
+            T cy = W<T>(wide, J2D.Dy, l0) + (rb.R5 - ra.R5) + rBy - rAy;
+            Report(diagnostics, l0, lx, ly, rAx, rAy, rBx, rBy, cx, cy);
             Lin(ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB, mA, iA, mB, iB, rAx, rAy, rBx, rBy, lx, ly);
             // The scalar solver also applies the (zero) sum of the spring, motor and limit impulses as an angular impulse; adding a signed zero is not always a no-op.
             wA = wA - iA * zero; wB = wB + iB * zero;
@@ -67,7 +71,7 @@ internal static class JointKernel2D
         }
     }
 
-    private static void RunSolve<T>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, int lane0, int lanes, bool useBias) where T : struct, ILane<T>
+    private static void RunSolve<T>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, Span<float> diagnostics, int lane0, int lanes, bool useBias) where T : struct, ILane<T>
     {
         int width = T.Count;
         T zero = T.Zero;
@@ -101,11 +105,21 @@ internal static class JointKernel2D
             T by = det * (k11 * qy - k12 * qx);
             T ix = T.Negate(bx) - isc * lx, iy = T.Negate(by) - isc * ly;
             lx = lx + ix; ly = ly + iy;
+            Report(diagnostics, l0, ix, iy, rAx, rAy, rBx, rBy, cx, cy);
             Lin(ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB, mA, iA, mB, iB, rAx, rAy, rBx, rBy, ix, iy);
             lx.StoreAt(wide, J2D.P0 * 8 + l0); ly.StoreAt(wide, J2D.P1 * 8 + l0);
             T.Scatter3(state, idx.Slice(16 + l0, width), vAx, vAy, wA);
             T.Scatter3(state, idx.Slice(24 + l0, width), vBx, vBy, wB);
         }
+    }
+
+    private static void Report<T>(Span<float> target, int lane, T px, T py, T rax, T ray, T rbx, T rby, T cx, T cy) where T : struct, ILane<T>
+    {
+        T zero = T.Zero;
+        px.StoreAt(target, lane); py.StoreAt(target, 8 + lane); zero.StoreAt(target, 16 + lane);
+        zero.StoreAt(target, 24 + lane); zero.StoreAt(target, 32 + lane); (rax * py - ray * px).StoreAt(target, 40 + lane);
+        zero.StoreAt(target, 48 + lane); zero.StoreAt(target, 56 + lane); (rbx * py - rby * px).StoreAt(target, 64 + lane);
+        cx.StoreAt(target, 72 + lane); cy.StoreAt(target, 80 + lane);
     }
 
     // A linear impulse (px, py) at the anchors: pushes B along it and A against it.

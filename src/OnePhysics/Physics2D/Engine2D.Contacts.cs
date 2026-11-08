@@ -179,10 +179,14 @@ internal sealed partial class Engine2D
         int chunks = (PairHigh + 63) / 64;
         if (_blockCounts.Length < chunks) { _blockCounts = new int[Math.Max(chunks, _blockCounts.Length * 2)]; }
         _collideBlocks = chunks;
+        if (_testedSlots.Length < _updateList.Length) { _testedSlots = new byte[_updateList.Length]; }
+        if (_testedCounts.Length < chunks) { _testedCounts = new int[_blockCounts.Length]; _recycledPointCounts = new int[_blockCounts.Length]; }
+        Array.Clear(_testedSlots);
         world.Executor.For(chunks, new CollideTask(this, anyFresh));
         RecycledCount = 0;
         for (int t = 0; t < chunks; t++) { RecycledCount += _recycledCounts[t]; world.Counters.UpdatedPairs += _blockCounts[t]; }
         world.Counters.RecycledManifolds = RecycledCount;
+        for (int t = 0; t < chunks; t++) { world.Counters.NarrowphasePairs += _testedCounts[t]; world.Counters.RecycledContactPoints += _recycledPointCounts[t]; }
         if (anyFresh) { Array.Clear(_fresh, 0, Math.Min(PairHigh, _fresh.Length)); }
         Core.Profile.Mark(StepStage.Apply);
 #if STAGE_TIMERS
@@ -275,7 +279,7 @@ internal sealed partial class Engine2D
             var e = _e;
             int lo = task * 64, hi = Math.Min(lo + 64, e.PairHigh);
             ReadOnlySpan<BodyHot> hot = e.Hot;
-            int acts = 0, recycled = 0, listed = 0;
+            int acts = 0, recycled = 0, listed = 0, tested = 0, points = 0;
             for (int p = lo; p < hi; p++)
             {
                 ref Pair2D pr = ref e.Pairs[p];
@@ -314,9 +318,13 @@ internal sealed partial class Engine2D
                     }
                 }
 
+                tested += e._testedSlots[i];
+                ref readonly var observed = ref e._results[i];
+                if (observed.Recycled || observed.Status == 4) { if (pr.Cons >= 0) { points += e.Core.Constraints.PointCount[pr.Cons]; } }
                 if (act) { e._actItems[task * 64 + acts++] = i; }
             }
 
+            e._testedCounts[task] = tested; e._recycledPointCounts[task] = points;
             e._blockCounts[task] = listed;
             e._actCounts[task] = acts;
             e._recycledCounts[task] = recycled;
@@ -342,6 +350,8 @@ internal sealed partial class Engine2D
     private int[][] _moverLists = [];
     private int[] _moverCounts = [];
     private int[] _blockCounts = new int[4];
+    private byte[] _testedSlots = Array.Empty<byte>();
+    private int[] _testedCounts = Array.Empty<int>(), _recycledPointCounts = Array.Empty<int>();
 
     private readonly struct StartPoseTask : IParallelBody
     {
@@ -518,6 +528,7 @@ internal sealed partial class Engine2D
         double dx = (pBx - (double)wB.X) - (pAx - (double)wA.X);
         double dy = (pBy - (double)wB.Y) - (pAy - (double)wA.Y);
         var xf = Transform2.InvMul(new Transform2(default, qA), new Transform2(new Vec2((float)dx, (float)dy), qB));
+        _testedSlots[i] = 1;
         var m = Collide2D.Collide(in Geom[sa], in Geom[sb], xf, Constants2D.SpeculativeDistance, out float clearance);
         res.Count = m.PointCount;
         if (m.PointCount == 0)
@@ -604,21 +615,23 @@ internal sealed partial class Engine2D
         int count = res.Count;
 
         // Warm-start impulses of the points that keep their feature id (at most two points on either side).
+        int matchedMask = 0;
         float oldN0 = 0f, oldN1 = 0f, oldT0 = 0f, oldT1 = 0f;
         if (oldCount > 0)
         {
             uint id0 = res.Id0, id1 = res.Id1;
             uint o0 = ids[0], o1 = oldCount > 1 ? ids[1] : 0xFFFFFFFFu;
             // Feature ids are never 0xFFFFFFFF (two bytes), so the sentinel cannot match.
-            if (o0 == id0) { oldN0 = Mem.At(pl, ManifoldLayout.NormalImpulse(0)); oldT0 = Mem.At(pl, ManifoldLayout.Tangent1Impulse(0)); }
-            else if (o1 == id0) { oldN0 = Mem.At(pl, ManifoldLayout.NormalImpulse(1)); oldT0 = Mem.At(pl, ManifoldLayout.Tangent1Impulse(1)); }
+            if (o0 == id0) { matchedMask |= 1; oldN0 = Mem.At(pl, ManifoldLayout.NormalImpulse(0)); oldT0 = Mem.At(pl, ManifoldLayout.Tangent1Impulse(0)); }
+            else if (o1 == id0) { matchedMask |= 1; oldN0 = Mem.At(pl, ManifoldLayout.NormalImpulse(1)); oldT0 = Mem.At(pl, ManifoldLayout.Tangent1Impulse(1)); }
             if (count > 1)
             {
-                if (o0 == id1) { oldN1 = Mem.At(pl, ManifoldLayout.NormalImpulse(0)); oldT1 = Mem.At(pl, ManifoldLayout.Tangent1Impulse(0)); }
-                else if (o1 == id1) { oldN1 = Mem.At(pl, ManifoldLayout.NormalImpulse(1)); oldT1 = Mem.At(pl, ManifoldLayout.Tangent1Impulse(1)); }
+                if (o0 == id1) { matchedMask |= 2; oldN1 = Mem.At(pl, ManifoldLayout.NormalImpulse(0)); oldT1 = Mem.At(pl, ManifoldLayout.Tangent1Impulse(0)); }
+                else if (o1 == id1) { matchedMask |= 2; oldN1 = Mem.At(pl, ManifoldLayout.NormalImpulse(1)); oldT1 = Mem.At(pl, ManifoldLayout.Tangent1Impulse(1)); }
             }
         }
 
+        Core.InspectContactBirth(c, count, matchedMask);
         float rolling = oldCount > 0 ? Mem.At(pl, ManifoldLayout.RollingImpulse) : 0f;
         float mixFriction, mixRestitution, mixRolling;
         if (keepMix) { mixFriction = Mem.At(pl, ManifoldLayout.Friction); mixRestitution = Mem.At(pl, ManifoldLayout.Restitution); mixRolling = Mem.At(pl, ManifoldLayout.RollingResistance); }

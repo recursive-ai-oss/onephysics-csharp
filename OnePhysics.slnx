@@ -12,6 +12,7 @@
     <Project Path="tests/OnePhysics.Tests/OnePhysics.Tests.csproj" />
     <Project Path="tests/ReadmeExamples/ReadmeExamples.csproj" />
     <Project Path="tests/AotSmoke/AotSmoke.csproj" />
+    <Project Path="tests/Trim2DSmoke/Trim2DSmoke.csproj" />
     <Project Path="tests/WasmSmoke/WasmSmoke.csproj" />
   </Folder>
   <Folder Name="/fuzz/">
@@ -22,6 +23,7 @@
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/HashMatrix/HashMatrix.csproj" />
+    <Project Path="tools/TrimCheck/TrimCheck.csproj" />
   </Folder>
   <Folder Name="/bench/">
     <Project Path="bench/Bar/Bar.csproj" />

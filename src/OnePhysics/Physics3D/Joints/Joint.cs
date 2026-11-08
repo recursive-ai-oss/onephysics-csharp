@@ -41,7 +41,7 @@ public readonly struct JointBreak
 /// Edits take effect at the next step and wake the joint's bodies. The <c>Add*</c> one-liners and <c>CreateJoint</c> return a typed view (for example <c>HingeJoint</c>) that has only the members its kind has and converts implicitly to <see cref="Joint"/>; use <see cref="Joint"/> to hold joints of any kind in one collection (the explicit conversion back checks the kind).
 /// </summary>
 [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
-public readonly struct Joint : IEquatable<Joint>
+public readonly partial struct Joint : IEquatable<Joint>
 {
     private const uint Hinge = 1u << (int)JointType3D.Hinge, Slider = 1u << (int)JointType3D.Slider, Distance = 1u << (int)JointType3D.Distance, Path = 1u << (int)JointType3D.Path;
     private const uint LimitTypes = Hinge | Slider | Distance, MotorTypes = Hinge | Slider | Path, SpringTypes = Hinge | Slider | Distance;

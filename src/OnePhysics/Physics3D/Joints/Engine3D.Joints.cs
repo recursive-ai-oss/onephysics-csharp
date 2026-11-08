@@ -384,6 +384,7 @@ internal sealed partial class Engine3D
         var w = WideJ.AsSpan(group * J3D.GroupFloats, J3D.GroupFloats);
         var idx = WideJIdx.AsSpan(group * J3D.IdxPerGroup, J3D.IdxPerGroup);
         SlotOf[c] = group * J3D.Lanes + lane;
+        Core.JointReadback.WideSlots[group * 8 + lane] = c;
         float mA = bodies.InverseMass[a], mB = bodies.InverseMass[b];
         idx[lane] = a; idx[8 + lane] = b;
         idx[16 + lane] = mA > 0f ? a : -1; idx[24 + lane] = mB > 0f ? b : -1;

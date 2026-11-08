@@ -170,6 +170,7 @@ public sealed partial class WorldCore
     /// <summary>Creates a world. The options are copied and validated (<see cref="WorldOptions.Validate"/>).</summary>
     public WorldCore(WorldOptions? options = null)
     {
+        JointReadback = new JointReadback(this);
         _options = (options ?? new WorldOptions()).Clone();
         _options.Validate();
         if (_options.WorldId == 0)
@@ -329,6 +330,7 @@ public sealed partial class WorldCore
 
         int b = _bodies.AllocateSlot();
         _bodies.ClearSlot(b);
+        BodyReadback.Initialize(b);
         position.CopyTo(_bodies.PositionOf(b));
         if (rotation.Length > 0) { rotation.CopyTo(_bodies.RotationOf(b)); } else { l.WriteIdentityRotation(_bodies.RotationOf(b)); }
         linearVelocity.CopyTo(_bodies.LinearVelocityOf(b));
@@ -491,6 +493,8 @@ public sealed partial class WorldCore
         }
 
         if (desc.Kind != ConstraintKind.Joint) { EmitConstraintEvent(desc.Kind == ConstraintKind.Sensor ? EventKind.SensorEnter : EventKind.ContactBegin, c, true, 0f); }
+        if (desc.Kind == ConstraintKind.Joint) { JointReadback.Track(c); }
+        if (desc.Kind == ConstraintKind.Contact && _collectTransitions) { ReserveInspectionContacts(c + 1); _newContacts[c] = 1; }
         return c;
     }
 
@@ -606,6 +610,8 @@ public sealed partial class WorldCore
         _options.Validate();
         _events.ClearDelivered();
         Counters.Reset();
+        JointReadback.Begin(dt);
+        BodyReadback.Begin(_bodies.HighWater, _options.Gravity);
         _collectTransitions = true;
         try
         {
@@ -616,6 +622,7 @@ public sealed partial class WorldCore
 #endif
             ReadContactSchedule();
             BuildAwakeBodies();
+            CaptureContactsForInspection();
             stages.UpdateContacts(this);
             BuildAwakeBodies();
             Profile.Mark(StepStage.Coloring);
@@ -626,6 +633,8 @@ public sealed partial class WorldCore
             _coloring.BuildActive(_bodies, _constraints, Executor, _awakeCount > 0);
             var ctx = new StepContext(dt, _options.Substeps, 0);
             var ctxLite = new StepContext(dt, _liteSubsteps, 1);
+            _fullIntegratedTime = (double)ctx.SubstepDt * ctx.Substeps;
+            _liteIntegratedTime = _liteOn ? (double)ctxLite.SubstepDt * ctxLite.Substeps : _fullIntegratedTime;
             int active = _coloring.ActiveCount;
             CaptureSolverCounters();
             int storeChunks = (active + ChunkSize - 1) / ChunkSize;
@@ -658,8 +667,8 @@ public sealed partial class WorldCore
                 int relax = prog == 0 ? _options.RelaxIterations : _liteRelax;
                 var progBodies = split ? (prog == 0 ? _awakeFull : _awakeLite) : _awake;
                 int progCount = split ? (prog == 0 ? _awakeFullCount : _awakeLiteCount) : _awakeCount;
-                if (prog == 0) { Counters.WorldSubsteps = subs; Counters.WorldSolvePasses = subs * vel; Counters.WorldRelaxPasses = subs * relax; }
-                else { Counters.ContactSubsteps = subs; Counters.ContactSolvePasses = subs * vel; Counters.ContactRelaxPasses = subs * relax; }
+                if (prog == 0) { Counters.WorldSubsteps = subs; Counters.WorldWarmStartPasses = subs; Counters.WorldRestitutionPasses = 1; Counters.WorldSolvePasses = subs * vel; Counters.WorldRelaxPasses = subs * relax; }
+                else { Counters.ContactSubsteps = subs; Counters.ContactWarmStartPasses = subs; Counters.ContactRestitutionPasses = 1; Counters.ContactSolvePasses = subs * vel; Counters.ContactRelaxPasses = subs * relax; }
                 int progChunks = (progCount + ChunkSize - 1) / ChunkSize;
                 _stageCount = 0;
                 _stageMostTasks = 0;
@@ -743,6 +752,9 @@ public sealed partial class WorldCore
     }
 
     /// <summary>Substeps the constraint ran in the last step: the contact-only schedule's when it belonged to an island on it, else the world's.</summary>
+    private double _fullIntegratedTime, _liteIntegratedTime;
+    internal double IntegratedTimeOfBody(int body) => _splitActive && _bodies.Island[body] >= 0 && _islandFull[_bodies.Island[body]] == 0 ? _liteIntegratedTime : _fullIntegratedTime;
+
     internal int SubstepsOf(int constraint) => _splitActive && constraint < _consLite.Length && _consLite[constraint] != 0 ? _liteSubsteps : _options.Substeps;
 
     // Decides each island's schedule from its content at the start of the step: an island holds the joint schedule when any of its constraints is a joint, when it touches a kinematic body (which then moves on that schedule),
@@ -875,6 +887,8 @@ public sealed partial class WorldCore
     internal void Reserve(int contacts, int islands, int bodies)
     {
         _constraints.Reserve(contacts);
+        ReserveInspectionContacts(Math.Max(contacts, _constraints.HighWater));
+        BodyReadback.Reserve(bodies);
         _scratch.EnsureCapacity(bodies);
         _coloring.Reserve(contacts, bodies);
         _islands.Reserve(islands, bodies);
@@ -1190,7 +1204,7 @@ public sealed partial class WorldCore
         }
 
         var breaking = _scratch.ToArray();
-        foreach (int c in breaking) { RemoveInternal(c, _constraints.BreakValue[c], true); }
+        foreach (int c in breaking) { JointReadback.MarkBroken(c); RemoveInternal(c, _constraints.BreakValue[c], true); }
     }
 
     private const int SleepBlock = 256;

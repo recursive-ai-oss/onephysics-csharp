@@ -115,7 +115,7 @@ internal sealed partial class Engine3D
             if (d.MaxSpeed * dt > maxTravel) { maxTravel = d.MaxSpeed * dt; }
         }
 
-        if (_awakeSoftCount == 0) { return; }
+        if (_awakeSoftCount == 0) { Core.Profile.Mark(StepStage.SoftEnd); return; }
         for (int a = 0; a < _awakeSoftCount; a++) { if (_awakeSoft[a].IsSkinned) { PrepareSkin(_awakeSoft[a]); } }
         for (int a = 0; a < _awakeSoftCount; a++) { BeginSoftBody(_awakeSoft[a]); }
         var g = Opt.Gravity;
@@ -125,6 +125,8 @@ internal sealed partial class Engine3D
 
         int total = 0;
         for (int a = 0; a < _awakeSoftCount; a++) { _awakeSoft[a].Base = total; total += _awakeSoft[a].N; }
+        Core.Counters.SoftParticles = total;
+        for (int a = 0; a < _awakeSoftCount; a++) { Core.Counters.SoftBlocks += _awakeSoft[a].BlockCount; }
         GrowTo(ref _gData, total); GrowTo(ref _gPart, total); GrowTo(ref _gridKeys, total); GrowTo(ref _gridStart, total + 1);
         for (int a = 0; a < _awakeSoftCount; a++)
         {

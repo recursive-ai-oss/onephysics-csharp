@@ -45,10 +45,45 @@ public sealed class StepCounters
     /// <summary>Bodies woken during the core step, independent of event masks.</summary>
     public int WakeTransitions { get; internal set; }
 
+    /// <summary>Pairs that actually ran a fresh narrowphase query, excluding early rejection and reuse.</summary>
+    public int NarrowphasePairs { get; internal set; }
+    /// <summary>Active manifolds not present before contact update.</summary>
+    public int NewManifolds { get; internal set; }
+    /// <summary>Active old manifolds refreshed rather than recycled.</summary>
+    public int PersistedManifolds { get; internal set; }
+    /// <summary>Active points whose feature id was not present before contact update.</summary>
+    public int NewContactPoints { get; internal set; }
+    /// <summary>Active feature-matched points refreshed rather than recycled.</summary>
+    public int PersistedContactPoints { get; internal set; }
+    /// <summary>Points in successfully recycled manifolds.</summary>
+    public int RecycledContactPoints { get; internal set; }
+    /// <summary>Warm-start passes executed by the world schedule.</summary>
+    public int WorldWarmStartPasses { get; internal set; }
+    /// <summary>Restitution passes executed by the world schedule.</summary>
+    public int WorldRestitutionPasses { get; internal set; }
+    /// <summary>Warm-start passes executed by the contact-only schedule.</summary>
+    public int ContactWarmStartPasses { get; internal set; }
+    /// <summary>Restitution passes executed by the contact-only schedule.</summary>
+    public int ContactRestitutionPasses { get; internal set; }
+    /// <summary>Bodies selected for a continuous sweep.</summary>
+    public int CcdBodies { get; internal set; }
+    /// <summary>Bodies stopped by a continuous sweep, counted once per body.</summary>
+    public int CcdHits { get; internal set; }
+    /// <summary>Bullet bodies selected for continuous collision.</summary>
+    public int BulletBodies { get; internal set; }
+    /// <summary>Particles in awake soft bodies selected for the soft solve.</summary>
+    public int SoftParticles { get; internal set; }
+    /// <summary>Blocks in awake soft bodies selected for the soft solve.</summary>
+    public int SoftBlocks { get; internal set; }
+    /// <summary>Live character controllers after the step.</summary>
+    public int Characters { get; internal set; }
+    /// <summary>Live vehicle controllers after the step.</summary>
+    public int Vehicles { get; internal set; }
     internal Span<int> Colors => _colors;
     internal void Reset()
     {
         Array.Clear(_colors);
+        NarrowphasePairs = NewManifolds = PersistedManifolds = NewContactPoints = PersistedContactPoints = RecycledContactPoints = WorldWarmStartPasses = WorldRestitutionPasses = ContactWarmStartPasses = ContactRestitutionPasses = CcdBodies = CcdHits = BulletBodies = SoftParticles = SoftBlocks = Characters = Vehicles = 0;
         AwakeBodies = AwakeIslands = AsleepIslands = BroadphasePairs = UpdatedPairs = RecycledManifolds = 0;
         Manifolds = ContactPoints = Joints = SerialOverflow = 0;
         WorldSubsteps = WorldSolvePasses = WorldRelaxPasses = ContactSubsteps = ContactSolvePasses = ContactRelaxPasses = 0;
