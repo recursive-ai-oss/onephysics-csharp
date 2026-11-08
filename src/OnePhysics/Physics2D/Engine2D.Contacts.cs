@@ -179,9 +179,7 @@ internal sealed partial class Engine2D
         int chunks = (PairHigh + 63) / 64;
         if (_blockCounts.Length < chunks) { _blockCounts = new int[Math.Max(chunks, _blockCounts.Length * 2)]; }
         _collideBlocks = chunks;
-        if (_testedSlots.Length < _updateList.Length) { _testedSlots = new byte[_updateList.Length]; }
         if (_testedCounts.Length < chunks) { _testedCounts = new int[_blockCounts.Length]; _recycledPointCounts = new int[_blockCounts.Length]; }
-        Array.Clear(_testedSlots);
         world.Executor.For(chunks, new CollideTask(this, anyFresh));
         RecycledCount = 0;
         for (int t = 0; t < chunks; t++) { RecycledCount += _recycledCounts[t]; world.Counters.UpdatedPairs += _blockCounts[t]; }
@@ -291,10 +289,11 @@ internal sealed partial class Engine2D
                 int i = lo + listed++;
                 e._updateList[i] = p;
                 bool act;
-                if (e.Collide(i, ref pr, hot))
+                if (e.Collide(i, ref pr, hot, ref tested))
                 {
                     // Recycled in place: the manifold is already in the constraint. Only a sleeping body that must wake needs the serial stage.
                     recycled++;
+                    points += e.Core.Constraints.PointCount[pr.Cons];
                     act = (flags & BodyHot.AsleepDynamic) != 0;
                     // What the serial stage and the write stage read: a manifold already written (an entry left from an earlier step must not be taken for a new one).
                     ref PairResult done = ref e._results[i];
@@ -312,15 +311,12 @@ internal sealed partial class Engine2D
                         act = c < 0 || pr.Sensor || (flags & BodyHot.AsleepDynamic) != 0;
                         if (!pr.Sensor)
                         {
-                            if (res.Recycled) { recycled++; }
+                            if (res.Recycled) { recycled++; if (c >= 0) { points += e.Core.Constraints.PointCount[c]; } }
                             if (res.Status == 1) { res.Status = 3; } // a fresh manifold to write into the pair's constraint (the serial stage sets the same for the pairs it handles)
                         }
                     }
                 }
 
-                tested += e._testedSlots[i];
-                ref readonly var observed = ref e._results[i];
-                if (observed.Recycled || observed.Status == 4) { if (pr.Cons >= 0) { points += e.Core.Constraints.PointCount[pr.Cons]; } }
                 if (act) { e._actItems[task * 64 + acts++] = i; }
             }
 
@@ -350,7 +346,6 @@ internal sealed partial class Engine2D
     private int[][] _moverLists = [];
     private int[] _moverCounts = [];
     private int[] _blockCounts = new int[4];
-    private byte[] _testedSlots = Array.Empty<byte>();
     private int[] _testedCounts = Array.Empty<int>(), _recycledPointCounts = Array.Empty<int>();
 
     private readonly struct StartPoseTask : IParallelBody
@@ -461,7 +456,7 @@ internal sealed partial class Engine2D
     }
 
     // Returns true when the pair's manifold was recycled in place (written straight into its constraint); otherwise the result is in _results[i].
-    private bool Collide(int i, ref Pair2D pr, ReadOnlySpan<BodyHot> hot)
+    private bool Collide(int i, ref Pair2D pr, ReadOnlySpan<BodyHot> hot, ref int tested)
     {
         int sa = pr.A, sb = pr.B;
         ref readonly BodyHot hA = ref hot[pr.BodyA];
@@ -528,7 +523,7 @@ internal sealed partial class Engine2D
         double dx = (pBx - (double)wB.X) - (pAx - (double)wA.X);
         double dy = (pBy - (double)wB.Y) - (pAy - (double)wA.Y);
         var xf = Transform2.InvMul(new Transform2(default, qA), new Transform2(new Vec2((float)dx, (float)dy), qB));
-        _testedSlots[i] = 1;
+        tested++;
         var m = Collide2D.Collide(in Geom[sa], in Geom[sb], xf, Constants2D.SpeculativeDistance, out float clearance);
         res.Count = m.PointCount;
         if (m.PointCount == 0)

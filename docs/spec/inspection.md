@@ -3,8 +3,9 @@
 Inspection is read-only, between steps, and does not enter a snapshot or world
 hash. Both worlds expose `Counters` and `Profile`; both body handles expose
 `Inspect()`. The raw world exposes the same objects and `InspectBody(handle)`.
-These APIs do not require callbacks with struct constraints. They allocate only
-when the world is created, not when a step or inspection runs.
+These APIs do not require callbacks with struct constraints. After warmup or
+equivalent capacity reservation, steps and inspection allocate nothing within
+the reserved capacities.
 
 ## Optional detail collection
 
@@ -55,7 +56,10 @@ step may leave incomplete diagnostics.
   are not counted.
 
 Counters are combined on the stepping thread. Collision workers write only their
-own chunk's count and chunks combine in ascending index order. Neither thread
+own chunk's count and chunks combine in ascending index order. Active constraint
+counts are folded into the existing colour-bucketing scan, with block-local
+integer sums combined in ascending block order; no extra serial constraint scan
+is needed unless detailed joint metadata is requested. Neither thread
 count nor SIMD width determines a counter. Counters do not change stepping
 options, scheduling, solver order, or floating-point calculations.
 

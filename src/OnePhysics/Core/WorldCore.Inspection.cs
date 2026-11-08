@@ -53,16 +53,12 @@ public sealed partial class WorldCore
         Counters.AwakeBodies = _awakeCount;
         Counters.SerialOverflow = _coloring.Overflow.Length;
         for (int i = 0; i < ConstraintColoring.ColorCount; i++) { Counters.Colors[i] = _coloring.Color(i).Length; }
-        foreach (int c in _coloring.Active)
+        _coloring.CaptureCounts(Counters);
+        if (_options.DetailedInspection)
         {
-            if (_constraints.KindOf(c) == ConstraintKind.Joint) { if (_options.DetailedInspection) { JointReadback.Track(c, true); } Counters.Joints++; }
-            else if (_constraints.KindOf(c) == ConstraintKind.Contact)
+            foreach (int c in _coloring.Active)
             {
-                Counters.Manifolds++;
-                int count = _constraints.PointCount[c];
-                Counters.ContactPoints += count;
-                if (_newContacts[c] != 0) { Counters.NewManifolds++; }
-                Counters.NewContactPoints += _newContactPoints[c];
+                if (_constraints.KindOf(c) == ConstraintKind.Joint) { JointReadback.Track(c, true); }
             }
         }
         Counters.PersistedManifolds = Counters.Manifolds - Counters.NewManifolds - Counters.RecycledManifolds;

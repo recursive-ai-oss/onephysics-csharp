@@ -45,7 +45,7 @@ public sealed class ConstraintColoring
         EnsureBodies(bodies);
         if (_list.Length < constraints) { Array.Resize(ref _list, constraints); }
         if (_bucketOf.Length < constraints) { Array.Resize(ref _bucketOf, constraints); }
-        int hist = ((constraints + ActiveBlock - 1) / ActiveBlock) * (ColorCount + 1);
+        int hist = ((constraints + ActiveBlock - 1) / ActiveBlock) * HistogramStride;
         if (_hist.Length < hist) { Array.Resize(ref _hist, hist); }
     }
 
@@ -119,9 +119,9 @@ public sealed class ConstraintColoring
     }
 
     /// <summary>Buckets the active constraints (not sensors, not uncolored, at least one awake dynamic body) by color, each bucket in ascending constraint index.</summary>
-    internal void BuildActive(BodyStore bodies, ConstraintStore cons, TaskExecutor? executor = null, bool anyAwake = true)
+    internal void BuildActive(BodyStore bodies, ConstraintStore cons, byte[] births, byte[] newPoints, TaskExecutor? executor = null, bool anyAwake = true)
     {
-        Array.Clear(_start);
+        Array.Clear(_start); _activeBlocks = 0;
         // A constraint is active only through an awake dynamic body; with no awake or kinematic body at all (a world that has fallen asleep) nothing is, and the scan can be skipped.
         if (!anyAwake) { return; }
         int n = cons.HighWater;
@@ -133,8 +133,9 @@ public sealed class ConstraintColoring
         // whatever the number of threads, and a second pass fills each block's share of the list.
         int blocks = (n + ActiveBlock - 1) / ActiveBlock;
         const int Buckets = ColorCount + 1;
-        if (_hist.Length < blocks * Buckets) { _hist = new int[Math.Max(blocks * Buckets, _hist.Length * 2)]; }
-        var count = new ActiveBlockTask(bodies, cons, bucketOf, _hist);
+        _activeBlocks = blocks;
+        if (_hist.Length < blocks * HistogramStride) { _hist = new int[Math.Max(blocks * HistogramStride, _hist.Length * 2)]; }
+        var count = new ActiveBlockTask(bodies, cons, bucketOf, _hist, births, newPoints);
         if (executor != null && blocks > 1) { executor.For(blocks, count); }
         else { for (int blk = 0; blk < blocks; blk++) { count.Run(blk); } }
 
@@ -144,8 +145,8 @@ public sealed class ConstraintColoring
             _start[bucket] = total;
             for (int blk = 0; blk < blocks; blk++)
             {
-                int c = _hist[blk * Buckets + bucket];
-                _hist[blk * Buckets + bucket] = total; // from here on: where this block's first constraint of the bucket goes
+                int c = _hist[blk * HistogramStride + bucket];
+                _hist[blk * HistogramStride + bucket] = total; // from here on: where this block's first constraint of the bucket goes
                 total += c;
             }
         }
@@ -157,7 +158,22 @@ public sealed class ConstraintColoring
         else { for (int blk = 0; blk < blocks; blk++) { fill.Run(blk); } }
     }
 
-    private int[] _hist = new int[(ColorCount + 1) * 8];
+    private int[] _hist = new int[HistogramStride * 8];
+    private int _activeBlocks;
+
+    // Fold diagnostic counts into the existing active scan rather than walking the solve list again serially.
+    internal void CaptureCounts(StepCounters counters)
+    {
+        int joints = 0, contacts = 0, points = 0, births = 0, newPoints = 0;
+        for (int b = 0; b < _activeBlocks; b++)
+        {
+            int o = b * HistogramStride + ColorCount + 1;
+            joints += _hist[o]; contacts += _hist[o + 1]; points += _hist[o + 2];
+            births += _hist[o + 3]; newPoints += _hist[o + 4];
+        }
+        counters.Joints = joints; counters.Manifolds = contacts; counters.ContactPoints = points;
+        counters.NewManifolds = births; counters.NewContactPoints = newPoints;
+    }
 
     private readonly struct ActiveFillTask : IParallelBody
     {
@@ -168,7 +184,7 @@ public sealed class ConstraintColoring
         public void Run(int block)
         {
             const int Buckets = ColorCount + 1;
-            var cursor = _hist.AsSpan(block * Buckets, Buckets);
+            var cursor = _hist.AsSpan(block * HistogramStride, Buckets);
             int lo = block * ActiveBlock, hi = Math.Min(lo + ActiveBlock, _n);
             for (int c = lo; c < hi; c++)
             {
@@ -181,26 +197,36 @@ public sealed class ConstraintColoring
 
     private const byte Inactive = 255;
     private const int ActiveBlock = 512;
+    private const int HistogramStride = ColorCount + 1 + 5;
     private byte[] _bucketOf = new byte[64];
 
     private readonly struct ActiveBlockTask : IParallelBody
     {
-        private readonly BodyStore _bodies; private readonly ConstraintStore _cons; private readonly byte[] _bucketOf; private readonly int[] _hist;
+        private readonly BodyStore _bodies; private readonly ConstraintStore _cons; private readonly byte[] _bucketOf, _births, _newPoints; private readonly int[] _hist;
 
-        public ActiveBlockTask(BodyStore bodies, ConstraintStore cons, byte[] bucketOf, int[] hist) { _bodies = bodies; _cons = cons; _bucketOf = bucketOf; _hist = hist; }
+        public ActiveBlockTask(BodyStore bodies, ConstraintStore cons, byte[] bucketOf, int[] hist, byte[] births, byte[] newPoints) { _bodies = bodies; _cons = cons; _bucketOf = bucketOf; _hist = hist; _births = births; _newPoints = newPoints; }
 
         public void Run(int block)
         {
             var cons = _cons;
             var kind = cons.Kind; var color = cons.Color; var ba = cons.BodyA; var bb = cons.BodyB;
-            var row = _hist.AsSpan(block * (ColorCount + 1), ColorCount + 1);
+            var row = _hist.AsSpan(block * HistogramStride, HistogramStride);
             row.Clear();
+            var points = cons.PointCount;
+            int joints = 0, contacts = 0, pointCount = 0, births = 0, newPoints = 0;
             int lo = block * ActiveBlock, hi = Math.Min(lo + ActiveBlock, cons.HighWater);
             for (int c = lo; c < hi; c++)
             {
-                if (IsActive(_bodies, kind[c], color[c], ba[c], bb[c])) { int bucket = Bucket(color[c]); _bucketOf[c] = (byte)bucket; row[bucket]++; }
+                if (IsActive(_bodies, kind[c], color[c], ba[c], bb[c]))
+                {
+                    int bucket = Bucket(color[c]); _bucketOf[c] = (byte)bucket; row[bucket]++;
+                    if (kind[c] == (byte)ConstraintKind.Joint) { joints++; }
+                    else { contacts++; pointCount += points[c]; births += _births[c]; newPoints += _newPoints[c]; }
+                }
                 else { _bucketOf[c] = Inactive; }
             }
+            row[ColorCount + 1] = joints; row[ColorCount + 2] = contacts; row[ColorCount + 3] = pointCount;
+            row[ColorCount + 4] = births; row[ColorCount + 5] = newPoints;
         }
     }
 

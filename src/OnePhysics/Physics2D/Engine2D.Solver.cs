@@ -632,6 +632,12 @@ internal sealed partial class Engine2D
 
     public void IntegrateVelocities(ReadOnlySpan<int> list, in StepContext ctx)
     {
+        if (Opt.DetailedInspection) { IntegrateVelocities<CollectInspection>(list, ctx); }
+        else { IntegrateVelocities<SkipInspection>(list, ctx); }
+    }
+
+    private void IntegrateVelocities<TInspection>(ReadOnlySpan<int> list, in StepContext ctx) where TInspection : struct, IInspectionMode
+    {
         var bodies = Core.Bodies;
         Span<float> st = BodyState;
         ReadOnlySpan<float> invMass = bodies.InverseMass, invI = bodies.InverseInertia;
@@ -650,13 +656,14 @@ internal sealed partial class Engine2D
             float w = st[o + BS2D.W] + h * (invI[b] * Torque[b]);
             float dl = 1f / (1f + h * LinearDamping[b]);
             float da = 1f / (1f + h * AngularDamping[b]);
-            float undampedX = vx, undampedY = vy, undampedW = w;
-            vx *= dl; vy *= dl; w *= da;
-            if (Opt.DetailedInspection && (LinearDamping[b] != 0f || AngularDamping[b] != 0f))
+            if (TInspection.Enabled && (LinearDamping[b] != 0f || AngularDamping[b] != 0f))
             {
+                float undampedX = vx, undampedY = vy, undampedW = w;
+                vx *= dl; vy *= dl; w *= da;
                 double mass = 1.0 / invMass[b];
                 Core.BodyReadback.Damping(b, new((vx - undampedX) * mass, (vy - undampedY) * mass, 0), new(0, 0, invI[b] > 0f ? (w - undampedW) / (double)invI[b] : 0));
             }
+            else { vx *= dl; vy *= dl; w *= da; }
             float v2 = vx * vx + vy * vy;
             if (v2 > maxSpeed2)
             {
@@ -697,6 +704,12 @@ internal sealed partial class Engine2D
 
     public void FinalizeBodies(ReadOnlySpan<int> list, in StepContext ctx)
     {
+        if (Opt.DetailedInspection) { FinalizeBodies<CollectInspection>(list, ctx); }
+        else { FinalizeBodies<SkipInspection>(list, ctx); }
+    }
+
+    private void FinalizeBodies<TInspection>(ReadOnlySpan<int> list, in StepContext ctx) where TInspection : struct, IInspectionMode
+    {
         var bodies = Core.Bodies;
         Span<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
         foreach (int b in list)
@@ -705,7 +718,7 @@ internal sealed partial class Engine2D
             Dp[2 * b] = BodyState[o + BS2D.Dpx]; Dp[2 * b + 1] = BodyState[o + BS2D.Dpy];
             if (bodies.TypeOf(b) != BodyType.Dynamic) { continue; }
             lin[2 * b] = BodyState[o + BS2D.Vx]; lin[2 * b + 1] = BodyState[o + BS2D.Vy]; ang[b] = BodyState[o + BS2D.W];
-            if (Opt.DetailedInspection) { Core.BodyReadback.Inputs(b, bodies.InverseMass[b], GravityScale[b], new(Force[2 * b], Force[2 * b + 1], 0), new(0, 0, Torque[b]), Core.IntegratedTimeOfBody(b)); }
+            if (TInspection.Enabled) { Core.BodyReadback.Inputs(b, bodies.InverseMass[b], GravityScale[b], new(Force[2 * b], Force[2 * b + 1], 0), new(0, 0, Torque[b]), Core.IntegratedTimeOfBody(b)); }
             Force[2 * b] = 0f; Force[2 * b + 1] = 0f; Torque[b] = 0f;
             // Bullets are swept after every body has finished (RunBullets), against static and moving shapes alike.
             if (Opt.ContinuousEnabled && !IsBullet(b)) { Continuous(b); }

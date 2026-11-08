@@ -631,7 +631,7 @@ public sealed partial class WorldCore
             StageProbe.Mark(StageProbe.Coloring);
 #endif
             _coloring.EnsureBodies(_bodies.HighWater);
-            _coloring.BuildActive(_bodies, _constraints, Executor, _awakeCount > 0);
+            _coloring.BuildActive(_bodies, _constraints, _newContacts, _newContactPoints, Executor, _awakeCount > 0);
             var ctx = new StepContext(dt, _options.Substeps, 0);
             var ctxLite = new StepContext(dt, _liteSubsteps, 1);
             _fullIntegratedTime = (double)ctx.SubstepDt * ctx.Substeps;

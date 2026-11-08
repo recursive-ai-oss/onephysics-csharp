@@ -27,7 +27,6 @@ internal sealed partial class Engine2D
         int need = (pairs + 1023) / 1024 * 1024;
         if (_updateList.Length < need) { _updateList = new int[need]; _results = new PairResult[need]; _actItems = new int[need]; }
         if (_actCounts.Length < need / 64) { _actCounts = new int[need / 64]; _recycledCounts = new int[need / 64]; }
-        if (_testedSlots.Length < _updateList.Length) { _testedSlots = new byte[_updateList.Length]; }
         int chunks = (pairs + 63) / 64;
         if (_testedCounts.Length < chunks) { _testedCounts = new int[chunks]; _recycledPointCounts = new int[chunks]; }
         if (_blockCounts.Length < chunks) { _blockCounts = new int[chunks]; }

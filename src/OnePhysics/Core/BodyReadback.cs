@@ -3,6 +3,11 @@ using RecursiveAI.OneMath;
 
 namespace RecursiveAI.OnePhysics.LowLevel;
 
+// Struct specialization removes diagnostic temporaries from the default scalar integration loop.
+internal interface IInspectionMode { static abstract bool Enabled { get; } }
+internal readonly struct CollectInspection : IInspectionMode { public static bool Enabled => true; }
+internal readonly struct SkipInspection : IInspectionMode { public static bool Enabled => false; }
+
 /// <summary>Unsaved body input and damping impulses. Fifteen doubles per body: gravity xyz, external linear xyz, external angular xyz, damping linear xyz, damping angular xyz. World axes; 2D uses xy and angular z.</summary>
 public sealed class BodyReadback
 {
