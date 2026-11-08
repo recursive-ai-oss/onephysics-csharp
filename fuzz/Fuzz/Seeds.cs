@@ -26,6 +26,9 @@ internal static class Seeds
             }
         }
 
+        File.WriteAllBytes(Path.Combine(root, "replay", "planar"), FuzzReplay.Seed(2));
+        File.WriteAllBytes(Path.Combine(root, "replay", "spatial"), FuzzReplay.Seed(3));
+
         // The raw snapshot reader starts from a real snapshot so that mutations get past the header.
         File.WriteAllBytes(Path.Combine(root, "snapshot-raw", "valid"), Program.BaseSnapshot());
 
