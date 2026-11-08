@@ -139,6 +139,7 @@ public sealed partial class PhysicsWorld3D
         InvalidateQueryPad();
         BuildPublicEvents();
         _recorder?.SimulationEnded();
+        if (ContactModifier != null) { _recorder?.SimulationEffect("ContactModification"); }
         if (_suppressed == 0)
         {
             if (_handlers.Count > 0 || _jointHandlers.Count > 0) { DispatchEvents(); }

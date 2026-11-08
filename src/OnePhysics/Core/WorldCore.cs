@@ -185,6 +185,7 @@ public sealed partial class WorldCore
         _islands = new IslandSet();
         _events = new EventCollector(_options);
         _origin = new double[Layout.PositionLanes];
+        AddSection(ContactModifications);
     }
 
     /// <summary>The id stamped into this world's handles.</summary>

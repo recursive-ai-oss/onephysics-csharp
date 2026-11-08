@@ -121,6 +121,8 @@ internal sealed class NarrowScratch
 
 internal sealed partial class Engine3D
 {
+    internal ContactModificationPipeline ContactModifications => Core.ContactModifications;
+
     // ------------------------------------------------------------------ pair filter for the broadphase
 
     private readonly struct PairFilter : IPairFilter
@@ -317,6 +319,7 @@ internal sealed partial class Engine3D
         }
 
         if (_deferWrite) { world.Executor.For(chunks, new WriteTask(this, cs)); }
+        if (ContactModifications.Refresh) { ContactModifications.Run(world); }
         // Bodies that were asleep when the stage began and have been woken by it start the step like any other.
         for (int i = 0; i < _sleeperCount; i++)
         {
@@ -545,7 +548,7 @@ internal sealed partial class Engine3D
             for (int p = lo; p < hi; p++)
             {
                 if (!e.PairLive[p]) { continue; }
-                if (active[owner[e.PairA[p]]] != 0 || active[owner[e.PairB[p]]] != 0 || (_anyFresh && p < fresh.Length && fresh[p])) { e._updateList[lo + n++] = p; }
+                if (e.ContactModifications.Refresh || active[owner[e.PairA[p]]] != 0 || active[owner[e.PairB[p]]] != 0 || (_anyFresh && p < fresh.Length && fresh[p])) { e._updateList[lo + n++] = p; }
             }
 
             e._pairChunkCount[task] = n;
@@ -646,7 +649,7 @@ internal sealed partial class Engine3D
         int existingCons = PairCons[p];
         if (existingCons < 0 && _skip[p].Clear > 0f && StillApart(in _skip[p], qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))) { return; }
         // A touching convex pair that has barely moved reuses its manifold; this is tried before the shape frames are built, which the reuse does not need.
-        if (RecycleManifolds && existingCons >= 0 && ga.Soup == null && gb.Soup == null && ga.IsConvex && gb.IsConvex
+        if (!ContactModifications.Refresh && RecycleManifolds && existingCons >= 0 && ga.Soup == null && gb.Soup == null && ga.IsConvex && gb.IsConvex
             && TryRecycle(sc, existingCons, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))))
         {
             _resCount[i] = 1;
@@ -682,7 +685,7 @@ internal sealed partial class Engine3D
             var other = soupIsA ? gb : ga;
             // Temporal coherence for a convex shape on a triangle soup: while it has hardly moved relative to the soup, every triangle contact of the pair keeps its manifold (the pair's triangle set can only
             // change by a triangle coming within speculative range, which the next full query, at most a few millimetres of motion later, finds).
-            if (RecycleManifolds && other.IsConvex && PairCons[p] >= 0 && TryRecycleSoup(sc, p, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])), soupIsA ? 1 : 2))
+            if (!ContactModifications.Refresh && RecycleManifolds && other.IsConvex && PairCons[p] >= 0 && TryRecycleSoup(sc, p, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])), soupIsA ? 1 : 2))
             {
                 _resCount[i] = sc.OutCount - _resFirst[i];
                 return;

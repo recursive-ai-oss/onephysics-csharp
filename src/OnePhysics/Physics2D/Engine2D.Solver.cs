@@ -398,6 +398,12 @@ internal sealed partial class Engine2D
             float vAx = 0f, vAy = 0f, wA = 0f, vBx = 0f, vBy = 0f, wB = 0f;
             if (wantRel) { vAx = Mem.At(lin, 2 * a); vAy = Mem.At(lin, 2 * a + 1); wA = Mem.At(ang, a); vBx = Mem.At(lin, 2 * b); vBy = Mem.At(lin, 2 * b + 1); wB = Mem.At(ang, b); }
             int count = Mem.At(points, c);
+            if (count == 0)
+            {
+                // A pre-solve modifier disabled this lane. No warm-start, rolling or point impulse may reach either body.
+                for (int f = 0; f < W2D.Fields; f++) { Mem.Field(ref wl, f) = 0f; }
+                continue;
+            }
             PreparePoint(0, pl, ref wl, nx, ny, mA, iA, mB, iB, wantRel, vAx, vAy, wA, vBx, vBy, wB);
             if (count > 1)
             {

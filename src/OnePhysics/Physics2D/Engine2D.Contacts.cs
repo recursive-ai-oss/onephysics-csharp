@@ -72,6 +72,8 @@ internal struct Pair2D
 
 internal sealed partial class Engine2D
 {
+    internal ContactModificationPipeline ContactModifications => Core.ContactModifications;
+
     // ------------------------------------------------------------------ pair filter for the broadphase
 
     private readonly struct PairFilter : IPairFilter
@@ -247,6 +249,7 @@ internal sealed partial class Engine2D
         }
         if (Opt.MaterialMixer != null) { new WriteTask(this).RunAll(); } // a user mixer runs serially, in pair order
         else { world.Executor.For(_collideBlocks, new WriteTask(this)); }
+        if (ContactModifications.Refresh) { ContactModifications.Run(world); }
     }
 
     private Shape WrapShape(int slot) => new(World!, Core.HandleOfShape(slot));
@@ -278,7 +281,7 @@ internal sealed partial class Engine2D
                 e.Ready(ref pr);
                 int flags = hot[pr.BodyA].Flags | hot[pr.BodyB].Flags;
                 // A pair needs a fresh manifold when a body is awake (or a kinematic body is moving), or when it was just found and has a sensor.
-                if ((flags & BodyHot.Active) == 0 && !(_anyFresh && e._fresh[p])) { continue; }
+                if (!e.ContactModifications.Refresh && (flags & BodyHot.Active) == 0 && !(_anyFresh && e._fresh[p])) { continue; }
                 int i = lo + listed++;
                 e._updateList[i] = p;
                 bool act;
@@ -455,7 +458,7 @@ internal sealed partial class Engine2D
         bool plain = !pr.Sensor && Opt.MaterialMixer == null;
         // A touching pair that has barely moved reuses its manifold. This is tried before the bounds tests: a manifold within the speculative distance
         // means the boxes overlap, so they would not have stopped it, and it saves loading the proxies of the pairs that are still touching.
-        if (RecycleManifolds && existing >= 0 && plain && TryRecycleInPlace(existing, ref pr, in hA, in hB)) { return true; }
+        if (!ContactModifications.Refresh && RecycleManifolds && existing >= 0 && plain && TryRecycleInPlace(existing, ref pr, in hA, in hB)) { return true; }
 
         ref PairResult res = ref _results[i];
         res = default;
@@ -500,7 +503,7 @@ internal sealed partial class Engine2D
         // A pair without a manifold whose last narrowphase proved the shapes apart by more than the speculative distance stays empty until they have moved that far toward each other.
         ref SkipFrame skip = ref pr.Skip;
         if (existing < 0 && skip.Clear > 0f && StillApart(in skip, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy))) { return false; }
-        if (RecycleManifolds && existing >= 0 && !plain && TryRecycle(existing, sa, sb, hB.Extent, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy), ref res))
+        if (!ContactModifications.Refresh && RecycleManifolds && existing >= 0 && !plain && TryRecycle(existing, sa, sb, hB.Extent, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy), ref res))
         {
             // A recycled manifold only rewrites the pair's own payload, and nothing in the serial stage can remove it, so it is written here, in parallel, instead of going through the result list.
             // A user mixer runs serially in pair order, and a pair with a sensor shape never writes a contact payload.

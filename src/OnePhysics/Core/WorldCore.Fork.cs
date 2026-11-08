@@ -25,6 +25,7 @@ public sealed partial class WorldCore
 
     internal void CopyFrom(WorldCore s)
     {
+        ContactModifications.CopyState(s.ContactModifications);
         _options.CopySimulationValuesFrom(s._options);
         _origin = (double[])s._origin.Clone();
         _stepCount = s._stepCount;
