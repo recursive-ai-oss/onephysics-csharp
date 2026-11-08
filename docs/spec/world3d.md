@@ -860,3 +860,82 @@ batch dispatch did not establish a useful whole-step gain and was discarded. It
 still left all colour-stage boundaries in place and added a test to every other
 pass. No solver, colour packing, schedule or manifold-reuse threshold change is
 retained by this comparison.
+
+### Pair-update cost: whole-scene measurements versus collision micros
+
+A fixed-pose collision micro is not an estimate of the fresh-collision cost of a
+running scene. Its pair selection and empty/nonempty distribution differ. In a
+contact-stage investigation, the live-pair walk was not the entire unexplained
+cost: fresh manifold generation itself remained substantial.
+
+The following diagnostic bucket times are **instrumented**, not production
+latencies. Benchmark-owned timestamps surrounded the regions; the runtime did
+not read a clock. The bucket totals were averaged over measured steps (300 for
+sleep-wake, 540 for ragdolls), then divided by the median live-pair count (5,654
+and 4,873 respectively). Thus these are normalized ns per median live pair, not
+per invocation of the named method. Timestamp/delegate overhead is included;
+regions should not be summed and compared directly to uninstrumented step
+medians. Values compare the original code with a subsequently discarded
+seven-float-span experiment.
+
+| region | sleep original | sleep experiment | ragdoll original | ragdoll experiment |
+|---|---:|---:|---:|---:|
+| pair result setup and fat/tight bounds | 32.4 | 31.9 | 37.6 | 36.9 |
+| geometry and body-pose loads | 18.2 | 17.9 | 25.4 | 25.0 |
+| empty-pair separating-plane test | 21.6 | 21.2 | 26.3 | 25.7 |
+| manifold-reuse test and point transforms | 20.8 | 20.6 | 41.0 | 40.2 |
+| fresh-call dispatch | 10.7 | 10.6 | 5.1 | 5.3 |
+| fresh frame construction and hint lookup | 28.8 | 28.6 | 15.8 | 15.6 |
+| fresh convex manifold generator | 155.8 | 152.4 | 51.6 | 51.2 |
+| fresh clearance bookkeeping and emission | 24.1 | 23.5 | 11.9 | 11.8 |
+| result counting, constraint matching, apply-list selection | 21.6 | 21.3 | 26.1 | 25.7 |
+| fresh payload write including reuse frame | 37.6 | 33.2 | 17.5 | 15.3 |
+| recycled payload write | 1.5 | 1.2 | 11.4 | 10.7 |
+
+The generator bucket alone averaged 0.881 ms over 1,606.9 calls per measured
+sleep-wake step: approximately **548 ns per actual fresh call**, including its
+instrumentation, rather than the approximately 155 ns from the differently
+selected box micro. Ragdolls averaged 0.252 ms over 771 calls. These means include
+all measured steps, not just the four poses used by the micro. Do not subtract
+micro cost times median fresh-call count from median stage time and label the
+remainder memory overhead.
+
+Managed stack sampling agreed that fresh generation and reuse were material
+costs. Hardware/instruction sampling was unavailable because the system denied
+performance-counter access. JIT assembly of our pair walk showed dependent
+proxy/tree array lookups, range checks, and a non-inlined box-overlap call. The
+reuse method occupied 3,141 code bytes. Replacing per-component point indexing
+with seven-float span slices reduced that to 2,861 bytes and slightly reduced the
+instrumented payload-write buckets, but did not establish a useful whole-step
+improvement.
+
+Three interleaved repetitions at one and eight threads compared original,
+experiment, and BepuPhysics 2.5.0-beta.33. All were restricted to logical CPUs
+0–7, tiered compilation was disabled, and the table uses the best per-run median.
+The processor was a Ryzen 9 7950X3D (32 logical CPUs), Linux x64, SDK 10.0.403,
+runtime 10.0.14. After waiting five minutes for load to fall below six, it was
+still 15.71 before measurement, 8.36–13.34 during, and 11.07 afterward. These
+loaded-machine numbers are indicative only, not performance-gate rows.
+
+| scene | threads | original ms | experiment ms | reference ms | experiment/original |
+|---|---:|---:|---:|---:|---:|
+| sleep-wake-3d | 1 | 2.7618 | 2.7342 | 1.1616 | 0.990 |
+| sleep-wake-3d | 8 | 0.7283 | 0.7419 | 0.5013 | 1.019 |
+| ragdoll-pile-3d | 1 | 2.0463 | 2.0553 | 0.9497 | 1.004 |
+| ragdoll-pile-3d | 8 | 0.6024 | 0.5382 | 0.4125 | 0.893 |
+| large-pile-3d | 1 | 6.5177 | 6.4712 | 6.5542 | 0.993 |
+| large-pile-3d | 8 | 1.4376 | 1.5726 | 1.2910 | 1.094 |
+| queries-3d | 1 | 8.1509 | 7.8784 | 6.5863 | 0.967 |
+| queries-3d | 8 | 1.6550 | 1.6483 | 1.2630 | 0.996 |
+
+The headline one-thread misses remained 2.35 and 2.16 times the reference.
+Large-pile's eight-thread experiment was slower in every repetition, so the
+smaller reuse method was **discarded**, not traded for a regression elsewhere.
+Also discarded were a per-shape fat/tight-bound scratch cache (flat whole-step
+results, extra initialization) and packed pair-result rows combined with
+per-shape reach precomputation (no measured gain). None of these caches, rows,
+span changes or temporary per-pair profiling hooks is retained. Pair traversal,
+constraint ordering, manifold arithmetic, snapshot layout and physics hashes
+remain unchanged. All 21 three-dimensional stability scenes passed with the
+span experiment; the 23-world hash subset matched the original at one thread,
+eight threads and with AVX2 disabled.
