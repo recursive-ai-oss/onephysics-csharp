@@ -93,7 +93,7 @@ public readonly struct Joint : IEquatable<Joint>
     public bool CollideConnected { get { ref var d = ref Rec(out _, out _); return d.Collide; } }
 
     /// <summary>Destroys the joint. Every copy of this handle becomes stale; no break event is raised.</summary>
-    public void Destroy() { Rec(out var w, out _); w.DestroyJoint(_handle); }
+    public void Destroy() { using var replayMutation = _world?.RecordMutation("Joint.Destroy");  Rec(out var w, out _); w.DestroyJoint(_handle); }
 
     // ---- limits ----
 
@@ -103,6 +103,7 @@ public readonly struct Joint : IEquatable<Joint>
         get { ref var d = ref Rec(out _, out _); Need(in d, "limit", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance); return d.Limit; }
         set
         {
+            using var replayMutation = _world?.RecordMutation("Joint.EnableLimit");
             ref var d = ref Rec(out var w, out int c);
             Need(in d, "limit", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance);
             var e = d;
@@ -148,6 +149,7 @@ public readonly struct Joint : IEquatable<Joint>
     /// <exception cref="ArgumentOutOfRangeException">A value is not finite or out of range.</exception>
     public void SetLimits(float lower, float upper)
     {
+        using var replayMutation = _world?.RecordMutation("Joint.SetLimits");
         ref var d = ref Rec(out var w, out int c);
         Need(in d, "limit", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance);
         var e = d;
@@ -167,6 +169,7 @@ public readonly struct Joint : IEquatable<Joint>
         get { ref var d = ref Rec(out _, out _); Need(in d, "motor", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance); return d.Motor; }
         set
         {
+            using var replayMutation = _world?.RecordMutation("Joint.EnableMotor");
             ref var d = ref Rec(out var w, out int c);
             Need(in d, "motor", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance);
             var e = d;
@@ -180,7 +183,7 @@ public readonly struct Joint : IEquatable<Joint>
     public float MotorSpeed
     {
         get { ref var d = ref Rec(out _, out _); Need(in d, "motor", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance); return d.MotorSpeed; }
-        set { ref var d = ref Rec(out var w, out int c); Need(in d, "motor", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance); var e = d; e.MotorSpeed = value; Commit(w, c, ref d, in e); }
+        set { using var replayMutation = _world?.RecordMutation("Joint.MotorSpeed");  ref var d = ref Rec(out var w, out int c); Need(in d, "motor", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance); var e = d; e.MotorSpeed = value; Commit(w, c, ref d, in e); }
     }
 
     /// <summary>Largest motor force in newtons of a slider (prismatic) or distance joint, at least 0. Rotational motors take a torque: <see cref="MaxMotorTorque"/>.</summary>
@@ -188,7 +191,7 @@ public readonly struct Joint : IEquatable<Joint>
     public float MaxMotorForce
     {
         get { ref var d = ref Rec(out _, out _); NeedForceMotor(in d); return d.MaxMotor; }
-        set { ref var d = ref Rec(out var w, out int c); NeedForceMotor(in d); var e = d; e.MaxMotor = value; Commit(w, c, ref d, in e); }
+        set { using var replayMutation = _world?.RecordMutation("Joint.MaxMotorForce");  ref var d = ref Rec(out var w, out int c); NeedForceMotor(in d); var e = d; e.MaxMotor = value; Commit(w, c, ref d, in e); }
     }
 
     /// <summary>Largest motor torque in N·m of a hinge (revolute) or wheel joint, at least 0. Linear motors take a force: <see cref="MaxMotorForce"/>.</summary>
@@ -196,7 +199,7 @@ public readonly struct Joint : IEquatable<Joint>
     public float MaxMotorTorque
     {
         get { ref var d = ref Rec(out _, out _); NeedTorqueMotor(in d); return d.MaxMotor; }
-        set { ref var d = ref Rec(out var w, out int c); NeedTorqueMotor(in d); var e = d; e.MaxMotor = value; Commit(w, c, ref d, in e); }
+        set { using var replayMutation = _world?.RecordMutation("Joint.MaxMotorTorque");  ref var d = ref Rec(out var w, out int c); NeedTorqueMotor(in d); var e = d; e.MaxMotor = value; Commit(w, c, ref d, in e); }
     }
 
     private static void NeedForceMotor(in JointData2D d)
@@ -219,6 +222,7 @@ public readonly struct Joint : IEquatable<Joint>
         get { ref var d = ref Rec(out _, out _); Need(in d, "spring", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance); return d.Spring; }
         set
         {
+            using var replayMutation = _world?.RecordMutation("Joint.EnableSpring");
             ref var d = ref Rec(out var w, out int c);
             Need(in d, "spring", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance);
             var e = d;
@@ -232,14 +236,14 @@ public readonly struct Joint : IEquatable<Joint>
     public float SpringHertz
     {
         get { ref var d = ref Rec(out _, out _); Need(in d, "spring", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance); return d.Hertz; }
-        set { ref var d = ref Rec(out var w, out int c); Need(in d, "spring", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance); var e = d; e.Hertz = value; Commit(w, c, ref d, in e); }
+        set { using var replayMutation = _world?.RecordMutation("Joint.SpringHertz");  ref var d = ref Rec(out var w, out int c); Need(in d, "spring", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance); var e = d; e.Hertz = value; Commit(w, c, ref d, in e); }
     }
 
     /// <summary>Spring damping ratio, at least 0 (1 is critical).</summary>
     public float SpringDampingRatio
     {
         get { ref var d = ref Rec(out _, out _); Need(in d, "spring", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance); return d.Damping; }
-        set { ref var d = ref Rec(out var w, out int c); Need(in d, "spring", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance); var e = d; e.Damping = value; Commit(w, c, ref d, in e); }
+        set { using var replayMutation = _world?.RecordMutation("Joint.SpringDampingRatio");  ref var d = ref Rec(out var w, out int c); Need(in d, "spring", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance); var e = d; e.Damping = value; Commit(w, c, ref d, in e); }
     }
 
     // ---- type specific ----
@@ -248,12 +252,13 @@ public readonly struct Joint : IEquatable<Joint>
     public float Length
     {
         get { ref var d = ref Rec(out _, out _); Need(in d, "length", JointType2D.Distance); return d.Length; }
-        set { ref var d = ref Rec(out var w, out int c); Need(in d, "length", JointType2D.Distance); var e = d; e.Length = value; Commit(w, c, ref d, in e); }
+        set { using var replayMutation = _world?.RecordMutation("Joint.Length");  ref var d = ref Rec(out var w, out int c); Need(in d, "length", JointType2D.Distance); var e = d; e.Length = value; Commit(w, c, ref d, in e); }
     }
 
     /// <summary>Weld: sets the linear and angular spring frequencies (Hz, 0 = rigid) and damping ratios.</summary>
     public void SetWeldSprings(float linearHertz, float linearDampingRatio, float angularHertz, float angularDampingRatio)
     {
+        using var replayMutation = _world?.RecordMutation("Joint.SetWeldSprings");
         ref var d = ref Rec(out var w, out int c);
         Need(in d, "weld spring", JointType2D.Weld);
         var e = d;
@@ -265,26 +270,27 @@ public readonly struct Joint : IEquatable<Joint>
     public Vector2D Target
     {
         get { ref var d = ref Rec(out _, out _); Need(in d, "target", JointType2D.Mouse); return new Vector2D(d.TargetX, d.TargetY); }
-        set { ref var d = ref Rec(out var w, out int c); Need(in d, "target", JointType2D.Mouse); var e = d; e.TargetX = value.X; e.TargetY = value.Y; Commit(w, c, ref d, in e); }
+        set { using var replayMutation = _world?.RecordMutation("Joint.Target");  ref var d = ref Rec(out var w, out int c); Need(in d, "target", JointType2D.Mouse); var e = d; e.TargetX = value.X; e.TargetY = value.Y; Commit(w, c, ref d, in e); }
     }
 
     /// <summary>Mouse joint: largest pulling force, N. Motor joint: largest force, N.</summary>
     public float MaxForce
     {
         get { ref var d = ref Rec(out _, out _); Need(in d, "maximum force", JointType2D.Mouse, JointType2D.Motor); return d.MaxMotor; }
-        set { ref var d = ref Rec(out var w, out int c); Need(in d, "maximum force", JointType2D.Mouse, JointType2D.Motor); var e = d; e.MaxMotor = value; Commit(w, c, ref d, in e); }
+        set { using var replayMutation = _world?.RecordMutation("Joint.MaxForce");  ref var d = ref Rec(out var w, out int c); Need(in d, "maximum force", JointType2D.Mouse, JointType2D.Motor); var e = d; e.MaxMotor = value; Commit(w, c, ref d, in e); }
     }
 
     /// <summary>Motor joint: largest torque, N·m.</summary>
     public float MaxTorque
     {
         get { ref var d = ref Rec(out _, out _); Need(in d, "maximum torque", JointType2D.Motor); return d.MaxMotor2; }
-        set { ref var d = ref Rec(out var w, out int c); Need(in d, "maximum torque", JointType2D.Motor); var e = d; e.MaxMotor2 = value; Commit(w, c, ref d, in e); }
+        set { using var replayMutation = _world?.RecordMutation("Joint.MaxTorque");  ref var d = ref Rec(out var w, out int c); Need(in d, "maximum torque", JointType2D.Motor); var e = d; e.MaxMotor2 = value; Commit(w, c, ref d, in e); }
     }
 
     /// <summary>Motor joint: the target pose of B relative to A (origin offset in A's frame, and angle).</summary>
     public void SetOffset(Vector2F linear, float angular)
     {
+        using var replayMutation = _world?.RecordMutation("Joint.SetOffset");
         ref var d = ref Rec(out var w, out int c);
         Need(in d, "offset", JointType2D.Motor);
         var e = d;
@@ -300,14 +306,14 @@ public readonly struct Joint : IEquatable<Joint>
     public float BreakForce
     {
         get { ref var d = ref Rec(out _, out _); return d.BreakForce; }
-        set { ref var d = ref Rec(out var w, out int c); var e = d; e.BreakForce = value; Commit(w, c, ref d, in e); }
+        set { using var replayMutation = _world?.RecordMutation("Joint.BreakForce");  ref var d = ref Rec(out var w, out int c); var e = d; e.BreakForce = value; Commit(w, c, ref d, in e); }
     }
 
     /// <summary>Reaction torque above which the joint breaks, N·m; infinity never breaks.</summary>
     public float BreakTorque
     {
         get { ref var d = ref Rec(out _, out _); return d.BreakTorque; }
-        set { ref var d = ref Rec(out var w, out int c); var e = d; e.BreakTorque = value; Commit(w, c, ref d, in e); }
+        set { using var replayMutation = _world?.RecordMutation("Joint.BreakTorque");  ref var d = ref Rec(out var w, out int c); var e = d; e.BreakTorque = value; Commit(w, c, ref d, in e); }
     }
 
     /// <summary>The magnitude of the joint's linear reaction force at the end of the last step it was solved, newtons (0 before the first step, and after a restore until the next step).</summary>

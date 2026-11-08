@@ -1,9 +1,1 @@
-global using Scene = RecursiveAI.OnePhysics.Scene.Scene;
-global using BodyDef = RecursiveAI.OnePhysics.Scene.BodyDef;
-global using ShapeDef = RecursiveAI.OnePhysics.Scene.ShapeDef;
-global using JointDef = RecursiveAI.OnePhysics.Scene.JointDef;
-global using QueryDef = RecursiveAI.OnePhysics.Scene.QueryDef;
-global using EventDef = RecursiveAI.OnePhysics.Scene.EventDef;
-global using SoftDef = RecursiveAI.OnePhysics.Scene.SoftDef;
-global using CharacterScript = RecursiveAI.OnePhysics.Scene.CharacterScript;
-global using VehicleScript = RecursiveAI.OnePhysics.Scene.VehicleScript;
+// The shared scene model and reader live in RecursiveAI.OnePhysics.Scene.

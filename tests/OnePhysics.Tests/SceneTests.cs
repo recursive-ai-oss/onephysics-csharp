@@ -52,7 +52,9 @@ public sealed class SceneTests
         for(int i=0;i<12;i++)w.Step(1f/60);
         b.LinearVelocity=new(1,2);
         w.Options.Gravity=new(0,-4);
+        ulong before=w.ComputeHash();
         string text=w.SaveScene();
+        Assert.Equal(before,w.ComputeHash());
         var copy=P2.PhysicsWorld2D.LoadScene(new StringReader(text));
         Assert.Equal(w.ComputeHash(),copy.ComputeHash());
         Assert.Equal(text,copy.SaveScene());

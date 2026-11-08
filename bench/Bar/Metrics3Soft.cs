@@ -2,6 +2,8 @@ using System.Globalization;
 
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+
 public static partial class Metrics3
 {
     // Soft-body metrics from the particle data the drivers dump (six doubles per particle: x y z vx vy vz; the bodies of the scene in record order).

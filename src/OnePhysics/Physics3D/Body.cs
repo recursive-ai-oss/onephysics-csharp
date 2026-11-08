@@ -59,14 +59,14 @@ public readonly partial struct Body : IEquatable<Body>
             var off = w.Engine.RotationOfBody(b).Rotate(w.Engine.LocalCenterOf(b));
             return new Vector3D(p[0] - (double)off.X, p[1] - (double)off.Y, p[2] - (double)off.Z);
         }
-        set => SetTransform(value, Rotation);
+        set { using var replayMutation = _world?.RecordMutation("Body.Position"); SetTransform(value, Rotation); }
     }
 
     /// <summary>The body orientation. Setting it rotates the body about its origin (and wakes it).</summary>
     public QuaternionF Rotation
     {
         get { var (w, b) = Resolve(); return w.Engine.RotationOfBody(b); }
-        set => SetTransform(Position, value);
+        set { using var replayMutation = _world?.RecordMutation("Body.Rotation"); SetTransform(Position, value); }
     }
 
     /// <summary>Linear velocity of the centre of mass, m/s.</summary>
@@ -77,6 +77,7 @@ public readonly partial struct Body : IEquatable<Body>
         get { var (w, b) = Resolve(); return Vec(w.Core.Bodies.LinearVelocityOf(b)); }
         set
         {
+            using var replayMutation = _world?.RecordMutation("Body.LinearVelocity");
             var (w, b) = Resolve();
             RequireMovable(w, b);
             RequireFinite(value, nameof(value));
@@ -94,6 +95,7 @@ public readonly partial struct Body : IEquatable<Body>
         get { var (w, b) = Resolve(); return Vec(w.Core.Bodies.AngularVelocityOf(b)); }
         set
         {
+            using var replayMutation = _world?.RecordMutation("Body.AngularVelocity");
             var (w, b) = Resolve();
             RequireMovable(w, b);
             RequireFinite(value, nameof(value));
@@ -106,16 +108,16 @@ public readonly partial struct Body : IEquatable<Body>
     /// <summary>The same as setting <see cref="LinearVelocity"/>; a method, so it also works on a handle that is not a variable (a list element or a property result).</summary>
     /// <exception cref="BodyTypeException">The body is static.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A component is not finite.</exception>
-    public void SetLinearVelocity(Vector3F velocity) => LinearVelocity = velocity;
+    public void SetLinearVelocity(Vector3F velocity) { using var replayMutation = _world?.RecordMutation("Body.SetLinearVelocity"); LinearVelocity = velocity; }
 
     /// <summary>The same as setting <see cref="AngularVelocity"/>; a method, so it also works on a handle that is not a variable.</summary>
     /// <exception cref="BodyTypeException">The body is static.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A component is not finite.</exception>
-    public void SetAngularVelocity(Vector3F velocity) => AngularVelocity = velocity;
+    public void SetAngularVelocity(Vector3F velocity) { using var replayMutation = _world?.RecordMutation("Body.SetAngularVelocity"); AngularVelocity = velocity; }
 
     /// <summary>The same as setting <see cref="Position"/> (teleports the body, keeping its rotation and velocity, and wakes it); a method, so it also works on a handle that is not a variable.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The position is not finite or is beyond +-2^21.</exception>
-    public void SetPosition(Vector3D position) => Position = position;
+    public void SetPosition(Vector3D position) { using var replayMutation = _world?.RecordMutation("Body.SetPosition"); Position = position; }
 
     /// <summary>Mass in kg; 0 for static and kinematic bodies.</summary>
     public float Mass { get { var (w, b) = Resolve(); return w.Core.Bodies.TypeOf(b) == BodyType.Dynamic ? w.Engine.Mass[b] : 0f; } }
@@ -153,6 +155,7 @@ public readonly partial struct Body : IEquatable<Body>
     /// <exception cref="ArgumentOutOfRangeException">The position is not finite or beyond ±2^21 from the world origin, or the rotation is zero or not finite.</exception>
     public void SetTransform(Vector3D position, QuaternionF rotation)
     {
+        using var replayMutation = _world?.RecordMutation("Body.SetTransform");
         var (w, b) = Resolve();
         const double Bound = 2097152.0;
         if (!double.IsFinite(position.X) || !double.IsFinite(position.Y) || !double.IsFinite(position.Z) || Math.Abs(position.X) > Bound || Math.Abs(position.Y) > Bound || Math.Abs(position.Z) > Bound)
@@ -182,6 +185,7 @@ public readonly partial struct Body : IEquatable<Body>
     /// <exception cref="ArgumentOutOfRangeException">A component is not finite.</exception>
     public void ApplyForce(Vector3F force)
     {
+        using var replayMutation = _world?.RecordMutation("Body.ApplyForce");
         var (w, b) = Resolve();
         RequireDynamic(w, b);
         RequireFinite(force, nameof(force));
@@ -193,6 +197,7 @@ public readonly partial struct Body : IEquatable<Body>
     /// <summary>Adds a force at a world point for the next step; the offset from the centre of mass makes a torque.</summary>
     public void ApplyForceAt(Vector3F force, Vector3D worldPoint)
     {
+        using var replayMutation = _world?.RecordMutation("Body.ApplyForceAt");
         var (w, b) = Resolve();
         RequireDynamic(w, b);
         RequireFinite(force, nameof(force));
@@ -209,6 +214,7 @@ public readonly partial struct Body : IEquatable<Body>
     /// <summary>Adds a torque in world axes for the next step, N·m.</summary>
     public void ApplyTorque(Vector3F torque)
     {
+        using var replayMutation = _world?.RecordMutation("Body.ApplyTorque");
         var (w, b) = Resolve();
         RequireDynamic(w, b);
         RequireFinite(torque, nameof(torque));
@@ -220,6 +226,7 @@ public readonly partial struct Body : IEquatable<Body>
     /// <summary>Changes the velocity by an impulse through the centre of mass, N·s.</summary>
     public void ApplyImpulse(Vector3F impulse)
     {
+        using var replayMutation = _world?.RecordMutation("Body.ApplyImpulse");
         var (w, b) = Resolve();
         RequireDynamic(w, b);
         RequireFinite(impulse, nameof(impulse));
@@ -233,6 +240,7 @@ public readonly partial struct Body : IEquatable<Body>
     /// <summary>Changes the velocities by an impulse at a world point.</summary>
     public void ApplyImpulseAt(Vector3F impulse, Vector3D worldPoint)
     {
+        using var replayMutation = _world?.RecordMutation("Body.ApplyImpulseAt");
         var (w, b) = Resolve();
         RequireDynamic(w, b);
         RequireFinite(impulse, nameof(impulse));
@@ -249,6 +257,7 @@ public readonly partial struct Body : IEquatable<Body>
     /// <summary>Changes the angular velocity by an angular impulse in world axes, N·m·s.</summary>
     public void ApplyAngularImpulse(Vector3F impulse)
     {
+        using var replayMutation = _world?.RecordMutation("Body.ApplyAngularImpulse");
         var (w, b) = Resolve();
         RequireDynamic(w, b);
         RequireFinite(impulse, nameof(impulse));
@@ -276,13 +285,13 @@ public readonly partial struct Body : IEquatable<Body>
     }
 
     /// <summary>Wakes the body and its island.</summary>
-    public void Wake() { var (w, b) = Resolve(); WakeBody(w, b); }
+    public void Wake() { using var replayMutation = _world?.RecordMutation("Body.Wake");  var (w, b) = Resolve(); WakeBody(w, b); }
 
     /// <summary>Puts the body and its island to sleep (dynamic bodies only; velocities are cleared).</summary>
-    public void Sleep() { Resolve(); _world!.Core.Sleep(_handle); }
+    public void Sleep() { using var replayMutation = _world?.RecordMutation("Body.Sleep");  Resolve(); _world!.Core.Sleep(_handle); }
 
     /// <summary>Destroys the body, its shapes and its contacts. Handles to it go stale.</summary>
-    public void Destroy() { Resolve(); _world!.DestroyBody(_handle); }
+    public void Destroy() { using var replayMutation = _world?.RecordMutation("Body.Destroy");  Resolve(); _world!.DestroyBody(_handle); }
 
     /// <summary>The body's shapes, in creation order. Allocates.</summary>
     public Shape[] GetShapes()
@@ -348,6 +357,7 @@ public readonly partial struct Shape : IEquatable<Shape>
         get { int s = Resolve(); return _world!.Engine.Friction[s]; }
         set
         {
+            using var replayMutation = _world?.RecordMutation("Shape.Friction");
             int s = Resolve();
             if (!(value >= 0f && value <= MaterialLimits.MaxCoefficient)) { throw new ArgumentOutOfRangeException(nameof(value), value, "Friction must be within 0..1e15."); }
             _world!.Engine.Friction[s] = value;
@@ -360,6 +370,7 @@ public readonly partial struct Shape : IEquatable<Shape>
         get { int s = Resolve(); return _world!.Engine.Restitution[s]; }
         set
         {
+            using var replayMutation = _world?.RecordMutation("Shape.Restitution");
             int s = Resolve();
             if (!(value >= 0f && value <= 1f)) { throw new ArgumentOutOfRangeException(nameof(value), value, "Restitution must be within 0..1."); }
             _world!.Engine.Restitution[s] = value;
@@ -367,7 +378,7 @@ public readonly partial struct Shape : IEquatable<Shape>
     }
 
     /// <summary>Destroys the shape; the body's mass is recomputed.</summary>
-    public void Destroy() { Resolve(); _world!.DestroyShape(_handle); }
+    public void Destroy() { using var replayMutation = _world?.RecordMutation("Shape.Destroy");  Resolve(); _world!.DestroyShape(_handle); }
 
     /// <inheritdoc />
     public bool Equals(Shape other) => ReferenceEquals(_world, other._world) && _handle == other._handle;

@@ -21,7 +21,7 @@ public readonly partial struct Vehicle
     /// <param name="brake">0..1 service brake.</param>
     /// <exception cref="ArgumentOutOfRangeException">A value is NaN or outside its range; the inputs stay as they were.</exception>
     /// <exception cref="StaleHandleException">The vehicle was destroyed.</exception>
-    public void SetInput(float throttle, float steer = 0f, float brake = 0f) => Drive(throttle, steer, brake, 0f);
+    public void SetInput(float throttle, float steer = 0f, float brake = 0f) { using var replayMutation = _world?.RecordMutation("Vehicle.SetInput"); Drive(throttle, steer, brake, 0f); }
 
     /// <summary>Belt speed of a tracked vehicle's track (0 left, 1 right) as of the last step, m/s; positive moves the hull forward.</summary>
     /// <exception cref="InvalidOperationException">The vehicle is not tracked.</exception>
@@ -85,6 +85,7 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="PhysicsException">The body already carries a vehicle.</exception>
     public Vehicle AddVehicle(Body chassis, TrackedVehicleDef def)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.AddVehicle");
         ArgumentNullException.ThrowIfNull(def);
         if (chassis.World != this) { throw new ArgumentException("The chassis belongs to another world.", nameof(chassis)); }
         var wheeled = def.ToWheeled();
@@ -102,6 +103,7 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="PhysicsException">The body already carries a vehicle.</exception>
     public Vehicle AddVehicle(Body chassis, MotorcycleDef def)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.AddVehicle");
         ArgumentNullException.ThrowIfNull(def);
         if (chassis.World != this) { throw new ArgumentException("The chassis belongs to another world.", nameof(chassis)); }
         var wheeled = def.ToWheeled();
@@ -119,6 +121,7 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="ArgumentOutOfRangeException">A definition value is out of range.</exception>
     public Vehicle AddTank(Vector3D at, TrackedVehicleDef? def = null, QuaternionF rotation = default)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.AddTank");
         def ??= TrackedVehicleDef.Tank;
         def.Validate();
         var wheel = def.LeftWheels[0];
@@ -137,6 +140,7 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="ArgumentOutOfRangeException">A definition value is out of range.</exception>
     public Vehicle AddMotorcycle(Vector3D at, MotorcycleDef? def = null, QuaternionF rotation = default)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.AddMotorcycle");
         def ??= MotorcycleDef.Road;
         def.Validate();
         var size = def.ChassisSize;

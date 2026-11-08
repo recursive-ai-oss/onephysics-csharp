@@ -23,6 +23,8 @@ public sealed partial class Scene
 {
     private const int MaximumSnapshotBytes = 64 * 1024 * 1024;
     private byte[]? _state;
+    private byte[]? _liveOptions;
+    internal void SetLiveOptions(byte[] bytes) => _liveOptions = bytes;
     private int _stateWritten;
     private bool _stateEnd, _dimSeen, _idSeen;
     private int _worldId = 1;
@@ -51,7 +53,14 @@ public sealed partial class Scene
         Validate();
         try
         {
-            if (_state != null) { var w = new P2.PhysicsWorld2D(new P2.WorldOptions2D { ThreadCount = threadCount, WorldId = _worldId }); w.Restore(_state); return w; }
+            if (_state != null)
+            {
+                var options = new P2.WorldOptions2D { ThreadCount = threadCount, WorldId = _worldId };
+                if (_liveOptions != null) options.BroadphaseMargin = Replay.ReplayOptions2D.Read(_liveOptions, options, out _);
+                var w = new P2.PhysicsWorld2D(options); w.Restore(_state);
+                if (_liveOptions != null) ((Replay.IRecordedWorld)w).ApplyReplayOptions(_liveOptions);
+                return w;
+            }
             return SceneBuilder2D.Build(this, threadCount).World;
         }
         catch (Exception e) when (e is ArgumentException or PhysicsException or InvalidDataException) { throw Error("valid planar world: " + e.Message); }
@@ -64,7 +73,14 @@ public sealed partial class Scene
         Validate();
         try
         {
-            if (_state != null) { var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { ThreadCount = threadCount, WorldId = _worldId }); w.Restore(_state); return w; }
+            if (_state != null)
+            {
+                var options = new P3.WorldOptions3D { ThreadCount = threadCount, WorldId = _worldId };
+                if (_liveOptions != null) options.BroadphaseMargin = Replay.ReplayOptions3D.Read(_liveOptions, options, out _);
+                var w = new P3.PhysicsWorld3D(options); w.Restore(_state);
+                if (_liveOptions != null) ((Replay.IRecordedWorld)w).ApplyReplayOptions(_liveOptions);
+                return w;
+            }
             var world = SceneBuilder3D.Build(this, threadCount).World;
             SceneBuilder3D.AddSofts(this, world);
             return world;
@@ -91,6 +107,13 @@ public sealed partial class Scene
         if (_stateEnd) throw new FormatException("no records after end");
         if (tokens[0] == "dim" && tokens.Length == 2 && !_dimSeen && _state == null) { Dim = I(tokens[1]); if (Dim != 2 && Dim != 3) throw new FormatException("dimension 2 or 3"); _dimSeen = true; }
         else if (tokens[0] == "world_id" && tokens.Length == 2 && !_idSeen && _state == null) { _worldId = I(tokens[1]); if (_worldId < 1) throw new FormatException("positive world id"); _idSeen = true; }
+        else if (tokens[0] == "options" && tokens.Length == 2 && _liveOptions == null && _state == null && _dimSeen && _idSeen)
+        {
+            int size = Dim == 2 ? Replay.ReplayOptions2D.Size : Replay.ReplayOptions3D.Size;
+            var bytes = new byte[size];
+            if (!Convert.TryFromBase64String(tokens[1], bytes, out int n) || n != size) throw new FormatException("complete live option payload");
+            _liveOptions = bytes;
+        }
         else if (tokens[0] == "state" && tokens.Length == 2 && _state == null && _dimSeen && _idSeen)
         {
             int length = I(tokens[1]); if (length < 1 || length > MaximumSnapshotBytes) throw new FormatException("state length in [1, 67108864]");
@@ -110,7 +133,9 @@ public sealed partial class Scene
         Validate();
         output.Write("scene 2\ndim "); output.Write(Dim.ToString(System.Globalization.CultureInfo.InvariantCulture));
         output.Write("\nworld_id "); output.Write(_worldId.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        output.Write("\nstate "); output.Write(_state!.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)); output.Write('\n');
+        output.Write('\n');
+        if (_liveOptions != null) { output.Write("options "); output.Write(Convert.ToBase64String(_liveOptions)); output.Write('\n'); }
+        output.Write("state "); output.Write(_state!.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)); output.Write('\n');
         for (int i = 0; i < _state.Length; i += 3072) { output.Write("data "); output.Write(Convert.ToBase64String(_state, i, Math.Min(3072, _state.Length - i))); output.Write('\n'); }
         output.Write("end\n");
     }

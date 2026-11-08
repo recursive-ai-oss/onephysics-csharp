@@ -95,6 +95,7 @@ public readonly struct Character : IEquatable<Character>
         get => Body.Position;
         set
         {
+            using var replayMutation = _world?.RecordMutation("Character.Position");
             var e = Resolve(out int c);
             Body.SetTransform(value, 0f);
             e.CharGround[c] = GroundState.InAir; e.CharNx[c] = 0f; e.CharNy[c] = 0f; e.CharGroundBody[c] = -1; e.CharGroundGen[c] = 0;
@@ -142,7 +143,7 @@ public readonly struct Character : IEquatable<Character>
     public float SlopeLimitRadians
     {
         get { var e = Resolve(out int c); return e.CharDef[c].SlopeLimitRadians; }
-        set { var e = Resolve(out int c); var d = e.CharDef[c]; d.SlopeLimitRadians = value; d.Validate(); e.CharDef[c] = d; }
+        set { using var replayMutation = _world?.RecordMutation("Character.SlopeLimitRadians");  var e = Resolve(out int c); var d = e.CharDef[c]; d.SlopeLimitRadians = value; d.Validate(); e.CharDef[c] = d; }
     }
 
     /// <summary>Tallest step climbed and farthest snap down to ground, metres, within [0, Height] (Unity's <c>stepOffset</c>).</summary>
@@ -150,7 +151,7 @@ public readonly struct Character : IEquatable<Character>
     public float StepOffset
     {
         get { var e = Resolve(out int c); return e.CharDef[c].StepOffset; }
-        set { var e = Resolve(out int c); var d = e.CharDef[c]; d.StepOffset = value; d.Validate(); e.CharDef[c] = d; }
+        set { using var replayMutation = _world?.RecordMutation("Character.StepOffset");  var e = Resolve(out int c); var d = e.CharDef[c]; d.StepOffset = value; d.Validate(); e.CharDef[c] = d; }
     }
 
     /// <summary>How hard the character pushes dynamic bodies it walks into; 0 (default) does not push. See <see cref="CharacterDef.PushStrength"/>.</summary>
@@ -158,7 +159,7 @@ public readonly struct Character : IEquatable<Character>
     public float PushStrength
     {
         get { var e = Resolve(out int c); return e.CharDef[c].PushStrength; }
-        set { var e = Resolve(out int c); var d = e.CharDef[c]; d.PushStrength = value; d.Validate(); e.CharDef[c] = d; }
+        set { using var replayMutation = _world?.RecordMutation("Character.PushStrength");  var e = Resolve(out int c); var d = e.CharDef[c]; d.PushStrength = value; d.Validate(); e.CharDef[c] = d; }
     }
 
     /// <summary>The most force a character pushes a dynamic body with, newtons, within [0, 1e9]. See <see cref="CharacterDef.MaxPushForce"/>.</summary>
@@ -166,14 +167,14 @@ public readonly struct Character : IEquatable<Character>
     public float MaxPushForce
     {
         get { var e = Resolve(out int c); return e.CharDef[c].MaxPushForce; }
-        set { var e = Resolve(out int c); var d = e.CharDef[c]; d.MaxPushForce = value; d.Validate(); e.CharDef[c] = d; }
+        set { using var replayMutation = _world?.RecordMutation("Character.MaxPushForce");  var e = Resolve(out int c); var d = e.CharDef[c]; d.MaxPushForce = value; d.Validate(); e.CharDef[c] = d; }
     }
 
     /// <summary>Which layers the mover collides with (bit i: layer i). Default all.</summary>
     public uint LayerMask
     {
         get { var e = Resolve(out int c); return e.CharDef[c].LayerMask; }
-        set { var e = Resolve(out int c); var d = e.CharDef[c]; d.LayerMask = value; e.CharDef[c] = d; }
+        set { using var replayMutation = _world?.RecordMutation("Character.LayerMask");  var e = Resolve(out int c); var d = e.CharDef[c]; d.LayerMask = value; e.CharDef[c] = d; }
     }
 
     /// <summary>Mass in kg: the weight the character presses on a dynamic body it stands on (fixed at creation). See <see cref="CharacterDef.Mass"/>.</summary>
@@ -196,6 +197,7 @@ public readonly struct Character : IEquatable<Character>
     /// <exception cref="StaleHandleException">The character was destroyed.</exception>
     public CharacterContact Move(Vector2F displacement, float dt)
     {
+        using var replayMutation = _world?.RecordMutation("Character.Move");
         var e = Resolve(out int c);
         var w = _world!;
         var body = Body;
@@ -230,7 +232,8 @@ public readonly struct Character : IEquatable<Character>
 
     /// <summary>Moves at <paramref name="velocity"/> for <paramref name="dt"/> seconds: <c>Move(velocity * dt, dt)</c>.</summary>
     public CharacterContact MoveVelocity(Vector2F velocity, float dt)
-        => Move(new Vector2F(velocity.X * dt, velocity.Y * dt), dt);
+        {
+            using var replayMutation = _world?.RecordMutation("Character.MoveVelocity"); return Move(new Vector2F(velocity.X * dt, velocity.Y * dt), dt); }
 
     /// <summary>Raised during <see cref="Move(Vector2F, float)"/> once for each shape that deflected the character, in the order the solver met them (Unity's <c>OnControllerColliderHit</c>). Needs no struct callback.</summary>
     public event Action<ControllerColliderHit> OnControllerColliderHit
@@ -251,6 +254,7 @@ public readonly struct Character : IEquatable<Character>
     /// <summary>Destroys the character and its body. Every copy of this handle becomes stale.</summary>
     public void Destroy()
     {
+        using var replayMutation = _world?.RecordMutation("Character.Destroy");
         Resolve(out _);
         Body.Destroy();
     }
@@ -284,6 +288,7 @@ public sealed partial class PhysicsWorld2D
     /// <exception cref="ArgumentOutOfRangeException">A definition value is out of range or the position is not finite or beyond +-2^21.</exception>
     public Character AddCharacter(Vector2D at, CharacterDef def)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.AddCharacter");
         def.Validate();
         var bd = new BodyDef { Type = BodyType.Kinematic, Position = at, FixedRotation = true };
         var body = CreateBody(in bd);
@@ -304,7 +309,7 @@ public sealed partial class PhysicsWorld2D
     }
 
     /// <summary>Creates a <see cref="CharacterDef.Humanoid"/> centred at <paramref name="at"/>.</summary>
-    public Character AddCharacter(Vector2D at) => AddCharacter(at, CharacterDef.Humanoid);
+    public Character AddCharacter(Vector2D at) { using var replayMutation = RecordMutation("PhysicsWorld2D.AddCharacter"); return AddCharacter(at, CharacterDef.Humanoid); }
 
     /// <summary>The <see cref="Character"/> for a raw handle (from <see cref="Character.RawHandle"/>, the raw tier or a saved reference).</summary>
     /// <exception cref="InvalidHandleException">The handle is null, belongs to another world (<see cref="ForeignHandleException"/>) or refers to a removed character (<see cref="StaleHandleException"/>).</exception>

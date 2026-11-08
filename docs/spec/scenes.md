@@ -356,8 +356,8 @@ to 64 MiB. Full-state snapshot contents also pass the world's existing validator
 full-state form, not a lossy geometry export: it includes every currently
 supported shape, joint, service, material, filter, option, soft body, solver
 cache, slot generation, sleeping state, origin and pending event that snapshots
-preserve. Contact/solver delegates and host code are not serialized. Live
-simulation options are synchronized before saving. This form allows exact
+preserve. Contact/solver delegates and host code are not serialized. Pending live
+simulation options are stored separately without synchronizing the core early. This form allows exact
 save → load → save and hash equality even for a world already in motion.
 
 The canonical records, in order, are:
@@ -372,7 +372,10 @@ end
 ```
 
 `dim` is 2 or 3. `world_id` is positive and preserves handle identity in event
-payloads when creating the destination world. `state` is the exact nonzero
+payloads when creating the destination world. An optional `options <base64>` record before `state` uses the dimension-specific
+LiveOptions layout in replay.md. World-produced scenes include it, preserving
+pending option edits and fixed creation margins without mutating the source.
+`state` is the exact nonzero
 snapshot byte count. There are as many `data` records as needed; each encodes
 3072 bytes (4096 base64 characters), except the last, which may be shorter.
 Base64 is RFC 4648's standard alphabet and padding. The concatenated decoded

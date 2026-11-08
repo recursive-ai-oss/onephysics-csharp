@@ -4,6 +4,8 @@ using P3 = RecursiveAI.OnePhysics.Physics3D;
 
 namespace Bar;
 
+using SoftDef = RecursiveAI.OnePhysics.Scene.SoftDef;
+
 /// <summary>
 /// The skinned sleeve of <c>soft-skinned-3d</c> (docs/spec/scenes.md): an open tube of radius r and length L along y on a two-joint arm (joint 0 at the tube's base, joint 1 at L/2). The ring at the base is the cuff: maximum distance 0.
 /// Every other ring may stray 0.06 m from its skinned position and keeps out of a back-stop sphere of radius 0.04 centred 0.04 m behind it. Weights blend the two joints over the middle three rings.

@@ -118,6 +118,7 @@ public readonly partial struct Vehicle : IEquatable<Vehicle>
     /// <exception cref="StaleHandleException">The vehicle was destroyed.</exception>
     public void Drive(float throttle, float steer = 0f, float brake = 0f, float handbrake = 0f)
     {
+        using var replayMutation = _world?.RecordMutation("Vehicle.Drive");
         var s = Resolve();
         if (!(throttle >= -1f && throttle <= 1f)) { throw new ArgumentOutOfRangeException(nameof(throttle), throttle, "The throttle must be within -1..1."); }
         if (!(steer >= -1f && steer <= 1f)) { throw new ArgumentOutOfRangeException(nameof(steer), steer, "The steering must be within -1..1."); }
@@ -139,6 +140,7 @@ public readonly partial struct Vehicle : IEquatable<Vehicle>
         get => Resolve().Gear;
         set
         {
+            using var replayMutation = _world?.RecordMutation("Vehicle.Gear");
             var s = Resolve();
             if (value < -1 || value > s.Ratios.Length) { throw new ArgumentOutOfRangeException(nameof(value), value, "The gear must be within -1.." + s.Ratios.Length.ToString(CultureInfo.InvariantCulture) + "."); }
             if (s.Gear != value) { s.Gear = value; s.ShiftTimer = s.Def.Transmission.SwitchTime; }
@@ -188,6 +190,7 @@ public readonly partial struct Vehicle : IEquatable<Vehicle>
     /// <summary>Removes the vehicle; the chassis body stays. Handles to it become stale.</summary>
     public void Destroy()
     {
+        using var replayMutation = _world?.RecordMutation("Vehicle.Destroy");
         Resolve();
         _world!.Engine.DestroyVehicle(_index);
     }
@@ -222,6 +225,7 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="StaleHandleException">The body was destroyed.</exception>
     public Vehicle AddVehicle(Body chassis, VehicleDef def)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.AddVehicle");
         ArgumentNullException.ThrowIfNull(def);
         if (chassis.World != this) { throw new ArgumentException("The chassis belongs to another world.", nameof(chassis)); }
         int v = _engine.CreateVehicle(chassis.Handle, def);

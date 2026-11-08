@@ -2,6 +2,9 @@ using System.Globalization;
 
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+using BodyDef = RecursiveAI.OnePhysics.Scene.BodyDef;
+
 /// <summary>3D stability metrics from pose dumps. Penetration uses a small GJK distance routine with an EPA fallback written for this tool.</summary>
 public static partial class Metrics3
 {

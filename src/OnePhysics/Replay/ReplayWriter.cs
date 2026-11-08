@@ -5,12 +5,12 @@ using System.IO;
 namespace RecursiveAI.OnePhysics.Replay;
 
 /// <summary>
-/// Writes version 1 checkpoint replays to a writable stream without seeking or reflection. The caller owns the stream.
+/// Writes version 1 checkpoint or version 2 command replays to a writable stream without seeking or reflection. The caller owns the stream.
 /// After construction, writes allocate no managed memory in this class. The stream may allocate independently.
 /// This is a raw transport: callers provide snapshots and steps; it does not intercept world mutations.
 /// A stream error makes the output incomplete; discard the writer and its output after an I/O failure.
 /// </summary>
-public sealed class ReplayWriter
+public sealed partial class ReplayWriter
 {
     internal const uint Magic = 0x5250504F;
     internal const ushort Version = 1;
@@ -28,10 +28,11 @@ public sealed class ReplayWriter
     /// <param name="dimension">2 or 3.</param>
     /// <param name="initialStep">Absolute count of steps completed by the starting world.</param>
     /// <param name="initialSnapshot">Nonempty snapshot, unchanged in the output.</param>
+    /// <param name="commandTrack">False by default; true enables version 2 named mutation and begin/end step records.</param>
     /// <param name="hashTrack">True by default: each step carries its resulting 64-bit world hash.</param>
     /// <exception cref="ArgumentException">The stream is not writable, or the snapshot is empty.</exception>
     /// <exception cref="ArgumentOutOfRangeException">Dimension or initial step is invalid.</exception>
-    public ReplayWriter(Stream stream, int dimension, long initialStep, ReadOnlySpan<byte> initialSnapshot, bool hashTrack = true)
+    public ReplayWriter(Stream stream, int dimension, long initialStep, ReadOnlySpan<byte> initialSnapshot, bool hashTrack = true, bool commandTrack = false)
     {
         ArgumentNullException.ThrowIfNull(stream);
         if (!stream.CanWrite) { throw new ArgumentException("Replay output must be writable.", nameof(stream)); }
@@ -40,9 +41,11 @@ public sealed class ReplayWriter
         if (initialSnapshot.IsEmpty) { throw new ArgumentException("Expected a nonempty initial snapshot.", nameof(initialSnapshot)); }
         _stream = stream;
         _hashTrack = hashTrack;
+        _commandTrack = commandTrack;
+        _dimension = (byte)dimension;
         _completedSteps = initialStep;
         BinaryPrimitives.WriteUInt32LittleEndian(_scratch, Magic);
-        BinaryPrimitives.WriteUInt16LittleEndian(_scratch.AsSpan(4), Version);
+        BinaryPrimitives.WriteUInt16LittleEndian(_scratch.AsSpan(4), commandTrack ? (ushort)2 : Version);
         _scratch[6] = (byte)dimension;
         _scratch[7] = hashTrack ? (byte)1 : (byte)0;
         BinaryPrimitives.WriteInt64LittleEndian(_scratch.AsSpan(8), initialStep);
@@ -62,6 +65,7 @@ public sealed class ReplayWriter
     public void WriteSnapshot(ReadOnlySpan<byte> snapshot)
     {
         EnsureOpen();
+        if (_frameOpen) throw new InvalidOperationException("Use a mutation inside a command frame.");
         if (snapshot.IsEmpty) { throw new ArgumentException("Expected a nonempty snapshot.", nameof(snapshot)); }
         Header(ReplayRecordKind.Snapshot, snapshot.Length);
         _stream.Write(snapshot);
@@ -75,6 +79,7 @@ public sealed class ReplayWriter
         EnsureOpen();
         if (!float.IsFinite(dt) || dt <= 0) { throw new ArgumentOutOfRangeException(nameof(dt), dt, "Expected positive finite seconds."); }
         if (_completedSteps == long.MaxValue) { throw new InvalidOperationException("Replay step count cannot exceed Int64.MaxValue."); }
+        if (_frameOpen) throw new InvalidOperationException("Complete the current command frame first.");
         int length = _hashTrack ? 12 : 4;
         Header(ReplayRecordKind.Step, length);
         BinaryPrimitives.WriteSingleLittleEndian(_scratch, dt);
@@ -87,6 +92,7 @@ public sealed class ReplayWriter
     public void Complete()
     {
         if (_ended) { return; }
+        if (_frameOpen) throw new InvalidOperationException("Complete the current command frame first.");
         Header(ReplayRecordKind.End, 0);
         _ended = true;
     }

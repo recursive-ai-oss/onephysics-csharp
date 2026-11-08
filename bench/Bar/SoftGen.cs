@@ -1,5 +1,7 @@
 namespace Bar;
 
+using SoftDef = RecursiveAI.OnePhysics.Scene.SoftDef;
+
 /// <summary>A mesh in the body's own frame: float32 vertices (x y z per vertex), surface triangles (cloth and the boundary of volumes) and tetrahedra (volumes, positive orientation).</summary>
 public sealed class SoftMeshData
 {

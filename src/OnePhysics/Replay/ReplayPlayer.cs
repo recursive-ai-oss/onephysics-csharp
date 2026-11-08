@@ -50,6 +50,8 @@ public sealed class ReplayPlayer
         _inputName = inputName;
     }
 
+    internal ReplayPlayer(ReplayReader reader, string inputName) { _reader = reader; _inputName = inputName; }
+
     /// <summary>The replay's dimension, 2 or 3.</summary>
     public int Dimension => _reader.Dimension;
 
@@ -88,6 +90,63 @@ public sealed class ReplayPlayer
         return Advance(new World3D(world));
     }
 
+    /// <summary>Creates a compatible planar destination from the initial snapshot and recorded creation/live options. Intended for recorder-produced version 2 files; version 1 uses default creation options. Continue with ReadNextStep on the returned world.</summary>
+    public PhysicsWorld2D CreateWorld2D(int threadCount = 1)
+    {
+        var initial = ReadInitial(2);
+        try
+        {
+            var options = new WorldOptions2D { ThreadCount = threadCount };
+            if (initial.Options != null) { options.BroadphaseMargin = ReplayOptions2D.Read(initial.Options,options,out int id); options.WorldId=id; }
+            var world = new PhysicsWorld2D(options);
+            world.Restore(initial.Snapshot);
+            if(initial.Options!=null)((IRecordedWorld)world).ApplyReplayOptions(initial.Options);
+            CheckStep(world.StepCount,_reader.CompletedSteps);
+            _world=world;return world;
+        }
+        catch (SnapshotFormatException e) { _failed=true;throw new ReplayFormatException(_inputName,21+e.Offset,"valid initial snapshot: "+e.Message); }
+        catch (ArgumentException e) { _failed=true;throw new ReplayFormatException(_inputName,_reader.RecordOffset+5,"valid initial live options: "+e.Message); }
+        catch { _failed=true;throw; }
+    }
+
+    /// <summary>Creates a compatible spatial destination from the initial snapshot and recorded creation/live options. Intended for recorder-produced version 2 files; version 1 uses default creation options. Continue with ReadNextStep on the returned world.</summary>
+    public PhysicsWorld3D CreateWorld3D(int threadCount = 1)
+    {
+        var initial = ReadInitial(3);
+        try
+        {
+            var options = new WorldOptions3D { ThreadCount = threadCount };
+            if (initial.Options != null) { options.BroadphaseMargin = ReplayOptions3D.Read(initial.Options,options,out int id); options.WorldId=id; }
+            var world = new PhysicsWorld3D(options);
+            world.Restore(initial.Snapshot);
+            if(initial.Options!=null)((IRecordedWorld)world).ApplyReplayOptions(initial.Options);
+            CheckStep(world.StepCount,_reader.CompletedSteps);
+            _world=world;return world;
+        }
+        catch (SnapshotFormatException e) { _failed=true;throw new ReplayFormatException(_inputName,21+e.Offset,"valid initial snapshot: "+e.Message); }
+        catch (ArgumentException e) { _failed=true;throw new ReplayFormatException(_inputName,_reader.RecordOffset+5,"valid initial live options: "+e.Message); }
+        catch { _failed=true;throw; }
+    }
+
+    private (byte[] Snapshot,byte[]? Options) ReadInitial(int dimension)
+    {
+        if(_failed || _world!=null)throw new InvalidOperationException("Create the destination only before playback starts.");
+        if(Dimension!=dimension)throw new ArgumentException("Replay dimension does not match the requested destination.",nameof(dimension));
+        try
+        {
+            if(!_reader.ReadNext() || _reader.Kind!=ReplayRecordKind.Snapshot)throw new ReplayFormatException(_inputName,_reader.RecordOffset,"initial snapshot");
+            byte[] snapshot=_reader.Payload.ToArray();
+            byte[]? options=null;
+            if(_reader.FormatVersion==2)
+            {
+                if(!_reader.ReadNext() || _reader.Kind!=ReplayRecordKind.LiveOptions)throw new ReplayFormatException(_inputName,_reader.RecordOffset,"initial live options for automatic world construction");
+                options=_reader.Payload.ToArray();
+            }
+            return(snapshot,options);
+        }
+        catch {_failed=true;throw;}
+    }
+
     private void ValidateWorld(object world, int dimension)
     {
         if (_failed) { throw new InvalidOperationException("Replay player cannot continue after a failure."); }
@@ -102,15 +161,26 @@ public sealed class ReplayPlayer
         {
             while (_reader.ReadNext())
             {
-                if (_reader.Kind == ReplayRecordKind.Snapshot)
+                if (_reader.Kind == ReplayRecordKind.Snapshot || _reader.Kind == ReplayRecordKind.Mutation)
                 {
-                    try { world.Restore(_reader.Payload); }
+                    try { world.Restore(_reader.SnapshotPayload); }
                     catch (SnapshotFormatException e) { throw new ReplayFormatException(_inputName, _reader.RecordOffset + 5 + e.Offset, "valid snapshot: " + e.Message); }
+                }
+                else if (_reader.Kind == ReplayRecordKind.LiveOptions)
+                {
+                    try { world.Options(_reader.Payload); }
+                    catch (ArgumentException e) { throw new ReplayFormatException(_inputName,_reader.RecordOffset+5,"valid live options: "+e.Message); }
+                    continue;
                 }
                 else
                 {
-                    CheckStep(world.StepCount, _reader.CompletedSteps - 1);
-                    world.Step(_reader.StepTime);
+                    if (_reader.Kind != ReplayRecordKind.EndStep)
+                    {
+                        CheckStep(world.StepCount, _reader.CompletedSteps - 1);
+                        world.Step(_reader.StepTime);
+                        CheckStep(world.StepCount, _reader.CompletedSteps);
+                        if (_reader.Kind == ReplayRecordKind.BeginStep) continue;
+                    }
                     CheckStep(world.StepCount, _reader.CompletedSteps);
                     ulong? expected = _reader.StepHash;
                     if (expected.HasValue)
@@ -138,6 +208,7 @@ public sealed class ReplayPlayer
         void Restore(ReadOnlySpan<byte> bytes);
         void Step(float dt);
         ulong Hash();
+        void Options(ReadOnlySpan<byte> bytes);
     }
 
     private readonly struct World2D(PhysicsWorld2D world) : IWorld
@@ -146,6 +217,7 @@ public sealed class ReplayPlayer
         public void Restore(ReadOnlySpan<byte> bytes) => world.Restore(bytes);
         public void Step(float dt) { using var suppression = world.SuppressCallbacks(); world.Step(dt); }
         public ulong Hash() => world.ComputeHash();
+        public void Options(ReadOnlySpan<byte> bytes) => ((IRecordedWorld)world).ApplyReplayOptions(bytes);
     }
 
     private readonly struct World3D(PhysicsWorld3D world) : IWorld
@@ -154,5 +226,6 @@ public sealed class ReplayPlayer
         public void Restore(ReadOnlySpan<byte> bytes) => world.Restore(bytes);
         public void Step(float dt) { using var suppression = world.SuppressCallbacks(); world.Step(dt); }
         public ulong Hash() => world.ComputeHash();
+        public void Options(ReadOnlySpan<byte> bytes) => ((IRecordedWorld)world).ApplyReplayOptions(bytes);
     }
 }

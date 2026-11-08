@@ -16,6 +16,7 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="SoftBodyException">A value is out of range.</exception>
     public SoftBody AddSoftBody(SoftBodyMesh mesh, Vector3D at = default, SoftMaterial material = SoftMaterial.Jelly)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.AddSoftBody");
         ArgumentNullException.ThrowIfNull(mesh);
         return _engine.AddSoftBody(MaterialDef(mesh, at, material));
     }
@@ -42,6 +43,7 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="SoftBodyException">A value is out of range.</exception>
     public SoftBody AddCloth(float width, float depth, int segments, Vector3D at = default, bool pinCorners = false)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.AddCloth");
         var mesh = SoftBodyMesh.Cloth(width, depth, segments, segments);
         var def = SoftBodyDef.Cloth(mesh, at);
         if (pinCorners)
@@ -59,8 +61,7 @@ public sealed partial class PhysicsWorld3D
     /// <param name="material">Starting values, <see cref="SoftMaterial.Jelly"/> by default.</param>
     /// <param name="cells">Cells along each edge, 1 to 64. Default 4.</param>
     /// <exception cref="SoftBodyException">A value is out of range.</exception>
-    public SoftBody AddSoftBox(Vector3F size, Vector3D at = default, SoftMaterial material = SoftMaterial.Jelly, int cells = 4) =>
-        _engine.AddSoftBody(MaterialDef(SoftBodyMesh.Box(size, cells, cells, cells), at, material));
+    public SoftBody AddSoftBox(Vector3F size, Vector3D at = default, SoftMaterial material = SoftMaterial.Jelly, int cells = 4) { using var replayMutation = RecordMutation("PhysicsWorld3D.AddSoftBox"); return _engine.AddSoftBody(MaterialDef(SoftBodyMesh.Box(size, cells, cells, cells), at, material)); }
 
     /// <summary>Adds a pressurised ball.</summary>
     /// <param name="radius">Metres.</param>
@@ -70,6 +71,7 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="SoftBodyException">A value is out of range.</exception>
     public SoftBody AddSoftBall(float radius, Vector3D at = default, SoftMaterial material = SoftMaterial.Rubber, int segments = 4)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.AddSoftBall");
         var def = MaterialDef(SoftBodyMesh.Sphere(radius, segments), at, material);
         def.InternalPressure = 1f;
         return _engine.AddSoftBody(def);
@@ -79,6 +81,7 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="SoftBodyException">A field is out of range or the mesh and definition do not fit (see <see cref="SoftBodyDef"/>).</exception>
     public SoftBody AddSoftBody(SoftBodyDef def)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.AddSoftBody");
         ArgumentNullException.ThrowIfNull(def);
         return _engine.AddSoftBody(def);
     }

@@ -1,11 +1,11 @@
 # Checkpoint replay envelope, version 1
 
-This is the streaming transport for snapshots and simulated steps. It is not an
-API-call recorder: calls made between steps must currently be represented by an
-explicit replacement snapshot. A command track, automatic recording, bounded
-history and the public text scene format are not implemented by this envelope.
-A snapshot cannot represent host delegates or contact/solver callbacks. A host
-using such callbacks must install equivalent callbacks before playback.
+The transport supports checkpoint playback (version 1) and automatic mutation
+recording (version 2). A recorder attaches opt-in to either public world and logs
+outer public mutation calls by name and their complete resulting state. It does
+not attempt to serialize executable host code, delegates or callback closures.
+Contact/solver callbacks must be installed equivalently by a playback host;
+body/event callback mutations are recorded and replayed with callbacks suppressed.
 
 ## Binary layout
 
@@ -51,8 +51,7 @@ A terminator is required even for a replay with no steps. EOF before it is
 truncation. A terminator leaves following stream bytes unread, allowing embedded
 or concatenated replay objects. A file loader wanting exactly one object must
 also check that the enclosing file ends there. Unknown versions, flags, and
-kinds are rejected, never silently skipped. A future command track will need an
-explicit format extension; this reader does not claim to understand commands.
+kinds are rejected, never silently skipped. Version 2 adds the command records below; version 1 rejects them.
 
 ## Reading and resource bounds
 
@@ -109,3 +108,100 @@ The matrix embeds these files for filesystem-independent AOT and browser-WASM
 playback. `replay/checkpoint-2d` and `replay/checkpoint-3d` validate the saved
 hashes and emit the actual count and world hash at each step. Existing world
 scenarios and benchmark scene bytes are unchanged.
+
+## Automatic mutation recording (version 2)
+
+`using var recorder = world.StartRecording(stream)` attaches to a world; dispose
+writes End and detaches, leaving the caller's stream open. The initial snapshot
+is followed by live options. All successful outer public world/body/shape/joint/
+character/vehicle/ragdoll/soft-body/fluid mutators are scoped. Nested implementation
+calls are one outer command, not duplicate partially-constructed states. An
+attempted mutator which throws after leaving a valid unchanged state may record
+that unchanged effect; exceptions themselves are not replayed. Raw writable
+storage cannot intercept assignments: `CaptureRawChanges(name)` provides an
+explicit raw-tier boundary, and every Step synchronizes outstanding raw writes
+before simulating. Mutations and Step counts are not selected by clocks or threads.
+
+Version 2 keeps the same 16-byte header (version field = 2) and kind/length record
+framing. In addition to version 1 kinds it defines:
+
+| Kind | Payload |
+| --- | --- |
+| 3 BeginStep | float32 dt, positive finite seconds |
+| 4 Mutation | int64 resulting world StepCount; uint16 name byte count; printable ASCII name bytes (1..512); nonempty complete snapshot bytes |
+| 5 EndStep | int64 final world StepCount, then uint64 final hash when enabled |
+| 6 LiveOptions | the dimension-specific fixed layout below |
+
+A BeginStep increments the implied world count and must be matched by exactly
+one EndStep before another BeginStep or End. Mutations are allowed before a frame
+or after its simulation. They may change the world counter through an explicit
+Restore; logical recorded frame count remains monotonic. Snapshot checkpoints
+(kind 1) are not allowed inside a frame; mutation effects (kind 4) are. Playback
+executes BeginStep with callbacks suppressed, applies callback-issued mutations
+in recorded call order, then checks the EndStep hash. This ordering also handles
+mutations of live options made by callbacks after simulation. The first differing
+EndStep raises ReplayHashMismatchException with the resulting world counter.
+
+Mutation effects deliberately use full snapshots rather than a per-type argument
+serializer. This covers every current shape and service without reflection,
+keeps geometry validation in the existing snapshot readers, and avoids invoking
+creation side effects twice. It trades file size and recording time for simplicity;
+there is no compression. Operation names identify the public mutation boundary.
+Creation/destruction may grow storage; warmed steps and mutations allocate no
+managed memory in the recorder. Caller streams have their own allocation behavior.
+
+Live options are stored separately because core gravity/scheduling options only
+synchronize at the next Step. Recording must not synchronize them early and change
+a world's hash. A LiveOptions record follows the initial snapshot and every
+mutation effect. Its first 12 bytes are int32 source world id and float64 actual
+creation-time broadphase margin. Remaining fields follow the WorldOptions2D/3D
+property declaration order, excluding WorldId, ThreadCount, MaterialMixer and
+PairFilter. Vector components are float32 in X/Y/Z order, scalar float32/float64
+use their IEEE bits, integers and EventMask use int32, booleans int32 0 or 1.
+The exact field list is encoded explicitly in ReplayOptions2D/3D; no reflection
+or runtime property enumeration is used. WorldId and thread count remain the
+destination's namespace and execution settings. BroadphaseMargin's live value
+is included separately from the fixed creation margin. Applying live values does
+not update core options before the next Step. Host delegate code is not serialized.
+
+`player.CreateWorld2D(threadCount)` and `CreateWorld3D` read the initial snapshot
+and live options to construct a compatible world, including its original identity
+and fixed broadphase settings. Continue with ReadNextStep on that world. Direct
+playback into an existing world remains available; that world's fixed creation
+options must be compatible, as for ordinary Restore. For version 1, automatic
+creation uses default creation options because that envelope has no live-options
+record. A caller requiring another version 1 configuration supplies the world.
+
+## Bounded history
+
+`world.StartHistory(new HistoryOptions { KeyframeInterval = 30,
+MemoryBudgetBytes = 32 * 1024 * 1024 })` owns the recorder. It keeps a circular byte
+store and fixed-capacity interval index, not a growing list of arrays. The total
+budget includes that store/index, fixed overhead allowance and reserved working
+snapshot storage. Source/destination world's simulation and restore storage are
+not history storage. Oldest complete intervals are evicted in index order;
+FirstStep and LastStep expose the retained logical range. Logical step 0 is the
+starting state, independent of the initial world's StepCount.
+
+Full keyframes are made after a completed Step including callback mutations,
+at most K steps apart; memory pressure can insert one earlier. Each interval is
+an independently headed replay segment. The writer reuses its buffers at segment
+boundaries, so warmed recording, including keyframe cadence, allocates nothing.
+A frame/interval or enlarged working snapshot that cannot fit the configured
+budget raises HistoryCapacityException; the recorder detaches on an I/O/storage
+failure rather than growing past its budget. Increase the budget or reduce K.
+
+Seek restores the latest keyframe at or before the requested logical step and
+replays only the remaining frames, validating their saved hashes. It does not
+apply following input mutations merely because they share the world's counter.
+Seeking into the source world suspends recording during playback; resuming its
+simulation appends a new logical frame sequence, not a rewrite of old history.
+Seeking during the destination's active Step is rejected. Stop leaves retained
+history seekable; Dispose stops and invalidates further seeks. Keyframe capture
+and restore pass through the internal IHistoryKeyframes seam, currently using
+full snapshots, so a different storage representation does not change public APIs.
+
+### Live option field order after the 12-byte prefix
+
+- 2D: `Gravity`, `Substeps`, `ContactSubsteps`, `ContactVelocityIterations`, `ContactRelaxIterations`, `VelocityIterations`, `RelaxIterations`, `PairCapacity`, `ContactCapacity`, `IslandCapacity`, `QueryScratchCapacity`, `SleepEnabled`, `TimeToSleep`, `SleepThreshold`, `Events`, `ContactHertz`, `ContactDampingRatio`, `PushOutVelocity`, `ContactSlop`, `JointHertz`, `JointDampingRatio`, `RestitutionThreshold`, `MaxLinearSpeed`, `MaxRotationPerSubstep`, `ContinuousEnabled`, `BroadphaseMargin`, `HitSpeedThreshold`.
+- 3D: `SoftSubsteps`, `SoftIterations`, `Gravity`, `Substeps`, `VelocityIterations`, `RelaxIterations`, `ContactSubsteps`, `ContactVelocityIterations`, `ContactRelaxIterations`, `PairCapacity`, `ContactCapacity`, `IslandCapacity`, `QueryScratchCapacity`, `SleepEnabled`, `TimeToSleep`, `SleepThreshold`, `Events`, `ContactHertz`, `ContactDampingRatio`, `PushOutVelocity`, `ContactSlop`, `RestitutionThreshold`, `MaxLinearSpeed`, `MaxRotationPerSubstep`, `ContinuousEnabled`, `JointHertz`, `JointDampingRatio`, `HitSpeedThreshold`, `SpeculativeDistance`, `BroadphaseMargin`.

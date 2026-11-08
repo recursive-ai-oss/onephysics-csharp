@@ -130,6 +130,7 @@ public readonly struct Fluid : IEquatable<Fluid>
     /// <exception cref="StaleHandleException">The fluid was removed.</exception>
     public void SetDefinition(FluidDef def)
     {
+        using var replayMutation = _world?.RecordMutation("Fluid.SetDefinition");
         ArgumentNullException.ThrowIfNull(def);
         Resolve();
         var prepared = Engine3D.Prepare(def);
@@ -142,20 +143,21 @@ public readonly struct Fluid : IEquatable<Fluid>
     public double SurfaceOffset
     {
         get => Resolve().SurfaceOffset;
-        set { var d = Definition; d.SurfaceOffset = value; SetDefinition(d); }
+        set { using var replayMutation = _world?.RecordMutation("Fluid.SurfaceOffset");  var d = Definition; d.SurfaceOffset = value; SetDefinition(d); }
     }
 
     /// <summary>The fluid's velocity, m/s. Setting it wakes sleeping bodies.</summary>
     public Vector3F Flow
     {
         get => Resolve().Flow;
-        set { var d = Definition; d.Flow = value; SetDefinition(d); }
+        set { using var replayMutation = _world?.RecordMutation("Fluid.Flow");  var d = Definition; d.Flow = value; SetDefinition(d); }
     }
 
     /// <summary>Removes the fluid and wakes sleeping bodies.</summary>
     /// <exception cref="StaleHandleException">The fluid was already removed.</exception>
     public void Remove()
     {
+        using var replayMutation = _world?.RecordMutation("Fluid.Remove");
         Resolve();
         var e = _world!.Engine;
         e.Fluids[_index] = null;

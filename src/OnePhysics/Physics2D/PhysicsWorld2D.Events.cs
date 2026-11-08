@@ -295,23 +295,24 @@ public sealed partial class PhysicsWorld2D : ICallbackGate
     /// Existing pairs are re-evaluated at the start of the next step: pairs that may no longer collide end (end events), newly allowed ones begin.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">A layer is outside 0..31.</exception>
-    public void SetLayerCollision(int layerA, int layerB, bool collide) => _engine.SetLayerCollision(layerA, layerB, collide);
+    public void SetLayerCollision(int layerA, int layerB, bool collide) { using var replayMutation = RecordMutation("PhysicsWorld2D.SetLayerCollision"); _engine.SetLayerCollision(layerA, layerB, collide); }
 
     /// <summary>Whether layer <paramref name="layerA"/> collides with layer <paramref name="layerB"/>.</summary>
     /// <exception cref="ArgumentOutOfRangeException">A layer is outside 0..31.</exception>
     public bool GetLayerCollision(int layerA, int layerB) => _engine.GetLayerCollision(layerA, layerB);
 
     /// <summary>Unity's name for <c>SetLayerCollision(a, b, !ignore)</c>.</summary>
-    public void IgnoreLayerCollision(int layerA, int layerB, bool ignore = true) => _engine.SetLayerCollision(layerA, layerB, !ignore);
+    public void IgnoreLayerCollision(int layerA, int layerB, bool ignore = true) { using var replayMutation = RecordMutation("PhysicsWorld2D.IgnoreLayerCollision"); _engine.SetLayerCollision(layerA, layerB, !ignore); }
 
     /// <summary>Installs a struct contact filter (middle tier), replacing any earlier one. Pairs are re-evaluated at the next step. The filter is not saved in snapshots: install it again after <see cref="Restore(byte[])"/>.</summary>
     public void SetContactFilter<TFilter>(TFilter filter) where TFilter : struct, IContactFilter
     {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.SetContactFilter");
         _engine.ContactFilter = new ContactFilterHolder<TFilter>(filter);
     }
 
     /// <summary>Removes the struct contact filter; pairs are re-evaluated at the next step.</summary>
-    public void ClearContactFilter() => _engine.ContactFilter = null;
+    public void ClearContactFilter() { using var replayMutation = RecordMutation("PhysicsWorld2D.ClearContactFilter"); _engine.ContactFilter = null; }
 
     /// <summary>
     /// Re-evaluates every pair at the start of the next step. Changes made through the world, shapes and <see cref="WorldOptions2D.PairFilter"/> are noticed on their own; call this when a delegate or filter

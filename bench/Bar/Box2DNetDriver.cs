@@ -15,6 +15,9 @@ using static Box2D.NET.B2Distances;
 
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+using ShapeDef = RecursiveAI.OnePhysics.Scene.ShapeDef;
+
 /// <summary>Runs a scene through the Box2D.NET package (a C# port of Box2D 3.1), single-threaded, following the same driver protocol as the native drivers.</summary>
 static class Box2DNetDriver
 {

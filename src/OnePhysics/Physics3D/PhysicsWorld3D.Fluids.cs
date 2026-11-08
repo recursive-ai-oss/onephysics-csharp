@@ -14,13 +14,13 @@ public sealed partial class PhysicsWorld3D
     /// <param name="damping">The fluid's <see cref="FluidDef.ViscousDamping"/>, 1/s. Default 1, which settles floating bodies in a few seconds.</param>
     /// <returns>A handle to the fluid.</returns>
     /// <exception cref="ArgumentOutOfRangeException">A value is not finite or is out of range.</exception>
-    public Fluid AddWater(double surfaceHeight, float density = 1000f, Vector3F flow = default, float damping = 1f) =>
-        _engine.AddFluid(new FluidDef { SurfaceOffset = surfaceHeight, Density = density, Flow = flow, ViscousDamping = damping });
+    public Fluid AddWater(double surfaceHeight, float density = 1000f, Vector3F flow = default, float damping = 1f) { using var replayMutation = RecordMutation("PhysicsWorld3D.AddWater"); return _engine.AddFluid(new FluidDef { SurfaceOffset = surfaceHeight, Density = density, Flow = flow, ViscousDamping = damping }); }
 
     /// <summary>Adds a fluid from a definition (middle tier; 3D worlds only). The definition is copied; sleeping bodies wake.</summary>
     /// <exception cref="ArgumentOutOfRangeException">A field is out of range (see <see cref="FluidDef"/>).</exception>
     public Fluid AddFluid(FluidDef def)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.AddFluid");
         ArgumentNullException.ThrowIfNull(def);
         return _engine.AddFluid(def);
     }
@@ -40,6 +40,7 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="ArgumentOutOfRangeException">The fluid or <paramref name="dt"/> is out of range.</exception>
     public float ApplyBuoyancy(Body body, FluidDef fluid, float dt)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.ApplyBuoyancy");
         ArgumentNullException.ThrowIfNull(fluid);
         if (!(dt > 0f) || !float.IsFinite(dt)) { throw new ArgumentOutOfRangeException(nameof(dt), dt, "dt must be finite and positive."); }
         int b = ResolveBody(body.RawHandle);
@@ -61,6 +62,7 @@ public readonly partial struct Body
         get { var (w, b) = Resolve(); return w.Engine.BuoyancyFactorOf(b); }
         set
         {
+            using var replayMutation = _world?.RecordMutation("Body.BuoyancyFactor");
             var (w, b) = Resolve();
             if (!(value >= 0f && value <= 1e6f)) { throw new ArgumentOutOfRangeException(nameof(value), value, "BuoyancyFactor must be within 0 to 1000000."); }
             w.Engine.SetBuoyancyFactor(b, value);

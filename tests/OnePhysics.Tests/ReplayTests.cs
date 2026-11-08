@@ -73,7 +73,7 @@ public sealed class ReplayTests
 
     [Theory]
     [InlineData(0, 0)] // magic
-    [InlineData(4, 2)] // version
+    [InlineData(4, 3)] // version
     [InlineData(6, 4)] // dimension
     [InlineData(7, 2)] // flags
     [InlineData(15, 128)] // negative initial step

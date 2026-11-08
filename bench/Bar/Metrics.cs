@@ -2,6 +2,9 @@ using System.Globalization;
 
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+using BodyDef = RecursiveAI.OnePhysics.Scene.BodyDef;
+
 /// <summary>Reads per-step state dumps and computes the stability metrics named by a scene. Engine-neutral: poses and velocities only.</summary>
 public static class Metrics
 {

@@ -70,7 +70,7 @@ public sealed partial class PhysicsWorld3D
     /// The first call in a process also runs a small trial world that lands, settles and sleeps a pile and runs every kind of query, character move and trigger, so those code paths are loaded before your first step.
     /// A path the trial world does not reach is loaded by the .NET runtime on the calling thread the first time it runs, and the runtime allocates a few kilobytes doing so; that is the runtime's, not memory the world holds.
     /// </summary>
-    public void Warmup() => WarmupCore(true);
+    public void Warmup() { using var replayMutation = RecordMutation("PhysicsWorld3D.Warmup"); WarmupCore(true); }
 
     private void WarmupCore(bool prime)
     {
@@ -122,6 +122,7 @@ public sealed partial class PhysicsWorld3D
         _engine.CheckBounds();
         _engine.CheckSoftBounds();
         SyncCoreOptions();
+        using var replayStep = RecordStep(dt);
         _engine.StepVehicles(this, dt);
         _engine.StepFluids(dt);
         bool soft = _engine.SoftHandles.Count > 0;
@@ -131,6 +132,7 @@ public sealed partial class PhysicsWorld3D
         _engine.ReconcileJoints();
         InvalidateQueryPad();
         BuildPublicEvents();
+        _recorder?.SimulationEnded();
         if (_suppressed == 0)
         {
             if (_handlers.Count > 0 || _jointHandlers.Count > 0) { DispatchEvents(); }
@@ -204,6 +206,7 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="SnapshotFormatException">The bytes are not a valid snapshot of a 3D world; the world is unchanged.</exception>
     public OptionChanges Restore(byte[] snapshot)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.Restore");
         ArgumentNullException.ThrowIfNull(snapshot);
         return Restore((ReadOnlySpan<byte>)snapshot);
     }
@@ -217,6 +220,7 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="SnapshotFormatException">The bytes are not a valid snapshot of a 3D world; the world is unchanged.</exception>
     public OptionChanges Restore(ReadOnlySpan<byte> snapshot)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.Restore");
         var before = _engine.Opt;
         var oldGravity = before.Gravity;
         int oldSubsteps = before.Substeps, oldVelocity = before.VelocityIterations, oldRelax = before.RelaxIterations;
@@ -273,6 +277,7 @@ public sealed partial class PhysicsWorld3D
     /// <summary>Moves the world origin by <paramref name="offset"/> (call between steps, on every peer at the same step): all positions shrink by it. Offsets must be multiples of 2^-31.</summary>
     public void ShiftOrigin(Vector3D offset)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.ShiftOrigin");
         double[] d = [offset.X, offset.Y, offset.Z];
         _core.ValidateShift(d);
         _engine.CheckShift(d);
@@ -304,10 +309,10 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>Creates a body.</summary>
-    public Body CreateBody(in BodyDef def) => new(this, _engine.CreateBody(in def));
+    public Body CreateBody(in BodyDef def) { using var replayMutation = RecordMutation("PhysicsWorld3D.CreateBody"); return new(this, _engine.CreateBody(in def)); }
 
     /// <summary>Creates a body with just a type, position and orientation.</summary>
-    public Body CreateBody(BodyType type, Vector3D position, QuaternionF rotation = default) => CreateBody(type, position, rotation, nameof(position));
+    public Body CreateBody(BodyType type, Vector3D position, QuaternionF rotation = default) { using var replayMutation = RecordMutation("PhysicsWorld3D.CreateBody"); return CreateBody(type, position, rotation, nameof(position)); }
 
     // positionParam names the caller's parameter in the error: the happy-path methods call this with their own "at".
     private Body CreateBody(BodyType type, Vector3D position, QuaternionF rotation, string positionParam)
@@ -323,25 +328,25 @@ public sealed partial class PhysicsWorld3D
 
     /// <summary>Attaches a convex shape described by a <see cref="ShapeSpec3D"/>.</summary>
     /// <exception cref="ArgumentException">The shape's numbers are invalid (the message names them).</exception>
-    public Shape CreateShape(Body body, ShapeSpec3D spec, ShapeDef? def = null) => AddShape(body, spec.Recipe.ToArray(), def);
+    public Shape CreateShape(Body body, ShapeSpec3D spec, ShapeDef? def = null) { using var replayMutation = RecordMutation("PhysicsWorld3D.CreateShape"); return AddShape(body, spec.Recipe.ToArray(), def); }
 
     /// <summary>Attaches a sphere.</summary>
-    public Shape CreateSphere(Body body, float radius, ShapeDef? def = null) => CreateShape(body, ShapeSpec3D.Sphere(radius), def);
+    public Shape CreateSphere(Body body, float radius, ShapeDef? def = null) { using var replayMutation = RecordMutation("PhysicsWorld3D.CreateSphere"); return CreateShape(body, ShapeSpec3D.Sphere(radius), def); }
 
     /// <summary>Attaches a box of the given full size (the same as <see cref="AddBox"/>).</summary>
-    public Shape CreateBox(Body body, Vector3F size, float convexRadius = 0f, ShapeDef? def = null) => CreateShape(body, ShapeSpec3D.Box(size, convexRadius), def);
+    public Shape CreateBox(Body body, Vector3F size, float convexRadius = 0f, ShapeDef? def = null) { using var replayMutation = RecordMutation("PhysicsWorld3D.CreateBox"); return CreateShape(body, ShapeSpec3D.Box(size, convexRadius), def); }
 
     /// <summary>Attaches a capsule along the body's y axis.</summary>
-    public Shape CreateCapsule(Body body, float halfLength, float radius, ShapeDef? def = null) => CreateShape(body, ShapeSpec3D.Capsule(halfLength, radius), def);
+    public Shape CreateCapsule(Body body, float halfLength, float radius, ShapeDef? def = null) { using var replayMutation = RecordMutation("PhysicsWorld3D.CreateCapsule"); return CreateShape(body, ShapeSpec3D.Capsule(halfLength, radius), def); }
 
     /// <summary>Attaches a cylinder along the body's y axis.</summary>
-    public Shape CreateCylinder(Body body, float halfHeight, float radius, float convexRadius = 0f, ShapeDef? def = null) => CreateShape(body, ShapeSpec3D.Cylinder(halfHeight, radius, convexRadius), def);
+    public Shape CreateCylinder(Body body, float halfHeight, float radius, float convexRadius = 0f, ShapeDef? def = null) { using var replayMutation = RecordMutation("PhysicsWorld3D.CreateCylinder"); return CreateShape(body, ShapeSpec3D.Cylinder(halfHeight, radius, convexRadius), def); }
 
     /// <summary>Attaches the convex hull of a point set.</summary>
-    public Shape CreateConvexHull(Body body, ReadOnlySpan<Vector3F> points, float convexRadius = 0f, ShapeDef? def = null) => CreateShape(body, ShapeSpec3D.ConvexHull(points, convexRadius), def);
+    public Shape CreateConvexHull(Body body, ReadOnlySpan<Vector3F> points, float convexRadius = 0f, ShapeDef? def = null) { using var replayMutation = RecordMutation("PhysicsWorld3D.CreateConvexHull"); return CreateShape(body, ShapeSpec3D.ConvexHull(points, convexRadius), def); }
 
     /// <summary>Attaches a compound of convex parts as one shape (it may be dynamic).</summary>
-    public Shape CreateCompound(Body body, ReadOnlySpan<CompoundPart> parts, ShapeDef? def = null) => AddShape(body, Geom3D.CompoundRecipe(parts), def);
+    public Shape CreateCompound(Body body, ReadOnlySpan<CompoundPart> parts, ShapeDef? def = null) { using var replayMutation = RecordMutation("PhysicsWorld3D.CreateCompound"); return AddShape(body, Geom3D.CompoundRecipe(parts), def); }
 
     /// <summary>Attaches a triangle mesh; the body must be static.</summary>
     /// <param name="body">A static body.</param>
@@ -352,13 +357,15 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="MeshBuildException">The mesh is invalid (the message names the input).</exception>
     /// <exception cref="StaticOnlyShapeException">The body is not static.</exception>
     public Shape CreateMesh(Body body, ReadOnlySpan<Vector3F> vertices, ReadOnlySpan<int> indices, ShapeDef? def = null, double flatEdgeTolerance = 0.0)
-        => AddShape(body, Geom3D.MeshRecipe(vertices, indices, flatEdgeTolerance), def);
+        {
+            using var replayMutation = RecordMutation("PhysicsWorld3D.CreateMesh"); return AddShape(body, Geom3D.MeshRecipe(vertices, indices, flatEdgeTolerance), def); }
 
     /// <summary>Attaches a height field; the body must be static. Sample (i, j) is at x = i·scale.X, z = j·scale.Z from the shape's origin, height × scale.Y.</summary>
     /// <exception cref="MeshBuildException">The grid is invalid (the message names the input).</exception>
     /// <exception cref="StaticOnlyShapeException">The body is not static.</exception>
     public Shape CreateHeightField(Body body, ReadOnlySpan<float> heights, int samplesX, int samplesZ, Vector3F scale, ReadOnlySpan<bool> holes = default, ShapeDef? def = null, double flatEdgeTolerance = 0.0)
-        => AddShape(body, Geom3D.HeightFieldRecipe(heights, samplesX, samplesZ, scale, holes, flatEdgeTolerance), def);
+        {
+            using var replayMutation = RecordMutation("PhysicsWorld3D.CreateHeightField"); return AddShape(body, Geom3D.HeightFieldRecipe(heights, samplesX, samplesZ, scale, holes, flatEdgeTolerance), def); }
 
     private Shape AddShape(Body body, byte[] recipe, ShapeDef? def)
     {
@@ -373,6 +380,7 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="at"/> is not finite or beyond +-2^21 from the origin, or a side of <paramref name="size"/> is not finite, not positive or larger than twice <see cref="ConvexShape3D.MaxDimension"/>.</exception>
     public Body AddBox(Vector3F size, Vector3D at = default, QuaternionF rotation = default, BodyType type = BodyType.Dynamic, Material3D? material = null, float density = 1f)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.AddBox");
         float max = 2f * ConvexShape3D.MaxDimension;
         if (!(float.IsFinite(size.X) && float.IsFinite(size.Y) && float.IsFinite(size.Z) && size.X > 0f && size.Y > 0f && size.Z > 0f && size.X <= max && size.Y <= max && size.Z <= max))
         {
@@ -384,23 +392,28 @@ public sealed partial class PhysicsWorld3D
 
     /// <summary>Adds a sphere.</summary>
     public Body AddSphere(float radius, Vector3D at = default, BodyType type = BodyType.Dynamic, Material3D? material = null, float density = 1f)
-        => AddOne(type, at, default, ShapeSpec3D.Sphere(radius), material, density);
+        {
+            using var replayMutation = RecordMutation("PhysicsWorld3D.AddSphere"); return AddOne(type, at, default, ShapeSpec3D.Sphere(radius), material, density); }
 
     /// <summary>Adds a capsule along the y axis: <paramref name="halfLength"/> is half the length of the straight part.</summary>
     public Body AddCapsule(float halfLength, float radius, Vector3D at = default, QuaternionF rotation = default, BodyType type = BodyType.Dynamic, Material3D? material = null, float density = 1f)
-        => AddOne(type, at, rotation, ShapeSpec3D.Capsule(halfLength, radius), material, density);
+        {
+            using var replayMutation = RecordMutation("PhysicsWorld3D.AddCapsule"); return AddOne(type, at, rotation, ShapeSpec3D.Capsule(halfLength, radius), material, density); }
 
     /// <summary>Adds a cylinder along the y axis.</summary>
     public Body AddCylinder(float halfHeight, float radius, Vector3D at = default, QuaternionF rotation = default, BodyType type = BodyType.Dynamic, Material3D? material = null, float density = 1f)
-        => AddOne(type, at, rotation, ShapeSpec3D.Cylinder(halfHeight, radius), material, density);
+        {
+            using var replayMutation = RecordMutation("PhysicsWorld3D.AddCylinder"); return AddOne(type, at, rotation, ShapeSpec3D.Cylinder(halfHeight, radius), material, density); }
 
     /// <summary>Adds the convex hull of a point set.</summary>
     public Body AddConvexHull(ReadOnlySpan<Vector3F> points, Vector3D at = default, QuaternionF rotation = default, BodyType type = BodyType.Dynamic, Material3D? material = null, float density = 1f)
-        => AddOne(type, at, rotation, ShapeSpec3D.ConvexHull(points), material, density);
+        {
+            using var replayMutation = RecordMutation("PhysicsWorld3D.AddConvexHull"); return AddOne(type, at, rotation, ShapeSpec3D.ConvexHull(points), material, density); }
 
     /// <summary>Adds a compound of convex parts as one body.</summary>
     public Body AddCompound(ReadOnlySpan<CompoundPart> parts, Vector3D at = default, QuaternionF rotation = default, BodyType type = BodyType.Dynamic, Material3D? material = null, float density = 1f)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.AddCompound");
         var body = CreateBody(type, at, rotation, nameof(at));
         try { AddShape(body, Geom3D.CompoundRecipe(parts), ShapeFor(material, density)); }
         catch (Exception) { body.Destroy(); throw; }
@@ -410,6 +423,7 @@ public sealed partial class PhysicsWorld3D
     /// <summary>Adds a static triangle mesh.</summary>
     public Body AddMesh(ReadOnlySpan<Vector3F> vertices, ReadOnlySpan<int> indices, Vector3D at = default, QuaternionF rotation = default, Material3D? material = null)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.AddMesh");
         var body = CreateBody(BodyType.Static, at, rotation, nameof(at));
         try { CreateMesh(body, vertices, indices, ShapeFor(material, 0f)); }
         catch (Exception) { body.Destroy(); throw; }
@@ -419,6 +433,7 @@ public sealed partial class PhysicsWorld3D
     /// <summary>Adds a static height field.</summary>
     public Body AddHeightField(ReadOnlySpan<float> heights, int samplesX, int samplesZ, Vector3F scale, Vector3D at = default, QuaternionF rotation = default, Material3D? material = null, ReadOnlySpan<bool> holes = default)
     {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.AddHeightField");
         var body = CreateBody(BodyType.Static, at, rotation, nameof(at));
         try { CreateHeightField(body, heights, samplesX, samplesZ, scale, holes, ShapeFor(material, 0f)); }
         catch (Exception) { body.Destroy(); throw; }

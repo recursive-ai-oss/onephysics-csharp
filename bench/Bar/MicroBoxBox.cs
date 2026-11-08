@@ -8,6 +8,8 @@ using RecursiveAI.OnePhysics.LowLevel;
 
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+
 /// <summary>
 /// Microbenchmark of the box-against-box manifold routine on pairs taken from a running scene: the scene is stepped to the given steps, every pair of dynamic or static boxes whose centres are
 /// close enough to matter is collected with its relative pose, and <see cref="ManifoldGenerator3D.Collide"/> is timed over all of them, several repetitions, best repetition kept.

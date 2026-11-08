@@ -17,6 +17,7 @@ public readonly partial struct Body
         get { var (w, b) = Resolve(); return w.Engine.IsBullet(b); }
         set
         {
+            using var replayMutation = _world?.RecordMutation("Body.IsBullet");
             var (w, b) = Resolve();
             RequireMovable(w, b);
             ref byte f = ref w.Core.Bodies.Flags[b];

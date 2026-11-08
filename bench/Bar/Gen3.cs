@@ -1,6 +1,15 @@
 using System.Globalization;
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+using BodyDef = RecursiveAI.OnePhysics.Scene.BodyDef;
+using JointDef = RecursiveAI.OnePhysics.Scene.JointDef;
+using QueryDef = RecursiveAI.OnePhysics.Scene.QueryDef;
+using EventDef = RecursiveAI.OnePhysics.Scene.EventDef;
+using SoftDef = RecursiveAI.OnePhysics.Scene.SoftDef;
+using CharacterScript = RecursiveAI.OnePhysics.Scene.CharacterScript;
+using VehicleScript = RecursiveAI.OnePhysics.Scene.VehicleScript;
+
 /// <summary>Deterministic 3D scene generators; same rules as the 2D ones (seeded, IEEE-exact arithmetic, no trigonometry).</summary>
 public static class Gen3
 {

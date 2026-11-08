@@ -85,7 +85,33 @@ internal static class SmokeProgram
         ulong sk1 = SoftSkinned3DScene.Run(1, false), sk3 = SoftSkinned3DScene.Run(3, false), skr = SoftSkinned3DScene.Run(1, true);
         bool skSame = sk1 == sk3 && sk1 == skr;
         Console.WriteLine((skSame ? "OK softskinned3d " : "FAIL softskinned3d ") + sk1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
-        return ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+        bool formats = FileFormats();
+        Console.WriteLine(formats ? "OK formats" : "FAIL formats");
+        return formats && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+    }
+
+    private static bool FileFormats()
+    {
+        var w=new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new RecursiveAI.OnePhysics.Physics2D.WorldOptions2D { WorldId=3000 });
+        var b=w.AddCircle(0.5f,at:new(0,3));
+        using var stream=new System.IO.MemoryStream();
+        ulong first,second;
+        using(var recorder=w.StartRecording(stream))
+        {
+            b.ApplyImpulse(new(0.1f,0));w.Step(1f/60);first=w.ComputeHash();
+            w.Options.Gravity=new(0,-8);w.Step(1f/60);second=w.ComputeHash();
+        }
+        stream.Position=0;var player=new RecursiveAI.OnePhysics.Replay.ReplayPlayer(stream);var copy=player.CreateWorld2D();
+        bool ok=player.ReadNextStep(copy) && copy.ComputeHash()==first && player.ReadNextStep(copy) && copy.ComputeHash()==second && !player.ReadNextStep(copy);
+        string text=w.SaveScene();var sceneCopy=RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D.LoadScene(new System.IO.StringReader(text));
+        ok &= sceneCopy.ComputeHash()==w.ComputeHash() && sceneCopy.SaveScene()==text;
+        var world3=new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new RecursiveAI.OnePhysics.Physics3D.WorldOptions3D { WorldId=3001 });
+        world3.AddSphere(0.5f,at:new(0,3,0));
+        using var history=world3.StartHistory(new RecursiveAI.OnePhysics.Replay.HistoryOptions { KeyframeInterval=2,MemoryBudgetBytes=4*1024*1024 });
+        world3.Step(1f/60);ulong h=world3.ComputeHash();world3.Step(1f/60);world3.Step(1f/60);
+        history.Seek(1,world3);ok &= world3.ComputeHash()==h;
+        string spatial=world3.SaveScene();var copy3=RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D.LoadScene(new System.IO.StringReader(spatial));
+        return ok && copy3.ComputeHash()==world3.ComputeHash() && copy3.SaveScene()==spatial;
     }
 
     private static ulong World2DJoints(int threads, bool restoreHalfway)

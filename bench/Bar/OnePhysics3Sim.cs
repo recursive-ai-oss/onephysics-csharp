@@ -8,6 +8,12 @@ using P3 = RecursiveAI.OnePhysics.Physics3D;
 
 namespace Bar;
 
+using Scene = RecursiveAI.OnePhysics.Scene.Scene;
+using JointDef = RecursiveAI.OnePhysics.Scene.JointDef;
+using SoftDef = RecursiveAI.OnePhysics.Scene.SoftDef;
+using CharacterScript = RecursiveAI.OnePhysics.Scene.CharacterScript;
+using VehicleScript = RecursiveAI.OnePhysics.Scene.VehicleScript;
+
 /// <summary>This library's 3D world behind the shared 3D driver loop.</summary>
 sealed class OnePhysics3Sim : ISim3
 {
