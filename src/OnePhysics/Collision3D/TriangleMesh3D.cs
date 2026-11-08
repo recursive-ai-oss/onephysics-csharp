@@ -41,6 +41,7 @@ public sealed class TriangleMesh3D : TriangleSoup3D
     private readonly Vector3F[] _vertices;
     private readonly int[] _indices;
     private readonly byte[] _flags;
+    private readonly int[] _patchIds = System.Array.Empty<int>();
     private readonly int[]? _source;
     private readonly int[] _dropped;
     private readonly MeshBvh3D _bvh;
@@ -55,6 +56,7 @@ public sealed class TriangleMesh3D : TriangleSoup3D
         _dropped = dropped;
         _bvh = bvh;
         _bounds = bounds;
+        _patchIds = CoplanarPatchIds.Build(this);
     }
 
     /// <inheritdoc/>
@@ -321,7 +323,7 @@ public sealed class TriangleMesh3D : TriangleSoup3D
             return false;
         }
 
-        triangle = new SoupTriangle3D(id, _vertices[_indices[3 * id]], _vertices[_indices[(3 * id) + 1]], _vertices[_indices[(3 * id) + 2]], _flags[id]);
+        triangle = new SoupTriangle3D(id, _vertices[_indices[3 * id]], _vertices[_indices[(3 * id) + 1]], _vertices[_indices[(3 * id) + 2]], _flags[id], _patchIds.Length == 0 ? id : _patchIds[id]);
         return true;
     }
 

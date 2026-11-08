@@ -142,7 +142,7 @@ public static class SnapshotDesync
         foreach (var section in schema.SnapshotSections)
         {
             // The contact-edit marker is a built-in core section, already registered by the constructor.
-            if (section.SectionId == core.ContactModifications.SectionId) { continue; }
+            if (section.SectionId == core.ContactModifications.SectionId || section.SectionId == core.Surfaces.SectionId || section.SectionId == core.ContactMotion.SectionId || section.SectionId == core.ContactMaterials.SectionId) { continue; }
             var probe = new HeaderProbe(section.SectionId, section.IsOptional);
             core.AddSection(probe);
             if (section.SectionId is 0x42503244 or 0x42503344) { bp = probe; }

@@ -392,3 +392,19 @@ an exact-state interchange extension understood by this library and viewers
 using it; reference benchmark drivers continue to consume version 1 authoring
 records. A viewer can load either form and inspect the resulting world without
 reflecting over scene or world types.
+
+### Surface and indexed-material authoring records
+
+After a `shape` record, optional `surface` supplies twelve floats:
+`vx vy vz oneWayX oneWayY oneWayZ axisX axisY axisZ muLong muAcross spinning`.
+Vectors are in the owning body's frame; SI units, defaults, limits, one-way
+rules and dimension-specific exclusions are specified in `contacts.md`.
+All twelve values are required; omission means an ordinary stationary,
+two-sided isotropic surface. A record without a preceding shape is invalid.
+
+`material_indices i0 i1 ...` after a shape assigns indices into the scene's
+material table, one per mesh/height-field triangle or chain segment (one for
+other shapes). Indices are nonnegative and within the material table. Empty
+arrays are omitted by the writer. These two records are written immediately
+after their shape, leaving older scenes byte-identical. Full-state version 2
+scenes carry the optional runtime surface/material/motion sections unchanged.

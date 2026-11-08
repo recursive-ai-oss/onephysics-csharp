@@ -74,3 +74,124 @@ not persistent configuration. Their resulting impulses, positions and velocities
 are already snapshot state. Extended solver arithmetic is bypassed when no
 callback used either output, preserving the original default arithmetic,
 including signed zeros. Scalar and wide kernels use identical lane operations.
+
+## Body-frame surfaces
+
+`ShapeDef.Surface`, `Shape.Surface` and `Material2D/3D.Surface` contain optional
+`SurfaceProperties`; materials copy them through `WithMaterial`. `Velocity` is
+a conveyor velocity in the owning body's frame, projected into the contact
+plane. Relative surface target is A's rotated surface velocity minus B's,
+projected onto the two solver tangents. User modification runs after these
+built-in rules and may override them.
+
+A nonzero `OneWayDirection` selects an allowed outward body-frame normal. The
+collision normal towards the other shape must have dot product at least 0.5
+with the normalized allowed direction; this rejects sides and undersides.
+Relative point velocity away from the platform above 0.01 m/s disables response.
+Otherwise response requires previous separation (current separation minus
+normal relative velocity times the full step dt) at least -0.02 m, or an existing
+positive normal warm-start impulse. This prevents a jump whose apex remains
+inside the platform from acquiring response on its downward path, while a
+falling body can land even if a discrete frame overshoots the plane.
+
+In 3D, nonzero `FrictionAxis` selects a body-frame longitudinal axis. Shape A's
+axis wins if both shapes provide one. Project it into the contact plane and
+normalize (fall back to ordinary tangents if squared length <= 1e-12). Each
+surface contributes coefficient `sqrt(longitudinal²*cos² + transverse²*(1-cos²))`
+along each tangent; an isotropic surface contributes its ordinary coefficient.
+The two surfaces combine by geometric mean on each axis. Project the tangent
+impulse into the corresponding ellipse; a zero coefficient forbids impulse on
+that axis. Tangential warm starts are cleared rather than reinterpreted in a
+changed material frame. In 2D there is only one tangential linear degree of
+freedom; ordinary scalar friction is its complete analogue, and anisotropic
+axes are rejected.
+
+`SpinningFriction` in 3D bounds torque about the normal by coefficient times
+normal load. A separate accumulated scalar impulse drives relative normal-axis
+spin to zero, clamped to ±coefficient times the sum of normal impulses. It is
+reinitialized at substep preparation (no torsional warm start). There is no
+normal-axis spin degree of freedom in 2D, so a nonzero torsional coefficient is
+rejected there. Ordinary rolling resistance remains perpendicular to the normal.
+
+Surface records occupy optional section `0x53555246`: int32 version 1, int32
+record count, then strictly increasing shape-index records: shape index and
+generation (int32 each), velocity XYZ, one-way direction XYZ, friction axis XYZ,
+longitudinal coefficient, transverse coefficient, spinning coefficient (float32
+in that order). Records are 56 bytes, little endian. Default records are omitted;
+destroying a shape removes its record. Invalid values or stale shape references
+are rejected on restore. The section is absent in ordinary worlds.
+
+## Contact inspection and audio
+
+`Body.Contacts`, `world.GetContacts(body)` and `world.Core.GetContacts(handle)`
+iterate read-only `ContactView` manifolds in ascending constraint slot order,
+without allocations. They include speculative contacts; sensors and disabled
+zero-point responses are excluded. Views expire at world mutation and advancing
+an enumeration validates the owning body. This is the contact-only companion
+to broader body/constraint inspection.
+
+`ContactMotionEnabled` is opt-in and false by default. It collects a maximum
+pre-solve approach speed at manifold birth (`ImpactSpeed`), maximum residual
+tangential point speed at step end (`SlidingSpeed`, relative to conveyor surface
+motion), and relative rolling angular speed times the smaller contact arm
+length (`RollingSpeed`). Values are nonnegative metres/second. Contact events,
+polled event arrays and `Collision` expose the same data. End events retain the
+last data. The first contact may be speculative, so impact speed is at manifold
+birth, not an extrapolation to exact geometric impact time.
+
+Motion state is optional section `0x43444154`, present only while collection is
+enabled. Payload: int32 version 1, int32 record count; each 37-byte record has
+shape A index/generation, shape B index/generation, subshape A/B (six int32),
+impact/sliding/rolling speed (three float32), then a bool live flag. Keys increase
+lexicographically in that field order. Removed manifolds retain data for one
+step to supply end events. This section restores the additive public event data;
+the existing event serialization bytes and snapshot v1 core remain unchanged.
+
+## Indexed materials and coplanar patches
+
+`Shape.SetMaterials` and raw `Core.SetContactMaterials` copy a scalar material
+table plus one index per kept triangle (mesh), triangle id (height field,
+including holes), or one index for a segment. Empty spans remove the override.
+The planar `CreateChain` material overload assigns one table index to each
+segment, retaining its ghost vertices. Each triangle manifold resolves its
+friction, restitution and rolling resistance before the normal combine rules;
+points on different material regions never share a solver manifold. Indexed
+scalar materials do not replace shape-wide `Surface` settings.
+
+Indexed configuration occupies optional section `0x4D415453`: int32 version 1,
+int32 shape-record count; each shape record has int32 shape index/generation,
+int32 table length, table triples friction/restitution/rolling resistance as
+float32, then int32 index count and int32 indices. Shape records strictly
+increase by shape index. Table/index lengths and every coefficient/reference
+are validated. Cached patch partitions are derived, not saved.
+
+Active-edge flags retain the mesh/height-field convexity test described in
+`collision3d.md`. An internal seam also needs coherent *manifold identity*:
+otherwise crossing a triangle boundary discards warm-start support and applies
+an artificial torque even with exactly vertical normals. At geometry build,
+exactly equal oriented planes `(normal.xyz, dot(normal, vertex0))` receive the
+lowest triangle id as their coplanar patch id. Query triangle ids remain
+unchanged. Indexed materials further partition a plane by material index, each
+partition using its lowest triangle id. Plane/material keys are reconstructed
+in fixed numeric triangle order.
+
+A front contact within cosine 0.99999 of a face with inactive edges uses the
+face normal exactly. Coplanar contacts with the same child and material patch
+merge into at most four points (Gregorius 2015, contact manifold coherence and
+point reduction, slides 96 and 103–113). Selection starts at the lexicographically
+largest support point in the non-soup body's frame, then farthest point,
+largest triangle area, and largest added outside area. Selection ties keep
+triangle/point order. Final ordering is lexicographic in that body's local
+coordinates rounded to a 1e-5 grid **for ordering only**, not for positions or
+separations. Reduced feature ids are `0xFC000000 + slot`. A five-comparator sort
+network orders the four selections. This keeps warm-start slots stable across
+flat diagonals instead of tying them to changing triangle clips.
+
+The flat-floor regression uses a box sliding at 4 m/s across a 32×32-cell
+triangulated floor after 60 settling steps, over 330 measured steps. Original
+maximum absolute vertical speeds were 0.000647471 m/s (mesh) and 0.0004230275 m/s
+(height field); the persistent coplanar patches reduce both to 2.2351742e-8 m/s,
+below the 1e-4 m/s limit. An ordinary box floor measures 2.7939677e-8 m/s. These
+are deterministic physical error metrics, not timing rows. Mesh/height-field
+contact keys and resulting hashes intentionally change; core snapshot v1 does
+not change, and geometry patch ids are derived on construction/restore.

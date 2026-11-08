@@ -226,12 +226,23 @@ internal sealed partial class Engine3D
             idx[16 + lane] = mA > 0f ? a : -1; idx[24 + lane] = mB > 0f ? b : -1;
             var n = V(pl, ManifoldLayout.Normal);
             Tangents(n, out var t1, out var t2);
+            if (ContactModifications.Extended)
+            {
+                var extra = ContactModifications.ExtraOf(c);
+                if (extra[9] != 0) { t1 = new Vector3F(extra[4], extra[5], extra[6]); t2 = Vector3F.Cross(n, t1); }
+            }
             Put3(w, W3D.N, lane, n); Put3(w, W3D.T1, lane, t1); Put3(w, W3D.T2, lane, t2);
             w[W3D.Friction * 8 + lane] = pl[ManifoldLayout.Friction];
             if (ContactModifications.Extended)
             {
                 w[W3D.TangentSpeed * 8 + lane] = ContactModifications.TangentSpeed(c);
                 w[W3D.ImpulseLimit * 8 + lane] = ContactModifications.ImpulseLimit(c);
+                var extra = ContactModifications.ExtraOf(c);
+                w[W3D.TangentSpeed2 * 8 + lane] = extra[2];
+                w[W3D.Friction2 * 8 + lane] = extra[3];
+                w[W3D.Spin * 8 + lane] = extra[7];
+                w[W3D.SpinImpulse * 8 + lane] = 0;
+                w[W3D.Anisotropic * 8 + lane] = extra[9];
             }
             float restitution = pl[ManifoldLayout.Restitution];
             w[W3D.Restitution * 8 + lane] = restitution;

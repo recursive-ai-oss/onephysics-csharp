@@ -186,6 +186,10 @@ public sealed partial class WorldCore
         _events = new EventCollector(_options);
         _origin = new double[Layout.PositionLanes];
         AddSection(ContactModifications);
+        Surfaces = new SurfaceStore(Layout.PositionLanes);
+        AddSection(Surfaces);
+        AddSection(ContactMotion);
+        AddSection(ContactMaterials);
     }
 
     /// <summary>The id stamped into this world's handles.</summary>
@@ -390,7 +394,7 @@ public sealed partial class WorldCore
         foreach (int c in doomed) { RemoveConstraint(c); }
         for (int s = 0; s < _shapes.HighWater; s++)
         {
-            if (_shapes.Handles.IsLive(s) && _shapes.Owner[s] == b) { _shapes.FreeSlot(s); }
+            if (_shapes.Handles.IsLive(s) && _shapes.Owner[s] == b) { ContactMaterials.Remove(s); Surfaces.Remove(s); _shapes.FreeSlot(s); }
         }
 
         _islands.RemoveBody(_bodies, b);
@@ -417,6 +421,7 @@ public sealed partial class WorldCore
 
         var doomed = _scratch.ToArray();
         foreach (int c in doomed) { RemoveConstraint(c); }
+        ContactMaterials.Remove(s); Surfaces.Remove(s);
         _shapes.FreeSlot(s);
     }
 
@@ -609,6 +614,9 @@ public sealed partial class WorldCore
 #endif
         ReadContactSchedule();
         BuildAwakeBodies();
+        if (ContactMaterials.IsPresent) ContactMaterials.Prepare();
+        ContactStepDt = dt;
+        ContactModifications.SurfaceActive = Surfaces.IsPresent;
         stages.UpdateContacts(this);
         BuildAwakeBodies();
 #if STAGE_TIMERS
@@ -684,7 +692,9 @@ public sealed partial class WorldCore
         StageProbe.Mark(StageProbe.Events);
 #endif
         EmitPersist();
+        if (ContactMotion.Enabled) ContactMotion.Update(this);
         _events.Deliver();
+        if (ContactMotion.Enabled) _events.EnrichContactMotion(ContactMotion);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.End);
 #endif
@@ -1558,6 +1568,8 @@ public sealed partial class WorldCore
             if (sub.Remaining != 0) { throw new SnapshotFormatException("section " + _sections[i].SectionId.ToString(CultureInfo.InvariantCulture) + " left unread bytes", r.Position); }
         }
 
+        Surfaces.ValidateReferences(shapes);
+        ContactMaterials.ValidateReferences(shapes);
         _options.CopySimulationValuesFrom(opts);
         _stepCount = steps;
         _spOrigin = _origin; _origin = origin;
@@ -1567,6 +1579,7 @@ public sealed partial class WorldCore
         _spIslands = _islands; _islands = islands;
         _coloring.CopyFrom(coloring);
         _events.SwapWith(events);
+        if (ContactMotion.Enabled) _events.EnrichContactMotion(ContactMotion);
         _awakeCount = 0;
     }
 

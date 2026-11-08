@@ -80,6 +80,7 @@ internal static class SceneBuilder2D
         var def = new P2.ShapeDef
         {
             Density = (float)sh.Density,
+            Surface = sh.Surface,
             Friction = (float)s.Materials[sh.Material].Friction,
             Restitution = (float)s.Materials[sh.Material].Restitution,
         };
@@ -98,10 +99,21 @@ internal static class SceneBuilder2D
             case "segment": world.CreateSegment(body, new Vector2F((float)p[0], (float)p[1]), new Vector2F((float)p[2], (float)p[3]), def); break;
             case "chain":
                 // The scene format asks for one two-sided segment per link, as the references build it.
+                if (sh.MaterialIndices.Length != 0 && sh.MaterialIndices.Length != p.Length / 2 - 1) throw new InvalidDataException("one material index per chain segment");
                 for (int i = 0; i + 3 < p.Length; i += 2)
-                    world.CreateSegment(body, new Vector2F((float)p[i], (float)p[i + 1]), new Vector2F((float)p[i + 2], (float)p[i + 3]), def);
+                {
+                    var segment = world.CreateSegment(body, new Vector2F((float)p[i], (float)p[i + 1]), new Vector2F((float)p[i + 2], (float)p[i + 3]), def);
+                    if (sh.MaterialIndices.Length != 0) segment.SetMaterials(IndexedMaterials(s), new[] { sh.MaterialIndices[i / 2] });
+                }
                 break;
             default: throw new InvalidDataException("unknown shape " + sh.Kind);
         }
+        if (sh.MaterialIndices.Length != 0 && sh.Kind != "chain") body.GetShapes()[^1].SetMaterials(IndexedMaterials(s), sh.MaterialIndices);
+    }
+    private static P2.Material2D[] IndexedMaterials(Scene scene)
+    {
+        var result = new P2.Material2D[scene.Materials.Count];
+        for (int i = 0; i < result.Length; i++) result[i] = new((float)scene.Materials[i].Friction, (float)scene.Materials[i].Restitution);
+        return result;
     }
 }

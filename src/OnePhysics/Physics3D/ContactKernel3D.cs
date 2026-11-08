@@ -22,7 +22,8 @@ internal static class W3D
 
     public const int MaxPoints = 4;
     public const int TangentSpeed = Point0 + MaxPoints * PointStride, ImpulseLimit = TangentSpeed + 1;
-    public const int Fields = ImpulseLimit + 1;
+    public const int TangentSpeed2 = ImpulseLimit + 1, Friction2 = TangentSpeed2 + 1, Spin = Friction2 + 1, SpinImpulse = Spin + 1, Anisotropic = SpinImpulse + 1;
+    public const int Fields = Anisotropic + 1;
     public const int Lanes = 8;
     /// <summary>Scratch after the fields: gathered body state (38 rows of eight) and the velocities on their way out (12 rows of eight), so the kernel keeps no large locals.</summary>
     public const int StageOffset = Fields * Lanes, StageFloats = 0, OutOffset = StageOffset + StageFloats, OutFloats = 12 * 8;
@@ -259,6 +260,8 @@ internal static class ContactKernel3D
                 // A group with no rolling resistance in any lane would leave every lane unchanged (the selects keep the old bits), so it skips the work.
                 if (idx[W3D.AnyRollingSlot] != 0) { RollingResistance(ref a, ref b2, nrm, ref roll, wide, l0, rolling, maxPts); }
 
+                if (extended) { SpinningResistance(ref a, ref b2, nrm, wide, l0, maxPts); }
+
                 for (int i = 0; i < maxPts; i++) { FrictionPoint(ref a, ref b2, wide, i, l0, t1, t2, friction, extended); }
 
                 T invH = T.Broadcast(kp.InverseSubstepDt), slop = T.Broadcast(kp.LinearSlop), negPush = T.Broadcast(-kp.PushOutVelocity);
@@ -286,6 +289,24 @@ internal static class ContactKernel3D
                 roll.X.StoreAt(wide, (W3D.RollImpulse + 0) * 8 + l0); roll.Y.StoreAt(wide, (W3D.RollImpulse + 1) * 8 + l0); roll.Z.StoreAt(wide, (W3D.RollImpulse + 2) * 8 + l0);
             }
         }
+    }
+
+    private static void SpinningResistance<T>(ref BodyLanes<T> a, ref BodyLanes<T> b, V3<T> n, Span<float> wide, int l0, int points) where T : struct, ILane<T>
+    {
+        T zero = T.Zero, total = zero;
+        for (int p = 0; p < points; p++) total = total + Field<T>(wide, W3D.Point0 + p * W3D.PointStride + W3D.NormalImpulse, l0);
+        T mu = Field<T>(wide, W3D.Spin, l0), old = Field<T>(wide, W3D.SpinImpulse, l0);
+        T effective = V3<T>.Dot(n, a.I.Apply(n) + b.I.Apply(n));
+        T velocity = V3<T>.Dot(b.W - a.W, n);
+        T limit = mu * total;
+        T candidate = old - velocity / effective;
+        T next = Lane.Max(T.Negate(limit), Lane.Min(limit, candidate));
+        T mask = Lane.And(T.GreaterThan(mu, zero), T.GreaterThan(effective, zero));
+        next = T.Select(mask, next, old);
+        var impulse = n * (next - old);
+        a.W = V3<T>.Select(mask, a.W - a.I.Apply(impulse), a.W);
+        b.W = V3<T>.Select(mask, b.W + b.I.Apply(impulse), b.W);
+        next.StoreAt(wide, W3D.SpinImpulse * 8 + l0);
     }
 
     /// <summary>Applies the rolling impulse carried over from the last step to both bodies' angular velocity.</summary>
@@ -380,13 +401,26 @@ internal static class ContactKernel3D
         T velocity1 = V3<T>.Dot(dv, t1);
         if (extended) { velocity1 = velocity1 - Field<T>(wide, W3D.TangentSpeed, l0); }
         T n1 = l1 - Field<T>(wide, f + W3D.Tangent1Mass, l0) * velocity1;
-        T n2 = l2 - Field<T>(wide, f + W3D.Tangent2Mass, l0) * V3<T>.Dot(dv, t2);
+        T velocity2 = V3<T>.Dot(dv, t2);
+        if (extended) { velocity2 = velocity2 - Field<T>(wide, W3D.TangentSpeed2, l0); }
+        T n2 = l2 - Field<T>(wide, f + W3D.Tangent2Mass, l0) * velocity2;
         T maxF = friction * Field<T>(wide, f + W3D.NormalImpulse, l0);
         T m2 = n1 * n1 + n2 * n2;
         T clamp = T.GreaterThan(m2, maxF * maxF);
         T k = maxF / T.Sqrt(m2);
-        n1 = T.Select(clamp, n1 * k, n1);
-        n2 = T.Select(clamp, n2 * k, n2);
+        T c1 = T.Select(clamp, n1 * k, n1), c2 = T.Select(clamp, n2 * k, n2);
+        if (extended)
+        {
+            T max2 = Field<T>(wide, W3D.Friction2, l0) * Field<T>(wide, f + W3D.NormalImpulse, l0);
+            T zero = T.Zero, one = T.Broadcast(1f);
+            T x = T.Select(T.GreaterThan(maxF, zero), n1 / maxF, zero), y = T.Select(T.GreaterThan(max2, zero), n2 / max2, zero);
+            T length = T.Sqrt(x * x + y * y);
+            T scale = T.Select(T.GreaterThan(length, one), one / length, one);
+            T e1 = T.Select(T.GreaterThan(maxF, zero), n1 * scale, zero), e2 = T.Select(T.GreaterThan(max2, zero), n2 * scale, zero);
+            T anisotropic = T.GreaterThan(Field<T>(wide, W3D.Anisotropic, l0), zero);
+            c1 = T.Select(anisotropic, e1, c1); c2 = T.Select(anisotropic, e2, c2);
+        }
+        n1 = c1; n2 = c2;
         n1 = T.Select(pm, n1, l1); n2 = T.Select(pm, n2, l2);
         n1.StoreAt(wide, (f + W3D.Tangent1Impulse) * 8 + l0); n2.StoreAt(wide, (f + W3D.Tangent2Impulse) * 8 + l0);
         return t1 * (n1 - l1) + t2 * (n2 - l2);

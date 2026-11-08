@@ -249,6 +249,7 @@ internal sealed partial class Engine2D
         }
         if (Opt.MaterialMixer != null) { new WriteTask(this).RunAll(); } // a user mixer runs serially, in pair order
         else { world.Executor.For(_collideBlocks, new WriteTask(this)); }
+        if (world.ContactMotionEnabled) world.ContactMotion.Capture(world);
         if (ContactModifications.Refresh) { ContactModifications.Run(world); }
     }
 
@@ -593,6 +594,7 @@ internal sealed partial class Engine2D
     // keepMix: the payload still holds the pair's current mixed coefficients (nothing has changed a material since it was written), so they are kept instead of mixed again.
     private void WriteManifold(ConstraintStore cs, int c, int sa, int sb, in PairResult res, bool keepMix = false)
     {
+        keepMix &= !ContactModifications.Refresh;
         var pl = cs.Payload(c);
         var ids = cs.FeatureIdsOf(c);
         // Offsets below are all under Header + 2 * PointStride (+ the trailing floats), which the payload layout of the planar world always holds.
@@ -905,16 +907,24 @@ internal sealed partial class Engine2D
 
     private Material2D Mix(int sa, int sb)
     {
+        float fa = Friction[sa], fb = Friction[sb], ra = Restitution[sa], rb = Restitution[sb], rra = Rolling[sa], rrb = Rolling[sb];
+        if (Core.ContactMaterials.IsPresent)
+        {
+            var a = Core.ContactMaterials.Resolve(sa, 0, new ContactMaterial(fa, ra, rra));
+            var b = Core.ContactMaterials.Resolve(sb, 0, new ContactMaterial(fb, rb, rrb));
+            fa = a.Friction; fb = b.Friction; ra = a.Restitution; rb = b.Restitution; rra = a.RollingResistance; rrb = b.RollingResistance;
+        }
+
         var mixer = Opt.MaterialMixer;
         if (mixer != null)
         {
-            return mixer(new Material2D(Friction[sa], Restitution[sa], Rolling[sa]), new Material2D(Friction[sb], Restitution[sb], Rolling[sb]));
+            return mixer(new Material2D(fa, ra, rra), new Material2D(fb, rb, rrb));
         }
 
         // Friction: geometric mean (a slippery surface stays slippery); restitution and rolling resistance: the larger.
-        float f = float.Sqrt(Friction[sa] * Friction[sb]);
-        float r = Restitution[sa] > Restitution[sb] ? Restitution[sa] : Restitution[sb];
-        float rr = Rolling[sa] > Rolling[sb] ? Rolling[sa] : Rolling[sb];
+        float f = float.Sqrt(fa * fb);
+        float r = ra > rb ? ra : rb;
+        float rr = rra > rrb ? rra : rrb;
         return new Material2D(f, r, rr);
     }
 }

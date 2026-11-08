@@ -19,6 +19,7 @@ public ref struct ContactModification
 {
     private readonly Span<float> _payload;
     private readonly Span<float> _extra;
+    internal Span<float> Extra => _extra;
     private readonly int _count;
     private readonly int _dimension;
     internal ContactModification(WorldCore world, int constraint, Span<float> extra)
@@ -62,7 +63,7 @@ public ref struct ContactModification
     public float Friction
     {
         get => _payload[ManifoldLayout.Friction];
-        set { Validate(value, MaterialLimits.MaxCoefficient, nameof(Friction)); _payload[ManifoldLayout.Friction] = value; }
+        set { Validate(value, MaterialLimits.MaxCoefficient, nameof(Friction)); _payload[ManifoldLayout.Friction] = value; _extra[3] = value; }
     }
     /// <summary>Restitution, 0..1. Throws ArgumentOutOfRangeException for non-finite or out-of-range values.</summary>
     public float Restitution
@@ -109,10 +110,15 @@ internal sealed class ContactModificationPipeline : IComparer<int>, ISnapshotSec
     private int[] _order = Array.Empty<int>();
     private ConstraintStore? _store;
     private float[] _extra = Array.Empty<float>();
+    internal const int ExtraStride = 10;
+    internal bool SurfaceActive;
+    internal Func<int, float>? ShapeFriction;
+    internal void RequestRefresh() => _reset = true;
+    internal ReadOnlySpan<float> ExtraOf(int c) => _extra.AsSpan(ExtraStride * c, ExtraStride);
     public bool Extended { get; private set; }
-    public float TangentSpeed(int c) => _extra[2 * c];
-    public float ImpulseLimit(int c) => _extra[2 * c + 1];
-    public bool Refresh => _callback != null || _reset || _modified;
+    public float TangentSpeed(int c) => _extra[ExtraStride * c];
+    public float ImpulseLimit(int c) => _extra[ExtraStride * c + 1];
+    public bool Refresh => _callback != null || SurfaceActive || _reset || _modified;
     public ContactModifier? Callback
     {
         get => _callback;
@@ -123,10 +129,10 @@ internal sealed class ContactModificationPipeline : IComparer<int>, ISnapshotSec
         _reset = false;
         _modified = false;
         Extended = false;
-        if (_callback == null) return;
+        if (_callback == null && !SurfaceActive) return;
         var cs = world.Constraints;
         if (_order.Length < cs.Count) Array.Resize(ref _order, Math.Max(cs.Count, Math.Max(16, _order.Length * 2)));
-        if (_extra.Length < cs.HighWater * 2) Array.Resize(ref _extra, cs.HighWater * 2);
+        if (_extra.Length < cs.HighWater * ExtraStride) Array.Resize(ref _extra, cs.HighWater * ExtraStride);
         int n = 0;
         for (int c = 0; c < cs.HighWater; c++)
             if (cs.IsLive(c) && cs.KindOf(c) == ConstraintKind.Contact && cs.PointCount[c] != 0) _order[n++] = c;
@@ -136,11 +142,12 @@ internal sealed class ContactModificationPipeline : IComparer<int>, ISnapshotSec
         for (int i = 0; i < n; i++)
         {
             int c = _order[i];
-            var extra = _extra.AsSpan(2 * c, 2);
-            extra[0] = 0f; extra[1] = float.MaxValue;
+            var extra = _extra.AsSpan(ExtraStride * c, ExtraStride);
+            extra.Clear(); extra[1] = float.MaxValue; extra[3] = cs.Payload(c)[ManifoldLayout.Friction];
             var view = new ContactModification(world, c, extra);
-            _callback(ref view);
-            if (view.TangentSpeed != 0f || view.NormalImpulseLimit != float.MaxValue)
+            if (SurfaceActive) SurfaceContacts.Apply(world, c, ref view, ShapeFriction);
+            _callback?.Invoke(ref view);
+            if (SurfaceActive || view.TangentSpeed != 0f || view.NormalImpulseLimit != float.MaxValue)
             {
                 Extended = true;
                 var payload = cs.Payload(c);

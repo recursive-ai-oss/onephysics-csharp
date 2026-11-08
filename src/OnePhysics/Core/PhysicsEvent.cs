@@ -35,10 +35,20 @@ public readonly struct PhysicsEvent
     /// <summary>Kind-specific number (break value for joint breaks); zero otherwise.</summary>
     public float Value { get; }
 
+    /// <summary>Optional audio/haptic speeds, zero unless ContactMotionEnabled is set on the world.</summary>
+    public ContactMotion Motion { get; }
+    /// <summary>Pre-solve approach speed at manifold birth, metres/second; zero if collection is disabled.</summary>
+    public float ImpactSpeed => Motion.ImpactSpeed;
+    /// <summary>Residual sliding speed at the end of this step, metres/second; zero if collection is disabled.</summary>
+    public float SlidingSpeed => Motion.SlidingSpeed;
+    /// <summary>Rolling surface speed at the end of this step, metres/second; zero if collection is disabled.</summary>
+    public float RollingSpeed => Motion.RollingSpeed;
+    internal PhysicsEvent WithMotion(ContactMotion motion) => new(Kind, BodyA, BodyB, ShapeA, ShapeB, SubShapeA, SubShapeB, Joint, Value, motion);
+
     /// <summary>Creates an event from all its parts.</summary>
-    public PhysicsEvent(EventKind kind, BodyHandle a, BodyHandle b, ShapeHandle sa, ShapeHandle sb, int subA, int subB, JointHandle joint, float value)
+    public PhysicsEvent(EventKind kind, BodyHandle a, BodyHandle b, ShapeHandle sa, ShapeHandle sb, int subA, int subB, JointHandle joint, float value, ContactMotion motion = default)
     {
-        Kind = kind; BodyA = a; BodyB = b; ShapeA = sa; ShapeB = sb; SubShapeA = subA; SubShapeB = subB; Joint = joint; Value = value;
+        Motion = motion; Kind = kind; BodyA = a; BodyB = b; ShapeA = sa; ShapeB = sb; SubShapeA = subA; SubShapeB = subB; Joint = joint; Value = value;
     }
 
     /// <summary>

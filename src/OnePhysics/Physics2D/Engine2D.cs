@@ -98,6 +98,8 @@ internal sealed partial class Engine2D : ISnapshotSection
 
     public Engine2D(WorldCore core, Broadphase2D bp, WorldOptions2D opt)
     {
+        core.ContactModifications.ShapeFriction = s => Friction[s];
+        core.ContactMaterials.SubshapeCount = _ => 1;
         Core = core;
         Bp = bp;
         Opt = opt;
@@ -204,6 +206,7 @@ internal sealed partial class Engine2D : ISnapshotSection
 
     public ShapeHandle AddShape(BodyHandle body, in Shape2D geometry, in ShapeDef def)
     {
+        def.Surface.Validate(Core.Layout.PositionLanes);
         Nonnegative(def.Density, "Density");
         Coefficient(def.Friction, "Friction");
         Coefficient(def.RollingResistance, "RollingResistance");
@@ -218,6 +221,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         EnsureShapes(s + 1);
         Geom[s] = geometry;
         Friction[s] = def.Friction; Restitution[s] = def.Restitution; Rolling[s] = def.RollingResistance; Density[s] = def.Density;
+        if (!def.Surface.IsDefault) Core.SetSurfaceProperties(sh, def.Surface);
         Category[s] = def.CategoryBits; Mask[s] = def.MaskBits; Group[s] = def.GroupIndex;
         ShapeFlags[s] = def.IsSensor ? FlagSensor : (byte)0; ShapeLayer[s] = (byte)def.Layer;
         NextShape[s] = -1;

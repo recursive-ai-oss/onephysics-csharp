@@ -13,10 +13,10 @@ public sealed partial class Scene
         {
             "name" or "dim" or "dt" or "steps" or "substeps" or "dump_every" or "warmup" or "settle" or "query_reps" => 2,
             "gravity" => Dim + 1, "material" => 4, "body" => Dim == 2 ? 9 : 16,
-            "character" => 6, "vehicle" => 7, "event" => 3, _ => -1
+            "surface" => 13, "character" => 6, "vehicle" => 7, "event" => 3, _ => -1
         };
         if (exact >= 0 && t.Length != exact) throw new FormatException($"{exact} tokens for {t[0]}");
-        int min = t[0] switch { "param" => 3, "shape" => 5, "query" => 2, "soft" => 12, "joint" => Dim == 2 ? 8 : 10, _ => 1 };
+        int min = t[0] switch { "material_indices" => 2, "param" => 3, "shape" => 5, "query" => 2, "soft" => 12, "joint" => Dim == 2 ? 8 : 10, _ => 1 };
         if (t.Length < min) throw new FormatException($"at least {min} tokens for {t[0]}");
         if (t[0] == "joint")
         {
@@ -111,6 +111,9 @@ public sealed partial class Scene
     private void ValidateShape(ShapeDef sh)
     {
         var p = sh.P;
+        try { sh.Surface.Validate(Dim); } catch (ArgumentException) { throw Error("valid body-frame surface settings"); }
+        if (sh.MaterialIndices == null || sh.MaterialIndices.Length > 1000000) throw Error("bounded material index array");
+        foreach (int material in sh.MaterialIndices) if ((uint)material >= (uint)Materials.Count) throw Error("material index inside the global table");
         if (p == null || p.Length > 1000000) throw Error("non-null bounded shape parameters");
         Finite(p);
         int expected = (Dim, sh.Kind) switch

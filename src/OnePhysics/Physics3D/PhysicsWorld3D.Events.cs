@@ -88,7 +88,7 @@ public sealed partial class PhysicsWorld3D : ICallbackGate
                     a.PersistDone = true;
                     break;
                 default:
-                    if (!a.HitDone) { _publicEvents[n++] = new PhysicsEvent(e.Kind, e.BodyA, e.BodyB, e.ShapeA, e.ShapeB, e.SubShapeA, e.SubShapeB, e.Joint, a.Hit); }
+                    if (!a.HitDone) { _publicEvents[n++] = new PhysicsEvent(e.Kind, e.BodyA, e.BodyB, e.ShapeA, e.ShapeB, e.SubShapeA, e.SubShapeB, e.Joint, a.Hit, e.Motion); }
                     a.HitDone = true;
                     break;
             }
@@ -313,7 +313,7 @@ public sealed partial class PhysicsWorld3D : ICallbackGate
             }
         }
 
-        return new Collision(new Body(this, self), new Body(this, other), new Shape(this, selfShape), new Shape(this, otherShape), normal, count, in p0, in p1, in p2, in p3, e.Kind == EventKind.ContactHit ? e.Value : 0f);
+        return new Collision(new Body(this, self), new Body(this, other), new Shape(this, selfShape), new Shape(this, otherShape), normal, count, in p0, in p1, in p2, in p3, e.Kind == EventKind.ContactHit ? e.Value : 0f, e.Motion);
     }
 
     private void FireTrigger(in PhysicsEvent e, BodyHandle self, BodyHandle other, ShapeHandle selfShape, ShapeHandle otherShape)
