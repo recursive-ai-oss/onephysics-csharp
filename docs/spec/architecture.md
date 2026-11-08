@@ -192,3 +192,11 @@ Body positions are double and relative to the world origin; the public boundary 
 Delta and deterministic compression envelopes are specified in
 [snapshots.md](snapshots.md). They wrap the entire snapshot without modifying
 format v1, its registered sections, canonical byte order or world hash.
+
+Structural forks copy core stores and registered sections directly; they do not
+change the step, span accessors, snapshot v1 or hash order. Custom sections use
+`ISnapshotSection.Fork` for independent state and may label written fields with
+`StateWriter.DescribeField`. Named desync descriptions are optional writer-side
+metadata, never bytes in the full snapshot. Region archives are a separate,
+versioned value-resync format; their topology/context checks and closure are in
+[snapshots.md](snapshots.md).

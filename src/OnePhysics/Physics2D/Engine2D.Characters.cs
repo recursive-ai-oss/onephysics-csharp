@@ -95,18 +95,20 @@ internal sealed partial class Engine2D
 
     private void WriteCharacters(StateWriter w)
     {
+        w.DescribeTable("character");
         CharHandles.Write(w);
         for (int c = 0; c < CharHandles.HighWater; c++)
         {
+            w.DescribeEntity("character", c, CharHandles.GenerationOf(c));
             if (!CharHandles.IsLive(c)) { continue; }
             var d = CharDef[c];
-            w.WriteInt32(CharBody[c]); w.WriteInt32(CharBodyGen[c]);
-            w.WriteSingle(d.Radius); w.WriteSingle(d.Height); w.WriteSingle(d.SlopeLimitDegrees); w.WriteSingle(d.StepOffset); w.WriteSingle(d.Skin);
-            w.WriteUInt32(d.LayerMask); w.WriteSingle(d.PushStrength); w.WriteInt32(d.Layer); w.WriteUInt32(d.CategoryBits); w.WriteUInt32(d.MaskBits);
-            w.WriteSingle(d.Mass); w.WriteSingle(d.MaxPushForce);
-            w.WriteByte((byte)CharGround[c]); w.WriteSingle(CharNx[c]); w.WriteSingle(CharNy[c]);
-            w.WriteInt32(CharGroundBody[c]); w.WriteInt32(CharGroundGen[c]);
-            w.WriteSingle(CharVx[c]); w.WriteSingle(CharVy[c]);
+            w.NamedInt32(CharBody[c]); w.NamedInt32(CharBodyGen[c]);
+            w.NamedSingle(d.Radius); w.NamedSingle(d.Height); w.NamedSingle(d.SlopeLimitDegrees); w.NamedSingle(d.StepOffset); w.NamedSingle(d.Skin);
+            w.NamedUInt32(d.LayerMask); w.NamedSingle(d.PushStrength); w.NamedInt32(d.Layer); w.NamedUInt32(d.CategoryBits); w.NamedUInt32(d.MaskBits);
+            w.NamedSingle(d.Mass); w.NamedSingle(d.MaxPushForce);
+            w.NamedByte((byte)CharGround[c]); w.NamedSingle(CharNx[c]); w.NamedSingle(CharNy[c]);
+            w.NamedInt32(CharGroundBody[c]); w.NamedInt32(CharGroundGen[c]);
+            w.NamedSingle(CharVx[c]); w.NamedSingle(CharVy[c]);
         }
     }
 

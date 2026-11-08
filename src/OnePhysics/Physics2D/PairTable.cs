@@ -7,7 +7,7 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// Key and value share one 16-byte entry, so a probe is one memory access rather than one per parallel array. Keys are never negative (two non-negative shape indices packed), and -1 marks an empty entry.
 /// It is only ever probed by key, never enumerated, so its internal order cannot reach a result.
 /// </summary>
-internal sealed class PairTable
+internal sealed partial class PairTable
 {
     private struct Entry
     {

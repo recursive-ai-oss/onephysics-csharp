@@ -11,7 +11,7 @@ namespace RecursiveAI.OnePhysics.LowLevel;
 /// A slot whose generation would overflow is retired and never reused.
 /// </summary>
 [Experimental("OPHYS0001")]
-public sealed class HandleTable
+public sealed partial class HandleTable
 {
     private int[] _generation = new int[16];
     private bool[] _live = new bool[16];
@@ -120,11 +120,12 @@ public sealed class HandleTable
     /// <summary>Writes the table: high-water mark, per-slot generation and liveness, and the free heap in its exact layout (the layout decides future allocations).</summary>
     public void Write(StateWriter w)
     {
-        w.WriteInt32(_highWater);
-        w.WriteInt32s(_generation.AsSpan(0, _highWater));
-        for (int i = 0; i < _highWater; i++) { w.WriteBool(_live[i]); }
-        w.WriteInt32(_heapCount);
-        w.WriteInt32s(_heap.AsSpan(0, _heapCount));
+        w.NamedInt32(_highWater);
+        w.NamedInt32s(_generation.AsSpan(0, _highWater));
+        for (int i = 0; i < _highWater; i++) { w.DescribeSlot(i, _generation[i]); w.NamedBool(_live[i]); }
+        w.DescribeEntity("allocator", -1);
+        w.NamedInt32(_heapCount);
+        w.NamedInt32s(_heap.AsSpan(0, _heapCount));
     }
 
     /// <summary>Adds to a snapshot size bound the most <see cref="Write"/> can take for a table of up to <paramref name="slots"/> slots (never fewer than the table has): the counts, then a generation, a liveness byte and a free-heap entry per slot.</summary>

@@ -32,6 +32,14 @@ internal static class Seeds
         for (int i = 0; i < literals.Length; i++) { literals[i] = (byte)i; }
         File.WriteAllBytes(Path.Combine(root, "snapshot-compressed", "literals"), RecursiveAI.OnePhysics.SnapshotEncoding.Compress(literals));
 
+        File.WriteAllBytes(Path.Combine(root, "snapshot-delta", "xor"), RecursiveAI.OnePhysics.SnapshotEncoding.CreateXorDelta(FuzzSnapshotEncoding.Base, new byte[512]));
+        File.WriteAllBytes(Path.Combine(root, "snapshot-compressed", "byteplanes"), RecursiveAI.OnePhysics.SnapshotEncoding.Compress(literals, true));
+        var regionWorld = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new RecursiveAI.OnePhysics.Physics2D.WorldOptions2D { WorldId = 97 });
+        regionWorld.AddCircle(0.5f, new RecursiveAI.OneMath.Vector2D(0, 0));
+        File.WriteAllBytes(Path.Combine(root, "snapshot-region", "valid"), regionWorld.SnapshotRegion(new RecursiveAI.OneMath.Vector2D(-1, -1), new RecursiveAI.OneMath.Vector2D(1, 1)));
+
+        File.WriteAllBytes(Path.Combine(root, "snapshot-desync", "valid"), regionWorld.Snapshot());
+
         // The raw snapshot reader starts from a real snapshot so that mutations get past the header.
         File.WriteAllBytes(Path.Combine(root, "snapshot-raw", "valid"), Program.BaseSnapshot());
 

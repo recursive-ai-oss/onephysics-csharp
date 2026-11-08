@@ -253,31 +253,34 @@ internal sealed partial class Engine3D
 
     private void WriteFluids(StateWriter w)
     {
+        w.DescribeTable("fluid");
         FluidHandles.Write(w);
         for (int i = 0; i < FluidHandles.HighWater; i++)
         {
+            w.DescribeEntity("fluid", i, FluidHandles.GenerationOf(i));
             if (!FluidHandles.IsLive(i)) { continue; }
             var d = Fluids[i]!;
-            w.WriteSingle(d.SurfaceNormal.X); w.WriteSingle(d.SurfaceNormal.Y); w.WriteSingle(d.SurfaceNormal.Z);
-            w.WriteDouble(d.SurfaceOffset);
-            w.WriteSingle(d.Density);
-            w.WriteSingle(d.Flow.X); w.WriteSingle(d.Flow.Y); w.WriteSingle(d.Flow.Z);
-            w.WriteSingle(d.LinearDrag); w.WriteSingle(d.AngularDrag); w.WriteSingle(d.ViscousDamping);
-            w.WriteBool(d.LimitToRegion);
-            w.WriteDouble(d.RegionMin.X); w.WriteDouble(d.RegionMin.Y); w.WriteDouble(d.RegionMin.Z);
-            w.WriteDouble(d.RegionMax.X); w.WriteDouble(d.RegionMax.Y); w.WriteDouble(d.RegionMax.Z);
+            w.NamedSingle(d.SurfaceNormal.X); w.NamedSingle(d.SurfaceNormal.Y); w.NamedSingle(d.SurfaceNormal.Z);
+            w.NamedDouble(d.SurfaceOffset);
+            w.NamedSingle(d.Density);
+            w.NamedSingle(d.Flow.X); w.NamedSingle(d.Flow.Y); w.NamedSingle(d.Flow.Z);
+            w.NamedSingle(d.LinearDrag); w.NamedSingle(d.AngularDrag); w.NamedSingle(d.ViscousDamping);
+            w.NamedBool(d.LimitToRegion);
+            w.NamedDouble(d.RegionMin.X); w.NamedDouble(d.RegionMin.Y); w.NamedDouble(d.RegionMin.Z);
+            w.NamedDouble(d.RegionMax.X); w.NamedDouble(d.RegionMax.Y); w.NamedDouble(d.RegionMax.Z);
         }
 
         // Buoyancy factors that differ from 1, by ascending body slot.
         int hw = Math.Min(Core.Bodies.HighWater, _buoyBits.Length);
         int count = 0;
         for (int b = 0; b < hw; b++) { if (_buoyBits[b] != 0 && Core.Bodies.IsLive(b)) { count++; } }
-        w.WriteInt32(count);
+        w.NamedInt32(count);
         for (int b = 0; b < hw; b++)
         {
             if (_buoyBits[b] == 0 || !Core.Bodies.IsLive(b)) { continue; }
-            w.WriteInt32(b);
-            w.WriteSingle(BuoyancyFactorOf(b));
+            w.DescribeEntity("body", b, Core.Bodies.Handles.GenerationOf(b));
+            w.NamedInt32(b);
+            w.NamedSingle(BuoyancyFactorOf(b));
         }
     }
 

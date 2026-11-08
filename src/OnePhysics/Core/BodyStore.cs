@@ -31,7 +31,7 @@ public enum BodyBits : byte
 /// its edge, bend and volume constraints are constraints of their own kinds referencing particle slots.
 /// </remarks>
 [Experimental("OPHYS0001")]
-public sealed class BodyStore
+public sealed partial class BodyStore
 {
     private readonly DimensionLayout _layout;
     private double[] _position = Array.Empty<double>();
@@ -187,17 +187,17 @@ public sealed class BodyStore
     {
         Handles.Write(w);
         int n = HighWater;
-        w.WriteDoubles(Position);
-        w.WriteSingles(Rotation);
-        w.WriteSingles(LinearVelocity);
-        w.WriteSingles(AngularVelocity);
-        w.WriteSingles(InverseMass);
-        w.WriteSingles(InverseInertia);
-        w.WriteSingles(SleepTime);
-        w.WriteBytes(Type);
-        w.WriteBytes(Flags);
-        w.WriteInt32s(Island);
-        w.WriteInt32(n); // trailing count: cheap framing check
+        w.NamedDoubles(Position);
+        w.NamedSingles(Rotation);
+        w.NamedSingles(LinearVelocity);
+        w.NamedSingles(AngularVelocity);
+        w.NamedSingles(InverseMass);
+        w.NamedSingles(InverseInertia);
+        w.NamedSingles(SleepTime);
+        w.NamedBytes(Type);
+        w.NamedBytes(Flags);
+        w.NamedInt32s(Island);
+        w.NamedInt32(n); // trailing count: cheap framing check
     }
 
     /// <summary>Bytes the per-body columns take for one slot in the snapshot.</summary>

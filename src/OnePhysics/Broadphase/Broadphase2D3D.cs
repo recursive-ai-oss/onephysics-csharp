@@ -40,6 +40,9 @@ public sealed class Broadphase2D : Broadphase<Aabb2D>
     {
     }
 
+    /// <inheritdoc/>
+    protected override Broadphase<Aabb2D> CreateForkInstance() => new Broadphase2D(Options, SectionId);
+
     /// <summary>Reports new tight bounds and the displacement since the last report; see the span overload on the base class.</summary>
     public bool MoveProxy(int key, in Aabb2D tight, double displacementX, double displacementY)
     {
@@ -62,6 +65,9 @@ public sealed class Broadphase3D : Broadphase<Aabb3D>
         : base(options, sectionId)
     {
     }
+
+    /// <inheritdoc/>
+    protected override Broadphase<Aabb3D> CreateForkInstance() => new Broadphase3D(Options, SectionId);
 
     /// <summary>Reports new tight bounds and the displacement since the last report; see the span overload on the base class.</summary>
     public bool MoveProxy(int key, in Aabb3D tight, double displacementX, double displacementY, double displacementZ)

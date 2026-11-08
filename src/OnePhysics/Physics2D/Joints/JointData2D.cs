@@ -151,15 +151,15 @@ internal struct JointData2D
 
     public readonly void Write(StateWriter w)
     {
-        w.WriteByte(Type); w.WriteByte(Flags);
-        w.WriteSingle(LAx); w.WriteSingle(LAy); w.WriteSingle(LBx); w.WriteSingle(LBy);
-        w.WriteSingle(AxX); w.WriteSingle(AxY); w.WriteSingle(RefAngle);
-        w.WriteSingle(Lower); w.WriteSingle(Upper);
-        w.WriteSingle(MotorSpeed); w.WriteSingle(MaxMotor); w.WriteSingle(MaxMotor2);
-        w.WriteSingle(Hertz); w.WriteSingle(Damping); w.WriteSingle(Hertz2); w.WriteSingle(Damping2);
-        w.WriteSingle(Length); w.WriteSingle(OffX); w.WriteSingle(OffY); w.WriteSingle(OffAngle); w.WriteSingle(Correction);
-        w.WriteDouble(TargetX); w.WriteDouble(TargetY);
-        w.WriteSingle(BreakForce); w.WriteSingle(BreakTorque);
+        w.NamedByte(Type); w.NamedByte(Flags);
+        w.NamedSingle(LAx); w.NamedSingle(LAy); w.NamedSingle(LBx); w.NamedSingle(LBy);
+        w.NamedSingle(AxX); w.NamedSingle(AxY); w.NamedSingle(RefAngle);
+        w.NamedSingle(Lower); w.NamedSingle(Upper);
+        w.NamedSingle(MotorSpeed); w.NamedSingle(MaxMotor); w.NamedSingle(MaxMotor2);
+        w.NamedSingle(Hertz); w.NamedSingle(Damping); w.NamedSingle(Hertz2); w.NamedSingle(Damping2);
+        w.NamedSingle(Length); w.NamedSingle(OffX); w.NamedSingle(OffY); w.NamedSingle(OffAngle); w.NamedSingle(Correction);
+        w.NamedDouble(TargetX); w.NamedDouble(TargetY);
+        w.NamedSingle(BreakForce); w.NamedSingle(BreakTorque);
     }
 
     /// <summary>Bytes one joint record takes in a snapshot.</summary>

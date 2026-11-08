@@ -168,7 +168,7 @@ public readonly struct AcceptAllPairs : IPairFilter
 /// </remarks>
 /// <typeparam name="TBox">The box type: <see cref="Aabb2D"/> or <see cref="Aabb3D"/>.</typeparam>
 [Experimental("OPHYS0001")]
-public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
+public partial class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
 {
     private const int ChunkSize = 16;
     private const int Version = 1;
@@ -686,14 +686,14 @@ public class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
             return;
         }
 
-        writer.WriteInt32(Version);
-        writer.WriteDouble(_options.Margin);
-        writer.WriteDouble(_options.StaticMargin);
-        writer.WriteDouble(_options.DisplacementMultiplier);
-        foreach (var tree in _trees) { tree.Write(writer); }
-        writer.WriteInt32(_moves.Count);
-        foreach (int key in _moves) { writer.WriteInt32(key); }
-        if (_options.EnlargedRefitSteps > 0) { foreach (int c in _refitsSinceRebuild) { writer.WriteInt32(c); } }
+        writer.NamedInt32(Version);
+        writer.NamedDouble(_options.Margin);
+        writer.NamedDouble(_options.StaticMargin);
+        writer.NamedDouble(_options.DisplacementMultiplier);
+        for (int treeIndex = 0; treeIndex < _trees.Length; treeIndex++) { writer.DescribeTree(treeIndex); _trees[treeIndex].Write(writer); }
+        writer.NamedInt32(_moves.Count);
+        foreach (int key in _moves) { writer.NamedInt32(key); }
+        if (_options.EnlargedRefitSteps > 0) { foreach (int c in _refitsSinceRebuild) { writer.NamedInt32(c); } }
     }
 
     /// <inheritdoc/>

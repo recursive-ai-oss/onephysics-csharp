@@ -200,23 +200,24 @@ internal sealed partial class Engine3D
     {
         int count = 0;
         for (int v = 0; v < VehHandles.HighWater; v++) { if (VehHandles.IsLive(v) && Vehicles[v]!.Kind != VehicleKind.Wheeled) { count++; } }
-        w.WriteInt32(count);
+        w.NamedInt32(count);
         for (int v = 0; v < VehHandles.HighWater; v++)
         {
+            w.DescribeEntity("vehicle", v, VehHandles.GenerationOf(v));
             if (!VehHandles.IsLive(v)) { continue; }
             var s = Vehicles[v]!;
             if (s.Kind == VehicleKind.Wheeled) { continue; }
-            w.WriteInt32(v); w.WriteByte((byte)s.Kind);
+            w.NamedInt32(v); w.NamedByte((byte)s.Kind);
             if (s.Kind == VehicleKind.Tracked)
             {
                 var t = s.Track!;
-                w.WriteSingle(t.SprocketRadius); w.WriteSingle(t.MaxTrackSpeed); w.WriteSingle(t.MaxDriveTorque); w.WriteSingle(t.MaxBrakeTorque); w.WriteSingle(t.LateralFriction); w.WriteInt32(s.TrackLeft);
+                w.NamedSingle(t.SprocketRadius); w.NamedSingle(t.MaxTrackSpeed); w.NamedSingle(t.MaxDriveTorque); w.NamedSingle(t.MaxBrakeTorque); w.NamedSingle(t.LateralFriction); w.NamedInt32(s.TrackLeft);
             }
             else
             {
                 var b = s.Bike!;
-                w.WriteSingle(b.HighSpeedSteerAngle); w.WriteSingle(b.SteerFadeStartSpeed); w.WriteSingle(b.SteerFadeEndSpeed); w.WriteSingle(b.MaxLeanAngle); w.WriteSingle(b.FallAngle);
-                w.WriteSingle(b.LeanFrequency); w.WriteSingle(b.LeanDamping); w.WriteSingle(b.MaxLeanTorque); w.WriteSingle(s.Lean); w.WriteSingle(s.LeanTarget); w.WriteSingle(s.LeanIntegral);
+                w.NamedSingle(b.HighSpeedSteerAngle); w.NamedSingle(b.SteerFadeStartSpeed); w.NamedSingle(b.SteerFadeEndSpeed); w.NamedSingle(b.MaxLeanAngle); w.NamedSingle(b.FallAngle);
+                w.NamedSingle(b.LeanFrequency); w.NamedSingle(b.LeanDamping); w.NamedSingle(b.MaxLeanTorque); w.NamedSingle(s.Lean); w.NamedSingle(s.LeanTarget); w.NamedSingle(s.LeanIntegral);
             }
         }
     }

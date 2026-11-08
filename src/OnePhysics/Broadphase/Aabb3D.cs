@@ -117,12 +117,12 @@ public readonly struct Aabb3D : IBox<Aabb3D>, IEquatable<Aabb3D>
     public void Write(StateWriter writer)
     {
         ArgumentNullException.ThrowIfNull(writer);
-        writer.WriteDouble(MinX);
-        writer.WriteDouble(MinY);
-        writer.WriteDouble(MinZ);
-        writer.WriteDouble(MaxX);
-        writer.WriteDouble(MaxY);
-        writer.WriteDouble(MaxZ);
+        writer.NamedDouble(MinX);
+        writer.NamedDouble(MinY);
+        writer.NamedDouble(MinZ);
+        writer.NamedDouble(MaxX);
+        writer.NamedDouble(MaxY);
+        writer.NamedDouble(MaxZ);
     }
 
     /// <summary>True when all six bounds are bit-identical.</summary>

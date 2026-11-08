@@ -767,44 +767,47 @@ internal sealed partial class Engine3D : ISnapshotSection
         bool vehs = HasVehicles;
         bool rags = HasRagdolls;
         bool fluids = HasFluidState();
-        w.WriteUInt32(joints || services || chars || vehs || rags || fluids ? VersionJoints : Version);
-        w.WriteSingle(Opt.ContactHertz); w.WriteSingle(Opt.ContactDampingRatio); w.WriteSingle(Opt.PushOutVelocity); w.WriteSingle(Opt.RestitutionThreshold);
-        w.WriteSingle(Opt.MaxLinearSpeed); w.WriteSingle(Opt.MaxRotationPerSubstep); w.WriteBool(Opt.ContinuousEnabled); w.WriteSingle(Opt.ContactSlop);
-        w.WriteSingle(Opt.SpeculativeDistance);
+        w.NamedUInt32(joints || services || chars || vehs || rags || fluids ? VersionJoints : Version);
+        w.NamedSingle(Opt.ContactHertz); w.NamedSingle(Opt.ContactDampingRatio); w.NamedSingle(Opt.PushOutVelocity); w.NamedSingle(Opt.RestitutionThreshold);
+        w.NamedSingle(Opt.MaxLinearSpeed); w.NamedSingle(Opt.MaxRotationPerSubstep); w.NamedBool(Opt.ContinuousEnabled); w.NamedSingle(Opt.ContactSlop);
+        w.NamedSingle(Opt.SpeculativeDistance);
         int nb = Core.Bodies.HighWater;
-        w.WriteInt32(nb);
-        w.WriteSingles(LocalCenter.AsSpan(0, 3 * nb));
-        w.WriteSingles(Mass.AsSpan(0, nb)); w.WriteSingles(Inertia.AsSpan(0, 6 * nb));
-        w.WriteSingles(MaxExtent.AsSpan(0, nb)); w.WriteSingles(MinExtent.AsSpan(0, nb));
-        w.WriteSingles(LinearDamping.AsSpan(0, nb)); w.WriteSingles(AngularDamping.AsSpan(0, nb)); w.WriteSingles(GravityScale.AsSpan(0, nb));
-        w.WriteSingles(Force.AsSpan(0, 3 * nb)); w.WriteSingles(Torque.AsSpan(0, 3 * nb));
-        w.WriteBytes(BodyFlags.AsSpan(0, nb));
-        w.WriteInt32s(ShapeHead.AsSpan(0, nb)); w.WriteInt32s(ShapeTail.AsSpan(0, nb));
-        w.WriteSingles(Dp.AsSpan(0, 3 * nb));
+        w.NamedInt32(nb);
+        w.NamedSingles(LocalCenter.AsSpan(0, 3 * nb));
+        w.NamedSingles(Mass.AsSpan(0, nb)); w.NamedSingles(Inertia.AsSpan(0, 6 * nb));
+        w.NamedSingles(MaxExtent.AsSpan(0, nb)); w.NamedSingles(MinExtent.AsSpan(0, nb));
+        w.NamedSingles(LinearDamping.AsSpan(0, nb)); w.NamedSingles(AngularDamping.AsSpan(0, nb)); w.NamedSingles(GravityScale.AsSpan(0, nb));
+        w.NamedSingles(Force.AsSpan(0, 3 * nb)); w.NamedSingles(Torque.AsSpan(0, 3 * nb));
+        w.NamedBytes(BodyFlags.AsSpan(0, nb));
+        w.NamedInt32s(ShapeHead.AsSpan(0, nb)); w.NamedInt32s(ShapeTail.AsSpan(0, nb));
+        w.NamedSingles(Dp.AsSpan(0, 3 * nb));
 
-        w.WriteInt32(Geoms.Count);
-        foreach (var g in Geoms)
+        w.NamedInt32(Geoms.Count);
+        for (int geometryIndex = 0; geometryIndex < Geoms.Count; geometryIndex++)
         {
-            w.WriteBool(g != null);
+            var g = Geoms[geometryIndex];
+            w.DescribeEntity("geometry", geometryIndex);
+            w.NamedBool(g != null);
             if (g == null) { continue; }
-            w.WriteInt32(g.Recipe.Length);
-            w.WriteBytes(g.Recipe);
+            w.NamedInt32(g.Recipe.Length);
+            w.NamedBytes(g.Recipe);
         }
 
         int ns = Core.Shapes.HighWater;
-        w.WriteInt32(ns);
+        w.NamedInt32(ns);
         for (int s = 0; s < ns; s++)
         {
+            w.DescribeEntity("shape", s, Core.Shapes.Handles.GenerationOf(s));
             bool live = Core.Shapes.Handles.IsLive(s);
-            w.WriteBool(live);
+            w.NamedBool(live);
             if (!live) { continue; }
-            w.WriteInt32(GeomOf[s]);
+            w.NamedInt32(GeomOf[s]);
             var l = Local[s];
-            w.WriteSingle(l.Rotation.X); w.WriteSingle(l.Rotation.Y); w.WriteSingle(l.Rotation.Z); w.WriteSingle(l.Rotation.W);
-            w.WriteSingle(l.Translation.X); w.WriteSingle(l.Translation.Y); w.WriteSingle(l.Translation.Z);
-            w.WriteInt32(Proxy[s]);
-            w.WriteSingle(Friction[s]); w.WriteSingle(Restitution[s]); w.WriteSingle(Rolling[s]); w.WriteSingle(Density[s]);
-            w.WriteUInt32(Category[s]); w.WriteUInt32(Mask[s]); w.WriteInt32(Group[s]); w.WriteInt32(NextShape[s]);
+            w.NamedSingle(l.Rotation.X); w.NamedSingle(l.Rotation.Y); w.NamedSingle(l.Rotation.Z); w.NamedSingle(l.Rotation.W);
+            w.NamedSingle(l.Translation.X); w.NamedSingle(l.Translation.Y); w.NamedSingle(l.Translation.Z);
+            w.NamedInt32(Proxy[s]);
+            w.NamedSingle(Friction[s]); w.NamedSingle(Restitution[s]); w.NamedSingle(Rolling[s]); w.NamedSingle(Density[s]);
+            w.NamedUInt32(Category[s]); w.NamedUInt32(Mask[s]); w.NamedInt32(Group[s]); w.NamedInt32(NextShape[s]);
         }
 
         if (w.IsBound)
@@ -816,29 +819,31 @@ internal sealed partial class Engine3D : ISnapshotSection
         }
         else
         {
-            w.WriteInt32(PairHigh);
+            w.NamedInt32(PairHigh);
             for (int p = 0; p < PairHigh; p++)
             {
-                w.WriteBool(PairLive[p]);
+                w.DescribeEntity("pair", p);
+                w.NamedBool(PairLive[p]);
                 if (!PairLive[p]) { continue; }
-                w.WriteInt32(PairA[p]); w.WriteInt32(PairB[p]);
-                if (PairCons[p] == SensorOverlap) { w.WriteInt32(1); w.WriteInt32(SensorOverlap); continue; } // an overlapping sensor pair: a chain holding the marker
+                w.NamedInt32(PairA[p]); w.NamedInt32(PairB[p]);
+                if (PairCons[p] == SensorOverlap) { w.NamedInt32(1); w.NamedInt32(SensorOverlap); continue; } // an overlapping sensor pair: a chain holding the marker
                 int n = 0;
                 for (int c = PairCons[p]; c >= 0; c = ConsNext[c]) { n++; }
-                w.WriteInt32(n);
-                for (int c = PairCons[p]; c >= 0; c = ConsNext[c]) { w.WriteInt32(c); }
+                w.NamedInt32(n);
+                for (int c = PairCons[p]; c >= 0; c = ConsNext[c]) { w.NamedInt32(c); }
             }
 
             // The contact stack bottom to top, then the sensor stack as complements (~slot); a world without sensor pairs writes the same bytes as before.
-            w.WriteInt32(PairFreeCount + SensorFreeCount);
-            w.WriteInt32s(PairFree.AsSpan(0, PairFreeCount));
-            for (int i = 0; i < SensorFreeCount; i++) { w.WriteInt32(~SensorFree[i]); }
+            w.NamedInt32(PairFreeCount + SensorFreeCount);
+            w.NamedInt32s(PairFree.AsSpan(0, PairFreeCount));
+            for (int i = 0; i < SensorFreeCount; i++) { w.NamedInt32(~SensorFree[i]); }
         }
 
+        w.DescribeEntity("world", -1);
         if (joints || services || chars || vehs || rags || fluids)
         {
             // Version 2: a presence-flags word, then the flagged blocks in a fixed order: joints, services (layers, filters, sensors), characters.
-            w.WriteUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u) | (chars ? BlockCharacters : 0u) | (vehs ? BlockVehicles : 0u) | (vehs && HasVehicleKinds() ? BlockVehicleKinds : 0u) | (rags ? BlockRagdolls : 0u) | (fluids ? BlockFluids : 0u));
+            w.NamedUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u) | (chars ? BlockCharacters : 0u) | (vehs ? BlockVehicles : 0u) | (vehs && HasVehicleKinds() ? BlockVehicleKinds : 0u) | (rags ? BlockRagdolls : 0u) | (fluids ? BlockFluids : 0u));
             if (joints) { WriteJoints(w); }
             if (services) { WriteServices(w, ns); }
             if (chars) { WriteCharacters(w); }

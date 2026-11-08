@@ -16,7 +16,7 @@ namespace RecursiveAI.OnePhysics.LowLevel;
 /// the lists are rebuilt in ascending body order on restore, so they never depend on history.
 /// </remarks>
 [Experimental("OPHYS0001")]
-public sealed class IslandSet
+public sealed partial class IslandSet
 {
     private HandleTable _ids = new();
     private int[][] _bodies = new int[16][];
@@ -303,8 +303,9 @@ public sealed class IslandSet
         _ids.Write(w);
         for (int i = 0; i < _ids.HighWater; i++)
         {
-            w.WriteBool(_asleep[i]);
-            w.WriteInt32(_removed[i]);
+            w.DescribeEntity("island", i, _ids.GenerationOf(i));
+            w.NamedBool(_asleep[i]);
+            w.NamedInt32(_removed[i]);
         }
     }
 

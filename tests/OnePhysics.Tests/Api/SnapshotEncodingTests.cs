@@ -21,6 +21,8 @@ public class SnapshotEncodingTests
             a.AsSpan(0, Math.Min(a.Length, b.Length)).CopyTo(b);
             for (int i = 0; i < b.Length; i += random.Next(1, 40)) { b[i] ^= (byte)random.Next(256); }
             Assert.Equal(b, SnapshotEncoding.ApplyDelta(a, SnapshotEncoding.CreateDelta(a, b)));
+            Assert.Equal(b, SnapshotEncoding.ApplyDelta(a, SnapshotEncoding.CreateXorDelta(a, b)));
+            Assert.Equal(b, SnapshotEncoding.Decompress(SnapshotEncoding.Compress(b, true)));
             Assert.Equal(b, SnapshotEncoding.Decompress(SnapshotEncoding.Compress(b)));
             var delta = SnapshotEncoding.CreateDelta(a, b);
             Assert.Equal(b, SnapshotEncoding.ApplyDelta(a, SnapshotEncoding.Decompress(SnapshotEncoding.Compress(delta))));
@@ -124,4 +126,16 @@ public class SnapshotEncodingTests
         }
     }
 
+
+    [Fact]
+    public void VersionTwoKnownAnswers()
+    {
+        var a = new byte[256]; for (int i = 0; i < a.Length; i++) { a[i] = (byte)i; }
+        var b = (byte[])a.Clone(); b[3] = 200; b[9] = 0;
+        var xor = SnapshotEncoding.CreateXorDelta(a, b);
+        Assert.Equal("E7603DAF271CE709F25513256218C6B7AA788CE935D2BB6A306547A626A04638", Convert.ToHexString(SHA256.HashData(xor)));
+        var compressed = SnapshotEncoding.Compress(a, true);
+        Assert.Equal("3FC6B2210AE73007E063BCDF02A845A0D7608AABE4D2707E828DD8C7302A05A8", Convert.ToHexString(SHA256.HashData(compressed)));
+        Assert.Equal(b, SnapshotEncoding.ApplyDelta(a, xor)); Assert.Equal(a, SnapshotEncoding.Decompress(compressed));
+    }
 }

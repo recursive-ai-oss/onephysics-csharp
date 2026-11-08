@@ -676,31 +676,31 @@ public abstract class CompoundShape3D
     {
         ArgumentNullException.ThrowIfNull(writer);
         _tree.Write(writer);
-        writer.WriteInt32(_slots);
+        writer.NamedInt32(_slots);
         for (int i = 0; i < _slots; i++)
         {
-            writer.WriteByte(_alive[i] ? (byte)1 : (byte)0);
-            writer.WriteInt32(_generation[i]);
+            writer.NamedByte(_alive[i] ? (byte)1 : (byte)0);
+            writer.NamedInt32(_generation[i]);
             if (!_alive[i])
             {
                 continue;
             }
 
-            writer.WriteInt32(_material[i]);
+            writer.NamedInt32(_material[i]);
             RigidTransformF l = _placed[i].Local;
-            writer.WriteSingle(l.Rotation.X);
-            writer.WriteSingle(l.Rotation.Y);
-            writer.WriteSingle(l.Rotation.Z);
-            writer.WriteSingle(l.Rotation.W);
-            writer.WriteSingle(l.Translation.X);
-            writer.WriteSingle(l.Translation.Y);
-            writer.WriteSingle(l.Translation.Z);
-            writer.WriteSingle(_min[i].X);
-            writer.WriteSingle(_min[i].Y);
-            writer.WriteSingle(_min[i].Z);
-            writer.WriteSingle(_max[i].X);
-            writer.WriteSingle(_max[i].Y);
-            writer.WriteSingle(_max[i].Z);
+            writer.NamedSingle(l.Rotation.X);
+            writer.NamedSingle(l.Rotation.Y);
+            writer.NamedSingle(l.Rotation.Z);
+            writer.NamedSingle(l.Rotation.W);
+            writer.NamedSingle(l.Translation.X);
+            writer.NamedSingle(l.Translation.Y);
+            writer.NamedSingle(l.Translation.Z);
+            writer.NamedSingle(_min[i].X);
+            writer.NamedSingle(_min[i].Y);
+            writer.NamedSingle(_min[i].Z);
+            writer.NamedSingle(_max[i].X);
+            writer.NamedSingle(_max[i].Y);
+            writer.NamedSingle(_max[i].Z);
         }
     }
 

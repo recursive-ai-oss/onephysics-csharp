@@ -198,18 +198,20 @@ internal sealed partial class Engine3D
 
     private void WriteCharacters(StateWriter w)
     {
+        w.DescribeTable("character");
         CharHandles.Write(w);
         for (int c = 0; c < CharHandles.HighWater; c++)
         {
+            w.DescribeEntity("character", c, CharHandles.GenerationOf(c));
             if (!CharHandles.IsLive(c)) { continue; }
             var d = CharDef[c];
-            w.WriteInt32(CharBody[c]); w.WriteInt32(CharBodyGen[c]);
-            w.WriteSingle(d.Radius); w.WriteSingle(d.Height); w.WriteSingle(d.SlopeLimitDegrees); w.WriteSingle(d.StepOffset); w.WriteSingle(d.Skin);
-            w.WriteUInt32(d.LayerMask); w.WriteSingle(d.PushStrength); w.WriteInt32(d.Layer); w.WriteUInt32(d.CategoryBits); w.WriteUInt32(d.MaskBits);
-            w.WriteSingle(d.Up.X); w.WriteSingle(d.Up.Y); w.WriteSingle(d.Up.Z); w.WriteByte((byte)d.Kind); w.WriteSingle(d.Mass); w.WriteSingle(d.MaxPushForce);
-            w.WriteByte((byte)CharGround[c]); w.WriteSingle(CharNx[c]); w.WriteSingle(CharNy[c]); w.WriteSingle(CharNz[c]);
-            w.WriteInt32(CharGroundBody[c]); w.WriteInt32(CharGroundGen[c]);
-            w.WriteSingle(CharVx[c]); w.WriteSingle(CharVy[c]); w.WriteSingle(CharVz[c]);
+            w.NamedInt32(CharBody[c]); w.NamedInt32(CharBodyGen[c]);
+            w.NamedSingle(d.Radius); w.NamedSingle(d.Height); w.NamedSingle(d.SlopeLimitDegrees); w.NamedSingle(d.StepOffset); w.NamedSingle(d.Skin);
+            w.NamedUInt32(d.LayerMask); w.NamedSingle(d.PushStrength); w.NamedInt32(d.Layer); w.NamedUInt32(d.CategoryBits); w.NamedUInt32(d.MaskBits);
+            w.NamedSingle(d.Up.X); w.NamedSingle(d.Up.Y); w.NamedSingle(d.Up.Z); w.NamedByte((byte)d.Kind); w.NamedSingle(d.Mass); w.NamedSingle(d.MaxPushForce);
+            w.NamedByte((byte)CharGround[c]); w.NamedSingle(CharNx[c]); w.NamedSingle(CharNy[c]); w.NamedSingle(CharNz[c]);
+            w.NamedInt32(CharGroundBody[c]); w.NamedInt32(CharGroundGen[c]);
+            w.NamedSingle(CharVx[c]); w.NamedSingle(CharVy[c]); w.NamedSingle(CharVz[c]);
         }
     }
 

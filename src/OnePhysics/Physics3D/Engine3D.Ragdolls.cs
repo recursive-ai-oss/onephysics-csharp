@@ -7,7 +7,7 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>The saved and live state of one ragdoll: the definition (copied at creation), where each part's body and joint are, and how hard the pose drive works.</summary>
-internal sealed class RagdollState
+internal sealed partial class RagdollState
 {
     public RagdollDef Def = new();
     public int[] Body = Array.Empty<int>(), BodyGen = Array.Empty<int>();
@@ -145,31 +145,33 @@ internal sealed partial class Engine3D
 
     private void WriteRagdolls(StateWriter w)
     {
+        w.DescribeTable("ragdoll");
         RagHandles.Write(w);
         for (int r = 0; r < RagHandles.HighWater; r++)
         {
+            w.DescribeEntity("ragdoll", r, RagHandles.GenerationOf(r));
             if (!RagHandles.IsLive(r)) { continue; }
             var s = Ragdolls[r]!;
             var d = s.Def;
-            w.WriteInt32(d.Parts.Length);
-            w.WriteByte((byte)d.SelfCollision); w.WriteSingle(d.AngularDamping); w.WriteUInt32(d.CategoryBits); w.WriteUInt32(d.MaskBits);
+            w.NamedInt32(d.Parts.Length);
+            w.NamedByte((byte)d.SelfCollision); w.NamedSingle(d.AngularDamping); w.NamedUInt32(d.CategoryBits); w.NamedUInt32(d.MaskBits);
             for (int i = 0; i < d.Parts.Length; i++)
             {
                 var p = d.Parts[i];
-                w.WriteInt32(p.Parent); w.WriteByte((byte)p.Shape);
+                w.NamedInt32(p.Parent); w.NamedByte((byte)p.Shape);
                 WriteVec(w, p.ShapeHalfSize); WriteVec(w, p.Position); WriteQuat(w, p.Rotation);
-                w.WriteSingle(p.Mass); w.WriteSingle(p.Friction);
+                w.NamedSingle(p.Mass); w.NamedSingle(p.Friction);
                 WriteVec(w, p.JointPosition); WriteQuat(w, p.JointRotation);
-                w.WriteSingle(p.LowerTwist); w.WriteSingle(p.UpperTwist); w.WriteSingle(p.SwingYHalfAngle); w.WriteSingle(p.SwingZHalfAngle);
-                w.WriteSingle(p.DriveStiffness); w.WriteSingle(p.DriveDamping); w.WriteSingle(p.MaxTorque);
-                w.WriteInt32(s.Body[i]); w.WriteInt32(s.BodyGen[i]); w.WriteInt32(s.Joint[i]); w.WriteInt32(s.JointGen[i]);
+                w.NamedSingle(p.LowerTwist); w.NamedSingle(p.UpperTwist); w.NamedSingle(p.SwingYHalfAngle); w.NamedSingle(p.SwingZHalfAngle);
+                w.NamedSingle(p.DriveStiffness); w.NamedSingle(p.DriveDamping); w.NamedSingle(p.MaxTorque);
+                w.NamedInt32(s.Body[i]); w.NamedInt32(s.BodyGen[i]); w.NamedInt32(s.Joint[i]); w.NamedInt32(s.JointGen[i]);
             }
 
-            w.WriteBool(s.Powered); w.WriteSingle(s.Strength);
+            w.NamedBool(s.Powered); w.NamedSingle(s.Strength);
         }
     }
 
-    private static void WriteQuat(StateWriter w, QuaternionF q) { w.WriteSingle(q.X); w.WriteSingle(q.Y); w.WriteSingle(q.Z); w.WriteSingle(q.W); }
+    private static void WriteQuat(StateWriter w, QuaternionF q) { w.NamedSingle(q.X); w.NamedSingle(q.Y); w.NamedSingle(q.Z); w.NamedSingle(q.W); }
 
     private static QuaternionF ReadQuat(StateReader r) => new(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
 

@@ -133,7 +133,7 @@ internal ref struct RayStack
 /// </remarks>
 /// <typeparam name="TBox">The box type: <see cref="Aabb2D"/> or <see cref="Aabb3D"/>.</typeparam>
 [Experimental("OPHYS0001")]
-public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
+public partial class DynamicTree<TBox> where TBox : struct, IBox<TBox>
 {
     private const int NullNode = -1;
     private const int MaxNodes = 1 << 26;
@@ -1153,18 +1153,19 @@ public class DynamicTree<TBox> where TBox : struct, IBox<TBox>
             return;
         }
 
-        writer.WriteInt32(_used);
-        writer.WriteInt32(_root);
-        writer.WriteInt32(_free);
+        writer.NamedInt32(_used);
+        writer.NamedInt32(_root);
+        writer.NamedInt32(_free);
         for (int i = 0; i < _used; i++)
         {
+            writer.DescribeNode(i);
             ref Node n = ref _nodes[i];
-            writer.WriteInt32(n.Height);
-            writer.WriteInt32(n.Parent);
-            writer.WriteInt32(n.Child1);
-            writer.WriteInt32(n.Child2);
-            writer.WriteInt32(n.UserId);
-            writer.WriteInt32(n.Flags);
+            writer.NamedInt32(n.Height);
+            writer.NamedInt32(n.Parent);
+            writer.NamedInt32(n.Child1);
+            writer.NamedInt32(n.Child2);
+            writer.NamedInt32(n.UserId);
+            writer.NamedInt32(n.Flags);
             if (n.Height >= 0) { n.Box.Write(writer); }
         }
     }

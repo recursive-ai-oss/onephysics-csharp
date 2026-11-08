@@ -23,11 +23,16 @@ public static class SnapshotEncoding
     /// Creates a version-1 delta from arbitrary base and target bytes, including all optional snapshot sections.
     /// Unchanged spans are omitted. Neither input is retained. Output can be larger than the target for highly fragmented edits.
     /// </summary>
-    public static byte[] CreateDelta(ReadOnlySpan<byte> baseSnapshot, ReadOnlySpan<byte> snapshot)
+    public static byte[] CreateDelta(ReadOnlySpan<byte> baseSnapshot, ReadOnlySpan<byte> snapshot) => CreateDeltaCore(baseSnapshot, snapshot, false);
+
+    /// <summary>Creates a version-2 delta whose literals are XORed against the base (zero beyond its end). This often compresses better when float/double values change by a few bits. ApplyDelta accepts both versions.</summary>
+    public static byte[] CreateXorDelta(ReadOnlySpan<byte> baseSnapshot, ReadOnlySpan<byte> snapshot) => CreateDeltaCore(baseSnapshot, snapshot, true);
+
+    private static byte[] CreateDeltaCore(ReadOnlySpan<byte> baseSnapshot, ReadOnlySpan<byte> snapshot, bool xor)
     {
         using var output = new MemoryStream();
         WriteInt(output, DeltaMagic);
-        WriteInt(output, 1);
+        WriteInt(output, xor ? 2u : 1u);
         WriteInt(output, (uint)baseSnapshot.Length);
         WriteInt(output, (uint)snapshot.Length);
         output.Write(SHA256.HashData(baseSnapshot));
@@ -47,7 +52,8 @@ public static class SnapshotEncoding
             }
             WriteInt(output, (uint)start);
             WriteInt(output, (uint)(end - start));
-            output.Write(snapshot.Slice(start, end - start));
+            if (!xor) { output.Write(snapshot.Slice(start, end - start)); }
+            else { for (int j = start; j < end; j++) { output.WriteByte((byte)(snapshot[j] ^ (j < baseSnapshot.Length ? baseSnapshot[j] : 0))); } }
         }
         return output.ToArray();
     }
@@ -60,7 +66,8 @@ public static class SnapshotEncoding
     /// <exception cref="ArgumentOutOfRangeException">The output limit is negative.</exception>
     public static byte[] ApplyDelta(ReadOnlySpan<byte> baseSnapshot, ReadOnlySpan<byte> delta, int maximumDecodedBytes = DefaultMaximumDecodedBytes)
     {
-        ValidateHeader(delta, DeltaMagic, DeltaHeader);
+        ValidateHeader(delta, DeltaMagic, DeltaHeader, true);
+        bool xor = BinaryPrimitives.ReadUInt32LittleEndian(delta.Slice(4)) == 2;
         int size = ReadSize(delta, 12, maximumDecodedBytes);
         if (BinaryPrimitives.ReadUInt32LittleEndian(delta.Slice(8)) != (uint)baseSnapshot.Length ||
             !SHA256.HashData(baseSnapshot).AsSpan().SequenceEqual(delta.Slice(16, 32)))
@@ -75,7 +82,8 @@ public static class SnapshotEncoding
         {
             int offset = (int)BinaryPrimitives.ReadUInt32LittleEndian(delta.Slice(cursor));
             int count = (int)BinaryPrimitives.ReadUInt32LittleEndian(delta.Slice(cursor + 4));
-            delta.Slice(cursor + 8, count).CopyTo(result.AsSpan(offset));
+            if (!xor) { delta.Slice(cursor + 8, count).CopyTo(result.AsSpan(offset)); }
+            else { for (int j = 0; j < count; j++) { result[offset + j] ^= delta[cursor + 8 + j]; } }
             cursor += 8 + count;
         }
         CheckDigest(result, delta.Slice(48, 32));
@@ -86,13 +94,18 @@ public static class SnapshotEncoding
     /// Compresses arbitrary bytes, including full snapshots or deltas, with deterministic run-length encoding.
     /// Runs of 3–130 equal bytes use two bytes. Other bytes form literal packets of 1–128 bytes. Neither input nor output is platform-dependent.
     /// </summary>
-    public static byte[] Compress(ReadOnlySpan<byte> bytes)
+    public static byte[] Compress(ReadOnlySpan<byte> bytes) => Compress(bytes, false);
+
+    /// <summary>Compresses bytes with optional version-2 byte-plane transposition: each complete 64-byte tile is treated as an 8×8 byte matrix and transposed before run coding. The tail is unchanged. This can group equal high bytes without depending on a snapshot schema. Decode reverses the permutation and verifies the original digest.</summary>
+    public static byte[] Compress(ReadOnlySpan<byte> bytes, bool bytePlanes)
     {
         using var output = new MemoryStream();
         WriteInt(output, CompressedMagic);
-        WriteInt(output, 1);
+        WriteInt(output, bytePlanes ? 2u : 1u);
         WriteInt(output, (uint)bytes.Length);
         output.Write(SHA256.HashData(bytes));
+        byte[]? transformed = bytePlanes ? bytes.ToArray() : null;
+        if (transformed != null) { Transpose(transformed); bytes = transformed; }
         int i = 0;
         while (i < bytes.Length)
         {
@@ -119,11 +132,12 @@ public static class SnapshotEncoding
     /// <exception cref="ArgumentOutOfRangeException">The output limit is negative.</exception>
     public static byte[] Decompress(ReadOnlySpan<byte> bytes, int maximumDecodedBytes = DefaultMaximumDecodedBytes)
     {
-        ValidateHeader(bytes, CompressedMagic, CompressedHeader);
+        ValidateHeader(bytes, CompressedMagic, CompressedHeader, true);
         int size = ReadSize(bytes, 8, maximumDecodedBytes);
         WalkPackets(bytes, size, Span<byte>.Empty);
         var result = new byte[size];
         WalkPackets(bytes, size, result);
+        if (BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(4)) == 2) { Transpose(result); }
         CheckDigest(result, bytes.Slice(12, 32));
         return result;
     }
@@ -181,10 +195,26 @@ public static class SnapshotEncoding
         return (int)size;
     }
 
-    private static void ValidateHeader(ReadOnlySpan<byte> bytes, uint magic, int length)
+    private static void ValidateHeader(ReadOnlySpan<byte> bytes, uint magic, int length, bool acceptVersion2 = false)
     {
-        if (bytes.Length < length || BinaryPrimitives.ReadUInt32LittleEndian(bytes) != magic || BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(4)) != 1)
+        if (bytes.Length < length || BinaryPrimitives.ReadUInt32LittleEndian(bytes) != magic || (BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(4)) != 1 && (!acceptVersion2 || BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(4)) != 2)))
         { throw Invalid("Snapshot encoding header is truncated or has unknown magic/version."); }
+    }
+
+    // Transposition is its own inverse; complete tiles only, so all reads/writes stay within a fixed 64-byte window.
+    private static void Transpose(Span<byte> bytes)
+    {
+        for (int start = 0; bytes.Length - start >= 64; start += 64)
+        {
+            for (int row = 0; row < 8; row++)
+            {
+                for (int col = row + 1; col < 8; col++)
+                {
+                    int a = start + row * 8 + col, b = start + col * 8 + row;
+                    (bytes[a], bytes[b]) = (bytes[b], bytes[a]);
+                }
+            }
+        }
     }
 
     private static void CheckDigest(ReadOnlySpan<byte> bytes, ReadOnlySpan<byte> digest)

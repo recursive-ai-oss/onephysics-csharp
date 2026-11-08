@@ -71,7 +71,7 @@ public struct ConstraintDesc
 /// Per-constraint persistent data (manifold geometry and warm-start impulses, or joint rows) lives in a fixed-stride float payload.
 /// </summary>
 [Experimental("OPHYS0001")]
-public sealed class ConstraintStore
+public sealed partial class ConstraintStore
 {
     /// <summary>Color value of a constraint that is not in the coloring: sensors and constraints without a dynamic body.</summary>
     public const byte Uncolored = 254;
@@ -278,15 +278,15 @@ public sealed class ConstraintStore
 
         Handles.Write(w);
         int n = HighWater;
-        w.WriteBytes(_kind.AsSpan(0, n));
-        w.WriteInt32s(BodyA); w.WriteInt32s(BodyB);
-        w.WriteInt32s(_shapeA.AsSpan(0, n)); w.WriteInt32s(_shapeAGen.AsSpan(0, n)); w.WriteInt32s(_shapeB.AsSpan(0, n)); w.WriteInt32s(_shapeBGen.AsSpan(0, n));
-        w.WriteInt32s(SubShapeA); w.WriteInt32s(SubShapeB);
-        w.WriteBytes(Flags); w.WriteBytes(Color); w.WriteBytes(PointCount);
-        w.WriteUInt32s(FeatureIds);
-        w.WriteSingles(BreakValue);
-        w.WriteSingles(PayloadAll);
-        w.WriteInt32(n);
+        w.NamedBytes(_kind.AsSpan(0, n));
+        w.NamedInt32s(BodyA); w.NamedInt32s(BodyB);
+        w.NamedInt32s(_shapeA.AsSpan(0, n)); w.NamedInt32s(_shapeAGen.AsSpan(0, n)); w.NamedInt32s(_shapeB.AsSpan(0, n)); w.NamedInt32s(_shapeBGen.AsSpan(0, n));
+        w.NamedInt32s(SubShapeA); w.NamedInt32s(SubShapeB);
+        w.NamedBytes(Flags); w.NamedBytes(Color); w.NamedBytes(PointCount);
+        w.NamedUInt32s(FeatureIds);
+        w.NamedSingles(BreakValue);
+        w.NamedSingles(PayloadAll);
+        w.NamedInt32(n);
     }
 
     private static int BytesPerSlot(DimensionLayout l) => 1 + 8 * 4 + 3 + 4 * l.MaxManifoldPoints + 4 + 4 * l.PayloadFloats;
@@ -340,7 +340,7 @@ public sealed class ConstraintStore
 
 /// <summary>Shape slots: ownership and lifetime only. Geometry belongs to the engines, which keep their own arrays indexed by shape slot and save them through <see cref="ISnapshotSection"/>.</summary>
 [Experimental("OPHYS0001")]
-public sealed class ShapeStore
+public sealed partial class ShapeStore
 {
     private int[] _owner = new int[64];
 
@@ -375,7 +375,7 @@ public sealed class ShapeStore
     internal void Write(StateWriter w)
     {
         Handles.Write(w);
-        w.WriteInt32s(Owner);
+        w.NamedInt32s(Owner);
     }
 
     internal static ShapeStore Read(StateReader r)
