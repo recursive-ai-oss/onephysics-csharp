@@ -241,3 +241,25 @@ The 3D world (`world3d.md`) collides convex shapes with the triangles of meshes 
 ### Capsule against box
 
 For a capsule and a box whose core segment and core box are apart, `ManifoldGenerator3D` finds the nearest pair directly instead of running GJK: the segment ends are clamped to the box (a box is axis-aligned in its own frame), and the segment is tested against the twelve edges of the box with the segment–segment routine of Ericson 5.1.9; the closest of these fourteen candidates wins, the first on ties (ends before edges, axes x, y, z, corners in order). A segment that crosses the box (slab test) or has an end inside it gives no such pair, and the pair goes through GJK/EPA. The result is the same contact (normal from A to B, closest points on the rounded surfaces) that the general route returns, so the supporting features along the normal are extracted and clipped as for every other pair. `GeneralCapsuleBox` (internal) sends these pairs through GJK/EPA for comparison; the tests check hand-worked poses (lying along a face, parallel to an edge, skew to an edge, end cap, deep, touching, either side of the speculative distance) and 30,000 random poses against that route.
+
+### Bit-preserving small-manifold paths
+
+For box face axes, signed separations may be evaluated into six local slots
+`(+X, -X, +Y, -Y, +Z, -Z)` before visiting faces in their existing topology order.
+The order of comparisons, strict winner test and floating-point expressions remain
+unchanged; a tie still keeps the first face.
+
+A box's incident quad wholly inside the reference face's four side planes needs no
+clipping. An all-inside Sutherland–Hodgman pass emits the next vertex of each edge,
+rotating the four vertices once. Four such passes restore the original order and
+all feature codes. This shortcut includes points exactly on the boundary, excludes
+unordered comparisons, and does not bypass the separated-core closest-point test.
+For partial clipping, an edge's ending plane distance becomes the next edge's
+starting distance; no distance is approximated.
+
+When at most four contact candidates survive, no geometric reduction is needed.
+Strict adjacent swaps in local slots implement the same stable ascending feature-ID
+sort as the general insertion sort. Equal IDs keep candidate order. Larger sets
+retain the deepest/farthest/largest-area reduction and the existing final ordering.
+These paths introduce no persistent state and do not change snapshot bytes or
+world hashes.

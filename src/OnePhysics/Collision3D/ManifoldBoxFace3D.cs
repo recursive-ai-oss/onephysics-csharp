@@ -93,24 +93,35 @@ public sealed partial class ManifoldGenerator3D
             }
         }
 
+        // A fully contained incident quad survives all four planes. Each plane
+        // rotates its four vertices by one slot, so four planes restore the input
+        // order and leave every feature code untouched.
+        bool contained = true;
+        for (int c = 0; c < 4; c++)
+        {
+            BoxClipPt p = src[c];
+            if (!((k == 0 || Math.Abs(p.X) <= h0) && (k == 1 || Math.Abs(p.Y) <= h1) && (k == 2 || Math.Abs(p.Z) <= h2))) { contained = false; break; }
+        }
         int m = 4;
         // Clip against the four sides of the reference face, in the order of its edge loop.
-        for (int i = 0; i < 4 && m > 0; i++)
+        for (int i = 0; !contained && i < 4 && m > 0; i++)
         {
             int ax = topo.FaceLatAxis[(4 * rf) + i];
             float side = topo.FaceLatSign[(4 * rf) + i];
             float half = ax == 0 ? h0 : ax == 1 ? h1 : h2;
             ushort refEdge = FCode.Edge(topo.FaceEdge[(4 * rf) + i]);
             int outCount = 0;
+            BoxClipPt cur = src[0];
+            float dc = half - (side * (ax == 0 ? cur.X : ax == 1 ? cur.Y : cur.Z));
             for (int j = 0; j < m; j++)
             {
-                BoxClipPt cur = src[j], nxt = src[j + 1 == m ? 0 : j + 1];
-                float dc = half - (side * (ax == 0 ? cur.X : ax == 1 ? cur.Y : cur.Z));
+                BoxClipPt nxt = src[j + 1 == m ? 0 : j + 1];
                 float dn = half - (side * (ax == 0 ? nxt.X : ax == 1 ? nxt.Y : nxt.Z));
                 bool curIn = dc >= 0f, nxtIn = dn >= 0f;
                 if (curIn == nxtIn)
                 {
                     if (nxtIn) { dst[outCount++] = nxt; }
+                    cur = nxt; dc = dn;
                     continue;
                 }
 
@@ -125,6 +136,7 @@ public sealed partial class ManifoldGenerator3D
                     Out = curIn ? FCode.Derived(refEdge) : cur.Out,
                 };
                 if (nxtIn) { dst[outCount++] = nxt; }
+                cur = nxt; dc = dn;
             }
 
             (src, dst) = (dst, src);

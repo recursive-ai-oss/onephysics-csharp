@@ -172,16 +172,10 @@ public sealed partial class ManifoldGenerator3D
             return Empty;
         }
 
+        if (k <= 4) { return FinishSmall(normal, k); }
+
         int[] sel = _sel;
         int n = 0;
-        if (k <= 4)
-        {
-            for (int i = 0; i < k; i++)
-            {
-                sel[n++] = i;
-            }
-        }
-        else
         {
             int i0 = 0;
             for (int i = 1; i < k; i++)
