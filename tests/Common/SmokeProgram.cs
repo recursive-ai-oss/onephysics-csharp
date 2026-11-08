@@ -85,9 +85,28 @@ internal static class SmokeProgram
         ulong sk1 = SoftSkinned3DScene.Run(1, false), sk3 = SoftSkinned3DScene.Run(3, false), skr = SoftSkinned3DScene.Run(1, true);
         bool skSame = sk1 == sk3 && sk1 == skr;
         Console.WriteLine((skSame ? "OK softskinned3d " : "FAIL softskinned3d ") + sk1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        bool bodyControls = BodyControls();
+        Console.WriteLine(bodyControls ? "OK body-controls" : "FAIL body-controls");
         bool formats = FileFormats();
         Console.WriteLine(formats ? "OK formats" : "FAIL formats");
-        return formats && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+        return bodyControls && formats && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+    }
+
+    private static bool BodyControls()
+    {
+        var a = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new() { WorldId = 3100, Gravity = default });
+        var b = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new() { WorldId = 3101, Gravity = default });
+        var x = a.CreateBody(new() { LinearVelocity = new(0.1f, 0), SleepSettings = new(0.2f, 0.3f, 0.1f) });
+        var y = b.CreateBody(new() { LinearVelocity = new(0.1f, 0, 0), SleepSettings = new(0.2f, 0.3f, 0.1f) });
+        var f = new RecursiveAI.OnePhysics.Physics2D.FixedStepAccumulator(a, 0.125f);
+        var g = new RecursiveAI.OnePhysics.Physics3D.FixedStepAccumulator(b, 0.125f);
+        f.Advance(0.1875); g.Advance(0.1875);
+        var p = f.GetInterpolatedPose(x); var q = g.GetInterpolatedPose(y);
+        var aCopy = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new() { WorldId = 3100 });
+        var bCopy = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new() { WorldId = 3101 });
+        aCopy.Restore(a.Snapshot()); bCopy.Restore(b.Snapshot());
+        return f.InterpolationAlpha == 0.5 && g.InterpolationAlpha == 0.5 && p.Position.X == q.Position.X
+            && a.ComputeHash() == aCopy.ComputeHash() && b.ComputeHash() == bCopy.ComputeHash() && !x.IsAwake && !y.IsAwake;
     }
 
     private static bool FileFormats()

@@ -132,6 +132,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     public BodyHandle CreateBody(in BodyDef def)
     {
         ref readonly BodyDef d = ref def;
+        if (d.SleepSettings.IsOverride && d.Type != BodyType.Dynamic) throw new BodyTypeException(nameof(CreateBody), default, d.Type, true);
         if (!double.IsFinite(d.Position.X) || !double.IsFinite(d.Position.Y)) { throw new ArgumentOutOfRangeException(nameof(def), "Body position must be finite."); }
         if (!float.IsFinite(d.Angle)) { throw new ArgumentOutOfRangeException(nameof(def), d.Angle, "Body angle must be finite."); }
         if (!float.IsFinite(d.AngularVelocity)) { throw new ArgumentOutOfRangeException(nameof(def), d.AngularVelocity, "Angular velocity must be finite."); }
@@ -167,6 +168,7 @@ internal sealed partial class Engine2D : ISnapshotSection
             Mass[b] = 1f;
             Inertia[b] = 1f;
             Core.Bodies.InverseInertia[b] = d.FixedRotation ? 0f : 1f;
+            if (d.SleepSettings.IsOverride) Core.SetBodySleepSettings(h, d.SleepSettings);
             if (d.StartAsleep) { Core.Sleep(h); }
         }
 

@@ -185,6 +185,8 @@ public sealed partial class WorldCore
         _islands = new IslandSet();
         _events = new EventCollector(_options);
         _origin = new double[Layout.PositionLanes];
+        _bodySleep = new BodySleepStore(this);
+        AddSection(_bodySleep);
     }
 
     /// <summary>The id stamped into this world's handles.</summary>
@@ -328,6 +330,7 @@ public sealed partial class WorldCore
         }
 
         int b = _bodies.AllocateSlot();
+        _bodySleep.Set(b, default);
         _bodies.ClearSlot(b);
         position.CopyTo(_bodies.PositionOf(b));
         if (rotation.Length > 0) { rotation.CopyTo(_bodies.RotationOf(b)); } else { l.WriteIdentityRotation(_bodies.RotationOf(b)); }
@@ -393,6 +396,7 @@ public sealed partial class WorldCore
         }
 
         _islands.RemoveBody(_bodies, b);
+        _bodySleep.Set(b, default);
         _bodies.ClearSlot(b);
         _bodies.Handles.Free(b);
     }
@@ -1181,6 +1185,7 @@ public sealed partial class WorldCore
 
         public void Run(int block)
         {
+            if (_w._bodySleep.IsPresent) { RunOverrides(block); return; }
             var w = _w;
             var bodies = w._bodies;
             var sleep = bodies.SleepTime;
@@ -1197,6 +1202,24 @@ public sealed partial class WorldCore
                 if (sleep[b] >= _limit) { rested = 1; }
             }
 
+            w._sleepRested[block] = rested;
+        }
+
+        private void RunOverrides(int block)
+        {
+            var w = _w;
+            var bodies = w._bodies;
+            var sleep = bodies.SleepTime;
+            int lo = block * SleepBlock, hi = Math.Min(lo + SleepBlock, w._awakeCount);
+            int rested = 0;
+            for (int i = lo; i < hi; i++)
+            {
+                int b = w._awake[i];
+                if (!bodies.IsLive(b) || bodies.TypeOf(b) != BodyType.Dynamic) continue;
+                if (_enabled && (bodies.Flags[b] & (byte)BodyBits.NoSleep) == 0 && w.BodyIsAtRest(b, _s.BodyMotion(w, b), w._options.SleepThreshold)) sleep[b] += _dt;
+                else sleep[b] = 0;
+                if (sleep[b] >= w.BodySleepLimit(b, _limit)) rested = 1;
+            }
             w._sleepRested[block] = rested;
         }
     }
@@ -1243,7 +1266,8 @@ public sealed partial class WorldCore
     {
         float m = 0f;
         var sleep = _bodies.SleepTime;
-        foreach (int b in _islands.Bodies(island)) { if (sleep[b] > m) { m = sleep[b]; } }
+        if (_bodySleep.IsPresent) { foreach (int b in _islands.Bodies(island)) { float value = AdjustedSleepTime(b); if (value > m) m = value; } }
+        else { foreach (int b in _islands.Bodies(island)) { if (sleep[b] > m) m = sleep[b]; } }
         return m;
     }
 
@@ -1251,7 +1275,14 @@ public sealed partial class WorldCore
     private bool AllRested(int island, float limit)
     {
         var sleep = _bodies.SleepTime;
-        foreach (int b in _islands.Bodies(island)) { if (sleep[b] < limit) { return false; } }
+        if (!_bodySleep.IsPresent)
+        {
+            foreach (int b in _islands.Bodies(island)) { if (sleep[b] < limit) return false; }
+        }
+        else
+        {
+            foreach (int b in _islands.Bodies(island)) { if (sleep[b] < BodySleepLimit(b, limit) || (_bodies.Flags[b] & (byte)BodyBits.NoSleep) != 0) return false; }
+        }
         return true;
     }
 
@@ -1259,7 +1290,8 @@ public sealed partial class WorldCore
     {
         float m = float.MaxValue;
         var sleep = _bodies.SleepTime;
-        foreach (int b in _islands.Bodies(island)) { if (sleep[b] < m) { m = sleep[b]; } }
+        if (_bodySleep.IsPresent) { foreach (int b in _islands.Bodies(island)) { float value = AdjustedSleepTime(b); if (value < m) m = value; } }
+        else { foreach (int b in _islands.Bodies(island)) { if (sleep[b] < m) m = sleep[b]; } }
         return m;
     }
 
@@ -1402,7 +1434,7 @@ public sealed partial class WorldCore
         foreach (var s in _sections)
         {
             if (s.IsOptional && !s.IsPresent) { continue; }
-            w.DescribeSection(s.SectionId switch { 0x42503244 => "broadphase2d", 0x42503344 => "broadphase3d", 0x32445747 => "engine2d", 0x33445747 => "engine3d", 0x534F4654 => "softbody3d", _ => "section " + s.SectionId.ToString(CultureInfo.InvariantCulture) });
+            w.DescribeSection(s.SectionId switch { 0x42503244 => "broadphase2d", 0x42503344 => "broadphase3d", 0x32445747 => "engine2d", 0x33445747 => "engine3d", 0x534F4654 => "softbody3d", 0x42534C50 => "body sleep", _ => "section " + s.SectionId.ToString(CultureInfo.InvariantCulture) });
             w.NamedInt32(s.SectionId);
             if (w.IsHashing)
             {
@@ -1553,7 +1585,8 @@ public sealed partial class WorldCore
         {
             if (!_sectionPresent[i]) { _sections[i].Reset(); continue; }
             sub.Reset(data, _sectionRange[2 * i], _sectionRange[2 * i + 1]);
-            _sections[i].Read(sub);
+            if (ReferenceEquals(_sections[i], _bodySleep)) _bodySleep.Read(sub, bodies);
+            else _sections[i].Read(sub);
             if (sub.Remaining != 0) { throw new SnapshotFormatException("section " + _sections[i].SectionId.ToString(CultureInfo.InvariantCulture) + " left unread bytes", r.Position); }
         }
 

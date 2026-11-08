@@ -63,6 +63,7 @@ public sealed partial class WorldCore
         _inputLength = s._inputLength;
         _sectionRange = (int[])s._sectionRange.Clone();
         _bodies.CopyFrom(s._bodies);
+        _bodySleep.CopyFrom(s._bodySleep);
         _shapes.CopyFrom(s._shapes);
         _constraints.CopyFrom(s._constraints);
         _islands.CopyFrom(s._islands);

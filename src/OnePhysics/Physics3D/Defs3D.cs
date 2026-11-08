@@ -334,6 +334,9 @@ public struct BodyDef
 
     private bool _allowSleepOff;
 
+    /// <summary>Separate linear/angular sleep thresholds and rest duration. Default inherits the world policy. Only dynamic bodies accept overrides.</summary>
+    public BodySleepSettings SleepSettings { get; set; }
+
     /// <summary>Creates a dynamic body asleep.</summary>
     public bool StartAsleep { get; set; }
 }

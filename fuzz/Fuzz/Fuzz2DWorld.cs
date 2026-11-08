@@ -30,6 +30,10 @@ internal static class Fuzz2DWorld
 
         w.AddCircle(0.5f, at: new Vector2D(3, 2));
         w.AddCapsule(0.5f, 0.25f, at: new Vector2D(-3, 2));
+        foreach (var body in w.Bodies)
+        {
+            if (body.Type == BodyType.Dynamic) { body.SleepSettings = new(0.02f, 0.03f, 0.25f); break; }
+        }
         for (int i = 0; i < 40; i++) { w.StepChecked(1f / 60f); }
         return w;
     }

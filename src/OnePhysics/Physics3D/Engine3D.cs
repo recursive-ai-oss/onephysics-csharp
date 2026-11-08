@@ -178,6 +178,7 @@ internal sealed partial class Engine3D : ISnapshotSection
     public BodyHandle CreateBody(in BodyDef def)
     {
         ref readonly BodyDef d = ref def;
+        if (d.SleepSettings.IsOverride && d.Type != BodyType.Dynamic) throw new BodyTypeException(nameof(CreateBody), default, d.Type, true);
         if (!double.IsFinite(d.Position.X) || !double.IsFinite(d.Position.Y) || !double.IsFinite(d.Position.Z)) { throw new ArgumentOutOfRangeException(nameof(def), "Body position must be finite."); }
         var q = Normalize(d.Rotation, nameof(def));
         Finite3(d.LinearVelocity, "LinearVelocity");
@@ -213,6 +214,7 @@ internal sealed partial class Engine3D : ISnapshotSection
             Mass[b] = 1f;
             Inertia[6 * b] = 1f; Inertia[6 * b + 3] = 1f; Inertia[6 * b + 5] = 1f;
             if (d.FixedRotation) { Core.Bodies.InverseInertiaOf(b).Clear(); }
+            if (d.SleepSettings.IsOverride) Core.SetBodySleepSettings(h, d.SleepSettings);
             if (d.StartAsleep) { Core.Sleep(h); }
         }
 
