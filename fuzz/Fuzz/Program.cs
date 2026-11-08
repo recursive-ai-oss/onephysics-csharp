@@ -20,6 +20,7 @@ internal static class Program
         ["snapshot-compressed"] = FuzzSnapshotEncoding.Compressed,
         ["replay"] = FuzzReplay.Run,
         ["scene"] = FuzzScene.Run,
+        ["contact-state"] = FuzzContactState.Run,
         ["mesh"] = FuzzMesh.MeshTarget,
         ["heightfield"] = FuzzMesh.HeightFieldTarget,
         ["meshquery"] = FuzzMesh.QueryTarget,

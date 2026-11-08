@@ -28,6 +28,13 @@ public sealed partial class WorldCore
     /// <summary>Returns allocation-free contact views for a live body in constraint-slot order. Read between mutations; sensors and disabled zero-point contacts are excluded. Throws InvalidHandleException for a stale body.</summary>
     public BodyContactEnumerable GetContacts(BodyHandle body) { Resolve(body); return new(this, body); }
 
+    /// <summary>Optional raw manifold-batch modifier, null by default. Runs once after individual contact callbacks on the stepping thread. Batch slots are sorted by shape/subshape keys. Not serialized or copied by Fork.</summary>
+    public ContactBatchModifier? ContactBatchModifier
+    {
+        get => ContactModifications.RawCallback;
+        set => ContactModifications.RawCallback = value;
+    }
+
     /// <summary>Raw-tier pre-solve manifold callback, null by default. The built-in engines invoke it serially after narrowphase and before solving, in shape-pair/subshape order. The view directly edits the constraint payload. Do not mutate other world storage from this callback. Not serialized or copied by Fork.</summary>
     public ContactModifier? ContactModifier
     {

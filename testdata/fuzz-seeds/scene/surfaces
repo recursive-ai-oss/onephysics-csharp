@@ -1,0 +1,7 @@
+scene 1
+dim 2
+material 0 0.5 0
+body static 0 0 0 0 0 0 -
+shape box 0 0 0 2 0.1 0 0 0
+surface 1 0 0 0 1 0 0 0 0 0 0 0
+material_indices 0

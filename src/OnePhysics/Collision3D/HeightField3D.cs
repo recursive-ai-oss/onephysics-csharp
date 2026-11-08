@@ -151,7 +151,26 @@ public sealed class HeightField3D : TriangleSoup3D
 
             _flags[cell] = (byte)f;
         }
-        _patchIds = CoplanarPatchIds.Build(this);
+        _patchIds = CoplanarPatchIds.Create(2 * _flags.Length);
+        for (int id = 0; id < _patchIds.Length; id++)
+        {
+            int cell = id / 2, k = id % 2; if (IsHole(cell)) continue;
+            Tri(cell, k, out var a, out var b, out var c);
+            int i = cell % _cx, j = cell / _cx;
+            for (int edge = 0; edge < 3; edge++)
+            {
+                if (((_flags[cell] >> (3 * k + edge)) & 1) != 0) continue;
+                int ni, nj, nk;
+                if (k == 0) (ni, nj, nk) = edge == 0 ? (i - 1, j, 1) : edge == 1 ? (i, j + 1, 1) : (i, j, 1);
+                else (ni, nj, nk) = edge == 0 ? (i, j, 0) : edge == 1 ? (i + 1, j, 0) : (i, j - 1, 0);
+                if ((uint)ni >= (uint)_cx || (uint)nj >= (uint)_cz) continue;
+                int neighbourCell = nj * _cx + ni, neighbour = 2 * neighbourCell + nk;
+                if (neighbour >= id || IsHole(neighbourCell)) continue;
+                Tri(neighbourCell, nk, out var d, out var e, out var f);
+                if (CoplanarPatchIds.SamePlane(a, b, c, d, e, f)) CoplanarPatchIds.Join(_patchIds, id, neighbour);
+            }
+        }
+        CoplanarPatchIds.Finish(_patchIds);
     }
 
     /// <inheritdoc/>

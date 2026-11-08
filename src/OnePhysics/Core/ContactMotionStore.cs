@@ -43,6 +43,8 @@ internal sealed class ContactMotionStore : ISnapshotSection
     }
     internal void Capture(WorldCore w)
     {
+        // At most one live generation and one ended generation per reserved contact slot survive a step.
+        _records.EnsureCapacity(2 * w.Constraints.SlotCapacity);
         _records.RemoveAll(static r => !r.Alive);
         for (int i = 0; i < _records.Count; i++) _records[i] = _records[i] with { Alive = false };
         var cs = w.Constraints;
@@ -78,7 +80,8 @@ internal sealed class ContactMotionStore : ISnapshotSection
                 int ra = ManifoldLayout.AnchorA(p), rb = ManifoldLayout.AnchorB(p);
                 var dv = SurfaceContacts.PointVelocity(w, b, pl, rb) - SurfaceContacts.PointVelocity(w, a, pl, ra) - surface;
                 dv -= n * Vector3F.Dot(dv, n); sliding = Math.Max(sliding, float.Sqrt(Vector3F.Dot(dv, dv)));
-                float arm = Math.Min(Length(w, pl, ra), Length(w, pl, rb)); rolling = Math.Max(rolling, rollRate * arm);
+                float armA = Length(w, pl, ra), armB = Length(w, pl, rb);
+                float arm = w.Bodies.IsDynamic(a) ? (w.Bodies.IsDynamic(b) ? Math.Min(armA, armB) : armA) : armB; rolling = Math.Max(rolling, rollRate * arm);
             }
             var previous = _records[index]; _records[index] = previous with { Motion = new ContactMotion(previous.Motion.ImpactSpeed, sliding, rolling) };
         }
@@ -86,6 +89,7 @@ internal sealed class ContactMotionStore : ISnapshotSection
     private static Vector3F Normal(WorldCore w, ReadOnlySpan<float> p) => new(p[0], p[1], w.Layout.PositionLanes == 3 ? p[2] : 0);
     private static Vector3F Angular(WorldCore w, int b) { var a = w.Bodies.AngularVelocityOf(b); return w.Layout.PositionLanes == 3 ? new(a[0], a[1], a[2]) : new(0, 0, a[0]); }
     private static float Length(WorldCore w, ReadOnlySpan<float> p, int a) => float.Sqrt(p[a] * p[a] + p[a + 1] * p[a + 1] + (w.Layout.PositionLanes == 3 ? p[a + 2] * p[a + 2] : 0));
+    internal long GrowthBound(int slots) => Math.Max(0L, 2L * slots - _records.Count) * 37L;
     public void Write(StateWriter w)
     {
         w.WriteInt32(1); w.WriteInt32(_records.Count);

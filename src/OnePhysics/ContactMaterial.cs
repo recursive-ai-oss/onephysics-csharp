@@ -9,9 +9,9 @@ public readonly struct ContactMaterial
     /// <exception cref="ArgumentOutOfRangeException">A coefficient is non-finite or out of range.</exception>
     public ContactMaterial(float friction, float restitution = 0, float rollingResistance = 0)
     {
-        if (!(friction >= 0 && friction <= MaterialLimits.MaxCoefficient)) throw new ArgumentOutOfRangeException(nameof(friction));
-        if (!(restitution >= 0 && restitution <= 1)) throw new ArgumentOutOfRangeException(nameof(restitution));
-        if (!(rollingResistance >= 0 && rollingResistance <= MaterialLimits.MaxCoefficient)) throw new ArgumentOutOfRangeException(nameof(rollingResistance));
+        if (!(friction >= 0 && friction <= MaterialLimits.MaxCoefficient)) throw new ArgumentOutOfRangeException(nameof(friction), friction, "Friction must be finite within 0..1e15.");
+        if (!(restitution >= 0 && restitution <= 1)) throw new ArgumentOutOfRangeException(nameof(restitution), restitution, "Restitution must be within 0..1.");
+        if (!(rollingResistance >= 0 && rollingResistance <= MaterialLimits.MaxCoefficient)) throw new ArgumentOutOfRangeException(nameof(rollingResistance), rollingResistance, "Rolling resistance must be finite within 0..1e15.");
         Friction = friction; Restitution = restitution; RollingResistance = rollingResistance;
     }
     /// <summary>Coulomb friction coefficient.</summary>

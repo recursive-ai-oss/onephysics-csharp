@@ -47,7 +47,7 @@ public sealed class TriangleMesh3D : TriangleSoup3D
     private readonly MeshBvh3D _bvh;
     private readonly Bounds3F _bounds;
 
-    private TriangleMesh3D(Vector3F[] vertices, int[] indices, byte[] flags, int[]? source, int[] dropped, MeshBvh3D bvh, Bounds3F bounds)
+    private TriangleMesh3D(Vector3F[] vertices, int[] indices, byte[] flags, int[] patchIds, int[]? source, int[] dropped, MeshBvh3D bvh, Bounds3F bounds)
     {
         _vertices = vertices;
         _indices = indices;
@@ -56,7 +56,7 @@ public sealed class TriangleMesh3D : TriangleSoup3D
         _dropped = dropped;
         _bvh = bvh;
         _bounds = bounds;
-        _patchIds = CoplanarPatchIds.Build(this);
+        _patchIds = patchIds;
     }
 
     /// <inheritdoc/>
@@ -229,15 +229,16 @@ public sealed class TriangleMesh3D : TriangleSoup3D
             z1 = Math.Max(z1, hi.Z);
         }
 
-        byte[] flags = ComputeActiveEdges(vs, idx, count, tol);
+        byte[] flags = ComputeActiveEdges(vs, idx, count, tol, out int[] patchIds);
         MeshBvh3D bvh = MeshBvh3D.Build(tb, count);
-        return new TriangleMesh3D(vs, idx, flags, source, dropped.ToArray(), bvh, new Bounds3F(new Vector3F(x0, y0, z0), new Vector3F(x1, y1, z1)));
+        return new TriangleMesh3D(vs, idx, flags, patchIds, source, dropped.ToArray(), bvh, new Bounds3F(new Vector3F(x0, y0, z0), new Vector3F(x1, y1, z1)));
     }
 
     // Edge adjacency by welded vertex identity (equal positions are one vertex): sort the directed edges by their undirected key; an edge with exactly two triangles running opposite ways
     // is active when it is convex; boundary, non-manifold and inconsistently wound edges are always active. The two-triangle case does not depend on the order within a group.
-    private static byte[] ComputeActiveEdges(Vector3F[] vs, int[] idx, int count, double tol)
+    private static byte[] ComputeActiveEdges(Vector3F[] vs, int[] idx, int count, double tol, out int[] patchIds)
     {
+        patchIds = CoplanarPatchIds.Create(count);
         int[] byPos = new int[vs.Length];
         for (int i = 0; i < byPos.Length; i++)
         {
@@ -308,9 +309,11 @@ public sealed class TriangleMesh3D : TriangleSoup3D
             {
                 flags[ta] &= (byte)~(1 << ea);
                 flags[tbb] &= (byte)~(1 << eb);
+                if (CoplanarPatchIds.SamePlane(vs[idx[3 * ta]], vs[idx[3 * ta + 1]], vs[idx[3 * ta + 2]], vs[idx[3 * tbb]], vs[idx[3 * tbb + 1]], vs[idx[3 * tbb + 2]])) CoplanarPatchIds.Join(patchIds, ta, tbb);
             }
         }
 
+        CoplanarPatchIds.Finish(patchIds);
         return flags;
     }
 

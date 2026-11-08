@@ -92,7 +92,7 @@ internal sealed partial class Engine3D : ISnapshotSection
     public Engine3D(WorldCore core, Broadphase3D bp, WorldOptions3D opt)
     {
         core.ContactModifications.ShapeFriction = s => Friction[s];
-        core.ContactMaterials.SubshapeCount = s => Geoms[GeomOf[s]]!.Soup?.TriangleIdCount ?? 1;
+        core.ContactMaterials.SubshapeCount = s => (uint)s < (uint)GeomOf.Length && (uint)GeomOf[s] < (uint)Geoms.Count && Geoms[GeomOf[s]] is { } geometry ? geometry.Soup?.TriangleIdCount ?? 1 : -1;
         core.ContactMaterials.PlaneId = (s, t) => Geoms[GeomOf[s]]!.Soup is { } soup && soup.TryGetTriangle(t, out var triangle) ? triangle.CoplanarPatchId : t;
         Core = core;
         Bp = bp;

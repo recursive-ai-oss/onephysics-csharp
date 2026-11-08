@@ -1339,6 +1339,8 @@ public sealed partial class WorldCore
     {
         var w = _boundWriter;
         WriteSnapshot(w);
+        if (!ContactModifications.IsPresent && (ContactModifications.Callback != null || ContactModifications.RawCallback != null || Surfaces.IsPresent)) w.AddBound(12);
+        if (ContactMotion.Enabled) w.AddBound(ContactMotion.GrowthBound(_constraints.SlotCapacity));
         return w.Length;
     }
 

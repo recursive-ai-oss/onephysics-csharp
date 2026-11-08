@@ -36,6 +36,24 @@ public sealed class ContactModificationTests
     }
 
     [Fact]
+    public void RawBatchCanReenableAndEditIndividualManifoldsInStableOrder()
+    {
+        var w = Make2(1); int calls = 0;
+        w.ContactModifier = (ref ContactModification c) => c.Enabled = false;
+        w.Core.ContactBatchModifier = batch =>
+        {
+            calls++; Assert.Equal(16, batch.Count);
+            for (int i = 0; i < batch.Count; i++)
+            {
+                var c = batch.GetManifold(i); Assert.False(c.Enabled); c.Enabled = true; c.Friction = 0.2f; c.TangentSpeed = 0.1f;
+            }
+        };
+        w.Step(1f / 60); Assert.Equal(1, calls);
+        int contacts = 0; for (int c = 0; c < w.Core.Constraints.HighWater; c++) if (w.Core.Constraints.IsLive(c) && w.Core.Constraints.PointCount[c] > 0) contacts++;
+        Assert.Equal(16, contacts);
+    }
+
+    [Fact]
     public void OrderThreadEqualityRestoreAndRecorderEffects()
     {
         var a = Make2(1);

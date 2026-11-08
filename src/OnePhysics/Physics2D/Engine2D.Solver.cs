@@ -737,6 +737,7 @@ internal sealed partial class Engine2D
             int other = userId;
             if (e.IsSensor(Shape) || e.IsSensor(other) || !e.CanCollide(Shape, other)) { return true; }
             int sb = core.Shapes.Owner[other];
+            if (core.Surfaces.IsPresent && !SurfaceContacts.SweepApproaches(core, Shape, other, new Vector3F(End.X, End.Y, 0))) return true;
             var bodies = core.Bodies;
             var p = bodies.PositionOf(sb);
             var r = bodies.RotationOf(sb);
@@ -770,6 +771,13 @@ internal sealed partial class Engine2D
             var toi = Distance2D.TimeOfImpact(in g, sweepStatic, in e.Geom[Shape], Sweep, Best, Constants2D.LinearSlop);
             if ((toi.State == ToiState.Hit || toi.State == ToiState.Failed) && toi.Fraction > 0f && toi.Fraction < Best)
             {
+                if (core.Surfaces.IsPresent)
+                {
+                    var otherTransform = sweepStatic.GetTransform(toi.Fraction); var moverTransform = Sweep.GetTransform(toi.Fraction); var cache = default(SimplexCache2D);
+                    var distance = Distance2D.Compute(in g, in e.Geom[Shape], Transform2.InvMul(otherTransform, moverTransform), ref cache, false);
+                    var outward = otherTransform.Q.Rotate(distance.PointB - distance.PointA);
+                    if (!SurfaceContacts.SweepNormalAllowed(core, Shape, other, new Vector3F(outward.X, outward.Y, 0))) return true;
+                }
                 Best = toi.Fraction;
                 Hit = true;
             }

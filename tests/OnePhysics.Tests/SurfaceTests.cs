@@ -10,6 +10,37 @@ namespace RecursiveAI.OnePhysics.Tests;
 public class SurfaceTests
 {
     [Fact]
+    public void FastJumpDoesNotGetClampedByContinuousCollision()
+    {
+        var w = new P2.PhysicsWorld2D(new() { Gravity = default });
+        w.AddBox(new(10, 0.2f), at: new(0, 1), type: BodyType.Static, material: new P2.Material2D(0.6f, surface: new() { OneWayDirection = new(0, 1, 0) }));
+        var b = w.AddCircle(0.1f, at: new(0, 0)); b.IsBullet = true; b.LinearVelocity = new(0, 30);
+        for (int i = 0; i < 4; i++) w.Step(1f / 60);
+        Assert.InRange(b.Position.Y, 1.9999, 2.0001);
+        var v = new P3.PhysicsWorld3D(new() { Gravity = default });
+        v.AddBox(new(10, 0.2f, 10), at: new(0, 1, 0), type: BodyType.Static, material: new P3.Material3D(0.6f, surface: new() { OneWayDirection = new(0, 1, 0) }));
+        var s = v.AddSphere(0.1f, at: new(0, 0, 0)); s.LinearVelocity = new(0, 30, 0);
+        for (int i = 0; i < 4; i++) v.Step(1f / 60);
+        Assert.InRange(s.Position.Y, 1.9999, 2.0001);
+    }
+
+    [Fact]
+    public void PendingMaterialChangeSurvivesRestoreBeforeTheNextStep()
+    {
+        var w = new P2.PhysicsWorld2D(new() { WorldId = 880 }); var g = w.AddBox(new(10, 1), at: new(0, -0.5), type: BodyType.Static); w.AddBox(new(1, 1), at: new(0, 0.5));
+        w.Step(1f / 60); g.GetShapes()[0].SetMaterials(new P2.Material2D[] { new(0) }, new[] { 0 });
+        var copy = new P2.PhysicsWorld2D(new() { WorldId = 880 }); copy.Restore(w.Snapshot());
+        w.Step(1f / 60); copy.Step(1f / 60); Assert.Equal(w.Snapshot(), copy.Snapshot());
+    }
+
+    [Fact]
+    public void SurfaceStateAndHostHooksAreThreadAndWidthIndependent()
+    {
+        Assert.Equal(Common.ContactSurfaceScene.Planar(1, 1, true), Common.ContactSurfaceScene.Planar(8, 8));
+        Assert.Equal(Common.ContactSurfaceScene.Spatial(1, 1, true), Common.ContactSurfaceScene.Spatial(8, 8));
+    }
+
+    [Fact]
     public void BodyFrameConveyorsMoveBoxesAndSurviveForkRestoreAndScene()
     {
         var w = new P2.PhysicsWorld2D(new() { WorldId = 991, SleepEnabled = false });
@@ -121,14 +152,14 @@ public class SurfaceTests
     {
         var p = new P2.PhysicsWorld2D(new() { Gravity = default, SleepEnabled = false }); var floor = p.CreateBody(new() { Type = BodyType.Static, Position = new(0, 1) });
         p.CreateBox(floor, new(4, 0.2f), def: new() { Surface = new() { OneWayDirection = new(0, 1, 0) } });
-        var b = p.AddCircle(0.2f, at: new(-3, 1)); b.LinearVelocity = new(6, 0);
+        var b = p.AddCircle(0.2f, at: new(-3, 1)); b.IsBullet = true; b.LinearVelocity = new(6, -0.1f);
         for (int i = 0; i < 60; i++) p.Step(1f / 60);
-        Assert.InRange(b.Position.X, 2.99, 3.01); Assert.InRange(b.Position.Y, 0.9999, 1.0001);
+        Assert.InRange(b.Position.X, 2.99, 3.01); Assert.InRange(b.Position.Y, 0.8999, 0.9001);
         var w = new P3.PhysicsWorld3D(new() { Gravity = default, SleepEnabled = false }); var g = w.CreateBody(new() { Type = BodyType.Static, Position = new(0, 1, 0) });
         w.CreateBox(g, new(4, 0.2f, 4), def: new() { Surface = new() { OneWayDirection = new(0, 1, 0) } });
-        var s = w.AddSphere(0.2f, at: new(-3, 1, 0)); s.LinearVelocity = new(6, 0, 0);
+        var s = w.AddSphere(0.2f, at: new(-3, 1, 0)); s.LinearVelocity = new(6, -0.1f, 0);
         for (int i = 0; i < 60; i++) w.Step(1f / 60);
-        Assert.InRange(s.Position.X, 2.99, 3.01); Assert.InRange(s.Position.Y, 0.9999, 1.0001);
+        Assert.InRange(s.Position.X, 2.99, 3.01); Assert.InRange(s.Position.Y, 0.8999, 0.9001);
     }
 
     [Fact]

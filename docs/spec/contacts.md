@@ -26,7 +26,7 @@ impulses. Separations are negative inside. The normal points from A to B.
 The normal's Z component is exactly zero in 2D. Invalid coefficients, indices or
 non-finite separations throw `ArgumentOutOfRangeException` at the setter.
 
-`Enabled` starts true for every invocation. Disabling sets the solver point
+Fresh geometry starts enabled. Built-in one-way rules run before the user delegate, which may re-enable it. Disabling sets the solver point
 count to zero and clears normal, tangent and rolling warm starts. The
 geometric pair and its begin/persist/end lifetime are retained: disabling
 response does not turn a contact into a sensor or an overlap query. A subsequent
@@ -37,7 +37,7 @@ Edits to friction, restitution, separation and point count are ordinary contact
 payload state, covered by existing snapshot v1 and world hashing. An optional
 section with id `0x434D4F44` marks payloads that need fresh geometry on the next
 step. Its entire payload is one little-endian int32 version, currently 1. The
-section is present only after a modifier has visited at least one manifold;
+section is present after a modifier has visited a manifold or while a surface/material change requires fresh contact mixing;
 a step without a modifier refreshes those manifolds and removes the section.
 Restoring or forking edited contacts without the original callback therefore
 restores ordinary material and geometry rules on the next step. Snapshot v1's
@@ -51,6 +51,18 @@ Recording a step with an installed modifier emits a named
 `ContactModification` whole-state effect after simulation and before event
 handlers, so playback does not need the original callback code. Worlds without
 a modifier emit no extra effect and execute no contact sorting pass.
+
+### Raw manifold batches
+
+`world.Core.ContactBatchModifier` is an optional `ContactBatchModifier` delegate.
+It runs once per step, on the calling thread, after built-in surface rules and
+individual callbacks and before impulse clearing/clamping. `ContactManifoldBatch`
+provides the sorted constraint slots, the raw core and `GetManifold(index)` mutable
+views. Enabled flags are live, so this hook may re-enable a response disabled by
+an earlier rule. Views retain the original geometry point count even when
+response is disabled. Topology mutation and retained views are prohibited.
+The recorder captures the resulting simulation effect just as for individual
+modifiers. Neither callback subscription is serialized or copied by a fork.
 
 ### Tangent speed and normal impulse limits
 
@@ -90,7 +102,8 @@ with the normalized allowed direction; this rejects sides and undersides.
 Relative point velocity away from the platform above 0.01 m/s disables response.
 Otherwise response requires previous separation (current separation minus
 normal relative velocity times the full step dt) at least -0.02 m, or an existing
-positive normal warm-start impulse. This prevents a jump whose apex remains
+positive normal warm-start impulse. Continuous collision likewise rejects sweeps that do not approach the allowed
+side or whose hit normal fails the same 0.5 cosine test. This prevents a jump whose apex remains
 inside the platform from acquiring response on its downward path, while a
 falling body can land even if a discrete frame overshoots the plane.
 
@@ -133,8 +146,8 @@ to broader body/constraint inspection.
 `ContactMotionEnabled` is opt-in and false by default. It collects a maximum
 pre-solve approach speed at manifold birth (`ImpactSpeed`), maximum residual
 tangential point speed at step end (`SlidingSpeed`, relative to conveyor surface
-motion), and relative rolling angular speed times the smaller contact arm
-length (`RollingSpeed`). Values are nonnegative metres/second. Contact events,
+motion), and relative rolling angular speed times the smaller dynamic contact arm
+length (or the only dynamic body's arm) (`RollingSpeed`). Values are nonnegative metres/second. Contact events,
 polled event arrays and `Collision` expose the same data. End events retain the
 last data. The first contact may be speculative, so impact speed is at manifold
 birth, not an extrapolation to exact geometric impact time.
@@ -169,8 +182,10 @@ Active-edge flags retain the mesh/height-field convexity test described in
 `collision3d.md`. An internal seam also needs coherent *manifold identity*:
 otherwise crossing a triangle boundary discards warm-start support and applies
 an artificial torque even with exactly vertical normals. At geometry build,
-exactly equal oriented planes `(normal.xyz, dot(normal, vertex0))` receive the
-lowest triangle id as their coplanar patch id. Query triangle ids remain
+triangles connected across inactive edges with exactly equal oriented planes
+`(normal.xyz, dot(normal, vertex0))` receive the lowest connected triangle id as
+their coplanar patch id. A nonrecursive union-find with lower-root joins and
+path compression derives these ids in linear storage. Query triangle ids remain
 unchanged. Indexed materials further partition a plane by material index, each
 partition using its lowest triangle id. Plane/material keys are reconstructed
 in fixed numeric triangle order.

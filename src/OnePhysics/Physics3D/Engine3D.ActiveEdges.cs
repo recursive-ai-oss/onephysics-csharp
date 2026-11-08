@@ -60,6 +60,13 @@ internal sealed partial class Engine3D
         int write = first;
         for (int j = first; j < end; j++) if (scratch.Out[j].Count != 0) scratch.Out[write++] = scratch.Out[j];
         scratch.OutCount = write;
+        // A plane/material partition can be represented by a triangle outside the current query. Its canonical id need not follow candidate triangle order.
+        for (int j = first + 1; j < write; j++)
+        {
+            var value = scratch.Out[j]; int k = j - 1;
+            while (k >= first && (scratch.Out[k].SubA > value.SubA || (scratch.Out[k].SubA == value.SubA && scratch.Out[k].SubB > value.SubB))) { scratch.Out[k + 1] = scratch.Out[k]; k--; }
+            scratch.Out[k + 1] = value;
+        }
     }
     private static int CompareLocal(NarrowScratch scratch, int a, int b, bool soupIsA, QuaternionF inverseOther)
     {

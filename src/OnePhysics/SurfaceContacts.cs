@@ -38,6 +38,25 @@ internal static class SurfaceContacts
         if (sa.OneWayDirection != default && !Allows(world, c, a, b, sa.OneWayDirection, n, false)) view.Enabled = false;
         if (sb.OneWayDirection != default && !Allows(world, c, b, a, sb.OneWayDirection, n, true)) view.Enabled = false;
     }
+    internal static bool SweepApproaches(WorldCore world, int movingShape, int otherShape, Vector3F relativeMotion)
+    {
+        var own = world.Surfaces.Get(movingShape); var other = world.Surfaces.Get(otherShape);
+        if (other.OneWayDirection != default && Vector3F.Dot(relativeMotion, Rotate(world, world.Shapes.Owner[otherShape], other.OneWayDirection)) >= 0f) return false;
+        if (own.OneWayDirection != default && Vector3F.Dot(relativeMotion, Rotate(world, world.Shapes.Owner[movingShape], own.OneWayDirection)) <= 0f) return false;
+        return true;
+    }
+    internal static bool SweepNormalAllowed(WorldCore world, int movingShape, int otherShape, Vector3F outwardOther)
+    {
+        bool Faces(Vector3F direction, Vector3F normal)
+        {
+            float product = Vector3F.Dot(direction, direction) * Vector3F.Dot(normal, normal);
+            return Vector3F.Dot(direction, normal) >= 0.5f * float.Sqrt(product);
+        }
+        var own = world.Surfaces.Get(movingShape); var other = world.Surfaces.Get(otherShape);
+        if (other.OneWayDirection != default && !Faces(Rotate(world, world.Shapes.Owner[otherShape], other.OneWayDirection), outwardOther)) return false;
+        if (own.OneWayDirection != default && !Faces(Rotate(world, world.Shapes.Owner[movingShape], own.OneWayDirection), -outwardOther)) return false;
+        return true;
+    }
     private static float Coefficient(WorldCore world, int body, SurfaceProperties surface, Vector3F tangent, float ordinary)
     {
         if (surface.FrictionAxis == default) return ordinary;

@@ -85,11 +85,14 @@ internal static class SmokeProgram
         ulong sk1 = SoftSkinned3DScene.Run(1, false), sk3 = SoftSkinned3DScene.Run(3, false), skr = SoftSkinned3DScene.Run(1, true);
         bool skSame = sk1 == sk3 && sk1 == skr;
         Console.WriteLine((skSame ? "OK softskinned3d " : "FAIL softskinned3d ") + sk1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        bool surfaces = RecursiveAI.OnePhysics.Tests.Common.ContactSurfaceScene.Planar(1, restore: true) == RecursiveAI.OnePhysics.Tests.Common.ContactSurfaceScene.Planar(3)
+            && RecursiveAI.OnePhysics.Tests.Common.ContactSurfaceScene.Spatial(1, restore: true) == RecursiveAI.OnePhysics.Tests.Common.ContactSurfaceScene.Spatial(3);
+        Console.WriteLine(surfaces ? "OK contact surfaces" : "FAIL contact surfaces");
         bool contacts = ContactModifiers();
         Console.WriteLine(contacts ? "OK contact modifiers" : "FAIL contact modifiers");
         bool formats = FileFormats();
         Console.WriteLine(formats ? "OK formats" : "FAIL formats");
-        return contacts && formats && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+        return surfaces && contacts && formats && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
     }
 
     private readonly struct SmokeContactModifier : IContactModifier

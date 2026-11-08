@@ -1,4 +1,5 @@
 using System;
+using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.LowLevel;
 
@@ -124,11 +125,19 @@ internal sealed partial class Engine2D
                 if (d0 - d1 < 0.25f * MinExtent) { return true; }
             }
 
+            if (core.Surfaces.IsPresent && !SurfaceContacts.SweepApproaches(core, Shape, other, new Vector3F(End.X - (c2.X - c1.X), End.Y - (c2.Y - c1.Y), 0))) return true;
             var lc = isStatic ? default : new Vec2(e.LocalCenter[2 * ob], e.LocalCenter[2 * ob + 1]);
             var sweepOther = new Sweep2D(lc, c1, c2, q1, q2);
             var toi = Distance2D.TimeOfImpact(in g, sweepOther, in e.Geom[Shape], Sweep, Best, Constants2D.LinearSlop);
             if ((toi.State == ToiState.Hit || toi.State == ToiState.Failed) && toi.Fraction > 0f && (toi.Fraction < Best || (Hit && toi.Fraction == Best && other < BestSlot)))
             {
+                if (core.Surfaces.IsPresent)
+                {
+                    var otherTransform = sweepOther.GetTransform(toi.Fraction); var moverTransform = Sweep.GetTransform(toi.Fraction); var cache = default(SimplexCache2D);
+                    var distance = Distance2D.Compute(in g, in e.Geom[Shape], Transform2.InvMul(otherTransform, moverTransform), ref cache, false);
+                    var outward = otherTransform.Q.Rotate(distance.PointB - distance.PointA);
+                    if (!SurfaceContacts.SweepNormalAllowed(core, Shape, other, new Vector3F(outward.X, outward.Y, 0))) return true;
+                }
                 Best = toi.Fraction;
                 BestSlot = other;
                 Hit = true;
