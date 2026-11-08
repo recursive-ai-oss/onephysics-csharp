@@ -192,6 +192,7 @@ public sealed partial class ManifoldGenerator3D
         {
             // The face plane separates the cores by sepA, so the shapes are at least this far apart whatever the edges say.
             ClearanceOut = sepA - limit;
+            ClearanceAxisOut = boxes ? s_boxTopo.FaceNormal[faceA] : pa.N[faceA];
             return Empty;
         }
 
@@ -199,6 +200,7 @@ public sealed partial class ManifoldGenerator3D
         if (sepB > limit)
         {
             ClearanceOut = sepB - limit;
+            ClearanceAxisOut = boxes ? -r.Transform(s_boxTopo.FaceNormal[faceB]) : -pb.N[faceB];
             return Empty;
         }
 
@@ -233,6 +235,10 @@ public sealed partial class ManifoldGenerator3D
         float best = useEdge ? sepE : bestFace;
         if (best > limit)
         {
+            // A unit separating axis is a lower bound on Euclidean distance, whether it came
+            // from a face or an edge pair. Keep the edge bound for the same motion-budget test.
+            ClearanceOut = best - limit;
+            ClearanceAxisOut = useEdge ? axisE : useB ? (boxes ? -r.Transform(s_boxTopo.FaceNormal[faceB]) : -pb.N[faceB]) : (boxes ? s_boxTopo.FaceNormal[faceA] : pa.N[faceA]);
             return Empty;
         }
 

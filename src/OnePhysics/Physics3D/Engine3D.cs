@@ -636,6 +636,9 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         MaxExtent[b] = maxExt;
         MinExtent[b] = minExt;
+        // Empty-pair planes and reaches are expressed about the centres of mass. Changing a
+        // centre changes that coordinate frame without moving its shapes in world space.
+        if (PairHigh > 0 && (newLc.X != oldLc.X || newLc.Y != oldLc.Y || newLc.Z != oldLc.Z)) { Array.Clear(_skip); }
     }
 
     /// <summary>Farthest point of any shape of the body from <paramref name="lc"/> (its centre of mass), and the smallest half-width of any shape. A restore recomputes these to check the saved ones.</summary>

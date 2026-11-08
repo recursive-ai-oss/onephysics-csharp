@@ -148,6 +148,7 @@ internal sealed partial class Engine3D
     private int[] _boxStamp = new int[8];
     private byte[] _boxInside = new byte[8]; // per shape, set with the tight box: 1 when the box lies inside the proxy's stored box, so the tree update has nothing to do
     private int _stamp;
+    private int _skipMarginBits;
     private double[] _boxes = new double[48];
     private int[] _updateList = new int[64];
     private byte[] _resStatus = new byte[64]; // 0 untouched, 1 manifolds computed, 2 boxes no longer overlap
@@ -164,6 +165,9 @@ internal sealed partial class Engine3D
         int nb = bodies.HighWater;
         EnsureBodies(nb);
         ReconcileJoints();
+        // A clearance is measured beyond the speculative margin used by that query.
+        int marginBits = BitConverter.SingleToInt32Bits(Opt.SpeculativeDistance);
+        if (_skipMarginBits != marginBits) { Array.Clear(_skip); _skipMarginBits = marginBits; }
 
         // 0. A changed filter re-evaluates the pair table before anything else (see Refilter).
         Refilter();
@@ -699,14 +703,15 @@ internal sealed partial class Engine3D
             var cstore = Core.Constraints;
             gen.HintIn = oldCons >= 0 && cstore.PointCount[oldCons] > 0 ? new EdgeHint3D(cstore.Payload(oldCons).Slice(ManifoldLayout.HintOffset, 7)) : default;
             var m = gen.Collide(ga.Convex, gb.Convex, bInA, spec);
-            if (m.PointCount == 0 && oldCons < 0 && gen.ClearanceOut > 0f)
+            if (m.PointCount == 0 && gen.ClearanceOut > 0f)
             {
                 // The pose of B's body in A's body at this query, and how far apart the shapes were.
                 var invA = qA.Conjugated();
                 var d = invA.Rotate(new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])));
                 var qr = invA * qB;
                 float sg = qr.W < 0f ? -1f : 1f;
-                _skip[p] = new SkipFrame3 { X = d.X, Y = d.Y, Z = d.Z, Qx = sg * qr.X, Qy = sg * qr.Y, Qz = sg * qr.Z, Qw = sg * qr.W, Clear = gen.ClearanceOut, Reach = ReachOfShape(bb, sb) };
+                var axis = la.Rotation.Rotate(gen.ClearanceAxisOut);
+                _skip[p] = new SkipFrame3 { Nx = axis.X, Ny = axis.Y, Nz = axis.Z, X = d.X, Y = d.Y, Z = d.Z, Qx = sg * qr.X, Qy = sg * qr.Y, Qz = sg * qr.Z, Qw = sg * qr.W, Clear = gen.ClearanceOut, Reach = ReachOfShape(bb, sb) };
             }
             else { _skip[p].Clear = 0f; }
 
@@ -731,9 +736,10 @@ internal sealed partial class Engine3D
     }
 
     /// <summary>The pose of B's body in A's body when a pair without a constraint last had no contact points, and how far apart the shapes were then (beyond the speculative distance).</summary>
-    private struct SkipFrame3
+    internal struct SkipFrame3
     {
         public float X, Y, Z, Qx, Qy, Qz, Qw, Clear;
+        public float Nx, Ny, Nz; // optional separating direction in A's body frame
 
         /// <summary>Farthest point of B's shape from B's centre of mass; a kinematic or static body has no stored extent, so the bound comes from the shape.</summary>
         public float Reach;
@@ -752,7 +758,7 @@ internal sealed partial class Engine3D
 
     // Whether a pair recorded as apart still is. Every point of B's shape moves, relative to A, by at most the change of B's centre of mass in A's frame plus the chord of the relative turn times the point's distance
     // from that centre (chord = 2 sin(angle / 2) = twice the vector part of the relative rotation). The slack covers float rounding of the relative pose, which grows with its size.
-    private static bool StillApart(in SkipFrame3 f, QuaternionF qA, QuaternionF qB, float dx, float dy, float dz)
+    internal static bool StillApart(in SkipFrame3 f, QuaternionF qA, QuaternionF qB, float dx, float dy, float dz)
     {
         var invA = qA.Conjugated();
         var d = invA.Rotate(new Vector3F(dx, dy, dz));
@@ -766,7 +772,17 @@ internal sealed partial class Engine3D
         float rz = w * -f.Qz + f.Qw * z + (x * -f.Qy - y * -f.Qx);
         float turn = 2f * float.Sqrt(rx * rx + ry * ry + rz * rz);
         float slack = 0.001f + 1e-6f * (float.Abs(dx) + float.Abs(dy) + float.Abs(dz) + f.Reach);
-        float used = float.Sqrt(ex * ex + ey * ey + ez * ez) + turn * f.Reach + slack;
+        float axis2 = f.Nx * f.Nx + f.Ny * f.Ny + f.Nz * f.Nz;
+        float used;
+        if (axis2 > 0.99f && axis2 < 1.01f)
+        {
+            // Catto 2013, continuous collision: project motion onto a separating plane.
+            // Only translation towards the supporting plane closes its gap; tangential motion
+            // cannot. Turning B can close it by at most the chord times B's reach and |axis|.
+            float closing = -(ex * f.Nx + ey * f.Ny + ez * f.Nz);
+            used = closing + turn * f.Reach * float.Sqrt(axis2) + slack;
+        }
+        else { used = float.Sqrt(ex * ex + ey * ey + ez * ez) + turn * f.Reach + slack; }
         return used <= f.Clear; // false for NaN
     }
 
