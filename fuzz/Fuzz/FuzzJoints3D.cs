@@ -154,8 +154,12 @@ internal static class FuzzJoints3D
 
     private static void Op(PhysicsWorld3D w, Body[] bodies, System.Collections.Generic.List<Joint> joints, Reader r)
     {
-        switch (r.Byte() % 18)
+        switch (r.Byte() % 22)
         {
+            case 18: Add(joints, w.CreateJoint(new WheelJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), LocalFrameA = r.Frame(), LocalFrameB = r.Frame(), EnableSpring = r.Bool(), SpringHertz = r.Float(), SpringDampingRatio = r.Float(), EnableMotor = r.Bool(), MotorSpeed = r.Float(), MaxMotorTorque = r.Float() })); break;
+            case 19: Add(joints, w.CreateJoint(new MotorJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), LinearOffset = r.V3F(), MaxForce = r.Float(), MaxTorque = r.Float(), CorrectionFactor = r.Float() })); break;
+            case 20: Add(joints, w.CreateJoint(new MouseJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), Target = new(r.Double(), r.Double(), r.Double()), Hertz = r.Float(), DampingRatio = r.Float(), MaxForce = r.Float() })); break;
+            case 21: Add(joints, w.CreateJoint(new FilterJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), LifetimeSteps = r.Byte() })); break;
             case 0: { var d = new FixedJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), LocalFrameA = r.Frame(), LocalFrameB = r.Frame(), CollideConnected = r.Bool(), BreakForce = r.Break(), BreakTorque = r.Break() }; Add(joints, w.CreateJoint(in d)); break; }
             case 1: { var d = new PointJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), LocalFrameA = r.Frame(), LocalFrameB = r.Frame(), CollideConnected = r.Bool(), BreakForce = r.Break(), BreakTorque = r.Break() }; Add(joints, w.CreateJoint(in d)); break; }
             case 2: { var d = new DistanceJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), LocalFrameA = r.Frame(), LocalFrameB = r.Frame(), Length = r.Float(), MinLength = r.Float(), MaxLength = r.Float(), EnableLimit = r.Bool(), EnableSpring = r.Bool(), SpringHertz = r.Float(), SpringDampingRatio = r.Float(), CollideConnected = r.Bool(), BreakForce = r.Break() }; Add(joints, w.CreateJoint(in d)); break; }

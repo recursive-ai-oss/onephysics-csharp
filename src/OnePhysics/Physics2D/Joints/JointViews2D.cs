@@ -62,6 +62,9 @@ public readonly struct HingeJoint : IEquatable<HingeJoint>
     /// <summary>Reaction torque above which the joint breaks, N·m; infinity never breaks.</summary>
     public float BreakTorque { get => _joint.BreakTorque; set => _joint.BreakTorque = value; }
 
+    /// <summary>Steps remaining until breaking; zero means unlimited. Negative values throw.</summary>
+    public int LifetimeStepsRemaining { get => _joint.LifetimeStepsRemaining; set => _joint.LifetimeStepsRemaining = value; }
+
     /// <summary>The magnitude of the joint's linear reaction force at the end of the last step it was solved, newtons.</summary>
     public float ReactionForce => _joint.ReactionForce;
 
@@ -176,6 +179,9 @@ public readonly struct SliderJoint : IEquatable<SliderJoint>
 
     /// <summary>Reaction torque above which the joint breaks, N·m; infinity never breaks.</summary>
     public float BreakTorque { get => _joint.BreakTorque; set => _joint.BreakTorque = value; }
+
+    /// <summary>Steps remaining until breaking; zero means unlimited. Negative values throw.</summary>
+    public int LifetimeStepsRemaining { get => _joint.LifetimeStepsRemaining; set => _joint.LifetimeStepsRemaining = value; }
 
     /// <summary>The magnitude of the joint's linear reaction force at the end of the last step it was solved, newtons.</summary>
     public float ReactionForce => _joint.ReactionForce;
@@ -292,6 +298,9 @@ public readonly struct FixedJoint : IEquatable<FixedJoint>
     /// <summary>Reaction torque above which the joint breaks, N·m; infinity never breaks.</summary>
     public float BreakTorque { get => _joint.BreakTorque; set => _joint.BreakTorque = value; }
 
+    /// <summary>Steps remaining until breaking; zero means unlimited. Negative values throw.</summary>
+    public int LifetimeStepsRemaining { get => _joint.LifetimeStepsRemaining; set => _joint.LifetimeStepsRemaining = value; }
+
     /// <summary>The magnitude of the joint's linear reaction force at the end of the last step it was solved, newtons.</summary>
     public float ReactionForce => _joint.ReactionForce;
 
@@ -377,6 +386,9 @@ public readonly struct WheelJoint : IEquatable<WheelJoint>
 
     /// <summary>Reaction torque above which the joint breaks, N·m; infinity never breaks.</summary>
     public float BreakTorque { get => _joint.BreakTorque; set => _joint.BreakTorque = value; }
+
+    /// <summary>Steps remaining until breaking; zero means unlimited. Negative values throw.</summary>
+    public int LifetimeStepsRemaining { get => _joint.LifetimeStepsRemaining; set => _joint.LifetimeStepsRemaining = value; }
 
     /// <summary>The magnitude of the joint's linear reaction force at the end of the last step it was solved, newtons.</summary>
     public float ReactionForce => _joint.ReactionForce;
@@ -492,6 +504,9 @@ public readonly struct DistanceJoint : IEquatable<DistanceJoint>
 
     /// <summary>Reaction torque above which the joint breaks, N·m; infinity never breaks.</summary>
     public float BreakTorque { get => _joint.BreakTorque; set => _joint.BreakTorque = value; }
+
+    /// <summary>Steps remaining until breaking; zero means unlimited. Negative values throw.</summary>
+    public int LifetimeStepsRemaining { get => _joint.LifetimeStepsRemaining; set => _joint.LifetimeStepsRemaining = value; }
 
     /// <summary>The magnitude of the joint's linear reaction force at the end of the last step it was solved, newtons.</summary>
     public float ReactionForce => _joint.ReactionForce;
@@ -611,6 +626,9 @@ public readonly struct TargetJoint : IEquatable<TargetJoint>
     /// <summary>Reaction torque above which the joint breaks, N·m; infinity never breaks.</summary>
     public float BreakTorque { get => _joint.BreakTorque; set => _joint.BreakTorque = value; }
 
+    /// <summary>Steps remaining until breaking; zero means unlimited. Negative values throw.</summary>
+    public int LifetimeStepsRemaining { get => _joint.LifetimeStepsRemaining; set => _joint.LifetimeStepsRemaining = value; }
+
     /// <summary>The magnitude of the joint's linear reaction force at the end of the last step it was solved, newtons.</summary>
     public float ReactionForce => _joint.ReactionForce;
 
@@ -699,6 +717,9 @@ public readonly struct RelativeJoint : IEquatable<RelativeJoint>
 
     /// <summary>Reaction torque above which the joint breaks, N·m; infinity never breaks.</summary>
     public float BreakTorque { get => _joint.BreakTorque; set => _joint.BreakTorque = value; }
+
+    /// <summary>Steps remaining until breaking; zero means unlimited. Negative values throw.</summary>
+    public int LifetimeStepsRemaining { get => _joint.LifetimeStepsRemaining; set => _joint.LifetimeStepsRemaining = value; }
 
     /// <summary>The magnitude of the joint's linear reaction force at the end of the last step it was solved, newtons.</summary>
     public float ReactionForce => _joint.ReactionForce;

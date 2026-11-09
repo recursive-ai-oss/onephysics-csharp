@@ -1,3 +1,4 @@
+using System.Globalization;
 using System;
 using System.IO;
 using System.Linq;
@@ -10,7 +11,7 @@ using P3 = RecursiveAI.OnePhysics.Physics3D;
 namespace RecursiveAI.OnePhysics.Scene;
 
 /// <summary>Builds a 3D world from a scene definition. Shared by the bar runner and the hash-matrix scenarios. Point joints are built from the scene (the only 3D joint kind the scenes use); queries are not run.</summary>
-internal static class SceneBuilder3D
+internal static partial class SceneBuilder3D
 {
     /// <summary>Applied to the world options before the world is created; the stability sweeps use it to perturb contact stiffness or the substep count. Null in every other use.</summary>
 
@@ -36,7 +37,9 @@ internal static class SceneBuilder3D
     public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads, out List<(P3.Character Character, CharacterScript Script, int Body)> characters, out List<(P3.Vehicle Vehicle, VehicleScript Script, int Body)> vehicles, out List<(P3.Joint Joint, JointDef Def)> drives)
     {
         var opt = new P3.WorldOptions3D { Gravity = new Vector3F((float)s.Gx, (float)s.Gy, (float)s.Gz), ThreadCount = threads };
+        if (s.Params.TryGetValue("world-id", out var ids)) opt.WorldId = int.Parse(ids[0], CultureInfo.InvariantCulture);
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
+        if (s.WorldLimits is BodyControlSettings worldLimits) { opt.MaxLinearSpeed = worldLimits.MaxLinearSpeed; opt.MaxAngularSpeed = worldLimits.MaxAngularSpeed; opt.PushOutVelocity = worldLimits.MaxDepenetrationSpeed; }
         var world = new P3.PhysicsWorld3D(opt);
 
         if (s.Bodies.Exists(b => b.Script != null)) world.SetLayerCollision(1, 1, false); // characters pass through each other (layer 1); the world and the crates are layer 0
@@ -64,9 +67,15 @@ internal static class SceneBuilder3D
                 LinearVelocity = new Vector3F((float)ob.Vx, (float)ob.Vy, (float)ob.Vz),
                 AngularVelocity = new Vector3F((float)ob.Wx, (float)ob.Wy, (float)ob.W),
                 IsBullet = ob.Bullet,
+                Controls = ob.Controls, SleepSettings = ob.SleepSettings, AllowSleep = !ob.NeverSleep, MassOverride = ob.MassOverride,
+                CenterOfMassOverride = ob.CenterOverride.HasValue ? ob.CenterOverride.Value : null,
+                InertiaOverride = ob.InertiaOverride.HasValue ? ob.InertiaOverride.Value : null,
+                InertiaRotationOverride = ob.InertiaRotation,
+
             };
             bodies[i] = world.CreateBody(in bd);
             foreach (var sh in ob.Shapes) { s.ActiveLine = sh.SourceLine; CreateShape(world, bodies[i], sh, s); }
+            if (ob.TargetPosition is Vector3D target) bodies[i].MoveKinematic(target, ob.TargetRotation);
             if (ob.Vehicle != null)
             {
                 var vehicle = ob.Vehicle.Preset switch
@@ -89,6 +98,7 @@ internal static class SceneBuilder3D
         foreach (var j in s.Joints)
         {
             s.ActiveLine = j.SourceLine;
+            if (BuildMachine(world, bodies, j)) { continue; }
             if (j.Kind == "swingtwist")
             {
                 var f = JointFrame(j.Ux, j.Uy, j.Uz);
@@ -102,7 +112,7 @@ internal static class SceneBuilder3D
                     LowerTwist = j.HasLimit ? (float)j.Lower : -3.1415927f, UpperTwist = j.HasLimit ? (float)j.Upper : 3.1415927f,
                     SwingYHalfAngle = j.HasSwing ? (float)j.SwingY : 3.1415927f, SwingZHalfAngle = j.HasSwing ? (float)j.SwingZ : 3.1415927f,
                 };
-                var sj = world.CreateJoint(in sd);
+                var sj = world.CreateJoint(in sd); sj.BreakForce = j.BreakForce; sj.BreakTorque = j.BreakTorque; sj.LifetimeStepsRemaining = j.LifetimeSteps;
                 if (j.HasDrive) drives.Add((sj, j));
                 continue;
             }
@@ -114,7 +124,7 @@ internal static class SceneBuilder3D
                 LocalFrameA = new P3.JointFrame3D(new Vector3F((float)j.Ax, (float)j.Ay, (float)j.Az), QuaternionF.Identity),
                 LocalFrameB = new P3.JointFrame3D(new Vector3F((float)j.Bx, (float)j.By, (float)j.Bz), QuaternionF.Identity),
             };
-            world.CreateJoint(in jd);
+            var joint = world.CreateJoint(in jd); joint.BreakForce = j.BreakForce; joint.BreakTorque = j.BreakTorque; joint.LifetimeStepsRemaining = j.LifetimeSteps;
         }
 
         for (int i = 0; i < bodies.Length; i++) if (s.Bodies[i].Asleep) bodies[i].Sleep();

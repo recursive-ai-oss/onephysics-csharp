@@ -12,6 +12,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// A 3D rigid-body world. The happy path is the <c>Add*</c> methods and <see cref="Step"/>; <see cref="CreateBody(in BodyDef)"/> and the <c>Create*</c> shape methods are the middle tier;
 /// <see cref="Core"/> exposes the shared storage for the raw tier. Results are bit-identical on every platform, thread count and vector width. Not thread-safe: use a world from one thread at a time.
 /// </summary>
+/// <remarks>Creation and teleport positions accept finite double components within inclusive ±2^21; invalid values throw ArgumentOutOfRangeException. Every Q31.32 position in this closed interval is exact in double, including the endpoints, although OneMath FixedBridge accepts only |v| &lt; 2^21. The wider ±2^22 simulation bound provides integration and shape headroom, not a wider creation range. Queries document their own bounds.</remarks>
 [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed partial class PhysicsWorld3D
 {
@@ -38,6 +39,7 @@ public sealed partial class PhysicsWorld3D
         _engine = new Engine3D(_core, bp, o) { World = this };
         _core.AddSection(bp);
         _core.AddSection(_engine);
+        BindBodyControlOptions();
         _core.AddSection(_engine.SoftSnapshotSection);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
@@ -118,9 +120,11 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="BodyOutOfBoundsException">A moving body is outside the supported range or has a non-finite position, velocity or rotation; the world is unchanged. Move, destroy it or call <see cref="ShiftOrigin"/>.</exception>
     public void Step(float dt)
     {
+        if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.Opt.Validate();
         _engine.CheckBounds();
         _engine.CheckSoftBounds();
+        if (_core.Controls.Active) _engine.ValidateTargetMotion(dt);
         SyncCoreOptions();
         if (_recorder != null) { RecordPreparedStep(dt); return; }
         StepPrepared(dt);
@@ -129,12 +133,16 @@ public sealed partial class PhysicsWorld3D
     // The unrecorded path has no recording scope or exception region in its simulation body.
     private void StepPrepared(float dt)
     {
+        if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
+        _engine.BeginBodyControls(dt);
         _engine.StepVehicles(this, dt);
         _engine.StepFluids(dt);
         bool soft = _engine.SoftHandles.Count > 0;
         if (soft) { _engine.BeginSoftStep(); }
         _core.Step(new Stages3D(_engine), dt);
+
         if (soft) { _engine.StepSoft(dt); }
+        _engine.EndBodyControls();
         _engine.ReconcileJoints();
         UpdateInspectionCounters();
         InvalidateQueryPad();
@@ -283,13 +291,16 @@ public sealed partial class PhysicsWorld3D
         return changed;
     }
 
-    /// <summary>Moves the world origin by <paramref name="offset"/> (call between steps, on every peer at the same step): all positions shrink by it. Offsets must be multiples of 2^-31.</summary>
+    /// <summary>Moves the world origin by <paramref name="offset"/> (call between steps, on every peer at the same step): all positions shrink by it. Offsets must be multiples of 2^-31 within ±2^22 (every other Q31.32 raw value). Allocates nothing when mutation recording is disabled.</summary>
+    /// <exception cref="ArgumentException">A component is not on the 2^-31 grid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A component is non-finite or exceeds ±2^22, or shifted geometry cannot be represented.</exception>
     public void ShiftOrigin(Vector3D offset)
     {
         using var replayMutation = RecordMutation("PhysicsWorld3D.ShiftOrigin");
-        double[] d = [offset.X, offset.Y, offset.Z];
+        ReadOnlySpan<double> d = stackalloc double[3] { offset.X, offset.Y, offset.Z };
         _core.ValidateShift(d);
         _engine.CheckShift(d);
+        _engine.CheckMouseJointShift(d);
         _core.ShiftOrigin(d);
         _engine.ShiftJoints(d);
         _engine.ShiftFluids(offset.X, offset.Y, offset.Z);

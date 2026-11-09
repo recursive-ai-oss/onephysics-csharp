@@ -112,7 +112,7 @@ public sealed partial class PhysicsWorld2D
         Type = (byte)JointType2D.Revolute, Flags = Flags(def.EnableLimit, def.EnableMotor, def.EnableSpring, def.CollideConnected),
         LAx = def.LocalAnchorA.X, LAy = def.LocalAnchorA.Y, LBx = def.LocalAnchorB.X, LBy = def.LocalAnchorB.Y, RefAngle = def.ReferenceAngle,
         Lower = def.LowerAngle, Upper = def.UpperAngle, MotorSpeed = def.MotorSpeed, MaxMotor = def.MaxMotorTorque,
-        Hertz = def.SpringHertz, Damping = def.SpringDampingRatio, BreakForce = def.BreakForce, BreakTorque = def.BreakTorque,
+        Hertz = def.SpringHertz, Damping = def.SpringDampingRatio, BreakForce = def.BreakForce, BreakTorque = def.BreakTorque, LifetimeSteps = def.LifetimeSteps,
     });
 
     /// <summary>Creates a prismatic (slider) joint. Throws as <see cref="CreateJoint(in RevoluteJointDef)"/>, and <see cref="InvalidJointException"/> for a zero axis.</summary>
@@ -123,7 +123,7 @@ public sealed partial class PhysicsWorld2D
         Type = (byte)JointType2D.Prismatic, Flags = Flags(def.EnableLimit, def.EnableMotor, def.EnableSpring, def.CollideConnected),
         LAx = def.LocalAnchorA.X, LAy = def.LocalAnchorA.Y, LBx = def.LocalAnchorB.X, LBy = def.LocalAnchorB.Y, AxX = def.LocalAxisA.X, AxY = def.LocalAxisA.Y, RefAngle = def.ReferenceAngle,
         Lower = def.LowerTranslation, Upper = def.UpperTranslation, MotorSpeed = def.MotorSpeed, MaxMotor = def.MaxMotorForce,
-        Hertz = def.SpringHertz, Damping = def.SpringDampingRatio, BreakForce = def.BreakForce, BreakTorque = def.BreakTorque,
+        Hertz = def.SpringHertz, Damping = def.SpringDampingRatio, BreakForce = def.BreakForce, BreakTorque = def.BreakTorque, LifetimeSteps = def.LifetimeSteps,
     });
 
     /// <summary>Creates a weld joint. Throws as <see cref="CreateJoint(in RevoluteJointDef)"/>.</summary>
@@ -134,7 +134,7 @@ public sealed partial class PhysicsWorld2D
         Type = (byte)JointType2D.Weld, Flags = Flags(false, false, false, def.CollideConnected),
         LAx = def.LocalAnchorA.X, LAy = def.LocalAnchorA.Y, LBx = def.LocalAnchorB.X, LBy = def.LocalAnchorB.Y, RefAngle = def.ReferenceAngle,
         Hertz = def.LinearHertz, Damping = def.LinearDampingRatio, Hertz2 = def.AngularHertz, Damping2 = def.AngularDampingRatio,
-        BreakForce = def.BreakForce, BreakTorque = def.BreakTorque,
+        BreakForce = def.BreakForce, BreakTorque = def.BreakTorque, LifetimeSteps = def.LifetimeSteps,
     });
 
     /// <summary>Creates a wheel joint. Throws as <see cref="CreateJoint(in PrismaticJointDef)"/>.</summary>
@@ -145,7 +145,7 @@ public sealed partial class PhysicsWorld2D
         Type = (byte)JointType2D.Wheel, Flags = Flags(def.EnableLimit, def.EnableMotor, def.EnableSpring, def.CollideConnected),
         LAx = def.LocalAnchorA.X, LAy = def.LocalAnchorA.Y, LBx = def.LocalAnchorB.X, LBy = def.LocalAnchorB.Y, AxX = def.LocalAxisA.X, AxY = def.LocalAxisA.Y,
         Lower = def.LowerTranslation, Upper = def.UpperTranslation, MotorSpeed = def.MotorSpeed, MaxMotor = def.MaxMotorTorque,
-        Hertz = def.SpringHertz, Damping = def.SpringDampingRatio, BreakForce = def.BreakForce, BreakTorque = def.BreakTorque,
+        Hertz = def.SpringHertz, Damping = def.SpringDampingRatio, BreakForce = def.BreakForce, BreakTorque = def.BreakTorque, LifetimeSteps = def.LifetimeSteps,
     });
 
     /// <summary>Creates a distance joint. Throws as <see cref="CreateJoint(in RevoluteJointDef)"/>.</summary>
@@ -156,7 +156,7 @@ public sealed partial class PhysicsWorld2D
         Type = (byte)JointType2D.Distance, Flags = Flags(def.EnableLimit, def.EnableMotor, def.EnableSpring, def.CollideConnected),
         LAx = def.LocalAnchorA.X, LAy = def.LocalAnchorA.Y, LBx = def.LocalAnchorB.X, LBy = def.LocalAnchorB.Y, Length = def.Length,
         Lower = def.MinLength, Upper = def.MaxLength, MotorSpeed = def.MotorSpeed, MaxMotor = def.MaxMotorForce,
-        Hertz = def.SpringHertz, Damping = def.SpringDampingRatio, BreakForce = def.BreakForce, BreakTorque = def.BreakTorque,
+        Hertz = def.SpringHertz, Damping = def.SpringDampingRatio, BreakForce = def.BreakForce, BreakTorque = def.BreakTorque, LifetimeSteps = def.LifetimeSteps,
     });
 
     /// <summary>Creates a motor (relative pose) joint. Throws as <see cref="CreateJoint(in RevoluteJointDef)"/>.</summary>
@@ -166,7 +166,7 @@ public sealed partial class PhysicsWorld2D
     {
         Type = (byte)JointType2D.Motor, Flags = Flags(false, false, false, def.CollideConnected),
         OffX = def.LinearOffset.X, OffY = def.LinearOffset.Y, OffAngle = def.AngularOffset, MaxMotor = def.MaxForce, MaxMotor2 = def.MaxTorque, Correction = def.CorrectionFactor,
-        BreakForce = def.BreakForce, BreakTorque = def.BreakTorque,
+        BreakForce = def.BreakForce, BreakTorque = def.BreakTorque, LifetimeSteps = def.LifetimeSteps,
     });
 
     /// <summary>Creates a mouse (target) joint. Throws as <see cref="CreateJoint(in RevoluteJointDef)"/>.</summary>
@@ -176,7 +176,7 @@ public sealed partial class PhysicsWorld2D
     {
         Type = (byte)JointType2D.Mouse, Flags = Flags(false, false, false, def.CollideConnected),
         LBx = def.LocalAnchorB.X, LBy = def.LocalAnchorB.Y, TargetX = def.Target.X, TargetY = def.Target.Y,
-        Hertz = def.Hertz, Damping = def.DampingRatio, MaxMotor = def.MaxForce, BreakForce = def.BreakForce, BreakTorque = def.BreakTorque,
+        Hertz = def.Hertz, Damping = def.DampingRatio, MaxMotor = def.MaxForce, BreakForce = def.BreakForce, BreakTorque = def.BreakTorque, LifetimeSteps = def.LifetimeSteps,
     });
 
     // ------------------------------------------------------------------ happy path
@@ -289,6 +289,7 @@ public sealed partial class PhysicsWorld2D
     public TargetJoint AddTarget(Body ground, Body body, Vector2D target, float hertz = 5f, float dampingRatio = 0.7f, float maxForce = 0f)
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddTarget");
+        if (float.IsNaN(maxForce)) { throw new ArgumentOutOfRangeException(nameof(maxForce), maxForce, "Target force cap must not be NaN."); }
         float mass = body.Mass;
         var d = new MouseJointDef
         {

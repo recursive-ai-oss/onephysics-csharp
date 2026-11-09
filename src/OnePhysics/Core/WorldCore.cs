@@ -192,6 +192,9 @@ public sealed partial class WorldCore
         AddSection(Surfaces);
         AddSection(ContactMotion);
         AddSection(ContactMaterials);
+        _bodySleep = new BodySleepStore(this);
+        AddSection(_bodySleep);
+        Controls = new BodyControlStore(this); AddSection(Controls);
     }
 
     /// <summary>The id stamped into this world's handles.</summary>
@@ -335,6 +338,7 @@ public sealed partial class WorldCore
         }
 
         int b = _bodies.AllocateSlot();
+        _bodySleep.Set(b, default); Controls.Set(b, default);
         _bodies.ClearSlot(b);
         BodyReadback.Initialize(b);
         position.CopyTo(_bodies.PositionOf(b));
@@ -401,6 +405,7 @@ public sealed partial class WorldCore
         }
 
         _islands.RemoveBody(_bodies, b);
+        _bodySleep.Set(b, default); Controls.Set(b, default);
         _bodies.ClearSlot(b);
         _bodies.Handles.Free(b);
     }
@@ -573,9 +578,11 @@ public sealed partial class WorldCore
 
     /// <summary>
     /// Shifts the world origin by <paramref name="offset"/> (one double per position lane): every body position decreases by it and <see cref="Origin"/> increases by it, so host coordinates (origin + stored position) do not change.
-    /// Offsets must be finite multiples of 2^-31 (every 31.32 value is) with magnitude at most 2^22; with positions on that grid the subtraction is exact. Call between steps, on every peer at the same step.
+    /// Offsets must be finite multiples of 2^-31 (even Q31.32 raw integers) with magnitude at most 2^22; with positions on that grid the subtraction is exact. Call between steps, on every peer at the same step.
     /// Anything an engine keeps in world coordinates (broadphase bounds, cached world-space data) must be shifted by the engine as well.
     /// </summary>
+    /// <exception cref="ArgumentException">The component count differs from the dimension or a component is off the 2^-31 grid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A component is non-finite or its magnitude exceeds 2^22.</exception>
     public void ShiftOrigin(ReadOnlySpan<double> offset)
     {
         ValidateShift(offset);
@@ -586,6 +593,8 @@ public sealed partial class WorldCore
         {
             if (!_bodies.IsLive(b)) { continue; }
             for (int k = 0; k < lanes; k++) { pos[b * lanes + k] -= offset[k]; }
+            var control = Controls.Get(b);
+            if ((control.Overrides & 8) != 0) { var target = control.TargetPosition; control.TargetPosition = new(target.X - offset[0], target.Y - offset[1], lanes == 3 ? target.Z - offset[2] : 0); Controls.Set(b, control); }
         }
         for (int i = 0; i < lanes; i++) { _origin[i] += offset[i]; }
     }
@@ -1210,6 +1219,17 @@ public sealed partial class WorldCore
         var flags = _constraints.Flags;
         for (int c = 0; c < _constraints.HighWater; c++)
         {
+            // The flag keeps immortal joints out of the cold, strided payload column.
+            if ((flags[c] & (byte)ConstraintBits.HasLifetime) != 0 && _constraints.IsLive(c) && _constraints.KindOf(c) == ConstraintKind.Joint)
+            {
+                int remaining = JointLifetime.Get(_constraints, c);
+                if (remaining > 0)
+                {
+                    JointLifetime.Set(_constraints, c, remaining - 1);
+                    if (remaining == 1 && (flags[c] & (byte)ConstraintBits.BreakRequested) == 0)
+                    { flags[c] |= (byte)ConstraintBits.BreakRequested; _constraints.BreakValue[c] = 0f; }
+                }
+            }
             if ((flags[c] & (byte)ConstraintBits.BreakRequested) == 0) { continue; }
             if (_constraints.IsLive(c) && _constraints.KindOf(c) == ConstraintKind.Joint) { _scratch.Add(c); }
             else { flags[c] &= unchecked((byte)~(byte)ConstraintBits.BreakRequested); }
@@ -1230,6 +1250,7 @@ public sealed partial class WorldCore
 
         public void Run(int block)
         {
+            if (_w._bodySleep.IsPresent) { RunOverrides(block); return; }
             var w = _w;
             var bodies = w._bodies;
             var sleep = bodies.SleepTime;
@@ -1246,6 +1267,24 @@ public sealed partial class WorldCore
                 if (sleep[b] >= _limit) { rested = 1; }
             }
 
+            w._sleepRested[block] = rested;
+        }
+
+        private void RunOverrides(int block)
+        {
+            var w = _w;
+            var bodies = w._bodies;
+            var sleep = bodies.SleepTime;
+            int lo = block * SleepBlock, hi = Math.Min(lo + SleepBlock, w._awakeCount);
+            int rested = 0;
+            for (int i = lo; i < hi; i++)
+            {
+                int b = w._awake[i];
+                if (!bodies.IsLive(b) || bodies.TypeOf(b) != BodyType.Dynamic) continue;
+                if (_enabled && (bodies.Flags[b] & (byte)BodyBits.NoSleep) == 0 && w.BodyIsAtRest(b, _s.BodyMotion(w, b), w._options.SleepThreshold)) sleep[b] += _dt;
+                else sleep[b] = 0;
+                if (sleep[b] >= w.BodySleepLimit(b, _limit)) rested = 1;
+            }
             w._sleepRested[block] = rested;
         }
     }
@@ -1292,7 +1331,8 @@ public sealed partial class WorldCore
     {
         float m = 0f;
         var sleep = _bodies.SleepTime;
-        foreach (int b in _islands.Bodies(island)) { if (sleep[b] > m) { m = sleep[b]; } }
+        if (_bodySleep.IsPresent) { foreach (int b in _islands.Bodies(island)) { float value = AdjustedSleepTime(b); if (value > m) m = value; } }
+        else { foreach (int b in _islands.Bodies(island)) { if (sleep[b] > m) m = sleep[b]; } }
         return m;
     }
 
@@ -1300,7 +1340,14 @@ public sealed partial class WorldCore
     private bool AllRested(int island, float limit)
     {
         var sleep = _bodies.SleepTime;
-        foreach (int b in _islands.Bodies(island)) { if (sleep[b] < limit) { return false; } }
+        if (!_bodySleep.IsPresent)
+        {
+            foreach (int b in _islands.Bodies(island)) { if (sleep[b] < limit) return false; }
+        }
+        else
+        {
+            foreach (int b in _islands.Bodies(island)) { if (sleep[b] < BodySleepLimit(b, limit) || (_bodies.Flags[b] & (byte)BodyBits.NoSleep) != 0) return false; }
+        }
         return true;
     }
 
@@ -1308,7 +1355,8 @@ public sealed partial class WorldCore
     {
         float m = float.MaxValue;
         var sleep = _bodies.SleepTime;
-        foreach (int b in _islands.Bodies(island)) { if (sleep[b] < m) { m = sleep[b]; } }
+        if (_bodySleep.IsPresent) { foreach (int b in _islands.Bodies(island)) { float value = AdjustedSleepTime(b); if (value < m) m = value; } }
+        else { foreach (int b in _islands.Bodies(island)) { if (sleep[b] < m) m = sleep[b]; } }
         return m;
     }
 
@@ -1453,7 +1501,7 @@ public sealed partial class WorldCore
         foreach (var s in _sections)
         {
             if (s.IsOptional && !s.IsPresent) { continue; }
-            w.DescribeSection(s.SectionId switch { 0x42503244 => "broadphase2d", 0x42503344 => "broadphase3d", 0x32445747 => "engine2d", 0x33445747 => "engine3d", 0x534F4654 => "softbody3d", _ => "section " + s.SectionId.ToString(CultureInfo.InvariantCulture) });
+            w.DescribeSection(s.SectionId switch { 0x42503244 => "broadphase2d", 0x42503344 => "broadphase3d", 0x32445747 => "engine2d", 0x33445747 => "engine3d", 0x534F4654 => "softbody3d", 0x42534C50 => "body sleep", 0x4243544C => "body controls", _ => "section " + s.SectionId.ToString(CultureInfo.InvariantCulture) });
             w.NamedInt32(s.SectionId);
             if (w.IsHashing)
             {
@@ -1604,7 +1652,9 @@ public sealed partial class WorldCore
         {
             if (!_sectionPresent[i]) { _sections[i].Reset(); continue; }
             sub.Reset(data, _sectionRange[2 * i], _sectionRange[2 * i + 1]);
-            _sections[i].Read(sub);
+            if (ReferenceEquals(_sections[i], _bodySleep)) _bodySleep.Read(sub, bodies);
+            else if (ReferenceEquals(_sections[i], Controls)) Controls.Read(sub, bodies);
+            else _sections[i].Read(sub);
             if (sub.Remaining != 0) { throw new SnapshotFormatException("section " + _sections[i].SectionId.ToString(CultureInfo.InvariantCulture) + " left unread bytes", r.Position); }
         }
 

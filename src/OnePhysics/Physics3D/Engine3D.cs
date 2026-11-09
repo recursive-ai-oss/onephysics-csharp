@@ -182,6 +182,13 @@ internal sealed partial class Engine3D : ISnapshotSection
     public BodyHandle CreateBody(in BodyDef def)
     {
         ref readonly BodyDef d = ref def;
+        BodyControlStore.ValidateAxes(d.Controls, 3);
+        if ((d.MassOverride.HasValue || d.CenterOfMassOverride.HasValue || d.InertiaOverride.HasValue) && d.Type != BodyType.Dynamic) throw new BodyTypeException("Mass overrides", default, d.Type, true);
+        if (d.MassOverride is float massOverride) CheckMass(massOverride);
+        if (d.InertiaOverride is Vector3F inertiaOverride) { CheckMass(inertiaOverride.X); CheckMass(inertiaOverride.Y); CheckMass(inertiaOverride.Z); Normalize(d.InertiaRotationOverride ?? QuaternionF.Identity, nameof(d.InertiaRotationOverride)); }
+        if (d.CenterOfMassOverride is Vector3F centerOverride && (!float.IsFinite(centerOverride.X) || !float.IsFinite(centerOverride.Y) || Math.Abs(centerOverride.X)>2097152 || Math.Abs(centerOverride.Y)>2097152 || !float.IsFinite(centerOverride.Z) || Math.Abs(centerOverride.Z)>2097152)) throw new ArgumentOutOfRangeException(nameof(def), "Invalid local center override.");
+
+        if (d.SleepSettings.IsOverride && d.Type != BodyType.Dynamic) throw new BodyTypeException(nameof(CreateBody), default, d.Type, true);
         if (!double.IsFinite(d.Position.X) || !double.IsFinite(d.Position.Y) || !double.IsFinite(d.Position.Z)) { throw new ArgumentOutOfRangeException(nameof(def), "Body position must be finite."); }
         var q = Normalize(d.Rotation, nameof(def));
         Finite3(d.LinearVelocity, "LinearVelocity");
@@ -217,8 +224,15 @@ internal sealed partial class Engine3D : ISnapshotSection
             Mass[b] = 1f;
             Inertia[6 * b] = 1f; Inertia[6 * b + 3] = 1f; Inertia[6 * b + 5] = 1f;
             if (d.FixedRotation) { Core.Bodies.InverseInertiaOf(b).Clear(); }
-            if (d.StartAsleep) { Core.Sleep(h); }
+            if (d.SleepSettings.IsOverride) Core.SetBodySleepSettings(h, d.SleepSettings);
+
         }
+
+        if (!d.Controls.IsDefault) Core.SetBodyControls(h, d.Controls);
+        if (d.MassOverride.HasValue) SetMassOverride(b, d.MassOverride.Value);
+        if (d.CenterOfMassOverride.HasValue) SetCenterOverride(b, d.CenterOfMassOverride.Value);
+        if (d.InertiaOverride.HasValue) SetInertiaOverride(b, d.InertiaOverride.Value, d.InertiaRotationOverride ?? QuaternionF.Identity);
+        if (d.StartAsleep && d.Type == BodyType.Dynamic) Core.Sleep(h);
 
         return h;
     }
@@ -619,6 +633,12 @@ internal sealed partial class Engine3D : ISnapshotSection
             throw new ArgumentOutOfRangeException(paramName: null, "The body's shapes give mass " + total.Mass.ToString("R", CultureInfo.InvariantCulture) + " and inertia diagonal (" + total.Inertia.M11.ToString("R", CultureInfo.InvariantCulture) + ", " + total.Inertia.M22.ToString("R", CultureInfo.InvariantCulture) + ", " + total.Inertia.M33.ToString("R", CultureInfo.InvariantCulture) + "); mass and every inertia diagonal entry must lie within " + MinMassProperty.ToString("R", CultureInfo.InvariantCulture) + ".." + MaxMassProperty.ToString("R", CultureInfo.InvariantCulture) + " and the tensor must be invertible (raise the density or the shape size).");
         }
 
+        var control = Core.Controls.Get(b);
+        if ((control.Overrides & 2) != 0) { if ((control.Overrides & 4) == 0) tensor = InertiaF.ShiftToPoint(tensor, mass, control.Center - newLc); newLc = control.Center; }
+        if ((control.Overrides & 1) != 0) mass = control.Mass;
+        if ((control.Overrides & 4) != 0) tensor = InertiaF.Rotate(new Matrix3x3F(control.Principal.X, 0, 0, 0, control.Principal.Y, 0, 0, 0, control.Principal.Z), control.InertiaRotation);
+        if ((control.Overrides & 4) != 0) inv = InertiaF.Rotate(new Matrix3x3F(1/control.Principal.X,0,0,0,1/control.Principal.Y,0,0,0,1/control.Principal.Z), control.InertiaRotation);
+        if ((control.Overrides & 7) != 0) { if ((control.Overrides & 4) == 0 && !tensor.TryInvert(out inv)) throw new ArgumentOutOfRangeException(nameof(b), "Inertia override is singular."); ok = true; }
         bool fixedRot = (BodyFlags[b] & 1) != 0;
         bodies.InverseMass[b] = 1f / mass;
         Mass[b] = mass;
@@ -776,7 +796,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         bool vehs = HasVehicles;
         bool rags = HasRagdolls;
         bool fluids = HasFluidState();
-        w.NamedUInt32(joints || services || chars || vehs || rags || fluids ? VersionJoints : Version);
+        w.NamedUInt32(joints || services || chars || vehs || rags || fluids ? (HasExactCharacterSlopes() ? WithRadianSlopes : VersionJoints) : Version);
         w.NamedSingle(Opt.ContactHertz); w.NamedSingle(Opt.ContactDampingRatio); w.NamedSingle(Opt.PushOutVelocity); w.NamedSingle(Opt.RestitutionThreshold);
         w.NamedSingle(Opt.MaxLinearSpeed); w.NamedSingle(Opt.MaxRotationPerSubstep); w.NamedBool(Opt.ContinuousEnabled); w.NamedSingle(Opt.ContactSlop);
         w.NamedSingle(Opt.SpeculativeDistance);
@@ -855,7 +875,7 @@ internal sealed partial class Engine3D : ISnapshotSection
             w.NamedUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u) | (chars ? BlockCharacters : 0u) | (vehs ? BlockVehicles : 0u) | (vehs && HasVehicleKinds() ? BlockVehicleKinds : 0u) | (rags ? BlockRagdolls : 0u) | (fluids ? BlockFluids : 0u));
             if (joints) { WriteJoints(w); }
             if (services) { WriteServices(w, ns); }
-            if (chars) { WriteCharacters(w); }
+            if (chars) { WriteCharacters(w, HasExactCharacterSlopes()); }
             if (vehs) { WriteVehicles(w); }
             if (vehs && HasVehicleKinds()) { WriteVehicleKinds(w); }
             if (rags) { WriteRagdolls(w); }
@@ -866,7 +886,7 @@ internal sealed partial class Engine3D : ISnapshotSection
     public void Read(StateReader r)
     {
         uint v = r.ReadUInt32();
-        if (v != Version && v != VersionJoints) { throw r.Error("unsupported 3D engine section version " + v.ToString(CultureInfo.InvariantCulture)); }
+        if (v != Version && v != VersionJoints && v != WithRadianSlopes) { throw r.Error("unsupported 3D engine section version " + v.ToString(CultureInfo.InvariantCulture)); }
         float hertz = r.ReadSingle(), zeta = r.ReadSingle(), push = r.ReadSingle(), thr = r.ReadSingle(), maxSpeed = r.ReadSingle(), maxRot = r.ReadSingle();
         bool continuous = r.ReadBool();
         float slop = r.ReadSingle(), spec = r.ReadSingle();
@@ -998,7 +1018,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         VehicleBlock? vehicles = null;
         RagdollBlock? ragdolls = null;
         FluidBlock? fluidBlock = null;
-        if (v == VersionJoints)
+        if (v == VersionJoints || v == WithRadianSlopes)
         {
             uint flags = r.ReadUInt32();
             if (flags == 0 || (flags & ~(BlockJoints | BlockServices | BlockCharacters | BlockVehicles | BlockVehicleKinds | BlockRagdolls | BlockFluids)) != 0) { throw r.Error("invalid 3D section block flags " + flags.ToString(CultureInfo.InvariantCulture)); }
@@ -1009,9 +1029,10 @@ internal sealed partial class Engine3D : ISnapshotSection
                 if (services.IsDefault()) { throw r.Error("a services block holding only default state"); }
             }
 
+            if (v == WithRadianSlopes && (flags & BlockCharacters) == 0) { throw r.Error("radian character section has no characters block"); }
             if ((flags & BlockCharacters) != 0)
             {
-                characters = ReadCharacters(r, nb);
+                characters = ReadCharacters(r, nb, v == WithRadianSlopes);
                 if (characters.Handles.Count == 0) { throw r.Error("a characters block holding no characters"); }
             }
 

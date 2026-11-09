@@ -26,7 +26,7 @@ public readonly struct JointBreak
     /// <summary>The joint's second body.</summary>
     public readonly Body BodyB;
 
-    /// <summary>The reaction force (N) or torque (N·m) that exceeded the threshold, as measured at the end of the step.</summary>
+    /// <summary>The whole-step reaction force (N) or COM torque (N·m) that exceeded the threshold; zero for lifetime expiry.</summary>
     public float Value { get; }
 
     /// <inheritdoc/>
@@ -76,6 +76,7 @@ public readonly partial struct Joint : IEquatable<Joint>
     {
         edited.Validate();
         d = edited;
+        w.Engine.JointBreakingDirty = true;
         var cs = w.Core.Constraints;
         w.Core.Wake(w.Core.HandleOfBody(cs.BodyA[c]));
         w.Core.Wake(w.Core.HandleOfBody(cs.BodyB[c]));
@@ -167,12 +168,12 @@ public readonly partial struct Joint : IEquatable<Joint>
     /// <summary>Whether the motor is on (revolute, prismatic, wheel, distance).</summary>
     public bool EnableMotor
     {
-        get { ref var d = ref Rec(out _, out _); Need(in d, "motor", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance); return d.Motor; }
+        get { ref var d = ref Rec(out _, out _); Need(in d, "motor", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance, JointType2D.Path); return d.Motor; }
         set
         {
             using var replayMutation = _world?.RecordMutation("Joint.EnableMotor");
             ref var d = ref Rec(out var w, out int c);
-            Need(in d, "motor", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance);
+            Need(in d, "motor", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance, JointType2D.Path);
             var e = d;
             e.Flags = value ? (byte)(e.Flags | JointData2D.FlagMotor) : (byte)(e.Flags & ~JointData2D.FlagMotor);
             Commit(w, c, ref d, in e);
@@ -183,8 +184,8 @@ public readonly partial struct Joint : IEquatable<Joint>
     /// <summary>Target speed: radians per second (revolute, wheel) or metres per second (prismatic, distance).</summary>
     public float MotorSpeed
     {
-        get { ref var d = ref Rec(out _, out _); Need(in d, "motor", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance); return d.MotorSpeed; }
-        set { using var replayMutation = _world?.RecordMutation("Joint.MotorSpeed");  ref var d = ref Rec(out var w, out int c); Need(in d, "motor", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance); var e = d; e.MotorSpeed = value; Commit(w, c, ref d, in e); }
+        get { ref var d = ref Rec(out _, out _); Need(in d, "motor", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance, JointType2D.Path); return d.MotorSpeed; }
+        set { using var replayMutation = _world?.RecordMutation("Joint.MotorSpeed");  ref var d = ref Rec(out var w, out int c); Need(in d, "motor", JointType2D.Revolute, JointType2D.Prismatic, JointType2D.Wheel, JointType2D.Distance, JointType2D.Path); var e = d; e.MotorSpeed = value; Commit(w, c, ref d, in e); }
     }
 
     /// <summary>Largest motor force in newtons of a slider (prismatic) or distance joint, at least 0. Rotational motors take a torque: <see cref="MaxMotorTorque"/>.</summary>
@@ -206,7 +207,7 @@ public readonly partial struct Joint : IEquatable<Joint>
     private static void NeedForceMotor(in JointData2D d)
     {
         if (d.Type == (byte)JointType2D.Revolute || d.Type == (byte)JointType2D.Wheel) { throw new InvalidJointException("A " + JointData2D.Name((JointType2D)d.Type) + " joint's motor is rotational and takes a torque: use MaxMotorTorque."); }
-        Need(in d, "motor force", JointType2D.Prismatic, JointType2D.Distance);
+        Need(in d, "motor force", JointType2D.Prismatic, JointType2D.Distance, JointType2D.Path);
     }
 
     private static void NeedTorqueMotor(in JointData2D d)

@@ -15,7 +15,7 @@ internal static class FuzzScene
         }
         catch (SceneFormatException) { }
     }
-    public static byte[] Authoring() => Encoding.UTF8.GetBytes("scene 1\ndim 2\nmaterial 0 0.6 0\nbody dynamic 0 1 0 0 0 0 -\nshape box 0 1 0 0.5 0.5 0 0 0\n");
+    public static byte[] Authoring() => Encoding.UTF8.GetBytes("scene 1\ndim 2\nmaterial 0 0.6 0\nbody dynamic 0 1 0 0 0 0 -\ncontrols 32 4 3 0.2\nsleep 1 0.1 0.2 0.3\nmass 2\ncenter 0.1 0\ninertia 3\nshape box 0 1 0 0.5 0.5 0 0 0\n");
     public static byte[] State()
     {
         var world = new PhysicsWorld2D(new WorldOptions2D { WorldId = 24 });

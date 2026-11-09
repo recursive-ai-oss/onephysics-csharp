@@ -49,7 +49,7 @@ public readonly partial struct Body : IEquatable<Body>
     /// <summary>False for sleeping dynamic bodies; kinematic bodies are always awake.</summary>
     public bool IsAwake { get { var (w, b) = Resolve(); var t = w.Core.Bodies.TypeOf(b); return t == BodyType.Kinematic || (t == BodyType.Dynamic && w.Core.Bodies.IsAwake(b)); } }
 
-    /// <summary>The body origin in world coordinates. Setting it teleports the body (and wakes it).</summary>
+    /// <summary>Body origin in metres relative to the world origin. Setting accepts finite components in inclusive ±2^21, otherwise throws ArgumentOutOfRangeException, and teleports and wakes the body. All Q31.32 values round-trip exactly through double on that closed interval; OneMath FixedBridge accepts only the open interior. Simulation may advance to ±2^22 before Step rejects out-of-bounds state.</summary>
     public Vector3D Position
     {
         get
@@ -81,6 +81,7 @@ public readonly partial struct Body : IEquatable<Body>
             var (w, b) = Resolve();
             RequireMovable(w, b);
             RequireFinite(value, nameof(value));
+            w.Engine.CancelKinematicDrive(b);
             var v = w.Core.Bodies.LinearVelocityOf(b);
             v[0] = value.X; v[1] = value.Y; v[2] = value.Z;
             WakeBody(w, b);
@@ -99,6 +100,7 @@ public readonly partial struct Body : IEquatable<Body>
             var (w, b) = Resolve();
             RequireMovable(w, b);
             RequireFinite(value, nameof(value));
+            w.Engine.CancelKinematicDrive(b);
             var v = w.Core.Bodies.AngularVelocityOf(b);
             v[0] = value.X; v[1] = value.Y; v[2] = value.Z;
             WakeBody(w, b);
@@ -119,8 +121,8 @@ public readonly partial struct Body : IEquatable<Body>
     /// <exception cref="ArgumentOutOfRangeException">The position is not finite or is beyond +-2^21.</exception>
     public void SetPosition(Vector3D position) { using var replayMutation = _world?.RecordMutation("Body.SetPosition"); Position = position; }
 
-    /// <summary>Mass in kg; 0 for static and kinematic bodies.</summary>
-    public float Mass { get { var (w, b) = Resolve(); return w.Core.Bodies.TypeOf(b) == BodyType.Dynamic ? w.Engine.Mass[b] : 0f; } }
+    /// <summary>Mass in kg; 0 for static and kinematic bodies. Setting overrides dynamic mass within 1e-18..1e30 without rescaling inertia; ResetMass restores shape-derived mass. Invalid setters throw ArgumentOutOfRangeException or BodyTypeException.</summary>
+    public float Mass { set => SetMass(value); get { var (w, b) = Resolve(); return w.Core.Bodies.TypeOf(b) == BodyType.Dynamic ? w.Engine.Mass[b] : 0f; } }
 
     /// <summary>The inertia tensor about the centre of mass in the body's own axes; zero for static and kinematic bodies.</summary>
     public Matrix3x3F Inertia
@@ -164,6 +166,7 @@ public readonly partial struct Body : IEquatable<Body>
         }
 
         var q = Engine3D.Normalize(rotation, nameof(rotation));
+        w.Engine.CancelKinematicDrive(b);
         var e = w.Engine;
         var bodies = w.Core.Bodies;
         var r = bodies.RotationOf(b);

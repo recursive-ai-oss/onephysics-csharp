@@ -40,6 +40,8 @@ internal static class W2D
     public const int Roll = 29, Impulse0 = 30, Impulse1 = 33;
     public const int TangentSpeed = 36, ImpulseLimit = 37;
     public const int Fields = 38;
+    public const int MassAY = Fields, MassBY = Fields + 1, PushLimit = Fields + 2;
+    public const int ControlGroupFloats = (Fields + 3) * Lanes;
     public const int Lanes = 8;
     public const int GroupFloats = Fields * Lanes;
     /// <summary>Integers per group in <see cref="Engine2D.WideIdx"/>: gather offsets of A and B, then scatter offsets of A and B, eight lanes each.</summary>
@@ -70,11 +72,11 @@ internal static class ContactKernel2D
     // The two points of a manifold go through the same code in a loop of two; points are independent of each other except through the body velocities, which stay in locals.
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Apply<T>(ref T vAx, ref T vAy, ref T wA, ref T vBx, ref T vBy, ref T wB, T mA, T iA, T mB, T iB, T rAx, T rAy, T rBx, T rBy, T px, T py) where T : struct, ILane<T>
+    private static void Apply<T>(ref T vAx, ref T vAy, ref T wA, ref T vBx, ref T vBy, ref T wB, T mA, T mAy, T iA, T mB, T mBy, T iB, T rAx, T rAy, T rBx, T rBy, T px, T py) where T : struct, ILane<T>
     {
-        vAx = vAx - mA * px; vAy = vAy - mA * py;
+        vAx = vAx - mA * px; vAy = vAy - mAy * py;
         wA = wA - iA * (rAx * py - rAy * px);
-        vBx = vBx + mB * px; vBy = vBy + mB * py;
+        vBx = vBx + mB * px; vBy = vBy + mBy * py;
         wB = wB + iB * (rBx * py - rBy * px);
     }
 
@@ -85,17 +87,23 @@ internal static class ContactKernel2D
     /// </summary>
     public static void Run<T>(Engine2D e, int group, int lane0, int lanes, SolvePhase phase, in KernelParams kp) where T : struct, ILane<T>
     {
-        var wide = e.Wide.AsSpan(group * W2D.GroupFloats, W2D.GroupFloats);
+        if (e.Core.Controls.Active) RunCore<T, ConfiguredBodyControls>(e, group, lane0, lanes, phase, kp);
+        else RunCore<T, StandardBodyControls>(e, group, lane0, lanes, phase, kp);
+    }
+    private static void RunCore<T, TMode>(Engine2D e, int group, int lane0, int lanes, SolvePhase phase, in KernelParams kp) where T : struct, ILane<T> where TMode : struct, IBodyControlMode
+    {
+        int stride = TMode.Enabled ? W2D.ControlGroupFloats : W2D.GroupFloats;
+        var wide = e.Wide.AsSpan(group * stride, stride);
         var idx = e.WideIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup);
         bool rolls = e.GroupRolling[group] != 0;
         bool extended = e.ContactModifications.Extended;
         int points = e.GroupPoints[group];
-        if (phase == SolvePhase.WarmStart) { RunWarm<T>(e.BodyState, wide, idx, lane0, lanes, rolls, points); }
-        else if (phase == SolvePhase.Restitution) { RunRestitution<T>(e.BodyState, wide, idx, lane0, lanes, points, extended, in kp); }
-        else { RunSolve<T>(e.BodyState, wide, idx, lane0, lanes, phase == SolvePhase.Solve, rolls, points, extended, in kp); }
+        if (phase == SolvePhase.WarmStart) { RunWarm<T, TMode>(e.BodyState, wide, idx, lane0, lanes, rolls, points); }
+        else if (phase == SolvePhase.Restitution) { RunRestitution<T, TMode>(e.BodyState, wide, idx, lane0, lanes, points, extended, in kp); }
+        else { RunSolve<T, TMode>(e.BodyState, wide, idx, lane0, lanes, phase == SolvePhase.Solve, rolls, points, extended, in kp); }
     }
 
-    private static void RunWarm<T>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, int lane0, int lanes, bool rolls, int points) where T : struct, ILane<T>
+    private static void RunWarm<T, TMode>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, int lane0, int lanes, bool rolls, int points) where T : struct, ILane<T> where TMode : struct, IBodyControlMode
     {
         int width = T.Count;
         for (int l0 = lane0; l0 < lane0 + lanes; l0 += width)
@@ -105,6 +113,7 @@ internal static class ContactKernel2D
             T vAx = ra.R0, vAy = ra.R1, wA = ra.R2, vBx = rb.R0, vBy = rb.R1, wB = rb.R2;
             T nx = W<T>(wide, W2D.NormalX, l0), ny = W<T>(wide, W2D.NormalY, l0);
             T mA = W<T>(wide, W2D.InvMassA, l0), iA = W<T>(wide, W2D.InvInertiaA, l0), mB = W<T>(wide, W2D.InvMassB, l0), iB = W<T>(wide, W2D.InvInertiaB, l0);
+        T mAy = TMode.Enabled ? W<T>(wide, W2D.MassAY, l0) : mA, mBy = TMode.Enabled ? W<T>(wide, W2D.MassBY, l0) : mB;
             T tx = ny, ty = Lane.Neg(nx); // the tangent is the normal turned clockwise
             T rollImp = W<T>(wide, W2D.Roll, l0);
             for (int pt = 0; pt < points; pt++)
@@ -113,7 +122,7 @@ internal static class ContactKernel2D
                 T nImp = W<T>(wide, ib, l0), tImp = W<T>(wide, ib + 1, l0);
                 T px = nx * nImp + tx * tImp;
                 T py = ny * nImp + ty * tImp;
-                Apply(ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB, mA, iA, mB, iB,
+                Apply(ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB, mA, mAy, iA, mB, mBy, iB,
                     W<T>(wide, pb + W2D.AnchorAX, l0), W<T>(wide, pb + W2D.AnchorAY, l0), W<T>(wide, pb + W2D.AnchorBX, l0), W<T>(wide, pb + W2D.AnchorBY, l0), px, py);
             }
 
@@ -122,7 +131,7 @@ internal static class ContactKernel2D
         }
     }
 
-    private static void RunRestitution<T>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, int lane0, int lanes, int points, bool extended, in KernelParams kp) where T : struct, ILane<T>
+    private static void RunRestitution<T, TMode>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, int lane0, int lanes, int points, bool extended, in KernelParams kp) where T : struct, ILane<T> where TMode : struct, IBodyControlMode
     {
         int width = T.Count;
         T zero = T.Zero, one = T.Broadcast(1f);
@@ -135,6 +144,7 @@ internal static class ContactKernel2D
             T vAx = ra.R0, vAy = ra.R1, wA = ra.R2, vBx = rb.R0, vBy = rb.R1, wB = rb.R2;
             T nx = W<T>(wide, W2D.NormalX, l0), ny = W<T>(wide, W2D.NormalY, l0);
             T mA = W<T>(wide, W2D.InvMassA, l0), iA = W<T>(wide, W2D.InvInertiaA, l0), mB = W<T>(wide, W2D.InvMassB, l0), iB = W<T>(wide, W2D.InvInertiaB, l0);
+        T mAy = TMode.Enabled ? W<T>(wide, W2D.MassAY, l0) : mA, mBy = TMode.Enabled ? W<T>(wide, W2D.MassBY, l0) : mB;
             T restitution = W<T>(wide, W2D.Restitution, l0);
             for (int pt = 0; pt < points; pt++)
             {
@@ -153,7 +163,7 @@ internal static class ContactKernel2D
                 if (extended) { newImp = Lane.Min(newImp, W<T>(wide, W2D.ImpulseLimit, l0)); }
                 imp = newImp - nImp;
                 maxN = Lane.Max(maxN, newImp);
-                Apply(ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB, mA, iA, mB, iB, rAx, rAy, rBx, rBy, nx * imp, ny * imp);
+                Apply(ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB, mA, mAy, iA, mB, mBy, iB, rAx, rAy, rBx, rBy, nx * imp, ny * imp);
                 // Restitution leaves the friction and rolling impulses alone.
                 newImp.StoreAt(wide, ib * 8 + l0); maxN.StoreAt(wide, (ib + 2) * 8 + l0);
             }
@@ -162,7 +172,7 @@ internal static class ContactKernel2D
         }
     }
 
-    private static void RunSolve<T>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, int lane0, int lanes, bool useBias, bool rolls, int points, bool extended, in KernelParams kp) where T : struct, ILane<T>
+    private static void RunSolve<T, TMode>(Span<float> state, Span<float> wide, ReadOnlySpan<int> idx, int lane0, int lanes, bool useBias, bool rolls, int points, bool extended, in KernelParams kp) where T : struct, ILane<T> where TMode : struct, IBodyControlMode
     {
         int width = T.Count;
         for (int l0 = lane0; l0 < lane0 + lanes; l0 += width)
@@ -170,7 +180,7 @@ internal static class ContactKernel2D
             var ra = T.GatherRows(state, idx.Slice(l0, width));
             var rb = T.GatherRows(state, idx.Slice(8 + l0, width));
             T vAx = ra.R0, vAy = ra.R1, wA = ra.R2, vBx = rb.R0, vBy = rb.R1, wB = rb.R2;
-            T mA = W<T>(wide, W2D.InvMassA, l0), iA = W<T>(wide, W2D.InvInertiaA, l0), mB = W<T>(wide, W2D.InvMassB, l0), iB = W<T>(wide, W2D.InvInertiaB, l0);
+            T iA = W<T>(wide, W2D.InvInertiaA, l0), iB = W<T>(wide, W2D.InvInertiaB, l0);
             // Rolling resistance, then friction, then non-penetration last: the last constraint solved wins the argument, and keeping bodies apart matters most.
             // A group with no rolling resistance and no stored rolling impulse would clamp a zero impulse to zero, so the step is skipped for it.
             if (rolls)
@@ -188,8 +198,8 @@ internal static class ContactKernel2D
                 rollImp.StoreAt(wide, W2D.Roll * 8 + l0);
             }
 
-            FrictionPoints<T>(wide, l0, points, extended, ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB);
-            NormalPoints<T>(wide, l0, points, useBias, extended, in kp, in ra, in rb, ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB);
+            FrictionPoints<T, TMode>(wide, l0, points, extended, ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB);
+            NormalPoints<T, TMode>(wide, l0, points, useBias, extended, in kp, in ra, in rb, ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB);
             Scatter(state, idx, l0, vAx, vAy, wA, vBx, vBy, wB);
         }
     }
@@ -197,11 +207,12 @@ internal static class ContactKernel2D
     // The friction and the non-penetration passes are separate methods, not inlined: each is its own unit for the JIT's inlining budget, which one method holding all of the lane operations exhausts
     // (the operators then stay calls). The velocities pass through references and are held in locals inside.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void FrictionPoints<T>(Span<float> wide, int l0, int points, bool extended, ref T rvAx, ref T rvAy, ref T rwA, ref T rvBx, ref T rvBy, ref T rwB) where T : struct, ILane<T>
+    private static void FrictionPoints<T, TMode>(Span<float> wide, int l0, int points, bool extended, ref T rvAx, ref T rvAy, ref T rwA, ref T rvBx, ref T rvBy, ref T rwB) where T : struct, ILane<T> where TMode : struct, IBodyControlMode
     {
         T vAx = rvAx, vAy = rvAy, wA = rwA, vBx = rvBx, vBy = rvBy, wB = rwB;
         T nx = W<T>(wide, W2D.NormalX, l0), ny = W<T>(wide, W2D.NormalY, l0);
         T mA = W<T>(wide, W2D.InvMassA, l0), iA = W<T>(wide, W2D.InvInertiaA, l0), mB = W<T>(wide, W2D.InvMassB, l0), iB = W<T>(wide, W2D.InvInertiaB, l0);
+        T mAy = TMode.Enabled ? W<T>(wide, W2D.MassAY, l0) : mA, mBy = TMode.Enabled ? W<T>(wide, W2D.MassBY, l0) : mB;
         T tx = ny, ty = Lane.Neg(nx); // the tangent is the normal turned clockwise
         T friction = W<T>(wide, W2D.Friction, l0);
         for (int pt = 0; pt < points; pt++)
@@ -219,17 +230,17 @@ internal static class ContactKernel2D
             T newT = Clamp(tImp + imp, Lane.Neg(maxF), maxF);
             imp = newT - tImp;
             newT.StoreAt(wide, (ib + 1) * 8 + l0);
-            Apply(ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB, mA, iA, mB, iB, rAx, rAy, rBx, rBy, tx * imp, ty * imp);
+            Apply(ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB, mA, mAy, iA, mB, mBy, iB, rAx, rAy, rBx, rBy, tx * imp, ty * imp);
         }
 
         rvAx = vAx; rvAy = vAy; rwA = wA; rvBx = vBx; rvBy = vBy; rwB = wB;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void NormalPoints<T>(Span<float> wide, int l0, int points, bool useBias, bool extended, in KernelParams kp, in Rows8<T> ra, in Rows8<T> rb, ref T rvAx, ref T rvAy, ref T rwA, ref T rvBx, ref T rvBy, ref T rwB) where T : struct, ILane<T>
+    private static void NormalPoints<T, TMode>(Span<float> wide, int l0, int points, bool useBias, bool extended, in KernelParams kp, in Rows8<T> ra, in Rows8<T> rb, ref T rvAx, ref T rvAy, ref T rwA, ref T rvBx, ref T rvBy, ref T rwB) where T : struct, ILane<T> where TMode : struct, IBodyControlMode
     {
         T zero = T.Zero, one = T.Broadcast(1f);
-        T negPush = T.Broadcast(-kp.PushOutVelocity);
+        T negPush = TMode.Enabled ? T.Negate(W<T>(wide, W2D.PushLimit, l0)) : T.Broadcast(-kp.PushOutVelocity);
         T slop = T.Broadcast(kp.LinearSlop);
         T invH = T.Broadcast(kp.InverseSubstepDt);
         T vAx = rvAx, vAy = rvAy, wA = rwA, vBx = rvBx, vBy = rvBy, wB = rwB;
@@ -237,6 +248,7 @@ internal static class ContactKernel2D
         T dpBx = rb.R4, dpBy = rb.R5, dqBc = rb.R6, dqBs = rb.R7;
         T nx = W<T>(wide, W2D.NormalX, l0), ny = W<T>(wide, W2D.NormalY, l0);
         T mA = W<T>(wide, W2D.InvMassA, l0), iA = W<T>(wide, W2D.InvInertiaA, l0), mB = W<T>(wide, W2D.InvMassB, l0), iB = W<T>(wide, W2D.InvInertiaB, l0);
+        T mAy = TMode.Enabled ? W<T>(wide, W2D.MassAY, l0) : mA, mBy = TMode.Enabled ? W<T>(wide, W2D.MassBY, l0) : mB;
         T biasRate = default, massScale = default, impulseScale = default;
         if (useBias) { biasRate = W<T>(wide, W2D.BiasRate, l0); massScale = W<T>(wide, W2D.MassScale, l0); impulseScale = W<T>(wide, W2D.ImpulseScale, l0); }
         for (int pt = 0; pt < points; pt++)
@@ -275,7 +287,7 @@ internal static class ContactKernel2D
                 if (extended) { newImp = Lane.Min(newImp, W<T>(wide, W2D.ImpulseLimit, l0)); }
             imp = newImp - nImp;
             maxN = Lane.Max(maxN, newImp);
-            Apply(ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB, mA, iA, mB, iB, rAx, rAy, rBx, rBy, nx * imp, ny * imp);
+            Apply(ref vAx, ref vAy, ref wA, ref vBx, ref vBy, ref wB, mA, mAy, iA, mB, mBy, iB, rAx, rAy, rBx, rBy, nx * imp, ny * imp);
             newImp.StoreAt(wide, ib * 8 + l0); maxN.StoreAt(wide, (ib + 2) * 8 + l0);
         }
 

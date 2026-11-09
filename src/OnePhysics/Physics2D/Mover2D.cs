@@ -73,18 +73,33 @@ public struct CharacterDef
 
     /// <summary>
     /// Steepest ground the character can stand on, in radians within [0, pi/2] (Unity's <c>slopeLimit</c> is in degrees: pass 45 degrees converted to radians). Steeper surfaces are walls: the character slides down them.
-    /// Default pi/4 (45 degrees).
+    /// Default pi/4 (45 degrees). Radian inputs are stored and returned bit-exactly, without a degree conversion round trip.
     /// </summary>
     public float SlopeLimitRadians
     {
-        readonly get => (float)(SlopeLimitDegrees * (Math.PI / 180.0));
-        set => SlopeLimitDegrees = (float)(value * (180.0 / Math.PI));
+        readonly get => ZeroDefault.Get(_slopeLimit, (float)(Math.PI / 4.0));
+        set
+        {
+            _slopeLimit = ZeroDefault.Set(value, (float)(Math.PI / 4.0));
+            _legacySlopeLimit = ZeroDefault.Set((float)(value * (180.0 / Math.PI)), 45f);
+        }
     }
 
-    // The engine and the snapshot keep the limit in degrees (as float32): 45 and 40 are exact there, which keeps saved worlds and their hashes unchanged.
-    internal float SlopeLimitDegrees { readonly get => ZeroDefault.Get(_slopeLimit, 45f); set => _slopeLimit = ZeroDefault.Set(value, 45f); }
+    // Keep old degree-encoded snapshots byte-exact, including values read from older writers.
+    // The public value itself is stored in radians and never converted by its getter.
+    internal float SlopeLimitDegrees
+    {
+        readonly get => ZeroDefault.Get(_legacySlopeLimit, 45f);
+        set
+        {
+            _legacySlopeLimit = ZeroDefault.Set(value, 45f);
+            _slopeLimit = ZeroDefault.Set((float)(value * (Math.PI / 180.0)), (float)(Math.PI / 4.0));
+        }
+    }
 
-    private uint _slopeLimit;
+    internal readonly bool NeedsExactSlope => BitConverter.SingleToInt32Bits(SlopeLimitRadians) != BitConverter.SingleToInt32Bits((float)(SlopeLimitDegrees * (Math.PI / 180.0)));
+    internal readonly double SolverSlopeRadians => NeedsExactSlope ? SlopeLimitRadians : SlopeLimitDegrees * (Math.PI / 180.0);
+    private uint _slopeLimit, _legacySlopeLimit;
 
     /// <summary>Tallest step the character climbs when walking into it, metres, at least 0 (0 turns stepping off), at most <see cref="Height"/>. It is also how far the character snaps down to stay on the ground when walking down a slope or stairs. Default 0.3.</summary>
     public float StepOffset { readonly get => ZeroDefault.Get(_stepOffset, 0.3f); set => _stepOffset = ZeroDefault.Set(value, 0.3f); }
@@ -140,7 +155,7 @@ public struct CharacterDef
     {
         if (!(Radius > 0f && Radius <= 1000f)) { throw new ArgumentOutOfRangeException(nameof(Radius), Radius, "Radius must be within (0, 1000]."); }
         if (!(Height >= 2f * Radius && Height <= 10000f)) { throw new ArgumentOutOfRangeException(nameof(Height), Height, "Height must be at least twice the radius (" + (2f * Radius).ToString(System.Globalization.CultureInfo.InvariantCulture) + ") and at most 10000."); }
-        if (!(SlopeLimitDegrees >= 0f && SlopeLimitDegrees <= 90f)) { throw new ArgumentOutOfRangeException(nameof(SlopeLimitRadians), SlopeLimitRadians, "SlopeLimitRadians must be within [0, pi/2] radians."); }
+        if (!(SlopeLimitRadians >= 0f && SlopeLimitRadians <= (float)(Math.PI / 2.0))) { throw new ArgumentOutOfRangeException(nameof(SlopeLimitRadians), SlopeLimitRadians, "SlopeLimitRadians must be within [0, pi/2] radians."); }
         if (!(StepOffset >= 0f && StepOffset <= Height)) { throw new ArgumentOutOfRangeException(nameof(StepOffset), StepOffset, "StepOffset must be within [0, Height]."); }
         if (!(Skin >= 0.0001f && Skin <= 0.5f * Radius)) { throw new ArgumentOutOfRangeException(nameof(Skin), Skin, "Skin must be within [0.0001, Radius / 2]."); }
         if (!(PushStrength >= 0f && PushStrength <= 100f)) { throw new ArgumentOutOfRangeException(nameof(PushStrength), PushStrength, "PushStrength must be within [0, 100]."); }

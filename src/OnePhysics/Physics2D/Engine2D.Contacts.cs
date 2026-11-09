@@ -119,6 +119,7 @@ internal sealed partial class Engine2D
         if (Hot.Length < nb) { Hot = new BodyHot[Math.Max(nb, Hot.Length * 2)]; }
         ReconcileJoints();
         SizeJointStorage();
+        ConfigureJointBreaking();
         // 0. A changed filter re-evaluates the pair table before anything else (see Refilter).
         Refilter();
 

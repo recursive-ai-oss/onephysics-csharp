@@ -90,11 +90,17 @@ internal static class SmokeProgram
         Console.WriteLine(surfaces ? "OK contact surfaces" : "FAIL contact surfaces");
         bool contacts = ContactModifiers();
         Console.WriteLine(contacts ? "OK contact modifiers" : "FAIL contact modifiers");
+        bool bodyControls = BodyControls();
+        Console.WriteLine(bodyControls ? "OK body-controls" : "FAIL body-controls");
+        bool repairs = HostRepairs();
+        Console.WriteLine(repairs ? "OK host-repairs" : "FAIL host-repairs");
         bool formats = FileFormats();
         Console.WriteLine(formats ? "OK formats" : "FAIL formats");
         bool inspection = InspectionSmoke.Run(out ulong inspectionHash);
         Console.WriteLine((inspection ? "OK inspection " : "FAIL inspection ") + inspectionHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
-        return surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+        bool machines = JointMachineSmoke.Run();
+        Console.WriteLine(machines ? "OK machines" : "FAIL machines");
+        return repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
     }
 
     private readonly struct SmokeContactModifier : IContactModifier
@@ -115,7 +121,11 @@ internal static class SmokeProgram
         foreach (var w in new[] { a, b })
         {
             w.AddBox(new(20, 1), at: new(0, -0.5), type: BodyType.Static);
-            for (int i = 0; i < 8; i++) w.AddBox(new(1, 1), at: new(i * 2 - 7, 0.49));
+            for (int i = 0; i < 8; i++)
+            {
+                var box = w.AddBox(new(1, 1), at: new(i * 2 - 7, 0.49));
+                if (i % 4 == 0) box.Constraints = RigidbodyConstraints.FreezePositionX;
+            }
             w.SetContactModifier(new SmokeContactModifier());
         }
         var c = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new() { WorldId = 3201, ThreadCount = 1 });
@@ -123,7 +133,11 @@ internal static class SmokeProgram
         foreach (var w in new[] { c, d })
         {
             w.AddBox(new(20, 1, 20), at: new(0, -0.5, 0), type: BodyType.Static);
-            for (int i = 0; i < 8; i++) w.AddBox(new(1, 1, 1), at: new(i * 2 - 7, 0.49, 0));
+            for (int i = 0; i < 8; i++)
+            {
+                var box = w.AddBox(new(1, 1, 1), at: new(i * 2 - 7, 0.49, 0));
+                if (i % 4 == 0) box.Constraints = RigidbodyConstraints.FreezePositionX;
+            }
             w.SetContactModifier(new SmokeContactModifier());
         }
         for (int i = 0; i < 20; i++)
@@ -132,7 +146,62 @@ internal static class SmokeProgram
             a.Step(1f / 60); b.Step(1f / 60); c.Step(1f / 60); d.Step(1f / 60);
             if (a.ComputeHash() != b.ComputeHash() || c.ComputeHash() != d.ComputeHash()) return false;
         }
+        // The conveyor and impulse cap run through the same kernel as the restricted inverse mass.
+        foreach (var w in new[] { a, b })
+            if (w.Core.Bodies.PositionOf(1)[0] != -7 || w.Core.Bodies.PositionOf(5)[0] != 1) return false;
+        foreach (var w in new[] { c, d })
+            if (w.Core.Bodies.PositionOf(1)[0] != -7 || w.Core.Bodies.PositionOf(5)[0] != 1) return false;
         return true;
+    }
+
+    private static bool HostRepairs()
+    {
+        var a = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D();
+        var b = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D();
+        float angle = 0.5625f; // A degree conversion round trip loses one float32 bit.
+        var c = a.AddCharacter(default, new() { SlopeLimitRadians = angle });
+        var d = b.AddCharacter(default, new() { SlopeLimitRadians = angle });
+        var sa = a.Snapshot(); var sb = b.Snapshot();
+        a.Restore(sa); b.Restore(sb);
+        bool good = c.SlopeLimitRadians == angle && d.SlopeLimitRadians == angle;
+        var ca = a.Fork(); var cb = b.Fork();
+        ca.RestoreRegion(a.CaptureRegion(new(-2, -2), new(2, 2)));
+        cb.RestoreRegion(b.CaptureRegion(new(-2, -2, -2), new(2, 2, 2)));
+        a.CanonicalizeBroadphase(); ca.CanonicalizeBroadphase();
+        b.CanonicalizeBroadphase(); cb.CanonicalizeBroadphase();
+        a.ShiftOrigin(new(1, 0)); ca.ShiftOrigin(new(1, 0));
+        b.ShiftOrigin(new(1, 0, 0)); cb.ShiftOrigin(new(1, 0, 0));
+        for (int i = 0; i < 3; i++)
+        {
+            a.Step(1f / 60); ca.Step(1f / 60); b.Step(1f / 60); cb.Step(1f / 60);
+            good &= a.ComputeHash() == ca.ComputeHash() && b.ComputeHash() == cb.ComputeHash();
+        }
+        return good;
+
+    }
+
+    private static bool BodyControls()
+    {
+        var a = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new() { WorldId = 3100, Gravity = default });
+        var b = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new() { WorldId = 3101, Gravity = default });
+        var x = a.CreateBody(new() { LinearVelocity = new(0.1f, 0), SleepSettings = new(0.2f, 0.3f, 0.1f), Controls = new(RigidbodyConstraints.FreezeRotationZ,1,1,1), MassOverride=2, InertiaOverride=3 });
+        var y = b.CreateBody(new() { LinearVelocity = new(0.1f, 0, 0), SleepSettings = new(0.2f, 0.3f, 0.1f), Controls = new(RigidbodyConstraints.FreezeRotationZ,1,1,1), MassOverride=2, InertiaOverride=new V3F(2,3,4) });
+        var platform=a.CreateBody(new(){Type=BodyType.Kinematic});platform.MovePosition(new(0.01,0));
+        var platform3=b.CreateBody(new(){Type=BodyType.Kinematic});platform3.MovePosition(new(0.01,0,0));
+        var f = new RecursiveAI.OnePhysics.Physics2D.FixedStepAccumulator(a, 0.125f);
+        var g = new RecursiveAI.OnePhysics.Physics3D.FixedStepAccumulator(b, 0.125f);
+        f.Advance(0.1875); g.Advance(0.1875);
+        var p = f.GetInterpolatedPose(x); var q = g.GetInterpolatedPose(y);
+        a.AddBox(new(4,1),at:new(10,-0.5),type:BodyType.Static);
+        b.AddBox(new(4,1,4),at:new(10,-0.5,0),type:BodyType.Static);
+        var fixedPlanar=a.AddBox(new(1,1),at:new(10,0.4));fixedPlanar.Constraints=RigidbodyConstraints.FreezeAll;
+        var fixedSpatial=b.AddBox(new(1,1,1),at:new(10,0.4,0));fixedSpatial.Constraints=RigidbodyConstraints.FreezeAll;
+        a.Step(0.01f);b.Step(0.01f);
+        var aCopy = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new() { WorldId = 3100 });
+        var bCopy = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new() { WorldId = 3101 });
+        aCopy.Restore(a.Snapshot()); bCopy.Restore(b.Snapshot());
+        return f.InterpolationAlpha == 0.5 && g.InterpolationAlpha == 0.5 && p.Position.X == q.Position.X
+            && a.ComputeHash() == aCopy.ComputeHash() && b.ComputeHash() == bCopy.ComputeHash() && !x.IsAwake && !y.IsAwake;
     }
 
     private static bool FileFormats()

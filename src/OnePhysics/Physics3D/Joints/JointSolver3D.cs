@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using RecursiveAI.OneMath;
+using RecursiveAI.OneMath.Physics;
 using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.LowLevel;
 
@@ -58,6 +59,7 @@ internal sealed partial class Engine3D
             Readback.Row(Constraint, slot, error, flags | (angular ? JointRowBits.Angular : 0));
         }
         public float MA, MB;
+        public bool Projected; public Vector3F DA, DB;
         public Sym IA, IB;
 
         public readonly float Cdot(in JointRow r) => Vector3F.Dot(r.LA, VA) + Vector3F.Dot(r.AA, WA) + Vector3F.Dot(r.LB, VB) + Vector3F.Dot(r.AB, WB);
@@ -65,12 +67,12 @@ internal sealed partial class Engine3D
         public void Apply(in JointRow r, float l)
         {
             if (Readback.Enabled) { Readback.Add(Constraint, r.LA, r.AA, r.LB, r.AB, l); }
-            VA += r.LA * (MA * l); WA += IA.Mul(r.AA) * l;
-            VB += r.LB * (MB * l); WB += IB.Mul(r.AB) * l;
+            VA += Projected ? new Vector3F(r.LA.X * DA.X * l, r.LA.Y * DA.Y * l, r.LA.Z * DA.Z * l) : r.LA * (MA * l); WA += IA.Mul(r.AA) * l;
+            VB += Projected ? new Vector3F(r.LB.X * DB.X * l, r.LB.Y * DB.Y * l, r.LB.Z * DB.Z * l) : r.LB * (MB * l); WB += IB.Mul(r.AB) * l;
         }
 
         public readonly float K(in JointRow r, in JointRow s) =>
-            MA * Vector3F.Dot(r.LA, s.LA) + Vector3F.Dot(r.AA, IA.Mul(s.AA)) + MB * Vector3F.Dot(r.LB, s.LB) + Vector3F.Dot(r.AB, IB.Mul(s.AB));
+            (Projected ? r.LA.X*DA.X*s.LA.X + r.LA.Y*DA.Y*s.LA.Y + r.LA.Z*DA.Z*s.LA.Z : MA * Vector3F.Dot(r.LA, s.LA)) + Vector3F.Dot(r.AA, IA.Mul(s.AA)) + (Projected ? r.LB.X*DB.X*s.LB.X + r.LB.Y*DB.Y*s.LB.Y + r.LB.Z*DB.Z*s.LB.Z : MB * Vector3F.Dot(r.LB, s.LB)) + Vector3F.Dot(r.AB, IB.Mul(s.AB));
 
         public readonly float Mass(in JointRow r)
         {
@@ -118,6 +120,8 @@ internal sealed partial class Engine3D
         j.Readback = Core.JointReadback; j.Constraint = -1;
         j.VA = V(lin, 3 * a); j.WA = V(ang, 3 * a); j.VB = V(lin, 3 * b); j.WB = V(ang, 3 * b);
         j.MA = invMass[a]; j.MB = invMass[b];
+        j.Projected = Core.Controls.HasLocks && (Core.Controls.ConstraintsOf(a) | Core.Controls.ConstraintsOf(b)) != 0;
+        if (j.Projected) { j.DA = new(Core.AxisMass(a,0), Core.AxisMass(a,1), Core.AxisMass(a,2)); j.DB = new(Core.AxisMass(b,0), Core.AxisMass(b,1), Core.AxisMass(b,2)); }
         var wa = WInvI.AsSpan(6 * a, 6); var wb = WInvI.AsSpan(6 * b, 6);
         j.IA = new Sym { XX = wa[0], XY = wa[1], XZ = wa[2], YY = wa[3], YZ = wa[4], ZZ = wa[5] };
         j.IB = new Sym { XX = wb[0], XY = wb[1], XZ = wb[2], YY = wb[3], YZ = wb[4], ZZ = wb[5] };
@@ -189,15 +193,38 @@ internal sealed partial class Engine3D
         {
             float k01 = j.K(r[0], r[1]), k11 = j.K(r[1], r[1]);
             float det = k00 * k11 - k01 * k01;
-            if (det != 0f) { det = 1f / det; }
-            x0 = det * (k11 * rhs[0] - k01 * rhs[1]);
-            x1 = det * (k00 * rhs[1] - k01 * rhs[0]);
+            if (det == 0 && j.Projected)
+            {
+                double trace=(double)k00+k11, scale=trace>0 ? 1/(trace*trace) : 0;
+                x0=(float)(((double)k00*rhs[0]+(double)k01*rhs[1])*scale); x1=(float)(((double)k01*rhs[0]+(double)k11*rhs[1])*scale);
+            }
+            else
+            {
+                if (det != 0f) { det = 1f / det; }
+                x0 = det * (k11 * rhs[0] - k01 * rhs[1]); x1 = det * (k00 * rhs[1] - k01 * rhs[0]);
+            }
         }
         else
         {
             float k01 = j.K(r[0], r[1]), k02 = j.K(r[0], r[2]), k11 = j.K(r[1], r[1]), k12 = j.K(r[1], r[2]), k22 = j.K(r[2], r[2]);
             float c00 = k11 * k22 - k12 * k12, c01 = k02 * k12 - k01 * k22, c02 = k01 * k12 - k02 * k11;
             float det = k00 * c00 + k01 * c01 + k02 * c02;
+            if (det == 0 && j.Projected)
+            {
+                var eigen = SymmetricEigenF.Decompose(new Matrix3x3F(k00,k01,k02,k01,k11,k12,k02,k12,k22));
+                var v = eigen.Vectors; var values = eigen.Values;
+                var response = new Vector3F(rhs[0], rhs[1], rhs[2]);
+                var result = Vector3F.Zero;
+                float tolerance = Math.Max(values.Z, 0) * 1e-6f;
+                for (int axis = 0; axis < 3; axis++)
+                {
+                    float lambda = axis == 0 ? values.X : axis == 1 ? values.Y : values.Z;
+                    var direction = axis == 0 ? new Vector3F(v.M11,v.M21,v.M31) : axis == 1 ? new Vector3F(v.M12,v.M22,v.M32) : new Vector3F(v.M13,v.M23,v.M33);
+                    if (lambda > tolerance) result += direction * (Vector3F.Dot(direction,response) / lambda);
+                }
+                for (int axis = 0; axis < 3; axis++) { float impulse = -(axis == 0 ? result.X : axis == 1 ? result.Y : result.Z) - k.Isc*p[slot+axis]; p[slot+axis] += impulse; j.Apply(r[axis], impulse); }
+                return;
+            }
             if (det != 0f) { det = 1f / det; }
             float c11 = k00 * k22 - k02 * k02, c12 = k01 * k02 - k00 * k12, c22 = k00 * k11 - k01 * k01;
             x0 = det * (c00 * rhs[0] + c01 * rhs[1] + c02 * rhs[2]);
@@ -272,8 +299,18 @@ internal sealed partial class Engine3D
         bool warm = phase == SolvePhase.WarmStart, useBias = phase == SolvePhase.Solve;
         float invH = ctx.InverseSubstepDt;
         var rigid = useBias ? new Soft(s[JRow3.JMass], s[JRow3.JMass] * s[JRow3.JBias], s[JRow3.JImp]) : new Soft(1f, 0f, 0f);
+        if (j.Projected && WidePointBlock(d.Type))
+        {
+            JRowBuf rows = default; JF3 errors = default;
+            rows[0] = JointRow.Lin(UX, g.RA, g.RB); rows[1] = JointRow.Lin(UY, g.RA, g.RB); rows[2] = JointRow.Lin(UZ, g.RA, g.RB);
+            errors[0] = g.C.X; errors[1] = g.C.Y; errors[2] = g.C.Z;
+            Block(ref j, p, 0, 3, rows, errors, rigid, warm);
+        }
         switch ((JointType3D)d.Type)
         {
+            case JointType3D.Wheel: SolveWheel(ref j, g, ref d, s, p, rigid, useBias, invH, warm); break;
+            case JointType3D.Motor: SolveMotor(ref j, g, d, p, warm, invH); break;
+            case JointType3D.Mouse: SolveMouse(ref j, g, s, p, warm, useBias); break;
             case JointType3D.Fixed: SolveFixed(ref j, in g, p, rigid, warm); break;
             case JointType3D.Point: break; // solved by JointKernel3D
             case JointType3D.Distance: SolveDistance(ref j, in g, ref d, s, p, useBias, invH, warm); break;

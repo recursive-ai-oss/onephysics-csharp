@@ -29,6 +29,9 @@ internal struct JointData2D
     public double TargetX, TargetY;      // mouse target, world coordinates relative to the world origin
     public float BreakForce, BreakTorque;
 
+    // Creation-only; remaining lifetime is kept in the constraint payload.
+    public int LifetimeSteps;
+
     // Runtime only.
     public int BodyA, BodyB, GenA, GenB, Gen;
 
@@ -60,8 +63,9 @@ internal struct JointData2D
     /// <summary>Checks every value the type uses. Throws <see cref="ArgumentOutOfRangeException"/> for non-finite or out-of-range numbers and <see cref="InvalidJointException"/> for limits the wrong way round, a zero axis and similar.</summary>
     public readonly void Validate()
     {
+        if (LifetimeSteps < 0) { throw new ArgumentOutOfRangeException(nameof(LifetimeSteps), LifetimeSteps, "LifetimeSteps must be at least zero."); }
         var t = (JointType2D)Type;
-        if (t < JointType2D.Revolute || t > JointType2D.Mouse) { throw new InvalidJointException("Unknown joint type " + Type.ToString(CultureInfo.InvariantCulture) + "."); }
+        if (t < JointType2D.Revolute || t > JointType2D.Configurable) { throw new InvalidJointException("Unknown joint type " + Type.ToString(CultureInfo.InvariantCulture) + "."); }
         if (float.IsNaN(BreakForce) || BreakForce < 0f) { throw new ArgumentOutOfRangeException(nameof(BreakForce), BreakForce, Name(t) + " joint: BreakForce must be at least 0 (infinity means never)."); }
         if (float.IsNaN(BreakTorque) || BreakTorque < 0f) { throw new ArgumentOutOfRangeException(nameof(BreakTorque), BreakTorque, Name(t) + " joint: BreakTorque must be at least 0 (infinity means never)."); }
         if (t != JointType2D.Motor) { Local(LBx, LBy, "LocalAnchorB", t); }
@@ -102,6 +106,20 @@ internal struct JointData2D
                 if (float.IsNaN(Upper) || Upper < Lower) { throw new InvalidJointException("distance joint: MaxLength " + Num(Upper) + " is below MinLength " + Num(Lower) + "."); }
                 MotorSpring(t);
                 break;
+            case JointType2D.Gear:
+            case JointType2D.RackAndPinion:
+            case JointType2D.Pulley:
+                Finite(OffAngle, "Ratio", t);
+                if (!(Math.Abs(OffAngle) >= 1e-6f && Math.Abs(OffAngle) <= 1e6f) || (t == JointType2D.Pulley && OffAngle < 0f)) { throw new InvalidJointException("Joint ratio magnitude must be within 1e-6..1e6 (positive for a pulley)."); }
+                if (t == JointType2D.RackAndPinion) { Local(AxX, AxY, "LocalAxisB", t); }
+                if (t == JointType2D.Pulley) { AtLeastZero(Length, "Length", t); AtLeastZero(Lower, "MinLength", t); AtLeastZero(Upper, "MaxLength", t); if (Lower > Upper) { throw new InvalidJointException("Pulley minimum length exceeds maximum."); } }
+                break;
+            case JointType2D.Path:
+                MotorSpring(t);
+                break;
+            case JointType2D.Configurable:
+                Finite(RefAngle, "ReferenceAngle", t); Finite(OffAngle, "LocalFrameAngleA", t);
+                break;
             case JointType2D.Motor:
                 Local(OffX, OffY, "LinearOffset", t); Finite(OffAngle, "AngularOffset", t);
                 AtLeastZero(MaxMotor, "MaxForce", t); AtLeastZero(MaxMotor2, "MaxTorque", t);
@@ -130,7 +148,7 @@ internal struct JointData2D
     public void Prepare()
     {
         var t = (JointType2D)Type;
-        if (t == JointType2D.Prismatic || t == JointType2D.Wheel)
+        if (t == JointType2D.Prismatic || t == JointType2D.Wheel || t == JointType2D.RackAndPinion)
         {
             float len = float.Sqrt(AxX * AxX + AxY * AxY);
             if (!(len > 1e-12f) || !float.IsFinite(len)) { throw new InvalidJointException(Name(t) + " joint: LocalAxisA (" + Num(AxX) + ", " + Num(AxY) + ") has no usable direction."); }
@@ -182,7 +200,7 @@ internal struct JointData2D
         {
             d.Validate();
             var t = (JointType2D)d.Type;
-            if (t == JointType2D.Prismatic || t == JointType2D.Wheel)
+            if (t == JointType2D.Prismatic || t == JointType2D.Wheel || t == JointType2D.RackAndPinion)
             {
                 float n2 = d.AxX * d.AxX + d.AxY * d.AxY;
                 if (!(Math.Abs(n2 - 1f) <= 1e-3f)) { throw new InvalidJointException("axis is not a unit vector"); }

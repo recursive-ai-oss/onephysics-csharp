@@ -34,6 +34,9 @@ public enum ConstraintBits : byte
 
     /// <summary>Set by a stage during the step to ask the core to break this joint after the step's solve; the value goes in <see cref="ConstraintStore.BreakValue"/>.</summary>
     BreakRequested = 2,
+
+    /// <summary>A joint has a positive remaining lifetime in reserved payload slots 32 and 33. Set with JointLifetime, not independently.</summary>
+    HasLifetime = 4,
 }
 
 /// <summary>Everything needed to create a constraint. Orientation matters: body A and shape A are the first of the pair as the engine defines it (the contact normal points from A to B).</summary>
@@ -331,8 +334,17 @@ public sealed partial class ConstraintStore
             }
 
             if (s._kind[c] < (byte)ConstraintKind.Contact || s._kind[c] > (byte)ConstraintKind.Joint) { throw r.Error("invalid constraint kind"); }
-            if ((s._flags[c] & ~(byte)(ConstraintBits.ReportPersist | ConstraintBits.BreakRequested)) != 0) { throw r.Error("invalid constraint flags"); }
+            if ((s._flags[c] & ~(byte)(ConstraintBits.ReportPersist | ConstraintBits.BreakRequested | ConstraintBits.HasLifetime)) != 0) { throw r.Error("invalid constraint flags"); }
+            if (s._kind[c] != (byte)ConstraintKind.Joint && (s._flags[c] & (byte)ConstraintBits.HasLifetime) != 0) { throw r.Error("lifetime flag on non-joint constraint"); }
             if (s._points[c] > layout.MaxManifoldPoints || (s._kind[c] != (byte)ConstraintKind.Contact && s._points[c] != 0)) { throw r.Error("invalid manifold point count"); }
+            if (s._kind[c] == (byte)ConstraintKind.Joint && (s._flags[c] & (byte)ConstraintBits.HasLifetime) != 0)
+            {
+                var p = s.Payload(c);
+                if (!(p[32] >= 0f && p[32] <= 65535f && p[32] == float.Truncate(p[32]) && p[33] >= 0f && p[33] <= 32767f && p[33] == float.Truncate(p[33])))
+                { throw r.Error("invalid joint lifetime words"); }
+                bool lifetime = p[32] != 0f || p[33] != 0f;
+                if (lifetime != ((s._flags[c] & (byte)ConstraintBits.HasLifetime) != 0)) { throw r.Error("joint lifetime flag disagrees with remaining steps"); }
+            }
             if (s._bodyA[c] == s._bodyB[c]) { throw r.Error("constraint joins a body to itself"); }
         }
     }

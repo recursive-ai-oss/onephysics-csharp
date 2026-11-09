@@ -135,6 +135,13 @@ internal sealed partial class Engine2D : ISnapshotSection
     public BodyHandle CreateBody(in BodyDef def)
     {
         ref readonly BodyDef d = ref def;
+        BodyControlStore.ValidateAxes(d.Controls, 2);
+        if ((d.MassOverride.HasValue || d.CenterOfMassOverride.HasValue || d.InertiaOverride.HasValue) && d.Type != BodyType.Dynamic) throw new BodyTypeException("Mass overrides", default, d.Type, true);
+        if (d.MassOverride is float massOverride) CheckMass(massOverride);
+        if (d.InertiaOverride is float inertiaOverride) CheckMass(inertiaOverride);
+        if (d.CenterOfMassOverride is Vector2F centerOverride && (!float.IsFinite(centerOverride.X) || !float.IsFinite(centerOverride.Y) || Math.Abs(centerOverride.X)>2097152 || Math.Abs(centerOverride.Y)>2097152 )) throw new ArgumentOutOfRangeException(nameof(def), "Invalid local center override.");
+
+        if (d.SleepSettings.IsOverride && d.Type != BodyType.Dynamic) throw new BodyTypeException(nameof(CreateBody), default, d.Type, true);
         if (!double.IsFinite(d.Position.X) || !double.IsFinite(d.Position.Y)) { throw new ArgumentOutOfRangeException(nameof(def), "Body position must be finite."); }
         if (!float.IsFinite(d.Angle)) { throw new ArgumentOutOfRangeException(nameof(def), d.Angle, "Body angle must be finite."); }
         if (!float.IsFinite(d.AngularVelocity)) { throw new ArgumentOutOfRangeException(nameof(def), d.AngularVelocity, "Angular velocity must be finite."); }
@@ -170,8 +177,15 @@ internal sealed partial class Engine2D : ISnapshotSection
             Mass[b] = 1f;
             Inertia[b] = 1f;
             Core.Bodies.InverseInertia[b] = d.FixedRotation ? 0f : 1f;
-            if (d.StartAsleep) { Core.Sleep(h); }
+            if (d.SleepSettings.IsOverride) Core.SetBodySleepSettings(h, d.SleepSettings);
+
         }
+
+        if (!d.Controls.IsDefault) Core.SetBodyControls(h, d.Controls);
+        if (d.MassOverride.HasValue) SetMassOverride(b, d.MassOverride.Value);
+        if (d.CenterOfMassOverride.HasValue) SetCenterOverride(b, d.CenterOfMassOverride.Value);
+        if (d.InertiaOverride.HasValue) SetInertiaOverride(b, d.InertiaOverride.Value);
+        if (d.StartAsleep && d.Type == BodyType.Dynamic) Core.Sleep(h);
 
         return h;
     }
@@ -393,6 +407,18 @@ internal sealed partial class Engine2D : ISnapshotSection
             }
         }
 
+        var control = Core.Controls.Get(b);
+        if ((control.Overrides & 7) != 0 && m == 0) { m = 1; inertia = 1; }
+        if ((control.Overrides & 2) != 0)
+        {
+            newX = control.Center.X; newY = control.Center.Y; inertia = 0;
+            for (int shape = ShapeHead[b]; shape >= 0; shape = NextShape[shape])
+                if (Density[shape] > 0 && !IsSensor(shape)) inertia += (double)Density[shape] * Geom[shape].ComputeMass().InertiaAbout(newX, newY);
+            if (inertia == 0) inertia = 1;
+        }
+        if ((control.Overrides & 1) != 0) m = control.Mass;
+        if ((control.Overrides & 4) != 0) inertia = control.Principal.X;
+
         // Mass limits (documented on ShapeDef.Density): mass and inertia each within [MinMassProperty, MaxMassProperty], so every inverse is finite and
         // the solver's products of inverse inertia and squared lever arms cannot overflow float32.
         if (strict && m > 0 && !(m >= MinMassProperty && m <= MaxMassProperty && (inertia == 0 || (inertia >= MinMassProperty && inertia <= MaxMassProperty))))
@@ -563,7 +589,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         bool services = HasServiceState();
         bool joints = LiveJointCount() > 0;
         bool chars = CharHandles.Count > 0;
-        w.NamedUInt32(chars ? WithCharacters : joints ? Extended : services ? Services : Version);
+        w.NamedUInt32(chars ? (HasExactCharacterSlopes() ? WithRadianSlopes : WithCharacters) : joints ? Extended : services ? Services : Version);
         w.NamedSingle(Opt.ContactHertz); w.NamedSingle(Opt.ContactDampingRatio); w.NamedSingle(Opt.PushOutVelocity); w.NamedSingle(Opt.RestitutionThreshold);
         w.NamedSingle(Opt.MaxLinearSpeed); w.NamedSingle(Opt.MaxRotationPerSubstep); w.NamedBool(Opt.ContinuousEnabled); w.NamedSingle(Opt.ContactSlop);
         int nb = Core.Bodies.HighWater;
@@ -620,7 +646,7 @@ internal sealed partial class Engine2D : ISnapshotSection
             w.NamedUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u) | BlockCharacters);
             if (joints) { WriteJoints(w); }
             if (services) { WriteServices(w, ns); }
-            WriteCharacters(w);
+            WriteCharacters(w, HasExactCharacterSlopes());
         }
         else if (joints)
         {
@@ -668,7 +694,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     public void Read(StateReader r)
     {
         uint v = r.ReadUInt32();
-        if (v != Version && v != Services && v != Extended && v != WithCharacters) { throw r.Error("unsupported 2D engine section version " + v.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+        if (v != Version && v != Services && v != Extended && v != WithCharacters && v != WithRadianSlopes) { throw r.Error("unsupported 2D engine section version " + v.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
         float hertz = r.ReadSingle(), zeta = r.ReadSingle(), push = r.ReadSingle(), thr = r.ReadSingle(), maxSpeed = r.ReadSingle(), maxRot = r.ReadSingle();
         bool continuous = r.ReadBool();
         float slop = r.ReadSingle();
@@ -733,7 +759,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         ServiceBlock? svc = null;
         CharacterBlock? chars = null;
         bool jointsRead = false;
-        if (v == Extended || v == WithCharacters)
+        if (v == Extended || v == WithCharacters || v == WithRadianSlopes)
         {
             bool hasJoints = true, hasServices, hasChars = false;
             if (v == Extended) { hasServices = r.ReadBool(); }
@@ -753,7 +779,7 @@ internal sealed partial class Engine2D : ISnapshotSection
 
             if (hasChars)
             {
-                chars = ReadCharacters(r, nb);
+                chars = ReadCharacters(r, nb, v == WithRadianSlopes);
                 if (chars.Handles.Count == 0) { throw r.Error("2D section version 4 holds no characters"); }
             }
 

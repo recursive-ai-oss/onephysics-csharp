@@ -13,7 +13,9 @@ public sealed partial class Scene
         {
             "name" or "dim" or "dt" or "steps" or "substeps" or "dump_every" or "warmup" or "settle" or "query_reps" => 2,
             "gravity" => Dim + 1, "material" => 4, "body" => Dim == 2 ? 9 : 16,
-            "surface" => 13, "character" => 6, "vehicle" => 7, "event" => 3, _ => -1
+            "surface" => 13,
+            "controls" or "sleep" => 5, "mass" => 2, "center" => Dim + 1, "inertia" => Dim == 2 ? 2 : 8, "target" => Dim == 2 ? 4 : 8, "world_limits" => 4,
+            "character" => 6, "vehicle" => 7, "event" => 3, _ => -1
         };
         if (exact >= 0 && t.Length != exact) throw new FormatException($"{exact} tokens for {t[0]}");
         int min = t[0] switch { "material_indices" => 2, "param" => 3, "shape" => 5, "query" => 2, "soft" => 12, "joint" => Dim == 2 ? 8 : 10, _ => 1 };
@@ -24,7 +26,12 @@ public sealed partial class Scene
             if (t.Length < k) throw new FormatException("complete joint axis");
             while (k < t.Length)
             {
-                int n = t[k] switch { "limit" or "motor" or "swing" => 3, "drive" => 9, _ => throw new FormatException("known joint option") };
+                if (t[k] == "data")
+                {
+                    if (t.Length - k < 2 || !int.TryParse(t[k + 1], out int count) || count < 0 || count > 1024 || count > t.Length - k - 2) throw new FormatException("0..1024 complete joint data values");
+                    k += 2 + count; continue;
+                }
+                int n = t[k] switch { "limit" or "motor" or "swing" or "break" => 3, "lifetime" => 2, "drive" => 9, _ => throw new FormatException("known joint option") };
                 if (t.Length - k < n) throw new FormatException("complete " + t[k] + " joint option");
                 k += n;
             }
@@ -38,6 +45,7 @@ public sealed partial class Scene
         if (Version == 2) { if (_state == null || !_stateEnd || _stateWritten != _state.Length || !_dimSeen || !_idSeen) throw Error("complete state and end record"); return; }
         if (!(Dt > 0 && Dt <= float.MaxValue) || !double.IsFinite(Dt) || Steps < 0 || Warmup < 0 || Settle < 0 || DumpEvery < 1 || QueryReps < 1 || Substeps < 0 || Substeps > 64) throw Error("positive finite dt and valid step counts");
         if (Bodies == null || Joints == null || Softs == null || Materials == null || Queries == null || Events == null || Params == null || Metrics == null) throw Error("non-null scene collections");
+        if (Params.TryGetValue("world-id", out var worldIds) && (worldIds == null || worldIds.Length != 1 || !int.TryParse(worldIds[0], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int worldId) || worldId <= 0)) throw Error("one positive Int32 world-id");
         if (Bodies.Count > 100000 || Joints.Count > 100000 || Softs.Count > 10000) throw Error("at most 100000 bodies/joints and 10000 soft bodies");
         if (Name == null || Name.Any(c => char.IsWhiteSpace(c) || c == '#')) throw Error("single-token scene name");
         foreach (var metric in Metrics) if (string.IsNullOrEmpty(metric) || metric.Any(c => char.IsWhiteSpace(c) || c == '#')) throw Error("single-token metric names");
@@ -47,11 +55,23 @@ public sealed partial class Scene
         }
         Finite([Gx, Gy, Gz]);
         foreach (var m in Materials) if (!(m.Friction >= 0 && m.Friction <= 1e15 && m.Restitution >= 0 && m.Restitution <= 1)) throw Error("friction in [0,1e15] and restitution in [0,1]");
+        if (WorldLimits is BodyControlSettings limits && (limits.Constraints != 0 || limits.MaxLinearSpeed <= 0)) throw Error("world limits with no locks and positive linear speed");
         foreach (var b in Bodies)
         {
             if (b == null) throw Error("non-null body");
             ActiveLine = b.SourceLine;
             Position(b.X, b.Y, b.Z);
+            try { BodyControlStore.ValidateAxes(b.Controls, Dim); } catch (ArgumentException e) { throw Error(e.Message); }
+            if (b.Type != "dynamic" && (b.MassOverride.HasValue || b.CenterOverride.HasValue || b.InertiaOverride.HasValue || b.NeverSleep || b.SleepSettings.IsOverride)) throw Error("dynamic body for mass and sleep overrides");
+            if (b.MassOverride.HasValue && !BodyControlStore.ValidMass(b.MassOverride.Value)) throw Error("mass within 1e-18..1e30");
+            if (b.CenterOverride is Vector3F center) { Position(center.X,center.Y,center.Z); if (Dim == 2 && center.Z != 0) throw Error("zero planar center Z"); }
+            if (b.InertiaOverride is Vector3F inertia) { if (!BodyControlStore.ValidMass(inertia.X) || (Dim == 3 && (!BodyControlStore.ValidMass(inertia.Y) || !BodyControlStore.ValidMass(inertia.Z)))) throw Error("positive principal inertia within 1e-18..1e30"); }
+            if (b.TargetPosition is Vector3D target) { if (b.Type != "kinematic") throw Error("kinematic body for target"); Position(target.X,target.Y,target.Z); }
+            Finite([b.InertiaRotation.X,b.InertiaRotation.Y,b.InertiaRotation.Z,b.InertiaRotation.W,b.TargetRotation.X,b.TargetRotation.Y,b.TargetRotation.Z,b.TargetRotation.W,b.TargetAngle]);
+            if (Dim == 3 && b.InertiaOverride.HasValue && (!(b.InertiaRotation.LengthSquared()>1e-30f) || !float.IsFinite(b.InertiaRotation.LengthSquared()))) throw Error("finite nonzero inertia frame quaternion");
+            if (Dim == 3 && b.TargetPosition.HasValue && (!(b.TargetRotation.LengthSquared()>1e-30f) || !float.IsFinite(b.TargetRotation.LengthSquared()))) throw Error("finite nonzero target quaternion");
+            if (b.Script != null && (!b.Controls.IsDefault || b.SleepSettings.IsOverride || b.NeverSleep || b.MassOverride.HasValue || b.CenterOverride.HasValue || b.InertiaOverride.HasValue || b.TargetPosition.HasValue)) throw Error("rigid body without character script for body controls");
+
             Finite([b.Angle, b.Vx, b.Vy, b.Vz, b.W, b.Wx, b.Wy, b.Qx, b.Qy, b.Qz, b.Qw]);
             if (b.Type is not ("static" or "kinematic" or "dynamic") || b.Shapes == null) throw Error("static, kinematic or dynamic body with shape list");
             if (Dim == 3 && b.Qx * b.Qx + b.Qy * b.Qy + b.Qz * b.Qz + b.Qw * b.Qw == 0) throw Error("nonzero rotation quaternion");
@@ -78,8 +98,13 @@ public sealed partial class Scene
             if (j == null) throw Error("non-null joint");
             ActiveLine = j.SourceLine;
             if (j.A < 0 || j.A >= Bodies.Count || j.B < 0 || j.B >= Bodies.Count || j.A == j.B) throw Error("two distinct existing joint bodies");
-            if (Dim == 2 ? j.Kind != "revolute" : j.Kind is not ("point" or "hinge" or "swingtwist")) throw Error("supported authoring joint kind");
+            if (Dim == 2 ? j.Kind is not ("revolute" or "gear" or "rack" or "pulley" or "path" or "configurable" or "wheel" or "filter") : j.Kind is not ("point" or "hinge" or "swingtwist" or "gear" or "pulley" or "wheel" or "motor" or "mouse" or "filter")) throw Error("supported authoring joint kind");
             Finite([j.Ax,j.Ay,j.Az,j.Bx,j.By,j.Bz,j.Ux,j.Uy,j.Uz,j.Lower,j.Upper,j.MotorSpeed,j.MaxTorque,j.SwingY,j.SwingZ,j.DriveK,j.DriveC,j.DriveMax,j.DriveAx,j.DriveAy,j.DriveAz,j.DriveAmp]);
+            if (j.Data == null || j.Data.Length > 1024 || j.LifetimeSteps < 0 || float.IsNaN(j.BreakForce) || j.BreakForce < 0 || float.IsNaN(j.BreakTorque) || j.BreakTorque < 0) throw Error("valid joint data and nonnegative break settings");
+            Finite(j.Data);
+            int arity = j.Kind switch { "gear" => 1, "rack" => 3, "pulley" => Dim == 2 ? 6 : 7, "wheel" => Dim == 2 ? 4 : 2, "configurable" => 29, "motor" => 7, "mouse" => 6, "path" => -1, _ => 0 };
+            if (arity >= 0 && j.Data.Length != arity) throw Error("exactly " + arity + " data values for " + j.Kind);
+            if (j.Kind == "path" && (j.Data.Length < 6 || j.Data.Length > 514 || (j.Data.Length & 1) != 0)) throw Error("path loop/align and 2..256 xy points");
             if (j.HasDrive && j.DrivePeriod < 1) throw Error("positive drive period");
         }
         foreach (var d in Softs)

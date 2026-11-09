@@ -36,6 +36,23 @@ internal sealed partial class Engine3D
     private const uint VersionJoints = 2;
     private const uint BlockJoints = 1;
 
+    internal bool JointBreakingDirty = true;
+    private bool _collectJointBreaking;
+    private void ConfigureJointBreaking()
+    {
+        if (!JointBreakingDirty) { Core.JointReadback.ConfigureBreaking(_collectJointBreaking); return; }
+        JointBreakingDirty = false;
+        bool collect = false;
+        var cs = Core.Constraints;
+        for (int c = 0; c < cs.HighWater && !collect; c++)
+        {
+            if (!cs.IsLive(c) || cs.KindOf(c) != ConstraintKind.Joint) { continue; }
+            collect = float.IsFinite(Joints[c].BreakForce) || float.IsFinite(Joints[c].BreakTorque);
+        }
+        _collectJointBreaking = collect;
+        Core.JointReadback.ConfigureBreaking(collect);
+    }
+
     private int LiveJointCount()
     {
         var cs = Core.Constraints;
@@ -70,7 +87,9 @@ internal sealed partial class Engine3D
         d.BodyA = a; d.BodyB = b; d.GenA = ha.Generation; d.GenB = hb.Generation;
         d.Gen = Core.Constraints.Handles.GenerationOf(c);
         Joints[c] = d;
+        JointLifetime.Set(Core.Constraints, c, d.LifetimeSteps);
         _trackedJoints++;
+        JointBreakingDirty = true;
         if (!d.Collide)
         {
             _noCollideJoints++;
@@ -107,6 +126,7 @@ internal sealed partial class Engine3D
         ref JointData3D j = ref Joints[c];
         j.Gen = 0;
         _trackedJoints--;
+        JointBreakingDirty = true;
         if (j.Collide) { return; }
         _noCollideJoints--;
         var h = Core.Bodies.Handles;
@@ -165,6 +185,7 @@ internal sealed partial class Engine3D
             j.GenA = bodies.Handles.GenerationOf(j.BodyA); j.GenB = bodies.Handles.GenerationOf(j.BodyB);
             j.Gen = cs.Handles.GenerationOf(c);
             _trackedJoints++;
+            JointBreakingDirty = true;
             if (!j.Collide) { _noCollideJoints++; }
         }
     }
@@ -188,6 +209,19 @@ internal sealed partial class Engine3D
         return false;
     }
 
+    internal void CheckMouseJointShift(ReadOnlySpan<double> offset)
+    {
+        var cs = Core.Constraints;
+        for (int c = 0; c < cs.HighWater; c++)
+        {
+            if (!cs.IsLive(c) || cs.KindOf(c) != ConstraintKind.Joint || Joints[c].Type != (byte)JointType3D.Mouse) { continue; }
+            var j = Joints[c];
+            double x = j.FxA - offset[0], y = j.FyA - offset[1], z = j.FzA - offset[2];
+            if (!(Math.Abs(x) <= 2097152.0 && Math.Abs(y) <= 2097152.0 && Math.Abs(z) <= 2097152.0))
+            { throw new ArgumentOutOfRangeException(nameof(offset), new Vector3D(x, y, z), "Shifted mouse target would be outside +-2^21; nothing was changed."); }
+        }
+    }
+
     /// <summary>After the core shifted the origin: pulley fixed points are world positions, so they shift with it.</summary>
     internal void ShiftJoints(ReadOnlySpan<double> offset)
     {
@@ -195,7 +229,7 @@ internal sealed partial class Engine3D
         var cs = Core.Constraints;
         for (int c = 0; c < cs.HighWater && c < Joints.Length; c++)
         {
-            if (!cs.IsLive(c) || cs.KindOf(c) != ConstraintKind.Joint || Joints[c].Type != (byte)JointType3D.Pulley) { continue; }
+            if (!cs.IsLive(c) || cs.KindOf(c) != ConstraintKind.Joint || (Joints[c].Type != (byte)JointType3D.Pulley && Joints[c].Type != (byte)JointType3D.Mouse)) { continue; }
             ref JointData3D j = ref Joints[c];
             j.FxA -= offset[0]; j.FyA -= offset[1]; j.FzA -= offset[2];
             j.FxB -= offset[0]; j.FyB -= offset[1]; j.FzB -= offset[2];
@@ -307,7 +341,7 @@ internal sealed partial class Engine3D
         if ((j.Flags & (JointData3D.FlagMotor | JointData3D.FlagSpring | JointData3D.FlagDrive)) != 0) { return true; }
         switch ((JointType3D)j.Type)
         {
-            case JointType3D.Path: case JointType3D.Gear: case JointType3D.RackAndPinion: case JointType3D.Pulley: return true;
+            case JointType3D.Wheel: case JointType3D.Motor: case JointType3D.Mouse: case JointType3D.Path: case JointType3D.Gear: case JointType3D.RackAndPinion: case JointType3D.Pulley: return true;
             case JointType3D.SixDof: if ((j.Six.MotorMask | j.Six.SpringMask) != 0) { return true; } break;
         }
 
@@ -346,6 +380,9 @@ internal sealed partial class Engine3D
         s[JRow3.MaxMotorImp] = h * j.MaxMotor;
         switch ((JointType3D)j.Type)
         {
+            case JointType3D.Mouse:
+                Put(s, JRow3.PulleyA, new Vector3F((float)(j.FxA - pB[0]), (float)(j.FyA - pB[1]), (float)(j.FzA - pB[2])));
+                break;
             case JointType3D.SwingTwist:
                 s[JRow3.SwingLimit] = (float)Math64.Sin(0.5 * j.Swing1);
                 s[JRow3.SwingLimit + 1] = (float)Math64.Sin(0.5 * j.Swing2);
@@ -386,7 +423,7 @@ internal sealed partial class Engine3D
         var w = WideJ.AsSpan(group * J3D.GroupFloats, J3D.GroupFloats);
         var idx = WideJIdx.AsSpan(group * J3D.IdxPerGroup, J3D.IdxPerGroup);
         SlotOf[c] = group * J3D.Lanes + lane;
-        if (Opt.DetailedInspection) { Core.JointReadback.WideSlots[group * 8 + lane] = c; }
+        if (Core.JointReadback.Enabled) { Core.JointReadback.WideSlots[group * 8 + lane] = c; }
         float mA = bodies.InverseMass[a], mB = bodies.InverseMass[b];
         idx[lane] = a; idx[8 + lane] = b;
         idx[16 + lane] = mA > 0f ? a : -1; idx[24 + lane] = mB > 0f ? b : -1;
@@ -424,7 +461,7 @@ internal sealed partial class Engine3D
 
     // ------------------------------------------------------------------ results and breaking
 
-    /// <summary>After the last substep: reaction force and torque of each joint from its accumulated impulses (impulse of the last substep divided by the substep), and a break request when a threshold is exceeded.</summary>
+    /// <summary>After the last substep: records the convenience reaction magnitudes and tests whole-step applied force/COM torque against break thresholds.</summary>
     public void StoreJointResults(ReadOnlySpan<int> constraints, in StepContext ctx)
     {
         var cs = Core.Constraints;
@@ -439,8 +476,12 @@ internal sealed partial class Engine3D
             JointReaction(in j, p, out float lin, out float ang);
             float force = lin * inv, torque = ang * inv;
             JointForce[c] = force; JointTorque[c] = torque;
-            if (force > j.BreakForce) { cs.Flags[c] |= (byte)ConstraintBits.BreakRequested; cs.BreakValue[c] = force; }
-            else if (torque > j.BreakTorque) { cs.Flags[c] |= (byte)ConstraintBits.BreakRequested; cs.BreakValue[c] = torque; }
+            if (float.IsFinite(j.BreakForce) || float.IsFinite(j.BreakTorque))
+            {
+                Core.JointReadback.Reaction(c, out double meanForce, out double meanTorque);
+                if (meanForce > j.BreakForce) { cs.Flags[c] |= (byte)ConstraintBits.BreakRequested; cs.BreakValue[c] = meanForce > float.MaxValue ? float.MaxValue : (float)meanForce; }
+                else if (meanTorque > j.BreakTorque) { cs.Flags[c] |= (byte)ConstraintBits.BreakRequested; cs.BreakValue[c] = meanTorque > float.MaxValue ? float.MaxValue : (float)meanTorque; }
+            }
         }
     }
 
@@ -451,6 +492,10 @@ internal sealed partial class Engine3D
         float axial = p[JP.Spring] + p[JP.Motor] + p[JP.Lower] - p[JP.Upper];
         switch ((JointType3D)j.Type)
         {
+            case JointType3D.Filter: lin = 0f; ang = 0f; break;
+            case JointType3D.Mouse: lin = Mag(p[0], p[1], p[2]); ang = 0f; break;
+            case JointType3D.Motor: lin = Mag(p[0], p[1], p[2]); ang = Mag(p[3], p[4], p[5]); break;
+            case JointType3D.Wheel: lin = Mag(p[0], p[1], p[JP.Spring] + p[JP.Lower] - p[JP.Upper]); ang = Mag(p[3], p[4], p[JP.Motor]); break;
             case JointType3D.Fixed: lin = Mag(p[0], p[1], p[2]); ang = Mag(p[3], p[4], p[5]); break;
             case JointType3D.Point: lin = Mag(p[0], p[1], p[2]); ang = 0f; break;
             case JointType3D.Distance: lin = p[0] + axial; lin = lin < 0f ? -lin : lin; ang = 0f; break;
