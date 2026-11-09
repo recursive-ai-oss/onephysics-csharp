@@ -850,6 +850,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     public bool IsConsistentWithCore()
     {
         ConsistencyProblem = "";
+        if (!Tiles.Consistent()) { ConsistencyProblem = "invalid tile-grid body or shape ownership"; return false; }
         var bodies = Core.Bodies;
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || Geom.Length < shapes.HighWater) { return false; }

@@ -117,3 +117,52 @@ form: it returns a body with one decorated shape. Defaults match other single-
 shape helpers (dynamic, unit density, default material, zero pose). The 3D world
 exposes the same helper over `ShapeSpec3D`; `CreateShape` attaches decorated
 geometry to an existing body on either dimension's definition-level surface.
+
+## Tile grids
+
+`TileGrid2D` copies a rectangular, x-fastest array of `TileKind2D`. Dimensions
+are 1..1024, at most 65536 tiles. Tile size is finite, at least 4e-5 metres;
+width and height in metres must not exceed 1048576. The body origin is the
+bottom-left corner. Empty, full-square, bottom-half, rising-right and
+rising-left triangles are supported. All nonempty cells are solid on their
+interior, including underneath the terrain. Only static attachment is allowed.
+
+Boundary extraction uses integer coordinates on a half-tile lattice. Each
+counter-clockwise tile polygon contributes unit edges. Opposite directed edges
+cancel, so no internal faces remain. Edits copy the occupancy and ordered edge
+set, undo the old cells' edges, and add the changed cells' edges; unchanged
+cells are not re-extracted. The exposed graph is traced from the lowest
+(start Y, start X, end Y, end X) edge. At a shared vertex choose the least
+nonnegative counter-clockwise turn (eight directions), keeping corner-touching
+solids separate. Delete collinear vertices. Each resulting loop supplies both
+ghost vertices to each of its one-sided chain segments. Finally sort segments
+lexicographically by (first Y/X, second Y/X, ghost-before Y/X, ghost-after Y/X).
+Boundary tracing is rebuilt globally from the updated edge set; it is not a
+simulation-step operation.
+
+`PhysicsWorld2D.AddTileGrid` creates a static body; `CreateTileGrid` attaches
+one grid to an existing static body. `GetTileGrid` returns immutable data.
+`SetTile` and `SetTiles` fill or clear rectangles. Invalid inputs leave terrain
+unchanged. Collision updates merge the old and new sorted segment lists:
+identical segments retain their shape handles and warm-start caches; changed
+segments are created in boundary order, then removed segments are destroyed in
+old boundary order. A boundary segment cannot be independently destroyed via
+its shape handle; edit the grid or destroy its body. Queries and debug drawing
+use the resulting chain segments, with their ordinary shape ordering.
+
+World snapshots retain their version-1 core layout. Grid metadata is optional
+section `0x54494C45`, omitted when no live grid body exists. In little endian:
+int32 section version (1), int32 live grid count; then entries by body slot:
+body slot and generation (int32 each), width, height (int32), tile size
+(float32), width*height tile-kind bytes, shape definition (density, friction,
+restitution, rolling resistance as float32; category and mask as uint32; group
+int32; sensor byte; layer int32), int32 segment count, and one shape slot /
+generation int32 pair per sorted boundary segment. The engine's existing
+section stores the actual chain geometry, broadphase and caches. The reader
+reconstructs the boundary and checks segment count, geometry, flags, handle
+uniqueness and ownership. Fork copies the metadata and handle arrays; immutable
+grid data may be shared. Tile edits use the ordinary named-mutation recorder.
+
+Authoring scene kind `tilegrid` has parameters width, height, tile size, then
+width*height integer tile kinds (0 empty, 1 solid, 2 bottom half, 3 rising right,
+4 rising left). Exact-state scenes retain all grid metadata through snapshots.

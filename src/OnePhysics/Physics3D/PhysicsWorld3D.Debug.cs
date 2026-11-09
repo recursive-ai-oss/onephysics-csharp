@@ -162,7 +162,7 @@ public sealed partial class PhysicsWorld3D
                 g.AddPoint(new Vector3D(ox + (double)w.X, oy + (double)w.Y, oz + (double)w.Z));
             }
 
-            g.Add(new DebugShape(bh, sh, geom.Kind == GeomKind.Mesh ? DebugShapeKind.Mesh : DebugShapeKind.HeightField, sensor, 0f, first, 8, 0f, firstIndex, 0));
+            g.Add(new DebugShape(bh, sh, geom.Soup is VoxelGrid3D ? DebugShapeKind.VoxelGrid : geom.Kind == GeomKind.Mesh ? DebugShapeKind.Mesh : DebugShapeKind.HeightField, sensor, 0f, first, 8, 0f, firstIndex, 0));
             return;
         }
 
@@ -179,7 +179,7 @@ public sealed partial class PhysicsWorld3D
             }
         }
 
-        g.Add(new DebugShape(bh, sh, geom.Kind == GeomKind.Mesh ? DebugShapeKind.Mesh : DebugShapeKind.HeightField, sensor, 0f, first, count, 0f, firstIndex, count));
+        g.Add(new DebugShape(bh, sh, geom.Soup is VoxelGrid3D ? DebugShapeKind.VoxelGrid : geom.Kind == GeomKind.Mesh ? DebugShapeKind.Mesh : DebugShapeKind.HeightField, sensor, 0f, first, count, 0f, firstIndex, count));
     }
 
     private static void AddConvex(DebugGeometry g, BodyHandle bh, ShapeHandle sh, bool sensor, in ConvexShape3D shape, QuaternionF rot, double ox, double oy, double oz)

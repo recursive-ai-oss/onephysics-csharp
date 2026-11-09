@@ -96,6 +96,9 @@ public enum DebugShapeKind : byte
 
     /// <summary>3D infinite half-space: a surface point and that point plus the outward unit normal. Solid is opposite the normal.</summary>
     Plane = 13,
+
+    /// <summary>3D exposed voxel faces: like Mesh, with no internal faces. Triangle ids retain their cell and face identity.</summary>
+    VoxelGrid = 14,
 }
 
 /// <summary>How a body takes part right now.</summary>

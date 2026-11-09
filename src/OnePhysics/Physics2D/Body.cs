@@ -375,7 +375,7 @@ public readonly partial struct Shape : IEquatable<Shape>
         }
     }
 
-    /// <summary>Destroys the shape and its contacts and recomputes the owner's mass.</summary>
+    /// <summary>Destroys the shape and its contacts and recomputes the owner's mass. Tile-grid boundary shapes cannot be destroyed independently: throws InvalidOperationException; edit the grid or destroy its body instead.</summary>
     public void Destroy() { using var replayMutation = _world?.RecordMutation("Shape.Destroy");  Resolve(); _world!.DestroyShape(_handle); }
 
     /// <summary>Same world, slot and generation.</summary>

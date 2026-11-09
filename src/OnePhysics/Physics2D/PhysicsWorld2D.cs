@@ -34,6 +34,7 @@ public sealed partial class PhysicsWorld2D
         BindBodyControlOptions();
         _core.AddSection(_engine.MachineSnapshotSection);
         _core.AddSection(new ShapeMassOffsets2D(_engine));
+        _core.AddSection(_engine.Tiles);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -513,5 +514,13 @@ public sealed partial class PhysicsWorld2D
         if (_controllerHandlers.Count > 0) { RetireDeadControllerHandlers(); }
     }
 
-    internal void DestroyShape(ShapeHandle h) => _engine.DestroyShape(h);
+    internal void DestroyShape(ShapeHandle h)
+    {
+        int slot=_core.Resolve(h);
+        int owner=_core.Shapes.Owner[slot];
+        if(_engine.Tiles.Entries.TryGetValue(owner,out var grid) && grid.Generation==_core.Bodies.Handles.GenerationOf(owner))
+            foreach(var segment in grid.Shapes) if(segment.Index==slot && segment.Generation==h.Generation)
+                throw new InvalidOperationException("Tile boundary shapes cannot be destroyed independently; edit the tile grid or destroy its body.");
+        _engine.DestroyShape(h);
+    }
 }

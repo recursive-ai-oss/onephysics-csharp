@@ -10,7 +10,7 @@ namespace RecursiveAI.OnePhysics.Scene;
 internal static class AdditionalSceneShapes
 {
     internal static bool Recognizes(int dimension, string kind) => kind.StartsWith("offset-", StringComparison.Ordinal) || kind == "empty" ||
-        (dimension == 3 ? kind is "plane" or "triangle" or "frustum" : kind == "heightfield");
+        (dimension == 3 ? kind is "plane" or "triangle" or "frustum" or "voxelgrid" : kind is "heightfield" or "tilegrid");
 
     private static (string Kind, double[] P, Vector3F Offset) Parts(int dim, ShapeDef s)
     {
@@ -33,6 +33,21 @@ internal static class AdditionalSceneShapes
         for (int i=0;i<n;i++) h[i]=(float)p[2+i];
         for (int i=0;i<n-1;i++) { if (p[2+n+i] != 0 && p[2+n+i] != 1) throw new ArgumentException("Hole flag must be 0 or 1."); holes[i]=p[2+n+i] == 1; }
         return new HeightField2D(h,(float)p[1],holes);
+    }
+
+    internal static TileGrid2D Tiles(double[] p)
+    {
+        if(p.Length<3 || p[0]<1 || p[0]>1024 || p[1]<1 || p[1]>1024 || p[0]!=Math.Truncate(p[0]) || p[1]!=Math.Truncate(p[1]) || p[0]*p[1]>TileGrid2D.MaxTiles || p.Length!=3+p[0]*p[1]) throw new ArgumentException("Tile grid expects width, height, tile size and width*height tile kinds.");
+        var tiles=new TileKind2D[p.Length-3];
+        for(int i=0;i<tiles.Length;i++) { double t=p[i+3]; if(t<0 || t>4 || t!=Math.Truncate(t)) throw new ArgumentException("Tile kind must be an integer in 0..4."); tiles[i]=(TileKind2D)t; }
+        return new TileGrid2D((int)p[0],(int)p[1],tiles,(float)p[2]);
+    }
+    internal static P3.ShapeSpec3D Voxels(double[] p)
+    {
+        if(p.Length<4 || p[0]<1 || p[0]>1024 || p[1]<1 || p[1]>1024 || p[2]<1 || p[2]>1024 || p[0]!=Math.Truncate(p[0]) || p[1]!=Math.Truncate(p[1]) || p[2]!=Math.Truncate(p[2]) || p[0]*p[1]*p[2]>LowLevel.VoxelGrid3D.MaxCells || p.Length!=4+p[0]*p[1]*p[2]) throw new ArgumentException("Voxel grid expects sizeX, sizeY, sizeZ, cell size and sizeX*sizeY*sizeZ occupancy flags.");
+        var cells=new bool[p.Length-4];
+        for(int i=0;i<cells.Length;i++) { double t=p[i+4]; if(t!=0 && t!=1) throw new ArgumentException("Voxel occupancy must be 0 or 1."); cells[i]=t==1; }
+        return P3.ShapeSpec3D.VoxelGrid((int)p[0],(int)p[1],(int)p[2],cells,(float)p[3]);
     }
 
     private static Rot2 Rotation(float angle)
@@ -64,6 +79,7 @@ internal static class AdditionalSceneShapes
         switch(kind)
         {
             case "empty": Length(p,0); return P3.ShapeSpec3D.Empty;
+            case "voxelgrid": return Voxels(p);
             case "plane": Length(p,4); return P3.ShapeSpec3D.Plane(V(0),(float)p[3]);
             case "triangle": Length(p,9); return P3.ShapeSpec3D.Triangle(V(0),V(3),V(6),radius);
             case "frustum": Length(p,3); return P3.ShapeSpec3D.TaperedCylinder((float)p[0],(float)p[1],(float)p[2]);
@@ -93,6 +109,7 @@ internal static class AdditionalSceneShapes
         {
             Shape2D.CheckPoint(new(offset.X,offset.Y),"mass offset");
             if(kind=="heightfield"){_=Field(p);return;}
+            if(kind=="tilegrid"){_=Tiles(p);return;}
             if(kind=="chain") { if(p.Length<4 || p.Length%2!=0)throw new ArgumentException("Complete chain vertices required.");for(int i=0;i+3<p.Length;i+=2)_=Shape2D.CreateSegment(new((float)p[i],(float)p[i+1]),new((float)p[i+2],(float)p[i+3]));return; }
             _=Geometry2(kind,p,(float)s.Radius).WithCenterOfMassOffset(new(offset.X,offset.Y));
         }
@@ -107,6 +124,7 @@ internal static class AdditionalSceneShapes
     {
         var(kind,p,offset)=Parts(2,s);
         if(kind=="heightfield"){world.CreateHeightField(body,Field(p),def);return;}
+        if(kind=="tilegrid"){world.CreateTileGrid(body,Tiles(p),def);return;}
         if(kind=="chain"){for(int i=0;i+3<p.Length;i+=2)world.CreateSegment(body,new((float)p[i],(float)p[i+1]),new((float)p[i+2],(float)p[i+3]),def);return;}
         world.CreateShape(body,Geometry2(kind,p,(float)s.Radius).WithCenterOfMassOffset(new(offset.X,offset.Y)),def);
     }
