@@ -15,6 +15,8 @@ internal sealed partial class Engine3D
     {
         public int Slot;
         public double Px, Py, Pz;
+        public int Particle;     // soft particle or rod segment for a deformable slot
+        public float Along;      // rod segment parameter of the contact point
     }
 
     private struct MoverCtx
@@ -25,6 +27,7 @@ internal sealed partial class Engine3D
         public float Radius, HalfLength, CosSlope, Step, Skin, Range, MaxPush;
         public uint Mask;
         public int IgnoreBody;
+        public bool Deformables;   // soft bodies and rods count as ground and obstacles (set by the virtual mover)
     }
 
     private struct MoverHitRec
@@ -32,6 +35,7 @@ internal sealed partial class Engine3D
         public int Slot;
         public double Px, Py, Pz;
         public float Nx, Ny, Nz;
+        public int Particle;
     }
 
     private int[] _mvCand = new int[32];
@@ -100,9 +104,9 @@ internal sealed partial class Engine3D
             p.X + ex + (double)Math.Max(0f, d.X), p.Y + ey + (double)Math.Max(0f, d.Y), p.Z + ez + (double)Math.Max(0f, d.Z));
     }
 
-    private void MvAddPlane(Vector3F n, float sep, double px, double py, double pz, int slot, in MoverCtx c)
+    private void MvAddPlane(Vector3F n, float sep, double px, double py, double pz, int slot, in MoverCtx c, int particle = 0, float along = 0f)
     {
-        int body = Core.Shapes.Owner[slot];
+        int body = MvOwner(slot);
         bool other = IsCharacterBody(body);
         bool walkable = Vector3F.Dot(n, c.Up) >= c.CosSlope && !other;
         float separation = walkable ? sep : sep - c.Skin;
@@ -116,7 +120,7 @@ internal sealed partial class Engine3D
             if (separation < _mvPlanes[i].Separation)
             {
                 _mvPlanes[i].Separation = separation;
-                _mvMeta[i] = new PlaneMeta { Slot = slot, Px = px, Py = py, Pz = pz };
+                _mvMeta[i] = new PlaneMeta { Slot = slot, Px = px, Py = py, Pz = pz, Particle = particle, Along = along };
             }
 
             return;
@@ -130,7 +134,7 @@ internal sealed partial class Engine3D
 
         int k = _mvPlaneCount++;
         _mvPlanes[k] = new CollisionPlane3D { Normal = n, Separation = separation, PushLimit = push };
-        _mvMeta[k] = new PlaneMeta { Slot = slot, Px = px, Py = py, Pz = pz };
+        _mvMeta[k] = new PlaneMeta { Slot = slot, Px = px, Py = py, Pz = pz, Particle = particle, Along = along };
     }
 
     private void MvManifoldPlane(in Manifold3D m, double ox, double oy, double oz, QuaternionF rs, int slot, in MoverCtx c)
@@ -152,6 +156,7 @@ internal sealed partial class Engine3D
     private void MvPlanes(Vector3D p, in MoverCtx c)
     {
         _mvPlaneCount = 0;
+        _mvDefCount = 0;
         var gen = NarrowScratch.Gen;
         for (int i = 0; i < _mvCandCount; i++)
         {
@@ -199,6 +204,8 @@ internal sealed partial class Engine3D
                 }
             }
         }
+
+        if (c.Deformables) { MvDeformablePlanes(p, in c); }
     }
 
     // ------------------------------------------------------------------ casts
@@ -248,11 +255,11 @@ internal sealed partial class Engine3D
 
             int slot = _mvMeta[i].Slot;
             bool seen = false;
-            for (int h = 0; h < _mvHitCount; h++) { if (_mvHits[h].Slot == slot) { seen = true; break; } }
+            for (int h = 0; h < _mvHitCount; h++) { if (_mvHits[h].Slot == slot && (slot >= 0 || _mvHits[h].Particle == _mvMeta[i].Particle)) { seen = true; break; } }
             if (seen) { continue; }
             if (_mvHitCount == _mvHits.Length) { Array.Resize(ref _mvHits, _mvHitCount * 2); }
             var n = _mvPlanes[i].Normal;
-            _mvHits[_mvHitCount++] = new MoverHitRec { Slot = slot, Px = _mvMeta[i].Px, Py = _mvMeta[i].Py, Pz = _mvMeta[i].Pz, Nx = n.X, Ny = n.Y, Nz = n.Z };
+            _mvHits[_mvHitCount++] = new MoverHitRec { Slot = slot, Px = _mvMeta[i].Px, Py = _mvMeta[i].Py, Pz = _mvMeta[i].Pz, Nx = n.X, Ny = n.Y, Nz = n.Z, Particle = _mvMeta[i].Particle };
         }
     }
 
@@ -302,7 +309,7 @@ internal sealed partial class Engine3D
         if (!(progress > progressNow + 1e-3f)) { _mvHitCount = hits; return false; }
         // The slide may have ridden up a rounded edge; the drop must end no higher than the step offset above where we started.
         float drop = Vector3F.Dot(delta, c.Up) + 2e-3f;
-        if (!(drop > 0f) || !MvCast(p, c.Up * -drop, in c, out float fd, out Vector3F n, out int dropSlot) || Vector3F.Dot(n, c.Up) < c.CosSlope || IsCharacterBody(Core.Shapes.Owner[dropSlot]))
+        if (!(drop > 0f) || !MvCast(p, c.Up * -drop, in c, out float fd, out Vector3F n, out int dropSlot) || Vector3F.Dot(n, c.Up) < c.CosSlope || IsCharacterBody(MvOwner(dropSlot)))
         {
             _mvHitCount = hits;
             return false;
@@ -363,7 +370,7 @@ internal sealed partial class Engine3D
         for (int i = 0; i < _mvPlaneCount; i++)
         {
             var n = _mvPlanes[i].Normal;
-            if (Vector3F.Dot(n, c.Up) >= c.CosSlope && !IsCharacterBody(Core.Shapes.Owner[_mvMeta[i].Slot]) && _mvPlanes[i].Separation + Vector3F.Dot(r, n) <= 1e-3f)
+            if (Vector3F.Dot(n, c.Up) >= c.CosSlope && !IsCharacterBody(MvOwner(_mvMeta[i].Slot)) && _mvPlanes[i].Separation + Vector3F.Dot(r, n) <= 1e-3f)
             {
                 resting = true;
                 // Pressing into the ground counts as a hit with it.
@@ -429,7 +436,7 @@ internal sealed partial class Engine3D
             var n = _mvPlanes[i].Normal;
             float nu = Vector3F.Dot(n, c.Up);
             float gap = _mvPlanes[i].Separation + Vector3F.Dot(settle, n);
-            bool isChar = IsCharacterBody(Core.Shapes.Owner[_mvMeta[i].Slot]);
+            bool isChar = IsCharacterBody(MvOwner(_mvMeta[i].Slot));
             if (nu >= c.CosSlope && !isChar)
             {
                 if (gap > 2f * c.Skin) { continue; }
@@ -463,11 +470,12 @@ internal sealed partial class Engine3D
         int ignoreBody = -1;
         if (ignore.World != null) { ignoreBody = Core.Resolve(ignore.RawHandle); }
         var c = MakeMoverCtx(in def, ignoreBody);
+        c.Deformables = MvPrepareDeformables();
 
         bool wasGrounded = state.Ground == GroundState.OnGround;
         // Ride the ground: the body underneath moves in this step, and so does the character with it.
         Vector3F carry = default;
-        if (wasGrounded && state.GroundBody.World != null && state.GroundBody.IsValid)
+        if (wasGrounded && !state.NoCarry && state.GroundBody.World != null && state.GroundBody.IsValid)
         {
             carry = BodyVelocityAt(state.GroundBody.RawHandle.Index, pos.X, pos.Y, pos.Z) * dt;
         }
@@ -515,6 +523,7 @@ internal sealed partial class Engine3D
             for (int i = 0; i < n; i++)
             {
                 ref MoverHitRec h = ref _mvHits[i];
+                if (h.Slot < 0) { MvPushDeformable(in def, in h, displacement, dt, in c); continue; }
                 int hb = Core.Shapes.Owner[h.Slot];
                 if (bodies.TypeOf(hb) != BodyType.Dynamic || IsCharacterBody(hb)) { continue; }
                 var hn = new Vector3F(h.Nx, h.Ny, h.Nz);
@@ -529,7 +538,7 @@ internal sealed partial class Engine3D
             }
         }
 
-        // Standing on a dynamic body presses it down with the character's weight.
+        // Standing on a dynamic body presses it down with the character's weight; on a soft body or a rod, the weight goes into the particles under the feet.
         if (ground == GroundState.OnGround && gslot >= 0)
         {
             int gb = Core.Shapes.Owner[gslot];
@@ -538,18 +547,20 @@ internal sealed partial class Engine3D
                 new Body(world, Core.HandleOfBody(gb)).ApplyImpulse(Opt.Gravity * (def.Mass * dt));
             }
         }
+        else if (ground == GroundState.OnGround && c.Deformables) { MvWakeDeformables(in c); }
 
         int written = 0;
         for (int i = 0; i < n && written < hits.Length; i++)
         {
             ref MoverHitRec h = ref _mvHits[i];
+            if (h.Slot < 0) { continue; }
             hits[written++] = new MoverHit3D(new Shape(world, Core.HandleOfShape(h.Slot)), new Vector3D(h.Px, h.Py, h.Pz), new Vector3F(h.Nx, h.Ny, h.Nz));
         }
 
         state.Position = p;
         state.Ground = ground;
         state.GroundNormal = ground != GroundState.InAir ? gn : default;
-        state.GroundBody = ground == GroundState.OnGround ? new Body(world, Core.HandleOfBody(Core.Shapes.Owner[gslot])) : default;
+        state.GroundBody = ground == GroundState.OnGround && gslot >= 0 ? new Body(world, Core.HandleOfBody(Core.Shapes.Owner[gslot])) : default;
         return new MoveResult3D(flags, MvDiff(p, pos), written);
     }
 

@@ -23,6 +23,8 @@ internal static class Program
         ["pulley-snapshot"] = FuzzPulleys.Snapshot,
         ["rail-bike-definition"] = FuzzRailBike.Definition,
         ["rail-bike-snapshot"] = FuzzRailBike.Snapshot,
+        ["ability-calls"] = FuzzCharacterAbilities.Calls,
+        ["ability-snapshot"] = FuzzCharacterAbilities.Snapshot,
         ["field-snapshot"] = FuzzFields.Snapshot,
         ["snapshot-desync"] = FuzzSnapshotEncoding.Desync,
         ["snapshot-region"] = FuzzSnapshotEncoding.Region,

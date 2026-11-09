@@ -1,6 +1,7 @@
 using System;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.Characters;
 using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics2D;
@@ -37,6 +38,7 @@ internal sealed partial class Engine2D
         CharDef[c] = def;
         IndexCharacterBody(body.Index, c);
         CharGround[c] = GroundState.InAir; CharNx[c] = 0f; CharNy[c] = 0f; CharGroundBody[c] = -1; CharGroundGen[c] = 0; CharVx[c] = 0f; CharVy[c] = 0f;
+        _charExt?.Clear(c);
         return c;
     }
 
@@ -55,7 +57,7 @@ internal sealed partial class Engine2D
         _charOfBody[body] = character;
     }
 
-    private bool IsCharacterBody(int body) => body < _charOfBody.Length && _charOfBody[body] >= 0;
+    private bool IsCharacterBody(int body) => body >= 0 && body < _charOfBody.Length && _charOfBody[body] >= 0;
 
     /// <summary>The character slot whose body is the given body slot, or -1.</summary>
     public int CharacterOfBody(int body)
@@ -73,7 +75,18 @@ internal sealed partial class Engine2D
     public void DropCharacterOfBody(int body)
     {
         int c = CharacterOfBody(body);
-        if (c >= 0) { CharHandles.Free(c); _charOfBody[body] = -1; }
+        if (c >= 0)
+        {
+            if (_charExt != null && c < _charExt.States.Length && _charExt.States[c].Mode == CharacterMode.Roped)
+            {
+                int rod = _charExt.States[c].Rod, gen = _charExt.States[c].RodGen;
+                _charExt.Clear(c);
+                if (Rods.Alive(rod, gen)) { RefreshGripMasses(rod); }
+            }
+            else { _charExt?.Clear(c); }
+            CharHandles.Free(c);
+            _charOfBody[body] = -1;
+        }
     }
 
     /// <summary>Emits one entry per live character, by slot: capsule centre, ground flag, ground normal and ground body.</summary>

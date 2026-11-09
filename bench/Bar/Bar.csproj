@@ -24,6 +24,8 @@
     <Compile Include="../../tests/Common/RailBikeScenes2D.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/RailBikeScenes3D.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/Actuators3DScene.cs" LinkBase="Common" />
+    <Compile Include="../../tests/Common/CharacterAbilityScenes3D.cs" LinkBase="Common" />
+    <Compile Include="../../tests/Common/CharacterAbilityScenes2D.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/Actuators2DScene.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/SoftFracture3DScene.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/Cloth3DScene.cs" LinkBase="Common" />

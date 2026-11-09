@@ -25,6 +25,7 @@ internal sealed partial class Engine3D : IRodHost
     bool IRodHost.Matches(RodParticles rod,int s)
     {
         if((ShapeFlags[s]&FlagSensor)!=0||((LayerMatrix[rod.Layer]>>ShapeLayer[s])&1u)==0)return false;
+        if(HoldsRod(Core.Shapes.Owner[s],rod))return false;
         if(Group[s]==rod.Group&&rod.Group!=0)return rod.Group>0;
         return (Category[s]&rod.Mask)!=0&&(Mask[s]&rod.Category)!=0;
     }

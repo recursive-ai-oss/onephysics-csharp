@@ -53,6 +53,7 @@ internal sealed partial class Engine2D
             }
 
             changed |= Cables.CloseRegion(s);
+            if (_charExt != null) { changed |= _charExt.CloseRegion(s); }
             // Sensor overlaps live in the pair table rather than the constraint store. They need the same anchor closure.
             for (int p = 0; p < PairHigh; p++)
             {

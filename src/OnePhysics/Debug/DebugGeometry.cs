@@ -56,6 +56,9 @@ public enum DebugContent
     /// <summary>Aerodynamic and hydrodynamic surfaces and the forces of thrusters, boats, hovercraft and surfaces as plain data (<see cref="DebugGeometry.AeroSurfaces"/>, <see cref="DebugGeometry.AeroForces"/>).</summary>
     Aero = 16384,
 
+    /// <summary>Where characters are held: seats, ledges, climbed surfaces and rope grips (<see cref="DebugGeometry.CharacterHolds"/>).</summary>
+    CharacterHolds = 32768,
+
     /// <summary>Seams, attachments and tethers of cloth and the wind force on each triangle of an aerodynamic cloth (<see cref="DebugGeometry.ClothLinks"/>, <see cref="DebugGeometry.ClothWind"/>).</summary>
     Cloth = 65536,
 
@@ -560,7 +563,7 @@ public sealed partial class DebugGeometry
     public ReadOnlySpan<DebugClothWind> ClothWind => _clothWind.AsSpan(0, _nClothWind);
 
     /// <summary>Empties every list (capacity is kept).</summary>
-    public void Clear() { _nPulleySpans=0; _nPulleyWheels=0; _nAeroSurfaces=0; _nAeroForces=0; _nRodSegments=0; _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; _nTracks = _nRailContacts = 0; _nClothLinks = _nClothWind = 0; }
+    public void Clear() { _nHolds=0; _nPulleySpans=0; _nPulleyWheels=0; _nAeroSurfaces=0; _nAeroForces=0; _nRodSegments=0; _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; _nTracks = _nRailContacts = 0; _nClothLinks = _nClothWind = 0; }
 
     private static void Push<T>(ref T[] a, ref int n, in T v)
     {
