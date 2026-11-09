@@ -52,6 +52,7 @@ public sealed partial class PhysicsWorld3D
         _core.AddSection(_engine.ActiveSnapshotSection);
         _core.AddSection(_engine.ClothLinkSnapshotSection);
         _core.AddSection(_engine.Destruction);
+        _core.AddSection(_engine.Water);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -156,6 +157,7 @@ public sealed partial class PhysicsWorld3D
         _engine.StepBicycles(dt);
         _engine.StepVehicles(this, dt);
         _engine.StepFluids(dt);
+        _engine.Water.BeginStep(dt);
         if (_engine.Cables.Count != 0) _engine.Cables.Step(dt);
         _engine.Actuators.Step(dt);
         _engine.BeginCharacterAbilities(dt);
@@ -163,6 +165,7 @@ public sealed partial class PhysicsWorld3D
         if (soft) { _engine.BeginSoftStep(); }
         if (_engine.Rods.Count != 0) _engine.Rods.BeginStep();
         _core.Step(new Stages3D(_engine), dt);
+        _engine.Water.EndStep(dt);
         _engine.EndFieldContacts();
 
         if (soft) { _engine.StepSoft(dt); }
@@ -181,6 +184,7 @@ public sealed partial class PhysicsWorld3D
         {
             if (_handlers.Count > 0 || _jointHandlers.Count > 0) { DispatchEvents(); }
             if (_engine.SoftTearEvents.Length > 0) { DispatchSoftTears(); }
+            if (_engine.Water.Events.Count > 0) { DispatchWaterEvents(); }
         }
         else if (_jointHandlers.Count > 0) { RetireBrokenJointHandlers(); }
         EndDestruction(dt);
@@ -335,6 +339,7 @@ public sealed partial class PhysicsWorld3D
         _engine.Fields.CheckShift(offset);
         _engine.Rods.CheckShift(offset);
         _engine.Cables.CheckShift(offset);
+        _engine.Water.CheckShift(offset);
         _core.ShiftOrigin(d);
         _engine.ShiftJoints(d);
         _engine.ShiftRail(offset);
@@ -342,6 +347,7 @@ public sealed partial class PhysicsWorld3D
         _engine.Fields.Shift(offset);
         _engine.Rods.Shift(offset);
         _engine.Cables.Shift(offset);
+        _engine.Water.Shift(offset);
         _engine.ShiftSoft(offset.X, offset.Y, offset.Z);
         _engine.ShiftProxies(d);
         InvalidateQueryPad();

@@ -90,6 +90,9 @@ internal sealed partial class ActuatorStore
     /// <summary>The first water (fluids in slot order, then buoyancy fields) the point is under or within <paramref name="reach"/> above.</summary>
     public bool FindWater(Vector3D p, float reach, out WaterSample water)
     {
+        // Shallow water first: where it covers the point, its local surface and flow replace the flat ones.
+        var shallow = _host.ShallowWater;
+        if (shallow != null && shallow.TryPlane(p, reach, out water) && water.HeightOf(p) < reach) { return true; }
         int n = WaterCount;
         for (int i = 0; i < n; i++)
         {
@@ -425,6 +428,18 @@ internal sealed partial class ActuatorStore
             Vector3F surfaceVel = default;
             int hitBody = -1;
             if (_host.Cast(origin, dir, fan.Range, s.Body, out float d0, out _, out int hb)) { hit = true; dist = d0; hitBody = hb; }
+            var shallow = _host.ShallowWater;
+            if (shallow != null && shallow.TryPlane(origin, fan.Range, out var local))
+            {
+                float hl = local.HeightOf(origin);
+                float dl = V3.Dot(local.Normal, dir);
+                if (hl > 0f && dl < 0f)
+                {
+                    float t = hl / -dl;
+                    if (t <= fan.Range && (!hit || t < dist)) { hit = true; dist = t; surfaceVel = local.Flow; hitBody = -1; }
+                }
+            }
+
             int nw = WaterCount;
             for (int w = 0; w < nw; w++)
             {

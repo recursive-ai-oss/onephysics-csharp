@@ -68,6 +68,8 @@ internal sealed partial class Engine3D : IActuatorHost
     Vector3F IActuatorHost.ShapeToBody(int shape, Vector3F v) => Local[shape].Rotation.Rotate(v);
     Vector3F IActuatorHost.ShapeOffset(int shape) => Local[shape].Translation;
 
+    Water.WaterStore? IActuatorHost.ShallowWater => _water != null && _water.Count > 0 ? _water : null;
+
     int IActuatorHost.FluidCount => FluidHandles.HighWater;
 
     bool IActuatorHost.GetFluid(int index, out WaterSample water)

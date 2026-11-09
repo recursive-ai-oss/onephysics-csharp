@@ -94,6 +94,8 @@ internal sealed partial class Engine2D : IActuatorHost
         return hi - lo + 2f * g.Radius;
     }
 
+    Water.WaterStore? IActuatorHost.ShallowWater => _water != null && _water.Count > 0 ? _water : null;
+
     int IActuatorHost.FluidCount => 0;
 
     bool IActuatorHost.GetFluid(int index, out WaterSample water) { water = default; return false; }
