@@ -98,6 +98,7 @@ internal sealed class NarrowScratch
         public readonly List<SoupTriangle3D> Tris = new();
         public readonly List<int> Ids = new();
         public readonly TriangleShapeBuffer3D TriBuf = new();
+        public readonly Engine3D.SdfProbeBuffer Sdf = new();
     }
 
     [ThreadStatic]
@@ -110,10 +111,13 @@ internal sealed class NarrowScratch
     public static List<SoupTriangle3D> Tris => H.Tris;
     public static List<int> Ids => H.Ids;
     public static TriangleShapeBuffer3D TriBuf => H.TriBuf;
+    internal static Engine3D.SdfProbeBuffer Sdf => H.Sdf;
     public ContactOut[] Out = new ContactOut[128];
     public int OutCount;
     public Vector3F[] FlatLocalPoints = Array.Empty<Vector3F>();
     public int Recycled, RecycledPoints, FreshQueries;
+    /// <summary>The field of the pair being collided belongs to a moving body (set per pair).</summary>
+    public bool SdfMoves;
     /// <summary>Pairs of this chunk that passed the tight-box test, and those among them that ran the narrowphase (not skipped as apart, not reusing a manifold); read by the work counters.</summary>
     public int Reached, Fresh;
 
@@ -673,7 +677,7 @@ internal sealed partial class Engine3D
         var ga = Geoms[GeomOf[sa]]!;
         var gb = Geoms[GeomOf[sb]]!;
         if (ga.Convex.Kind == ConvexShapeKind3D.Empty || gb.Convex.Kind == ConvexShapeKind3D.Empty) { return; }
-        if (ga.Soup != null && gb.Soup != null) { return; }
+        if (ga.Soup != null && gb.Soup != null && !(ga.Soup is SdfSoup3D && gb.Soup is SdfSoup3D)) { return; }
         sc.Reached++;
         var owner = Core.Shapes.Owner;
         int ba = owner[sa], bb = owner[sb];
@@ -715,7 +719,11 @@ internal sealed partial class Engine3D
         var f = new PairFrame { Rwa = rwa, ArmA = armA, ComDiff = new Vector3F((float)(pA[0] - pB[0]), (float)(pA[1] - pB[1]), (float)(pA[2] - pB[2])) };
         float spec = Opt.SpeculativeDistance;
 
-        if (ga.Soup != null || gb.Soup != null)
+        if (ga.Soup is SdfSoup3D fieldA && gb.Soup is SdfSoup3D fieldB)
+        {
+            SdfVsSdf(sc, in f, fieldA, fieldB, in bInA, spec);
+        }
+        else if (ga.Soup != null || gb.Soup != null)
         {
             bool soupIsA = ga.Soup != null;
             var other = soupIsA ? gb : ga;
@@ -727,6 +735,7 @@ internal sealed partial class Engine3D
                 return;
             }
 
+            sc.SdfMoves = Core.Bodies.TypeOf(soupIsA ? ba : bb) != BodyType.Static;
             if (soupIsA) { SoupAgainst(sc, in f, ga.Soup!, true, gb, in lb, in bInA, spec); }
             else { SoupAgainst(sc, in f, gb.Soup!, false, ga, in la, in bInA, spec); }
             if (Core.ContactMaterials.IsPresent)
@@ -866,6 +875,8 @@ internal sealed partial class Engine3D
     private static void SoupVsConvex(NarrowScratch sc, in PairFrame f, TriangleSoup3D soup, bool soupIsA, in ConvexShape3D shape, in RigidTransformF shapeLocal, bool hasChild,
         in RigidTransformF shapeInSoup, in RigidTransformF soupFromA, float spec, int child)
     {
+        // A signed distance field collides as a field, not as its triangles.
+        if (soup is SdfSoup3D field) { SdfVsConvex(sc, in f, field, soupIsA, in shape, in shapeLocal, hasChild, in shapeInSoup, in soupFromA, spec, child); return; }
         // The per-thread buffers are looked up once, not once per triangle.
         var tris = NarrowScratch.Tris;
         var triBuf = NarrowScratch.TriBuf;

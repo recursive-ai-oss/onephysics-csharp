@@ -194,6 +194,18 @@ No other engine has characters that stand on soft bodies and ropes, grab, climb,
 
 Thresholds are 1.5 times the measured value rounded up to a 1/1.5/2/3/5/7 step, with floors; counts are exact. `maxSpeed` in `riders-3d` is the car's.
 
+### Terrain-edit scenes (own scenes, no reference engine)
+
+Geometry that is edited or sampled at run time has no counterpart in the reference engines, so these three scenes are built in code by `tests/Common/TerrainEditScenes.cs` and measured by `bar terrain-edit-stability` (600 steps at 1/60). Scripts use only arithmetic on the step number and the world's state.
+
+| scene | what | thresholds | measured (x64) |
+|---|---|---|---|
+| `sdf-pile-3d` | a 24 m slab of signed distance field terrain (floor, two hills, a ridge, a pit; walls round the edge) with 25 convex bodies and nine dynamic fields (three from a mesh-built torus, three spheres, three cubes) dropped on it | `nan` = `escapes` = 0, `maxSpeed` <= 22.5 (falls from 11 m reach 14.7), `maxPenetration` (sphere radius minus the field at the centre, steps after 240) <= 0.01, `finalSpeed99` (99th percentile body speed in the last step) <= 0.5 | 0, 0, 15.0, 8.9e-5, 0.107 |
+| `voxel-dig-3d` | a 30 m voxel floor with 24 bodies; every 70 steps a sphere of cells is dug under a body and every other pit is later filled; a character stands far from the digs, another walks across the field | `nan` = `escapes` = 0, `maxSpeed` <= 10, `standerDrift` (largest vertical change of the character far from every edit after step 60) <= 0.001, `walkerMinY` >= 0.5, `edits` >= 100 | 0, 0, 6.21, 0, 0.90, 278 |
+| `carve-2d` | a 40 m bitmask terrain with 36 bodies; a projectile every 45 steps carves a crater of 1.2 m radius where it lands; a raised block joined by a one-cell neck is cut loose and detached | `nan` = `escapes` = 0, `maxSpeed` <= 26 (bodies), `carved` >= 50 cells, `detached` >= 1 | 0, 0, 16.9, 117, 1 |
+
+Thresholds are 1.5 times the measured value rounded up with floors; counts are exact.
+
 ### Boats, hovercraft, gliders and thrusters (own scenes, no reference engine)
 
 No other engine has any of these, so the five scenes are built in code by `tests/Common/Actuators3DScene.cs` and `Actuators2DScene.cs` (scripts use integer arithmetic on the step number and the craft's own state, and onemath's cosine, so they are byte-identical on every platform) and measured by `bar actuators-stability [--scene name] [--threads n] [--timing]`. 600 steps at 1/60, default options. Thresholds are 1.5 times the measured values (x64 and arm64 agree to every printed digit, at 1 and 8 threads), rounded up; they are ours.

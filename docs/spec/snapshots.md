@@ -405,3 +405,10 @@ runtime tiering off for both methods. These are indicative, loaded-host numbers,
 not managed-engine bar rows. CPU/core count, runtime/OS and load before/during/
 after are recorded by the runner. Compression sizes use a keyframe at step 300
 and target at 301, with the real soft bodies added for cloth scenes.
+
+Terrain edits (carvable bitmask terrain, voxel edits, signed distance fields) add no section: the 2D tile section
+is version 3 when a contour grid exists (see `collision2d.md`), a voxel edit rewrites the occupancy bytes of its
+geometry recipe (kind 15, `collision3d.md`), and a signed distance field is geometry recipe kind 16 in the 3D engine
+section (kind byte, int32 sizes x y z, float32 cell size, float32 origin x y z, float32 samples). Voxel geometries are
+never shared by recipe: every voxel shape has its own geometry entry. Readers validate sizes against the bytes left and
+reject non-finite samples with a typed snapshot error.

@@ -26,6 +26,8 @@ public static class Program
             case "rod-run": return RodRuns.Run(opts);
             case "pulley-run": return PulleyRuns.Run(opts);
             case "fields-stability": return FieldStability.Run();
+            case "destruction-stability": return DestructionStability.Run(opts);
+            case "destruction-timing": return DestructionTiming.Run(opts);
             case "decomposed-pile-stability": return DecomposedPileStability.Run();
             case "tools-timing": return ToolsTiming.Run();
             case "soft2d-stability": return SoftStability2D.Run();
@@ -38,6 +40,8 @@ public static class Program
             case "fluid-stability": return FluidStability.Run(opts);
             case "fluid-timing": return FluidStability.Time(opts);
             case "character-abilities-stability": return CharacterAbilityStability.Run(opts);
+            case "terrain-edit-stability": return TerrainEditStability.Run(opts);
+            case "terrain-edit-timing": return TerrainEditStability.Time(opts);
             case "micro-boxbox": return MicroBoxBox.Run(opts);
             case "queries-indicative": return MixedQueryTiming.Run(opts);
             case "recording-indicative": return RecordingTiming.Run(opts);

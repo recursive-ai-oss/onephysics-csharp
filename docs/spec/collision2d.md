@@ -206,3 +206,80 @@ segment's Voronoi region is discarded. Convex sweeps alone see rounded segment
 endpoints even when ghost ownership excludes them; those phantom endpoints
 otherwise pin a character just before a ramp crest. Ordinary two-sided segment
 casts and the underlying convex distance algorithm are unchanged.
+
+### Carvable bitmask terrain (contour grids)
+
+A tile grid built with `contour` (and `PhysicsWorld2D.AddBitmaskTerrain`) is a bitmask: every
+nonempty cell is one sample at its centre, lattice point `(2x+1, 2y+1)`, and only Empty and
+Solid cells and no material indices are allowed. The boundary is the marching-squares
+contour (Lorensen and Cline 1987) of the samples, taken over the dual cells between four
+neighbouring samples (samples outside the grid are empty): a dual cell's polygon has the
+solid sample corners and the midpoints of edges whose ends differ, which lie on the
+lattice, so the same unit-edge cancellation and boundary tracing apply. Two solid samples
+across a diagonal (cases 5 and 10) stay separate. Isolated cells are diamonds, flat edges
+lie on cell edges, corners are cut at half a cell.
+
+Pairing at a vertex where solids touch. At a vertex with several arriving edges each arriving
+edge takes the least counter-clockwise turn among the leaving ones (as before); if two
+arriving edges would take the same leaving edge, every arriving edge instead follows its own
+solid wedge, the first leaving edge clockwise from the arriving edge's ray, so the answer
+depends on the edges at that vertex only and not on the order loops are traced in. Worlds
+whose touching corners resolved the old way and where the order mattered now resolve this
+way; all other boundaries are unchanged.
+
+Local rebuild. `TileGrid2D.WithCells(x, y, width, height, mask, kind)` (and
+`WithRectangle`) re-extract only near the changed cells. A changed cell can change lattice edges only inside the box V
+of lattice points its polygon (tile mode: `[2x, 2x+2]`; contour mode: its four dual cells,
+`[2x-1, 2x+3]`) can touch. A vertex outside V keeps its edges and its turn choices, so an old
+segment whose window (the ghost before, both ends, the ghost after) never visits a lattice
+vertex of V is still a segment of the new boundary. The new boundary is traced from every
+exposed edge touching V, forward and backward along the pairing rule, until four corners
+outside V have passed since the last vertex in V; unchanged straight runs outside V are crossed
+in one jump using the old segment list. Segments whose window visits V are regenerated from the
+traced fragments; the result is merged with the kept ones in the comparer's order. The result
+equals a fresh construction (tests over random edits in tile, material and contour modes);
+if the trace ever cannot be completed locally it falls back to a full rebuild.
+
+`CarveCircle`, `FillCircle` (cells whose centres lie within a world-space circle), `CarvePolygon`,
+`FillPolygon` (even-odd rule on the same centres) and `StampMask` set cells and return the number changed; shapes of
+unchanged segments keep their handles and caches, and only new shapes ask for a contact refresh
+(a refresh would wake every body resting on the grid). Dynamic bodies whose broadphase box meets the
+changed cells' box (in world space, plus half a cell plus 0.05 m) wake. Recorded mutations are
+named `PhysicsWorld2D.CarveCircle`, `FillCircle`, `CarvePolygon`, `FillPolygon`, `StampMask`,
+`DetachIslands`.
+
+`DetachIslands(terrain, anchors, minCells, maxBodies)` takes the 4-connected pieces of solid
+cells in order of lowest cell index; a piece touching an anchored edge (default the bottom row) stays.
+A detached piece is removed from the grid (one edit) and becomes a dynamic body at its centroid with
+the grid's pose, covered by boxes (greedy rectangles grown along x, then y, in cell order, so the
+area is cells times cell size squared; the contour's cut corners are not reproduced), with the terrain's
+shape definition (density 1 when it is 0). The convex cover is this library's own; the polygon decomposition of the tools package is not used.
+
+Snapshot: the tile section is version 3 when any grid is a contour grid: version 2's layout with a
+mode byte (0 tiles, 1 contour) after the tile size of every entry. Readers accept versions 1 to 3; a
+version 3 section without a contour grid is rejected. Authoring scene kind `bitmask` has parameters
+width, height, cell size, then width*height flags (0 empty, 1 solid).
+
+## Signed distance field terrain (2D)
+
+`SdfGrid2D`: 2..2048 samples per axis, at most 2^20, bilinear, outside the box the distance to the
+box plus the clamped value floored at zero; `Gradient`, `Lipschitz` (corner one-sided difference over the
+cell size times sqrt(2)) and `Trace` (sphere tracing, step value / Lipschitz) as in 3D. `FromFunction`,
+`FromPolygon` (exact distance to the edges, inside where the winding number is not zero) and
+the primitives and `Union`, `Intersection`, `Difference`. `ExtractContours(tolerance)` runs marching squares
+over the cells including a ring of empty cells outside the grid: crossings are on cell edges at the linear zero; each cell lists its
+directed link from its mask alone (a lone inside corner c_i is walked e_i to e_(i-1), a lone
+outside corner e_(o-1) to e_o, two adjacent inside corners e_(i+1) to e_(i-1); saddles by the sign of the
+corner sum), which keeps the inside on the left even where samples are exactly zero; loops start at
+the lowest edge id, repeated points are dropped, and Douglas-Peucker simplification (split at the farthest point
+from the first) removes points within the tolerance of the chord. `PhysicsWorld2D.AddSdf` adds a static body
+with the contour as closed one-sided chains with ghost vertices (default tolerance a quarter of a cell). Only the contour
+collides. A dynamic or kinematic body made by `AddSdf(type:)` is instead covered with convex polygons (`ConvexCover2D`): the
+loops are split into outer loops (positive signed area) and holes (negative), each hole goes to the smallest outer loop containing its first
+vertex, holes are bridged in order of decreasing rightmost x from that vertex to the visible loop vertex (Eberly, ear clipping: nearest
+crossing of a +x ray, then the reflex vertex in the triangle with the smallest angle), the weakly simple polygon is ear-clipped
+(lowest valid ear index first, collinear vertices dropped), and triangles are merged in ascending piece and edge order across a shared directed
+edge while the union stays convex with at most `MaxPolygonVertices` vertices (Hertel and Mehlhorn). The pieces tile the contour area exactly, so the body's
+mass is the contour's inside area times density; collisions use the ordinary polygon routines (not field samples), so a 2D dynamic field is
+as accurate as its contour (within half a cell of the field) and costs one shape per piece. More than 8192 contour vertices is an
+`ArgumentOutOfRangeException`; a piece below the minimum shape extent is dropped.

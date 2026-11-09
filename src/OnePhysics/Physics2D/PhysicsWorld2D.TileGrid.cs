@@ -43,7 +43,7 @@ public sealed partial class PhysicsWorld2D
     {
         using var replayMutation=RecordMutation("PhysicsWorld2D.SetTiles");
         var entry=TileEntry(body); var grid=entry.Grid.WithRectangle(x,y,width,height,kind);
-        ReplaceTileBoundary(body,entry,grid);
+        ReplaceTileBoundary(body,entry,grid,false);
     }
     /// <summary>Sets copied scalar materials and one table index per tile, empty tiles included. Empty spans remove overrides. Material boundaries split collinear segments while retaining ghost vertices. Invalid lengths, indices or material Surface settings throw ArgumentException before mutation; stale bodies throw StaleHandleException.</summary>
     public void SetTileMaterials(Body body,ReadOnlySpan<Material2D> materials,ReadOnlySpan<int> indices)
@@ -61,9 +61,9 @@ public sealed partial class PhysicsWorld2D
         if(!_engine.Tiles.Entries.TryGetValue(body.RawHandle.Index,out var entry) || entry.Generation!=body.RawHandle.Generation) throw new ArgumentException("The body has no tile grid.",nameof(body));
         return entry;
     }
-    private void ReplaceTileBoundary(Body body,TileGridState2D.Entry entry,TileGrid2D grid)
+    private void ReplaceTileBoundary(Body body,TileGridState2D.Entry entry,TileGrid2D grid,bool refreshAll=true)
     {
-        var shapes=new ShapeHandle[grid.SegmentCount]; var added=new List<ShapeHandle>(); var removed=new List<ShapeHandle>();
+        var shapes=new ShapeHandle[grid.SegmentCount]; var added=new List<ShapeHandle>(); var removed=new List<ShapeHandle>(); var isNew=refreshAll?null:new bool[shapes.Length];
         int a=0,b=0;
         try
         {
@@ -76,13 +76,15 @@ public sealed partial class PhysicsWorld2D
                     shapes[b++]=entry.Shapes[a++];
                 }
                 else if(comparison<0) removed.Add(entry.Shapes[a++]);
-                else { var shape=AddShape(body,grid.GetSegment(b),entry.Definition); shapes[b++]=shape.Handle; added.Add(shape.Handle); }
+                else { var shape=AddShape(body,grid.GetSegment(b),entry.Definition); if(isNew!=null) isNew[b]=true; shapes[b++]=shape.Handle; added.Add(shape.Handle); }
             }
         }
         catch(Exception) { foreach(var shape in added) _engine.DestroyShape(shape); throw; }
         var index=new int[1];
         for(int i=0;i<shapes.Length;i++)
         {
+            // An edit leaves every kept segment's material alone, and a new shape with no material table has nothing to set; asking for a contact refresh would wake every body resting on the grid.
+            if(isNew!=null && (!isNew[i] || entry.Materials.Length==0)) continue;
             if(entry.Materials.Length==0) _core.SetContactMaterials(shapes[i],[],[]);
             else {index[0]=0;_core.SetContactMaterials(shapes[i],[entry.Materials[grid.GetSegmentMaterialIndex(i)]],index);}
         }

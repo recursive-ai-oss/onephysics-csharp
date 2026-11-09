@@ -150,7 +150,8 @@ internal sealed partial class Engine3D : ISnapshotSection
     public int AcquireGeom(byte[] recipe)
     {
         var key = new RecipeKey(recipe);
-        if (_geomIndex.TryGetValue(key, out int id))
+        // A voxel grid is edited in place, so every voxel shape builds and owns its geometry.
+        if (recipe.Length != 0 && recipe[0] != ShapeSpec3D.KVoxelGrid && _geomIndex.TryGetValue(key, out int id))
         {
             Geoms[id]!.Refs++;
             return id;
@@ -165,7 +166,7 @@ internal sealed partial class Engine3D : ISnapshotSection
     {
         int id = Geoms.IndexOf(null);
         if (id < 0) { id = Geoms.Count; Geoms.Add(g); } else { Geoms[id] = g; }
-        _geomIndex[new RecipeKey(g.Recipe)] = id;
+        if (g.Soup is not VoxelGrid3D) { _geomIndex[new RecipeKey(g.Recipe)] = id; }
         return id;
     }
 
@@ -173,7 +174,7 @@ internal sealed partial class Engine3D : ISnapshotSection
     {
         var g = Geoms[id]!;
         if (--g.Refs > 0) { return; }
-        _geomIndex.Remove(new RecipeKey(g.Recipe));
+        if (g.Soup is not VoxelGrid3D) { _geomIndex.Remove(new RecipeKey(g.Recipe)); }
         Geoms[id] = null;
     }
 
@@ -312,7 +313,7 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         int gid = AcquireGeom(recipe);
         var g = Geoms[gid]!;
-        if ((g.Soup != null || (g.IsConvex && g.Convex.Kind == ConvexShapeKind3D.Plane)) && type != BodyType.Static)
+        if ((g.IsStaticSoup || (g.IsConvex && g.Convex.Kind == ConvexShapeKind3D.Plane)) && type != BodyType.Static)
         {
             ReleaseGeom(gid);
             throw new StaticOnlyShapeException("Triangle meshes, height fields and infinite planes can only be attached to static bodies.");
@@ -616,9 +617,9 @@ internal sealed partial class Engine3D : ISnapshotSection
         {
             if (!(Density[s] > 0f) || IsSensor(s)) { continue; }
             var g = Geoms[GeomOf[s]]!;
-            if (g.Soup != null || (g.IsConvex && g.Convex.Kind == ConvexShapeKind3D.Empty)) { continue; }
+            if (g.IsStaticSoup || (g.IsConvex && g.Convex.Kind == ConvexShapeKind3D.Empty)) { continue; }
             var m = g.UnitMass;
-            if (g.Compound != null && m.Mass == 0f) { continue; }
+            if ((g.Compound != null || g.Soup is SdfSoup3D) && m.Mass == 0f) { continue; }
             float d = Density[s];
             var l = Local[s];
             _parts.Add(new MassPropertiesF(m.Mass * d, l.TransformPoint(m.Center), InertiaF.Rotate(m.Inertia, l.Rotation) * d));
@@ -1123,7 +1124,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         _geomIndex.Clear();
         for (int i = 0; i < Geoms.Count; i++)
         {
-            if (Geoms[i] != null) { _geomIndex[new RecipeKey(Geoms[i]!.Recipe)] = i; }
+            if (Geoms[i] != null && Geoms[i]!.Soup is not VoxelGrid3D) { _geomIndex[new RecipeKey(Geoms[i]!.Recipe)] = i; }
         }
 
         (GeomOf, _sGeomOf) = (_sGeomOf, GeomOf); (Local, _sLocal) = (_sLocal, Local); (Proxy, _sProxy) = (_sProxy, Proxy); (Friction, _sFr) = (_sFr, Friction); (Restitution, _sRe) = (_sRe, Restitution);
@@ -1193,7 +1194,7 @@ internal sealed partial class Engine3D : ISnapshotSection
             if (!shapes.Handles.IsLive(s)) { continue; }
             int owner = shapes.Owner[s];
             if (!bodies.IsLive(owner) || !Bp.IsProxy(Proxy[s]) || Bp.GetUserId(Proxy[s]) != s) { return false; }
-            if ((Geoms[GeomOf[s]]!.Soup != null || (Geoms[GeomOf[s]]!.IsConvex && Geoms[GeomOf[s]]!.Convex.Kind == ConvexShapeKind3D.Plane)) && bodies.TypeOf(owner) != BodyType.Static) { return false; }
+            if ((Geoms[GeomOf[s]]!.IsStaticSoup || (Geoms[GeomOf[s]]!.IsConvex && Geoms[GeomOf[s]]!.Convex.Kind == ConvexShapeKind3D.Plane)) && bodies.TypeOf(owner) != BodyType.Static) { return false; }
         }
 
         for (int b = 0; b < bodies.HighWater; b++)
@@ -1243,7 +1244,8 @@ internal sealed partial class Engine3D : ISnapshotSection
             {
                 if (!cons.IsLive(c) || cons.KindOf(c) != ConstraintKind.Contact || cons.ShapeA[c] != PairA[p] || cons.ShapeB[c] != PairB[p] || ++steps > cons.HighWater) { return false; }
                 int sa = cons.SubShapeA[c], sb = cons.SubShapeB[c];
-                if (sa < prevA || (sa == prevA && sb <= prevB)) { return false; }
+                // Equal keys are legal: a flat patch is labelled with the id of its root triangle, which can also be emitted unmerged by a contact that does not lie flat on the patch.
+                if (sa < prevA || (sa == prevA && sb < prevB)) { return false; }
                 prevA = sa; prevB = sb;
             }
 
