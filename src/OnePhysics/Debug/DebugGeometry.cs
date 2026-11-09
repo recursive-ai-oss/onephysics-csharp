@@ -59,8 +59,11 @@ public enum DebugContent
     /// <summary>Where characters are held: seats, ledges, climbed surfaces and rope grips (<see cref="DebugGeometry.CharacterHolds"/>).</summary>
     CharacterHolds = 32768,
 
+    /// <summary>The bonds of breakable compounds with their stress (<see cref="DebugGeometry.Bonds"/>).</summary>
+    Destruction = 131072,
+
     /// <summary>Everything.</summary>
-    All = 65535,
+    All = 262143,
 }
 
 /// <summary>The kind of a <see cref="DebugShape"/>. The same enum serves 2D and 3D worlds; a 2D world emits the first five.</summary>

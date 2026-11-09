@@ -154,4 +154,20 @@ public sealed class Fracture2DTests
         var c2 = a.Fork();
         for (int i = 0; i < 20; i++) { a.Step(1f / 60); c2.Step(1f / 60); Assert.Equal(a.ComputeHash(), c2.ComputeHash()); }
     }
+
+    [Fact]
+    public void SlicedHalvesOfANonSpinningBodyStayTogetherInFreeFlight()
+    {
+        var world = new P2.PhysicsWorld2D(new() { Gravity = default });
+        var box = world.AddBox(new(1.2f, 0.8f), new Vector2D(0, 6), 1.1f);
+        box.LinearVelocity = new(2, -1);
+        var cut = world.Slice(box, new Vector2D(0.05, 6.02), new Vector2F(0.3f, 1f));
+        double Ke() { double e = 0; foreach (var b in new[] { cut.Positive, cut.Negative }) { var v = b.LinearVelocity; e += 0.5 * b.Mass * (v.X * v.X + v.Y * v.Y) + 0.5 * b.Inertia * b.AngularVelocity * b.AngularVelocity; } return e; }
+        double e0 = Ke();
+        double Dist() { var a = cut.Positive.WorldCenterOfMass; var b = cut.Negative.WorldCenterOfMass; return Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y)); }
+        double d0 = Dist();
+        for (int i = 0; i < 60; i++) world.Step(1f / 60);
+        Assert.Equal(e0, Ke(), e0 * 1e-3);
+        Assert.Equal(d0, Dist(), 1e-3);
+    }
 }

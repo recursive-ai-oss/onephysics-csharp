@@ -443,4 +443,26 @@ internal sealed partial class DestructionStore
         f.Body = made[0].Body.Index; f.Generation = made[0].Body.Generation; f.Frozen = true; f.AsleepSteps = 0;
         return true;
     }
+
+    // ------------------------------------------------------------------ debug
+
+    /// <summary>Adds every bond of every breakable body to the geometry, in body slot order.</summary>
+    internal void CollectDebug(RecursiveAI.OnePhysics.Debug.DebugGeometry geometry)
+    {
+        var host = Host; var bodies = host.DestructionCore.Bodies;
+        foreach (var rec in Records)
+        {
+            if (rec.Bonds == null || !BodyAlive(rec.Body, rec.Generation)) continue;
+            var com = CentreOfMass(rec.Body);
+            var lc = host.LocalCenter(rec.Body);
+            var handle = host.DestructionCore.HandleOfBody(rec.Body);
+            foreach (var b in rec.BondList)
+            {
+                var offset = host.ToWorld(rec.Body, b.Centroid - lc);
+                var n = host.ToWorld(rec.Body, b.Normal);
+                geometry.Add(new RecursiveAI.OnePhysics.Debug.DebugBond(handle, b.A, b.B, new Vector3D(com.X + offset.X, com.Y + offset.Y, com.Z + offset.Z), n, b.Measure, b.Alive ? b.Stress : 0f, b.Strength > 0f ? b.Strength : rec.Bonds.Strength, b.Alive));
+            }
+        }
+        _ = bodies;
+    }
 }

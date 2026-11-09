@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics.Destruction;
+using System.IO;
+using RecursiveAI.OnePhysics.Replay;
 using P3 = RecursiveAI.OnePhysics.Physics3D;
 using Xunit;
 
@@ -187,5 +189,56 @@ public sealed class Fracture3DTests
         // A fork continues identically.
         var c = a.Fork();
         for (int i = 0; i < 20; i++) { a.Step(1f / 60); c.Step(1f / 60); Assert.Equal(a.ComputeHash(), c.ComputeHash()); }
+    }
+
+    [Fact]
+    public void RecordedFracturesReplayWithEveryHashEqual()
+    {
+        var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { WorldId = 41 });
+        w.AddBox(new(30, 1, 30), new Vector3D(0, -0.5, 0), type: BodyType.Static);
+        for (int i = 0; i < 3; i++)
+            w.AddBox(new(1, 1, 1), new Vector3D(i * 2 - 2, 3 + i, 0)).SetFracturable(new P3.FractureDef { CellCount = 9, ImpulseThreshold = 2.5f, Seed = (ulong)(3 + i), Depth = 1 });
+        var wall = w.AddBox(new(1, 1, 1), new Vector3D(6, 3, 0));
+        var hashes = new ulong[100];
+        using var stream = new MemoryStream();
+        using (var recorder = w.StartRecording(stream))
+        {
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                if (i == 20) w.AddBreakable(P3.FractureAsset.FromHull([new(-1, -1, -1), new(1, -1, -1), new(-1, 1, -1), new(1, 1, -1), new(-1, -1, 1), new(1, -1, 1), new(-1, 1, 1), new(1, 1, 1)], new P3.FractureDef { CellCount = 8, Seed = 2 }), new Vector3D(-6, 5, 0), def: new BreakableDef { Strength = 5e3f });
+                if (i == 30 && wall.IsValid) wall.Fracture(new P3.FractureDef { CellCount = 6 });
+                w.Step(1f / 60); hashes[i] = w.ComputeHash();
+            }
+        }
+        Assert.True(w.DestructionCounters.Fractures >= 2);
+        stream.Position = 0;
+        var player = new ReplayPlayer(stream);
+        var copy = player.CreateWorld3D();
+        int n = 0;
+        while (player.ReadNextStep(copy)) Assert.Equal(hashes[n++], copy.ComputeHash());
+        Assert.Equal(hashes.Length, n);
+        Assert.Equal(w.Snapshot(), copy.Snapshot());
+    }
+
+    [Fact]
+    public void RegionAndOriginShiftKeepTheState()
+    {
+        var w = new P3.PhysicsWorld3D();
+        w.AddBox(new(30, 1, 30), new Vector3D(0, -0.5, 0), type: BodyType.Static);
+        var c = w.AddBox(new(1, 1, 1), new Vector3D(0, 2, 0));
+        c.SetFracturable(new P3.FractureDef { CellCount = 8, ImpulseThreshold = 2f });
+        w.Debris = new() { MaxFragments = 50 };
+        for (int i = 0; i < 90; i++) w.Step(1f / 60);
+        Assert.True(w.DestructionCounters.Fractures > 0);
+        var region = w.SnapshotRegion(new Vector3D(-5, -2, -5), new Vector3D(5, 5, 5));
+        var min = new Vector3D(-5, -2, -5); var max = new Vector3D(5, 5, 5);
+        var before = w.ComputeRegionHash(min, max);
+        w.RestoreRegion(region);
+        Assert.Equal(before, w.ComputeRegionHash(min, max));
+        var copy = w.Fork();
+        w.ShiftOrigin(new Vector3D(1024, 0, 0)); copy.ShiftOrigin(new Vector3D(1024, 0, 0));
+        for (int i = 0; i < 20; i++) { w.Step(1f / 60); copy.Step(1f / 60); }
+        Assert.Equal(w.ComputeHash(), copy.ComputeHash());
+        Assert.NotEmpty(w.FindDifferences(new P3.PhysicsWorld3D()).Differences);
     }
 }
