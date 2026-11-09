@@ -28,7 +28,7 @@ internal static class GridStudy
             for(int step=0;step<600;step++)
             {
                 long start=timing?Stopwatch.GetTimestamp():0;
-                character2.MoveVelocity(new(1.5f,-2),1f/60);w2.Step(1f/60);
+                character2.MoveVelocity(new(1.5f,character2.IsGrounded?0f:-2f),1f/60);w2.Step(1f/60);
                 if(timing)ticks2+=Stopwatch.GetTimestamp()-start;
                 start=timing?Stopwatch.GetTimestamp():0;
                 character3.MoveVelocity(new(0.6f,-2,0),1f/60);w3.Step(1f/60);
@@ -79,8 +79,8 @@ internal static class GridStudy
             var terrain=w.CreateBody(BodyType.Static,default);
             for(int i=0;i<grid.SegmentCount;i++)w.CreateShape(terrain,grid.GetSegment(i),new P2.ShapeDef {Density=0});
         }
-        for(int i=0;i<20;i++)w.AddBox(new(0.3f,0.3f),new(18+i*0.4,1+(i%3)*0.4));
-        var character=w.AddCharacter(new(1,1.5));
+        for(int i=0;i<20;i++)w.AddBox(new(0.3f,0.3f),new(18+i*0.4,0.65+(i%3)*0.1));
+        var character=w.AddCharacter(new(1,1.5),new(){SlopeLimitRadians=0.87266463f}); // 50 degrees: the 45-degree ramp is strictly walkable.
         return(w,character);
     }
     private static (P3.PhysicsWorld3D,P3.Character) Spatial(bool baseline)

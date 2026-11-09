@@ -419,7 +419,7 @@ records, scene generation and their checksums are unchanged.
 ### Grid terrain study
 
 `bar grid-study` builds `tile-world-2d` (64×2 half-metre tiles, a floor and
-45-degree ramp, 20 boxes and a moving character) and `voxel-world-3d`
+45-degree ramp, 20 boxes dropping at most 0.2 m and a moving character) and `voxel-world-3d`
 (32×5×16 quarter-metre voxels, a floor and quarter-metre stairs, 8 boxes,
 8 capsules and a moving character). Each runs 600 steps at 1/60 second, one
 thread. The same run is repeated using the tile grid's already merged boundary
@@ -431,7 +431,10 @@ Bounds: max body speed ≤20 m/s; no nonfinite poses or body-frame escapes
 base horizontal floor by each rigid body's rotated support extent ≤0.03 m.
 The floor metric is not a full terrain-pair penetration metric. Character X
 progress must be at least 12 m in 2D and 4 m in 3D. The 3D character traverses
-25 cm risers; the 2D one traverses the sloped tile surface.
+25 cm risers; the 2D one traverses the sloped tile surface with an explicit
+50-degree slope limit (not the rounding boundary at 45 degrees). Its move
+input is horizontal while grounded, and includes -2 m/s vertically only
+while airborne; downward velocity must not cancel the requested uphill motion.
 
 `--timing` adds 120 untimed settling steps (including stationary character
 moves) before the 600 measured steps. It reports mean microseconds per step,

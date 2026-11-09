@@ -65,6 +65,7 @@ internal sealed class TileGridState2D(Engine2D engine) : ISnapshotSection
         int version=r.ReadInt32();if(version!=1 && version!=2) throw r.Error("unsupported tile-grid section version");
         int count=r.ReadCount(57,"tile grids");
         if(count==0) throw r.Error("empty tile-grid section must be absent");
+        if(count>engine.RestoredBodyCount)throw r.Error("tile-grid count exceeds the restored body count");
         var staging=new SortedDictionary<int,Entry>();
         int last=-1;bool hasExtras=false;
         var seen=new bool[engine.RestoredShapeCount];
@@ -72,7 +73,7 @@ internal sealed class TileGridState2D(Engine2D engine) : ISnapshotSection
         {
             int body=r.ReadInt32(), generation=r.ReadInt32(), width=r.ReadInt32(), height=r.ReadInt32(); float size=r.ReadSingle();
             long n=(long)width*height;
-            if(body<=last || generation<1 || width<1 || width>1024 || height<1 || height>1024 || n>TileGrid2D.MaxTiles || n>r.Remaining) throw r.Error("invalid tile-grid slot, dimensions or truncated tiles");
+            if(body<=last || body>=engine.RestoredBodyCount || generation<1 || width<1 || width>1024 || height<1 || height>1024 || n>TileGrid2D.MaxTiles || n>r.Remaining) throw r.Error("invalid tile-grid slot, dimensions or truncated tiles");
             last=body;
             var tiles=new TileKind2D[(int)n]; for(int j=0;j<tiles.Length;j++) tiles[j]=(TileKind2D)r.ReadByte();
             TileGrid2D grid;

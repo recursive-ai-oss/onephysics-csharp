@@ -308,6 +308,15 @@ public sealed class GridShapeTests
     }
 
     [Fact]
+    public void GridSectionRejectsExcessRecordsBeforeAllocatingEntries()
+    {
+        var w=new P2.PhysicsWorld2D();w.Restore(w.Snapshot());
+        var writer=StateWriter.ToBuffer();writer.WriteInt32(1);writer.WriteInt32(2);writer.WriteBytes(new byte[114]);
+        var error=Assert.Throws<SnapshotFormatException>(()=>w.Core.GetSnapshotSection(0x54494C45).Read(new StateReader(writer.ToArray())));
+        Assert.Contains("tile-grid count",error.Message,StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void HostileGridInputsAreTyped()
     {
         Assert.Throws<ArgumentOutOfRangeException>(()=>new TileGrid2D(0,1,[]));
