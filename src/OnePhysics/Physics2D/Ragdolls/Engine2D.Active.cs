@@ -256,7 +256,12 @@ internal sealed partial class Engine2D
                 {
                     float torqueScale = 1f;
                     if (a.SwingLeg >= 0 && (i == b0.Leg(a.SwingLeg, 0) || i == b0.Leg(a.SwingLeg, 1) || i == b0.Leg(a.SwingLeg, 2))) { torqueScale = a.Def.SwingTorqueScale; }
-                    DriveMotor(a, rg, i, target, strength, leg ? a.Def.LegPdHertz : a.Def.PdHertz, torqueScale, dt);
+                    bool swingLegPart = a.SwingLeg >= 0 && (i == b0.Leg(a.SwingLeg, 0) || i == b0.Leg(a.SwingLeg, 1) || i == b0.Leg(a.SwingLeg, 2));
+                    // While walking the legs that carry the body are driven softly (a stiff servo on a planted leg makes the foot slide); the swinging leg and the upper body have their own gains.
+                    bool walkingNow = a.Mode == (byte)ActiveMode.Walk;
+                    float hz = !leg ? (walkingNow ? a.Def.Walker.UpperBodyHertz : a.Def.PdHertz)
+                        : walkingNow ? ((a.SwingLeg >= 0 && !swingLegPart) ? a.Def.LoadPdHertz : a.Def.Walker.SwingLegHertz) : a.Def.LegPdHertz;
+                    DriveMotor(a, rg, i, target, strength, hz, torqueScale * (walkingNow ? a.Def.Walker.TorqueScale : 1f), dt);
                 }
                 a.Driven[i] = 1;
             }
@@ -425,7 +430,7 @@ internal sealed partial class Engine2D
             ref var lg = ref (k == 0 ? ref inp.Left : ref inp.Right);
             lg.HipF = (float)(hip.X - px); lg.HipU = (float)(hip.Y - py);
             lg.AnkleF = (float)(ankle.X - px); lg.AnkleU = (float)(ankle.Y - py);
-            lg.ThighRho = a.PartRho[th]; lg.FootRho = a.PartRho[ft];
+            lg.ThighRho = a.PartRho[th]; lg.FootRho = a.PartRho[ft]; lg.ShinRho = a.PartRho[sh];
             bool hit = GroundRay(a, r, ankle.X, ankle.Y + 0.05, a.AnkleHeight + 0.45f, out double gy, out float slope);
             lg.Grounded = hit && ankle.Y - gy <= a.AnkleHeight + 0.04f;
             lg.GroundU = (float)((hit ? gy : ankle.Y - a.AnkleHeight) - py);

@@ -145,25 +145,37 @@ public sealed class WalkerDef
     public float StepTime { get; set; } = 0.42f;
 
     /// <summary>Peak swing-foot clearance above the straight line from lift-off to landing, m. Default 0.08.</summary>
-    public float StepHeight { get; set; } = 0.08f;
+    public float StepHeight { get; set; } = 0.081f;
 
     /// <summary>Distance between the two feet sideways at touchdown, m (3D only; 2D ignores it). Default 0.2.</summary>
     public float StepWidth { get; set; } = 0.2f;
 
     /// <summary>Hip height as a fraction of the straight leg length. Within (0.5, 1). Default 0.95.</summary>
-    public float HipHeight { get; set; } = 0.97f;
+    public float HipHeight { get; set; } = 0.885f;
 
     /// <summary>The fastest commanded speed, m/s; a command above it is clamped. Default 2.5.</summary>
     public float MaxSpeed { get; set; } = 2.5f;
 
     /// <summary>Speed feedback on the foot placement: the landing point moves by this times (speed − commanded speed) / ω₀ (1 is the capture point). At least 0. Default 1.2.</summary>
-    public float SpeedFeedback { get; set; } = 0.5f;
+    public float SpeedFeedback { get; set; } = 1.41f;
+
+    /// <summary>How much of the capture point's error at the end of the swing the foot placement corrects: 1 puts the foot where the fall would stop exactly (and so passes every measurement error on at the pendulum's growth rate), less is gentler. Within 0..2. Default 1.</summary>
+    public float PlacementGain { get; set; } = 1f;
+
+    /// <summary>Natural frequency, Hz, of the swinging leg's drive while walking (the leg that carries the body uses <see cref="ActiveRagdollDef.LoadPdHertz"/>). Within 0..1000. Default 10.5.</summary>
+    public float SwingLegHertz { get; set; } = 10.5f;
+
+    /// <summary>Natural frequency, Hz, of the torso, head and arms while walking. Within 0..1000. Default 8.</summary>
+    public float UpperBodyHertz { get; set; } = 8f;
+
+    /// <summary>Multiplier on every joint's torque limit while walking (on top of <see cref="ActiveRagdollDef.TorqueScale"/>): a walker needs more than a standing figure. Within 0..1000. Default 1.74.</summary>
+    public float TorqueScale { get; set; } = 1.74f;
 
     /// <summary>Sideways feedback on the foot placement (3D), same scale. Default 1.3.</summary>
     public float LateralFeedback { get; set; } = 1.3f;
 
     /// <summary>Forward lean of the torso while walking, radians per m/s of commanded speed. Default 0.02.</summary>
-    public float TorsoLean { get; set; } = 0.02f;
+    public float TorsoLean { get; set; } = -0.02f;
 
     /// <summary>Arm swing against the legs, as a fraction of the thigh swing (0 holds the arms where the pose puts them). Default 0.5.</summary>
     public float ArmSwing { get; set; } = 0.5f;
@@ -188,6 +200,10 @@ public sealed class WalkerDef
         BalanceDef.Check(MaxSpeed, 0f, 50f, nameof(MaxSpeed));
         BalanceDef.Check(SpeedFeedback, 0f, 20f, nameof(SpeedFeedback));
         BalanceDef.Check(LateralFeedback, 0f, 20f, nameof(LateralFeedback));
+        BalanceDef.Check(PlacementGain, 0f, 2f, nameof(PlacementGain));
+        BalanceDef.Check(SwingLegHertz, 0f, 1000f, nameof(SwingLegHertz));
+        BalanceDef.Check(TorqueScale, 0f, 1000f, nameof(TorqueScale));
+        BalanceDef.Check(UpperBodyHertz, 0f, 1000f, nameof(UpperBodyHertz));
         BalanceDef.Check(TorsoLean, -1f, 1f, nameof(TorsoLean));
         BalanceDef.Check(ArmSwing, 0f, 2f, nameof(ArmSwing));
         BalanceDef.Check(StepTimeout, 1f, 10f, nameof(StepTimeout));
@@ -211,14 +227,14 @@ public sealed class ActiveRagdollDef
     /// <summary>Natural frequency, Hz, of the leg joints' drive (hips, knees, ankles), which carry the body's weight. Within 0..1000. Default 22.</summary>
     public float LegPdHertz { get; set; } = 22f;
 
-    /// <summary>Natural frequency, Hz, of the leg joints of a leg that stands on the ground, measured against the whole body they carry (so it is a stiffness for holding weight, not for moving a limb). Within 0..1000. Default 5.</summary>
-    public float LoadPdHertz { get; set; } = 5f;
+    /// <summary>Natural frequency, Hz, of the leg joints of a leg that stands on the ground, measured against the whole body they carry (so it is a stiffness for holding weight, not for moving a limb). Within 0..1000. Default 4.86.</summary>
+    public float LoadPdHertz { get; set; } = 4.86f;
 
     /// <summary>The fastest a controller target may move, rad/s: targets are rate limited so a stiff drive is never asked for a jump. Within 0.1..1000. Default 10.</summary>
     public float TargetSlew { get; set; } = 10f;
 
     /// <summary>The torque limit of a swinging leg's joints as a fraction of their <c>MaxTorque</c>: a swing leg that could push as hard as a stance leg would spin the pelvis (every torque on the leg is felt as the opposite torque on the pelvis). Within 0..1. Default 0.2.</summary>
-    public float SwingTorqueScale { get; set; } = 0.2f;
+    public float SwingTorqueScale { get; set; } = 0.394f;
 
     /// <summary>Damping ratio of every drive: 1 is critical damping. Within 0..100. Default 1.</summary>
     public float PdDampingRatio { get; set; } = 1f;

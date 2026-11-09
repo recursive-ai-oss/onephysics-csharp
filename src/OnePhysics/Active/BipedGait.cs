@@ -22,6 +22,7 @@ internal struct LegSense
     public bool Grounded;
     public float GroundU;                 // height of the ground under the ankle (relative to the pelvis, so negative)
     public float SlopeRho, SlopePhi;      // ground tilt under the ankle
+    public float ShinRho;                 // actual world pitch of the shin
     public float ThighRho, ThighPhi;      // actual world orientation of the thigh's axis (hip to knee)
     public float FootRho, FootPhi;        // actual world pitch and roll of the foot
     public float PlaceDU, PlaceSlopeRho;  // ground height and tilt at the landing point chosen by the last step (relative to the stance ankle's ground)
@@ -45,6 +46,9 @@ internal struct GaitState
     public float Time;                    // seconds in the phase
     public float LiftF, LiftL, LiftU;     // swing ankle at lift-off, relative to the stance ankle
     public float PlaceF, PlaceL;          // landing point chosen on the last step, relative to the stance ankle (the engine raycasts there)
+    public float FVelF, FVelL;            // low-pass filtered centre-of-mass velocity (level frame)
+    public float Height;                  // current hip height over the ankles as a fraction of the straight leg (eased towards the wanted one)
+    public byte Primed;                   // the filter holds a measurement
 }
 
 internal struct BipedGeom
@@ -80,6 +84,8 @@ internal struct BipedOut
 
 internal static class BipedGait
 {
+    internal static float LambdaIk = 1f;
+    internal static bool Dbg = Environment.GetEnvironmentVariable("DBGGAIT") != null;
     internal const float Pi = 3.1415927f;
 
     internal static float Clamp(float v, float lo, float hi) => v < lo ? lo : v > hi ? hi : v;
@@ -122,6 +128,10 @@ internal static class BipedGait
     {
         var inn = inp;
         float dt = inn.Dt;
+        // The centre of mass velocity of a figure whose limbs are all being driven is noisy at the frame rate; the gait's decisions (where the foot lands) amplify velocity error by the pendulum's growth over a step, so they work on a smoothed value (time constant about 0.08 s).
+        if (s.Primed == 0) { s.FVelF = inn.VelF; s.FVelL = inn.VelL; s.Primed = 1; }
+        else { float al = dt / (0.08f + dt); s.FVelF += al * (inn.VelF - s.FVelF); s.FVelL += al * (inn.VelL - s.FVelL); }
+        inn.VelF = s.FVelF; inn.VelL = s.FVelL;
         s.Time += dt;
         float legLen = inn.Geom.L1 + inn.Geom.L2;
         var bal = p.Balance; var wk = p.Walker;
@@ -156,7 +166,9 @@ internal static class BipedGait
         var phase = (GaitPhase)s.Phase;
         if (phase == GaitPhase.DoubleSupport)
         {
-            if (grounded == 2 && (needStep || walking))
+            // Starting from rest the weight leans forward first (the ankles put the pressure point behind the centre of mass) until the capture point is well ahead; stepping at once would put the foot behind the body.
+            bool launched = !walking || !planar || capF >= 0.5f * (inn.Left.AnkleF + inn.Right.AnkleF) + 0.1f || s.Time > 3f;
+            if (grounded == 2 && (needStep || (walking && launched)))
             {
                 int swing = 1 - s.LastSwing;
                 if (!planar && needStep)
@@ -196,28 +208,23 @@ internal static class BipedGait
             float tRem = Max(0f, stepTime - s.Time);
             float comRelF = inn.ComF - stance.AnkleF, comRelL = inn.ComL - stance.AnkleL;
             // Where the centre of mass will be, and how fast, when the swing ends: the linear inverted pendulum's closed form (Kajita et al. 2001), which sees the fall accelerate where a straight-line guess would not.
-            float e1 = (float)Math64.Exp((double)(w0 * tRem)), e2 = 1f / e1;
-            float ch = 0.5f * (e1 + e2), sh = 0.5f * (e1 - e2);
-            float predF = comRelF * ch + inn.VelF / w0 * sh, vPredF = comRelF * w0 * sh + inn.VelF * ch;
-            float predL = comRelL * ch + inn.VelL / w0 * sh, vPredL = comRelL * w0 * sh + inn.VelL * ch;
-            float kc = walking ? wk.SpeedFeedback : 1f;
-            float kl = walking ? wk.LateralFeedback : 1f;
-            float half = 0.5f * stepTime;
-            float pf;
-            if (walking)
-            {
-                // Raibert's rule: the foot lands ahead of the centre of mass by the distance it will cover in half a stance, corrected by the speed error.
-                pf = predF + vPredF * half + kc * (vPredF - inn.CmdF) / w0;
-                if (pf < predF - 0.05f) { pf = predF - 0.05f; }
-            }
-            else { pf = predF + vPredF / w0; }   // capture point: the foot goes where the fall would stop
+            // Divergent component of motion (Englsberger et al. 2013 on the capture point): xi = x + v / w0 grows as e^(w0 t) about the stance foot, so where it will be when the swing ends is known; a foot that lands
+            // at that point minus the offset a steady gait of the commanded speed keeps (b = speed * T / (e^(w0 T) - 1)) brings the next step's motion back onto the commanded gait.
+            float e1 = (float)Math64.Exp((double)(w0 * tRem));
+            float xiF = (comRelF + inn.VelF / w0) * e1, xiL = (comRelL + inn.VelL / w0) * e1;
+            float eT = (float)Math64.Exp((double)(w0 * stepTime));
+            float bF = walking ? inn.CmdF * stepTime / (eT - 1f) : 0f, bL = walking ? inn.CmdL * stepTime / (eT - 1f) : 0f;
+            float xiNomEnd = bF * eT;   // the capture point of a steady gait at the end of the swing
+            float pf = walking ? (xiNomEnd + wk.PlacementGain * (xiF - xiNomEnd)) - bF : xiF;
+            float minF0 = walking ? -0.12f : -float.MaxValue;
+            if (pf < minF0) { pf = minF0; }
             float side = swingLeg == 0 ? 1f : -1f;
             float pl;
             if (planar) { pl = 0f; }
             else
             {
                 float width = wk.StepWidth;
-                pl = predL + vPredL * half * 0f + kl * (vPredL - inn.CmdL) / w0;
+                pl = (bL * eT + wk.PlacementGain * (xiL - bL * eT)) - bL;
                 // The foot lands outside the capture point on the swing side; the width term keeps the feet apart in steady walking.
                 float centred = side * width * 0.5f;
                 pl = side > 0f ? Max(pl + centred, width * 0.6f) : Min(pl + centred, -width * 0.6f);
@@ -228,6 +235,7 @@ internal static class BipedGait
             float hd = float.Sqrt(pf * pf + pl * pl);
             if (hd > reach) { float k = reach / hd; pf *= k; pl *= k; }
             s.PlaceF = pf; s.PlaceL = pl;
+            if (Dbg && (int)(s.Time / dt + 0.5f) % 2 == 0) { Console.Error.WriteLine($"  swing{swingLeg} t={s.Time:F2} raw={inp.VelF:F2} comRel={comRelF:F2} v={inn.VelF:F2} xi={comRelF + inn.VelF / w0:F2} xiEnd={xiF:F2} b={bF:F2} pf={pf:F2} ankleSw={swingL.AnkleF - stance.AnkleF:F2} w0={w0:F2}"); }
 
             // Swing foot path: smooth interpolation from lift-off to landing with a clearance arch.
             float ss = Smooth(sFrac);
@@ -255,7 +263,10 @@ internal static class BipedGait
         }
 
         float pelvisRhoDes = 0f, pelvisPhiDes = 0f;
-        float standH = (walking || phase != GaitPhase.DoubleSupport ? wk.HipHeight : bal.StandHeight) * legLen;
+        float wantH = walking || phase != GaitPhase.DoubleSupport ? wk.HipHeight : bal.StandHeight;
+        if (s.Height <= 0f) { s.Height = Clamp(0.5f * ((inn.Left.HipU - inn.Left.AnkleU) + (inn.Right.HipU - inn.Right.AnkleU)) / legLen, 0.5f, 0.999f); }
+        { float stepH = 0.15f * dt; s.Height += Clamp(wantH - s.Height, -stepH, stepH); }   // the knees bend or straighten over a few tenths of a second, so the feet are not thrown out
+        float standH = s.Height * legLen;
 
         // How the body's weight splits between two planted feet: by where the centre of mass sits between the ankles (the ground reaction follows the lever rule).
         float shareL = 0.5f, shareR = 0.5f;
@@ -286,6 +297,36 @@ internal static class BipedGait
             float ck = Clamp((inn.Geom.L1 * inn.Geom.L1 + inn.Geom.L2 * inn.Geom.L2 - dd * dd) / (2f * inn.Geom.L1 * inn.Geom.L2), -1f, 1f);
             lo.KneeFlex = Pi - (float)Math64.Acos(ck);
             lo.FootRho = lg.SlopeRho; lo.FootPhi = planar ? 0f : lg.SlopePhi;
+            if (walking && planar && swingNow < 0 && grounded == 2 && (GaitPhase)s.Phase == GaitPhase.DoubleSupport)
+            {
+                // Starting from rest: the hip is brought forward over the planted feet, a little more as time passes, until the capture point has left the feet and the first step can be taken.
+                float mid = 0.5f * (inn.Left.AnkleF + inn.Right.AnkleF);
+                float lean = Min(0.14f, 0.2f * s.Time);
+                float xh = mid + lean - lg.AnkleF;
+                Ik(inn.Geom.L1, inn.Geom.L2, -xh, 0f, -standH, out float th, out _, out float kn);
+                lo.ThighRho = th + gain * (inn.PelvisRho - pelvisRhoDes); lo.KneeFlex = kn;
+                lo.FootRho = lg.SlopeRho + (lg.ShinRho - (th - kn));
+            }
+            else if (walking && swingNow >= 0 && planar && LambdaIk > 0f)
+            {
+                // Walking stance: the hip is moved the way a linear inverted pendulum with its pressure point at the ankle would move the centre of mass over the next instant (Kajita et al. 2001), by solving the leg for that hip position over
+                // the planted ankle; the knee keeps the hip height. A leg that only holds its shape lets the foot slide as the knee works; one that is told where the hip goes does not.
+                // The pressure point comes from the capture point's error against the one a steady gait of the commanded speed would have at this moment of the step: a body running ahead of it is braked by pressure forward of the ankle,
+                // a lagging one is pushed on by pressure behind it (Koolen et al. 2012, the capture point controller).
+                float comRel = inn.ComF - lg.AnkleF;
+                float tStep = wk.StepTime;
+                float eNom = (float)Math64.Exp((double)(w0 * tStep));
+                float xiNom = inn.CmdF * tStep / (eNom - 1f) * (float)Math64.Exp((double)(w0 * Min(s.Time, tStep)));
+                float trim = Clamp(wk.SpeedFeedback * ((comRel + inn.VelF / w0) - xiNom), -0.04f, 0.12f);
+                float acc = w0 * w0 * (comRel - trim);
+                const float tau = 0.05f;
+                float xh = lg.HipF - lg.AnkleF + inn.VelF * tau + 0.5f * acc * tau * tau;
+                Ik(inn.Geom.L1, inn.Geom.L2, -xh, 0f, -standH, out float th, out _, out float kn);
+                lo.ThighRho = th + gain * (inn.PelvisRho - pelvisRhoDes); lo.KneeFlex = kn;
+                if (Dbg) { Console.Error.WriteLine($"   stance{k} t={s.Time:F2} xiNom={xiNom:F2} xi={comRel + inn.VelF / w0:F2} trim={trim:F2} xhNow={lg.HipF - lg.AnkleF:F2} xh={xh:F2} thT={th:F2} thA={lg.ThighRho:F2} knT={kn:F2} pelvY={-lg.AnkleU:F2} pelRho={inn.PelvisRho:F2} standH={standH:F2}"); }
+                // The ankle leans the shin to where the solved leg has it; the foot stays flat on the ground.
+                lo.FootRho = lg.SlopeRho + (lg.ShinRho - (th - kn));
+            }
         }
 
         // Shift: the stance leg's thigh goes vertical (sideways), which carries the pelvis over the planted foot.
@@ -306,10 +347,10 @@ internal static class BipedGait
             float pcL = capL + bal.CaptureGain * (capL - centreL);
             if (walking)
             {
-                // Walking: the ankle regulates the speed instead of holding the position. The pressure point goes where the pendulum gives the wanted acceleration: a = (g / h) (x - p).
-                float aDes = Clamp((inn.CmdF - inn.VelF) / 0.4f, -3f, 3f);
-                float hh = inn.ComU - groundU;
-                pcF = inn.ComF - aDes * hh / inn.Gravity;
+                // Walking: speed is the foot placement's job; the ankle only trims it, with a pressure point kept close to the ankle so the foot stays flat (a pressure point out at the toe lifts the heel and the foot rolls over).
+                float trim = Clamp((inn.CmdF - inn.VelF) * 0.08f, -0.05f, 0.05f);
+                pcF = centreF - trim;
+                if (phase == GaitPhase.DoubleSupport) { pcF = centreF - 0.85f * inn.Geom.FootBack; }   // leaning into the start: pressure behind the centre of mass pushes it forward
                 pcL = centreL;
             }
 
@@ -322,7 +363,7 @@ internal static class BipedGait
                 float share = grounded == 2 ? (k == 0 ? shareL : shareR) : 1f;
                 float dF = Clamp(pcF - centreF, -0.85f * inn.Geom.FootBack, 0.85f * inn.Geom.FootFront);
                 // The ground pushes up at the pressure point; the ankle must give the foot the opposite moment about itself.
-                lo.AnkleTorque = true;
+                lo.AnkleTorque = !walking || !planar;
                 lo.TorqueRho = -mg * share * dF;
                 if (!planar)
                 {
