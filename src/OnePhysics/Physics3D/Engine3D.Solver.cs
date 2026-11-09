@@ -436,6 +436,7 @@ internal sealed partial class Engine3D
         if (KernelWidth == 1) { IntegrateKernel3D.Velocities<Lanes1>(this, list, ctx.SubstepDt); }
         else if (KernelWidth == 4) { IntegrateKernel3D.Velocities<Lanes128>(this, list, ctx.SubstepDt); }
         else { IntegrateKernel3D.Velocities<Lanes256>(this, list, ctx.SubstepDt); }
+        if (RailHandles.Count != 0) { RailSubstep(list, ctx.SubstepDt); }
         if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitBodyControls(b);
     }
 

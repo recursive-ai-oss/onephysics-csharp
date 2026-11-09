@@ -100,7 +100,7 @@ public sealed partial class PhysicsWorld3D
         if ((flags & DebugContent.Inspection) != 0) { geometry.AddInspection(_core); }
         if ((flags & DebugContent.Joints) != 0) { AddDebugJoints(geometry); }
         if ((flags & DebugContent.Characters) != 0) { _engine.AddDebugCharacters(geometry); }
-        if ((flags & DebugContent.Vehicles) != 0) { _engine.AddDebugVehicles(geometry); }
+        if ((flags & DebugContent.Vehicles) != 0) { _engine.AddDebugVehicles(geometry); _engine.AddDebugRail(geometry); }
         if ((flags & DebugContent.SoftBodies) != 0) { _engine.AddDebugSoftBodies(geometry); }
     }
 

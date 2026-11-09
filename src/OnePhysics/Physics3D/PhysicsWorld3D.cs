@@ -45,6 +45,7 @@ public sealed partial class PhysicsWorld3D
         BindBodyControlOptions();
         _core.AddSection(_engine.SoftSnapshotSection);
         _core.AddSection(_engine.BicycleSnapshotSection);
+        _core.AddSection(_engine.RailSnapshotSection);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -142,6 +143,7 @@ public sealed partial class PhysicsWorld3D
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.BeginBodyControls(dt);
         if (_engine.Fields.Count != 0) _engine.Fields.Step(dt);
+        _engine.StepRail(dt);
         _engine.StepBicycles(dt);
         _engine.StepVehicles(this, dt);
         _engine.StepFluids(dt);
@@ -312,10 +314,12 @@ public sealed partial class PhysicsWorld3D
         _core.ValidateShift(d);
         _engine.CheckShift(d);
         _engine.CheckMouseJointShift(d);
+        _engine.CheckRailShift(offset);
         _engine.Fields.CheckShift(offset);
         _engine.Rods.CheckShift(offset);
         _core.ShiftOrigin(d);
         _engine.ShiftJoints(d);
+        _engine.ShiftRail(offset);
         _engine.ShiftFluids(offset.X, offset.Y, offset.Z);
         _engine.Fields.Shift(offset);
         _engine.Rods.Shift(offset);

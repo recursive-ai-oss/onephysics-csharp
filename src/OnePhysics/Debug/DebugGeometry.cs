@@ -389,6 +389,53 @@ public readonly struct DebugWheel
     public Vector3F ContactNormal { get; }
 }
 
+/// <summary>A track as plain data: its centreline sampled along its length, and its gauge. Emitted with <see cref="DebugContent.Vehicles"/>.</summary>
+public readonly struct DebugTrack
+{
+    /// <summary>Creates an entry.</summary>
+    public DebugTrack(int track, Vector3D[] centerline, float gauge) { Track = track; Centerline = centerline; Gauge = gauge; }
+
+    /// <summary>The track's slot.</summary>
+    public int Track { get; }
+
+    /// <summary>Points on the centre of the track at rail-head height, from its start to its end.</summary>
+    public Vector3D[] Centerline { get; }
+
+    /// <summary>Distance between the inner rail faces, m.</summary>
+    public float Gauge { get; }
+}
+
+/// <summary>One wheel-rail contact of a rail vehicle's wheelset as plain data: where it is, the surface normal, the normal force and the tangential (creep) force. Emitted with <see cref="DebugContent.Vehicles"/>.</summary>
+public readonly struct DebugRailContact
+{
+    /// <summary>Creates an entry.</summary>
+    public DebugRailContact(BodyHandle wheelset, int index, Vector3D point, Vector3F normal, float normalForce, Vector3F creepForce, bool isFlange)
+    {
+        Wheelset = wheelset; Index = index; Point = point; Normal = normal; NormalForce = normalForce; CreepForce = creepForce; IsFlange = isFlange;
+    }
+
+    /// <summary>The wheelset's body.</summary>
+    public BodyHandle Wheelset { get; }
+
+    /// <summary>The wheelset's index in its vehicle.</summary>
+    public int Index { get; }
+
+    /// <summary>The contact point on the rail head, world coordinates.</summary>
+    public Vector3D Point { get; }
+
+    /// <summary>The track's up direction at the contact.</summary>
+    public Vector3F Normal { get; }
+
+    /// <summary>The wheel-rail normal force (tread plus flange) in newtons.</summary>
+    public float NormalForce { get; }
+
+    /// <summary>The tangential creep force on the wheel in newtons, in world axes.</summary>
+    public Vector3F CreepForce { get; }
+
+    /// <summary>True when the flange touches the rail's gauge face.</summary>
+    public bool IsFlange { get; }
+}
+
 /// <summary>A character as plain data: its capsule (vertical axis, centred on <see cref="Center"/>) and what it stands on.</summary>
 public readonly struct DebugCharacter
 {
@@ -435,6 +482,9 @@ public sealed partial class DebugGeometry
     private DebugJoint[] _joints = new DebugJoint[4];
     private DebugCharacter[] _characters = new DebugCharacter[4];
     private DebugWheel[] _wheels = new DebugWheel[4];
+    private DebugTrack[] _tracks = new DebugTrack[2];
+    private DebugRailContact[] _railContacts = new DebugRailContact[4];
+    private int _nTracks, _nRailContacts;
     private DebugSoftBody[] _soft = new DebugSoftBody[4];
     private int[] _indices = new int[64];
     private int _nIndices;
@@ -470,11 +520,17 @@ public sealed partial class DebugGeometry
     /// <summary>Vehicle wheels, by vehicle slot then wheel index.</summary>
     public ReadOnlySpan<DebugWheel> Wheels => _wheels.AsSpan(0, _nWheels);
 
+    /// <summary>Tracks, by slot (with the vehicles content).</summary>
+    public ReadOnlySpan<DebugTrack> Tracks => _tracks.AsSpan(0, _nTracks);
+
+    /// <summary>Wheel-rail contacts of rail vehicles, by vehicle slot, wheelset and side (with the vehicles content).</summary>
+    public ReadOnlySpan<DebugRailContact> RailContacts => _railContacts.AsSpan(0, _nRailContacts);
+
     /// <summary>Soft bodies, by slot.</summary>
     public ReadOnlySpan<DebugSoftBody> SoftBodies => _soft.AsSpan(0, _nSoft);
 
     /// <summary>Empties every list (capacity is kept).</summary>
-    public void Clear() { _nRodSegments=0; _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; }
+    public void Clear() { _nRodSegments=0; _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; _nTracks = _nRailContacts = 0; }
 
     private static void Push<T>(ref T[] a, ref int n, in T v)
     {
@@ -508,6 +564,12 @@ public sealed partial class DebugGeometry
 
     /// <summary>Appends a wheel entry.</summary>
     public void Add(in DebugWheel w) => Push(ref _wheels, ref _nWheels, in w);
+
+    /// <summary>Appends a track entry.</summary>
+    public void Add(in DebugTrack t) => Push(ref _tracks, ref _nTracks, in t);
+
+    /// <summary>Appends a rail contact entry.</summary>
+    public void Add(in DebugRailContact c) => Push(ref _railContacts, ref _nRailContacts, in c);
 
     /// <summary>Appends a soft body entry.</summary>
     public void Add(in DebugSoftBody b) => Push(ref _soft, ref _nSoft, in b);
