@@ -248,6 +248,20 @@ Restore validates every field (finite, ranges, body and joint references live, t
 
 The same four parts in the plane (`Physics2D.AeroSurface`, `ThrusterDef`, `BoatDef`, `HovercraftDef` with `Vector2F` members; `ThrusterRig.Lander`): `ShapeDef.Aero`, `body.AddThruster`, `world.AddBoat`, `world.AddHovercraft`, `world.AirDensity`, `world.AddWind`. They run as one serial stage after the fields, ragdoll drive and vehicles and before the core step, adding forces and torque about z; areas and forces are per metre of depth and a planar surface's reference point is its shape's centroid. Water is a buoyancy field (`AddBuoyancyEffector`); a boat takes over that field's linear drag for its hull, as in 3D, and a side-view boat has no leeway axis (foils are horizontal, steering turns them counter-clockwise for a positive command). Models, ordering and layouts are in `actuators.md`; the section is the same "AERO" (`0x4F524541`), registered after "RAG2".
 
+## Rail vehicles and bicycles (side view)
+
+`[Experimental("OPHYS0003")]`. The same names as in 3D with 2D math types and the 2D semantics below. Optional snapshot sections `BIKE` (`0x454B4942`) and `RAIL` (`0x4C494152`) share their ids with the 3D engine (a world is one or the other), registered after the cable section, bicycles first. Step order in the pre-solve stage: rail vehicles, bicycles, wheeled vehicles, then the rest.
+
+**Tracks.** A 2D track is a vertical profile: `TrackDef` with a plan view of exactly one straight (the length) and an `Elevation` profile (the same monotone cubic as 3D), laid along +X from `Start`; a chain static body is the rail surface (ghosted segments, so nothing catches on the vertices). `track.SurfaceAt(s, out grade)` gives the surface point and slope. No cant, switches or lateral dynamics.
+
+**Rail vehicles.** `world.AddRailVehicle(track, chainage, RailDef, speed)` with `RailDef` presets `Tram`, `Freight`, `Locomotive`: a car body on a wheeled vehicle (`Vehicle`) with one wheel per wheelset, wheel 0 the rear wheelset; the wheels roll on the track surface with the existing tyre model (longitudinal force from the slip, a Pacejka curve), so traction and braking are limited by adhesion: a locomotive on a 10% grade with a friction of 0.2 pulls between 0.5 and 1.02 times `μ g` (the Pacejka curve falls past its peak; the 3D creep law saturates at exactly `μ g`). `Drive(throttle, brake)` as in 3D (`MaxTractionForce`, `MaxPower`, `DrivenWheelsets`, `MaxBrakeForce`). Couplers are as in 3D (`Couple`, reach, free length, slack, buffer and draw stiffness, damping, break force) between the two end points along the car at `CouplerHeight`, handled once per step from the lower slot.
+
+**Bicycles.** `world.AddBicycle(at, BicycleDef, speed, angle)`; presets `Benchmark` and `Road` (`BicycleDef` carries wheel base, radii, mass, centre of mass, pitch inertia, spin inertias, tyre friction and hertz, pedal, brake and lean limits and `FlipAngle`). A rigid frame on a two-wheeled `Vehicle` (front wheel 0, rear wheel 1). `Ride(pedal, frontBrake, rearBrake, lean)`: lean is a weight shift (a torque on the frame). Pitch dynamics come out of the physics: the rear wheel unloads when the deceleration reaches `g b / h` (`b` the distance from the centre of mass to the front contact, `h` its height). Measured: the stoppie's onset deceleration is 7.56 m/s² against the static prediction 7.72 (2%).
+
+**Snapshot.** `BIKE` v1 and `RAIL` v1, laid out as in 3D with the 2D definitions (every field in declaration order) and the body and vehicle slots with generations.
+
+**Scenes.** `rail-2d`, `bicycles-2d` in `docs/spec/scenes.md`; `world2d/rail-2d` and `world2d/bicycles-2d` in the hash matrix.
+
 ## Core additions this relies on
 
 `IWorldStages.FinalizeBodies` (default no-op, called over chunks of awake bodies after the restitution pass and before `StoreResults`) and `WorldCore.Sleep(BodyHandle)`. Neither changes snapshot format version 1. `IWorldStages.AfterFinalize` (default no-op) runs once, serially, after `FinalizeBodies` and before `StoreResults`; bullets use it.
