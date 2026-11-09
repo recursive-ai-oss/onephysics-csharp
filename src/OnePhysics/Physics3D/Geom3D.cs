@@ -254,7 +254,9 @@ internal sealed partial class Geom3D
             for (int i = 0; i < samples.Length; i++) samples[i] = r.ReadSingle();
             var grid = new SdfGrid3D(nx, ny, nz, samples, size, origin);
             var soup = new SdfSoup3D(grid);
-            g.Soup = soup; g.LocalBounds = grid.Bounds; g.UnitMass = grid.ComputeMass();
+            g.Soup = soup; g.LocalBounds = grid.Bounds;
+            // A field with no inside is a valid static shape; it carries no mass, and a dynamic body made only of it is rejected when its mass is computed.
+            try { g.UnitMass = grid.ComputeMass(); } catch (InvalidShapeException) { g.UnitMass = default; }
         }
         else if (kind == KHeightField)
         {

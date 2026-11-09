@@ -57,7 +57,7 @@ internal static class FuzzTerrain
             w.AddSdf(grid);
             // A dynamic field needs an inside; a convex body and a dynamic field fall on it.
             w.AddBox(new Vector3F(0.5f, 0.5f, 0.5f), new Vector3D(0.4, 3, 0.4));
-            try { w.AddSdf(grid, new Vector3D(0.3, 5, 0.2), type: BodyType.Dynamic); } catch (ArgumentException) { } catch (InvalidOperationException) { }
+            try { w.AddSdf(grid, new Vector3D(0.3, 5, 0.2), type: BodyType.Dynamic); } catch (ArgumentException) { }
             for (int i = 0; i < 4; i++) { try { w.Step(1f / 60); } catch (PhysicsException) { break; } }
             _ = soup.TriangleCount;
         }

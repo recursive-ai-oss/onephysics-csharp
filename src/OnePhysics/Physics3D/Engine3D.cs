@@ -619,7 +619,7 @@ internal sealed partial class Engine3D : ISnapshotSection
             var g = Geoms[GeomOf[s]]!;
             if (g.IsStaticSoup || (g.IsConvex && g.Convex.Kind == ConvexShapeKind3D.Empty)) { continue; }
             var m = g.UnitMass;
-            if (g.Compound != null && m.Mass == 0f) { continue; }
+            if ((g.Compound != null || g.Soup is SdfSoup3D) && m.Mass == 0f) { continue; }
             float d = Density[s];
             var l = Local[s];
             _parts.Add(new MassPropertiesF(m.Mass * d, l.TransformPoint(m.Center), InertiaF.Rotate(m.Inertia, l.Rotation) * d));
@@ -1244,7 +1244,8 @@ internal sealed partial class Engine3D : ISnapshotSection
             {
                 if (!cons.IsLive(c) || cons.KindOf(c) != ConstraintKind.Contact || cons.ShapeA[c] != PairA[p] || cons.ShapeB[c] != PairB[p] || ++steps > cons.HighWater) { return false; }
                 int sa = cons.SubShapeA[c], sb = cons.SubShapeB[c];
-                if (sa < prevA || (sa == prevA && sb <= prevB)) { return false; }
+                // Equal keys are legal: a flat patch is labelled with the id of its root triangle, which can also be emitted unmerged by a contact that does not lie flat on the patch.
+                if (sa < prevA || (sa == prevA && sb < prevB)) { return false; }
                 prevA = sa; prevB = sb;
             }
 

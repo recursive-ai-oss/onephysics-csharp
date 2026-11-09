@@ -82,7 +82,7 @@ public sealed partial class SdfGrid3D
                 if (Interior(new Vector3F((float)px, (float)py, (float)pz)) < 0f) Cube(px, py, pz, sub);
             }
         }
-        if (!(vol > 0)) throw new InvalidOperationException("The field has no inside, so it has no mass properties.");
+        if (!(vol > 0)) throw new InvalidShapeException(ShapeError.Degenerate, "the field has no inside (no sample is negative), so it has no mass properties");
         double cx0 = mx / vol, cy0 = my / vol, cz0 = mz / vol;
         sxx -= vol * cx0 * cx0; syy -= vol * cy0 * cy0; szz -= vol * cz0 * cz0; sxy -= vol * cx0 * cy0; sxz -= vol * cx0 * cz0; syz -= vol * cy0 * cz0;
         double tr = sxx + syy + szz;

@@ -60,6 +60,9 @@ public sealed partial class SdfGrid3D
         if (!float.IsFinite(origin.X) || !float.IsFinite(origin.Y) || !float.IsFinite(origin.Z) || Math.Abs(origin.X) > 1048576 || Math.Abs(origin.Y) > 1048576 || Math.Abs(origin.Z) > 1048576) throw new SdfBuildException(SdfBuildError.NonFinite, "Origin must be finite and within 2^20 metres.", nameof(origin));
     }
 
+    /// <summary>True when at least one sample is negative, so the solid has volume.</summary>
+    public bool HasInside { get { foreach (float v in _values) if (v < 0f) return true; return false; } }
+
     /// <summary>Samples along X.</summary>
     public int SizeX { get; }
     /// <summary>Samples along Y.</summary>

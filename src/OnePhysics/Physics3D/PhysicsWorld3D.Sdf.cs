@@ -16,6 +16,7 @@ public sealed partial class PhysicsWorld3D
     {
         using var replayMutation = RecordMutation("PhysicsWorld3D.AddSdf");
         ArgumentNullException.ThrowIfNull(grid);
+        if (type != BodyType.Static && !grid.HasInside) throw new ArgumentOutOfRangeException(nameof(grid), "A moving signed distance field needs an inside (a negative sample) to take its mass from.");
         return AddOne(type, at, rotation, ShapeSpec3D.Sdf(grid), material, type == BodyType.Static ? 0f : density);
     }
 
