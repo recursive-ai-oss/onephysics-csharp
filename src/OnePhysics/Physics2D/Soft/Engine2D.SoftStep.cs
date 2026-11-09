@@ -193,7 +193,6 @@ internal sealed partial class Engine2D
         Core.Profile.Mark(StepStage.SoftPairs);
         BuildDetectTasks();
         BuildPairs(margin);
-        BuildSurfacePairs(margin);
         for (int k = 0; k < substeps; k++)
         {
             float t1 = (float)(k + 1) / substeps;
@@ -205,6 +204,7 @@ internal sealed partial class Engine2D
             }
 
             Core.Profile.Mark(StepStage.SoftPredict);
+            BuildSurfacePairs(h, gmag);
             for (int a = 0; a < _awakeSoftCount; a++)
             {
                 PredictSoft(_awakeSoft[a], h, g);

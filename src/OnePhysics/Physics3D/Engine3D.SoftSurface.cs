@@ -54,20 +54,21 @@ internal sealed partial class Engine3D
 
     private const float InsideTolerance = 0.05f;
 
-    private void BuildSurfacePairs(float travel)
+    // Lists the surface pairs for one substep, from the positions it starts at, and the travel of each body in that substep.
+    private void BuildSurfacePairs(float h, float gmag)
     {
         _vtCount = 0; _eeCount = 0;
         int bodies = 0;
         bool self = false;
-        float rmax = 0f;
         for (int a = 0; a < _pairSoftCount; a++)
         {
             var d = _awakeSoft[a];
             d.SurfTriBase = -1;
+            // How far the body can carry a feature in the step: its fastest particle's travel, the fall under gravity and the speculative distance. A sleeping (passive) body does not move.
+            d.SurfTravel = (a < _awakeSoftCount ? MaxParticleSpeed(d) * h + 0.5f * gmag * h * h : 0f);
             if (!d.Def.SurfaceCollision || d.SurfTris.Length == 0) { continue; }
             bodies++;
             self |= d.Def.SelfCollision;
-            if (d.Radius > rmax) { rmax = d.Radius; }
         }
 
         if (bodies == 0 || (bodies < 2 && !self)) { return; }
@@ -84,16 +85,18 @@ internal sealed partial class Engine3D
         GrowTo(ref _gtBody, nt); GrowTo(ref _gtLocal, nt); GrowTo(ref _gtBox, 6 * nt);
         GrowTo(ref _geBody, ne); GrowTo(ref _geLocal, ne); GrowTo(ref _geBox, 6 * ne);
         _triGrid.Grow(nt); _edgeGrid.Grow(ne);
-        double reach = 1.5 * 2.0 * rmax + 2.0 * travel;
-        double extT = 0.0, extE = 0.0;
+        // A feature's box is grown by its body's radius and twice its travel: two features can come within the sum of their radii during the step only if their grown boxes overlap.
+        double extT = 0.0, extE = 0.0, extP = 0.0;
         for (int a = 0; a < _pairSoftCount; a++)
         {
             var d = _awakeSoft[a];
             if (d.SurfTriBase < 0) { continue; }
+            double grow = d.Radius + 2.0 * d.SurfTravel;
+            if (grow > extP) { extP = grow; }
             for (int i = 0; i < d.SurfTris.Length / 3; i++)
             {
                 int g = d.SurfTriBase + i, o = 6 * g;
-                double ext = BoxOf(d, d.SurfTris[3 * i], d.SurfTris[3 * i + 1], d.SurfTris[3 * i + 2], reach, _gtBox, o);
+                double ext = BoxOf(d, d.SurfTris[3 * i], d.SurfTris[3 * i + 1], d.SurfTris[3 * i + 2], grow, _gtBox, o);
                 _gtBody[g] = d; _gtLocal[g] = i;
                 if (ext > extT) { extT = ext; }
             }
@@ -101,7 +104,7 @@ internal sealed partial class Engine3D
             for (int i = 0; i < d.SurfEdgeA.Length; i++)
             {
                 int g = d.SurfEdgeBase + i, o = 6 * g;
-                double ext = BoxOf(d, d.SurfEdgeA[i], d.SurfEdgeB[i], d.SurfEdgeB[i], reach, _geBox, o);
+                double ext = BoxOf(d, d.SurfEdgeA[i], d.SurfEdgeB[i], d.SurfEdgeB[i], grow, _geBox, o);
                 _geBody[g] = d; _geLocal[g] = i;
                 if (ext > extE) { extE = ext; }
             }
@@ -125,32 +128,41 @@ internal sealed partial class Engine3D
 
         _edgeGrid.Build(ne);
 
-        // Particle against triangle: the particle looks at the 2 x 2 x 2 cells that can hold the minimum corner of a box containing it.
+        // Particle against triangle: the particle, grown like a feature of its body, looks at every cell that can hold the minimum corner of a box that meets its own.
         Span<long> seen = stackalloc long[64];
         for (int a = 0; a < _awakeSoftCount; a++)
         {
             var dp = _awakeSoft[a];
             if (dp.SurfTriBase < 0) { continue; }
+            double ep = dp.Radius + 2.0 * dp.SurfTravel;
             for (int pi = 0; pi < dp.SurfParticles.Length; pi++)
             {
                 int p = dp.SurfParticles[pi];
                 double px = dp.Ox + dp.X[3 * p], py = dp.Oy + dp.X[3 * p + 1], pz = dp.Oz + dp.X[3 * p + 2];
-                long cx = (long)Math.Floor(px * icT), cy = (long)Math.Floor(py * icT), cz = (long)Math.Floor(pz * icT);
+                long x0 = (long)Math.Floor((px - ep) * icT) - 1, x1 = (long)Math.Floor((px + ep) * icT);
+                long y0 = (long)Math.Floor((py - ep) * icT) - 1, y1 = (long)Math.Floor((py + ep) * icT);
+                long z0 = (long)Math.Floor((pz - ep) * icT) - 1, z1 = (long)Math.Floor((pz + ep) * icT);
                 int nseen = 0;
-                for (int q = 0; q < 8; q++)
+                for (long cz = z0; cz <= z1; cz++)
                 {
-                    long hsh = SoftCellGrid.Hash(cx - (q & 1), cy - ((q >> 1) & 1), cz - ((q >> 2) & 1));
-                    bool dup = false;
-                    for (int u = 0; u < nseen; u++) { if (seen[u] == hsh) { dup = true; break; } }
-                    if (dup) { continue; }
-                    seen[nseen++] = hsh;
-                    if (!_triGrid.Find(hsh, out int s0, out int s1)) { continue; }
-                    for (int k = s0; k < s1; k++)
+                    for (long cy = y0; cy <= y1; cy++)
                     {
-                        int g = (int)(tk[k] & 0xFFFFFF);
-                        int o = 6 * g;
-                        if (px < _gtBox[o] || px > _gtBox[o + 3] || py < _gtBox[o + 1] || py > _gtBox[o + 4] || pz < _gtBox[o + 2] || pz > _gtBox[o + 5]) { continue; }
-                        TryAddVertexTriangle(dp, p, g);
+                        for (long cx = x0; cx <= x1; cx++)
+                        {
+                            long hsh = SoftCellGrid.Hash(cx, cy, cz);
+                            bool dup = false;
+                            for (int u = 0; u < nseen; u++) { if (seen[u] == hsh) { dup = true; break; } }
+                            if (dup) { continue; }
+                            if (nseen < seen.Length) { seen[nseen++] = hsh; }
+                            if (!_triGrid.Find(hsh, out int s0, out int s1)) { continue; }
+                            for (int k = s0; k < s1; k++)
+                            {
+                                int g = (int)(tk[k] & 0xFFFFFF);
+                                int o = 6 * g;
+                                if (px + ep < _gtBox[o] || px - ep > _gtBox[o + 3] || py + ep < _gtBox[o + 1] || py - ep > _gtBox[o + 4] || pz + ep < _gtBox[o + 2] || pz - ep > _gtBox[o + 5]) { continue; }
+                                TryAddVertexTriangle(dp, p, px, py, pz, g);
+                            }
+                        }
                     }
                 }
             }
@@ -190,8 +202,21 @@ internal sealed partial class Engine3D
         }
     }
 
-    // The box of a triangle (or an edge, given its end twice) at the start of the step in world coordinates, grown by the reach; returns its largest extent.
-    private static double BoxOf(SoftBodyData d, int a, int b, int c, double reach, double[] box, int o)
+    private static float MaxParticleSpeed(SoftBodyData d)
+    {
+        float m2 = 0f;
+        var v = d.Vel;
+        for (int i = 0; i < d.N; i++)
+        {
+            float v2 = v[3 * i] * v[3 * i] + v[3 * i + 1] * v[3 * i + 1] + v[3 * i + 2] * v[3 * i + 2];
+            if (v2 > m2) { m2 = v2; }
+        }
+
+        return float.Sqrt(m2);
+    }
+
+    // The box of a triangle (or an edge, given its end twice) at the start of the step in world coordinates, grown by `grow`; returns its largest extent.
+    private static double BoxOf(SoftBodyData d, int a, int b, int c, double grow, double[] box, int o)
     {
         double x0 = double.MaxValue, y0 = double.MaxValue, z0 = double.MaxValue, x1 = double.MinValue, y1 = double.MinValue, z1 = double.MinValue;
         for (int k = 0; k < 3; k++)
@@ -203,11 +228,11 @@ internal sealed partial class Engine3D
             if (z < z0) { z0 = z; } if (z > z1) { z1 = z; }
         }
 
-        box[o] = x0 - reach; box[o + 1] = y0 - reach; box[o + 2] = z0 - reach; box[o + 3] = x1 + reach; box[o + 4] = y1 + reach; box[o + 5] = z1 + reach;
-        return Math.Max(x1 - x0, Math.Max(y1 - y0, z1 - z0)) + 2.0 * reach;
+        box[o] = x0 - grow; box[o + 1] = y0 - grow; box[o + 2] = z0 - grow; box[o + 3] = x1 + grow; box[o + 4] = y1 + grow; box[o + 5] = z1 + grow;
+        return Math.Max(x1 - x0, Math.Max(y1 - y0, z1 - z0)) + 2.0 * grow;
     }
 
-    private void TryAddVertexTriangle(SoftBodyData dp, int p, int g)
+    private void TryAddVertexTriangle(SoftBodyData dp, int p, double px, double py, double pz, int g)
     {
         var dt = _gtBody[g];
         int el = _gtLocal[g];
@@ -222,6 +247,12 @@ internal sealed partial class Engine3D
         else if (!SoftPairAllowed(dp.Def, dt.Def)) { return; }
 
         if (dp.InvMass[p] == 0f && dt.InvMass[a] == 0f && dt.InvMass[b] == 0f && dt.InvMass[c] == 0f) { return; }
+        // The exact distance at the start of the step against what the two bodies can close in it.
+        double reach = thick + 2.0 * (dp.SurfTravel + dt.SurfTravel);
+        double ax = dt.Ox + dt.X[3 * a], ay = dt.Oy + dt.X[3 * a + 1], az = dt.Oz + dt.X[3 * a + 2];
+        double bx = dt.Ox + dt.X[3 * b], by = dt.Oy + dt.X[3 * b + 1], bz = dt.Oz + dt.X[3 * b + 2];
+        double cx = dt.Ox + dt.X[3 * c], cy = dt.Oy + dt.X[3 * c + 1], cz = dt.Oz + dt.X[3 * c + 2];
+        if (SoftGeometry.PointTriangleSq(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz) >= reach * reach) { return; }
         bool inside = VertexTriangle(dp, p, dt, a, b, c, out _, out _, out _, out float dist, out _, out _, out _);
         float side = inside ? (dist >= 0f ? 1f : -1f) : 0f;
         GrowTo(ref _vtP, _vtCount + 1); GrowTo(ref _vtT, _vtCount + 1); GrowTo(ref _vtS, _vtCount + 1);
@@ -244,6 +275,12 @@ internal sealed partial class Engine3D
         else if (!SoftPairAllowed(d1.Def, d2.Def)) { return; }
 
         if (d1.InvMass[a] == 0f && d1.InvMass[b] == 0f && d2.InvMass[c] == 0f && d2.InvMass[d] == 0f) { return; }
+        double reach = thick + 2.0 * (d1.SurfTravel + d2.SurfTravel);
+        double ax = d1.Ox + d1.X[3 * a], ay = d1.Oy + d1.X[3 * a + 1], az = d1.Oz + d1.X[3 * a + 2];
+        double bx = d1.Ox + d1.X[3 * b], by = d1.Oy + d1.X[3 * b + 1], bz = d1.Oz + d1.X[3 * b + 2];
+        double cx = d2.Ox + d2.X[3 * c], cy = d2.Oy + d2.X[3 * c + 1], cz = d2.Oz + d2.X[3 * c + 2];
+        double dx = d2.Ox + d2.X[3 * d], dy = d2.Oy + d2.X[3 * d + 1], dz = d2.Oz + d2.X[3 * d + 2];
+        if (SoftGeometry.SegmentSegmentSq(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz) >= reach * reach) { return; }
         bool inside = EdgeEdge(d1, a, b, d2, c, d, out _, out _, out _, out float dist, out _, out _);
         float side = inside ? (dist >= 0f ? 1f : -1f) : 0f;
         GrowTo(ref _eeA, _eeCount + 1); GrowTo(ref _eeB, _eeCount + 1); GrowTo(ref _eeS, _eeCount + 1);

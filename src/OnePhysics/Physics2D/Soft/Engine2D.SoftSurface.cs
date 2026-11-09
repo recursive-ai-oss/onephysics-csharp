@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics2D;
 
@@ -46,20 +47,21 @@ internal sealed partial class Engine2D
     /// <summary>The tears of the last step, in body and edge order.</summary>
     public ReadOnlySpan<SoftTearEvent> SoftTearEvents => System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_softTears);
 
-    private void BuildSurfacePairs(float travel)
+    // Lists the surface pairs for one substep, from the positions it starts at, with the travel of the bodies in that substep.
+    private void BuildSurfacePairs(float h, float gmag)
     {
         _seCount = 0;
         int bodies = 0;
         bool self = false;
-        float rmax = 0f;
         for (int a = 0; a < _pairSoftCount; a++)
         {
             var d = _awakeSoft[a];
             d.SurfBase = -1;
+            // How far the body can carry a feature in the substep: its fastest particle's travel and the fall under gravity. A sleeping (passive) body does not move.
+            d.SurfTravel = (a < _awakeSoftCount ? MaxParticleSpeed(d) * h + 0.5f * gmag * h * h : 0f);
             if (!d.Def.SurfaceCollision || d.SurfA.Length == 0) { continue; }
             bodies++;
             self |= d.Def.SelfCollision;
-            if (d.Radius > rmax) { rmax = d.Radius; }
         }
 
         if (bodies == 0 || (bodies < 2 && !self)) { return; }
@@ -75,17 +77,18 @@ internal sealed partial class Engine2D
         if (ne >= SoftCellGrid.MaxItems) { return; }
         GrowTo(ref _geBody, ne); GrowTo(ref _geLocal, ne); GrowTo(ref _geBox, 4 * ne);
         _edgeGrid.Grow(ne);
-        double reach = 1.5 * 2.0 * rmax + 2.0 * travel;
+        // An edge's box is grown by its body's radius and twice its travel: a particle and an edge can come within the sum of their radii during the substep only if the particle, grown the same way, meets the box.
         double maxExt = 0.0;
         for (int a = 0; a < _pairSoftCount; a++)
         {
             var d = _awakeSoft[a];
             if (d.SurfBase < 0) { continue; }
+            double grow = d.Radius + 2.0 * d.SurfTravel;
             for (int i = 0; i < d.SurfA.Length; i++)
             {
                 int ge = d.SurfBase + i, ka = 2 * d.SurfA[i], kb = 2 * d.SurfB[i];
                 double ax = d.Ox + d.X[ka], ay = d.Oy + d.X[ka + 1], bx = d.Ox + d.X[kb], by = d.Oy + d.X[kb + 1];
-                double x0 = Math.Min(ax, bx) - reach, y0 = Math.Min(ay, by) - reach, x1 = Math.Max(ax, bx) + reach, y1 = Math.Max(ay, by) + reach;
+                double x0 = Math.Min(ax, bx) - grow, y0 = Math.Min(ay, by) - grow, x1 = Math.Max(ax, bx) + grow, y1 = Math.Max(ay, by) + grow;
                 _geBody[ge] = d; _geLocal[ge] = i;
                 _geBox[4 * ge] = x0; _geBox[4 * ge + 1] = y0; _geBox[4 * ge + 2] = x1; _geBox[4 * ge + 3] = y1;
                 double ext = Math.Max(x1 - x0, y1 - y0);
@@ -101,39 +104,56 @@ internal sealed partial class Engine2D
         }
 
         _edgeGrid.Build(ne);
-        Span<long> seen = stackalloc long[4];
+        Span<long> seen = stackalloc long[16];
         for (int a = 0; a < _awakeSoftCount; a++)
         {
             var dp = _awakeSoft[a];
             if (dp.SurfBase < 0) { continue; }
+            double ep = dp.Radius + 2.0 * dp.SurfTravel;
             for (int pi = 0; pi < dp.SurfParticles.Length; pi++)
             {
                 int p = dp.SurfParticles[pi];
                 double px = dp.Ox + dp.X[2 * p], py = dp.Oy + dp.X[2 * p + 1];
-                long cx1 = (long)Math.Floor(px * icsz), cy1 = (long)Math.Floor(py * icsz);
+                long x0 = (long)Math.Floor((px - ep) * icsz) - 1, x1 = (long)Math.Floor((px + ep) * icsz);
+                long y0 = (long)Math.Floor((py - ep) * icsz) - 1, y1 = (long)Math.Floor((py + ep) * icsz);
                 int nseen = 0;
-                for (int q = 0; q < 4; q++)
+                for (long cy = y0; cy <= y1; cy++)
                 {
-                    long hsh = SoftCellGrid.Hash(cx1 - (q & 1), cy1 - ((q >> 1) & 1), 0);
-                    bool dup = false;
-                    for (int u = 0; u < nseen; u++) { if (seen[u] == hsh) { dup = true; break; } }
-                    if (dup) { continue; }
-                    seen[nseen++] = hsh;
-                    if (!_edgeGrid.Find(hsh, out int s0, out int s1)) { continue; }
-                    for (int k = s0; k < s1; k++)
+                    for (long cx = x0; cx <= x1; cx++)
                     {
-                        int ge = (int)(keys[k] & 0xFFFFFF);
-                        int o = 4 * ge;
-                        if (px < _geBox[o] || px > _geBox[o + 2] || py < _geBox[o + 1] || py > _geBox[o + 3]) { continue; }
-                        TryAddSurfacePair(dp, p, px, py, ge, reach);
+                        long hsh = SoftCellGrid.Hash(cx, cy, 0);
+                        bool dup = false;
+                        for (int u = 0; u < nseen; u++) { if (seen[u] == hsh) { dup = true; break; } }
+                        if (dup) { continue; }
+                        if (nseen < seen.Length) { seen[nseen++] = hsh; }
+                        if (!_edgeGrid.Find(hsh, out int s0, out int s1)) { continue; }
+                        for (int k = s0; k < s1; k++)
+                        {
+                            int ge = (int)(keys[k] & 0xFFFFFF);
+                            int o = 4 * ge;
+                            if (px + ep < _geBox[o] || px - ep > _geBox[o + 2] || py + ep < _geBox[o + 1] || py - ep > _geBox[o + 3]) { continue; }
+                            TryAddSurfacePair(dp, p, px, py, ge);
+                        }
                     }
                 }
             }
         }
-
     }
 
-    private void TryAddSurfacePair(SoftBodyData dp, int p, double px, double py, int ge, double reach)
+    private static float MaxParticleSpeed(SoftBodyData d)
+    {
+        float m2 = 0f;
+        var v = d.Vel;
+        for (int i = 0; i < d.N; i++)
+        {
+            float v2 = v[2 * i] * v[2 * i] + v[2 * i + 1] * v[2 * i + 1];
+            if (v2 > m2) { m2 = v2; }
+        }
+
+        return float.Sqrt(m2);
+    }
+
+    private void TryAddSurfacePair(SoftBodyData dp, int p, double px, double py, int ge)
     {
         var de = _geBody[ge];
         int el = _geLocal[ge];
@@ -149,10 +169,9 @@ internal sealed partial class Engine2D
         double ax = de.Ox + de.X[2 * a], ay = de.Oy + de.X[2 * a + 1], bx = de.Ox + de.X[2 * b], by = de.Oy + de.X[2 * b + 1];
         double ex = bx - ax, ey = by - ay, l2 = ex * ex + ey * ey;
         if (!(l2 > 0.0)) { return; }
-        double t = ((px - ax) * ex + (py - ay) * ey) / l2;
-        t = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
-        double qx = px - (ax + t * ex), qy = py - (ay + t * ey);
-        if (qx * qx + qy * qy >= reach * reach) { return; }
+        // The exact distance at the start of the substep against what the two bodies can close in it.
+        double reach = dp.Radius + de.Radius + 2.0 * (dp.SurfTravel + de.SurfTravel);
+        if (SoftGeometry.PointSegmentSq(px, py, ax, ay, bx, by) >= reach * reach) { return; }
         // The side the particle starts on: the right of the directed edge is outside the body. It means something only where the particle projects onto the edge; elsewhere the sign is left open (0) and the
         // first substep that finds the particle over the edge fixes it from where the particle is then.
         double side = (ey * (px - ax) - ex * (py - ay));

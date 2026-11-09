@@ -43,6 +43,9 @@ internal sealed partial class SoftBodyData
     /// <summary>Index of this body's first surface edge in the step's numbering.</summary>
     public int SurfBase;
 
+    /// <summary>How far a feature of this body can travel in the substep (scratch).</summary>
+    public float SurfTravel;
+
     private void BuildSurface()
     {
         var a = new List<int>(); var b = new List<int>();

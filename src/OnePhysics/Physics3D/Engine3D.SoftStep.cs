@@ -196,7 +196,6 @@ internal sealed partial class Engine3D
 #endif
         BuildDetectTasks();
         BuildPairs(margin);
-        BuildSurfacePairs(margin);
         for (int k = 0; k < substeps; k++)
         {
             float t0 = (float)k / substeps, t1 = (float)(k + 1) / substeps;
@@ -211,6 +210,7 @@ internal sealed partial class Engine3D
 #if STAGE_TIMERS
             StageProbe.Mark(StageProbe.SoftPredict);
 #endif
+            BuildSurfacePairs(h, gmag);
             for (int a = 0; a < _awakeSoftCount; a++)
             {
                 PredictSoft(_awakeSoft[a], h, g);
