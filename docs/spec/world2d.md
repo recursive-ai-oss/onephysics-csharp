@@ -357,3 +357,7 @@ An active layer turns a ragdoll into a character that follows an animation pose,
 
 **Debug geometry.** `DebugContent.Joints` also fills `DebugGeometry.ActiveRagdolls`: per active ragdoll (slot order) the mode, gait phase, grounded feet, centre of mass, capture point, support box corners and, while a foot swings, its landing target. Scenes `balance-3d`, `blend-3d` (and in 2D `walkers-2d`) are in `scenes.md`; fuzz targets `world2d-active`, `world2d-active-snapshot`. Bones must be wired like a biped (pelvis the root, torso and thighs its children, head below the torso, shin below thigh, foot below shin) or `EnableActive` and a restore refuse with a named error; a figure that has lost a limb (a broken joint) is left to the pose drive.
 
+
+## Shallow water
+
+`world.AddShallowWater(minX, maxX, level, cellSize, floor)`, `CreateShallowWater(ShallowWaterDef)`, `ShallowWater` handles, `QueryWater`, `RaycastWater`, `WaterEvents` and `BodyWaterChanged`: a row of cells along x (the water has unit depth, so volumes are areas) with the same stages, coupling and "SWTR" section as 3D; the bodies' buoyancy and drag come from the planar buoyancy routine with the surface at the local tangent. Details in `water.md`.
