@@ -152,8 +152,8 @@ internal static class Fracturer
                     if (Vector3D.Dot(ta, tb) > -1 + 1e-9) continue; // must be antiparallel
                     double off = Math.Abs(ta.X * (b0.Y - a0.Y) - ta.Y * (b0.X - a0.X));
                     if (off > tol * Math.Max(la, 1e-12) + 1e-9 * scale) continue;
-                    double s0 = Vector3D.Dot(ta, b1 - a0), s1 = Vector3D.Dot(ta, b0 - a0); // b runs against a
-                    double lo = Math.Max(0, Math.Min(s0, s1)), hi = Math.Min(la, Math.Max(s0, s1));
+                    double t0 = Vector3D.Dot(ta, b1 - a0), t1 = Vector3D.Dot(ta, b0 - a0); // b runs against a
+                    double lo = Math.Max(0, Math.Min(t0, t1)), hi = Math.Min(la, Math.Max(t0, t1));
                     if (hi - lo > best)
                     {
                         best = hi - lo;

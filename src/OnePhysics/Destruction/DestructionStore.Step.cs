@@ -165,8 +165,8 @@ internal sealed partial class DestructionStore
     {
         var host = Host; var core = host.DestructionCore; var bodies = core.Bodies;
         int body = rec.Body;
-        bool dynamic = bodies.TypeOf(body) == BodyType.Dynamic;
-        if (dynamic && !bodies.IsAwake(body)) return false;
+        bool isDynamic = bodies.TypeOf(body) == BodyType.Dynamic;
+        if (isDynamic && !bodies.IsAwake(body)) return false;
         int n = rec.Parts.Length, m = rec.BondList.Length;
         if (n == 0) return false;
         Ensure(ref _r, n); Ensure(ref _force, n); Ensure(ref _moment, n); Ensure(ref _G, n); Ensure(ref _H, n);
@@ -189,7 +189,7 @@ internal sealed partial class DestructionStore
         double mass = 0;
         for (int i = 0; i < n; i++) mass += rec.Parts[i].Mass;
         Vector3D aCm = default, alpha = default, omega = default;
-        if (dynamic)
+        if (isDynamic)
         {
             double M = host.MassOf(body);
             if (!(M > 0)) return false;
@@ -202,7 +202,7 @@ internal sealed partial class DestructionStore
         for (int i = 0; i < n; i++)
         {
             double mi = rec.Parts[i].Mass;
-            Vector3D accel = dynamic ? aCm + Vector3D.Cross(alpha, _r[i]) + Vector3D.Cross(omega, Vector3D.Cross(omega, _r[i])) : default;
+            Vector3D accel = isDynamic ? aCm + Vector3D.Cross(alpha, _r[i]) + Vector3D.Cross(omega, Vector3D.Cross(omega, _r[i])) : default;
             _G[i] = accel * mi - gD * mi - _force[i];
             _H[i] = -_moment[i];
         }
@@ -215,7 +215,7 @@ internal sealed partial class DestructionStore
         // Depth from the anchors (a static body) or from the most loaded part of each component.
         for (int i = 0; i < n; i++) { _depth[i] = -1; _seen[i] = 0; }
         int qh = 0, qt = 0;
-        if (!dynamic) for (int i = 0; i < n; i++) if (rec.Parts[i].Anchored) { _depth[i] = 0; _queue[qt++] = i; }
+        if (!isDynamic) for (int i = 0; i < n; i++) if (rec.Parts[i].Anchored) { _depth[i] = 0; _queue[qt++] = i; }
         Bfs(rec, ref qh, ref qt);
         for (int i = 0; i < n; i++)
         {
