@@ -10,13 +10,35 @@ internal sealed partial class Engine3D
     private static void MergeFlatPatches(NarrowScratch scratch, int first, bool soupIsA, QuaternionF inverseOther)
     {
         int end = scratch.OutCount;
-        for (int i = first; i < end; i++)
+        int firstFlat = first;
+        while (firstFlat < end && !scratch.Out[firstFlat].FlatPatch) firstFlat++;
+        if (firstFlat == end) return; // No shared supporting plane: keep ordinary triangle manifolds and their original feature ids.
+        for (int i = firstFlat; i < end; i++)
         {
             var seed = scratch.Out[i];
             if (!seed.FlatPatch || seed.Count == 0) continue;
             int total = 0;
             for (int j = i; j < end; j++) if (SameFlatPatch(in seed, in scratch.Out[j], soupIsA)) { total += scratch.Out[j].Count; }
             if (total == 0) continue;
+            if (total == 1)
+            {
+                // One point is already the full reduction; its canonical feature does not depend on local ordering.
+                scratch.Out[i].Id[0] = 0xFC000000u;
+                continue;
+            }
+            // Selection and the sorting network reuse each local ordering key. Compute it only once, and only for a multi-point patch.
+            if (scratch.FlatLocalPoints.Length < end * 4) Array.Resize(ref scratch.FlatLocalPoints, scratch.Out.Length * 4);
+            for (int j = i; j < end; j++)
+            {
+                ref var c = ref scratch.Out[j];
+                if (!SameFlatPatch(in seed, in c, soupIsA)) continue;
+                for (int k = 0; k < c.Count; k++)
+                {
+                    int p = k * 7 + (soupIsA ? 3 : 0);
+                    var v = inverseOther.Rotate(new Vector3F(c.P[p], c.P[p + 1], c.P[p + 2]));
+                    scratch.FlatLocalPoints[j * 4 + k] = new((float)Math.Round(v.X * 1e5f), (float)Math.Round(v.Y * 1e5f), (float)Math.Round(v.Z * 1e5f));
+                }
+            }
             var merged = seed;
             int s0 = -1, s1 = -1, s2 = -1, s3 = -1;
             for (int k = 0; k < Math.Min(total, 4); k++)
@@ -70,13 +92,7 @@ internal sealed partial class Engine3D
     }
     private static int CompareLocal(NarrowScratch scratch, int a, int b, bool soupIsA, QuaternionF inverseOther)
     {
-        Vector3F Local(int key)
-        {
-            ref var c = ref scratch.Out[key / 4]; int p = key % 4 * 7 + (soupIsA ? 3 : 0);
-            var v = inverseOther.Rotate(new Vector3F(c.P[p], c.P[p + 1], c.P[p + 2]));
-            return new((float)Math.Round(v.X * 1e5f), (float)Math.Round(v.Y * 1e5f), (float)Math.Round(v.Z * 1e5f));
-        }
-        var x = Local(a); var y = Local(b); int order = x.X.CompareTo(y.X); if (order == 0) order = x.Y.CompareTo(y.Y); if (order == 0) order = x.Z.CompareTo(y.Z); return order;
+        var x = scratch.FlatLocalPoints[a]; var y = scratch.FlatLocalPoints[b]; int order = x.X.CompareTo(y.X); if (order == 0) order = x.Y.CompareTo(y.Y); if (order == 0) order = x.Z.CompareTo(y.Z); return order;
     }
     private static void SortLocal(NarrowScratch scratch, ref int a, ref int b, bool soupIsA, QuaternionF inverseOther)
     {

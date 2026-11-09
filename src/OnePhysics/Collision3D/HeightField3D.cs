@@ -34,6 +34,7 @@ public sealed class HeightField3D : TriangleSoup3D
     private readonly Vector3F _scale;
     private readonly ulong[]? _holes;
     private readonly byte[] _flags;
+    private readonly bool[] _sharedPatches = System.Array.Empty<bool>();
     private readonly int[] _patchIds = System.Array.Empty<int>();
     private readonly int _triangleCount;
     private readonly int[] _levelW, _levelH;
@@ -171,6 +172,7 @@ public sealed class HeightField3D : TriangleSoup3D
             }
         }
         CoplanarPatchIds.Finish(_patchIds);
+        _sharedPatches = CoplanarPatchIds.Shared(_patchIds);
     }
 
     /// <inheritdoc/>
@@ -373,7 +375,7 @@ public sealed class HeightField3D : TriangleSoup3D
         }
 
         Tri(cell, k, out Vector3F a, out Vector3F b, out Vector3F c);
-        triangle = new SoupTriangle3D(id, a, b, c, (byte)((_flags[cell] >> (3 * k)) & 7), _patchIds.Length == 0 ? id : _patchIds[id]);
+        triangle = new SoupTriangle3D(id, a, b, c, (byte)((_flags[cell] >> (3 * k)) & 7), _patchIds.Length == 0 ? id : _patchIds[id], _sharedPatches.Length != 0 && _sharedPatches[id]);
         return true;
     }
 

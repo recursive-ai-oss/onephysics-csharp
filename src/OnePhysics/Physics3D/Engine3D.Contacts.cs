@@ -112,6 +112,7 @@ internal sealed class NarrowScratch
     public static TriangleShapeBuffer3D TriBuf => H.TriBuf;
     public ContactOut[] Out = new ContactOut[128];
     public int OutCount;
+    public Vector3F[] FlatLocalPoints = Array.Empty<Vector3F>();
     public int Recycled, RecycledPoints, FreshQueries;
     /// <summary>Pairs of this chunk that passed the tight-box test, and those among them that ran the narrowphase (not skipped as apart, not reusing a manifold); read by the work counters.</summary>
     public int Reached, Fresh;
@@ -924,7 +925,7 @@ internal sealed partial class Engine3D
 
         ref ContactOut o = ref sc.Next();
         o.OriginalSubA = subA; o.OriginalSubB = subB; o.SubA = subA; o.SubB = subB; o.Hint = default; o.Recycled = false; o.FlatPatch = false; o.FlatPlane = 0;
-        if (filter && tri.ActiveEdges != 7)
+        if (filter && tri.SharedPatch)
         {
             Vector3F towards = soupIsA ? n : soupFromA.Rotation.Rotate(-n);
             if (Vector3F.Dot(towards, triNormal) >= GhostCosine)
@@ -1210,7 +1211,8 @@ internal sealed partial class Engine3D
         }
     }
 
-    private Material3D Mix(int sa, int sb, int subA = 0, int subB = 0)
+    // Keep the ordinary contact path scalar: body-frame surface configuration is resolved separately.
+    private ContactMaterial Mix(int sa, int sb, int subA = 0, int subB = 0)
     {
         float fa = Friction[sa], fb = Friction[sb], ra = Restitution[sa], rb = Restitution[sb], rra = Rolling[sa], rrb = Rolling[sb];
         if (Core.ContactMaterials.IsPresent)
@@ -1223,13 +1225,14 @@ internal sealed partial class Engine3D
         var mixer = Opt.MaterialMixer;
         if (mixer != null)
         {
-            return mixer(new Material3D(fa, ra, rra), new Material3D(fb, rb, rrb));
+            var mixed = mixer(new Material3D(fa, ra, rra), new Material3D(fb, rb, rrb));
+            return new ContactMaterial(mixed.Friction, mixed.Restitution, mixed.RollingResistance);
         }
 
         // Friction: geometric mean (a slippery surface stays slippery); restitution and rolling resistance: the larger.
         float fr = float.Sqrt(fa * fb);
         float re = ra > rb ? ra : rb;
         float rr = rra > rrb ? rra : rrb;
-        return new Material3D(fr, re, rr);
+        return new ContactMaterial(fr, re, rr);
     }
 }

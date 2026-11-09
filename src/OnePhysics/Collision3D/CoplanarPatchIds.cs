@@ -20,6 +20,13 @@ internal static class CoplanarPatchIds
         int ra = Root(parents, a), rb = Root(parents, b); if (ra < rb) parents[rb] = ra; else parents[ra] = rb;
     }
     internal static void Finish(int[] parents) { for (int i = 0; i < parents.Length; i++) parents[i] = Root(parents, i); }
+    internal static bool[] Shared(int[] ids)
+    {
+        var shared = new bool[ids.Length];
+        for (int i = 0; i < ids.Length; i++) if (ids[i] != i) shared[ids[i]] = true;
+        for (int i = 0; i < ids.Length; i++) shared[i] = shared[ids[i]];
+        return shared;
+    }
     internal static bool SamePlane(Vector3F a0, Vector3F a1, Vector3F a2, Vector3F b0, Vector3F b1, Vector3F b2)
     {
         var a = new SoupTriangle3D(0, a0, a1, a2, 7); var b = new SoupTriangle3D(0, b0, b1, b2, 7);

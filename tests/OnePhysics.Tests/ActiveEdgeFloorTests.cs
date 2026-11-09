@@ -8,6 +8,14 @@ namespace RecursiveAI.OnePhysics.Tests;
 
 public class ActiveEdgeFloorTests
 {
+    [Fact]
+    public void CoherentPatchMembershipIncludesRootsButNotIsolatedTriangles()
+    {
+        int[] ids = [0, 0, 2, 2, 4];
+        bool[] expected = [true, true, true, true, false];
+        Assert.Equal(expected, LowLevel.CoplanarPatchIds.Shared(ids));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

@@ -918,7 +918,8 @@ internal sealed partial class Engine2D
         }
     }
 
-    private Material2D Mix(int sa, int sb)
+    // Keep the ordinary contact path scalar: body-frame surface configuration is resolved separately.
+    private ContactMaterial Mix(int sa, int sb)
     {
         float fa = Friction[sa], fb = Friction[sb], ra = Restitution[sa], rb = Restitution[sb], rra = Rolling[sa], rrb = Rolling[sb];
         if (Core.ContactMaterials.IsPresent)
@@ -931,13 +932,14 @@ internal sealed partial class Engine2D
         var mixer = Opt.MaterialMixer;
         if (mixer != null)
         {
-            return mixer(new Material2D(fa, ra, rra), new Material2D(fb, rb, rrb));
+            var mixed = mixer(new Material2D(fa, ra, rra), new Material2D(fb, rb, rrb));
+            return new ContactMaterial(mixed.Friction, mixed.Restitution, mixed.RollingResistance);
         }
 
         // Friction: geometric mean (a slippery surface stays slippery); restitution and rolling resistance: the larger.
         float f = float.Sqrt(fa * fb);
         float r = ra > rb ? ra : rb;
         float rr = rra > rrb ? rra : rrb;
-        return new Material2D(f, r, rr);
+        return new ContactMaterial(f, r, rr);
     }
 }

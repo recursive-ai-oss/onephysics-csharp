@@ -10,7 +10,7 @@ namespace RecursiveAI.OnePhysics.LowLevel;
 [Experimental("OPHYS0001")]
 public readonly struct SoupTriangle3D
 {
-    internal SoupTriangle3D(int id, Vector3F v0, Vector3F v1, Vector3F v2, byte activeEdges, int patchId = -1)
+    internal SoupTriangle3D(int id, Vector3F v0, Vector3F v1, Vector3F v2, byte activeEdges, int patchId = -1, bool sharedPatch = false)
     {
         Id = id;
         V0 = v0;
@@ -18,7 +18,10 @@ public readonly struct SoupTriangle3D
         V2 = v2;
         ActiveEdges = activeEdges;
         CoplanarPatchId = patchId < 0 ? id : patchId;
+        SharedPatch = sharedPatch;
     }
+
+    internal bool SharedPatch { get; }
 
     /// <summary>The triangle's id: its index among the kept triangles of a mesh, or <c>2 * cell + k</c> in a height field. Stable for the lifetime of the shape.</summary>
     public int Id { get; }
