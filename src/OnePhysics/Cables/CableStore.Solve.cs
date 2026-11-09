@@ -9,7 +9,7 @@ namespace RecursiveAI.OnePhysics.Cables;
 // rigid step as constant loads. Because the loads are applied in every substep, a load hanging in equilibrium stays exactly at rest.
 internal sealed partial class CableStore
 {
-    private const double Beta = 0.25;
+    private const double Beta = 0.25, Deadband = 1e-5;
 
     private struct Frame
     {
@@ -57,7 +57,7 @@ internal sealed partial class CableStore
         internal bool[] Valid = new bool[16];
         internal Row[] Rows = new Row[48];
         internal int[] RunStart = new int[16], RunCount = new int[16];
-        internal double[] RunK = new double[16];
+        internal double[] RunK = new double[16], RunScale = new double[16];
         internal int Runs;
         internal int RowCount;
         internal void Ensure(int nodes)
@@ -66,7 +66,7 @@ internal sealed partial class CableStore
             int n = Math.Max(nodes + 1, Spin.Length * 2);
             Spin = new SpinEnt[n]; NodeEnt = new int[n]; Center = new Vector3D[n]; AxisW = new Vector3D[n]; E1 = new Vector3D[n]; E2 = new Vector3D[n]; P = new Vector3D[n]; Q = new Vector3D[n]; Dir = new Vector3D[n];
             Len = new double[n]; RunRatio = new double[n]; Lambda = new double[3 * n]; Bias = new double[n]; Theta = new double[n]; E = new double[n]; Stretch = new double[n];
-            Valid = new bool[n]; Rows = new Row[3 * n]; RunStart = new int[n]; RunCount = new int[n]; RunK = new double[n];
+            Valid = new bool[n]; Rows = new Row[3 * n]; RunStart = new int[n]; RunCount = new int[n]; RunK = new double[n]; RunScale = new double[n];
         }
     }
 
@@ -320,7 +320,13 @@ internal sealed partial class CableStore
         for (int e = 0; e < sc.NB; e++)
         {
             ref var b = ref sc.B[e];
-            if (b.Dyn) b.V = b.V + new Vector3D(g.X, g.Y, Host.Planar ? 0 : g.Z) * ((double)b.GravityScale * h);
+            if (b.Dyn)
+            {
+                // What the rigid step will add on its own: gravity, and any force or torque already queued (user forces, fields).
+                Host.PendingLoad(b.Slot, out var pf, out var pt);
+                b.V = b.V + new Vector3D(g.X, g.Y, Host.Planar ? 0 : g.Z) * ((double)b.GravityScale * h) + new Vector3D(pf.X, pf.Y, pf.Z) * (b.InvM * h);
+                b.W = b.W + b.Inertia(Host.Planar, new Vector3D(pt.X, pt.Y, pt.Z)) * h;
+            }
             b.Force = default; b.Torque = default;
         }
 

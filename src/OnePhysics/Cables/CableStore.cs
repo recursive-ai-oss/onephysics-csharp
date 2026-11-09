@@ -15,6 +15,8 @@ internal interface ICableHost
     float GravityScaleOf(int body);
     Vector3F LocalCenter(int body);
     /// <summary>Adds a world-space force (through the centre of mass) and torque that the next step integrates, then clears.</summary>
+    /// <summary>The force and world-space torque already queued for the next step (user forces, fields), which the rigid step will integrate.</summary>
+    void PendingLoad(int body, out Vector3F force, out Vector3F torque);
     void AddLoad(int body, Vector3F force, Vector3F torque);
     ReplayMutationScope CableMutation(string operation);
 }

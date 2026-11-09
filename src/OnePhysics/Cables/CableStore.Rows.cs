@@ -77,7 +77,9 @@ internal sealed partial class CableStore
             row.Const = cst;
             double c = m.Geometric[k] - m.Material[k];
             m.Stretch[k] = c;
-            row.Bias = c > 0 ? Beta * c / dt : c / dt;
+            // Within a deadband (ten micrometres; a millimetre for a chain, whose sprockets' integrated angles drift faster) the stretch is rounding noise (body angles are float32); acting on it would turn into a velocity error of c/dt, so the span just holds its velocity.
+            double band = m.Chain ? 1e-3 : Deadband, e = c > band ? c - band : c < -band ? c + band : 0;
+            row.Bias = e > 0 ? Beta * e / dt : e / dt;
         }
         for (int i = 0; i < n; i++)
         {
@@ -180,15 +182,15 @@ internal sealed partial class CableStore
             // Bring the run's multipliers into the ratios of its wheels.
             double k0 = 0;
             if (sc.Valid[start]) k0 = sc.Lambda[start];
-            double kk = 0;
+            double kk = 0, ka = 0;
             for (int a = 0; a < count; a++)
             {
                 int sa = (start + a) % spans; if (!sc.Valid[sa]) continue;
                 double want = sc.RunRatio[sa] * k0, have = sc.Lambda[sa];
                 if (want != have) { ApplyRow(sc, ref sc.Rows[sa], -(want - have)); sc.Lambda[sa] = want; }
-                for (int b2 = 0; b2 < count; b2++) { int sb = (start + b2) % spans; kk += sc.RunRatio[sb] * Kdot(sc, ref sc.Rows[sa], ref sc.Rows[sb]); }
+                for (int b2 = 0; b2 < count; b2++) { int sb = (start + b2) % spans; double kd = sc.RunRatio[sb] * Kdot(sc, ref sc.Rows[sa], ref sc.Rows[sb]); kk += kd; ka += Math.Abs(kd); }
             }
-            sc.RunK[sc.Runs] = kk;
+            sc.RunK[sc.Runs] = kk; sc.RunScale[sc.Runs] = ka;
             sc.Runs++; processed += count; k = (start + count) % spans;
         }
     }
@@ -196,7 +198,7 @@ internal sealed partial class CableStore
     private void UpdateRun(Scratch sc, CableData m, int run, double dt)
     {
         int spans = m.Spans, start = sc.RunStart[run], count = sc.RunCount[run];
-        if (!sc.Valid[start] || !(sc.RunK[run] > 1e-14)) return;
+        if (!sc.Valid[start]) return;
         double rho = 0, floor = 0, pre = (double)m.Preload * dt;
         for (int a = 0; a < count; a++)
         {
@@ -204,7 +206,10 @@ internal sealed partial class CableStore
             rho += JV(sc, ref sc.Rows[sa]) + sc.Rows[sa].Bias;
             double f = pre / sc.RunRatio[sa]; if (f > floor) floor = f;
         }
-        double l0 = sc.Lambda[start], nl = l0 + rho / sc.RunK[run];
+        double l0 = sc.Lambda[start], nl;
+        // A run whose tension changes nothing it can feel (a belt slipping over a wheel that cannot move) has no determined tension level: a belt tensioner holds it at its preload.
+        if (!(sc.RunK[run] > 1e-9 * sc.RunScale[run]) || !(sc.RunK[run] > 1e-14)) nl = floor;
+        else nl = l0 + rho / sc.RunK[run];
         if (nl < floor) nl = floor;
         double delta = nl - l0;
         if (delta == 0) return;
@@ -309,6 +314,18 @@ internal sealed partial class CableStore
                 m.Material[sa] += flow * dt; sum += flow;
             }
             m.Material[(start + count - 1) % spans] -= sum * dt;
+        }
+        if (m.Chain && m.Closed)
+        {
+            // A chain never slips on its teeth, so the loaded span's stretch can only be the rotation integrator's rounding of the two sprockets' angles. Handing it to the neighbouring span keeps the chain's
+            // total length exactly and lets the speed ratio stay the tooth ratio instead of being bent to hide the drift.
+            for (int k = 0; k < spans; k++)
+            {
+                if (!sc.Valid[k] || !(sc.Lambda[k] > 0)) continue;
+                double c = m.Geometric[k] - m.Material[k];
+                if (Math.Abs(c) > 1e-3) continue;
+                m.Material[k] += c; m.Material[(k + 1) % spans] -= c;
+            }
         }
         double tmax = 0;
         for (int k = 0; k < spans; k++)
