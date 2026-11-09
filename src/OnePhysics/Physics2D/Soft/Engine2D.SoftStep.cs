@@ -160,6 +160,7 @@ internal sealed partial class Engine2D
             Core.Profile.Mark(StepStage.SoftPairs);
             SoftenDepenetration(h);
             for (int a = 0; a < _awakeSoftCount; a++) { Array.Clear(_awakeSoft[a].Lambda); Array.Clear(_awakeSoft[a].MatchMu); }
+            _softSubstep = k;
             SolveSubstep(h, invH, iterations);
 
             Core.Profile.Mark(StepStage.SoftFinish);

@@ -30,6 +30,26 @@ public class SoftBody2DTests
 
     private static Body Floor(PhysicsWorld2D w) => w.AddBox(new Vector2F(60f, 1f), at: new Vector2D(0, -0.5), type: BodyType.Static);
 
+    // A balloon dropped exactly symmetrically must not start rolling: a Gauss-Seidel sweep that always runs the same way round the outline used to give it a spin of about 0.7 rad/s on landing.
+    [Fact]
+    public void SymmetricBalloonDropStaysSymmetric()
+    {
+        var w = NewWorld();
+        Floor(w);
+        var s = w.AddBalloon(0.5f, new Vector2D(0, 1.0), 24);
+        Run(w, 100);
+        var c = s.CenterOfMass;
+        double l = 0;
+        for (int p = 0; p < s.ParticleCount; p++)
+        {
+            var q = s.GetPosition(p); var v = s.GetVelocity(p);
+            l += (q.X - c.X) * v.Y - (q.Y - c.Y) * v.X;
+        }
+
+        Assert.True(Math.Abs(c.X) < 0.01, $"drifted {c.X}");
+        Assert.True(Math.Abs(l) < 0.05, $"angular momentum sum {l}");
+    }
+
     // ---- meshes and definitions
 
     [Fact]

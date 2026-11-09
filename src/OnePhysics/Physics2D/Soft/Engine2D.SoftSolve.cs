@@ -59,15 +59,15 @@ internal sealed partial class Engine2D
     }
 
     // Solves the constraints of one region of a body: edges, bends, triangles; the boundary set goes on with the pressure constraint and the shape-matching clusters.
-    private void RunSoftTask(int t, float h)
+    private void RunSoftTask(int t, float h, bool reverse)
     {
         var d = _awakeSoft[_stBody[t]];
         int r = _stRegion[t];
         if (d.UsesNetwork)
         {
-            SolveEdges(d, d.EdgeStart[r], d.EdgeStart[r + 1], h);
-            SolveBends(d, d.BendStart[r], d.BendStart[r + 1], h);
-            SolveAreas(d, d.TriStart[r], d.TriStart[r + 1], h);
+            SolveEdges(d, d.EdgeStart[r], d.EdgeStart[r + 1], h, reverse);
+            SolveBends(d, d.BendStart[r], d.BendStart[r + 1], h, reverse);
+            SolveAreas(d, d.TriStart[r], d.TriStart[r + 1], h, reverse);
             if (r == d.BlockCount && d.HasPressure) { SolvePressure(d, h); }
         }
 
@@ -152,7 +152,7 @@ internal sealed partial class Engine2D
         {
             int k = stage % _perPass;
             if (task >= Real(k)) { return; }
-            if (k < _e._stStages) { _e.RunSoftTask(_e._stStart[k] + task, _h); }
+            if (k < _e._stStages) { _e.RunSoftTask(_e._stStart[k] + task, _h, ((stage / _perPass + _e._softSubstep) & 1) != 0); }
             else if (k == _e._stStages) { _e.SolveContactTask(task, _h, _invH); }
             else if (k == _e._stStages + 1) { _e.SolvePairs(); }
             else { LimitTargets(_e._awakeSoft[_e._targetBody[task]]); }
@@ -165,6 +165,7 @@ internal sealed partial class Engine2D
         }
     }
 
+    private int _softSubstep;
     private int[] _targetBody = new int[4];
     private int _targetCount;
 

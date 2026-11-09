@@ -11,30 +11,32 @@ internal sealed partial class Engine2D
     // Macklin et al. 2019 (small steps: many substeps with a single Gauss–Seidel pass each beats many iterations of one large step).
     // The kernels work on the float32 copies X / XP of the positions (relative to the body's origin for the step). Constraints are stored by region (SoftBodyBlocks) and solved in that order.
 
-    private static void SolveEdges(SoftBodyData d, int first, int end, float h)
+    // The constraints of a region are solved in a Gauss-Seidel sweep, which has a direction: the one that comes first in a sweep is corrected against a stale neighbour, and a loop of particles (a balloon's
+    // outline) is pushed round it, so a body dropped symmetrically would pick up spin. Passes and substeps alternate the direction (SoftSolve), which cancels that bias.
+    private static void SolveEdges(SoftBodyData d, int first, int end, float h, bool reverse)
     {
         if (first == end) { return; }
         var def = d.Def;
         float alpha = def.EdgeCompliance / (h * h), gamma = def.EdgeDamping / h;
-        for (int e = first; e < end; e++) { XpbdDistance(d.X, d.XP, d.InvMass, d.SEdgeA[e], d.SEdgeB[e], d.SEdgeRest[e], alpha, gamma, ref d.Lambda[e]); }
+        for (int e0 = first; e0 < end; e0++) { int e = reverse ? first + end - 1 - e0 : e0; XpbdDistance(d.X, d.XP, d.InvMass, d.SEdgeA[e], d.SEdgeB[e], d.SEdgeRest[e], alpha, gamma, ref d.Lambda[e]); }
     }
 
-    private static void SolveBends(SoftBodyData d, int first, int end, float h)
+    private static void SolveBends(SoftBodyData d, int first, int end, float h, bool reverse)
     {
         if (first == end) { return; }
         var def = d.Def;
         float alpha = def.BendCompliance / (h * h), gamma = def.BendDamping / h;
         int ne = d.SEdgeA.Length;
-        for (int e = first; e < end; e++) { XpbdDistance(d.X, d.XP, d.InvMass, d.SBendA[e], d.SBendB[e], d.SBendRest[e], alpha, gamma, ref d.Lambda[ne + e]); }
+        for (int e0 = first; e0 < end; e0++) { int e = reverse ? first + end - 1 - e0 : e0; XpbdDistance(d.X, d.XP, d.InvMass, d.SBendA[e], d.SBendB[e], d.SBendRest[e], alpha, gamma, ref d.Lambda[ne + e]); }
     }
 
-    private static void SolveAreas(SoftBodyData d, int first, int end, float h)
+    private static void SolveAreas(SoftBodyData d, int first, int end, float h, bool reverse)
     {
         if (first == end) { return; }
         var def = d.Def;
         float alpha = def.AreaCompliance / (h * h), gamma = def.AreaDamping / h;
         int off = d.SEdgeA.Length + d.SBendA.Length;
-        for (int e = first; e < end; e++) { XpbdArea(d, e, alpha, gamma, ref d.Lambda[off + e]); }
+        for (int e0 = first; e0 < end; e0++) { int e = reverse ? first + end - 1 - e0 : e0; XpbdArea(d, e, alpha, gamma, ref d.Lambda[off + e]); }
     }
 
     // Distance constraint C = |xa - xb| - rest, with the XPBD multiplier update and Rayleigh-style damping (Macklin et al. 2016, eq. 18 with gamma = damping time / substep).
