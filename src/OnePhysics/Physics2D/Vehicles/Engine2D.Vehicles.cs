@@ -464,7 +464,9 @@ internal sealed partial class Engine2D
 
             if (s.Gear > 0 && s.ShiftTimer <= 0f)
             {
-                float rpm = s.EngineW * (60f / TwoPi);
+                // The box shifts on the speed the driven wheels imply for the engine in the current gear, not on the engine's own speed: with the clutch open the engine revs freely, and shifting on that would run
+                // through every gear one after the other, each shift opening the clutch again.
+                float rpm = ImpliedEngineW(s) * (60f / TwoPi);
                 if (rpm > tr.ShiftUpRpm && s.Gear < gears && throttle > 0f) { SetGear(s, s.Gear + 1, tr); }
                 else if (rpm < tr.ShiftDownRpm && s.Gear > 1) { SetGear(s, s.Gear - 1, tr); }
             }
@@ -550,6 +552,22 @@ internal sealed partial class Engine2D
         if (we > top) { we = top; }
         s.EngineW = we;
         return brake;
+    }
+
+    /// <summary>The engine speed the driven wheels turn in the current gear if the clutch were locked, rad/s: the torque-weighted mean wheel speed of the differentials through their ratios and the gear.</summary>
+    private static float ImpliedEngineW(VehicleState s)
+    {
+        var def = s.Def;
+        float gr = s.Gear > 0 ? s.Ratios[s.Gear - 1] : 0f;
+        float sum = 0f, share = 0f;
+        for (int d = 0; d < def.Differentials.Length; d++)
+        {
+            var df = def.Differentials[d];
+            float w = df.Left >= 0 && df.Right >= 0 ? 0.5f * (Math.Abs(s.Omega[df.Left]) + Math.Abs(s.Omega[df.Right])) : df.Left >= 0 ? Math.Abs(s.Omega[df.Left]) : Math.Abs(s.Omega[df.Right]);
+            sum += df.EngineTorqueRatio * w * df.Ratio * gr; share += df.EngineTorqueRatio;
+        }
+
+        return share > 0f ? sum / share : 0f;
     }
 
     private static void SetGear(VehicleState s, int gear, TransmissionDef tr)

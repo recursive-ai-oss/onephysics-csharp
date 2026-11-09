@@ -361,7 +361,7 @@ public sealed class VehicleDef
                 Engine = new EngineDef { MaxTorque = 1500f, MinRpm = 600f, MaxRpm = 2800f, Inertia = 2f, TorqueCurve = new[] { 0.7f, 0.9f, 1f, 1f, 0.95f, 0.8f }, EngineBraking = 0.2f },
                 Transmission = new TransmissionDef { ForwardRatios = new[] { 6f, 3.8f, 2.5f, 1.7f, 1.2f, 0.9f }, ReverseRatio = 5f, ShiftUpRpm = 2300f, ShiftDownRpm = 1100f, SwitchTime = 0.4f },
             };
-            foreach (var w in d.Wheels) { w.Inertia = 4f; w.MaxBrakeTorque = 12000f; }
+            foreach (var w in d.Wheels) { w.Inertia = 40f; w.MaxBrakeTorque = 12000f; }
             return d;
         }
     }

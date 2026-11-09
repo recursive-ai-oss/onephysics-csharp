@@ -23,6 +23,7 @@ public static class Program
                 return 0;
             }
             case "fields-stability": return FieldStability.Run();
+            case "vehicles2d-stability": return Vehicles2DStability.Run(opts);
             case "micro-boxbox": return MicroBoxBox.Run(opts);
             case "queries-indicative": return MixedQueryTiming.Run(opts);
             case "recording-indicative": return RecordingTiming.Run(opts);
