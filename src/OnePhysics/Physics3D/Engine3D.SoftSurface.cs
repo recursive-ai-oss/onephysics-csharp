@@ -94,7 +94,10 @@ internal sealed partial class Engine3D
     private const double TravelFactor = 1.5;
     private const double MaxCellVisits = 512.0, MaxCellCoordinate = 1e15;
     // How far a particle may wander from its listed position before the lists are rebuilt, in particle radii (on top of the substep's travel).
-    private const double SkinFactor = 1.0;
+    internal static double SkinFactor = 1.0;
+    internal static bool SurfProf;
+    internal static readonly long[] ProfCounts = new long[6];   // substeps listed, rebuilds, candidate pairs (sum over substeps), active pairs (sum)
+    private void PM(StepStage st) { if (SurfProf) { Core.Profile.Mark(st); } }
     // Items per search task.
     private const int SurfaceChunk = 96;
 
@@ -153,6 +156,7 @@ internal sealed partial class Engine3D
             _bTr[a] = a < _awakeSoftCount && _bPart[a] ? TravelFactor * (MaxParticleSpeed(d) * (double)h + 0.5 * gmag * (double)h * h) : 0.0;
         }
 
+        PM(StepStage.Init);
         bool rebuild = !_cbValid || !SameBodies();
         if (!rebuild)
         {
@@ -170,7 +174,10 @@ internal sealed partial class Engine3D
             for (int a = 0; a < _pairSoftCount; a++) { _bDisp[a] = 0.0; }
         }
 
+        PM(StepStage.Pairs);
         SelectActive();
+        PM(StepStage.SoftPredict);
+        if (SurfProf) { ProfCounts[0]++; if (rebuild) { ProfCounts[1]++; } ProfCounts[2] += _vtCount + _eeCount; ProfCounts[3] += _avCount + _aeCount; }
     }
 
     private ulong LayerSignature()
@@ -236,6 +243,7 @@ internal sealed partial class Engine3D
             }
         }
 
+        PM(StepStage.Move);
         MarkSurfaceBodies();
         int nt = 0, ne = 0;
         for (int a = 0; a < _pairSoftCount; a++)
@@ -307,10 +315,13 @@ internal sealed partial class Engine3D
 
         if (targets == 0) { return; }
         // The grids of the targets are built in tasks (one per target), then the searches run in tasks of a fixed number of items each, and the hits are joined in task order.
+        PM(StepStage.Sort);
         Core.Executor.For(_pairSoftCount, new SurfGridProgram(this));
+        PM(StepStage.Search);
         BuildSearchTasks();
         for (int t = 0; t < _skCount; t++) { _sbuf[t] ??= new SurfBuf(); _sbuf[t]!.Count = 0; }
         Core.Executor.For(_skCount, new SurfSearchProgram(this));
+        PM(StepStage.Alloc);
         for (int t = 0; t < _skCount; t++)
         {
             var buf = _sbuf[t]!;

@@ -63,19 +63,39 @@ internal static class Cloth3DScene
     private static void Throw(PhysicsWorld3D w)
     {
         w.AddCylinder(1.5f, 0.1f, new Vector3D(3, 1.5, 0), type: BodyType.Static);
-        var def = new ClothDef { Width = 1.2f, Depth = 1.2f, SegmentsX = 20, SegmentsZ = 20, Position = new Vector3D(-3, 1.4, 0), Rotation = new QuaternionF(0f, 0f, 0.7071068f, 0.7071068f), Material = ClothMaterial.Cotton };
+        var def = new ClothDef { Width = 1.2f, Depth = 1.2f, SegmentsX = 20, SegmentsZ = 20, Position = new Vector3D(-3, 1.4, 0), Rotation = new QuaternionF(0f, 0f, 0.7071068f, 0.7071068f), Material = DenseCloth() };
         def.LinearVelocity = new Vector3F(20f, 0f, 0f);
         w.AddCloth(def);
     }
 
-    // Two 0.8 x 0.8 m panels, one each side of a 0.2 m cylinder, stitched along both sides and hung by their top edges with tethers.
+    // A wet cloth: air drag would stop a light sheet thrown at 20 m/s within a few steps, so the throw uses a sheet that does not feel it.
+    private static ClothMaterial DenseCloth() { var m = ClothMaterial.Cotton; m.Drag = 0f; m.ArealDensity = 0.5f; return m; }
+
+    // Two 0.6 x 0.8 m panels laid half way round a 0.2 m cylinder, front and back, stitched along both sides and hung by their top edges with tethers.
     private static void Garment(PhysicsWorld3D w, Extras ex)
     {
         w.AddCylinder(0.6f, 0.2f, new Vector3D(0, 1.6, 0), type: BodyType.Static);
         var top = ClothDef.PinEdge(10, 10, 0);
-        ClothDef Panel(double z) => new() { Width = 0.8f, Depth = 0.8f, SegmentsX = 10, SegmentsZ = 10, Position = new Vector3D(0, 1.8, z), Rotation = Upright, Material = ClothMaterial.Denim, PinnedParticles = top, Tethers = true, TetherStrain = 0.02f };
-        var front = w.AddCloth(Panel(0.215));
-        var back = w.AddCloth(Panel(-0.215));
+        SoftBody Panel(float side)
+        {
+            var def = new ClothDef { Width = 0.6f, Depth = 0.8f, SegmentsX = 10, SegmentsZ = 10, Position = new Vector3D(0, 1.8, 0), Rotation = Upright, Material = ClothMaterial.Denim, PinnedParticles = top, Tethers = true, TetherStrain = 0.02f };
+            var sd = def.ToSoftBodyDef();
+            // the flat rest sheet starts curved round the cylinder: arc length along x is kept, the face looks outwards
+            const double r = 0.215;
+            var start = new Vector3F[sd.Mesh!.VertexCount];
+            for (int i = 0; i < start.Length; i++)
+            {
+                var v = sd.Mesh.Vertices[i];
+                double th = v.X / r;
+                start[i] = new Vector3F((float)(r * Math.Sin(th)), (float)(side * r * Math.Cos(th)), v.Z);
+            }
+
+            sd.StartVertices = start;
+            return w.AddSoftBody(sd);
+        }
+
+        var front = Panel(1f);
+        var back = Panel(-1f);
         ex.Front = front.Slot; ex.Back = back.Slot;
         w.AddSeam(front, ClothDef.PinEdge(10, 10, 1), back, ClothDef.PinEdge(10, 10, 1), 1e-4f);
         w.AddSeam(front, ClothDef.PinEdge(10, 10, 3), back, ClothDef.PinEdge(10, 10, 3), 1e-4f);
@@ -198,7 +218,7 @@ internal static class Cloth3DScene
         foreach (int edge in new[] { 1, 3 })
         {
             var e = ClothDef.PinEdge(10, 10, edge);
-            // the top row is pinned on both panels, 0.43 m apart for good: only the seam below it is measured
+            // the top row is pinned on both panels and stays where it was hung: only the seam below it is measured
             for (int i = 0; i < e.Length; i++) { if (e[i] > 10) { worst = Math.Max(worst, (front.GetPosition(e[i]) - back.GetPosition(e[i])).Length()); } }
         }
 

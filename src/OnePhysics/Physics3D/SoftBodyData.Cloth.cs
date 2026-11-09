@@ -18,13 +18,10 @@ internal sealed partial class SoftBodyData
     public int[] TethP = Array.Empty<int>(), TethA = Array.Empty<int>();
     public float[] TethLen = Array.Empty<float>();
 
-    /// <summary>The solver edges in the order the strain limit visits them: by breadth-first distance from the pinned particles outwards (ties by edge number), so one sweep from the pins carries a correction all the way along a hanging chain
+    /// <summary>The solver edges in the order the strain limit visits them: by breadth-first distance from the pinned particles outwards (ties by edge number), so a sweep from the pins carries corrections along a hanging chain
     /// (Provot's iteration converges slowly in any other order). Derived from the pins; rebuilt when they change.</summary>
     public int[] LimitOrder = Array.Empty<int>();
 
-    /// <summary>Per solver edge: 1 when its first particle is farther from the pins than the second, 2 when the second is, 0 when they are as far (or nothing is pinned): the limit moves only the farther one, so a sweep from the pins
-    /// settles every edge it passes.</summary>
-    public byte[] LimitFar = Array.Empty<byte>();
     private long _limitPinSig = -1;
 
     /// <summary>Rebuilds <see cref="LimitOrder"/> when the set of pinned particles has changed since it was made.</summary>
@@ -57,11 +54,9 @@ internal sealed partial class SoftBodyData
         }
 
         var keys = new long[ne];
-        LimitFar = new byte[ne];
         for (int e = 0; e < ne; e++)
         {
             int la = level[SEdgeA[e]], lb = level[SEdgeB[e]];
-            if (la != int.MaxValue && lb != int.MaxValue && la != lb) { LimitFar[e] = (byte)(la > lb ? 1 : 2); }
             int l = Math.Min(la, lb);
             keys[e] = ((long)(l == int.MaxValue ? 0 : l) << 32) | (long)e;
         }

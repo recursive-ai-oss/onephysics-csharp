@@ -9,6 +9,8 @@ internal static class SoftTiming3D
 {
     internal static int Run(int threads, string surface = "default")
     {
+        RecursiveAI.OnePhysics.Physics3D.Engine3D.SurfProf = Environment.GetEnvironmentVariable("OP_SURFPROF") != null;
+        var sk = Environment.GetEnvironmentVariable("OP_SKIN"); if (sk != null) { RecursiveAI.OnePhysics.Physics3D.Engine3D.SkinFactor = double.Parse(sk, System.Globalization.CultureInfo.InvariantCulture); }
         if (surface == "on") { SceneBuilder3D.SurfaceOverride = true; } else if (surface == "off") { SceneBuilder3D.SurfaceOverride = false; }
         _fold = surface != "off"; _surface = surface;
         var sc = Gen.All().First(s => s.Name == "cloth-drape-3d");
@@ -22,8 +24,8 @@ internal static class SoftTiming3D
         return RunFold(threads);
     }
 
-    private static readonly string[] StageNames = ["softSetup", "softPredict", "softDetect", "softPairs", "softConstraints", "softFinish", "softEnd"];
-    private static readonly int[] StageIdx = [17, 18, 19, 20, 21, 24, 25];
+    private static readonly string[] StageNames = ["softSetup", "softPredict", "softDetect", "softPairs", "softConstraints", "softFinish", "softEnd", "sInit", "sBoxes", "sGrids", "sSearch", "sJoin", "sSelect", "candV", "candE", "activeV", "activeE"];
+    private static readonly int[] StageIdx = [17, 18, 19, 20, 21, 24, 25, 13, 12, 15, 14, 16, 1];
 
     private static double[] Time(RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D w, Action step)
     {
@@ -44,8 +46,9 @@ internal static class SoftTiming3D
         }
 
         w.Profile.TimestampSource = null;
+        { var pc = RecursiveAI.OnePhysics.Physics3D.Engine3D.ProfCounts; Console.WriteLine($"  surface counts (whole run incl warmup): substeps={pc[0]} rebuilds={pc[1]} avgCandidates={(pc[0] > 0 ? pc[2] / (double)pc[0] : 0):F0} avgActive={(pc[0] > 0 ? pc[3] / (double)pc[0] : 0):F0}"); Array.Clear(pc); }
         Console.WriteLine($"  softSum median={sum.OrderBy(x => x).ElementAt(150):F3} gen0={GC.CollectionCount(0) - gc0}");
-        Console.WriteLine("  stages(median ms): " + string.Join(" ", StageNames.Select((n, k) => n + "=" + st[k].OrderBy(x => x).ElementAt(150).ToString("F3"))));
+        Console.WriteLine("  stages(median ms): " + string.Join(" ", StageNames.Take(StageIdx.Length).Select((n, k) => n + "=" + st[k].OrderBy(x => x).ElementAt(150).ToString("F3"))));
 
         return ms;
     }

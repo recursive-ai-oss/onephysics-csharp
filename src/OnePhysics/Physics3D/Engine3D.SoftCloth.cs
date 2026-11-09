@@ -81,7 +81,7 @@ internal sealed partial class Engine3D
                 for (int i = 0; i < ne; i++)
                 {
                     int e = d.LimitOrder[rev ? ne - 1 - i : i];
-                    any |= LimitDistance(x, inv, d.SEdgeA[e], d.SEdgeB[e], d.SEdgeRest[e] * k, d.LimitFar[e]);
+                    any |= LimitDistance(x, inv, d.SEdgeA[e], d.SEdgeB[e], d.SEdgeRest[e] * k);
                 }
 
                 // Past the regular sweeps the work stops as soon as a whole sweep finds nothing to correct.
@@ -89,15 +89,12 @@ internal sealed partial class Engine3D
             }
         }
 
-        for (int t = 0; t < d.TethP.Length; t++) { _ = LimitDistance(x, inv, d.TethP[t], d.TethA[t], d.TethLen[t], 0); }
+        for (int t = 0; t < d.TethP.Length; t++) { _ = LimitDistance(x, inv, d.TethP[t], d.TethA[t], d.TethLen[t]); }
     }
 
-    // far: 1 or 2 moves only the first or second particle (the one farther from the pins); 0 shares the correction by inverse mass.
-    private static bool LimitDistance(float[] x, float[] inv, int a, int b, float max, byte far)
+    private static bool LimitDistance(float[] x, float[] inv, int a, int b, float max)
     {
         float wa = inv[a], wb = inv[b];
-        if (far == 1 && wa > 0f) { wb = 0f; wa = 1f; }
-        else if (far == 2 && wb > 0f) { wa = 0f; wb = 1f; }
         float wsum = wa + wb;
         if (wsum == 0f) { return false; }
         int ka = 3 * a, kb = 3 * b;
@@ -117,34 +114,14 @@ internal sealed partial class Engine3D
     // relative speed so a light cloth cannot be thrown past the flow's own velocity in one substep.
     private void ClothAero(SoftBodyData d, float h)
     {
-        var cl = d.Def.Fabric!;
-        var coef = ClothCoefficients(cl);
+        var coef = ClothCoefficients(d.Def.Fabric!);
         float rho = Actuators.AirDensity;
         var tris = d.Tris;
-        var x = d.X; var vel = d.Vel; var inv = d.InvMass;
+        var vel = d.Vel; var inv = d.InvMass;
         for (int t = 0; t < tris.Length / 3; t++)
         {
+            if (!TriangleForce(d, t, coef, rho, out float fx, out float fy, out float fz, out float ux, out float uy, out float uz)) { continue; }
             int a = tris[3 * t], b = tris[3 * t + 1], c = tris[3 * t + 2];
-            int ka = 3 * a, kb = 3 * b, kc = 3 * c;
-            float e1x = x[kb] - x[ka], e1y = x[kb + 1] - x[ka + 1], e1z = x[kb + 2] - x[ka + 2];
-            float e2x = x[kc] - x[ka], e2y = x[kc + 1] - x[ka + 1], e2z = x[kc + 2] - x[ka + 2];
-            float nx = e1y * e2z - e1z * e2y, ny = e1z * e2x - e1x * e2z, nz = e1x * e2y - e1y * e2x;
-            float nl = float.Sqrt(nx * nx + ny * ny + nz * nz);
-            if (!(nl > 1e-12f)) { continue; }
-            float area = 0.5f * nl;
-            float inl = 1f / nl;
-            nx *= inl; ny *= inl; nz *= inl;
-            double cxw = d.Ox + (x[ka] + x[kb] + x[kc]) * (1.0 / 3.0), cyw = d.Oy + (x[ka + 1] + x[kb + 1] + x[kc + 1]) * (1.0 / 3.0), czw = d.Oz + (x[ka + 2] + x[kb + 2] + x[kc + 2]) * (1.0 / 3.0);
-            var wind = Actuators.WindAt(new Vector3D(cxw, cyw, czw));
-            float vx = (vel[ka] + vel[kb] + vel[kc]) * (1f / 3f), vy = (vel[ka + 1] + vel[kb + 1] + vel[kc + 1]) * (1f / 3f), vz = (vel[ka + 2] + vel[kb + 2] + vel[kc + 2]) * (1f / 3f);
-            float ux = wind.X - vx, uy = wind.Y - vy, uz = wind.Z - vz;
-            float un = ux * nx + uy * ny + uz * nz;
-            float tx = ux - un * nx, ty = uy - un * ny, tz = uz - un * nz;
-            float tl = float.Sqrt(tx * tx + ty * ty + tz * tz);
-            float chx = 0f, chy = 0f, chz = 0f;
-            if (tl > 1e-9f) { float itl = 1f / tl; chx = tx * itl; chy = ty * itl; chz = tz * itl; }
-            coef.Force(tl, un, area, rho, out float fc, out float fn);
-            float fx = fc * chx + fn * nx, fy = fc * chy + fn * ny, fz = fc * chz + fn * nz;
             // The velocity change is capped at the relative speed: a very light cloth in a strong flow ends the substep moving with the flow, not past it.
             float wa = inv[a], wb = inv[b], wc = inv[c];
             float mTri = (wa > 0f ? 1f / wa : 0f) + (wb > 0f ? 1f / wb : 0f) + (wc > 0f ? 1f / wc : 0f);
@@ -160,6 +137,92 @@ internal sealed partial class Engine3D
                 int kp = 3 * p;
                 vel[kp] += fx * s; vel[kp + 1] += fy * s; vel[kp + 2] += fz * s;
             }
+        }
+    }
+
+    // The aerodynamic force on one triangle from the flow relative to it, and that relative flow. False for a degenerate triangle.
+    private bool TriangleForce(SoftBodyData d, int t, AeroCoefficients coef, float rho, out float fx, out float fy, out float fz, out float ux, out float uy, out float uz)
+    {
+        fx = fy = fz = ux = uy = uz = 0f;
+        var tris = d.Tris; var x = d.X; var vel = d.Vel;
+        int a = tris[3 * t], b = tris[3 * t + 1], c = tris[3 * t + 2];
+        int ka = 3 * a, kb = 3 * b, kc = 3 * c;
+        float e1x = x[kb] - x[ka], e1y = x[kb + 1] - x[ka + 1], e1z = x[kb + 2] - x[ka + 2];
+        float e2x = x[kc] - x[ka], e2y = x[kc + 1] - x[ka + 1], e2z = x[kc + 2] - x[ka + 2];
+        float nx = e1y * e2z - e1z * e2y, ny = e1z * e2x - e1x * e2z, nz = e1x * e2y - e1y * e2x;
+        float nl = float.Sqrt(nx * nx + ny * ny + nz * nz);
+        if (!(nl > 1e-12f)) { return false; }
+        float area = 0.5f * nl;
+        float inl = 1f / nl;
+        nx *= inl; ny *= inl; nz *= inl;
+        double cxw = d.Ox + (x[ka] + x[kb] + x[kc]) * (1.0 / 3.0), cyw = d.Oy + (x[ka + 1] + x[kb + 1] + x[kc + 1]) * (1.0 / 3.0), czw = d.Oz + (x[ka + 2] + x[kb + 2] + x[kc + 2]) * (1.0 / 3.0);
+        var wind = Actuators.WindAt(new Vector3D(cxw, cyw, czw));
+        float vx = (vel[ka] + vel[kb] + vel[kc]) * (1f / 3f), vy = (vel[ka + 1] + vel[kb + 1] + vel[kc + 1]) * (1f / 3f), vz = (vel[ka + 2] + vel[kb + 2] + vel[kc + 2]) * (1f / 3f);
+        ux = wind.X - vx; uy = wind.Y - vy; uz = wind.Z - vz;
+        float un = ux * nx + uy * ny + uz * nz;
+        float tx = ux - un * nx, ty = uy - un * ny, tz = uz - un * nz;
+        float tl = float.Sqrt(tx * tx + ty * ty + tz * tz);
+        float chx = 0f, chy = 0f, chz = 0f;
+        if (tl > 1e-9f) { float itl = 1f / tl; chx = tx * itl; chy = ty * itl; chz = tz * itl; }
+        coef.Force(tl, un, area, rho, out float fc, out float fn);
+        fx = fc * chx + fn * nx; fy = fc * chy + fn * ny; fz = fc * chz + fn * nz;
+        return true;
+    }
+
+    /// <summary>Seams, attachments and tethers of cloth, and the wind force on every triangle of an aerodynamic cloth, as plain data.</summary>
+    public void AddDebugCloth(Debug.DebugGeometry g)
+    {
+        for (int i = 0; i < LinkHandles.HighWater; i++)
+        {
+            if (!LinkHandles.IsLive(i)) { continue; }
+            var l = Links[i];
+            var da = SoftData[l.SoftA]!;
+            var from = new Vector3D(da.Pos[3 * l.PartA], da.Pos[3 * l.PartA + 1], da.Pos[3 * l.PartA + 2]);
+            if (l.Kind == (int)ClothLinkKind.Seam)
+            {
+                var db = SoftData[l.SoftB]!;
+                g.Add(new Debug.DebugClothLink(Debug.DebugClothLinkKind.Seam, l.SoftA, l.PartA, from, new Vector3D(db.Pos[3 * l.PartB], db.Pos[3 * l.PartB + 1], db.Pos[3 * l.PartB + 2]), 0f));
+            }
+            else
+            {
+                if (!Core.Bodies.Handles.IsAlive(l.Rigid, l.RigidGen)) { continue; }
+                var p = Core.Bodies.PositionOf(l.Rigid);
+                var r = RotationOfBody(l.Rigid).Rotate(new Vector3F(l.Lx, l.Ly, l.Lz));
+                g.Add(new Debug.DebugClothLink(Debug.DebugClothLinkKind.Attachment, l.SoftA, l.PartA, from, new Vector3D(p[0] + r.X, p[1] + r.Y, p[2] + r.Z), 0f));
+            }
+        }
+
+        for (int s = 0; s < SoftHandles.HighWater; s++)
+        {
+            if (!SoftHandles.IsLive(s)) { continue; }
+            var d = SoftData[s]!;
+            for (int t = 0; t < d.TethP.Length; t++)
+            {
+                int p = d.TethP[t], a = d.TethA[t];
+                g.Add(new Debug.DebugClothLink(Debug.DebugClothLinkKind.Tether, s, p, new Vector3D(d.Pos[3 * p], d.Pos[3 * p + 1], d.Pos[3 * p + 2]), new Vector3D(d.Pos[3 * a], d.Pos[3 * a + 1], d.Pos[3 * a + 2]), d.TethLen[t]));
+            }
+
+            if (d.Def.Fabric is not { Drag: > 0f } fab) { continue; }
+            // The forces are computed from the world-frame positions the body has between steps (the step's own origin is set at its start).
+            double ox = 0.5 * (d.MinX + d.MaxX), oy = 0.5 * (d.MinY + d.MaxY), oz = 0.5 * (d.MinZ + d.MaxZ);
+            ComputeSoftBounds(d);
+            ox = 0.5 * (d.MinX + d.MaxX); oy = 0.5 * (d.MinY + d.MaxY); oz = 0.5 * (d.MinZ + d.MaxZ);
+            var saveX = d.X;
+            var xs = new float[3 * d.N];
+            for (int i = 0; i < d.N; i++) { xs[3 * i] = (float)(d.Pos[3 * i] - ox); xs[3 * i + 1] = (float)(d.Pos[3 * i + 1] - oy); xs[3 * i + 2] = (float)(d.Pos[3 * i + 2] - oz); }
+            double sx = d.Ox, sy = d.Oy, sz = d.Oz;
+            d.X = xs; d.Ox = ox; d.Oy = oy; d.Oz = oz;
+            var coef = ClothCoefficients(fab);
+            float rho = Actuators.AirDensity;
+            for (int t = 0; t < d.Tris.Length / 3; t++)
+            {
+                if (!TriangleForce(d, t, coef, rho, out float fx, out float fy, out float fz, out _, out _, out _)) { continue; }
+                int a = d.Tris[3 * t], b = d.Tris[3 * t + 1], c = d.Tris[3 * t + 2];
+                var center = new Vector3D((d.Pos[3 * a] + d.Pos[3 * b] + d.Pos[3 * c]) / 3.0, (d.Pos[3 * a + 1] + d.Pos[3 * b + 1] + d.Pos[3 * c + 1]) / 3.0, (d.Pos[3 * a + 2] + d.Pos[3 * b + 2] + d.Pos[3 * c + 2]) / 3.0);
+                g.Add(new Debug.DebugClothWind(s, t, center, new Vector3F(fx, fy, fz)));
+            }
+
+            d.X = saveX; d.Ox = sx; d.Oy = sy; d.Oz = sz;
         }
     }
 
