@@ -42,6 +42,7 @@ public sealed partial class PhysicsWorld3D
     internal PhysicsWorld3D(WorldCore core, Engine3D engine)
     {
         _core = core; _engine = engine; engine.World = this; BindBodyControlOptions();
+        _mixedQueries = new PhysicsQuery3D(this);
         BuildPublicEvents();
     }
 

@@ -24,6 +24,7 @@ public static class Program
             }
             case "fields-stability": return FieldStability.Run();
             case "micro-boxbox": return MicroBoxBox.Run(opts);
+            case "queries-indicative": return MixedQueryTiming.Run(opts);
             case "recording-indicative": return RecordingTiming.Run(opts);
             case "selftest": return Metrics.SelfTest() + Metrics3.SelfTest() + Robust.SelfTest() + ProfileReport.SelfTest() + Verdict.SelfTest();
             case "run": return Runner.Run(opts);

@@ -6,7 +6,7 @@ using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 
-internal enum QueryKind : byte { Ray, Cast, Overlap, Closest }
+internal enum QueryKind : byte { Ray, Cast, Overlap, Closest, Penetration }
 
 /// <summary>Closest keeps the best hit, Any stops at the first, All keeps the best N in order, Count only counts the accepted shapes (overlap queries; no hit is stored).</summary>
 internal enum QueryMode : byte { Closest, Any, All, Count }
@@ -28,6 +28,7 @@ internal sealed class QueryScratch
     public RawHit[] Hits = new RawHit[8];
     public int Count;
     public int Capacity;
+    internal Epa3D? PenetrationSolver;
     public readonly List<SoupTriangle3D> Tris = new();
     public readonly List<int> Ids = new();
     public readonly TriangleShapeBuffer3D TriBuf = new();
@@ -98,6 +99,8 @@ internal readonly struct PaddedRay<TRay> : IRay<Aabb3D> where TRay : struct, IRa
 internal struct QueryParams
 {
     public QueryKind Kind;
+    public int OnlyBodyPlusOne, OnlyShapePlusOne, ExcludeBodyPlusOne;
+    public bool ExcludeJointed;
     public double X, Y, Z;       // ray origin, mover position, or closest-point query point
     public float Tx, Ty, Tz;     // ray or cast translation (world frame)
     public ConvexShape3D Mover;  // cast and overlap shape in its own frame
@@ -119,9 +122,11 @@ internal sealed partial class Engine3D
     internal bool ClosedFormLeaves = true;
 
     private double _queryPad;
-    private bool _queryPadValid;
+    private volatile bool _queryPadValid;
 
     public void InvalidatePad() => _queryPadValid = false;
+
+    internal void PrepareQueries() => QueryPad();
 
     /// <summary>
     /// How far any moving proxy's stored (fat) box may be behind the body's pose: bodies move during a step but their proxies are updated at the start of the next one, so between steps a box can be stale.
@@ -188,6 +193,19 @@ internal sealed partial class Engine3D
         }
 
         float best = float.PositiveInfinity;
+        if (mover.Kind == ConvexShapeKind3D.Plane)
+        {
+            var leaves = new LeafCursor(g, sc.TriBuf);
+            while (leaves.MoveNext(out var leaf, out var local))
+            {
+                var d = Gjk3D.Distance(leaf, mover, local.Inverted() * moverInShape);
+                float dist = d.Overlapping ? 0f : d.Distance;
+                if (dist >= best || dist > maxDist) { continue; }
+                best = dist; sub = leaves.CurrentId;
+                point = local.TransformPoint(d.PointA); normal = local.Rotation.Rotate(d.Normal);
+            }
+            return best;
+        }
         if (g.Compound != null)
         {
             var comp = g.Compound;
@@ -359,6 +377,18 @@ internal sealed partial class Engine3D
         var lo = inv.Rotate(new Vector3F((float)(q.X - ox), (float)(q.Y - oy), (float)(q.Z - oz)));
         switch (q.Kind)
         {
+            case QueryKind.Penetration:
+            {
+                var relative = new RigidTransformF(inv * q.MoverRot, lo);
+                if (!PenetrationOf(g, q.Mover, relative, sc, out var contact, out int sub)) { return false; }
+                var point = rs.Rotate(contact.PointA);
+                var normal = rs.Rotate(contact.Normal);
+                h.Distance = -contact.Separation; h.Key = contact.Separation; h.Sub = sub;
+                h.Px = ox + point.X; h.Py = oy + point.Y; h.Pz = oz + point.Z;
+                h.Nx = normal.X; h.Ny = normal.Y; h.Nz = normal.Z;
+                return true;
+            }
+
             case QueryKind.Ray:
             {
                 var lt = inv.Rotate(new Vector3F(q.Tx, q.Ty, q.Tz));
@@ -399,7 +429,14 @@ internal sealed partial class Engine3D
                 var motion = inv.Rotate(new Vector3F(q.Tx, q.Ty, q.Tz));
                 var rel = new RigidTransformF(inv * q.MoverRot, lo);
                 float f; Vector3F n, p; int sub = 0; bool startsOverlapping;
-                if (g.IsConvex)
+                if (q.Mover.Kind == ConvexShapeKind3D.Plane)
+                {
+                    // A half-space's reference point need not be near any target leaf.
+                    // Finite mover clipping and proxy boxes are not valid rejection tests.
+                    if (!CastPlaneMover(g, q.Mover, rel, motion, sc, out var hit, out sub)) { return false; }
+                    f = hit.Fraction; n = hit.Normal; p = hit.PointA; startsOverlapping = hit.StartsOverlapping;
+                }
+                else if (g.IsConvex)
                 {
                     if (QuickRejects && MoverBox(in q.Mover, in rel, out var mmin, out var mmax))
                     {
@@ -511,6 +548,8 @@ internal sealed partial class Engine3D
 
         private bool Visit(int slot)
         {
+            if (Q.ExcludeBodyPlusOne != 0 && E.ExcludedFromSweep(E.Core.Shapes.Owner[slot], Q.ExcludeBodyPlusOne - 1, Q.ExcludeJointed)) { return false; }
+            if ((Q.OnlyShapePlusOne != 0 && slot != Q.OnlyShapePlusOne - 1) || (Q.OnlyBodyPlusOne != 0 && E.Core.Shapes.Owner[slot] != Q.OnlyBodyPlusOne - 1)) { return false; }
             if (!E.Passes(in Filter, slot) || !E.Narrow(in Q, Mode, slot, S, out RawHit h)) { return false; }
             if (Mode == QueryMode.Count) { S.Count++; return true; }
             S.Insert(in h);
@@ -564,7 +603,16 @@ internal sealed partial class Engine3D
             var st = scratch.State;
             st.E = this; st.Q = q; st.Filter = filter; st.Mode = mode; st.S = scratch;
             var v = new Visitor { St = st };
-            if (BruteQueries) { Brute(ref v); }
+            if (q.OnlyShapePlusOne != 0) { v.Report(0, q.OnlyShapePlusOne - 1, 1.0); }
+            else if (q.OnlyBodyPlusOne != 0)
+            {
+                for (int slot = ShapeHead[q.OnlyBodyPlusOne - 1]; slot >= 0; slot = NextShape[slot])
+                {
+                    v.Report(0, slot, 1.0);
+                    if (mode == QueryMode.Any && scratch.Count != 0) { break; }
+                }
+            }
+            else if (BruteQueries || q.Mover.Kind == ConvexShapeKind3D.Plane) { Brute(ref v); }
             else if (q.Kind == QueryKind.Closest) { ClosestSearch(ref v); }
             else { Trees(ref v); }
             return scratch;

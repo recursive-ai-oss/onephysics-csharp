@@ -131,7 +131,7 @@ internal static class Fuzz3DServices
         {
             try
             {
-                switch (r.Byte() % 20)
+                switch (r.Byte() % 26)
                 {
                     case 0: { s_queries++; if (w.Raycast(r.V3D(), r.V3F(), out var h, r.Float(), Filter(r))) { s_hits++; Check(in h); } break; }
                     case 1: { s_queries++; int n = w.RaycastAll(r.V3D(), r.V3F(), buffer, r.Float(), Filter(r)); s_hits += n; CheckSorted(buffer, n); break; }
@@ -143,6 +143,12 @@ internal static class Fuzz3DServices
                     case 7: { s_queries++; if (w.OverlapPoint(r.V3D(), out var h, Filter(r))) { s_hits++; Check(in h); } break; }
                     case 8: { s_queries++; if (w.ClosestPoint(r.V3D(), out var h, r.Float(), Filter(r))) { s_hits++; Check(in h); } break; }
                     case 9: { s_queries++; int n = w.ClosestPointAll(r.V3D(), buffer, r.Float(), Filter(r)); s_hits += n; for (int k = 0; k < n; k++) { Check(in buffer[k]); } break; }
+                    case 24: { var body = bodies[r.Byte() % made]; body.Sweep(r.V3F(), r.V3F(), out _, tolerance: r.Float()); break; }
+                    case 25: { w.Depenetrate(ConvexShape3D.Sphere(0.5f), r.V3D(), Rot(r), maxIterations: r.Byte() % 16, tolerance: r.Float(), maxDistance: r.Float()); break; }
+                    case 20: { var shapes = new Shape[4]; w.QueryAabb(r.V3D(), r.V3D(), shapes, Filter(r)); break; }
+                    case 21: { s_queries++; if (w.Penetration(ConvexShape3D.Sphere(0.5f), r.V3D(), Rot(r), out var h, Filter(r))) { s_hits++; Check(in h); } break; }
+                    case 22: { var input = new[] { QueryInput3D.Ray(r.V3D(), r.V3F(), r.Float()) }; w.QueryBatch(input, buffer); break; }
+                    case 23: { var body = bodies[r.Byte() % made]; body.Sweep(r.V3F(), out _, r.Float(), (r.Byte() & 1) != 0, Filter(r)); break; }
                     case 10: { s_edits++; w.SetLayerCollision(r.Byte() % 36 - 2, r.Byte() % 36 - 2, (r.Byte() & 1) != 0); break; }
                     case 11: { s_edits++; var b = bodies[r.Byte() % made]; b.Layer = r.Byte() % 34 - 1; break; }
                     case 12: { s_edits++; var s = bodies[r.Byte() % made].GetShapes(); if (s.Length > 0) { s[0].MaskBits = r.Byte(); s[0].CategoryBits = r.Byte(); s[0].GroupIndex = (sbyte)r.Byte(); } break; }

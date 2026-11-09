@@ -10,7 +10,7 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// Queries only read the world; they never change simulation state, so querying or not does not change a hash. Do not query while the world is stepping or being modified.
 /// Single queries may run concurrently from several threads; each thread has its own scratch, so steady-state queries with caller buffers allocate nothing.
 /// </summary>
-public sealed class PhysicsQuery2D
+public sealed partial class PhysicsQuery2D
 {
     private readonly PhysicsWorld2D _world;
 
@@ -149,5 +149,9 @@ public sealed class PhysicsQuery2D
         }
     }
 
-    private void Run(BatchBody body, int n) => _world.Core.Executor.For((n + 63) / 64, body);
+    private void Run(BatchBody body, int n)
+    {
+        _world.QueryEngine.PrepareQueries();
+        _world.Core.Executor.For((n + 63) / 64, body);
+    }
 }
