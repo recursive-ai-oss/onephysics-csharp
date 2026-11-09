@@ -87,8 +87,8 @@ public sealed class SoftBodyDef
     /// <summary>Whether the body may fall asleep when every particle has been slow for <see cref="WorldOptions3D.TimeToSleep"/>. Default true.</summary>
     public bool AllowSleep { get; set; } = true;
 
-    /// <summary>Whether the surface of the body (its triangles, or the boundary faces of a tetrahedral mesh) stops the particles and edges of other bodies, and, with <see cref="SelfCollision"/>, of this body: particles are kept out of triangles and edges out of edges, so a body is not porous between its surface particles and a cloth does not pass through itself. Without it only the particle spheres collide. The search keeps its candidate pairs between substeps and only looks again when particles have moved farther than a skin of their own radius, so a body at rest costs almost nothing. Default true, except for a skinned body, which defaults to false (its kinematic particles move by pose, not by speed).</summary>
-    public bool SurfaceCollision { get => _surfaceCollision ?? Skin == null; set => _surfaceCollision = value; }
+    /// <summary>Whether the surface of the body (its triangles, or the boundary faces of a tetrahedral mesh) stops the particles and edges of other bodies, and, with <see cref="SelfCollision"/>, of this body: particles are kept out of triangles and edges out of edges, so a body is not porous between its surface particles and a cloth does not pass through itself. Without it only the particle spheres collide. The search keeps its candidate pairs between substeps and only looks again when particles have moved farther than a skin of their own radius, so a body at rest costs almost nothing. Default false: a pile of bodies costs about one and a half times its step with it on, so a body asks for it (<see cref="ClothDef"/> does; a folded cloth needs it).</summary>
+    public bool SurfaceCollision { get => _surfaceCollision ?? false; set => _surfaceCollision = value; }
 
     private bool? _surfaceCollision;
 
