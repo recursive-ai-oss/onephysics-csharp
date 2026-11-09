@@ -17,6 +17,8 @@ internal static class Program
         ["tilegrid2d"] = FuzzGrids.Tiles,
         ["voxelgrid3d"] = FuzzGrids.Voxels,
         ["grid-snapshot"] = FuzzGrids.Snapshot,
+        ["rod-definition"] = FuzzRods.Definition,
+        ["rod-snapshot"] = FuzzRods.Snapshot,
         ["field-snapshot"] = FuzzFields.Snapshot,
         ["snapshot-desync"] = FuzzSnapshotEncoding.Desync,
         ["snapshot-region"] = FuzzSnapshotEncoding.Region,

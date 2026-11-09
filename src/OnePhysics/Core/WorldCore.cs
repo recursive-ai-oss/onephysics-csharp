@@ -1501,7 +1501,7 @@ public sealed partial class WorldCore
         foreach (var s in _sections)
         {
             if (s.IsOptional && !s.IsPresent) { continue; }
-            w.DescribeSection(s.SectionId switch { 0x42503244 => "broadphase2d", 0x42503344 => "broadphase3d", 0x32445747 => "engine2d", 0x33445747 => "engine3d", 0x534F4654 => "softbody3d", 0x42534C50 => "body sleep", 0x4243544C => "body controls", _ => "section " + s.SectionId.ToString(CultureInfo.InvariantCulture) });
+            w.DescribeSection(s.SectionId switch { 0x42503244 => "broadphase2d", 0x42503344 => "broadphase3d", 0x32445747 => "engine2d", 0x33445747 => "engine3d", 0x534F4654 => "softbody3d", 0x524F4453 => "rods", 0x42534C50 => "body sleep", 0x4243544C => "body controls", _ => "section " + s.SectionId.ToString(CultureInfo.InvariantCulture) });
             w.NamedInt32(s.SectionId);
             if (w.IsHashing)
             {
@@ -1648,6 +1648,9 @@ public sealed partial class WorldCore
 
         // Everything the core owns validated: now the sections (each all-or-nothing), then swap the core state in.
         var sub = _subReader ??= new StateReader(Array.Empty<byte>());
+        RestoringBodies = bodies;
+        try
+        {
         for (int i = 0; i < registered; i++)
         {
             if (!_sectionPresent[i]) { _sections[i].Reset(); continue; }
@@ -1657,6 +1660,8 @@ public sealed partial class WorldCore
             else _sections[i].Read(sub);
             if (sub.Remaining != 0) { throw new SnapshotFormatException("section " + _sections[i].SectionId.ToString(CultureInfo.InvariantCulture) + " left unread bytes", r.Position); }
         }
+        }
+        finally { RestoringBodies = null; }
 
         Surfaces.ValidateReferences(shapes);
         ContactMaterials.ValidateReferences(shapes);
@@ -1672,6 +1677,9 @@ public sealed partial class WorldCore
         if (ContactMotion.Enabled) _events.EnrichContactMotion(ContactMotion);
         _awakeCount = 0;
     }
+
+    /// <summary>The body store being restored while sections are read (sections that refer to bodies validate against it, not the live store); null otherwise.</summary>
+    internal BodyStore? RestoringBodies;
 
     private static void ValidateReferences(StateReader r, BodyStore bodies, ShapeStore shapes, ConstraintStore cons)
     {

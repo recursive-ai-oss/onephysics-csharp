@@ -32,6 +32,7 @@ public sealed partial class PhysicsWorld2D
         _core.AddSection(bp);
         _core.AddSection(_engine);
         _core.AddSection(_engine.Fields);
+        _core.AddSection(_engine.Rods);
         BindBodyControlOptions();
         _core.AddSection(_engine.MachineSnapshotSection);
         _core.AddSection(new ShapeMassOffsets2D(_engine));
@@ -118,6 +119,8 @@ public sealed partial class PhysicsWorld2D
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.Opt.Validate();
         _engine.CheckBounds();
+        _engine.Rods.CheckBounds();
+        _engine.Rods.ValidateStep(dt);
         if (_core.Controls.Active) _engine.ValidateTargetMotion(dt);
         SyncCoreOptions();
         if (_recorder != null) { RecordPreparedStep(dt); return; }
@@ -130,8 +133,10 @@ public sealed partial class PhysicsWorld2D
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.BeginBodyControls(dt);
         if (_engine.Fields.Count != 0) _engine.Fields.Step(dt);
+        if (_engine.Rods.Count != 0) _engine.Rods.BeginStep();
         _core.Step(new Stages2D(_engine), dt);
         _engine.EndFieldContacts();
+        if (_engine.Rods.Count != 0) _engine.Rods.Step(dt);
         _engine.EndBodyControls();
         InvalidateQueryPad();
         _engine.ReconcileJoints();
@@ -293,9 +298,11 @@ public sealed partial class PhysicsWorld2D
         _engine.CheckShift(d);
         _engine.CheckMachineShift(d);
         _engine.Fields.CheckShift(new Vector3D(offset.X,offset.Y,0));
+        _engine.Rods.CheckShift(new Vector3D(offset.X,offset.Y,0));
         _core.ShiftOrigin(d);
         _engine.ShiftMachineJoints(d);
         _engine.Fields.Shift(new Vector3D(offset.X,offset.Y,0));
+        _engine.Rods.Shift(new Vector3D(offset.X,offset.Y,0));
         _engine.ShiftProxies(d);
         InvalidateQueryPad();
     }

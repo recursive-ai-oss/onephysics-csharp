@@ -8,10 +8,12 @@ internal sealed partial class Engine2D
     internal RegionSelection SelectRegion(double[] min, double[] max, RegionSnapshot? archive = null)
     {
         var s = SnapshotRegions.Seed(Core, min, max, archive);
+        Rods.SelectRegion(s,min,max,archive);
         bool changed;
         do
         {
             changed = SnapshotRegions.CloseConstraints(Core, s);
+            changed |= Rods.CloseRegion(s);
             // Sensor overlaps live in the pair table rather than the constraint store. They need the same anchor closure.
             for (int p = 0; p < PairHigh; p++)
             {

@@ -71,6 +71,14 @@ internal static class SmokeProgram
         ulong fields2=FieldScenes.Run2(1,false),fields3=FieldScenes.Run3(1,false);
         if(fields2!=FieldScenes.Run2(3,true)||fields3!=FieldScenes.Run3(3,true))throw new InvalidOperationException("Field smoke hashes differ.");
         Console.WriteLine("OK fields "+fields2.ToString("x16",System.Globalization.CultureInfo.InvariantCulture)+" "+fields3.ToString("x16",System.Globalization.CultureInfo.InvariantCulture));
+        var rods2 = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D();
+        var rods3 = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D();
+        rods2.AddRope(new(0,2),new(1,2),4); rods3.AddRope(new(0,2,0),new(1,2,0),4);
+        for (int i=0;i<10;i++) { rods2.Step(1f/60); rods3.Step(1f/60); }
+        var rodCopy2=rods2.Fork(); var rodCopy3=rods3.Fork(); rodCopy2.Restore(rods2.Snapshot()); rodCopy3.Restore(rods3.Snapshot());
+        for (int i=0;i<10;i++) { rods2.Step(1f/60); rods3.Step(1f/60); rodCopy2.Step(1f/60); rodCopy3.Step(1f/60); }
+        if (rods2.ComputeHash()!=rodCopy2.ComputeHash() || rods3.ComputeHash()!=rodCopy3.ComputeHash()) throw new InvalidOperationException("Rod smoke hashes differ.");
+        Console.WriteLine("OK rods "+rods2.ComputeHash().ToString("x16",System.Globalization.CultureInfo.InvariantCulture)+" "+rods3.ComputeHash().ToString("x16",System.Globalization.CultureInfo.InvariantCulture));
         const float dt = 1f / 60f;
         var a = ParticleScene.CreatePile(200, 42, threadCount: 1, worldId: 1);
         var b = ParticleScene.CreatePile(200, 42, threadCount: 4, worldId: 1);
@@ -161,9 +169,11 @@ internal static class SmokeProgram
         Console.WriteLine(formats ? "OK formats" : "FAIL formats");
         bool inspection = InspectionSmoke.Run(out ulong inspectionHash);
         Console.WriteLine((inspection ? "OK inspection " : "FAIL inspection ") + inspectionHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        bool rods = RodSmoke.Run(out ulong rodHash);
+        Console.WriteLine((rods ? "OK rods " : "FAIL rods ") + rodHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool machines = JointMachineSmoke.Run();
         Console.WriteLine(machines ? "OK machines" : "FAIL machines");
-        return ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+        return rods && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
     }
 
     private static bool MissingShapes()

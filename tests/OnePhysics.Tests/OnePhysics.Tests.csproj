@@ -13,6 +13,7 @@
     <TieredCompilation>false</TieredCompilation>
   </PropertyGroup>
 
+  <ItemGroup><Compile Include="../Common/RodScenes.cs" LinkBase="Common" /></ItemGroup>
   <ItemGroup>
     <Compile Include="../Common/ContactSurfaceScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Services3DScene.cs" LinkBase="Common" />

@@ -22,6 +22,15 @@ public sealed partial class PhysicsWorld3D
     {
         ArgumentNullException.ThrowIfNull(geometry);
         geometry.Clear();
+        if ((flags & DebugContent.Rods) != 0)
+        {
+            for (int r = 0; r < _engine.Rods.Data.Length; r++)
+            {
+                if (_engine.Rods.Data[r] is not {} d) continue;
+                for (int j = 0; j < d.Length.Length; j++)
+                    geometry.Add(new DebugRodSegment(r,j,d.PositionData[j],d.PositionData[j+1],d.FrameData[j],d.Material.Radius));
+            }
+        }
         if ((flags & DebugContent.Fields) != 0)
         {
             for (int i=0;i<_engine.Fields.Definitions.Length;i++)

@@ -16,6 +16,7 @@
     <Compile Include="../Common/ContactSurfaceScene.cs" LinkBase="Common" />
     <Compile Include="../Common/SmokeProgram.cs" LinkBase="Common" />
     <Compile Include="../Common/InspectionSmoke.cs" LinkBase="Common" />
+    <Compile Include="../Common/RodSmoke.cs" LinkBase="Common" />
     <Compile Include="../Common/JointMachineSmoke.cs" LinkBase="Common" />
     <Compile Include="../Common/Services3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/SoftBodies3DScene.cs" LinkBase="Common" />
