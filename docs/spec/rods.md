@@ -193,7 +193,9 @@ average force over the last whole step.
 
 Candidates are gathered once per substep, not rediscovered every pass, and the cache never
 decides a contact: each pass re-runs the exact tests on the cached candidates and a pass
-that finds the cache possibly short rebuilds it. Margin G = 0.004 m.
+that finds the cache possibly short rebuilds it. Margin G = 0.004 m. A sphere's distance to a
+segment, while they are apart, is computed in closed form (the segment point nearest the centre);
+every other shape goes through the general distance routines.
 
 - **Shapes.** Per rod, the broadphase is asked for the rod's swept bounds (every segment's
   box over its previous and current particles) grown by radius+0.001+G in the static tree, and
@@ -272,7 +274,7 @@ x64 and arm64 values, rounded up to a 1/1.5/2/3/5/7 step, with a 1 mm penetratio
 | rope-whip-3d | <= 45 | <= 0.005 | <= 0.001 | 0 | 30.0 / 0.0016 / 0 |
 | rope-2d | <= 5 | <= 0.05 | <= 0.001 | 0 | 2.62 / 0.0294 / 0.00025 |
 | rope-bridge-3d | <= 10 | <= 0.05 | <= 0.001 | 0 | 6.64 / 0.0215 / 0 |
-| hair-3d | <= 5 | <= 0.15 | <= 0.001 | 0 | 2.91 / 0.0931 / 0.00044 |
+| hair-3d | <= 5 | <= 0.15 | <= 0.001 | 0 | 2.91 / 0.0931 / 0.00043 |
 
 Speed is the larger of any rod particle's and any rigid body's speed. Penetration is the
 deepest remaining overlap between a rod capsule and a shape, after the last pass of a
@@ -283,7 +285,7 @@ sphere (radius 0.34 against a 0.35 head); bridge and swing count dynamic bodies 
 particles whose centre is below the floor slab's centre plane.
 
 x64 (1, 3 and 8 threads) end hashes after 600 steps: whip 32bfdfb01bd5cec5,
-rope-2d d10ad261d31ad6de, bridge 193ca0ba3e8809ce, hair 4a7c4a1682836549.
+rope-2d d10ad261d31ad6de, bridge 193ca0ba3e8809ce, hair 35e60c339911ff26.
 
 Joint-chain comparison uses matching particle locations/masses and distance joints, but
 has no Cosserat bend/twist, collides as spheres (at least 1 cm radius) instead of swept
@@ -306,10 +308,10 @@ branch's table row against the same-day run of the previous code):
 
 | scene | before t1 / t8 ms | after t1 / t8 ms |
 |---|---|---|
-| hair-3d (1000 strands) | 309.8 / 268.3 | 113.0 / 37.6 |
+| hair-3d (1000 strands) | 309.8 / 268.3 | 102.7 / 32.1 |
 | rope-bridge-3d | 5.06 / 4.40 | 2.16 / 1.25 |
 
 What remains in hair-3d at one thread is mostly the rod solve (about 75 of 165 ms on x64, which the
-contact search does not touch), the 100k or so capsule distance queries of the sweeps near the head,
-and the candidate gather (about 10 ms a step, serial). The bridge touches no shape, so its cost was
+contact search does not touch), the capsule distance queries of the sweeps near the head, and the candidate
+gather (about 10 ms a step at one thread). The bridge touches no shape, so its cost was
 all search.
