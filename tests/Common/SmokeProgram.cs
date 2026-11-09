@@ -191,6 +191,11 @@ internal static class SmokeProgram
         ulong a21 = Actuators2DScene.Run(1, false), a23 = Actuators2DScene.Run(3, false), a2r = Actuators2DScene.Run(1, true);
         bool act2 = a21 == a23 && a21 == a2r;
         Console.WriteLine((act2 ? "OK actuators2d " : "FAIL actuators2d ") + a21.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        // Shallow water with floating bodies and boats in both dimensions: same state on one and three threads and after a restore.
+        ulong wt31 = WaterScenes.Run3D(1, false), wt33 = WaterScenes.Run3D(3, false), wt3r = WaterScenes.Run3D(1, true);
+        ulong wt21 = WaterScenes.Run2D(1, false), wt23 = WaterScenes.Run2D(3, false), wt2r = WaterScenes.Run2D(1, true);
+        bool shallowWater = wt31 == wt33 && wt31 == wt3r && wt21 == wt23 && wt21 == wt2r;
+        Console.WriteLine((shallowWater ? "OK shallowwater " : "FAIL shallowwater ") + wt31.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) + " " + wt21.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         // Rail vehicles and bicycles in both dimensions: same state on one and three threads and after a restore.
         ulong rb31 = RailBikeScenes3D.Run(1, false), rb33 = RailBikeScenes3D.Run(3, false), rb3r = RailBikeScenes3D.Run(1, true);
         ulong rb21 = RailBikeScenes2D.Run(1, false), rb23 = RailBikeScenes2D.Run(3, false), rb2r = RailBikeScenes2D.Run(1, true);
@@ -308,7 +313,7 @@ internal static class SmokeProgram
         Console.WriteLine((destruction ? "OK destruction " : "FAIL destruction ") + destructionHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool machines = JointMachineSmoke.Run();
         Console.WriteLine(machines ? "OK machines" : "FAIL machines");
-        return tools && destruction && active && railBike && abilities && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
+        return tools && destruction && active && shallowWater && railBike && abilities && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
     }
 
     private static bool MissingShapes()

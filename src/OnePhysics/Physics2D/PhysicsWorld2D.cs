@@ -48,6 +48,7 @@ public sealed partial class PhysicsWorld2D
         _core.AddSection(_engine.ActiveSnapshotSection);
         _core.AddSection(_engine.Destruction);
         _core.AddSection(_engine.ParticleFluids);
+        _core.AddSection(_engine.Water);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -153,11 +154,13 @@ public sealed partial class PhysicsWorld2D
         _engine.StepBicycles();
         _engine.StepVehicles(this, dt);
         if (_engine.Cables.Count != 0) _engine.Cables.Step(dt);
+        _engine.Water.BeginStep(dt);
         _engine.Actuators.Step(dt);
         if (_engine.Rods.Count != 0) _engine.Rods.BeginStep();
         _engine.BeginCharacterAbilities(dt);
         _engine.BeginSoftStep();
         _core.Step(new Stages2D(_engine), dt);
+        _engine.Water.EndStep(dt);
         _engine.EndFieldContacts();
         if (_engine.Rods.Count != 0) _engine.Rods.Step(dt);
         _engine.StepSoft(dt);
@@ -175,6 +178,7 @@ public sealed partial class PhysicsWorld2D
         {
             if (_handlers.Count > 0 || _jointHandlers.Count > 0) { DispatchEvents(); }
             if (_engine.SoftTearEvents.Length > 0) { DispatchSoftTears(); }
+            if (_engine.Water.Events.Count > 0) { DispatchWaterEvents(); }
         }
         else if (_jointHandlers.Count > 0) { RetireBrokenJointHandlers(); }
         EndDestruction(dt);
@@ -331,6 +335,7 @@ public sealed partial class PhysicsWorld2D
         _engine.Rods.CheckShift(new Vector3D(offset.X,offset.Y,0));
         _engine.Cables.CheckShift(new Vector3D(offset.X,offset.Y,0));
         if (!_engine.ParticleFluids.CanShift(d)) { throw new ArgumentOutOfRangeException(nameof(offset), offset, "Shifting the origin by " + offset + " would leave a fluid particle outside the supported range. Nothing was changed."); }
+        _engine.Water.CheckShift(new Vector3D(offset.X,offset.Y,0));
         _core.ShiftOrigin(d);
         _engine.ShiftMachineJoints(d);
         _engine.ShiftVehicles(d);
@@ -339,6 +344,7 @@ public sealed partial class PhysicsWorld2D
         _engine.Rods.Shift(new Vector3D(offset.X,offset.Y,0));
         _engine.Cables.Shift(new Vector3D(offset.X,offset.Y,0));
         _engine.ParticleFluids.ShiftOrigin(d);
+        _engine.Water.Shift(new Vector3D(offset.X,offset.Y,0));
         _engine.ShiftProxies(d);
         _engine.ShiftSoft(offset.X, offset.Y);
         InvalidateQueryPad();

@@ -68,8 +68,11 @@ public enum DebugContent
     /// <summary>Particles of particle fluids and the volumes of their emitters and drains (<see cref="DebugGeometry.FluidParticles"/>, <see cref="DebugGeometry.FluidVolumes"/>).</summary>
     Fluids = 262144,
 
+    /// <summary>The surface and depth of every shallow-water grid as plain data (<see cref="DebugGeometry.WaterSurfaces"/>, <see cref="DebugGeometry.WaterHeights"/>, <see cref="DebugGeometry.WaterDepths"/>).</summary>
+    ShallowWater = 524288,
+
     /// <summary>Everything.</summary>
-    All = 524287,
+    All = 1048575,
 }
 
 /// <summary>The kind of a <see cref="DebugShape"/>. The same enum serves 2D and 3D worlds; a 2D world emits the first five.</summary>

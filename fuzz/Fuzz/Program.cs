@@ -30,6 +30,8 @@ internal static class Program
         ["fluid-snapshot"] = FuzzFluids.Snapshot,
         ["pulley-definition"] = FuzzPulleys.Definition,
         ["pulley-snapshot"] = FuzzPulleys.Snapshot,
+        ["water-definition"] = FuzzWater.Definition,
+        ["water-snapshot"] = FuzzWater.Snapshot,
         ["rail-bike-definition"] = FuzzRailBike.Definition,
         ["rail-bike-snapshot"] = FuzzRailBike.Snapshot,
         ["ability-calls"] = FuzzCharacterAbilities.Calls,

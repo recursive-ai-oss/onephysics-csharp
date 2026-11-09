@@ -23,6 +23,8 @@ public sealed partial class PhysicsWorld3D
         ArgumentNullException.ThrowIfNull(geometry);
         geometry.Clear();
         geometry.ClearBonds();
+        geometry.ClearWater();
+        if ((flags & DebugContent.ShallowWater) != 0) _engine.Water.CollectDebug(geometry);
         if ((flags & DebugContent.Destruction) != 0) _engine.Destruction.CollectDebug(geometry);
         if ((flags & DebugContent.Rods) != 0)
         {

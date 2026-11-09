@@ -60,6 +60,9 @@ internal interface IActuatorHost
     /// <summary>Area of the shape's silhouette seen along <paramref name="directionInBodyFrame"/>, m² (a planar world: the width across it per metre of depth); 0 when the shape has none.</summary>
     float SilhouetteArea(int shape, Vector3F directionInBodyFrame);
 
+    /// <summary>The shallow-water store when the world has one with water in it; null otherwise.</summary>
+    Water.WaterStore? ShallowWater { get; }
+
     int FluidCount { get; }
     bool GetFluid(int index, out WaterSample water);
 

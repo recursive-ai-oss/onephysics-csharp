@@ -99,6 +99,7 @@ internal sealed partial class Engine3D
         } while (changed);
         SnapshotRegions.Complete(Core, s);
         _actuators?.SelectRegion(s);
+        _water?.SelectRegion(s);
         _destruction?.SelectRegion(s);
         for (int i = 0; i < Core.Shapes.HighWater; i++)
         { if (s.Contains("shape", i)) { s.Add("geometry", GeomOf[i]); } }
