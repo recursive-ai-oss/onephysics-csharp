@@ -127,11 +127,11 @@ internal sealed partial class Engine2D
         private readonly float _h, _invH;
         private readonly int _perPass;
         private readonly float _tTarget;
-        private readonly int _pad;
+        private readonly int _pad, _passes;
 
-        public SoftSolveProgram(Engine2D e, float h, float invH, float tTarget)
+        public SoftSolveProgram(Engine2D e, float h, float invH, float tTarget, int passes)
         {
-            _e = e; _h = h; _invH = invH; _tTarget = tTarget; _perPass = e._stStages + 3; _pad = SoftPadTasks;
+            _e = e; _h = h; _invH = invH; _tTarget = tTarget; _perPass = e._stStages + 3; _pad = SoftPadTasks; _passes = passes;
         }
 
         public int TaskCount(int stage)
@@ -158,7 +158,7 @@ internal sealed partial class Engine2D
             else
             {
                 var body = _e._awakeSoft[_e._targetBody[task]];
-                if (body.HasStripLimits) { StripLimits(body, stage / _perPass); }
+                if (body.HasStripLimits) { StripLimits(body, stage / _perPass, stage / _perPass == _passes - 1); }
                 if (body.HasTargets) { LimitTargets(body); }
             }
         }
@@ -190,7 +190,7 @@ internal sealed partial class Engine2D
 
         if (_targetCount > _stMost) { _stMost = _targetCount; }
         Core.Profile.Mark(StepStage.SoftConstraints);
-        Core.Executor.ForStages(iterations * (_stStages + 3), new SoftSolveProgram(this, h, invH, 1f), _stMost);
+        Core.Executor.ForStages(iterations * (_stStages + 3), new SoftSolveProgram(this, h, invH, 1f, iterations), _stMost);
     }
 
     // ------------------------------------------------------------------ contact detection and pair search in tasks

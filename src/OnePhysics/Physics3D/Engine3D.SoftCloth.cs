@@ -61,10 +61,11 @@ internal sealed partial class Engine3D
         s = w4 * dl; x[kd] += g4x * s; x[kd + 1] += g4y * s; x[kd + 2] += g4z * s;
     }
 
-    private const int ClothLimitSweeps = 4;
+    // Sweeps per pass; the last pass of a substep sweeps up to this many more times, until nothing is over its limit.
+    private const int ClothLimitSweeps = 4, ClothFinalSweeps = 24;
 
     // The limits of a cloth after a pass: edges and tethers are pulled back to their longest allowed length, by inverse-mass shares. Sweeps alternate direction with the pass number so no end of the cloth is always last.
-    private static void ClothLimits(SoftBodyData d, int pass)
+    internal static void ClothLimits(SoftBodyData d, int pass, bool last)
     {
         var cl = d.Def.Fabric!;
         var x = d.X; var inv = d.InvMass;
@@ -72,34 +73,43 @@ internal sealed partial class Engine3D
         {
             float k = 1f + cl.StrainLimit;
             int ne = d.SEdgeA.Length;
-            for (int sweep = 0; sweep < ClothLimitSweeps; sweep++)
+            int sweeps = last ? ClothFinalSweeps : ClothLimitSweeps;
+            for (int sweep = 0; sweep < sweeps; sweep++)
             {
                 bool rev = ((pass + sweep) & 1) != 0;
+                bool any = false;
                 for (int i = 0; i < ne; i++)
                 {
-                    int e = rev ? ne - 1 - i : i;
-                    LimitDistance(x, inv, d.SEdgeA[e], d.SEdgeB[e], d.SEdgeRest[e] * k);
+                    int e = d.LimitOrder[rev ? ne - 1 - i : i];
+                    any |= LimitDistance(x, inv, d.SEdgeA[e], d.SEdgeB[e], d.SEdgeRest[e] * k, d.LimitFar[e]);
                 }
+
+                // Past the regular sweeps the work stops as soon as a whole sweep finds nothing to correct.
+                if (!any && sweep >= ClothLimitSweeps - 1) { break; }
             }
         }
 
-        for (int t = 0; t < d.TethP.Length; t++) { LimitDistance(x, inv, d.TethP[t], d.TethA[t], d.TethLen[t]); }
+        for (int t = 0; t < d.TethP.Length; t++) { _ = LimitDistance(x, inv, d.TethP[t], d.TethA[t], d.TethLen[t], 0); }
     }
 
-    private static void LimitDistance(float[] x, float[] inv, int a, int b, float max)
+    // far: 1 or 2 moves only the first or second particle (the one farther from the pins); 0 shares the correction by inverse mass.
+    private static bool LimitDistance(float[] x, float[] inv, int a, int b, float max, byte far)
     {
         float wa = inv[a], wb = inv[b];
+        if (far == 1 && wa > 0f) { wb = 0f; wa = 1f; }
+        else if (far == 2 && wb > 0f) { wa = 0f; wb = 1f; }
         float wsum = wa + wb;
-        if (wsum == 0f) { return; }
+        if (wsum == 0f) { return false; }
         int ka = 3 * a, kb = 3 * b;
         float dx = x[ka] - x[kb], dy = x[ka + 1] - x[kb + 1], dz = x[ka + 2] - x[kb + 2];
         float l2 = dx * dx + dy * dy + dz * dz;
-        if (!(l2 > max * max)) { return; }
+        if (!(l2 > max * max)) { return false; }
         float len = float.Sqrt(l2);
         float f = (len - max) / (len * wsum);
         float sa = wa * f, sb = wb * f;
         x[ka] -= dx * sa; x[ka + 1] -= dy * sa; x[ka + 2] -= dz * sa;
         x[kb] += dx * sb; x[kb + 1] += dy * sb; x[kb + 2] += dz * sb;
+        return true;
     }
 
     // Aerodynamic force on every triangle of a cloth for one substep, applied to the particles' velocities before they are predicted: the relative flow (wind of the area fields minus the triangle's velocity) splits

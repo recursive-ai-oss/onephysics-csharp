@@ -8,16 +8,18 @@ internal sealed partial class Engine2D
 {
     // Strips and membranes: strain limiting as a hard projection after the contacts of every pass (Provot 1995; Goldenthal et al. 2007) and wind on the boundary (the 2D side of the plane's flat-plate model).
 
-    private static void StripLimits(SoftBodyData d, int pass)
+    private static void StripLimits(SoftBodyData d, int pass, bool last)
     {
         var st = d.Def.Strip!;
         float k = 1f + st.StrainLimit;
         var x = d.X; var inv = d.InvMass;
         int ne = d.SEdgeA.Length;
         // Two sweeps, in opposite directions on alternate passes, so no end of the strip is always last.
-        for (int sweep = 0; sweep < 4; sweep++)
+        int sweeps = last ? 24 : 4;
+        for (int sweep = 0; sweep < sweeps; sweep++)
         {
             bool rev = ((pass + sweep) & 1) != 0;
+            bool any = false;
             for (int i = 0; i < ne; i++)
             {
                 int e = rev ? ne - 1 - i : i;
@@ -34,7 +36,10 @@ internal sealed partial class Engine2D
                 float sa = wa * f, sb = wb * f;
                 x[ka] -= dx * sa; x[ka + 1] -= dy * sa;
                 x[kb] += dx * sb; x[kb + 1] += dy * sb;
+                any = true;
             }
+
+            if (!any && sweep >= 3) { break; }
         }
     }
 

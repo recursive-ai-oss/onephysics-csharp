@@ -130,11 +130,11 @@ internal sealed partial class Engine3D
         private readonly float _h, _invH;
         private readonly int _perPass;
         private readonly float _tSkin;
-        private readonly int _pad;
+        private readonly int _pad, _passes;
 
-        public SoftSolveProgram(Engine3D e, float h, float invH, float tSkin)
+        public SoftSolveProgram(Engine3D e, float h, float invH, float tSkin, int passes)
         {
-            _e = e; _h = h; _invH = invH; _tSkin = tSkin; _perPass = e._stStages + 3; _pad = SoftPadTasks;
+            _e = e; _h = h; _invH = invH; _tSkin = tSkin; _perPass = e._stStages + 3; _pad = SoftPadTasks; _passes = passes;
         }
 
         public int TaskCount(int stage)
@@ -161,7 +161,7 @@ internal sealed partial class Engine3D
             else
             {
                 var body = _e._awakeSoft[_e._skinBody[task]];
-                if (body.HasClothLimits) { ClothLimits(body, stage / _perPass); }
+                if (body.HasClothLimits) { ClothLimits(body, stage / _perPass, stage / _perPass == _passes - 1); }
                 if (body.IsSkinned) { SolveSkin(body, _tSkin); }
             }
         }
@@ -186,6 +186,7 @@ internal sealed partial class Engine3D
         for (int a = 0; a < _awakeSoftCount; a++)
         {
             if (!_awakeSoft[a].IsSkinned && !_awakeSoft[a].HasClothLimits) { continue; }
+            if (_awakeSoft[a].HasClothLimits) { _awakeSoft[a].EnsureLimitOrder(); }
             GrowTo(ref _skinBody, _skinCount + 1);
             _skinBody[_skinCount++] = a;
         }
@@ -195,7 +196,7 @@ internal sealed partial class Engine3D
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.SoftConstraints);
 #endif
-        Core.Executor.ForStages(iterations * (_stStages + 3), new SoftSolveProgram(this, h, invH, tSkin), _stMost);
+        Core.Executor.ForStages(iterations * (_stStages + 3), new SoftSolveProgram(this, h, invH, tSkin, iterations), _stMost);
     }
 
     // ------------------------------------------------------------------ contact detection and pair search in tasks

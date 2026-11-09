@@ -18,6 +18,59 @@ internal sealed partial class SoftBodyData
     public int[] TethP = Array.Empty<int>(), TethA = Array.Empty<int>();
     public float[] TethLen = Array.Empty<float>();
 
+    /// <summary>The solver edges in the order the strain limit visits them: by breadth-first distance from the pinned particles outwards (ties by edge number), so one sweep from the pins carries a correction all the way along a hanging chain
+    /// (Provot's iteration converges slowly in any other order). Derived from the pins; rebuilt when they change.</summary>
+    public int[] LimitOrder = Array.Empty<int>();
+
+    /// <summary>Per solver edge: 1 when its first particle is farther from the pins than the second, 2 when the second is, 0 when they are as far (or nothing is pinned): the limit moves only the farther one, so a sweep from the pins
+    /// settles every edge it passes.</summary>
+    public byte[] LimitFar = Array.Empty<byte>();
+    private long _limitPinSig = -1;
+
+    /// <summary>Rebuilds <see cref="LimitOrder"/> when the set of pinned particles has changed since it was made.</summary>
+    public void EnsureLimitOrder()
+    {
+        long sig = 0;
+        for (int i = 0; i < N; i++) { if (InvMass[i] == 0f) { sig = sig * 1000003L + i + 1; } }
+        if (sig == _limitPinSig && LimitOrder.Length == SEdgeA.Length) { return; }
+        _limitPinSig = sig;
+        int ne = SEdgeA.Length;
+        var level = new int[N];
+        Array.Fill(level, int.MaxValue);
+        var queue = new int[N];
+        int qh = 0, qt = 0;
+        for (int i = 0; i < N; i++) { if (InvMass[i] == 0f) { level[i] = 0; queue[qt++] = i; } }
+        // adjacency from the edge lists
+        var start = new int[N + 1];
+        for (int e = 0; e < ne; e++) { start[SEdgeA[e] + 1]++; start[SEdgeB[e] + 1]++; }
+        for (int i = 0; i < N; i++) { start[i + 1] += start[i]; }
+        var adj = new int[2 * ne]; var fill = new int[N];
+        for (int e = 0; e < ne; e++) { int a = SEdgeA[e], b = SEdgeB[e]; adj[start[a] + fill[a]++] = b; adj[start[b] + fill[b]++] = a; }
+        while (qh < qt)
+        {
+            int p = queue[qh++];
+            for (int k = start[p]; k < start[p + 1]; k++)
+            {
+                int q = adj[k];
+                if (level[q] == int.MaxValue) { level[q] = level[p] + 1; queue[qt++] = q; }
+            }
+        }
+
+        var keys = new long[ne];
+        LimitFar = new byte[ne];
+        for (int e = 0; e < ne; e++)
+        {
+            int la = level[SEdgeA[e]], lb = level[SEdgeB[e]];
+            if (la != int.MaxValue && lb != int.MaxValue && la != lb) { LimitFar[e] = (byte)(la > lb ? 1 : 2); }
+            int l = Math.Min(la, lb);
+            keys[e] = ((long)(l == int.MaxValue ? 0 : l) << 32) | (long)e;
+        }
+
+        Array.Sort(keys);
+        LimitOrder = new int[ne];
+        for (int e = 0; e < ne; e++) { LimitOrder[e] = (int)(keys[e] & 0xFFFFFFFF); }
+    }
+
     public bool HasClothLimits => Def.Fabric != null && (Def.Fabric.StrainLimit > 0f || TethP.Length > 0);
 
     private void BuildCloth()

@@ -321,7 +321,7 @@ internal sealed partial class Engine3D
         foreach (int b in Core.AwakeBodies)
         {
             var p = bodies.PositionOf(b);
-            double reach = MaxExtent[b] + pad;
+            double reach = SoftReachOf(b) + pad;
             double x0 = _spPos0[3 * b], y0 = _spPos0[3 * b + 1], z0 = _spPos0[3 * b + 2];
             if (Math.Min(p[0], x0) - reach > d.MaxX || Math.Max(p[0], x0) + reach < d.MinX
                 || Math.Min(p[1], y0) - reach > d.MaxY || Math.Max(p[1], y0) + reach < d.MinY
@@ -331,6 +331,15 @@ internal sealed partial class Engine3D
         }
 
         return false;
+    }
+
+    // How far the shapes of a body reach from its centre of mass. The stored extent is kept for dynamic bodies only; a kinematic body (a platform, a walking capsule) is measured from its shapes.
+    private float SoftReachOf(int b)
+    {
+        float e = MaxExtent[b];
+        if (e > 0f) { return e; }
+        ComputeExtents(b, LocalCenterOf(b), out e, out _);
+        return e;
     }
 
     private bool CanCollideSoftBody(SoftBodyData d, int b)
@@ -398,7 +407,7 @@ internal sealed partial class Engine3D
             foreach (int b in Core.AwakeBodies)
             {
                 var p = bodies.PositionOf(b);
-                double reach = MaxExtent[b] + 0.05;
+                double reach = SoftReachOf(b) + 0.05;
                 double x0 = _spPos0[3 * b], y0 = _spPos0[3 * b + 1], z0 = _spPos0[3 * b + 2];
                 if (Math.Min(p[0], x0) - reach > box.MaxX || Math.Max(p[0], x0) + reach < box.MinX
                     || Math.Min(p[1], y0) - reach > box.MaxY || Math.Max(p[1], y0) + reach < box.MinY
