@@ -32,6 +32,8 @@ internal sealed partial class FluidStore
 {
     private const int Chunk = 256;
     private const int MaxDenseCells = 1 << 22;
+    /// <summary>The most cells the dense grid may have while solid matter is present (a snowball that breaks scatters over a few hundred cells on a side).</summary>
+    private const int MaxSolidCells = 1 << 23;
     private const int HashBuckets = 1 << 20;
 
     // ---- working storage for a step, sized to the particle capacity
@@ -204,8 +206,9 @@ internal sealed partial class FluidStore
         _invH = 1f / _k.H;
         double sx = (double)(mxx - _gMinX) * _invH, sy = (double)(mxy - _gMinY) * _invH, sz = (double)(mxz - _gMinZ) * _invH;
         double cells = (Math.Floor(sx) + 1.0) * (Math.Floor(sy) + 1.0) * (Math.Floor(sz) + 1.0);
-        _hashed = !(cells >= 1.0 && cells <= MaxDenseCells);
-        if (_hashed && _anyMpm) { throw new FluidBudgetException("The solid matter spans " + cells.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " grid cells; the material point grid is dense and holds at most " + MaxDenseCells.ToString(System.Globalization.CultureInfo.InvariantCulture) + " (bring the particles closer together or use a larger KernelRadiusScale)."); }
+        int cap = _anyMpm ? MaxSolidCells : MaxDenseCells;
+        _hashed = !(cells >= 1.0 && cells <= cap);
+        if (_hashed && _anyMpm) { throw new FluidBudgetException("The solid matter spans " + cells.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " grid cells; the material point grid is dense and holds at most " + MaxSolidCells.ToString(System.Globalization.CultureInfo.InvariantCulture) + " (bring the particles closer together or use a larger KernelRadiusScale)."); }
         if (_hashed) { _gnx = _gny = _gnz = int.MaxValue; _cells = HashBuckets; }
         else { _gnx = (int)Math.Floor(sx) + 1; _gny = (int)Math.Floor(sy) + 1; _gnz = (int)Math.Floor(sz) + 1; _cells = _gnx * _gny * _gnz; }
         if (_cellStart.Length < _cells + 1) { _cellStart = new int[Math.Max(_cells + 1, _cellStart.Length * 2)]; }
