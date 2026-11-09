@@ -30,9 +30,6 @@ public static class AutoRagdollScenes
 
     private static float Unit(ref ulong s) => (Next(ref s) >> 40) * (1f / 16777216f);
 
-    /// <summary>Swing half-angle floor of the pile's figures: the engine's swing-limit solver blows limp ragdolls up in a large share of tumbling drops (see docs), so the pile runs with the swing cones opened to this many radians; twist limits stay.</summary>
-    public const float PileMinSwing = 3.0f;
-
     public static AutoRagdoll3D Make3D(int variant, float height, float mass, float minSwing = 0f)
     {
         var sk = TestSkeleton.Humanoid(height, rightFirst: (variant & 1) != 0);
@@ -48,7 +45,7 @@ public static class AutoRagdollScenes
     }
 
     /// <summary>Builds the 3D pile: a floor and <paramref name="count"/> limp figures dropped from a staggered grid with seeded orientations.</summary>
-    public static P3.PhysicsWorld3D BuildPile3D(out P3.Ragdoll[] rags, out P3.RagdollDef[] defs, int count = 8, int threads = 1, ulong seed = 4242, float minSwing = PileMinSwing, bool engineHumanoid = false, bool figuresCollide = true)
+    public static P3.PhysicsWorld3D BuildPile3D(out P3.Ragdoll[] rags, out P3.RagdollDef[] defs, int count = 8, int threads = 1, ulong seed = 4242, float minSwing = 0f, bool engineHumanoid = false, bool figuresCollide = true)
     {
         var o = new P3.WorldOptions3D { ThreadCount = threads, WorldId = 91 };
         P3.Ragdoll.ApplyRecommendedOptions(o);
@@ -97,7 +94,7 @@ public static class AutoRagdollScenes
         return h;
     }
 
-    public static AutoRagdollMetrics RunPile3D(int steps = 600, int threads = 1, ulong seed = 4242, float minSwing = PileMinSwing, bool engineHumanoid = false, bool figuresCollide = true)
+    public static AutoRagdollMetrics RunPile3D(int steps = 600, int threads = 1, ulong seed = 4242, float minSwing = 0f, bool engineHumanoid = false, bool figuresCollide = true)
     {
         var w = BuildPile3D(out var rags, out var defs, 8, threads, seed, minSwing, engineHumanoid, figuresCollide);
         double maxSpeed = 0, nan = 0, escapes = 0, jointErr = 0;
