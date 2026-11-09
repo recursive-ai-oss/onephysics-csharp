@@ -72,11 +72,12 @@ internal sealed partial class Engine3D
         }
 
         if (bodies == 0 || (bodies < 2 && !self)) { return; }
+        MarkSurfaceBodies();
         int nt = 0, ne = 0;
         for (int a = 0; a < _pairSoftCount; a++)
         {
             var d = _awakeSoft[a];
-            if (!d.Def.SurfaceCollision || d.SurfTris.Length == 0) { continue; }
+            if (!d.SurfaceActive) { continue; }
             d.SurfTriBase = nt; d.SurfEdgeBase = ne;
             nt += d.SurfTris.Length / 3; ne += d.SurfEdgeA.Length;
         }
@@ -110,7 +111,9 @@ internal sealed partial class Engine3D
             }
         }
 
-        double cst = Math.Max(extT, 1e-3), icT = 1.0 / cst, cse = Math.Max(extE, 1e-3), icE = 1.0 / cse;
+        // Cells are twice the largest box, so a box that meets a query box has its minimum corner in at most 2 cells per axis of the range below.
+        double cst = 2.0 * Math.Max(extT, 1e-3), icT = 1.0 / cst, cse = 2.0 * Math.Max(extE, 1e-3), icE = 1.0 / cse;
+        double mxT = cst * 0.5, mxE = cse * 0.5;
         var tk = _triGrid.Keys;
         for (int g = 0; g < nt; g++)
         {
@@ -133,15 +136,15 @@ internal sealed partial class Engine3D
         for (int a = 0; a < _awakeSoftCount; a++)
         {
             var dp = _awakeSoft[a];
-            if (dp.SurfTriBase < 0) { continue; }
+            if (dp.SurfTriBase < 0 || !dp.SurfaceActive) { continue; }
             double ep = dp.Radius + 2.0 * dp.SurfTravel;
             for (int pi = 0; pi < dp.SurfParticles.Length; pi++)
             {
                 int p = dp.SurfParticles[pi];
                 double px = dp.Ox + dp.X[3 * p], py = dp.Oy + dp.X[3 * p + 1], pz = dp.Oz + dp.X[3 * p + 2];
-                long x0 = (long)Math.Floor((px - ep) * icT) - 1, x1 = (long)Math.Floor((px + ep) * icT);
-                long y0 = (long)Math.Floor((py - ep) * icT) - 1, y1 = (long)Math.Floor((py + ep) * icT);
-                long z0 = (long)Math.Floor((pz - ep) * icT) - 1, z1 = (long)Math.Floor((pz + ep) * icT);
+                long x0 = (long)Math.Floor((px - ep - mxT) * icT), x1 = (long)Math.Floor((px + ep) * icT);
+                long y0 = (long)Math.Floor((py - ep - mxT) * icT), y1 = (long)Math.Floor((py + ep) * icT);
+                long z0 = (long)Math.Floor((pz - ep - mxT) * icT), z1 = (long)Math.Floor((pz + ep) * icT);
                 int nseen = 0;
                 for (long cz = z0; cz <= z1; cz++)
                 {
@@ -172,9 +175,9 @@ internal sealed partial class Engine3D
         for (int g = 0; g < ne; g++)
         {
             int o = 6 * g;
-            long x0 = (long)Math.Floor(_geBox[o] * icE) - 1, x1 = (long)Math.Floor(_geBox[o + 3] * icE);
-            long y0 = (long)Math.Floor(_geBox[o + 1] * icE) - 1, y1 = (long)Math.Floor(_geBox[o + 4] * icE);
-            long z0 = (long)Math.Floor(_geBox[o + 2] * icE) - 1, z1 = (long)Math.Floor(_geBox[o + 5] * icE);
+            long x0 = (long)Math.Floor((_geBox[o] - mxE) * icE), x1 = (long)Math.Floor(_geBox[o + 3] * icE);
+            long y0 = (long)Math.Floor((_geBox[o + 1] - mxE) * icE), y1 = (long)Math.Floor(_geBox[o + 4] * icE);
+            long z0 = (long)Math.Floor((_geBox[o + 2] - mxE) * icE), z1 = (long)Math.Floor(_geBox[o + 5] * icE);
             int nseen = 0;
             for (long cz = z0; cz <= z1; cz++)
             {
@@ -198,6 +201,46 @@ internal sealed partial class Engine3D
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // A body takes part in the search when it has self-collision, or when its grown bounds meet another surface body's: an isolated body has nothing to be listed against.
+    private void MarkSurfaceBodies()
+    {
+        for (int a = 0; a < _pairSoftCount; a++)
+        {
+            var d = _awakeSoft[a];
+            d.SurfaceActive = false;
+            if (!d.Def.SurfaceCollision || d.SurfTris.Length == 0) { continue; }
+            double x0 = double.MaxValue, y0 = double.MaxValue, z0 = double.MaxValue, x1 = double.MinValue, y1 = double.MinValue, z1 = double.MinValue;
+            for (int i = 0; i < d.SurfParticles.Length; i++)
+            {
+                int k = 3 * d.SurfParticles[i];
+                double x = d.Ox + d.X[k], y = d.Oy + d.X[k + 1], z = d.Oz + d.X[k + 2];
+                if (x < x0) { x0 = x; } if (x > x1) { x1 = x; }
+                if (y < y0) { y0 = y; } if (y > y1) { y1 = y; }
+                if (z < z0) { z0 = z; } if (z > z1) { z1 = z; }
+            }
+
+            double g = d.Radius + 2.0 * d.SurfTravel;
+            d.SurfBounds[0] = x0 - g; d.SurfBounds[1] = y0 - g; d.SurfBounds[2] = z0 - g; d.SurfBounds[3] = x1 + g; d.SurfBounds[4] = y1 + g; d.SurfBounds[5] = z1 + g;
+        }
+
+        for (int a = 0; a < _pairSoftCount; a++)
+        {
+            var d = _awakeSoft[a];
+            if (!d.Def.SurfaceCollision || d.SurfTris.Length == 0) { continue; }
+            if (d.Def.SelfCollision) { d.SurfaceActive = true; continue; }
+            var u = d.SurfBounds;
+            for (int b = 0; b < _pairSoftCount && !d.SurfaceActive; b++)
+            {
+                if (b == a || (a >= _awakeSoftCount && b >= _awakeSoftCount)) { continue; }
+                var o = _awakeSoft[b];
+                if (!o.Def.SurfaceCollision || o.SurfTris.Length == 0) { continue; }
+                var v = o.SurfBounds;
+                if (u[0] > v[3] || u[3] < v[0] || u[1] > v[4] || u[4] < v[1] || u[2] > v[5] || u[5] < v[2]) { continue; }
+                d.SurfaceActive = true;
             }
         }
     }
