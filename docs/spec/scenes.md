@@ -206,6 +206,18 @@ No other engine has rail vehicles or bicycles, so these four scenes are built in
 
 Bicycles hold only inside the self-stable band of their definition (Benchmark 4.4 to 6.0 m/s, Road 4.5 to 7), as the physics gives it; the scene's riders do not steer, because a steering feedback loop at 60 steps per second was too sensitive. A fallen 3D bicycle lies on the ground on its collision shapes. Thresholds are x64 values; the hash matrix proves every column equal (including osx-arm64), so the metrics are the same on arm64.
 
+### Fabric (own scenes, no reference engine)
+
+Built in code by `tests/Common/Cloth3DScene.cs` and `Strip2DScene.cs` (shared by the tests, the hash-matrix runner and the bar runner). 600 steps at 1/60, thresholds 1.5 times the worst of the x64 and arm64 values (measured x64 Checked build, one thread). `nan` = `escapes` = 0 and triangle crossings of one body (every 10th step) = 0 everywhere. Details of the model are in `cloth.md`.
+
+| scene | what | maxSpeed | maxPenetration | maxStrain | other |
+|---|---|---|---|---|---|
+| `cloth-flag-3d` | 1.8 x 1.2 m cotton (30 x 20 cells) pinned along one edge on a 3 m pole, steady 6 m/s wind along +x with a 1.5 m/s cross component | 12.7 (limit 20) | | 0.126 (0.2) | |
+| `cloth-character-3d` | 1.6 x 1.6 m cape (24 x 24) dropped on a kinematic capsule (radius 0.3, 1.6 m) that walks at 1.4 m/s from step 120 to 360 | 4.4 (7) | 0 (0.02, about the particle radius) | 0.058 (0.09) | |
+| `cloth-throw-3d` | 1.2 x 1.2 m sheet (20 x 20) thrown at 20 m/s along +x into a 0.2 m pole | 25.4 (40) | 0 | 0.068 (0.11) | no air drag (a wet sheet) |
+| `cloth-garment-3d` | two 0.6 x 0.8 m denim panels laid round a 0.2 m cylinder, stitched along both sides (1e-4 m/N), hung by pinned top rows with tethers | 2.3 (3.5) | 0.007 (0.02) | 0.040 (0.06) | seam gap below the pinned row after step 300 0.058 (0.09) |
+| `strip-2d` | two 1.2 m and 0.8 m strips pinned at one end above a box in a gusting upward wind | 10.4 (16) | | 0.074 (0.11) | 2D; highest particle 3.41 m |
+
 ## Step-state dump
 
 Every driver writes the same binary file in stability mode. Little-endian. Header: the ASCII bytes `OPDUMP01`, `u32` body count, `u32` 0. Then frames: `u32` step number (0 = initial state), `u32` 0, and `7 × n` doubles per frame in scene body order: x, y, angle (body origin, radians), vx, vy (centre-of-mass velocity as the engine reports it), w, awake (1 or 0). In 3D the header word is 3 and a frame is `14 × n` doubles: x, y, z, qx, qy, qz, qw (body origin, unit quaternion), vx, vy, vz, wx, wy, wz (centre-of-mass velocity as the engine reports it), awake. A frame's second `u32` is the count of extra doubles after the body rows: for scenes with vehicles, x, y, z of every wheel centre of every car (four per car, in body order).

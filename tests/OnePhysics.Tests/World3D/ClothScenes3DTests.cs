@@ -42,8 +42,8 @@ public class ClothScenes3DTests
         var m = Strip2DScene.Measure();
         Assert.Equal(0, m.NaN);
         Assert.Equal(0, m.Escapes);
-        Assert.True(m.MaxSpeed <= 25.0, Strip2DScene.Format(m));
-        Assert.True(m.MaxStrain <= 0.1, Strip2DScene.Format(m));
+        Assert.True(m.MaxSpeed <= 16.0, Strip2DScene.Format(m));
+        Assert.True(m.MaxStrain <= 0.11, Strip2DScene.Format(m));
         ulong a = Strip2DScene.Run(1, false, null, 120);
         Assert.Equal(a, Strip2DScene.Run(8, false, null, 120));
         Assert.Equal(a, Strip2DScene.Run(1, true, null, 120));
