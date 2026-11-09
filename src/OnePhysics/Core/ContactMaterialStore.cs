@@ -25,6 +25,15 @@ internal sealed class ContactMaterialStore : ISnapshotSection
         return lo;
     }
     private Entry? Get(int shape) { int i = Find(shape); return i < _entries.Count && _entries[i].Shape == shape ? _entries[i] : null; }
+    /// <summary>After a voxel edit: new solid cells take a material index (or keep theirs when negative) and the merged-plane table is rebuilt on next use.</summary>
+    internal void EditSubshapes(int shape, ReadOnlySpan<int> cells, int material)
+    {
+        var e = Get(shape); if (e == null) return;
+        e.Canonical = null;
+        if (material < 0) return;
+        foreach (int cell in cells) if ((uint)(12 * cell + 11) < (uint)e.Indices.Length) e.Indices.AsSpan(12 * cell, 12).Fill(material);
+    }
+    internal int MaterialCount(int shape) => Get(shape)?.Materials.Length ?? 0;
     internal void Remove(int shape) { int i = Find(shape); if (i < _entries.Count && _entries[i].Shape == shape) _entries.RemoveAt(i); }
     internal void Set(ShapeHandle shape, ReadOnlySpan<ContactMaterial> materials, ReadOnlySpan<int> indices)
     {

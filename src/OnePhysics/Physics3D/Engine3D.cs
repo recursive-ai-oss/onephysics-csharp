@@ -150,7 +150,8 @@ internal sealed partial class Engine3D : ISnapshotSection
     public int AcquireGeom(byte[] recipe)
     {
         var key = new RecipeKey(recipe);
-        if (_geomIndex.TryGetValue(key, out int id))
+        // A voxel grid is edited in place, so every voxel shape builds and owns its geometry.
+        if (recipe.Length != 0 && recipe[0] != ShapeSpec3D.KVoxelGrid && _geomIndex.TryGetValue(key, out int id))
         {
             Geoms[id]!.Refs++;
             return id;
@@ -165,7 +166,7 @@ internal sealed partial class Engine3D : ISnapshotSection
     {
         int id = Geoms.IndexOf(null);
         if (id < 0) { id = Geoms.Count; Geoms.Add(g); } else { Geoms[id] = g; }
-        _geomIndex[new RecipeKey(g.Recipe)] = id;
+        if (g.Soup is not VoxelGrid3D) { _geomIndex[new RecipeKey(g.Recipe)] = id; }
         return id;
     }
 
@@ -173,7 +174,7 @@ internal sealed partial class Engine3D : ISnapshotSection
     {
         var g = Geoms[id]!;
         if (--g.Refs > 0) { return; }
-        _geomIndex.Remove(new RecipeKey(g.Recipe));
+        if (g.Soup is not VoxelGrid3D) { _geomIndex.Remove(new RecipeKey(g.Recipe)); }
         Geoms[id] = null;
     }
 
@@ -1123,7 +1124,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         _geomIndex.Clear();
         for (int i = 0; i < Geoms.Count; i++)
         {
-            if (Geoms[i] != null) { _geomIndex[new RecipeKey(Geoms[i]!.Recipe)] = i; }
+            if (Geoms[i] != null && Geoms[i]!.Soup is not VoxelGrid3D) { _geomIndex[new RecipeKey(Geoms[i]!.Recipe)] = i; }
         }
 
         (GeomOf, _sGeomOf) = (_sGeomOf, GeomOf); (Local, _sLocal) = (_sLocal, Local); (Proxy, _sProxy) = (_sProxy, Proxy); (Friction, _sFr) = (_sFr, Friction); (Restitution, _sRe) = (_sRe, Restitution);
