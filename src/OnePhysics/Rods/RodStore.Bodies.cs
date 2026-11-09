@@ -136,12 +136,22 @@ internal sealed partial class RodStore
     {
         d.PositionData[p]+=new Vector3D(WorldCore.Grid(delta.X),WorldCore.Grid(delta.Y),WorldCore.Grid(delta.Z));
     }
+    private bool BodyChangeUsable(int b)
+    {
+        var delta=_bodyDelta[b];var q=_rotationDelta[b]*_rotationEnd[b];var dv=_bodyVelocityDelta[b];var dw=_bodyAngularDelta[b];var p=_bodyEnd[b];
+        double x=p.X+delta.X,y=p.Y+delta.Y,z=p.Z+delta.Z;
+        return Math.Abs(x)<=4194304&&Math.Abs(y)<=4194304&&Math.Abs(z)<=4194304
+            &&float.IsFinite(q.X+q.Y+q.Z+q.W)&&float.IsFinite(dv.X+dv.Y+dv.Z)&&float.IsFinite(dw.X+dw.Y+dw.Z);
+    }
     private void FinishBodies()
     {
         var store=Host.RodCore.Bodies;
         for(int b=0;b<store.HighWater;b++)
         {
             if(!_bodyChanged[b]||!store.IsLive(b))continue;
+            // A rod driven to non-finite or enormous impulses (damaged state) must not write NaN into a body: the body keeps the state it had,
+            // and the rod's own bounds check raises the typed error at the next step.
+            if(!BodyChangeUsable(b))continue;
             var p=store.PositionOf(b);var delta=_bodyDelta[b];p[0]+=WorldCore.Grid(delta.X);p[1]+=WorldCore.Grid(delta.Y);if(!Host.Planar)p[2]+=WorldCore.Grid(delta.Z);
             var rotation=_rotationDelta[b]*_rotationEnd[b];var r=store.RotationOf(b);
             if(Host.Planar){r[0]=1-2*rotation.Z*rotation.Z;r[1]=2*rotation.Z*rotation.W;}

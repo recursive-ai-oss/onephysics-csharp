@@ -27,6 +27,18 @@ internal sealed partial class RodStore
         for(int p=0;p<d.AttachmentBody.Length;p++)if(d.AttachmentBody[p]==body&&Host.RodCore.Bodies.Handles.IsAlive(body,d.AttachmentGeneration[p]))return true;
         return false;
     }
+    // Shape queries validate their input and throw on points beyond about a million metres, non-finite points and segments far longer than they are
+    // thick. A rod driven there by damaged state (a snapshot with a huge velocity) must not abort the step half-way, so it simply stops touching
+    // anything: the query reports no contact, and the next step's bounds check raises the typed error before anything moves.
+    internal const double QueryLimit=1000000,QueryAspect=500000;
+    internal static bool Queryable(Vector3D a,Vector3D b,double radius)
+    {
+        double x=Math.Abs(a.X),y=Math.Abs(a.Y),z=Math.Abs(a.Z),u=Math.Abs(b.X),v=Math.Abs(b.Y),w=Math.Abs(b.Z);
+        if(!(x<=QueryLimit&&y<=QueryLimit&&z<=QueryLimit&&u<=QueryLimit&&v<=QueryLimit&&w<=QueryLimit))return false;
+        return RodGeometry.Length(b-a)<=QueryAspect*radius;
+    }
+    private RodWitness SafeDistance(int shape,Vector3D a,Vector3D b,float radius,float time)
+        =>Queryable(a,b,radius)?Host.Distance(shape,a,b,radius,time):new RodWitness{Separation=float.NaN};
     private bool Near(int shape,Vector3D a0,Vector3D b0,Vector3D a1,Vector3D b1,float radius)
     {
         Host.Bounds(shape,out var min,out var max);int body=Host.RodCore.Shapes.Owner[shape];
@@ -75,7 +87,7 @@ internal sealed partial class RodStore
         for(int i=0;i<64;i++)
         {
             var a=a0+(a1-a0)*fraction;var b=b0+(b1-b0)*fraction;
-            witness=Host.Distance(shape,a,b,radius,_time0+(_time1-_time0)*fraction);
+            witness=SafeDistance(shape,a,b,radius,_time0+(_time1-_time0)*fraction);
             if(!float.IsFinite(witness.Separation))return false;
             if(witness.Separation<=skin)return witness.Normal.LengthSquared()>0;
             clear=Math.Min(clear,.2*(witness.Separation-skin));
@@ -150,7 +162,18 @@ internal sealed partial class RodStore
         var cross=RodParticles.Cross(arm,normal);
         double weight=(1-u)*(1-u)*a.InverseMass[c.Segment]+u*u*a.InverseMass[c.Segment+1]+BodyWeight(c.Body)+Vector3F.Dot(cross,Inertia(c.Body,rotation,cross));
         if(!(weight>0)||separation>=0)return;
-        float lambda=(float)(-separation/weight);
+        // A contact near a segment end, where the other end is pinned or heavy, has a tiny weight: undoing the penetration of the
+        // contact point then needs the free particle to move penetration/u, which is unbounded as u -> 0 (a rope pinned on a surface
+        // threw a particle kilometres away). No particle moves more than four penetration depths per pass: normal contacts, whose
+        // particles move about one depth, are unchanged, and the pinned-end case becomes a bounded push.
+        double lambdaExact=-separation/weight;
+        double reach=Math.Max((1-u)*a.InverseMass[c.Segment],u*a.InverseMass[c.Segment+1]);
+        double allowed=4*-separation;
+        // Needing more than sixteen penetration depths means the contact point is all but fixed (a pinned end resting on the surface): the
+        // penetration cannot be undone by any motion of the rod, so the contact is left alone instead of pushing the free end every pass.
+        if(reach*lambdaExact>16*-separation)return;
+        if(reach*lambdaExact>allowed)lambdaExact=allowed/reach;
+        float lambda=(float)lambdaExact;
         lambda=Math.Min(lambda,Math.Max(0,c.NormalLimit*h-c.NormalLambda));c.NormalLambda+=lambda;
         var impulse=normal*lambda;
         Move(a,c.Segment,impulse*((1-u)*a.InverseMass[c.Segment]));Move(a,c.Segment+1,impulse*(u*a.InverseMass[c.Segment+1]));

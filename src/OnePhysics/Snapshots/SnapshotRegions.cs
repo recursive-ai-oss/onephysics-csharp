@@ -48,7 +48,7 @@ internal static class SnapshotRegions
                     { throw new SnapshotFormatException("region body handle is missing, dead or has a different generation; use a full snapshot", field.Offset); }
                     s.AddBody(field.Index);
                 }
-                if (field.Entity is "rod" or "cable" or "softbody" or "character" or "vehicle" or "ragdoll" or "fluid" or "thruster" or "boat" or "hovercraft" or "aero" or "bicycle" or "track" or "railvehicle") { s.Add(field.Entity, field.Index); }
+                if (field.Entity is "rod" or "cable" or "softbody" or "character" or "vehicle" or "ragdoll" or "fluid" or "particlefluid" or "fluidparticle" or "fluid emitter" or "fluid drain" or "thruster" or "boat" or "hovercraft" or "aero" or "bicycle" or "track" or "railvehicle") { s.Add(field.Entity, field.Index); }
             }
         }
         return s;

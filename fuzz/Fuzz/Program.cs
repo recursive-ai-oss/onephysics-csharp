@@ -26,6 +26,8 @@ internal static class Program
         ["sdf-grid2d"] = FuzzTerrain.SdfGrid2D,
         ["rod-definition"] = FuzzRods.Definition,
         ["rod-snapshot"] = FuzzRods.Snapshot,
+        ["fluid-definition"] = FuzzFluids.Definition,
+        ["fluid-snapshot"] = FuzzFluids.Snapshot,
         ["pulley-definition"] = FuzzPulleys.Definition,
         ["pulley-snapshot"] = FuzzPulleys.Snapshot,
         ["rail-bike-definition"] = FuzzRailBike.Definition,
@@ -107,6 +109,9 @@ internal static class Program
         ["world3d-cloth"] = FuzzCloth.Run,
         ["world3d-cloth-snapshot"] = FuzzCloth.SnapshotTarget3,
         ["world2d-strip-snapshot"] = FuzzCloth.SnapshotTarget2,
+        ["tools-tetrahedralize"] = FuzzAuthoring.Tetrahedralize,
+        ["tools-triangulate2d"] = FuzzAuthoring.Triangulate2D,
+        ["tools-autoragdoll"] = FuzzAuthoring.AutoRagdoll,
     };
 
     private static int Main(string[] args)

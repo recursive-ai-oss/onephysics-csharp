@@ -19,6 +19,10 @@
   <ItemGroup>
     <Compile Include="../Common/ToolsMeshes.cs" LinkBase="Common" />
     <Compile Include="../Common/DecomposedPileScene.cs" LinkBase="Common" />
+    <Compile Include="../Common/TetBlob.cs" LinkBase="Common" />
+    <Compile Include="../Common/TestSkeleton.cs" LinkBase="Common" />
+    <Compile Include="../Common/AutoRagdollScenes.cs" LinkBase="Common" />
+    <Compile Include="../Common/TetDropScene.cs" LinkBase="Common" />
   </ItemGroup>
 
   <ItemGroup>

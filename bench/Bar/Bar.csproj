@@ -20,6 +20,7 @@
   <ItemGroup>
     <Compile Include="../../tests/Common/ToolsMeshes.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/DecomposedPileScene.cs" LinkBase="Common" />
+    <Compile Include="../../tests/Common/TetBlob.cs;../../tests/Common/TestSkeleton.cs;../../tests/Common/TetDropScene.cs;../../tests/Common/AutoRagdollScenes.cs" LinkBase="Common" />
     <ProjectReference Include="../../src/OnePhysics.Tools/OnePhysics.Tools.csproj" />
     <Compile Include="../../tests/Common/FieldScenes.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/SoftBodies2DScene.cs" LinkBase="Common" />
@@ -33,6 +34,7 @@
     <Compile Include="../../tests/Common/Actuators2DScene.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/SoftFracture3DScene.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/Cloth3DScene.cs" LinkBase="Common" />
+    <Compile Include="../../tests/Common/FluidScenes.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/Strip2DScene.cs" LinkBase="Common" />
     <PackageReference Include="Box2D.NET" Version="3.1.654" />
     <PackageReference Include="BepuPhysics" Version="2.5.0-beta.33" />

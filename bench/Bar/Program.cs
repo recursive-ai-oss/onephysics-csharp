@@ -29,6 +29,8 @@ public static class Program
             case "destruction-stability": return DestructionStability.Run(opts);
             case "destruction-timing": return DestructionTiming.Run(opts);
             case "decomposed-pile-stability": return DecomposedPileStability.Run();
+            case "authoring-stability": return AuthoringStability.Run(opts);
+            case "authoring-timing": return AuthoringStability.Timing(opts);
             case "tools-timing": return ToolsTiming.Run();
             case "soft2d-stability": return SoftStability2D.Run();
             case "soft3d-timing": return SoftTiming3D.Run(args.Length > 1 ? int.Parse(args[1]) : 1, args.Length > 2 ? args[2] : "default");
@@ -37,6 +39,8 @@ public static class Program
             case "active-stability": return ActiveStability.Run(opts);
             case "railbike-stability": return RailBikeStability.Run(opts);
             case "actuators-stability": return ActuatorStability.Run(opts);
+            case "fluid-stability": return FluidStability.Run(opts);
+            case "fluid-timing": return FluidStability.Time(opts);
             case "character-abilities-stability": return CharacterAbilityStability.Run(opts);
             case "terrain-edit-stability": return TerrainEditStability.Run(opts);
             case "terrain-edit-timing": return TerrainEditStability.Time(opts);

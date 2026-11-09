@@ -266,6 +266,10 @@ The same four parts in the plane (`Physics2D.AeroSurface`, `ThrusterDef`, `BoatD
 
 **Scenes.** `rail-2d`, `bicycles-2d` in `docs/spec/scenes.md`; `world2d/rail-2d` and `world2d/bicycles-2d` in the hash matrix.
 
+## Particle fluids
+
+The same members as in 3D with `Vector2D` and `Vector2F` (`AddParticleFluid`, `AddParticleWater`, `FillFluidBox`, `FillFluidSphere` for a disc, `AddFluidParticle`, `OverlapFluidSphere`, `OverlapFluidBox`, `RaycastFluid`, `FluidDensityAt`, `FluidEvents`, `GetFluidState`); emitters and drains are the shared `FluidEmitterDef` and `FluidDrainDef` with the z components ignored. Particles are discs of one metre depth (mass `density × spacing²`), the kernels take their 2D normalisation, a planar rigid body is coupled with its scalar inertia (the rotation as the half-angle quaternion about z), soft particles and rods as in 3D. Stepped after the soft step. See `fluids.md`.
+
 ## Core additions this relies on
 
 `IWorldStages.FinalizeBodies` (default no-op, called over chunks of awake bodies after the restitution pass and before `StoreResults`) and `WorldCore.Sleep(BodyHandle)`. Neither changes snapshot format version 1. `IWorldStages.AfterFinalize` (default no-op) runs once, serially, after `FinalizeBodies` and before `StoreResults`; bullets use it.

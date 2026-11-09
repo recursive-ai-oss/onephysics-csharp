@@ -25,6 +25,7 @@
     <ProjectReference Include="../../src/OnePhysics/OnePhysics.csproj" />
     <ProjectReference Include="../../src/OnePhysics.Tools/OnePhysics.Tools.csproj" />
     <Compile Include="../../tests/Common/ToolsMeshes.cs;../../tests/Common/DecomposedPileScene.cs" LinkBase="Checks" />
+    <Compile Include="../../tests/Common/TetBlob.cs;../../tests/Common/TestSkeleton.cs;../../tests/Common/TetDropScene.cs;../../tests/Common/AutoRagdollScenes.cs" LinkBase="Checks" />
     <!-- The batching experiment's simulation code (not its command-line program) is hashed here. -->
     <Compile Include="../../experiments/batching/Sim/*.cs" LinkBase="Batching" />
     <!-- Existing determinism checks and the shared scene definitions, linked from where they live. -->
@@ -34,6 +35,7 @@
     <Compile Include="../../tests/Common/SoftBodies2DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/SoftFracture3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Cloth3DScene.cs" LinkBase="Checks" />
+    <Compile Include="../../tests/Common/FluidScenes.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Strip2DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/SoftSkinned3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Characters3DScene.cs" LinkBase="Checks" />

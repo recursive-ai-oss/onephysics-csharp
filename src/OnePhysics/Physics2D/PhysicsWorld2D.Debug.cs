@@ -101,6 +101,7 @@ public sealed partial class PhysicsWorld2D
         if ((flags & DebugContent.Joints) != 0) { _engine.AddDebugJoints(geometry); _engine.AddDebugActive(geometry); }
         if ((flags & DebugContent.Characters) != 0) { _engine.AddDebugCharacters(geometry); }
         if ((flags & DebugContent.SoftBodies) != 0) { _engine.AddDebugSoftBodies(geometry); }
+        if ((flags & DebugContent.Fluids) != 0) { _engine.ParticleFluids.AddDebug(geometry); }
         if ((flags & DebugContent.Vehicles) != 0) { _engine.AddDebugVehicles(geometry); _engine.AddDebugRail(geometry); }
         if ((flags & DebugContent.Aero) != 0) { _engine.Actuators.AddDebug(geometry); }
         if ((flags & DebugContent.CharacterHolds) != 0) { _engine.AddDebugHolds(geometry); }

@@ -87,6 +87,8 @@ public sealed class StepCounters
     public int FragmentsCulled { get; internal set; }
     /// <summary>Fragments the debris policy tracks after the step.</summary>
     public int Fragments { get; internal set; }
+    /// <summary>Field applications dropped in the last step because their result was not finite or was beyond ±1e12 (for example a gravity callback returning NaN). Dropped applications change nothing.</summary>
+    public int FieldApplicationsSkipped { get; internal set; }
     internal Span<int> Colors => _colors;
     internal void Reset()
     {

@@ -4,8 +4,8 @@
     <AssemblyName>$(PackageBaseName).Tools</AssemblyName>
     <RootNamespace>RecursiveAI.OnePhysics.Tools</RootNamespace>
     <PackageId>$(PackageBaseName).Tools</PackageId>
-    <Description>Authoring-time geometry for RecursiveAI.OnePhysics: 3D convex decomposition, hull simplification, mesh cleaning and mass properties, 2D polygon decomposition and sprite outlines. Deterministic on every platform.</Description>
-    <PackageTags>physics;convex-decomposition;mesh;collision;polygon;sprite;deterministic;determinism;nativeaot;trimmable</PackageTags>
+    <Description>Authoring-time geometry for RecursiveAI.OnePhysics: 3D convex decomposition, hull simplification, mesh cleaning and mass properties, tetrahedralization and quality triangulation for soft bodies, ragdoll fitting from a skeleton, 2D polygon decomposition and sprite outlines. Deterministic on every platform.</Description>
+    <PackageTags>physics;convex-decomposition;tetrahedralization;ragdoll;mesh;collision;polygon;sprite;deterministic;determinism;nativeaot;trimmable</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageReleaseNotes>See CHANGELOG.md in the repository.</PackageReleaseNotes>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>

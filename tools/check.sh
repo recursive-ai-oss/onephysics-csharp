@@ -54,6 +54,9 @@ dotnet test --solution OnePhysics.slnx -c "$config" --no-build
 dotnet run -c "$config" --no-build --project fuzz/Fuzz -- snapshot --random 1 10000
 dotnet run -c "$config" --no-build --project fuzz/Fuzz -- tools-polygon --random 1 2000
 dotnet run -c "$config" --no-build --project fuzz/Fuzz -- tools-sprite --random 1 2000
+dotnet run -c "$config" --no-build --project fuzz/Fuzz -- tools-tetrahedralize --random 1 1500
+dotnet run -c "$config" --no-build --project fuzz/Fuzz -- tools-triangulate2d --random 1 2000
+dotnet run -c "$config" --no-build --project fuzz/Fuzz -- tools-autoragdoll --random 1 3000
 dotnet run -c "$config" --no-build --project bench/Bar -- selftest
 gen="$(mktemp -d)"
 dotnet run -c "$config" --no-build --project bench/Bar -- gen --out "$gen"

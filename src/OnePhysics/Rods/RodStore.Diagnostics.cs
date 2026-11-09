@@ -27,7 +27,7 @@ internal sealed partial class RodStore
             }
             else
             {
-                var witness=Host.Distance(c.Shape,d.PositionData[c.Segment],d.PositionData[c.Segment+1],d.Material.Radius,_time1);penetration=-witness.Separation;
+                var witness=SafeDistance(c.Shape,d.PositionData[c.Segment],d.PositionData[c.Segment+1],d.Material.Radius,_time1);penetration=-witness.Separation;
             }
             if(double.IsFinite(penetration))_maximumPenetration=Math.Max(_maximumPenetration,(float)penetration);
         }

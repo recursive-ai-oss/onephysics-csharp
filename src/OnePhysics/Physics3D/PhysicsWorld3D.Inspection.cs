@@ -6,6 +6,7 @@ public sealed partial class PhysicsWorld3D
     {
         Counters.Characters = _engine.CharHandles.Count;
         Counters.Vehicles = _engine.VehHandles.Count;
+        Counters.FieldApplicationsSkipped = _engine.Fields.Count != 0 ? _engine.Fields.Skipped : 0;
     }
 
     /// <summary>Reads body diagnostics. Throws for a default, stale or foreign body. Read between steps.</summary>
