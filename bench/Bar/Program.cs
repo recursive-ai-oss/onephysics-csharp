@@ -26,6 +26,7 @@ public static class Program
             case "rod-run": return RodRuns.Run(opts);
             case "fields-stability": return FieldStability.Run();
             case "soft2d-stability": return SoftStability2D.Run();
+            case "soft3d-timing": return SoftTiming3D.Run(args.Length > 1 ? int.Parse(args[1]) : 1);
             case "soft2d-timing": return SoftStability2D.Time(args.Length > 1 ? int.Parse(args[1]) : 1);
             case "micro-boxbox": return MicroBoxBox.Run(opts);
             case "queries-indicative": return MixedQueryTiming.Run(opts);
