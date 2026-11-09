@@ -5,6 +5,7 @@ public sealed partial class PhysicsWorld2D
     private void UpdateInspectionCounters()
     {
         Counters.Characters = _engine.CharHandles.Count;
+        Counters.Vehicles = _engine.VehHandles.Count;
     }
 
     /// <summary>Reads body diagnostics. Throws for a default, stale or foreign body. Read between steps.</summary>

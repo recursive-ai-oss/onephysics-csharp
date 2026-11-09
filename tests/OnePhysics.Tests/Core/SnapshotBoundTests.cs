@@ -8,6 +8,9 @@ using Xunit;
 using CharacterDef3 = RecursiveAI.OnePhysics.Physics3D.CharacterDef;
 using Body2 = RecursiveAI.OnePhysics.Physics2D.Body;
 using Body3 = RecursiveAI.OnePhysics.Physics3D.Body;
+using Ragdoll = RecursiveAI.OnePhysics.Physics3D.Ragdoll;
+using RagdollDef = RecursiveAI.OnePhysics.Physics3D.RagdollDef;
+using VehicleDef = RecursiveAI.OnePhysics.Physics3D.VehicleDef;
 using ShapeDef2 = RecursiveAI.OnePhysics.Physics2D.ShapeDef;
 using ShapeDef3 = RecursiveAI.OnePhysics.Physics3D.ShapeDef;
 
