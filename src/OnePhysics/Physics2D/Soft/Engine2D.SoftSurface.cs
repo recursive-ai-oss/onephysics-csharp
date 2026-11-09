@@ -123,7 +123,7 @@ internal sealed partial class Engine2D
             for (int pi = 0; pi < dp.SurfParticles.Length; pi++) { _sqG[nq++] = dp.Base + dp.SurfParticles[pi]; }
         }
 
-        _sfIcsz = icsz; _sfCount = nq;
+        _sfIcsz = icsz; _sfCount = nq; _geCount = ne;
         int tasks = (nq + SurfaceChunk - 1) / SurfaceChunk;
         EnsureTaskBufs(tasks);
         for (int t = 0; t < tasks; t++) { _tb[t].SurfCount = 0; }
@@ -144,6 +144,8 @@ internal sealed partial class Engine2D
     private double _sfIcsz;
     private int _sfCount;
     internal const int SurfaceChunk = 64;
+    private const double MaxCellVisits = 256.0, MaxCellCoordinate = 1e15;
+    private int _geCount;
 
     private readonly struct SurfaceProgram : IParallelBody
     {
@@ -168,9 +170,24 @@ internal sealed partial class Engine2D
             int p = _gPart[g];
             double ep = dp.Radius + 2.0 * dp.SurfTravel;
             double px = dp.Ox + dp.X[2 * p], py = dp.Oy + dp.X[2 * p + 1];
-            long x0 = (long)Math.Floor((px - ep) * icsz) - 1, x1 = (long)Math.Floor((px + ep) * icsz);
-            long y0 = (long)Math.Floor((py - ep) * icsz) - 1, y1 = (long)Math.Floor((py + ep) * icsz);
+            // A particle that can travel very far, or sits very far out (a diverged body), would visit an enormous range of cells (or overflow the cell numbers); outside a small, sane range every edge is tested instead.
+            double fx0 = (px - ep) * icsz, fx1 = (px + ep) * icsz, fy0 = (py - ep) * icsz, fy1 = (py + ep) * icsz;
+            bool wide = !(Math.Abs(fx0) < MaxCellCoordinate && Math.Abs(fx1) < MaxCellCoordinate && Math.Abs(fy0) < MaxCellCoordinate && Math.Abs(fy1) < MaxCellCoordinate && (fx1 - fx0 + 3.0) * (fy1 - fy0 + 3.0) <= MaxCellVisits);
+            long x0 = wide ? 0 : (long)Math.Floor(fx0) - 1, x1 = wide ? 0 : (long)Math.Floor(fx1);
+            long y0 = wide ? 0 : (long)Math.Floor(fy0) - 1, y1 = wide ? 0 : (long)Math.Floor(fy1);
             int nseen = 0;
+            if (wide)
+            {
+                for (int ge = 0; ge < _geCount; ge++)
+                {
+                    int o = 4 * ge;
+                    if (px + ep < _geBox[o] || px - ep > _geBox[o + 2] || py + ep < _geBox[o + 1] || py - ep > _geBox[o + 3]) { continue; }
+                    TryAddSurfacePair(dp, p, px, py, ge, buf);
+                }
+
+                continue;
+            }
+
             for (long cy = y0; cy <= y1; cy++)
             {
                 for (long cx = x0; cx <= x1; cx++)

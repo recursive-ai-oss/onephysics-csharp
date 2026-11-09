@@ -56,6 +56,7 @@ internal sealed partial class Engine3D
     private const float InsideTolerance = 0.05f;
     // A feature can travel in the step at most this many times the step's travel at its fastest particle's speed at the start (the solver may add some speed; the margin covers it).
     private const double TravelFactor = 1.5;
+    private const double MaxCellVisits = 512.0, MaxCellCoordinate = 1e15;
 
     private double[] _bExtT = new double[8], _bExtE = new double[8];
 
@@ -215,10 +216,27 @@ internal sealed partial class Engine3D
                     int p = dp.SurfParticles[pi];
                     double px = dp.Ox + dp.X[3 * p], py = dp.Oy + dp.X[3 * p + 1], pz = dp.Oz + dp.X[3 * p + 2];
                     if (a != b && (px + ep < bb[0] || px - ep > bb[3] || py + ep < bb[1] || py - ep > bb[4] || pz + ep < bb[2] || pz - ep > bb[5])) { continue; }
-                    long x0 = (long)Math.Floor((px - ep - mxT) * icT), x1 = (long)Math.Floor((px + ep) * icT);
-                    long y0 = (long)Math.Floor((py - ep - mxT) * icT), y1 = (long)Math.Floor((py + ep) * icT);
-                    long z0 = (long)Math.Floor((pz - ep - mxT) * icT), z1 = (long)Math.Floor((pz + ep) * icT);
+                    // A particle that can travel very far, or sits very far out (a diverged body), would visit an enormous range of cells (or overflow the cell numbers); outside a small, sane range every triangle of the target is tested instead.
+                    double fx0 = (px - ep - mxT) * icT, fx1 = (px + ep) * icT, fy0 = (py - ep - mxT) * icT, fy1 = (py + ep) * icT, fz0 = (pz - ep - mxT) * icT, fz1 = (pz + ep) * icT;
+                    bool wide = !(Math.Abs(fx0) < MaxCellCoordinate && Math.Abs(fx1) < MaxCellCoordinate && Math.Abs(fy0) < MaxCellCoordinate && Math.Abs(fy1) < MaxCellCoordinate && Math.Abs(fz0) < MaxCellCoordinate && Math.Abs(fz1) < MaxCellCoordinate
+                        && (fx1 - fx0 + 2.0) * (fy1 - fy0 + 2.0) * (fz1 - fz0 + 2.0) <= MaxCellVisits);
+                    long x0 = wide ? 0 : (long)Math.Floor(fx0), x1 = wide ? 0 : (long)Math.Floor(fx1);
+                    long y0 = wide ? 0 : (long)Math.Floor(fy0), y1 = wide ? 0 : (long)Math.Floor(fy1);
+                    long z0 = wide ? 0 : (long)Math.Floor(fz0), z1 = wide ? 0 : (long)Math.Floor(fz1);
                     int nseen = 0;
+                    if (wide)
+                    {
+                        for (int i = 0; i < nTb; i++)
+                        {
+                            int g = db.SurfTriBase + i, o = 6 * g;
+                            if (a == b && (p == _gtV[3 * g] || p == _gtV[3 * g + 1] || p == _gtV[3 * g + 2])) { continue; }
+                            if (px + ep < _gtBox[o] || px - ep > _gtBox[o + 3] || py + ep < _gtBox[o + 1] || py - ep > _gtBox[o + 4] || pz + ep < _gtBox[o + 2] || pz - ep > _gtBox[o + 5]) { continue; }
+                            TryAddVertexTriangle(dp, p, px, py, pz, g);
+                        }
+
+                        continue;
+                    }
+
                     for (long cz = z0; cz <= z1; cz++)
                     {
                         for (long cy = y0; cy <= y1; cy++)
@@ -259,10 +277,32 @@ internal sealed partial class Engine3D
                 {
                     int g = da.SurfEdgeBase + ie, o = 6 * g;
                     if (a != b && (_geBox[o] > bb[3] || _geBox[o + 3] < bb[0] || _geBox[o + 1] > bb[4] || _geBox[o + 4] < bb[1] || _geBox[o + 2] > bb[5] || _geBox[o + 5] < bb[2])) { continue; }
-                    long x0 = (long)Math.Floor((_geBox[o] - mxE) * icE), x1 = (long)Math.Floor(_geBox[o + 3] * icE);
-                    long y0 = (long)Math.Floor((_geBox[o + 1] - mxE) * icE), y1 = (long)Math.Floor(_geBox[o + 4] * icE);
-                    long z0 = (long)Math.Floor((_geBox[o + 2] - mxE) * icE), z1 = (long)Math.Floor(_geBox[o + 5] * icE);
+                    double fx0 = (_geBox[o] - mxE) * icE, fx1 = _geBox[o + 3] * icE, fy0 = (_geBox[o + 1] - mxE) * icE, fy1 = _geBox[o + 4] * icE, fz0 = (_geBox[o + 2] - mxE) * icE, fz1 = _geBox[o + 5] * icE;
+                    bool wide = !(Math.Abs(fx0) < MaxCellCoordinate && Math.Abs(fx1) < MaxCellCoordinate && Math.Abs(fy0) < MaxCellCoordinate && Math.Abs(fy1) < MaxCellCoordinate && Math.Abs(fz0) < MaxCellCoordinate && Math.Abs(fz1) < MaxCellCoordinate
+                        && (fx1 - fx0 + 2.0) * (fy1 - fy0 + 2.0) * (fz1 - fz0 + 2.0) <= MaxCellVisits);
+                    long x0 = wide ? 0 : (long)Math.Floor(fx0), x1 = wide ? 0 : (long)Math.Floor(fx1);
+                    long y0 = wide ? 0 : (long)Math.Floor(fy0), y1 = wide ? 0 : (long)Math.Floor(fy1);
+                    long z0 = wide ? 0 : (long)Math.Floor(fz0), z1 = wide ? 0 : (long)Math.Floor(fz1);
                     int nseen = 0;
+                    if (wide)
+                    {
+                        for (int i = 0; i < nEb; i++)
+                        {
+                            int h2 = db.SurfEdgeBase + i;
+                            if (a == b)
+                            {
+                                if (h2 <= g) { continue; }
+                                if (_geV[2 * g] == _geV[2 * h2] || _geV[2 * g] == _geV[2 * h2 + 1] || _geV[2 * g + 1] == _geV[2 * h2] || _geV[2 * g + 1] == _geV[2 * h2 + 1]) { continue; }
+                            }
+
+                            int o2 = 6 * h2;
+                            if (_geBox[o2] > _geBox[o + 3] || _geBox[o2 + 3] < _geBox[o] || _geBox[o2 + 1] > _geBox[o + 4] || _geBox[o2 + 4] < _geBox[o + 1] || _geBox[o2 + 2] > _geBox[o + 5] || _geBox[o2 + 5] < _geBox[o + 2]) { continue; }
+                            TryAddEdgeEdge(g, h2);
+                        }
+
+                        continue;
+                    }
+
                     for (long cz = z0; cz <= z1; cz++)
                     {
                         for (long cy = y0; cy <= y1; cy++)
