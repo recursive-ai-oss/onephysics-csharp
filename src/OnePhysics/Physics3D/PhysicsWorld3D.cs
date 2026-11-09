@@ -45,6 +45,7 @@ public sealed partial class PhysicsWorld3D
         BindBodyControlOptions();
         _core.AddSection(_engine.SoftSnapshotSection);
         _core.AddSection(_engine.Cables);
+        _core.AddSection(_engine.ActiveSnapshotSection);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -142,6 +143,7 @@ public sealed partial class PhysicsWorld3D
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.BeginBodyControls(dt);
         if (_engine.Fields.Count != 0) _engine.Fields.Step(dt);
+        _engine.StepActive(dt);
         _engine.StepVehicles(this, dt);
         _engine.StepFluids(dt);
         if (_engine.Cables.Count != 0) _engine.Cables.Step(dt);
@@ -154,6 +156,7 @@ public sealed partial class PhysicsWorld3D
         if (soft) { _engine.StepSoft(dt); }
         if (_engine.Rods.Count != 0) _engine.Rods.Step(dt);
         _engine.EndBodyControls();
+        _engine.EndActive();
         _engine.ReconcileJoints();
         UpdateInspectionCounters();
         InvalidateQueryPad();

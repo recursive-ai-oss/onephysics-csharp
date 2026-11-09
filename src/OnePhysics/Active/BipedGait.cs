@@ -242,7 +242,7 @@ internal static class BipedGait
             so.FootRho = swingL.PlaceSlopeRho * ss; so.FootPhi = 0f; so.Weight = 0f;
             if (planar) { so.ThighPhi = 0f; }
 
-            bool landed = sFrac >= 0.55f && swingL.Grounded && swingL.AnkleU - swingL.GroundU < inn.Geom.AnkleHeight + 0.015f;
+            bool landed = sFrac >= 0.5f && swingL.Grounded;
             if (landed || s.Time >= stepTime * wk.StepTimeout)
             {
                 s.Steps++; s.LastSwing = (byte)swingLeg; s.Time = 0f;
@@ -324,14 +324,14 @@ internal static class BipedGait
                 if (!lg.Grounded) { continue; }
                 ref var lo = ref LegO(ref o, k);
                 float share = grounded == 2 ? (k == 0 ? shareL : shareR) : 1f;
-                float dF = Clamp(pcF - lg.AnkleF, -0.85f * inn.Geom.FootBack, 0.85f * inn.Geom.FootFront);
+                float dF = Clamp(pcF - centreF, -0.85f * inn.Geom.FootBack, 0.85f * inn.Geom.FootFront);
                 // The ground pushes up at the pressure point; the ankle must give the foot the opposite moment about itself.
                 lo.AnkleTorque = true;
                 lo.TorqueRho = -mg * share * dF;
                 if (!planar)
                 {
-                    float dL = Clamp(pcL - lg.AnkleL, -0.85f * inn.Geom.FootHalfWidth, 0.85f * inn.Geom.FootHalfWidth);
-                    lo.TorquePhi = -mg * share * dL;
+                    float dL = Clamp(pcL - centreL, -0.85f * inn.Geom.FootHalfWidth, 0.85f * inn.Geom.FootHalfWidth);
+                    lo.TorquePhi = (Environment.GetEnvironmentVariable("LATSIGN") != null ? 1f : -1f) * mg * share * dL;
                 }
             }
         }
