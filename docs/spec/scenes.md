@@ -169,6 +169,21 @@ No other engine has vehicles or ragdolls to compare, so these four scenes are bu
 
 Metrics: `rollovers` cars whose chassis passes 1.8 rad from upright, `wheelThroughGround` steps with a wheel centre under half a radius above the terrain, `suspensionJitter` the largest change of a suspension length between the last two steps for vehicles slower than 0.2 m/s, `minProgress` the shortest distance any vehicle drove, `maxPenetration` the deepest contact separation of any body, `jointError` the largest gap between the two anchors of a ragdoll joint (sampled every 10 steps), `limitViolation` the largest overshoot of a joint limit (rad, over the run), `restKE` the 90th percentile of per-body kinetic energy over the last 3 steps. Thresholds are 1.5 times the measured value rounded up to a 1/1.5/2/3/5/7 step, with floors. The ragdoll limit overshoot is a transient of the dense pile (a limit under the weight of many bodies), not a resting error; `JointLimitsHoldUnderADrop` in the tests holds a single ragdoll to 0.02 rad at rest.
 
+### Character-ability scenes (own scenes, no reference engine)
+
+No other engine has characters that stand on soft bodies and ropes, grab, climb, ride seats or stand on decks, so these six scenes are built in code by `tests/Common/CharacterAbilityScenes3D.cs` and `CharacterAbilityScenes2D.cs` and measured by `bar character-abilities-stability [--scene name] [--threads n] [--timing]` over 600 steps at 1/60, default options. Measured values are identical at 1 and 8 threads on x64 (Ryzen 9 7950X3D worker) and on Apple M2, so the metrics below are one column.
+
+| scene | what | thresholds | measured |
+|---|---|---|---|
+| `characters-soft-3d` | a walker crossing a jelly pad, a stander on a cloth hammock, a pusher against a jelly cube | `nan` = `escapes` = `falls` = 0, `grounded` = 3, `standerJitter` <= 0.001, `maxSpeed` <= 7 | 0, 0, 0, 3, 6.3e-8, 3.60 |
+| `characters-soft-2d` | the same in 2D with a soft bar and a rope bridge | `grounded` in 2..3, same others, `maxSpeed` <= 30 | 2, 0, 13.8 |
+| `characters-ropes-3d` | a walker on a rope bridge, a swinger who climbs a rope and lets go, a pusher walking through a hanging rope | `falls` = 0, `walkerGrounded` = `swingerLanded` = 1, `pusherX` >= 14.5, `curtainDeflection` in 0.1..3, `maxSpeed` <= 50 | 0, 1, 1, 15.27, 1.94, 20.1 |
+| `climbing-3d` | 2 m ledges on four kinds of geometry, a wall too tall to grab, a climbable wall and a wide ledge to shimmy along | `grabs` = 5, `falseGrabs` = 0, `onTop` = 4, `ladderOnTop` = 1, `falls` = 0, `maxSpeed` <= 15 | 5, 0, 4, 1, 0, 7.44 |
+| `climbing-2d` | 2 m ledges, a wall too tall to grab and a low step on a tile grid, and a ladder | `grabs` = 2, `onTop` = 2, `ladderOnTop` = 1, `falseGrabs` = `falls` = 0, `maxSpeed` <= 15 | 2, 2, 1, 0, 0, 7.44 |
+| `riders-3d` | a driver seated in a driven car, a passenger on a steered barge, one on a turning platform | `seatError` <= 1e-4, `deckDrift` and `platformDrift` <= 1e-3 (in the body's own frame), `falls` = 0, `maxSpeed` <= 50 | 4.7e-11, 3.8e-6, 1.6e-4, 0, 27.7 |
+
+Thresholds are 1.5 times the measured value rounded up to a 1/1.5/2/3/5/7 step, with floors; counts are exact. `maxSpeed` in `riders-3d` is the car's.
+
 ### Boats, hovercraft, gliders and thrusters (own scenes, no reference engine)
 
 No other engine has any of these, so the five scenes are built in code by `tests/Common/Actuators3DScene.cs` and `Actuators2DScene.cs` (scripts use integer arithmetic on the step number and the craft's own state, and onemath's cosine, so they are byte-identical on every platform) and measured by `bar actuators-stability [--scene name] [--threads n] [--timing]`. 600 steps at 1/60, default options. Thresholds are 1.5 times the measured values (x64 and arm64 agree to every printed digit, at 1 and 8 threads), rounded up; they are ours.

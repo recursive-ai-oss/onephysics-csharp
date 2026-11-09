@@ -135,11 +135,11 @@ internal static class CharacterAbilityScenes3D
         w.AddBox(new Vector3F(1f, 3f, 1f), new Vector3D(6.7, 1.5, 0), type: BodyType.Static);
         var bridge = w.AddRod(Rope(new Vector3D(-6, 3, 0), new Vector3D(6, 3, 0), 48, 0.01f, 2e9f, pinEnd: true));
         // A swinging rope with a rider who climbs it and lets go; a hanging rope walked through.
-        var swing = w.AddRod(Rope(new Vector3D(0, 6, -8), new Vector3D(Math.Sin(0.4) * 3, 6 - Math.Cos(0.4) * 3, -8), 30, 0.003f, 2e10f));
+        var swing = w.AddRod(Rope(new Vector3D(0, 6, -8), new Vector3D(Math64.Sin(0.4) * 3, 6 - Math64.Cos(0.4) * 3, -8), 30, 0.003f, 2e10f));
         var curtain = w.AddRod(Rope(new Vector3D(14, 6, 0), new Vector3D(14, 0.1, 0), 24, 0.01f, 1e8f));
         var s = new Scene { Name = "characters-ropes-3d", World = w };
         var walker = new Mover { H = w.AddCharacter(new Vector3D(-4.5, 3.92, 0)).RawHandle };
-        var swinger = new Mover { H = w.AddCharacter(new Vector3D(Math.Sin(0.4) * 3, 3, -8)).RawHandle };
+        var swinger = new Mover { H = w.AddCharacter(new Vector3D(Math64.Sin(0.4) * 3, 3, -8)).RawHandle };
         var pd = CharacterDef.Humanoid; pd.PushStrength = 1f;
         var pusher = new Mover { H = w.AddCharacter(new Vector3D(12, 0.91, 0), pd).RawHandle };
         s.Characters.AddRange([walker.H, swinger.H, pusher.H]);
@@ -326,10 +326,10 @@ internal static class CharacterAbilityScenes3D
         s.Script = step =>
         {
             var ww = s.World;
-            if (ww.TryGetVehicle(ww.GetBody(chassisHandle), out var cv)) { cv.Drive(step < 250 ? 0.35f : 0f, 0.3f * MathF.Sin(step * 0.03f), step < 250 ? 0f : 0.6f); }
-            if (ww.TryGetBoat(ww.GetBody(hullHandle), out var bg)) { bg.Throttle = 0.5f; bg.Steer = 0.3f * MathF.Sin(step * 0.02f); }
+            if (ww.TryGetVehicle(ww.GetBody(chassisHandle), out var cv)) { cv.Drive(step < 250 ? 0.35f : 0f, 0.3f * Math32.Sin(step * 0.03f), step < 250 ? 0f : 0.6f); }
+            if (ww.TryGetBoat(ww.GetBody(hullHandle), out var bg)) { bg.Throttle = 0.5f; bg.Steer = 0.3f * Math32.Sin(step * 0.02f); }
             var pf = ww.GetBody(platformHandle);
-            pf.AngularVelocity = new Vector3F(0, 0.4f, 0); pf.LinearVelocity = new Vector3F(0.4f * MathF.Sin(step * 0.04f), 0, 0.3f * MathF.Cos(step * 0.04f));
+            pf.AngularVelocity = new Vector3F(0, 0.4f, 0); pf.LinearVelocity = new Vector3F(0.4f * Math32.Sin(step * 0.04f), 0, 0.3f * Math32.Cos(step * 0.04f));
             pass.Tick(ww); plat.Tick(ww);
         };
         s.Observe = step =>
