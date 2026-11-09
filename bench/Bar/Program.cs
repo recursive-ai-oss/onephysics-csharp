@@ -23,6 +23,7 @@ public static class Program
                 return 0;
             }
             case "fields-stability": return FieldStability.Run();
+            case "soft2d-stability": return SoftStability2D.Run();
             case "micro-boxbox": return MicroBoxBox.Run(opts);
             case "recording-indicative": return RecordingTiming.Run(opts);
             case "selftest": return Metrics.SelfTest() + Metrics3.SelfTest() + Robust.SelfTest() + ProfileReport.SelfTest() + Verdict.SelfTest();
