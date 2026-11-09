@@ -140,7 +140,7 @@ internal static class DestructionStability
             var c = w.AddBox(new(0.8f, 0.8f, 0.8f), new Vector3D(-6 + (i % 6) * 2.4, 2 + (i / 6) * 3 + rng.Next(), -4 + (i / 6) * 2.5 + rng.Next()));
             c.SetFracturable(new P3.FractureDef { CellCount = 12, ImpulseThreshold = 4f, Seed = (ulong)(100 + i), Depth = 1, Pattern = FracturePattern.Clustered });
         }
-        return Measure3("fracture-runtime-3d", w, _ => { }, 25, 0.95, 500);
+        return Measure3("fracture-runtime-3d", w, _ => { }, 25, 0.05, 500);
     }
 
     // A static beam bridge anchored at both ends under a growing load until it collapses.
