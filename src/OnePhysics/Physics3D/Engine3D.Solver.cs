@@ -613,8 +613,9 @@ internal sealed partial class Engine3D
             }
         }
 
-        // A turning body also sweeps the corners of its boxes and hulls, which the linear casts above (shapes held at their start orientation) cannot see.
-        if (spin > 0f) { best = CornerSweep(b, cx, cy, cz, m, qStart, qEnd, spin, best); }
+        // A turning body also sweeps the corners of its boxes and hulls, which the linear casts above (shapes held at their start orientation) cannot see. A vehicle's chassis is left out: its wheels
+        // are suspension casts from the chassis pose, and clamping the pose back by the hull's corners can leave a wheel inside the geometry (the suspension then pushes it out hard).
+        if (spin > 0f && VehicleOfBody(b) < 0) { best = CornerSweep(b, cx, cy, cz, m, qStart, qEnd, spin, best); }
         if (best >= 1f) { return; }
         Core.BodyReadback.CcdState[b] |= 2;
         float t = best - 0.005f / len;
