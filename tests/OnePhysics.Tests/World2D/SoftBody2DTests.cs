@@ -296,10 +296,10 @@ public class SoftBody2DScenes
     // Thresholds are our own (no reference engine has 2D soft bodies): about 1.5 times the values this engine measured, rounded up, recorded in docs/spec/scenes.md.
     // maxSpeed, maxPenetration, maxSoftOverlap, areaError (of pressure bodies, at the end) and finalSpeed99 (the 99th percentile particle speed over the last 3 steps); escapes and nan must be 0.
     [Theory]
-    [InlineData("soft-pile-2d", 25.0, 0.08, 0.05, 0.15, 1.5)]
+    [InlineData("soft-pile-2d", 25.0, 0.08, 0.05, 0.03, 0.5)]
     [InlineData("soft-rigid-2d", 15.0, 0.05, 0.02, 0.10, 1.5)]
     [InlineData("balloon-2d", 20.0, 0.06, 0.02, 0.05, 1.0)]
-    [InlineData("plastic-2d", 25.0, 0.08, 0.05, 0.15, 1.5)]
+    [InlineData("plastic-2d", 8.0, 0.03, 0.05, 0.01, 0.3)]
     public void TheSceneIsStable(string name, double maxSpeed, double maxPenetration, double areaError, double softOverlap, double finalSpeed99)
     {
         var m = SoftBodies2DScene.Measure(name);

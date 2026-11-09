@@ -377,7 +377,15 @@ internal sealed partial class Engine2D
                 }
             }
 
-            g.Add(new Debug.DebugSoftBody(i, SoftHandles.GenerationOf(i), d.Asleep, d.Radius, first, d.N, firstIndex, d.EdgeA.Length, firstTarget));
+            int firstBroken = -1;
+            for (int e = 0; e < d.Broken.Length; e++)
+            {
+                int k = g.AddIndex((int)(d.Broken[e] >> 20));
+                g.AddIndex((int)(d.Broken[e] & 0xFFFFF));
+                if (e == 0) { firstBroken = k; }
+            }
+
+            g.Add(new Debug.DebugSoftBody(i, SoftHandles.GenerationOf(i), d.Asleep, d.Radius, first, d.N, firstIndex, d.EdgeA.Length, firstTarget, firstBroken, d.Broken.Length));
         }
     }
 }

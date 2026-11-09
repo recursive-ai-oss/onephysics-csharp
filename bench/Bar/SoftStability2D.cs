@@ -5,10 +5,10 @@ internal static class SoftStability2D
 {
     private static readonly (string Scene, double Speed, double Pen, double Area, double Overlap, double Final)[] Limits =
     {
-        ("soft-pile-2d", 25.0, 0.08, 0.05, 0.15, 1.5),
+        ("soft-pile-2d", 25.0, 0.08, 0.05, 0.03, 0.5),
         ("soft-rigid-2d", 15.0, 0.05, 0.02, 0.10, 1.5),
         ("balloon-2d", 20.0, 0.06, 0.02, 0.05, 1.0),
-        ("plastic-2d", 25.0, 0.08, 0.05, 0.15, 1.5),
+        ("plastic-2d", 8.0, 0.03, 0.05, 0.01, 0.3),
     };
 
     internal static int Run()

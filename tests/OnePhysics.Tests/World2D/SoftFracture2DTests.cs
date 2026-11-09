@@ -43,6 +43,16 @@ public class SoftFracture2DTests
     }
 
     [Fact]
+    public void TheSoftPileSleeps()
+    {
+        var w = SoftBodies2DScene.Build("soft-pile-2d", 1);
+        for (int i = 0; i < 600; i++) { w.Step(Dt); }
+        int asleep = 0;
+        for (int s = 0; s < w.SoftBodyCount; s++) { if (w.GetSoftBody(s).IsAsleep) { asleep++; } }
+        Assert.True(asleep >= 0.9 * w.SoftBodyCount, asleep + " of " + w.SoftBodyCount + " soft bodies asleep");
+    }
+
+    [Fact]
     public void SoftBoxesPressedTogetherDoNotInterpenetrate()
     {
         double with = SinkDepth(true), without = SinkDepth(false);

@@ -239,6 +239,19 @@ public readonly struct DebugSoftBody
         FirstTargetPoint = firstTargetPoint;
     }
 
+    /// <summary>Creates an entry that also lists the torn edges: <paramref name="brokenEdgeCount"/> pairs of particle numbers from <see cref="DebugGeometry.Indices"/>[<paramref name="firstBrokenIndex"/> ..).</summary>
+    public DebugSoftBody(int index, int generation, bool isAsleep, float particleRadius, int firstPoint, int particleCount, int firstIndex, int edgeCount, int firstTargetPoint, int firstBrokenIndex, int brokenEdgeCount)
+        : this(index, generation, isAsleep, particleRadius, firstPoint, particleCount, firstIndex, edgeCount, firstTargetPoint)
+    {
+        FirstBrokenIndex = firstBrokenIndex; BrokenEdgeCount = brokenEdgeCount;
+    }
+
+    /// <summary>Index in <see cref="DebugGeometry.Indices"/> of the first corner of the first torn edge that still joins two sides without a constraint, or -1 when there is none.</summary>
+    public int FirstBrokenIndex { get; } = -1;
+
+    /// <summary>Number of such torn edges (two particle numbers each, from <see cref="FirstBrokenIndex"/>).</summary>
+    public int BrokenEdgeCount { get; }
+
     /// <summary>Index in <see cref="DebugGeometry.Points"/> of the skinned position (the target) of particle 0, or -1 when the body has no skin. The targets of the other particles follow it, in particle order.</summary>
     public int FirstTargetPoint { get; } = -1;
 

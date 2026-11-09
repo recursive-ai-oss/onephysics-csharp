@@ -43,6 +43,20 @@ public class SoftFracture3DTests
         Assert.True(without > with + 0.01, "without it " + without + " against " + with);
     }
 
+    [Theory]
+    [InlineData("cloth-fold-3d", 20.0, 0, 0)]
+    [InlineData("tear-3d", 20.0, 50, 0)]
+    public void TheSceneIsStable(string name, double maxSpeed, int minTears, int maxIntersections)
+    {
+        var m = SoftFracture3DScene.Measure(name);
+        Assert.Equal(0, m.NaN);
+        Assert.Equal(0, m.Escapes);
+        Assert.True(m.MaxSpeed <= maxSpeed, SoftFracture3DScene.Format(m));
+        Assert.True(m.Tears >= minTears, SoftFracture3DScene.Format(m));
+        Assert.True(m.MaxIntersections <= maxIntersections, SoftFracture3DScene.Format(m));
+        Assert.Equal(m.Bodies, m.Asleep);
+    }
+
     [Fact]
     public void AClothFoldingOnItselfNeverIntersectsItself()
     {
