@@ -10,14 +10,18 @@ internal static class RoundTrip
     public static void StepChecked(this PhysicsWorld3D w, float dt)
     {
         w.Step(dt);
-        byte[] written = w.Snapshot();
+        byte[] written;
+        // A diverged world refuses to be saved (by contract); the next step reports the body, so there is nothing to round-trip yet.
+        try { written = w.Snapshot(); } catch (NonFiniteStateException) { return; }
         Check(written, () => { var f = new PhysicsWorld3D(w.Options); f.Restore(written); return f.Snapshot(); });
     }
 
     public static void StepChecked(this PhysicsWorld2D w, float dt)
     {
         w.Step(dt);
-        byte[] written = w.Snapshot();
+        byte[] written;
+        // A diverged world refuses to be saved (by contract); the next step reports the body, so there is nothing to round-trip yet.
+        try { written = w.Snapshot(); } catch (NonFiniteStateException) { return; }
         Check(written, () => { var f = new PhysicsWorld2D(w.Options); f.Restore(written); return f.Snapshot(); });
     }
 

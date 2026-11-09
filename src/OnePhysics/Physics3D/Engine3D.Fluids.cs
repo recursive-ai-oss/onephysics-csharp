@@ -130,7 +130,12 @@ internal sealed partial class Engine3D
         var bodies = Core.Bodies;
         var pos = bodies.PositionOf(b);
         var n = fluid.SurfaceNormal;
-        double depth = n.X * pos[0] + n.Y * pos[1] + n.Z * pos[2] - fluid.SurfaceOffset;
+        // The force is held fixed while the substeps move the body, which is explicit in position and adds energy to a floating
+        // body without damping. Cutting the hull where the substeps will have carried it by mid-step removes that.
+        var lin = bodies.LinearVelocityOf(b);
+        int substeps = Math.Max(Opt.Substeps, 1);
+        float lead = dt * (substeps - 1) / (2f * substeps);
+        double depth = n.X * (pos[0] + (double)lin[0] * lead) + n.Y * (pos[1] + (double)lin[1] * lead) + n.Z * (pos[2] + (double)lin[2] * lead) - fluid.SurfaceOffset;
         float h0 = (float)depth;
         float reach = MaxExtent[b];
         if (!(h0 < reach)) { return 0f; }
@@ -141,12 +146,21 @@ internal sealed partial class Engine3D
                 || pos[2] + r < fluid.RegionMin.Z || pos[2] - r > fluid.RegionMax.Z) { return 0f; }
         }
 
-        var lin = bodies.LinearVelocityOf(b);
         var rel = new Vector3F(lin[0] - fluid.Flow.X, lin[1] - fluid.Flow.Y, lin[2] - fluid.Flow.Z);
         float speed = float.Sqrt(rel.X * rel.X + rel.Y * rel.Y + rel.Z * rel.Z);
         var dir = speed > 1e-6f ? new Vector3F(rel.X / speed, rel.Y / speed, rel.Z / speed) : default;
 
         var q = RotationOfBody(b);
+        var spin = bodies.AngularVelocityOf(b);
+        if (lead > 0f && (spin[0] != 0f || spin[1] != 0f || spin[2] != 0f))
+        {
+            var dq = new QuaternionF(spin[0], spin[1], spin[2], 0f) * q;
+            float half = 0.5f * lead;
+            var turned = new QuaternionF(q.X + dq.X * half, q.Y + dq.Y * half, q.Z + dq.Z * half, q.W + dq.W * half);
+            float norm = float.Sqrt(turned.X * turned.X + turned.Y * turned.Y + turned.Z * turned.Z + turned.W * turned.W);
+            if (norm > 0f && float.IsFinite(norm)) { q = new QuaternionF(turned.X / norm, turned.Y / norm, turned.Z / norm, turned.W / norm); }
+        }
+
         var lc = LocalCenterOf(b);
         var g = Opt.Gravity;
         _fvolume = 0f; _farea = 0f; _fforce = default; _ftorque = default;
