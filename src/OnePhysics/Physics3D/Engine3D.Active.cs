@@ -182,6 +182,16 @@ internal sealed partial class Engine3D
         var bodies = Core.Bodies;
         int parts = rg.Parts;
         a.DecayHits(dt);
+        // A layer with nothing to do (no controller, every bone fully simulated) leaves the ragdoll exactly as a plain ragdoll: no drive, no pin, no waking.
+        bool idle = a.Mode == (byte)ActiveMode.Pose;
+        for (int i = 0; i < parts && idle; i++) { if (a.EffectiveWeight(i) < 1f) { idle = false; } }
+        if (idle)
+        {
+            for (int i = 1; i < parts; i++) { if (a.Driven[i] == 1) { ReleaseJoint(rg, i); } }
+            Array.Clear(a.Driven);
+            return;
+        }
+
         for (int i = 0; i < parts; i++)
         {
             int b = rg.Body[i];
@@ -575,18 +585,10 @@ internal sealed partial class Engine3D
             Own(a, ft, Normalized(a.Delta[sh].Conjugated() * TargetDelta(legYawQ, footRho, footPhi)));
         }
 
-        if (Environment.GetEnvironmentVariable("ONEPHYS_DBG") is string dbg && DbgCount++ is int dc && dc >= int.Parse(dbg.Split(',')[0]) && dc < int.Parse(dbg.Split(',')[1]) && dc % int.Parse(dbg.Split(',')[2]) == 0)
-        {
-            Console.WriteLine($"DBG phase={a.Gait.Phase} psi={psi:F2} pelvisRho={inp.PelvisRho:F3} phi={inp.PelvisPhi:F3} com=({inp.ComF:F2},{inp.ComL:F2},{inp.ComU:F2}) vel=({inp.VelF:F2},{inp.VelL:F2}) cap=({o.CaptureF:F2},{o.CaptureL:F2}) g={o.Grounded}");
-            for (int k = 0; k < 2; k++) { var lo = k == 0 ? o.Left : o.Right; var lg = k == 0 ? inp.Left : inp.Right; Console.WriteLine($"  leg{k} gr={lg.Grounded} hip=({lg.HipF:F2},{lg.HipL:F2},{lg.HipU:F2}) ankle=({lg.AnkleF:F2},{lg.AnkleL:F2},{lg.AnkleU:F2}) thighA=({lg.ThighRho:F2},{lg.ThighPhi:F2}) footA=({lg.FootRho:F2},{lg.FootPhi:F2}) -> thighT=({lo.ThighRho:F2},{lo.ThighPhi:F2}) knee={lo.KneeFlex:F2} tq=({lo.TorqueRho:F0},{lo.TorquePhi:F0})"); }
-        }
-
         a.Info = new ActiveRagdollInfo((ActiveMode)a.Mode, (GaitPhase)a.Gait.Phase, a.Gait.Steps, a.Gait.Time, (float)cx, (float)cy, (float)cz,
             (float)(px + o.CaptureF * fx + o.CaptureL * lx), (float)(pz + o.CaptureF * fz + o.CaptureL * lz),
             (float)(px + o.SupMinF * fx + o.SupMinL * lx), (float)(pz + o.SupMinF * fz + o.SupMinL * lz), (float)(px + o.SupMaxF * fx + o.SupMaxL * lx), (float)(pz + o.SupMaxF * fz + o.SupMaxL * lz), o.Grounded);
     }
-
-    internal static int DbgCount;
 
     private static float WrapAct(float a)
     {
@@ -656,7 +658,9 @@ internal sealed partial class Engine3D
             for (int i = 0; i < n; i++) { a.Pose[i] = ReadUnit(rd, "active ragdoll pose"); }
             for (int i = 0; i < n; i++) { a.Cur[i] = ReadUnit(rd, "active ragdoll target"); }
             a.Root = new Vector3D(rd.ReadDouble(), rd.ReadDouble(), rd.ReadDouble());
-            a.RootRot = ReadUnit(rd, "active ragdoll root rotation");
+            a.RootRot = new QuaternionF(rd.ReadSingle(), rd.ReadSingle(), rd.ReadSingle(), rd.ReadSingle());
+            float rl = a.RootRot.X * a.RootRot.X + a.RootRot.Y * a.RootRot.Y + a.RootRot.Z * a.RootRot.Z + a.RootRot.W * a.RootRot.W;
+            if (!float.IsFinite(rl) || (rl != 0f && !(rl > 1e-12f))) { throw rd.Error("invalid active ragdoll root rotation"); }
             if (!double.IsFinite(a.Root.X) || !double.IsFinite(a.Root.Y) || !double.IsFinite(a.Root.Z) || Math.Abs(a.Root.X) > 2097152.0 || Math.Abs(a.Root.Y) > 2097152.0 || Math.Abs(a.Root.Z) > 2097152.0) { throw rd.Error("invalid active ragdoll root"); }
             a.Derive(n);
             DeriveActiveGeometry(a, rg);

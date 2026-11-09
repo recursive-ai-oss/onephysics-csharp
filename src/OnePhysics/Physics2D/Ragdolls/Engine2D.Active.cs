@@ -167,6 +167,16 @@ internal sealed partial class Engine2D
         var bodies = Core.Bodies;
         int parts = rg.Parts;
         a.DecayHits(dt);
+        // A layer with nothing to do (no controller, every bone fully simulated) leaves the ragdoll exactly as a plain ragdoll: no drive, no pin, no waking.
+        bool idle = a.Mode == (byte)ActiveMode.Pose;
+        for (int i = 0; i < parts && idle; i++) { if (a.EffectiveWeight(i) < 1f) { idle = false; } }
+        if (idle)
+        {
+            for (int i = 1; i < parts; i++) { if (a.Driven[i] == 1) { ReleaseJoint(rg, i); } }
+            Array.Clear(a.Driven);
+            return;
+        }
+
         for (int i = 0; i < parts; i++)
         {
             int b = rg.Body[i];
@@ -456,19 +466,9 @@ internal sealed partial class Engine2D
             if (lo.AnkleTorque) { a.TorqueMode[ft] = true; a.AnkleTorque[ft] = lo.TorqueRho; }
         }
 
-        if (Environment.GetEnvironmentVariable("ONEPHYS_DBG") is string dbg && DbgCount++ is int dc && dc >= int.Parse(dbg.Split(',')[0]) && dc < int.Parse(dbg.Split(',')[1]) && dc % int.Parse(dbg.Split(',')[2]) == 0)
-        {
-            var sb = new System.Text.StringBuilder();
-            sb.Append($"DBG phase={a.Gait.Phase} t={a.Gait.Time:F2} pelvisRho={inp.PelvisRho:F2} com=({inp.ComF:F2},{inp.ComU:F2}) vel={inp.VelF:F2} cap={o.CaptureF:F2} sup=[{o.SupMinF:F2},{o.SupMaxF:F2}] g={o.Grounded}\n");
-            for (int k = 0; k < 2; k++) { var lo = k == 0 ? o.Left : o.Right; var lg = k == 0 ? inp.Left : inp.Right; sb.Append($"  tq={lo.TorqueRho:F0} leg{k} grounded={lg.Grounded} hip=({lg.HipF:F2},{lg.HipU:F2}) ankle=({lg.AnkleF:F2},{lg.AnkleU:F2}) ground={lg.GroundU:F2} thighA={lg.ThighRho:F2} footA={lg.FootRho:F2} -> thighT={lo.ThighRho:F2} knee={lo.KneeFlex:F2} footT={lo.FootRho:F2}\n"); }
-            sb.Append("  rel: "); for (int i = 0; i < parts.Length; i++) { if (a.Owned[i]) sb.Append($"{i}:{a.Rel[i]:F2}(act {(i>0?RagdollJointAngle(rg.Joint[i]):0):F2}) "); }
-            Console.WriteLine(sb.ToString());
-        }
         a.Info = new ActiveRagdollInfo((ActiveMode)a.Mode, (GaitPhase)a.Gait.Phase, a.Gait.Steps, a.Gait.Time, (float)cx, (float)cy, 0f,
             (float)(px + o.CaptureF), 0f, (float)(px + o.SupMinF), 0f, (float)(px + o.SupMaxF), 0f, o.Grounded);
     }
-
-    internal static int DbgCount, DbgCount2;
 
     private static void Own(ActiveState2D a, int part, float rel)
     {

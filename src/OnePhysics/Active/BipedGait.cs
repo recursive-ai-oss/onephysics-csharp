@@ -253,10 +253,6 @@ internal static class BipedGait
                 else { s.Phase = (byte)GaitPhase.DoubleSupport; }
             }
         }
-        else if (phase == GaitPhase.Shift)
-        {
-            // handled below as a stance leg with the lateral target at the hip
-        }
 
         float pelvisRhoDes = 0f, pelvisPhiDes = 0f;
         float standH = (walking || phase != GaitPhase.DoubleSupport ? wk.HipHeight : bal.StandHeight) * legLen;
@@ -331,7 +327,7 @@ internal static class BipedGait
                 if (!planar)
                 {
                     float dL = Clamp(pcL - centreL, -0.85f * inn.Geom.FootHalfWidth, 0.85f * inn.Geom.FootHalfWidth);
-                    lo.TorquePhi = (Environment.GetEnvironmentVariable("LATSIGN") != null ? 1f : -1f) * mg * share * dL;
+                    lo.TorquePhi = -mg * share * dL;
                 }
             }
         }

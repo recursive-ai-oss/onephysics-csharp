@@ -119,9 +119,10 @@ public readonly partial struct Ragdoll
             throw new ArgumentOutOfRangeException(nameof(rootPosition), rootPosition, "Position " + rootPosition + " is outside the supported range of +-2^21 (2097152) relative to the world origin.");
         }
 
-        var rot = rootRotation.LengthSquared() == 0f ? QuaternionF.Identity : Engine3D.Normalize(rootRotation, nameof(rootRotation));
-        for (int i = 0; i < pose.Length; i++) { a.Pose[i] = Engine3D.Normalize(pose[i], nameof(pose)); }
-        a.Root = rootPosition; a.RootRot = rot;
+        if (rootRotation.LengthSquared() != 0f) { Engine3D.Normalize(rootRotation, nameof(rootRotation)); }   // validates; the stored value is used as given, so pinned bones match Ragdoll.SetPose bit for bit
+        for (int i = 0; i < pose.Length; i++) { Engine3D.Normalize(pose[i], nameof(pose)); }
+        pose.CopyTo(a.Pose);   // stored as given: forward kinematics normalizes once, the same arithmetic as SetPose
+        a.Root = rootPosition; a.RootRot = rootRotation;
         a.HasPose = true;
     }
 
