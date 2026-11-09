@@ -154,7 +154,7 @@ Metrics: `maxSpeed` (any particle, any step), `maxPenetration` (largest amount b
 | `soft-rigid-2d` | 15 | 0.05 | 0.02 | 0.10 | 1.5 | 9.8 / 0.031 / 0.0002 / 0.031 / 0.035 |
 | `balloon-2d` | 20 | 0.06 | 0.02 | 0.05 | 1.0 | 12.2 / 0.038 / 0.0015 / 0.0003 / 0.10 |
 
-Thresholds are about 1.5 times the measured values (taken before the sweep-direction rule in `softbody.md`, which lowered `finalSpeed99`), rounded up. A symmetric drop of a balloon stays symmetric (the sum of angular momentum about its centre is under 0.05 after 100 steps, test `SymmetricBalloonDropStaysSymmetric`). With 120 bodies, 2 are asleep at 600 steps and 10 at 1200 (before the rule: 2 and 10 at the same steps, with 7 at 600 reported earlier); the pile's shape-matched blobs keep flowing slowly, so a full sleep is not a threshold.
+Thresholds are about 1.5 times the measured values (taken before the sweep-direction rule in `softbody.md`, which lowered `finalSpeed99`), rounded up. A symmetric drop of a balloon stays symmetric (the sum of angular momentum about its centre is under 0.05 after 100 steps, test `SymmetricBalloonDropStaysSymmetric`). In the 120-body pile 2 bodies are asleep at 600 steps, 10 at 1200 and 24 at 3600 (the mean of the bodies' fastest particle is about 0.11 m/s against a sleep threshold of 0.05): the particles of touching bodies are discs, so bodies are porous and keep working against each other. That is open; a full sleep is not a threshold.
 
 ## Step-state dump
 
