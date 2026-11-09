@@ -93,6 +93,9 @@ internal static class Program
         ["tools-decompose3d"] = FuzzTools.Decompose3D,
         ["tools-polygon"] = FuzzTools.Polygon,
         ["tools-sprite"] = FuzzTools.Sprite,
+        ["world3d-cloth"] = FuzzCloth.Run,
+        ["world3d-cloth-snapshot"] = FuzzCloth.SnapshotTarget3,
+        ["world2d-strip-snapshot"] = FuzzCloth.SnapshotTarget2,
     };
 
     private static int Main(string[] args)

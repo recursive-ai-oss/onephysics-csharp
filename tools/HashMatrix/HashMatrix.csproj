@@ -33,6 +33,8 @@
     <Compile Include="../../tests/Common/SoftBodies3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/SoftBodies2DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/SoftFracture3DScene.cs" LinkBase="Checks" />
+    <Compile Include="../../tests/Common/Cloth3DScene.cs" LinkBase="Checks" />
+    <Compile Include="../../tests/Common/Strip2DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/SoftSkinned3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Characters3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/CharacterAbilityScenes3D.cs" LinkBase="Checks" />

@@ -274,7 +274,7 @@ internal sealed partial class Engine3D
 
     private void SoftenDepenetration(float h)
     {
-        float allowed = SoftPushOutSpeed * h;
+        var bodies = Core.Bodies;
         for (int ci = 0; ci < _scCount; ci++)
         {
             ref SoftContact c = ref _sc[ci];
@@ -282,6 +282,16 @@ internal sealed partial class Engine3D
             var d = c.Body;
             int k = 3 * c.Particle;
             if (d.InvMass[c.Particle] == 0f) { continue; }
+            float allowed = SoftPushOutSpeed * h;
+            if (c.Rigid >= 0)
+            {
+                // A surface that moves into the particle (a kinematic platform, a walking capsule) makes the overlap itself: the particle may be pushed as fast as the surface comes.
+                var v = bodies.LinearVelocityOf(c.Rigid);
+                var w = bodies.AngularVelocityOf(c.Rigid);
+                float vn = (v[0] + (w[1] * c.Rz - w[2] * c.Ry)) * c.Nx + (v[1] + (w[2] * c.Rx - w[0] * c.Rz)) * c.Ny + (v[2] + (w[0] * c.Ry - w[1] * c.Rx)) * c.Nz;
+                if (vn > 0f) { allowed += vn * h; }
+            }
+
             float dx = d.XP[k] - c.X, dy = d.XP[k + 1] - c.Y, dz = d.XP[k + 2] - c.Z;
             float cp = c.C0 + c.Nx * dx + c.Ny * dy + c.Nz * dz;
             if (cp < -allowed) { c.C0 += -cp - allowed; }
@@ -591,7 +601,8 @@ internal sealed partial class Engine3D
     private void SolvePairs()
     {
         SolveDiscPairs();
-        if (_vtCount + _eeCount > 0) { SolveSurfacePairs(); }
+        if (_avCount + _aeCount > 0) { SolveSurfacePairs(); }
+        if (_lkCount > 0) { SolveLinks(); }
     }
 
     private void SolveDiscPairs()

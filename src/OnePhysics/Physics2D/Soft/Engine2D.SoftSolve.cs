@@ -127,11 +127,11 @@ internal sealed partial class Engine2D
         private readonly float _h, _invH;
         private readonly int _perPass;
         private readonly float _tTarget;
-        private readonly int _pad;
+        private readonly int _pad, _passes;
 
-        public SoftSolveProgram(Engine2D e, float h, float invH, float tTarget)
+        public SoftSolveProgram(Engine2D e, float h, float invH, float tTarget, int passes)
         {
-            _e = e; _h = h; _invH = invH; _tTarget = tTarget; _perPass = e._stStages + 3; _pad = SoftPadTasks;
+            _e = e; _h = h; _invH = invH; _tTarget = tTarget; _perPass = e._stStages + 3; _pad = SoftPadTasks; _passes = passes;
         }
 
         public int TaskCount(int stage)
@@ -155,7 +155,12 @@ internal sealed partial class Engine2D
             if (k < _e._stStages) { _e.RunSoftTask(_e._stStart[k] + task, _h, ((stage / _perPass + _e._softSubstep) & 1) != 0); }
             else if (k == _e._stStages) { _e.SolveContactTask(task, _h, _invH); }
             else if (k == _e._stStages + 1) { _e.SolvePairs(); }
-            else { LimitTargets(_e._awakeSoft[_e._targetBody[task]]); }
+            else
+            {
+                var body = _e._awakeSoft[_e._targetBody[task]];
+                if (body.HasStripLimits) { StripLimits(body, stage / _perPass, stage / _perPass == _passes - 1); }
+                if (body.HasTargets) { LimitTargets(body); }
+            }
         }
 
         // Implemented here so that the single-thread path does not box the struct to reach the interface's default.
@@ -178,14 +183,14 @@ internal sealed partial class Engine2D
         _targetCount = 0;
         for (int a = 0; a < _awakeSoftCount; a++)
         {
-            if (!_awakeSoft[a].HasTargets) { continue; }
+            if (!_awakeSoft[a].HasTargets && !_awakeSoft[a].HasStripLimits) { continue; }
             GrowTo(ref _targetBody, _targetCount + 1);
             _targetBody[_targetCount++] = a;
         }
 
         if (_targetCount > _stMost) { _stMost = _targetCount; }
         Core.Profile.Mark(StepStage.SoftConstraints);
-        Core.Executor.ForStages(iterations * (_stStages + 3), new SoftSolveProgram(this, h, invH, 1f), _stMost);
+        Core.Executor.ForStages(iterations * (_stStages + 3), new SoftSolveProgram(this, h, invH, 1f, iterations), _stMost);
     }
 
     // ------------------------------------------------------------------ contact detection and pair search in tasks

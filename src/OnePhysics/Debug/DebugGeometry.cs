@@ -59,8 +59,11 @@ public enum DebugContent
     /// <summary>Where characters are held: seats, ledges, climbed surfaces and rope grips (<see cref="DebugGeometry.CharacterHolds"/>).</summary>
     CharacterHolds = 32768,
 
+    /// <summary>Seams, attachments and tethers of cloth and the wind force on each triangle of an aerodynamic cloth (<see cref="DebugGeometry.ClothLinks"/>, <see cref="DebugGeometry.ClothWind"/>).</summary>
+    Cloth = 65536,
+
     /// <summary>Everything.</summary>
-    All = 65535,
+    All = 131071,
 }
 
 /// <summary>The kind of a <see cref="DebugShape"/>. The same enum serves 2D and 3D worlds; a 2D world emits the first five.</summary>
@@ -557,6 +560,9 @@ public sealed partial class DebugGeometry
     private DebugRailContact[] _railContacts = new DebugRailContact[4];
     private int _nTracks, _nRailContacts;
     private DebugSoftBody[] _soft = new DebugSoftBody[4];
+    private DebugClothLink[] _clothLinks = new DebugClothLink[4];
+    private DebugClothWind[] _clothWind = new DebugClothWind[4];
+    private int _nClothLinks, _nClothWind;
     private int[] _indices = new int[64];
     private int _nIndices;
     private int _nShapes, _nPoints, _nBounds, _nFat, _nContacts, _nBodies, _nJoints, _nCharacters, _nWheels, _nSoft;
@@ -604,8 +610,14 @@ public sealed partial class DebugGeometry
     /// <summary>Soft bodies, by slot.</summary>
     public ReadOnlySpan<DebugSoftBody> SoftBodies => _soft.AsSpan(0, _nSoft);
 
+    /// <summary>Seams, attachments and tethers of cloth, when <see cref="DebugContent.Cloth"/> was asked for: seams and attachments by link number, then tethers by soft body and particle.</summary>
+    public ReadOnlySpan<DebugClothLink> ClothLinks => _clothLinks.AsSpan(0, _nClothLinks);
+
+    /// <summary>Wind forces on the triangles of aerodynamic cloths, by soft body and triangle, when <see cref="DebugContent.Cloth"/> was asked for.</summary>
+    public ReadOnlySpan<DebugClothWind> ClothWind => _clothWind.AsSpan(0, _nClothWind);
+
     /// <summary>Empties every list (capacity is kept).</summary>
-    public void Clear() { _nHolds=0; _nActive = 0; _nPulleySpans=0; _nPulleyWheels=0; _nAeroSurfaces=0; _nAeroForces=0; _nRodSegments=0; _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; _nTracks = _nRailContacts = 0; }
+    public void Clear() { _nHolds=0; _nActive = 0; _nPulleySpans=0; _nPulleyWheels=0; _nAeroSurfaces=0; _nAeroForces=0; _nRodSegments=0; _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; _nTracks = _nRailContacts = 0; _nClothLinks = _nClothWind = 0; }
 
     private static void Push<T>(ref T[] a, ref int n, in T v)
     {
@@ -648,6 +660,12 @@ public sealed partial class DebugGeometry
 
     /// <summary>Appends a soft body entry.</summary>
     public void Add(in DebugSoftBody b) => Push(ref _soft, ref _nSoft, in b);
+
+    /// <summary>Appends a cloth link.</summary>
+    public void Add(in DebugClothLink l) => Push(ref _clothLinks, ref _nClothLinks, in l);
+
+    /// <summary>Appends a cloth wind force.</summary>
+    public void Add(in DebugClothWind w) => Push(ref _clothWind, ref _nClothWind, in w);
 
     /// <summary>Appends a joint entry.</summary>
     public void Add(in DebugJoint j) => Push(ref _joints, ref _nJoints, in j);

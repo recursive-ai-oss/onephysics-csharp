@@ -105,6 +105,7 @@ public sealed partial class PhysicsWorld3D
         if ((flags & DebugContent.Aero) != 0) { _engine.Actuators.AddDebug(geometry); }
         if ((flags & DebugContent.CharacterHolds) != 0) { _engine.AddDebugHolds(geometry); }
         if ((flags & DebugContent.SoftBodies) != 0) { _engine.AddDebugSoftBodies(geometry); }
+        if ((flags & DebugContent.Cloth) != 0) { _engine.AddDebugCloth(geometry); }
     }
 
     private void AddDebugJoints(DebugGeometry geometry)

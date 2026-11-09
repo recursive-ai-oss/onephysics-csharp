@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 
@@ -30,17 +31,35 @@ public readonly struct SoftTearEvent
 
 internal sealed partial class Engine3D
 {
-    // Surface contacts (Bridson, Fedkiw, Anderson 2002, robust treatment of collisions for cloth; Harmon et al. 2008 for the pair types; Macklin et al. 2014 for contacts as position constraints): a particle against
-    // a surface triangle, and an edge against an edge. The candidate pairs are listed once per step with the side the pair starts on; every substep and pass the pair is a constraint that keeps that side at the
-    // distance of the two bodies' particle radii, wherever the closest features lie inside the triangle or the two edges (outside them the spheres of the particles hold the contact).
 
-    private readonly SoftCellGrid _triGrid = new(), _edgeGrid = new();
-    private int[] _vtP = new int[64], _vtT = new int[64];
-    private float[] _vtS = new float[64];
+    // Surface contacts (Bridson, Fedkiw, Anderson 2002, robust treatment of collisions for cloth; Harmon et al. 2008 for the pair types; Macklin et al. 2014 for contacts as position constraints): a particle against
+    // a surface triangle, and an edge against an edge.
+    //
+    // Candidates are kept between substeps and steps like a Verlet neighbour list (Verlet 1967; Ericson 2005, ch. 7 on coherence). A rebuild lists every pair of features whose distance is below the sum of the
+    // two spheres' radii plus both bodies' budgets; while no surface particle has moved from its listed position by more than its body's budget (less what the next substep can add), no unlisted pair can have come
+    // into contact, so the list stays valid. Each substep the listed pairs that can touch within it become the active set, with the side of the feature each started the substep on; only that set is solved.
+    // Every list is a function of the positions and the bodies alone, in a fixed order, so a rebuild is the same on any number of threads.
+
+    private SoftCellGrid[] _tgTri = new SoftCellGrid[4], _tgEdge = new SoftCellGrid[4];
+    private double[] _tgIcT = new double[4], _tgMxT = new double[4], _tgIcE = new double[4], _tgMxE = new double[4];
+    private bool[] _tgNeedTri = new bool[4], _tgNeedEdge = new bool[4];
+
+    // Candidates (valid while _cbValid): global particle number and global triangle number as numbered by the build, the owners' indices in the awake list, the distance when listed.
+    private int[] _vtP = new int[4096], _vtT = new int[4096], _vtBA = new int[4096], _vtBT = new int[4096];
+    private float[] _vtD0 = new float[4096];
     private int _vtCount;
-    private int[] _eeA = new int[64], _eeB = new int[64];
-    private float[] _eeS = new float[64];
+    private int[] _eeA = new int[4096], _eeB = new int[4096], _eeBA = new int[4096], _eeBB = new int[4096];
+    private float[] _eeD0 = new float[4096];
     private int _eeCount;
+
+    // The active set of the substep: candidate numbers and the side each pair started on.
+    private int[] _avK = new int[2048], _aeK = new int[2048];
+    private float[] _avS = new float[2048], _aeS = new float[2048];
+    private int _avCount, _aeCount;
+    private long[] _scKey = new long[4096];
+    private int[] _scPos = new int[4096], _scTmpI = new int[4096];
+    private float[] _scTmpF = new float[4096];
+
     private SoftBodyData[] _gtBody = new SoftBodyData[64];
     private int[] _gtLocal = new int[64];
     private int[] _gtV = new int[192], _geV = new int[128];
@@ -50,39 +69,256 @@ internal sealed partial class Engine3D
     private double[] _geBox = new double[384];
     private readonly List<SoftTearEvent> _softTears = new();
 
+    // What the candidate lists were built for.
+    private SoftBodyData?[] _cbBody = new SoftBodyData?[4];
+    private int[]?[] _cbTris = new int[]?[4];
+    private int[] _cbN = new int[4];
+    private long[] _cbKey1 = new long[4], _cbKey2 = new long[4];
+    private int _cbCount;
+    private ulong _cbLayers;
+    private bool _cbValid;
+    private double[]?[] _bpos = new double[]?[4];
+    private double[] _bBudget = new double[4], _bTr = new double[4];
+    // Motion of each body since the lists were built, relative to its own mean motion: mean displacement and its largest deviation from it, mean velocity and its largest deviation.
+    private double[] _bMd = new double[12], _bDev = new double[4];
+    private float[] _bMv = new float[12], _bVdev = new float[4];
+    // With more bodies than this, motion is bounded per body in absolute terms instead of per pair of bodies in relative terms.
+    private const int RelativeBodyLimit = 64;
+    private double _gScaleBase;
+    private bool[] _bPart = new bool[4];
+    private double[] _bExtT = new double[4], _bExtE = new double[4];
+
+    private SurfBuf[] _sbuf = new SurfBuf[8];
+    private int[] _skB = new int[16], _skKind = new int[16], _skA = new int[16], _skFrom = new int[16], _skTo = new int[16];
+    private int _skCount;
+
     /// <summary>The tears of the last step, in body and edge order.</summary>
     public ReadOnlySpan<SoftTearEvent> SoftTearEvents => System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_softTears);
 
     private const float InsideTolerance = 0.05f;
-    // A feature can travel in the step at most this many times the step's travel at its fastest particle's speed at the start (the solver may add some speed; the margin covers it).
+    // A feature can travel in a substep at most this many times the substep's travel at its fastest particle's speed at the start (the solver may add some speed; the margin covers it).
     private const double TravelFactor = 1.5;
     private const double MaxCellVisits = 512.0, MaxCellCoordinate = 1e15;
+    // How far a particle may wander from its listed position before the lists are rebuilt, in particle radii (on top of the substep's travel).
+    // Speed only: any value gives the same result (a test checks it), a larger one rebuilds less often and lists more pairs.
+    internal double SkinFactor = 1.0;
+    // Items per search task.
+    private const int SurfaceChunk = 96;
 
-    private double[] _bExtT = new double[8], _bExtE = new double[8];
-
-    // Lists the surface pairs of the step from the positions it starts at, and the travel of each body in the step.
-    private void BuildSurfacePairs(float dt, float gmag)
+    private sealed class SurfBuf
     {
-        _vtCount = 0; _eeCount = 0;
-        int bodies = 0;
+        public int[] A = new int[512], B = new int[512], C = new int[512], D = new int[512];
+        public float[] D0 = new float[512];
+        public int Count;
+
+        public void Add(int a, int b, int c, int d, float d0)
+        {
+            if (Count == A.Length)
+            {
+                int n = Count * 2;
+                Array.Resize(ref A, n); Array.Resize(ref B, n); Array.Resize(ref C, n); Array.Resize(ref D, n); Array.Resize(ref D0, n);
+            }
+
+            A[Count] = a; B[Count] = b; C[Count] = c; D[Count] = d; D0[Count] = d0; Count++;
+        }
+    }
+
+    private readonly struct SurfGridProgram : IParallelBody
+    {
+        private readonly Engine3D _e;
+        public SurfGridProgram(Engine3D e) { _e = e; }
+        public void Run(int task) => _e.BuildTargetGrids(task);
+    }
+
+    private readonly struct SurfSearchProgram : IParallelBody
+    {
+        private readonly Engine3D _e;
+        public SurfSearchProgram(Engine3D e) { _e = e; }
+        public void Run(int task) => _e.RunSurfaceTask(task);
+    }
+
+    // Brings the candidate lists up to date for the substep that starts now (positions are the substep's start positions) and selects the pairs that can touch in it.
+    private void PrepareSurfacePairs(float h, float gmag)
+    {
+        _avCount = 0; _aeCount = 0;
+        int parts = 0;
         bool self = false;
         for (int a = 0; a < _pairSoftCount; a++)
         {
             var d = _awakeSoft[a];
-            d.SurfTriBase = -1;
-            d.SurfTravel = 0f;
             if (!d.Def.SurfaceCollision || d.SurfTris.Length == 0) { continue; }
-            bodies++;
+            parts++;
             self |= d.Def.SelfCollision;
         }
 
-        if (bodies == 0 || (bodies < 2 && !self)) { return; }
+        if (parts == 0 || (parts < 2 && !self)) { _cbValid = false; _vtCount = 0; _eeCount = 0; return; }
+        GrowTo(ref _bTr, _pairSoftCount); GrowTo(ref _bBudget, _pairSoftCount); GrowTo(ref _bPart, _pairSoftCount); GrowTo(ref _bpos, _pairSoftCount);
         for (int a = 0; a < _pairSoftCount; a++)
         {
             var d = _awakeSoft[a];
-            if (!d.Def.SurfaceCollision || d.SurfTris.Length == 0) { continue; }
-            // How far the body can carry a feature in the step: its fastest particle's travel and the fall under gravity. A sleeping (passive) body does not move.
-            d.SurfTravel = (a < _awakeSoftCount ? MaxParticleSpeed(d) * dt + 0.5f * gmag * dt * dt : 0f);
+            _bPart[a] = d.Def.SurfaceCollision && d.SurfTris.Length != 0;
+            _bTr[a] = a < _awakeSoftCount && _bPart[a] ? TravelFactor * (MaxParticleSpeed(d) * (double)h + 0.5 * gmag * (double)h * h) : 0.0;
+        }
+
+        GrowTo(ref _bMd, 3 * _pairSoftCount); GrowTo(ref _bDev, _pairSoftCount); GrowTo(ref _bMv, 3 * _pairSoftCount); GrowTo(ref _bVdev, _pairSoftCount);
+        bool rebuild = !_cbValid || !SameBodies();
+        if (!rebuild)
+        {
+            for (int a = 0; a < _pairSoftCount; a++) { ComputeMotion(a, true, parts <= RelativeBodyLimit); }
+            rebuild = !MotionWithinBudget(h, gmag, parts <= RelativeBodyLimit);
+        }
+
+        if (rebuild)
+        {
+            RebuildCandidates();
+            for (int a = 0; a < _pairSoftCount; a++) { ComputeMotion(a, false, parts <= RelativeBodyLimit); }
+        }
+
+        _selH = h; _gScaleBase = gmag;
+        SelectActive();
+    }
+
+    private ulong LayerSignature()
+    {
+        ulong s = 14695981039346656037UL;
+        for (int i = 0; i < 32; i++) { s = (s ^ LayerMatrix[i]) * 1099511628211UL; }
+        return s;
+    }
+
+    private static long Key1(SoftBodyDef d) => ((long)d.CategoryBits << 32) | d.MaskBits;
+
+    private static long Key2(SoftBodyDef d) => ((long)d.GroupIndex << 8) | ((long)d.Layer << 3) | (d.SelfCollision ? 1L : 0L) | (d.SurfaceCollision ? 2L : 0L);
+
+    private bool SameBodies()
+    {
+        if (_cbCount != _pairSoftCount || _cbLayers != LayerSignature()) { return false; }
+        for (int a = 0; a < _pairSoftCount; a++)
+        {
+            var d = _awakeSoft[a];
+            if (!ReferenceEquals(_cbBody[a], d) || _cbN[a] != d.N || !ReferenceEquals(_cbTris[a], d.SurfTris) || _cbKey1[a] != Key1(d.Def) || _cbKey2[a] != Key2(d.Def)) { return false; }
+            if (_bPart[a] && _bpos[a] == null) { return false; }
+        }
+
+        return true;
+    }
+
+    // The motion of a body's surface particles since they were listed (when withDisp) and the spread of their velocities. Two features of one body cannot close on each other faster than the spread of their motion, however fast
+    // the body as a whole travels: a falling cloth keeps its lists. With relative false the mean is taken as zero, so the bounds are absolute (many bodies).
+    private void ComputeMotion(int a, bool withDisp, bool relative)
+    {
+        int k3 = 3 * a;
+        _bMd[k3] = _bMd[k3 + 1] = _bMd[k3 + 2] = 0.0; _bMv[k3] = _bMv[k3 + 1] = _bMv[k3 + 2] = 0f; _bDev[a] = 0.0; _bVdev[a] = 0f;
+        if (!_bPart[a] || a >= _awakeSoftCount) { return; }
+        var d = _awakeSoft[a];
+        var sp = d.SurfParticles; var x = d.X; var vel = d.Vel;
+        int n = sp.Length;
+        if (n == 0) { return; }
+        double mx = 0.0, my = 0.0, mz = 0.0;
+        float vx = 0f, vy = 0f, vz = 0f;
+        if (relative)
+        {
+            double sx = 0.0, sy = 0.0, sz = 0.0, tx = 0.0, ty = 0.0, tz = 0.0;
+            var bp = _bpos[a];
+            for (int i = 0; i < n; i++)
+            {
+                int k = 3 * sp[i];
+                if (withDisp) { sx += d.Ox + x[k] - bp![3 * i]; sy += d.Oy + x[k + 1] - bp[3 * i + 1]; sz += d.Oz + x[k + 2] - bp[3 * i + 2]; }
+                tx += vel[k]; ty += vel[k + 1]; tz += vel[k + 2];
+            }
+
+            double inv = 1.0 / n;
+            mx = sx * inv; my = sy * inv; mz = sz * inv;
+            vx = (float)(tx * inv); vy = (float)(ty * inv); vz = (float)(tz * inv);
+        }
+
+        double dev2 = 0.0; float vdev2 = 0f;
+        {
+            var bp = _bpos[a];
+            for (int i = 0; i < n; i++)
+            {
+                int k = 3 * sp[i];
+                if (withDisp)
+                {
+                    double dx = d.Ox + x[k] - bp![3 * i] - mx, dy = d.Oy + x[k + 1] - bp[3 * i + 1] - my, dz = d.Oz + x[k + 2] - bp[3 * i + 2] - mz;
+                    double e2 = dx * dx + dy * dy + dz * dz;
+                    if (e2 > dev2) { dev2 = e2; }
+                }
+
+                float ux = vel[k] - vx, uy = vel[k + 1] - vy, uz = vel[k + 2] - vz;
+                float u2 = ux * ux + uy * uy + uz * uz;
+                if (u2 > vdev2) { vdev2 = u2; }
+            }
+        }
+
+        _bMd[k3] = mx; _bMd[k3 + 1] = my; _bMd[k3 + 2] = mz;
+        _bMv[k3] = vx; _bMv[k3 + 1] = vy; _bMv[k3 + 2] = vz;
+        _bDev[a] = Math.Sqrt(dev2); _bVdev[a] = float.Sqrt(vdev2);
+    }
+
+    // How far two bodies' features can have moved towards each other since the lists were built.
+    private double RelDisp(int a, int b)
+    {
+        if (a == b) { return 2.0 * _bDev[a]; }
+        double dx = _bMd[3 * a] - _bMd[3 * b], dy = _bMd[3 * a + 1] - _bMd[3 * b + 1], dz = _bMd[3 * a + 2] - _bMd[3 * b + 2];
+        return Math.Sqrt(dx * dx + dy * dy + dz * dz) + _bDev[a] + _bDev[b];
+    }
+
+    // How far they can close on each other in a substep of length h: the difference of their mean velocities plus the spread of each, with the difference of the fall under gravity.
+    private double RelTrav(int a, int b, double h)
+    {
+        double dv;
+        if (a == b) { dv = 0.0; }
+        else
+        {
+            double dx = (double)_bMv[3 * a] - _bMv[3 * b], dy = (double)_bMv[3 * a + 1] - _bMv[3 * b + 1], dz = (double)_bMv[3 * a + 2] - _bMv[3 * b + 2];
+            dv = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+        }
+
+        double gs = a == b ? 0.0 : Math.Abs((double)_awakeSoft[a].Def.GravityScale - _awakeSoft[b].Def.GravityScale) * _gScaleBase;
+        return TravelFactor * (h * (dv + _bVdev[a] + _bVdev[b]) + 0.5 * gs * h * h);
+    }
+
+    // No unlisted pair can have come into contact while this holds for every pair of bodies (or, with many bodies, for every body against its own budget).
+    private bool MotionWithinBudget(double h, float gmag, bool relative)
+    {
+        _gScaleBase = gmag;
+        int n = _pairSoftCount;
+        for (int a = 0; a < n; a++)
+        {
+            if (!_bPart[a]) { continue; }
+            if (!(RelDisp(a, a) + RelTrav(a, a, h) < 2.0 * _bBudget[a])) { return false; }
+            if (!relative) { continue; }
+            for (int b = a + 1; b < n; b++)
+            {
+                if (!_bPart[b]) { continue; }
+                if (!(RelDisp(a, b) + RelTrav(a, b, h) < _bBudget[a] + _bBudget[b])) { return false; }
+            }
+        }
+
+        return true;
+    }
+
+    private void RebuildCandidates()
+    {
+        _vtCount = 0; _eeCount = 0;
+        GrowTo(ref _cbBody, _pairSoftCount); GrowTo(ref _cbTris, _pairSoftCount); GrowTo(ref _cbN, _pairSoftCount); GrowTo(ref _cbKey1, _pairSoftCount); GrowTo(ref _cbKey2, _pairSoftCount);
+        _cbCount = _pairSoftCount; _cbLayers = LayerSignature(); _cbValid = true;
+        for (int a = 0; a < _pairSoftCount; a++)
+        {
+            var d = _awakeSoft[a];
+            d.SurfTriBase = -1;
+            _cbBody[a] = d; _cbTris[a] = d.SurfTris; _cbN[a] = d.N; _cbKey1[a] = Key1(d.Def); _cbKey2[a] = Key2(d.Def);
+            if (!_bPart[a]) { _bpos[a] = null; _bBudget[a] = 0.0; continue; }
+            // The budget: how far the body's particles may wander from the listed positions, and what the substep adds on top.
+            _bBudget[a] = SkinFactor * d.Radius + _bTr[a];
+            var sp = d.SurfParticles;
+            var bp = _bpos[a];
+            if (bp == null || bp.Length < 3 * sp.Length) { bp = _bpos[a] = new double[3 * sp.Length]; }
+            for (int i = 0; i < sp.Length; i++)
+            {
+                int k = 3 * sp[i];
+                bp[3 * i] = d.Ox + d.X[k]; bp[3 * i + 1] = d.Oy + d.X[k + 1]; bp[3 * i + 2] = d.Oz + d.X[k + 2];
+            }
         }
 
         MarkSurfaceBodies();
@@ -95,23 +331,26 @@ internal sealed partial class Engine3D
             nt += d.SurfTris.Length / 3; ne += d.SurfEdgeA.Length;
         }
 
-        if (nt >= SoftCellGrid.MaxItems || ne >= SoftCellGrid.MaxItems) { return; }
+        if (nt >= SoftCellGrid.MaxItems || ne >= SoftCellGrid.MaxItems) { _cbValid = false; return; }
         GrowTo(ref _gtV, 3 * nt); GrowTo(ref _geV, 2 * ne); GrowTo(ref _gtBody, nt); GrowTo(ref _gtLocal, nt); GrowTo(ref _gtBox, 6 * nt);
         GrowTo(ref _geBody, ne); GrowTo(ref _geLocal, ne); GrowTo(ref _geBox, 6 * ne);
+        GrowTo(ref _tgTri, _pairSoftCount); GrowTo(ref _tgEdge, _pairSoftCount); GrowTo(ref _tgIcT, _pairSoftCount); GrowTo(ref _tgMxT, _pairSoftCount); GrowTo(ref _tgIcE, _pairSoftCount); GrowTo(ref _tgMxE, _pairSoftCount);
+        GrowTo(ref _tgNeedTri, _pairSoftCount); GrowTo(ref _tgNeedEdge, _pairSoftCount);
+        // A feature's box is grown by its body's radius and budget: two features can come within the sum of their radii while both stay inside their budgets only if their grown boxes overlap.
         GrowTo(ref _bExtT, _pairSoftCount); GrowTo(ref _bExtE, _pairSoftCount);
-        // A feature's box is grown by its body's radius and its travel: two features can come within the sum of their radii during the step only if their grown boxes overlap.
+        var extT = _bExtT; var extE = _bExtE;
         for (int a = 0; a < _pairSoftCount; a++)
         {
             var d = _awakeSoft[a];
             if (d.SurfTriBase < 0) { continue; }
-            double grow = d.Radius + TravelFactor * d.SurfTravel, extT = 0.0, extE = 0.0;
+            double grow = d.Radius + _bBudget[a], eT = 0.0, eE = 0.0;
             for (int i = 0; i < d.SurfTris.Length / 3; i++)
             {
                 int g = d.SurfTriBase + i, o = 6 * g;
                 double ext = BoxOf(d, d.SurfTris[3 * i], d.SurfTris[3 * i + 1], d.SurfTris[3 * i + 2], grow, _gtBox, o);
                 _gtBody[g] = d; _gtLocal[g] = i;
                 _gtV[3 * g] = d.SurfTris[3 * i]; _gtV[3 * g + 1] = d.SurfTris[3 * i + 1]; _gtV[3 * g + 2] = d.SurfTris[3 * i + 2];
-                if (ext > extT) { extT = ext; }
+                if (ext > eT) { eT = ext; }
             }
 
             for (int i = 0; i < d.SurfEdgeA.Length; i++)
@@ -120,18 +359,20 @@ internal sealed partial class Engine3D
                 double ext = BoxOf(d, d.SurfEdgeA[i], d.SurfEdgeB[i], d.SurfEdgeB[i], grow, _geBox, o);
                 _geBody[g] = d; _geLocal[g] = i;
                 _geV[2 * g] = d.SurfEdgeA[i]; _geV[2 * g + 1] = d.SurfEdgeB[i];
-                if (ext > extE) { extE = ext; }
+                if (ext > eE) { eE = ext; }
             }
 
-            _bExtT[a] = extT; _bExtE[a] = extE;
+            extT[a] = eT; extE[a] = eE;
         }
 
         // Each body with surface neighbours is searched as a target in its own grid, whose cells fit its own features (a global grid would take the cell size of the biggest triangle of the biggest body). The others bring
         // only what lies inside the target's bounds: their particles against its triangles, and, for the lower-numbered ones, their edges against its edges, so each body pair is looked at once. A body with
         // self-collision also searches itself.
+        int targets = 0;
         for (int b = 0; b < _pairSoftCount; b++)
         {
             var db = _awakeSoft[b];
+            _tgNeedTri[b] = false; _tgNeedEdge[b] = false;
             if (db.SurfTriBase < 0) { continue; }
             bool needTri = db.Def.SelfCollision, needEdge = db.Def.SelfCollision;
             for (int a = 0; a < _pairSoftCount; a++)
@@ -142,153 +383,291 @@ internal sealed partial class Engine3D
             }
 
             if (!needTri && !needEdge) { continue; }
-            SearchTarget(b, db, needTri, needEdge);
+            _tgNeedTri[b] = needTri; _tgNeedEdge[b] = needEdge;
+            double cst = 2.0 * Math.Max(extT[b], 1e-3), cse = 2.0 * Math.Max(extE[b], 1e-3);
+            // Cells are twice the largest box, so a box that meets a query box has its minimum corner in at most 2 cells per axis of the range searched.
+            _tgIcT[b] = 1.0 / cst; _tgMxT[b] = cst * 0.5; _tgIcE[b] = 1.0 / cse; _tgMxE[b] = cse * 0.5;
+            _tgTri[b] ??= new SoftCellGrid(); _tgEdge[b] ??= new SoftCellGrid();
+            targets++;
+        }
+
+        if (targets == 0) { return; }
+        // The grids of the targets are built in tasks (one per target), then the searches run in tasks of a fixed number of items each, and the hits are joined in task order.
+        Core.Executor.For(_pairSoftCount, new SurfGridProgram(this));
+        BuildSearchTasks();
+        for (int t = 0; t < _skCount; t++) { _sbuf[t] ??= new SurfBuf(); _sbuf[t]!.Count = 0; }
+        Core.Executor.For(_skCount, new SurfSearchProgram(this));
+        for (int t = 0; t < _skCount; t++)
+        {
+            var buf = _sbuf[t]!;
+            if (_skKind[t] == 0)
+            {
+                GrowTo(ref _vtP, _vtCount + buf.Count); GrowTo(ref _vtT, _vtCount + buf.Count); GrowTo(ref _vtBA, _vtCount + buf.Count); GrowTo(ref _vtBT, _vtCount + buf.Count); GrowTo(ref _vtD0, _vtCount + buf.Count);
+                for (int i = 0; i < buf.Count; i++)
+                {
+                    _vtP[_vtCount] = buf.A[i]; _vtT[_vtCount] = buf.B[i]; _vtBA[_vtCount] = buf.C[i]; _vtBT[_vtCount] = buf.D[i]; _vtD0[_vtCount] = buf.D0[i]; _vtCount++;
+                }
+            }
+            else
+            {
+                GrowTo(ref _eeA, _eeCount + buf.Count); GrowTo(ref _eeB, _eeCount + buf.Count); GrowTo(ref _eeBA, _eeCount + buf.Count); GrowTo(ref _eeBB, _eeCount + buf.Count); GrowTo(ref _eeD0, _eeCount + buf.Count);
+                for (int i = 0; i < buf.Count; i++)
+                {
+                    _eeA[_eeCount] = buf.A[i]; _eeB[_eeCount] = buf.B[i]; _eeBA[_eeCount] = buf.C[i]; _eeBB[_eeCount] = buf.D[i]; _eeD0[_eeCount] = buf.D0[i]; _eeCount++;
+                }
+            }
+        }
+
+        SortCandidates();
+    }
+
+    // The candidates are kept in the order of their feature numbers, so the active pairs a substep selects from them come out in that order whatever order the search happened to find them in
+    // (which depends on when the lists were last built).
+    private void SortCandidates()
+    {
+        int n = Math.Max(_vtCount, _eeCount);
+        GrowTo(ref _scKey, n); GrowTo(ref _scPos, n); GrowTo(ref _scTmpI, n); GrowTo(ref _scTmpF, n);
+        for (int i = 0; i < _vtCount; i++) { _scKey[i] = ((long)_vtP[i] << 32) | (long)_vtT[i]; _scPos[i] = i; }
+        Array.Sort(_scKey, _scPos, 0, _vtCount);
+        Permute(_vtP, _vtCount); Permute(_vtT, _vtCount); Permute(_vtBA, _vtCount); Permute(_vtBT, _vtCount); PermuteF(_vtD0, _vtCount);
+        for (int i = 0; i < _eeCount; i++) { _scKey[i] = ((long)_eeA[i] << 32) | (long)_eeB[i]; _scPos[i] = i; }
+        Array.Sort(_scKey, _scPos, 0, _eeCount);
+        Permute(_eeA, _eeCount); Permute(_eeB, _eeCount); Permute(_eeBA, _eeCount); Permute(_eeBB, _eeCount); PermuteF(_eeD0, _eeCount);
+    }
+
+    private void Permute(int[] a, int n)
+    {
+        for (int i = 0; i < n; i++) { _scTmpI[i] = a[_scPos[i]]; }
+        Array.Copy(_scTmpI, a, n);
+    }
+
+    private void PermuteF(float[] a, int n)
+    {
+        for (int i = 0; i < n; i++) { _scTmpF[i] = a[_scPos[i]]; }
+        Array.Copy(_scTmpF, a, n);
+    }
+
+    private void AddSkTask(int b, int kind, int a, int from, int to)
+    {
+        GrowTo(ref _skB, _skCount + 1); GrowTo(ref _skKind, _skCount + 1); GrowTo(ref _skA, _skCount + 1); GrowTo(ref _skFrom, _skCount + 1); GrowTo(ref _skTo, _skCount + 1);
+        _skB[_skCount] = b; _skKind[_skCount] = kind; _skA[_skCount] = a; _skFrom[_skCount] = from; _skTo[_skCount] = to; _skCount++;
+        if (_sbuf.Length < _skCount) { Array.Resize(ref _sbuf, 2 * _sbuf.Length); }
+    }
+
+    // The search tasks in the order the hits must be joined: per target body, the particles of each source body against its triangles (source bodies ascending), then the edges of each source body up to the target
+    // against its edges. Each source is cut into chunks of SurfaceChunk items.
+    private void BuildSearchTasks()
+    {
+        _skCount = 0;
+        for (int b = 0; b < _pairSoftCount; b++)
+        {
+            var db = _awakeSoft[b];
+            if (db.SurfTriBase < 0) { continue; }
+            if (_tgNeedTri[b])
+            {
+                for (int a = 0; a < _awakeSoftCount; a++)
+                {
+                    var dp = _awakeSoft[a];
+                    if (dp.SurfTriBase < 0) { continue; }
+                    if (a == b) { if (!db.Def.SelfCollision) { continue; } }
+                    else if (!BodiesMeet(a, b)) { continue; }
+                    int n = dp.SurfParticles.Length;
+                    for (int f = 0; f < n; f += SurfaceChunk) { AddSkTask(b, 0, a, f, Math.Min(n, f + SurfaceChunk)); }
+                }
+            }
+
+            if (_tgNeedEdge[b])
+            {
+                for (int a = 0; a <= b; a++)
+                {
+                    var da = _awakeSoft[a];
+                    if (da.SurfTriBase < 0) { continue; }
+                    if (a == b) { if (!db.Def.SelfCollision) { continue; } }
+                    else if (!BodiesMeet(a, b)) { continue; }
+                    int n = da.SurfEdgeA.Length;
+                    for (int f = 0; f < n; f += SurfaceChunk) { AddSkTask(b, 1, a, f, Math.Min(n, f + SurfaceChunk)); }
+                }
+            }
         }
     }
 
-    // True when no surface body can carry a feature in a whole step farther than half its particle radius.
-    private bool SurfaceListingOncePerStep(float dt, float gmag)
+    private void BuildTargetGrids(int b)
     {
-        for (int a = 0; a < _awakeSoftCount; a++)
+        if (b >= _pairSoftCount) { return; }
+        var db = _awakeSoft[b];
+        if (_tgNeedTri[b])
         {
-            var d = _awakeSoft[a];
-            if (!d.Def.SurfaceCollision || d.SurfTris.Length == 0) { continue; }
-            double travel = TravelFactor * (MaxParticleSpeed(d) * dt + 0.5f * gmag * dt * dt);
-            if (!(travel <= 0.5 * d.Radius)) { return false; }
-        }
-
-        return true;
-    }
-
-    private bool BodiesMeet(int a, int b)
-    {
-        var da = _awakeSoft[a]; var db = _awakeSoft[b];
-        if (da.SurfTriBase < 0 || db.SurfTriBase < 0 || (a >= _awakeSoftCount && b >= _awakeSoftCount)) { return false; }
-        var u = da.SurfBounds; var v = db.SurfBounds;
-        return !(u[0] > v[3] || u[3] < v[0] || u[1] > v[4] || u[4] < v[1] || u[2] > v[5] || u[5] < v[2]);
-    }
-
-    private void SearchTarget(int b, SoftBodyData db, bool needTri, bool needEdge)
-    {
-        Span<long> seen = stackalloc long[64];
-        var bb = db.SurfBounds;
-        // Cells are twice the largest box, so a box that meets a query box has its minimum corner in at most 2 cells per axis of the range below.
-        int nTb = db.SurfTris.Length / 3, nEb = db.SurfEdgeA.Length;
-        double cst = 2.0 * Math.Max(_bExtT[b], 1e-3), icT = 1.0 / cst, cse = 2.0 * Math.Max(_bExtE[b], 1e-3), icE = 1.0 / cse;
-        double mxT = cst * 0.5, mxE = cse * 0.5;
-        long[] tk = Array.Empty<long>(), ek = Array.Empty<long>();
-        if (needTri)
-        {
-            _triGrid.Grow(nTb); tk = _triGrid.Keys;
+            var grid = _tgTri[b]!;
+            int nTb = db.SurfTris.Length / 3;
+            double icT = _tgIcT[b];
+            grid.Grow(nTb);
+            var tk = grid.Keys;
             for (int i = 0; i < nTb; i++)
             {
                 int o = 6 * (db.SurfTriBase + i);
                 tk[i] = (SoftCellGrid.Hash((long)Math.Floor(_gtBox[o] * icT), (long)Math.Floor(_gtBox[o + 1] * icT), (long)Math.Floor(_gtBox[o + 2] * icT)) << 24) | (long)i;
             }
 
-            _triGrid.Build(nTb);
+            grid.Build(nTb);
         }
 
-        if (needEdge)
+        if (_tgNeedEdge[b])
         {
-            _edgeGrid.Grow(nEb); ek = _edgeGrid.Keys;
+            var grid = _tgEdge[b]!;
+            int nEb = db.SurfEdgeA.Length;
+            double icE = _tgIcE[b];
+            grid.Grow(nEb);
+            var ek = grid.Keys;
             for (int i = 0; i < nEb; i++)
             {
                 int o = 6 * (db.SurfEdgeBase + i);
                 ek[i] = (SoftCellGrid.Hash((long)Math.Floor(_geBox[o] * icE), (long)Math.Floor(_geBox[o + 1] * icE), (long)Math.Floor(_geBox[o + 2] * icE)) << 24) | (long)i;
             }
 
-            _edgeGrid.Build(nEb);
+            grid.Build(nEb);
         }
+    }
 
-        // Particle against triangle: the particle, grown like a feature of its body, looks at every cell that can hold the minimum corner of a box that meets its own.
-        if (needTri)
+    private void RunSurfaceTask(int t)
+    {
+        var buf = _sbuf[t]!;
+        if (_skKind[t] == 0) { SearchTriangles(_skB[t], _skA[t], _skFrom[t], _skTo[t], buf); }
+        else { SearchEdges(_skB[t], _skA[t], _skFrom[t], _skTo[t], buf); }
+    }
+
+    private static bool SurfaceBodiesMeet(SoftBodyData da, SoftBodyData db)
+    {
+        var u = da.SurfBounds; var v = db.SurfBounds;
+        return !(u[0] > v[3] || u[3] < v[0] || u[1] > v[4] || u[4] < v[1] || u[2] > v[5] || u[5] < v[2]);
+    }
+
+    private bool BodiesMeet(int a, int b)
+    {
+        var da = _awakeSoft[a]; var db = _awakeSoft[b];
+        if (da.SurfTriBase < 0 || db.SurfTriBase < 0 || (a >= _awakeSoftCount && b >= _awakeSoftCount)) { return false; }
+        return SurfaceBodiesMeet(da, db);
+    }
+
+    // Particle against triangle: the particle, grown like a feature of its body, looks at every cell that can hold the minimum corner of a box that meets its own.
+    private void SearchTriangles(int b, int a, int from, int to, SurfBuf buf)
+    {
+        Span<long> seen = stackalloc long[64];
+        var db = _awakeSoft[b];
+        var dp = _awakeSoft[a];
+        var bb = db.SurfBounds;
+        var grid = _tgTri[b]!;
+        var tk = grid.Keys;
+        int nTb = db.SurfTris.Length / 3;
+        double icT = _tgIcT[b], mxT = _tgMxT[b];
+        double ep = dp.Radius + _bBudget[a];
+        for (int pi = from; pi < to; pi++)
         {
-            for (int a = 0; a < _awakeSoftCount; a++)
+            int p = dp.SurfParticles[pi];
+            double px = dp.Ox + dp.X[3 * p], py = dp.Oy + dp.X[3 * p + 1], pz = dp.Oz + dp.X[3 * p + 2];
+            if (a != b && (px + ep < bb[0] || px - ep > bb[3] || py + ep < bb[1] || py - ep > bb[4] || pz + ep < bb[2] || pz - ep > bb[5])) { continue; }
+            // A particle that can travel very far, or sits very far out (a diverged body), would visit an enormous range of cells (or overflow the cell numbers); outside a small, sane range every triangle of the target is tested instead.
+            double fx0 = (px - ep - mxT) * icT, fx1 = (px + ep) * icT, fy0 = (py - ep - mxT) * icT, fy1 = (py + ep) * icT, fz0 = (pz - ep - mxT) * icT, fz1 = (pz + ep) * icT;
+            bool wide = !(Math.Abs(fx0) < MaxCellCoordinate && Math.Abs(fx1) < MaxCellCoordinate && Math.Abs(fy0) < MaxCellCoordinate && Math.Abs(fy1) < MaxCellCoordinate && Math.Abs(fz0) < MaxCellCoordinate && Math.Abs(fz1) < MaxCellCoordinate
+                && (fx1 - fx0 + 2.0) * (fy1 - fy0 + 2.0) * (fz1 - fz0 + 2.0) <= MaxCellVisits);
+            long x0 = wide ? 0 : (long)Math.Floor(fx0), x1 = wide ? 0 : (long)Math.Floor(fx1);
+            long y0 = wide ? 0 : (long)Math.Floor(fy0), y1 = wide ? 0 : (long)Math.Floor(fy1);
+            long z0 = wide ? 0 : (long)Math.Floor(fz0), z1 = wide ? 0 : (long)Math.Floor(fz1);
+            int nseen = 0;
+            if (wide)
             {
-                var dp = _awakeSoft[a];
-                if (dp.SurfTriBase < 0) { continue; }
-                if (a == b) { if (!db.Def.SelfCollision) { continue; } }
-                else if (!BodiesMeet(a, b)) { continue; }
-                double ep = dp.Radius + TravelFactor * dp.SurfTravel;
-                for (int pi = 0; pi < dp.SurfParticles.Length; pi++)
+                for (int i = 0; i < nTb; i++)
                 {
-                    int p = dp.SurfParticles[pi];
-                    double px = dp.Ox + dp.X[3 * p], py = dp.Oy + dp.X[3 * p + 1], pz = dp.Oz + dp.X[3 * p + 2];
-                    if (a != b && (px + ep < bb[0] || px - ep > bb[3] || py + ep < bb[1] || py - ep > bb[4] || pz + ep < bb[2] || pz - ep > bb[5])) { continue; }
-                    // A particle that can travel very far, or sits very far out (a diverged body), would visit an enormous range of cells (or overflow the cell numbers); outside a small, sane range every triangle of the target is tested instead.
-                    double fx0 = (px - ep - mxT) * icT, fx1 = (px + ep) * icT, fy0 = (py - ep - mxT) * icT, fy1 = (py + ep) * icT, fz0 = (pz - ep - mxT) * icT, fz1 = (pz + ep) * icT;
-                    bool wide = !(Math.Abs(fx0) < MaxCellCoordinate && Math.Abs(fx1) < MaxCellCoordinate && Math.Abs(fy0) < MaxCellCoordinate && Math.Abs(fy1) < MaxCellCoordinate && Math.Abs(fz0) < MaxCellCoordinate && Math.Abs(fz1) < MaxCellCoordinate
-                        && (fx1 - fx0 + 2.0) * (fy1 - fy0 + 2.0) * (fz1 - fz0 + 2.0) <= MaxCellVisits);
-                    long x0 = wide ? 0 : (long)Math.Floor(fx0), x1 = wide ? 0 : (long)Math.Floor(fx1);
-                    long y0 = wide ? 0 : (long)Math.Floor(fy0), y1 = wide ? 0 : (long)Math.Floor(fy1);
-                    long z0 = wide ? 0 : (long)Math.Floor(fz0), z1 = wide ? 0 : (long)Math.Floor(fz1);
-                    int nseen = 0;
-                    if (wide)
+                    int g = db.SurfTriBase + i, o = 6 * g;
+                    if (a == b && (p == _gtV[3 * g] || p == _gtV[3 * g + 1] || p == _gtV[3 * g + 2])) { continue; }
+                    if (px + ep < _gtBox[o] || px - ep > _gtBox[o + 3] || py + ep < _gtBox[o + 1] || py - ep > _gtBox[o + 4] || pz + ep < _gtBox[o + 2] || pz - ep > _gtBox[o + 5]) { continue; }
+                    TryAddVertexTriangle(buf, a, dp, p, px, py, pz, b, db, g);
+                }
+
+                continue;
+            }
+
+            for (long cz = z0; cz <= z1; cz++)
+            {
+                for (long cy = y0; cy <= y1; cy++)
+                {
+                    for (long cx = x0; cx <= x1; cx++)
                     {
-                        for (int i = 0; i < nTb; i++)
+                        long hsh = SoftCellGrid.Hash(cx, cy, cz);
+                        bool dup = false;
+                        for (int u = 0; u < nseen; u++) { if (seen[u] == hsh) { dup = true; break; } }
+                        if (dup) { continue; }
+                        if (nseen < seen.Length) { seen[nseen++] = hsh; }
+                        if (!grid.Find(hsh, out int s0, out int s1)) { continue; }
+                        for (int k = s0; k < s1; k++)
                         {
-                            int g = db.SurfTriBase + i, o = 6 * g;
+                            int g = db.SurfTriBase + (int)(tk[k] & 0xFFFFFF);
+                            int o = 6 * g;
                             if (a == b && (p == _gtV[3 * g] || p == _gtV[3 * g + 1] || p == _gtV[3 * g + 2])) { continue; }
                             if (px + ep < _gtBox[o] || px - ep > _gtBox[o + 3] || py + ep < _gtBox[o + 1] || py - ep > _gtBox[o + 4] || pz + ep < _gtBox[o + 2] || pz - ep > _gtBox[o + 5]) { continue; }
-                            TryAddVertexTriangle(dp, p, px, py, pz, g);
-                        }
-
-                        continue;
-                    }
-
-                    for (long cz = z0; cz <= z1; cz++)
-                    {
-                        for (long cy = y0; cy <= y1; cy++)
-                        {
-                            for (long cx = x0; cx <= x1; cx++)
-                            {
-                                long hsh = SoftCellGrid.Hash(cx, cy, cz);
-                                bool dup = false;
-                                for (int u = 0; u < nseen; u++) { if (seen[u] == hsh) { dup = true; break; } }
-                                if (dup) { continue; }
-                                if (nseen < seen.Length) { seen[nseen++] = hsh; }
-                                if (!_triGrid.Find(hsh, out int s0, out int s1)) { continue; }
-                                for (int k = s0; k < s1; k++)
-                                {
-                                    int g = db.SurfTriBase + (int)(tk[k] & 0xFFFFFF);
-                                    int o = 6 * g;
-                                    if (a == b && (p == _gtV[3 * g] || p == _gtV[3 * g + 1] || p == _gtV[3 * g + 2])) { continue; }
-                                    if (px + ep < _gtBox[o] || px - ep > _gtBox[o + 3] || py + ep < _gtBox[o + 1] || py - ep > _gtBox[o + 4] || pz + ep < _gtBox[o + 2] || pz - ep > _gtBox[o + 5]) { continue; }
-                                    TryAddVertexTriangle(dp, p, px, py, pz, g);
-                                }
-                            }
+                            TryAddVertexTriangle(buf, a, dp, p, px, py, pz, b, db, g);
                         }
                     }
                 }
             }
         }
+    }
 
-        // Edge against edge, each pair once: an edge of a lower-numbered body (or of the target itself, against the higher-numbered edges) looks at every cell that can hold the minimum corner of a box that meets its own.
-        if (needEdge)
+    // Edge against edge, each pair once: an edge of a lower-numbered body (or of the target itself, against the higher-numbered edges) looks at every cell that can hold the minimum corner of a box that meets its own.
+    private void SearchEdges(int b, int a, int from, int to, SurfBuf buf)
+    {
+        Span<long> seen = stackalloc long[64];
+        var db = _awakeSoft[b];
+        var da = _awakeSoft[a];
+        var bb = db.SurfBounds;
+        var grid = _tgEdge[b]!;
+        var ek = grid.Keys;
+        int nEb = db.SurfEdgeA.Length;
+        double icE = _tgIcE[b], mxE = _tgMxE[b];
+        for (int ie = from; ie < to; ie++)
         {
-            for (int a = 0; a <= b; a++)
+            int g = da.SurfEdgeBase + ie, o = 6 * g;
+            if (a != b && (_geBox[o] > bb[3] || _geBox[o + 3] < bb[0] || _geBox[o + 1] > bb[4] || _geBox[o + 4] < bb[1] || _geBox[o + 2] > bb[5] || _geBox[o + 5] < bb[2])) { continue; }
+            double fx0 = (_geBox[o] - mxE) * icE, fx1 = _geBox[o + 3] * icE, fy0 = (_geBox[o + 1] - mxE) * icE, fy1 = _geBox[o + 4] * icE, fz0 = (_geBox[o + 2] - mxE) * icE, fz1 = _geBox[o + 5] * icE;
+            bool wide = !(Math.Abs(fx0) < MaxCellCoordinate && Math.Abs(fx1) < MaxCellCoordinate && Math.Abs(fy0) < MaxCellCoordinate && Math.Abs(fy1) < MaxCellCoordinate && Math.Abs(fz0) < MaxCellCoordinate && Math.Abs(fz1) < MaxCellCoordinate
+                && (fx1 - fx0 + 2.0) * (fy1 - fy0 + 2.0) * (fz1 - fz0 + 2.0) <= MaxCellVisits);
+            long x0 = wide ? 0 : (long)Math.Floor(fx0), x1 = wide ? 0 : (long)Math.Floor(fx1);
+            long y0 = wide ? 0 : (long)Math.Floor(fy0), y1 = wide ? 0 : (long)Math.Floor(fy1);
+            long z0 = wide ? 0 : (long)Math.Floor(fz0), z1 = wide ? 0 : (long)Math.Floor(fz1);
+            int nseen = 0;
+            if (wide)
             {
-                var da = _awakeSoft[a];
-                if (da.SurfTriBase < 0) { continue; }
-                if (a == b) { if (!db.Def.SelfCollision) { continue; } }
-                else if (!BodiesMeet(a, b)) { continue; }
-                for (int ie = 0; ie < da.SurfEdgeA.Length; ie++)
+                for (int i = 0; i < nEb; i++)
                 {
-                    int g = da.SurfEdgeBase + ie, o = 6 * g;
-                    if (a != b && (_geBox[o] > bb[3] || _geBox[o + 3] < bb[0] || _geBox[o + 1] > bb[4] || _geBox[o + 4] < bb[1] || _geBox[o + 2] > bb[5] || _geBox[o + 5] < bb[2])) { continue; }
-                    double fx0 = (_geBox[o] - mxE) * icE, fx1 = _geBox[o + 3] * icE, fy0 = (_geBox[o + 1] - mxE) * icE, fy1 = _geBox[o + 4] * icE, fz0 = (_geBox[o + 2] - mxE) * icE, fz1 = _geBox[o + 5] * icE;
-                    bool wide = !(Math.Abs(fx0) < MaxCellCoordinate && Math.Abs(fx1) < MaxCellCoordinate && Math.Abs(fy0) < MaxCellCoordinate && Math.Abs(fy1) < MaxCellCoordinate && Math.Abs(fz0) < MaxCellCoordinate && Math.Abs(fz1) < MaxCellCoordinate
-                        && (fx1 - fx0 + 2.0) * (fy1 - fy0 + 2.0) * (fz1 - fz0 + 2.0) <= MaxCellVisits);
-                    long x0 = wide ? 0 : (long)Math.Floor(fx0), x1 = wide ? 0 : (long)Math.Floor(fx1);
-                    long y0 = wide ? 0 : (long)Math.Floor(fy0), y1 = wide ? 0 : (long)Math.Floor(fy1);
-                    long z0 = wide ? 0 : (long)Math.Floor(fz0), z1 = wide ? 0 : (long)Math.Floor(fz1);
-                    int nseen = 0;
-                    if (wide)
+                    int h2 = db.SurfEdgeBase + i;
+                    if (a == b)
                     {
-                        for (int i = 0; i < nEb; i++)
+                        if (h2 <= g) { continue; }
+                        if (_geV[2 * g] == _geV[2 * h2] || _geV[2 * g] == _geV[2 * h2 + 1] || _geV[2 * g + 1] == _geV[2 * h2] || _geV[2 * g + 1] == _geV[2 * h2 + 1]) { continue; }
+                    }
+
+                    int o2 = 6 * h2;
+                    if (_geBox[o2] > _geBox[o + 3] || _geBox[o2 + 3] < _geBox[o] || _geBox[o2 + 1] > _geBox[o + 4] || _geBox[o2 + 4] < _geBox[o + 1] || _geBox[o2 + 2] > _geBox[o + 5] || _geBox[o2 + 5] < _geBox[o + 2]) { continue; }
+                    TryAddEdgeEdge(buf, a, b, g, h2);
+                }
+
+                continue;
+            }
+
+            for (long cz = z0; cz <= z1; cz++)
+            {
+                for (long cy = y0; cy <= y1; cy++)
+                {
+                    for (long cx = x0; cx <= x1; cx++)
+                    {
+                        long hsh = SoftCellGrid.Hash(cx, cy, cz);
+                        bool dup = false;
+                        for (int u = 0; u < nseen; u++) { if (seen[u] == hsh) { dup = true; break; } }
+                        if (dup) { continue; }
+                        if (nseen < seen.Length) { seen[nseen++] = hsh; }
+                        if (!grid.Find(hsh, out int s0, out int s1)) { continue; }
+                        for (int k = s0; k < s1; k++)
                         {
-                            int h2 = db.SurfEdgeBase + i;
+                            int h2 = db.SurfEdgeBase + (int)(ek[k] & 0xFFFFFF);
                             if (a == b)
                             {
                                 if (h2 <= g) { continue; }
@@ -297,38 +676,7 @@ internal sealed partial class Engine3D
 
                             int o2 = 6 * h2;
                             if (_geBox[o2] > _geBox[o + 3] || _geBox[o2 + 3] < _geBox[o] || _geBox[o2 + 1] > _geBox[o + 4] || _geBox[o2 + 4] < _geBox[o + 1] || _geBox[o2 + 2] > _geBox[o + 5] || _geBox[o2 + 5] < _geBox[o + 2]) { continue; }
-                            TryAddEdgeEdge(g, h2);
-                        }
-
-                        continue;
-                    }
-
-                    for (long cz = z0; cz <= z1; cz++)
-                    {
-                        for (long cy = y0; cy <= y1; cy++)
-                        {
-                            for (long cx = x0; cx <= x1; cx++)
-                            {
-                                long hsh = SoftCellGrid.Hash(cx, cy, cz);
-                                bool dup = false;
-                                for (int u = 0; u < nseen; u++) { if (seen[u] == hsh) { dup = true; break; } }
-                                if (dup) { continue; }
-                                if (nseen < seen.Length) { seen[nseen++] = hsh; }
-                                if (!_edgeGrid.Find(hsh, out int s0, out int s1)) { continue; }
-                                for (int k = s0; k < s1; k++)
-                                {
-                                    int h2 = db.SurfEdgeBase + (int)(ek[k] & 0xFFFFFF);
-                                    if (a == b)
-                                    {
-                                        if (h2 <= g) { continue; }
-                                        if (_geV[2 * g] == _geV[2 * h2] || _geV[2 * g] == _geV[2 * h2 + 1] || _geV[2 * g + 1] == _geV[2 * h2] || _geV[2 * g + 1] == _geV[2 * h2 + 1]) { continue; }
-                                    }
-
-                                    int o2 = 6 * h2;
-                                    if (_geBox[o2] > _geBox[o + 3] || _geBox[o2 + 3] < _geBox[o] || _geBox[o2 + 1] > _geBox[o + 4] || _geBox[o2 + 4] < _geBox[o + 1] || _geBox[o2 + 2] > _geBox[o + 5] || _geBox[o2 + 5] < _geBox[o + 2]) { continue; }
-                                    TryAddEdgeEdge(g, h2);
-                                }
-                            }
+                            TryAddEdgeEdge(buf, a, b, g, h2);
                         }
                     }
                 }
@@ -343,7 +691,7 @@ internal sealed partial class Engine3D
         {
             var d = _awakeSoft[a];
             d.SurfaceActive = false;
-            if (!d.Def.SurfaceCollision || d.SurfTris.Length == 0) { continue; }
+            if (!_bPart[a]) { continue; }
             double x0 = double.MaxValue, y0 = double.MaxValue, z0 = double.MaxValue, x1 = double.MinValue, y1 = double.MinValue, z1 = double.MinValue;
             for (int i = 0; i < d.SurfParticles.Length; i++)
             {
@@ -354,23 +702,20 @@ internal sealed partial class Engine3D
                 if (z < z0) { z0 = z; } if (z > z1) { z1 = z; }
             }
 
-            double g = d.Radius + TravelFactor * d.SurfTravel;
+            double g = d.Radius + _bBudget[a];
             d.SurfBounds[0] = x0 - g; d.SurfBounds[1] = y0 - g; d.SurfBounds[2] = z0 - g; d.SurfBounds[3] = x1 + g; d.SurfBounds[4] = y1 + g; d.SurfBounds[5] = z1 + g;
         }
 
         for (int a = 0; a < _pairSoftCount; a++)
         {
             var d = _awakeSoft[a];
-            if (!d.Def.SurfaceCollision || d.SurfTris.Length == 0) { continue; }
+            if (!_bPart[a]) { continue; }
             if (d.Def.SelfCollision) { d.SurfaceActive = true; continue; }
-            var u = d.SurfBounds;
             for (int b = 0; b < _pairSoftCount && !d.SurfaceActive; b++)
             {
                 if (b == a || (a >= _awakeSoftCount && b >= _awakeSoftCount)) { continue; }
-                var o = _awakeSoft[b];
-                if (!o.Def.SurfaceCollision || o.SurfTris.Length == 0) { continue; }
-                var v = o.SurfBounds;
-                if (u[0] > v[3] || u[3] < v[0] || u[1] > v[4] || u[4] < v[1] || u[2] > v[5] || u[5] < v[2]) { continue; }
+                if (!_bPart[b]) { continue; }
+                if (!SurfaceBodiesMeet(d, _awakeSoft[b])) { continue; }
                 d.SurfaceActive = true;
             }
         }
@@ -389,7 +734,7 @@ internal sealed partial class Engine3D
         return float.Sqrt(m2);
     }
 
-    // The box of a triangle (or an edge, given its end twice) at the start of the step in world coordinates, grown by `grow`; returns its largest extent.
+    // The box of a triangle (or an edge, given its end twice) at the start of the listing in world coordinates, grown by `grow`; returns its largest extent.
     private static double BoxOf(SoftBodyData d, int a, int b, int c, double grow, double[] box, int o)
     {
         double x0 = double.MaxValue, y0 = double.MaxValue, z0 = double.MaxValue, x1 = double.MinValue, y1 = double.MinValue, z1 = double.MinValue;
@@ -406,9 +751,8 @@ internal sealed partial class Engine3D
         return Math.Max(x1 - x0, Math.Max(y1 - y0, z1 - z0)) + 2.0 * grow;
     }
 
-    private void TryAddVertexTriangle(SoftBodyData dp, int p, double px, double py, double pz, int g)
+    private void TryAddVertexTriangle(SurfBuf buf, int ba, SoftBodyData dp, int p, double px, double py, double pz, int bt, SoftBodyData dt, int g)
     {
-        var dt = _gtBody[g];
         int el = _gtLocal[g];
         int a = dt.SurfTris[3 * el], b = dt.SurfTris[3 * el + 1], c = dt.SurfTris[3 * el + 2];
         float thick = dp.Radius + dt.Radius;
@@ -420,21 +764,17 @@ internal sealed partial class Engine3D
         }
         else if (!SoftPairAllowed(dp.Def, dt.Def)) { return; }
 
-        if (dp.InvMass[p] == 0f && dt.InvMass[a] == 0f && dt.InvMass[b] == 0f && dt.InvMass[c] == 0f) { return; }
-        // The exact distance at the start of the step against what the two bodies can close in it.
-        double reach = thick + TravelFactor * (dp.SurfTravel + dt.SurfTravel);
+        // The exact distance when listed against what the two bodies can close before the next rebuild.
+        double reach = thick + _bBudget[ba] + _bBudget[bt];
         double ax = dt.Ox + dt.X[3 * a], ay = dt.Oy + dt.X[3 * a + 1], az = dt.Oz + dt.X[3 * a + 2];
         double bx = dt.Ox + dt.X[3 * b], by = dt.Oy + dt.X[3 * b + 1], bz = dt.Oz + dt.X[3 * b + 2];
         double cx = dt.Ox + dt.X[3 * c], cy = dt.Oy + dt.X[3 * c + 1], cz = dt.Oz + dt.X[3 * c + 2];
-        if (SoftGeometry.PointTriangleSq(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz) >= reach * reach) { return; }
-        bool inside = VertexTriangle(dp, p, dt, a, b, c, out _, out _, out _, out float dist, out _, out _, out _);
-        float side = inside ? (dist >= 0f ? 1f : -1f) : 0f;
-        GrowTo(ref _vtP, _vtCount + 1); GrowTo(ref _vtT, _vtCount + 1); GrowTo(ref _vtS, _vtCount + 1);
-        _vtP[_vtCount] = dp.Base + p; _vtT[_vtCount] = g; _vtS[_vtCount] = side;
-        _vtCount++;
+        double d2 = SoftGeometry.PointTriangleSq(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz);
+        if (d2 >= reach * reach) { return; }
+        buf.Add(dp.Base + p, g, ba, bt, (float)Math.Sqrt(d2));
     }
 
-    private void TryAddEdgeEdge(int g1, int g2)
+    private void TryAddEdgeEdge(SurfBuf buf, int ba, int bb, int g1, int g2)
     {
         var d1 = _geBody[g1]; var d2 = _geBody[g2];
         int l1 = _geLocal[g1], l2 = _geLocal[g2];
@@ -448,18 +788,125 @@ internal sealed partial class Engine3D
         }
         else if (!SoftPairAllowed(d1.Def, d2.Def)) { return; }
 
-        if (d1.InvMass[a] == 0f && d1.InvMass[b] == 0f && d2.InvMass[c] == 0f && d2.InvMass[d] == 0f) { return; }
-        double reach = thick + TravelFactor * (d1.SurfTravel + d2.SurfTravel);
+        double reach = thick + _bBudget[ba] + _bBudget[bb];
         double ax = d1.Ox + d1.X[3 * a], ay = d1.Oy + d1.X[3 * a + 1], az = d1.Oz + d1.X[3 * a + 2];
         double bx = d1.Ox + d1.X[3 * b], by = d1.Oy + d1.X[3 * b + 1], bz = d1.Oz + d1.X[3 * b + 2];
         double cx = d2.Ox + d2.X[3 * c], cy = d2.Oy + d2.X[3 * c + 1], cz = d2.Oz + d2.X[3 * c + 2];
         double dx = d2.Ox + d2.X[3 * d], dy = d2.Oy + d2.X[3 * d + 1], dz = d2.Oz + d2.X[3 * d + 2];
-        if (SoftGeometry.SegmentSegmentSq(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz) >= reach * reach) { return; }
+        double q2 = SoftGeometry.SegmentSegmentSq(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz);
+        if (q2 >= reach * reach) { return; }
+        buf.Add(g1, g2, ba, bb, (float)Math.Sqrt(q2));
+    }
+
+    // The pairs that can touch in this substep: the exact distance at its start is below the two spheres' radii plus what the two bodies can move in it. A pair stores the side it starts on (0 when the feature is
+    // not inside the triangle or the two edges); the first pass that finds it inside sets it from where it is then.
+    private double _selH;
+
+    // Candidates per selection task. Each task writes its own list of the pairs it keeps (in candidate order) and the lists are joined in task order, so the active set is the candidate order whatever the thread count.
+    private const int SelectChunk = 256;
+
+    private sealed class SelBuf
+    {
+        public int[] K = new int[SelectChunk];
+        public float[] S = new float[SelectChunk];
+        public int Count;
+    }
+
+    private SelBuf[] _selBuf = new SelBuf[8];
+    private int _selVt, _selTasks;
+
+    private readonly struct SelectProgram : IParallelBody
+    {
+        private readonly Engine3D _e;
+        public SelectProgram(Engine3D e) { _e = e; }
+        public void Run(int task) => _e.SelectTask(task);
+    }
+
+    private void SelectActive()
+    {
+        GrowTo(ref _avK, _vtCount); GrowTo(ref _avS, _vtCount); GrowTo(ref _aeK, _eeCount); GrowTo(ref _aeS, _eeCount);
+        _selVt = (_vtCount + SelectChunk - 1) / SelectChunk;
+        _selTasks = _selVt + (_eeCount + SelectChunk - 1) / SelectChunk;
+        if (_selBuf.Length < _selTasks) { Array.Resize(ref _selBuf, Math.Max(_selTasks, 2 * _selBuf.Length)); }
+        for (int t = 0; t < _selTasks; t++) { _selBuf[t] ??= new SelBuf(); _selBuf[t]!.Count = 0; }
+        if (_selTasks == 0) { return; }
+        // Few candidates: not worth waking the pool.
+        if (_selTasks == 1) { SelectTask(0); } else { Core.Executor.For(_selTasks, new SelectProgram(this)); }
+        for (int t = 0; t < _selTasks; t++)
+        {
+            var buf = _selBuf[t]!;
+            if (t < _selVt) { Array.Copy(buf.K, 0, _avK, _avCount, buf.Count); Array.Copy(buf.S, 0, _avS, _avCount, buf.Count); _avCount += buf.Count; }
+            else { Array.Copy(buf.K, 0, _aeK, _aeCount, buf.Count); Array.Copy(buf.S, 0, _aeS, _aeCount, buf.Count); _aeCount += buf.Count; }
+        }
+    }
+
+    private void SelectTask(int t)
+    {
+        var buf = _selBuf[t]!;
+        int n = 0;
+        if (t < _selVt)
+        {
+            int from = t * SelectChunk, to = Math.Min(_vtCount, from + SelectChunk);
+            for (int k = from; k < to; k++)
+            {
+                if (SelectVertexTriangle(k, out float side)) { buf.K[n] = k; buf.S[n] = side; n++; }
+            }
+        }
+        else
+        {
+            int from = (t - _selVt) * SelectChunk, to = Math.Min(_eeCount, from + SelectChunk);
+            for (int k = from; k < to; k++)
+            {
+                if (SelectEdgeEdge(k, out float side)) { buf.K[n] = k; buf.S[n] = side; n++; }
+            }
+        }
+
+        buf.Count = n;
+    }
+
+    private bool SelectVertexTriangle(int k, out float side)
+    {
+        side = 0f;
+        int ba = _vtBA[k], bt = _vtBT[k];
+        var dp = _awakeSoft[ba]; var dt = _awakeSoft[bt];
+        float thick = dp.Radius + dt.Radius;
+        double reach = thick + RelTrav(ba, bt, _selH);
+        if (_vtD0[k] - RelDisp(ba, bt) - 1e-5 >= reach) { return false; }
+        int g = _vtP[k];
+        int p = g - dp.Base;
+        int el = _gtLocal[_vtT[k]];
+        int a = dt.SurfTris[3 * el], b = dt.SurfTris[3 * el + 1], c = dt.SurfTris[3 * el + 2];
+        if (dp.InvMass[p] == 0f && dt.InvMass[a] == 0f && dt.InvMass[b] == 0f && dt.InvMass[c] == 0f) { return false; }
+        double px = dp.Ox + dp.X[3 * p], py = dp.Oy + dp.X[3 * p + 1], pz = dp.Oz + dp.X[3 * p + 2];
+        double ax = dt.Ox + dt.X[3 * a], ay = dt.Oy + dt.X[3 * a + 1], az = dt.Oz + dt.X[3 * a + 2];
+        double bx = dt.Ox + dt.X[3 * b], by = dt.Oy + dt.X[3 * b + 1], bz = dt.Oz + dt.X[3 * b + 2];
+        double cx = dt.Ox + dt.X[3 * c], cy = dt.Oy + dt.X[3 * c + 1], cz = dt.Oz + dt.X[3 * c + 2];
+        if (SoftGeometry.PointTriangleSq(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz) >= reach * reach) { return false; }
+        bool inside = VertexTriangle(dp, p, dt, a, b, c, out _, out _, out _, out float dist, out _, out _, out _);
+        side = inside ? (dist >= 0f ? 1f : -1f) : 0f;
+        return true;
+    }
+
+    private bool SelectEdgeEdge(int k, out float side)
+    {
+        side = 0f;
+        int ba = _eeBA[k], bb = _eeBB[k];
+        var d1 = _awakeSoft[ba]; var d2 = _awakeSoft[bb];
+        float thick = d1.Radius + d2.Radius;
+        double reach = thick + RelTrav(ba, bb, _selH);
+        if (_eeD0[k] - RelDisp(ba, bb) - 1e-5 >= reach) { return false; }
+        int g1 = _eeA[k], g2 = _eeB[k];
+        int l1 = _geLocal[g1], l2 = _geLocal[g2];
+        int a = d1.SurfEdgeA[l1], b = d1.SurfEdgeB[l1], c = d2.SurfEdgeA[l2], d = d2.SurfEdgeB[l2];
+        if (d1.InvMass[a] == 0f && d1.InvMass[b] == 0f && d2.InvMass[c] == 0f && d2.InvMass[d] == 0f) { return false; }
+        double ax = d1.Ox + d1.X[3 * a], ay = d1.Oy + d1.X[3 * a + 1], az = d1.Oz + d1.X[3 * a + 2];
+        double bx = d1.Ox + d1.X[3 * b], by = d1.Oy + d1.X[3 * b + 1], bz = d1.Oz + d1.X[3 * b + 2];
+        double cx = d2.Ox + d2.X[3 * c], cy = d2.Oy + d2.X[3 * c + 1], cz = d2.Oz + d2.X[3 * c + 2];
+        double dx = d2.Ox + d2.X[3 * d], dy = d2.Oy + d2.X[3 * d + 1], dz = d2.Oz + d2.X[3 * d + 2];
+        if (SoftGeometry.SegmentSegmentSq(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz) >= reach * reach) { return false; }
         bool inside = EdgeEdge(d1, a, b, d2, c, d, out _, out _, out _, out float dist, out _, out _);
-        float side = inside ? (dist >= 0f ? 1f : -1f) : 0f;
-        GrowTo(ref _eeA, _eeCount + 1); GrowTo(ref _eeB, _eeCount + 1); GrowTo(ref _eeS, _eeCount + 1);
-        _eeA[_eeCount] = g1; _eeB[_eeCount] = g2; _eeS[_eeCount] = side;
-        _eeCount++;
+        side = inside ? (dist >= 0f ? 1f : -1f) : 0f;
+        return true;
     }
 
     // The particle's projection on the triangle's plane: unit normal (right-handed around the triangle), signed distance of the particle along it, barycentric coordinates of the projection.
@@ -514,24 +961,25 @@ internal sealed partial class Engine3D
         return true;
     }
 
+
     private void SolveSurfacePairs()
     {
-        for (int k = 0; k < _vtCount; k++) { SolveVertexTriangle(k); }
-        for (int k = 0; k < _eeCount; k++) { SolveEdgeEdge(k); }
+        for (int k = 0; k < _avCount; k++) { SolveVertexTriangle(_avK[k], k); }
+        for (int k = 0; k < _aeCount; k++) { SolveEdgeEdge(_aeK[k], k); }
     }
 
-    private void SolveVertexTriangle(int k)
+    private void SolveVertexTriangle(int k, int act)
     {
         int g = _vtP[k];
-        var dp = _gData[g];
-        int p = _gPart[g];
+        var dp = _awakeSoft[_vtBA[k]];
+        int p = g - dp.Base;
         int gt = _vtT[k];
-        var dt = _gtBody[gt];
+        var dt = _awakeSoft[_vtBT[k]];
         int el = _gtLocal[gt];
         int a = dt.SurfTris[3 * el], b = dt.SurfTris[3 * el + 1], c = dt.SurfTris[3 * el + 2];
         if (!VertexTriangle(dp, p, dt, a, b, c, out float nx, out float ny, out float nz, out float dist, out float ba, out float bb, out float bc)) { return; }
-        float s = _vtS[k];
-        if (s == 0f) { s = dist >= 0f ? 1f : -1f; _vtS[k] = s; }
+        float s = _avS[act];
+        if (s == 0f) { s = dist >= 0f ? 1f : -1f; _avS[act] = s; }
         float thick = dp.Radius + dt.Radius;
         float cv = s * dist - thick;
         if (!(cv < 0f)) { return; }
@@ -569,15 +1017,15 @@ internal sealed partial class Engine3D
         f = bc * wc * lt; dt.X[kc] += tx * f; dt.X[kc + 1] += ty * f; dt.X[kc + 2] += tz * f;
     }
 
-    private void SolveEdgeEdge(int k)
+    private void SolveEdgeEdge(int k, int act)
     {
         int g1 = _eeA[k], g2 = _eeB[k];
-        var d1 = _geBody[g1]; var d2 = _geBody[g2];
+        var d1 = _awakeSoft[_eeBA[k]]; var d2 = _awakeSoft[_eeBB[k]];
         int l1 = _geLocal[g1], l2 = _geLocal[g2];
         int a = d1.SurfEdgeA[l1], b = d1.SurfEdgeB[l1], c = d2.SurfEdgeA[l2], d = d2.SurfEdgeB[l2];
         if (!EdgeEdge(d1, a, b, d2, c, d, out float nx, out float ny, out float nz, out float dist, out float s, out float t)) { return; }
-        float sg = _eeS[k];
-        if (sg == 0f) { sg = dist >= 0f ? 1f : -1f; _eeS[k] = sg; }
+        float sg = _aeS[act];
+        if (sg == 0f) { sg = dist >= 0f ? 1f : -1f; _aeS[act] = sg; }
         float thick = d1.Radius + d2.Radius;
         float cv = sg * dist - thick;
         if (!(cv < 0f)) { return; }

@@ -130,11 +130,11 @@ internal sealed partial class Engine3D
         private readonly float _h, _invH;
         private readonly int _perPass;
         private readonly float _tSkin;
-        private readonly int _pad;
+        private readonly int _pad, _passes;
 
-        public SoftSolveProgram(Engine3D e, float h, float invH, float tSkin)
+        public SoftSolveProgram(Engine3D e, float h, float invH, float tSkin, int passes)
         {
-            _e = e; _h = h; _invH = invH; _tSkin = tSkin; _perPass = e._stStages + 3; _pad = SoftPadTasks;
+            _e = e; _h = h; _invH = invH; _tSkin = tSkin; _perPass = e._stStages + 3; _pad = SoftPadTasks; _passes = passes;
         }
 
         public int TaskCount(int stage)
@@ -147,7 +147,7 @@ internal sealed partial class Engine3D
         {
             if (k < _e._stStages) { return _e._stStart[k + 1] - _e._stStart[k]; }
             if (k == _e._stStages) { return _e._ctTasks; }
-            if (k == _e._stStages + 1) { return _e._pairCount > 0 || _e._vtCount + _e._eeCount > 0 ? 1 : 0; }
+            if (k == _e._stStages + 1) { return _e._pairCount > 0 || _e._avCount + _e._aeCount > 0 || _e._lkCount > 0 ? 1 : 0; }
             return _e._skinCount;
         }
 
@@ -158,7 +158,12 @@ internal sealed partial class Engine3D
             if (k < _e._stStages) { _e.RunSoftTask(_e._stStart[k] + task, _h); }
             else if (k == _e._stStages) { _e.SolveContactTask(task, _h, _invH); }
             else if (k == _e._stStages + 1) { _e.SolvePairs(); }
-            else { SolveSkin(_e._awakeSoft[_e._skinBody[task]], _tSkin); }
+            else
+            {
+                var body = _e._awakeSoft[_e._skinBody[task]];
+                if (body.HasClothLimits) { ClothLimits(body, stage / _perPass, stage / _perPass == _passes - 1); }
+                if (body.IsSkinned) { SolveSkin(body, _tSkin); }
+            }
         }
 
         // Implemented here so that the single-thread path does not box the struct to reach the interface's default.
@@ -180,7 +185,8 @@ internal sealed partial class Engine3D
         _skinCount = 0;
         for (int a = 0; a < _awakeSoftCount; a++)
         {
-            if (!_awakeSoft[a].IsSkinned) { continue; }
+            if (!_awakeSoft[a].IsSkinned && !_awakeSoft[a].HasClothLimits) { continue; }
+            if (_awakeSoft[a].HasClothLimits) { _awakeSoft[a].EnsureLimitOrder(); }
             GrowTo(ref _skinBody, _skinCount + 1);
             _skinBody[_skinCount++] = a;
         }
@@ -190,7 +196,7 @@ internal sealed partial class Engine3D
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.SoftConstraints);
 #endif
-        Core.Executor.ForStages(iterations * (_stStages + 3), new SoftSolveProgram(this, h, invH, tSkin), _stMost);
+        Core.Executor.ForStages(iterations * (_stStages + 3), new SoftSolveProgram(this, h, invH, tSkin, iterations), _stMost);
     }
 
     // ------------------------------------------------------------------ contact detection and pair search in tasks

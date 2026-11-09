@@ -62,6 +62,7 @@ internal sealed partial class Engine3D
 
     public void RemoveSoftBody(int i)
     {
+        DropLinksOf(i);
         _softParticles -= SoftData[i]!.N;
         SoftData[i] = null;
         SoftHandles.Free(i);
@@ -117,7 +118,14 @@ internal sealed partial class Engine3D
 
     // Version 1 holds no skinned body. Version 2 adds, per body, a skin flag after the definition fields and the joint poses after the pins. Version 3 (always written) adds per body, after the skin, the surface switch,
     // the tearing and plasticity settings and the broken edges, after the sleep time the smoothed net speed that decides rest, and after the pose a flag for the rest values plasticity changed, followed by them.
-    private const int SoftSectionVersion = 3;
+    private const int SoftSectionVersion = 4;
+
+    // Version 4 adds, per body after the broken edges, a flag for fabric settings and the settings themselves. It is written only while a body has them, so worlds without cloth keep their bytes and hashes (version 3).
+    private bool AnyFabric()
+    {
+        for (int i = 0; i < SoftHandles.HighWater; i++) { if (SoftHandles.IsLive(i) && SoftData[i]!.Def.Fabric != null) { return true; } }
+        return false;
+    }
     private SoftSection? _softSection;
 
     public ISnapshotSection SoftSnapshotSection => _softSection ??= new SoftSection(this);
@@ -150,7 +158,8 @@ internal sealed partial class Engine3D
     private void WriteSoft(StateWriter w)
     {
         const bool anySkin = true;
-        w.NamedInt32(SoftSectionVersion);
+        int wver = AnyFabric() ? 4 : 3;
+        w.NamedInt32(wver);
         w.NamedInt32(Opt.SoftSubsteps); w.NamedInt32(Opt.SoftIterations);
         w.DescribeTable("softbody");
         SoftHandles.Write(w);
@@ -193,6 +202,22 @@ internal sealed partial class Engine3D
             w.NamedSingle(def.PlasticYield); w.NamedSingle(def.PlasticCreep); w.NamedSingle(def.PlasticMax);
             w.NamedInt32(d.Broken.Length);
             foreach (long k in d.Broken) { w.NamedInt64(k, "def.BrokenEdge"); }
+            if (wver >= 4)
+            {
+                var fab = def.Fabric;
+                w.NamedBool(fab != null);
+                if (fab != null)
+                {
+                    w.NamedSingle(fab.WarpAxis.X); w.NamedSingle(fab.WarpAxis.Y); w.NamedSingle(fab.WarpAxis.Z);
+                    w.NamedSingle(fab.WeftAxis.X); w.NamedSingle(fab.WeftAxis.Y); w.NamedSingle(fab.WeftAxis.Z);
+                    w.NamedSingle(fab.WarpCompliance); w.NamedSingle(fab.WeftCompliance); w.NamedSingle(fab.ShearCompliance);
+                    w.NamedSingle(fab.StrainLimit); w.NamedBool(fab.DihedralBend); w.NamedSingle(fab.Drag); w.NamedSingle(fab.LiftSlope); w.NamedSingle(fab.TetherStrain);
+                    int na = fab.TetherAnchors?.Count ?? 0;
+                    w.NamedInt32(na);
+                    for (int k = 0; k < na; k++) { w.NamedInt32(fab.TetherAnchors![k]); }
+                }
+            }
+
             w.NamedBool(d.Asleep); w.NamedSingle(d.SleepTime); w.NamedSingle(d.StepSpeed2);
             w.NamedDoubles(d.Pos); w.NamedDoubles(d.Prev); w.NamedSingles(d.Vel); w.NamedBytes(d.Pinned);
             if (d.IsSkinned) { w.NamedDoubles(d.JointPos); w.NamedSingles(d.JointRot); w.NamedDoubles(d.JointPosPrev); w.NamedSingles(d.JointRotPrev); }
@@ -253,6 +278,21 @@ internal sealed partial class Engine3D
                         if (key < 0 || ea >= eb || eb >= nv || (k > 0 && key <= broken[k - 1])) { throw r.Error("invalid soft-body broken edge"); }
                         broken[k] = key;
                     }
+                }
+
+                if (version >= 4 && r.ReadBool())
+                {
+                    var fab = new ClothParams
+                    {
+                        WarpAxis = new Vector3F(r.ReadSingle(), r.ReadSingle(), r.ReadSingle()), WeftAxis = new Vector3F(r.ReadSingle(), r.ReadSingle(), r.ReadSingle()),
+                        WarpCompliance = r.ReadSingle(), WeftCompliance = r.ReadSingle(), ShearCompliance = r.ReadSingle(),
+                        StrainLimit = r.ReadSingle(), DihedralBend = r.ReadBool(), Drag = r.ReadSingle(), LiftSlope = r.ReadSingle(), TetherStrain = r.ReadSingle(),
+                    };
+                    int na = r.ReadCount(4, "fabric tether anchors");
+                    var anchors = new List<int>(na);
+                    for (int k = 0; k < na; k++) { anchors.Add(r.ReadInt32()); }
+                    fab.TetherAnchors = anchors;
+                    def.Fabric = fab;
                 }
 
                 def.Validate();

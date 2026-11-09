@@ -137,6 +137,7 @@ internal sealed partial class Engine3D
             }
         }
 
+        if (LinkHandles.HighWater > 0) { LinkWake(); }
         for (int i = 0; i < SoftHandles.HighWater; i++) { if (_wakeFlag[i] == 4) { _wakeFlag[i] = 2; SoftData[i]!.Asleep = false; SoftData[i]!.SleepTime = 0f; } }
         for (int i = 0; i < SoftHandles.HighWater; i++)
         {
@@ -196,9 +197,7 @@ internal sealed partial class Engine3D
 #endif
         BuildDetectTasks();
         BuildPairs(margin);
-        // Slow bodies list their surface pairs once for the whole step; fast ones every substep, because the pairs a whole step's travel can reach grow with its square.
-        bool listOnce = SurfaceListingOncePerStep(dt, gmag);
-        if (listOnce) { BuildSurfacePairs(dt, gmag); }
+        _avCount = 0; _aeCount = 0;
         for (int k = 0; k < substeps; k++)
         {
             float t0 = (float)k / substeps, t1 = (float)(k + 1) / substeps;
@@ -213,9 +212,10 @@ internal sealed partial class Engine3D
 #if STAGE_TIMERS
             StageProbe.Mark(StageProbe.SoftPredict);
 #endif
-            if (!listOnce) { BuildSurfacePairs(h, gmag); }
+            PrepareSurfacePairs(h, gmag);
             for (int a = 0; a < _awakeSoftCount; a++)
             {
+                if (_awakeSoft[a].Def.Fabric is { Drag: > 0f }) { ClothAero(_awakeSoft[a], h); }
                 PredictSoft(_awakeSoft[a], h, g);
                 if (_awakeSoft[a].IsSkinned) { PredictSkin(_awakeSoft[a], tSkin); }
             }
@@ -230,6 +230,7 @@ internal sealed partial class Engine3D
 #endif
             SoftenDepenetration(h);
             for (int a = 0; a < _awakeSoftCount; a++) { Array.Clear(_awakeSoft[a].Lambda); }
+            PrepareLinks(t1, h, invH);
             SolveSubstep(h, invH, iterations, tSkin);
 
         Core.Profile.Mark(StepStage.SoftFinish);
@@ -320,7 +321,7 @@ internal sealed partial class Engine3D
         foreach (int b in Core.AwakeBodies)
         {
             var p = bodies.PositionOf(b);
-            double reach = MaxExtent[b] + pad;
+            double reach = SoftReachOf(b) + pad;
             double x0 = _spPos0[3 * b], y0 = _spPos0[3 * b + 1], z0 = _spPos0[3 * b + 2];
             if (Math.Min(p[0], x0) - reach > d.MaxX || Math.Max(p[0], x0) + reach < d.MinX
                 || Math.Min(p[1], y0) - reach > d.MaxY || Math.Max(p[1], y0) + reach < d.MinY
@@ -330,6 +331,15 @@ internal sealed partial class Engine3D
         }
 
         return false;
+    }
+
+    // How far the shapes of a body reach from its centre of mass. The stored extent is kept for dynamic bodies only; a kinematic body (a platform, a walking capsule) is measured from its shapes.
+    private float SoftReachOf(int b)
+    {
+        float e = MaxExtent[b];
+        if (e > 0f) { return e; }
+        ComputeExtents(b, LocalCenterOf(b), out e, out _);
+        return e;
     }
 
     private bool CanCollideSoftBody(SoftBodyData d, int b)
@@ -397,7 +407,7 @@ internal sealed partial class Engine3D
             foreach (int b in Core.AwakeBodies)
             {
                 var p = bodies.PositionOf(b);
-                double reach = MaxExtent[b] + 0.05;
+                double reach = SoftReachOf(b) + 0.05;
                 double x0 = _spPos0[3 * b], y0 = _spPos0[3 * b + 1], z0 = _spPos0[3 * b + 2];
                 if (Math.Min(p[0], x0) - reach > box.MaxX || Math.Max(p[0], x0) + reach < box.MinX
                     || Math.Min(p[1], y0) - reach > box.MaxY || Math.Max(p[1], y0) + reach < box.MinY

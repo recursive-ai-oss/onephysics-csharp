@@ -207,6 +207,7 @@ internal sealed partial class Engine2D
             BuildSurfacePairs(h, gmag);
             for (int a = 0; a < _awakeSoftCount; a++)
             {
+                if (_awakeSoft[a].Def.Strip is { Drag: > 0f }) { StripAero(_awakeSoft[a], h); }
                 PredictSoft(_awakeSoft[a], h, g);
                 if (_awakeSoft[a].HasTargets) { PredictTargets(_awakeSoft[a], tTarget); }
             }

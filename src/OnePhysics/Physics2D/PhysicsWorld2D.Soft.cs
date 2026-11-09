@@ -46,6 +46,26 @@ public sealed partial class PhysicsWorld2D
         return _engine.AddSoftBody(MaterialDef(SoftBodyMesh.Box(size, cells, cells), at, material));
     }
 
+    /// <summary>Adds a strip of fabric: a thin quad strip of <paramref name="segments"/> cells along x, with direction-dependent stretch, a 5 % strain limit and wind drag (the planar analogue of cloth).</summary>
+    /// <param name="length">Size along x, metres.</param>
+    /// <param name="thickness">Size along y, metres; the strip's collision thickness is about a quarter of its cell.</param>
+    /// <param name="segments">Cells along the strip, 1 to 1024.</param>
+    /// <param name="at">Centre of the strip.</param>
+    /// <param name="massPerLength">Kilograms per metre of strip. Default 0.15.</param>
+    /// <param name="pinStart">Hold the particles of the left end in place.</param>
+    /// <exception cref="SoftBodyException">A value is out of range.</exception>
+    public SoftBody AddStrip(float length, float thickness, int segments, Vector2D at = default, float massPerLength = 0.15f, bool pinStart = false)
+    {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.AddStrip");
+        var mesh = SoftBodyMesh.Box(new Vector2F(length, thickness), segments, 1);
+        var def = SoftBodyDef.Jelly(mesh, at);
+        def.Mass = massPerLength * length;
+        def.EdgeCompliance = 3e-3f; def.EdgeDamping = 0.02f; def.AreaCompliance = 1e-4f; def.AreaDamping = 0.02f; def.LinearDamping = 0.05f; def.Friction = 0.5f;
+        def.Strip = new StripParams { AlongCompliance = 3e-3f, AcrossCompliance = 3e-3f, ShearCompliance = 5e-2f, StrainLimit = 0.05f, Drag = 1.2f };
+        if (pinStart) { def.PinnedParticles = new[] { 0, segments + 1 }; }
+        return _engine.AddSoftBody(def);
+    }
+
     /// <summary>Adds a soft disc made of triangles, centred on <paramref name="at"/>.</summary>
     /// <param name="radius">Metres.</param>
     /// <param name="at">Centre of the disc.</param>

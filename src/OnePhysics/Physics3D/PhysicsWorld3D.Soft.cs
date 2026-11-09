@@ -55,6 +55,17 @@ public sealed partial class PhysicsWorld3D
         return _engine.AddSoftBody(def);
     }
 
+    /// <summary>Adds a piece of fabric (middle tier): anisotropic stretch, strain limit, bending, wind and tethers from the definition's material.</summary>
+    /// <param name="def">The cloth; it is not kept.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="def"/> is null.</exception>
+    /// <exception cref="SoftBodyException">A value is out of range.</exception>
+    public SoftBody AddCloth(ClothDef def)
+    {
+        using var replayMutation = RecordMutation("PhysicsWorld3D.AddCloth");
+        ArgumentNullException.ThrowIfNull(def);
+        return _engine.AddSoftBody(def.ToSoftBodyDef());
+    }
+
     /// <summary>Adds a block of soft material made of tetrahedra, centred on <paramref name="at"/>.</summary>
     /// <param name="size">Edge lengths, metres.</param>
     /// <param name="at">Centre of the block.</param>
