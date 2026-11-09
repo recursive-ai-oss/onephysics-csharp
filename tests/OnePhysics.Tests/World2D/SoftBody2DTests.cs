@@ -304,3 +304,300 @@ public class SoftBody2DScenes
         Assert.Equal(a, SoftBodies2DScene.Run(name, 8, true));
     }
 }
+
+public class SoftBody2DHostTests
+{
+    private const float Dt = 1f / 60f;
+
+    private static PhysicsWorld2D Scene(int threads = 1)
+    {
+        var w = new PhysicsWorld2D(new WorldOptions2D { ThreadCount = threads, WorldId = 61 });
+        w.AddBox(new Vector2F(30f, 1f), at: new Vector2D(0, -0.5), type: BodyType.Static);
+        w.AddSoftBox(new Vector2F(0.8f, 0.8f), new Vector2D(0, 1.0), SoftMaterial.Jelly, 3);
+        w.AddBalloon(0.4f, new Vector2D(1.6, 1.0), 16);
+        w.AddBlob(0.4f, new Vector2D(-1.6, 1.0), 2);
+        w.AddBox(new Vector2F(0.5f, 0.5f), new Vector2D(0.1, 3.0), density: 20f);
+        return w;
+    }
+
+    private static void Run(PhysicsWorld2D w, int steps) { for (int i = 0; i < steps; i++) { w.Step(Dt); } }
+
+    [Fact]
+    public void SnapshotRestoreContinuesBitIdentically()
+    {
+        var a = Scene();
+        Run(a, 40);
+        var snap = a.Snapshot();
+        var hashes = new ulong[60];
+        for (int i = 0; i < 60; i++) { a.Step(Dt); hashes[i] = a.ComputeHash(); }
+        var finalBytes = a.Snapshot();
+
+        // restore into the same world, and into a fresh one
+        a.Restore(snap);
+        for (int i = 0; i < 60; i++) { a.Step(Dt); Assert.Equal(hashes[i], a.ComputeHash()); }
+        Assert.Equal(finalBytes, a.Snapshot());
+        var b = new PhysicsWorld2D(new WorldOptions2D { WorldId = 61 });
+        b.Restore(snap);
+        Assert.Equal(snap, b.Snapshot());
+        for (int i = 0; i < 60; i++) { b.Step(Dt); Assert.Equal(hashes[i], b.ComputeHash()); }
+        Assert.Equal(finalBytes, b.Snapshot());
+        Assert.Equal(3, b.SoftBodyCount);
+        Assert.Equal(0, a.FindDifferences(b).Count);
+    }
+
+    [Fact]
+    public void AForkContinuesLikeTheOriginalAndIsIndependentOfIt()
+    {
+        var a = Scene();
+        Run(a, 30);
+        var f = a.Fork();
+        Assert.Equal(a.ComputeHash(), f.ComputeHash());
+        Run(a, 30); Run(f, 30);
+        Assert.Equal(a.ComputeHash(), f.ComputeHash());
+        Assert.Equal(a.Snapshot(), f.Snapshot());
+        f.GetSoftBody(0).AddVelocity(new Vector2F(5f, 0f));
+        Run(f, 5);
+        Assert.NotEqual(a.ComputeHash(), f.ComputeHash());
+        Run(a, 5);
+        Assert.True(a.FindDifferences(f).Count > 0);
+        Assert.Equal(f.GetSoftBody(1).ParticleCount, a.GetSoftBody(1).ParticleCount);
+    }
+
+    [Fact]
+    public void WorldsWithoutSoftBodiesKeepTheirSnapshotBytes()
+    {
+        var w = new PhysicsWorld2D(new WorldOptions2D { WorldId = 62 });
+        w.AddBox(new Vector2F(1f, 1f), new Vector2D(0, 2));
+        Run(w, 10);
+        var before = w.Snapshot();
+        var s = w.AddSoftBox(new Vector2F(1f, 1f), new Vector2D(3, 2));
+        var withSoft = w.Snapshot();
+        Assert.True(withSoft.Length > before.Length);
+        s.Destroy();
+        w.AddSoftBox(new Vector2F(1f, 1f), new Vector2D(3, 2)).Destroy();
+        // a world that made soft bodies and lost them again still writes the (empty) section; one that never had any writes none
+        var fresh = new PhysicsWorld2D(new WorldOptions2D { WorldId = 62 });
+        fresh.Restore(before);
+        Assert.Equal(before, fresh.Snapshot());
+    }
+
+    [Fact]
+    public void RestoreRefusesDamagedSoftBodySections()
+    {
+        var w = Scene();
+        Run(w, 5);
+        var snap = w.Snapshot();
+        var tail = Scene();
+        for (int cut = 1; cut < 40; cut++)
+        {
+            var damaged = new byte[snap.Length - cut];
+            Array.Copy(snap, damaged, damaged.Length);
+            Assert.Throws<SnapshotFormatException>(() => tail.Restore(damaged));
+        }
+
+        // flipping bytes anywhere in the section either restores something valid or is refused; it never throws anything else and leaves the world usable
+        var rng = new Random(7);
+        for (int k = 0; k < 300; k++)
+        {
+            var bad = (byte[])snap.Clone();
+            int at = snap.Length - 1 - rng.Next(snap.Length / 2);
+            bad[at] ^= (byte)(1 << rng.Next(8));
+            try { tail.Restore(bad); tail.Step(Dt); }
+            catch (SnapshotFormatException) { }
+            catch (SoftBodyOutOfBoundsException) { }
+            catch (BodyOutOfBoundsException) { }
+            tail.Restore(snap);
+        }
+    }
+
+    [Fact]
+    public void TheMomentumOfARigidBodyAndASoftBodyIsConservedByTheCoupling()
+    {
+        // A heavy rigid box pressed onto a jelly resting on a floor: after the box settles, the sum of the impulses on both is zero in the horizontal direction.
+        var w = new PhysicsWorld2D(new WorldOptions2D { WorldId = 63, Gravity = default, SleepEnabled = false });
+        var def = SoftBodyDef.Jelly(SoftBodyMesh.Box(new Vector2F(1f, 1f), 3, 3), new Vector2D(0, 0));
+        def.LinearDamping = 0f; def.Mass = 5f;
+        var soft = w.AddSoftBody(def);
+        var box = w.AddBox(new Vector2F(0.5f, 0.5f), new Vector2D(-1.5, 0.2), density: 10f);
+        box.LinearVelocity = new Vector2F(6f, 0.5f);
+        double mb = box.Mass;
+        double px0 = mb * 6.0, py0 = mb * 0.5;
+        for (int i = 0; i < 90; i++)
+        {
+            w.Step(Dt);
+            var p = soft.Momentum;
+            var v = box.LinearVelocity;
+            Assert.True(Math.Abs(p.X + mb * v.X - px0) < 0.03 * px0 && Math.Abs(p.Y + mb * v.Y - py0) < 0.03 * px0, "step " + i + ": " + (p.X + mb * v.X - px0));
+        }
+    }
+
+    [Fact]
+    public void PinnedParticlesHoldAndTargetsDriveTheBody()
+    {
+        var w = new PhysicsWorld2D(new WorldOptions2D { WorldId = 64, SleepEnabled = false });
+        var def = SoftBodyDef.Jelly(SoftBodyMesh.Box(new Vector2F(1f, 1f), 3, 3), new Vector2D(0, 5));
+        def.PinnedParticles = new[] { 12, 13 };
+        var b = w.AddSoftBody(def);
+        var p0 = b.GetPosition(12);
+        Run(w, 120);
+        Assert.Equal(p0, b.GetPosition(12));
+        Assert.True(b.IsPinned(12));
+        Assert.False(b.IsPinned(0));
+        var (mn, _) = b.Bounds;
+        Assert.True(mn.Y < 5 - 0.5 && mn.Y > 5 - 2, "hanging extent " + mn.Y);
+        Assert.Equal(2, b.Definition.PinnedParticles!.Count);
+        b.SetPinned(12, false); b.SetPinned(13, false);
+        Run(w, 60);
+        Assert.True(b.GetPosition(12).Y < p0.Y - 1.0);
+
+        // a driven pose: every particle targeted at the rest shape moved to (4, 8) and turned by 30 degrees, kinematic
+        b.SetTargetPose(new Vector2D(4, 8), 0.5236f, 0f, teleport: true);
+        for (int i = 0; i < 20; i++) { w.Step(Dt); }
+        var c = b.CenterOfMass;
+        Assert.InRange(c.X, 3.99, 4.01); Assert.InRange(c.Y, 7.99, 8.01);
+        Assert.True(b.HasTarget(3));
+        // limited targets: free to move, but never farther than 0.1 from the target
+        b.SetTargetPose(new Vector2D(4, 8), 0.5236f, 0.1f);
+        b.AddVelocity(new Vector2F(20f, 0f));
+        double worst = 0;
+        for (int i = 0; i < 60; i++)
+        {
+            w.Step(Dt);
+            var rest = b.Mesh;
+            for (int k = 0; k < b.ParticleCount; k++)
+            {
+                var pos = b.GetPosition(k);
+                var (sn, cs) = Math64.SinCos(0.5236f);
+                var r = rest.Vertices[k];
+                double tx = 4 + cs * r.X - sn * r.Y, ty = 8 + sn * r.X + cs * r.Y;
+                worst = Math.Max(worst, Math.Sqrt((pos.X - tx) * (pos.X - tx) + (pos.Y - ty) * (pos.Y - ty)));
+            }
+        }
+
+        Assert.True(worst < 0.1 + 1e-3, "particles strayed " + worst + " from their targets");
+        b.ClearTarget(3);
+        Assert.False(b.HasTarget(3));
+    }
+
+    [Fact]
+    public void ASoftBodyOverlapSensorFindsTheBodiesInItsShape()
+    {
+        var w = new PhysicsWorld2D(new WorldOptions2D { WorldId = 65, Gravity = default });
+        var a = w.AddSoftBox(new Vector2F(1f, 1f), new Vector2D(0, 0));
+        var b = w.AddSoftCircle(0.5f, new Vector2D(5, 0));
+        var hits = new SoftBody[4];
+        var box = Shape2D.CreateBox(0.7f, 0.7f, default, Rot2.Identity, 0f);
+        Assert.Equal(1, w.OverlapSoftBodies(in box, new Vector2D(0.2, 0), 0f, hits));
+        Assert.Equal(a, hits[0]);
+        Assert.Equal(0, w.OverlapSoftBodies(in box, new Vector2D(2.5, 0), 0f, hits));
+        var wide = Shape2D.CreateBox(6f, 1f, default, Rot2.Identity, 0f);
+        Assert.Equal(2, w.OverlapSoftBodies(in wide, new Vector2D(2.5, 0), 0f, hits));
+        Assert.Equal(a, hits[0]); Assert.Equal(b, hits[1]);
+        Assert.Equal(1, w.OverlapSoftBodies(in wide, new Vector2D(2.5, 0), 0f, hits.AsSpan(0, 1)));
+        Assert.Throws<ArgumentException>(() => w.OverlapSoftBodies(default(Shape2D), default, 0f, hits));
+    }
+
+    [Fact]
+    public void ABodyThatLeavesTheRangeIsReportedBeforeAnythingChanges()
+    {
+        var w = new PhysicsWorld2D(new WorldOptions2D { WorldId = 66, MaxLinearSpeed = 1e7f });
+        var b = w.AddSoftBox(new Vector2F(1f, 1f), new Vector2D(0, 5));
+        var before = w.Snapshot();
+        b.SetPosition(3, new Vector2D(2_000_000, 0));
+        b.AddVelocity(new Vector2F(5e5f, 0f));
+        var ex = Assert.Throws<SoftBodyOutOfBoundsException>(() => { Run(w, 400); });
+        Assert.InRange(ex.Particle, 0, 24);
+        Assert.Equal(b, ex.SoftBody);
+        Assert.NotEqual(before, w.Snapshot());
+    }
+
+    [Fact]
+    public void DebugGeometryListsParticlesAndEdges()
+    {
+        var w = Scene();
+        Run(w, 3);
+        var g = new RecursiveAI.OnePhysics.Debug.DebugGeometry();
+        w.GetDebugGeometry(RecursiveAI.OnePhysics.Debug.DebugContent.SoftBodies, g);
+        Assert.Equal(3, g.SoftBodies.Length);
+        Assert.Equal(16, g.SoftBodies[0].ParticleCount);
+        Assert.True(g.SoftBodies[0].EdgeCount > 0);
+        Assert.Equal(w.GetSoftBody(0).ParticleCount + w.GetSoftBody(1).ParticleCount + w.GetSoftBody(2).ParticleCount, g.Points.Length);
+    }
+
+    [Fact]
+    public void ShiftingTheOriginMovesSoftBodiesWithTheWorld()
+    {
+        var a = Scene();
+        var b = Scene();
+        Run(a, 20); Run(b, 20);
+        b.ShiftOrigin(new Vector2D(16, -8));
+        var pa = a.GetSoftBody(0).GetPosition(7);
+        var pb = b.GetSoftBody(0).GetPosition(7);
+        Assert.Equal(pa.X - 16, pb.X); Assert.Equal(pa.Y + 8, pb.Y);
+        Run(a, 20); Run(b, 20);
+        pa = a.GetSoftBody(0).GetPosition(7); pb = b.GetSoftBody(0).GetPosition(7);
+        Assert.True(Math.Abs(pa.X - 16 - pb.X) < 1e-3 && Math.Abs(pa.Y + 8 - pb.Y) < 1e-3, "positions differ after the shift: " + pa + " vs " + pb);
+    }
+
+    [Fact]
+    public void SceneTextAndRegionsRoundTrip()
+    {
+        var w = Scene();
+        Run(w, 25);
+        string text = w.SaveScene();
+        var copy = PhysicsWorld2D.LoadScene(new System.IO.StringReader(text));
+        Assert.Equal(w.ComputeHash(), copy.ComputeHash());
+        Run(w, 10); Run(copy, 10);
+        Assert.Equal(w.ComputeHash(), copy.ComputeHash());
+        // a region around the balloon carries it (and the rigid bodies it touches)
+        var region = w.CaptureRegion(new Vector2D(1.0, 0.0), new Vector2D(2.2, 2.0));
+        Assert.NotNull(region);
+        var other = Scene();
+        Run(other, 25);
+        other.GetSoftBody(1).AddVelocity(new Vector2F(3f, 3f));
+        Run(other, 5);
+        w.RestoreRegion(region);
+        Assert.NotNull(w.Snapshot());
+    }
+
+    [Fact]
+    public void ARecordedSessionReplaysWithEqualStates()
+    {
+        using var stream = new System.IO.MemoryStream();
+        var a = Scene();
+        using (a.StartRecording(stream))
+        {
+            Run(a, 10);
+            var s = a.GetSoftBody(0);
+            s.AddVelocity(new Vector2F(2f, 0f));
+            s.SetPinned(0, true);
+            a.Options.SoftSubsteps = 6;
+            a.Options.SoftIterations = 2;
+            Run(a, 20);
+            a.AddSoftCircle(0.3f, new Vector2D(0, 4));
+            Run(a, 20);
+        }
+
+        stream.Position = 0;
+        var player = new RecursiveAI.OnePhysics.Replay.ReplayPlayer(stream);
+        var b = player.CreateWorld2D();
+        int steps = 0;
+        while (player.ReadNextStep(b)) { steps++; }
+        Assert.Equal(50, steps);
+        Assert.Equal(a.ComputeHash(), b.ComputeHash());
+        Assert.Equal(6, b.Options.SoftSubsteps);
+        Assert.Equal(2, b.Options.SoftIterations);
+        Assert.Equal(4, b.SoftBodyCount);
+    }
+
+    [Fact]
+    public void StepsAllocateNothingOnTheSteppingThreadOnceWarm()
+    {
+        var w = Scene();
+        Run(w, 60);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Run(w, 30);
+        long grown = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(grown < 2048, "allocated " + grown + " bytes in 30 steps");
+    }
+}
