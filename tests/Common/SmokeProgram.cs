@@ -149,6 +149,18 @@ internal static class SmokeProgram
         ulong v21 = Vehicles2DScene.Run(1, false), v23 = Vehicles2DScene.Run(3, false), v2r = Vehicles2DScene.Run(1, true);
         bool v2Same = v21 == v23 && v21 == v2r;
         Console.WriteLine((v2Same ? "OK vehicles2d " : "FAIL vehicles2d ") + v21.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        // Boats, hovercraft, a glider in a gust and thruster rigs in both dimensions: same state on one and three threads and after a restore.
+        ulong a31 = Actuators3DScene.Run(1, false), a33 = Actuators3DScene.Run(3, false), a3r = Actuators3DScene.Run(1, true);
+        bool act3 = a31 == a33 && a31 == a3r;
+        Console.WriteLine((act3 ? "OK actuators3d " : "FAIL actuators3d ") + a31.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        ulong a21 = Actuators2DScene.Run(1, false), a23 = Actuators2DScene.Run(3, false), a2r = Actuators2DScene.Run(1, true);
+        bool act2 = a21 == a23 && a21 == a2r;
+        Console.WriteLine((act2 ? "OK actuators2d " : "FAIL actuators2d ") + a21.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        // Rail vehicles and bicycles in both dimensions: same state on one and three threads and after a restore.
+        ulong rb31 = RailBikeScenes3D.Run(1, false), rb33 = RailBikeScenes3D.Run(3, false), rb3r = RailBikeScenes3D.Run(1, true);
+        ulong rb21 = RailBikeScenes2D.Run(1, false), rb23 = RailBikeScenes2D.Run(3, false), rb2r = RailBikeScenes2D.Run(1, true);
+        bool railBike = rb31 == rb33 && rb31 == rb3r && rb21 == rb23 && rb21 == rb2r;
+        Console.WriteLine((railBike ? "OK railbike " : "FAIL railbike ") + rb31.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) + " " + rb21.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         ulong rg1 = Ragdolls2DHash(1), rg3 = Ragdolls2DHash(3);
         Console.WriteLine((rg1 == rg3 ? "OK ragdolls2d " : "FAIL ragdolls2d ") + rg1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         // 3D tracked vehicles and motorcycles (pivoting tank, tank on a ramp, bike in a turn, bike braking): same state on one and three threads and after a restore.
@@ -176,6 +188,14 @@ internal static class SmokeProgram
             Console.WriteLine((g1 == g3 && g1 == gr ? "OK softbodies2d " : "FAIL softbodies2d ") + scene + " " + g1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         }
 
+        // 3D surface contacts and tearing (a cloth folding on itself, a cloth and a bar torn by hooks): same state on one and three threads and after a restore.
+        foreach (string scene in SoftFracture3DScene.Names)
+        {
+            ulong g1 = SoftFracture3DScene.Run(scene, 1, false, null, 60), g3 = SoftFracture3DScene.Run(scene, 3, false, null, 60), gr = SoftFracture3DScene.Run(scene, 1, true, null, 60);
+            soft2d &= g1 == g3 && g1 == gr;
+            Console.WriteLine((g1 == g3 && g1 == gr ? "OK softfracture3d " : "FAIL softfracture3d ") + scene + " " + g1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
         bool missingShapes = MissingShapes();
         Console.WriteLine(missingShapes ? "OK shape-recipes" : "FAIL shape-recipes");
         bool surfaces = RecursiveAI.OnePhysics.Tests.Common.ContactSurfaceScene.Planar(1, restore: true) == RecursiveAI.OnePhysics.Tests.Common.ContactSurfaceScene.Planar(3)
@@ -197,7 +217,7 @@ internal static class SmokeProgram
         Console.WriteLine((pulleys ? "OK pulleys " : "FAIL pulleys ") + pulleyHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool machines = JointMachineSmoke.Run();
         Console.WriteLine(machines ? "OK machines" : "FAIL machines");
-        return rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
+        return railBike && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
     }
 
     private static bool MissingShapes()

@@ -39,6 +39,20 @@ internal static class Program
         bool softGood = Math.Abs(balloon.Area / balloon.RestArea - 1) < 0.05 && copy.ComputeHash() == soft.ComputeHash() && copy.SoftBodyCount == 2;
         Console.WriteLine(softGood ? "OK trimmed 2D soft bodies" : "FAIL trimmed 2D soft bodies");
         good &= softGood;
+        // Rail vehicles and bicycles: a loco on a graded track with a coupled wagon, a rider, snapshot and restore into a fresh world.
+        var rail = new PhysicsWorld2D(new WorldOptions2D { WorldId = 10 });
+        rail.AddBox(new Vector2F(200, 1), new Vector2D(0, -0.5), type: BodyType.Static);
+        var track = rail.AddTrack(TrackDef.Straight(300));
+        var loco = rail.AddRailVehicle(track, 20, RailDef.Locomotive, 5f);
+        var wagon = rail.AddRailVehicle(track, 20 - 9.25 - 0.6 - 0.02 - 5.25, RailDef.Freight, 5f);
+        loco.Couple(wagon, thisFront: false, otherFront: true);
+        var rider = rail.AddBicycle(new Vector2D(-60, 0), BicycleDef.Road, 6f);
+        for (int i = 0; i < 90; i++) { loco.Drive(throttle: 0.3f); rider.Ride(pedal: 0.2f); rail.Step(1f / 60); }
+        var railCopy = new PhysicsWorld2D(new WorldOptions2D { WorldId = 10 });
+        railCopy.Restore(rail.Snapshot());
+        bool railGood = loco.Speed > 5f && railCopy.ComputeHash() == rail.ComputeHash() && railCopy.GetRailVehicles().Length == 2 && railCopy.GetBicycles().Length == 1;
+        Console.WriteLine(railGood ? "OK trimmed 2D rail and bicycles" : "FAIL trimmed 2D rail and bicycles");
+        good &= railGood;
         return good ? 0 : 1;
     }
 }

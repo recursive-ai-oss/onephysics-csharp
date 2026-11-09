@@ -427,6 +427,9 @@ public struct ShapeDef
 
     private ZeroDefaultQuat _localRotation;
 
+    /// <summary>Optional aerodynamic surface: lift and drag from the shape's orientation to the airflow or water. Null (default) for none. Copied when the shape is created and checked then; see <see cref="AeroSurface"/>.</summary>
+    public RecursiveAI.OnePhysics.Physics3D.AeroSurface? Aero { get; set; }
+
     /// <summary>Copies a material into the definition.</summary>
     public ShapeDef WithMaterial(Material3D m)
     {

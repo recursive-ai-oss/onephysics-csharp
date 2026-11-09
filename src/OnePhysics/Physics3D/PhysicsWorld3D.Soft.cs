@@ -100,4 +100,18 @@ public sealed partial class PhysicsWorld3D
 
     /// <summary>Number of soft bodies in the world.</summary>
     public int SoftBodyCount => _engine.SoftHandles.Count;
+
+    /// <summary>The edges that tore in the last step, in body and edge order (see <see cref="SoftBodyDef.TearStrain"/>). Valid until the next <see cref="Step"/>; not part of a snapshot.</summary>
+    public ReadOnlySpan<SoftTearEvent> SoftTearEvents => _engine.SoftTearEvents;
+
+    /// <summary>Raised after a step, in event order, once for every edge that tore (unless callbacks are suppressed).</summary>
+    public event Action<SoftTearEvent>? SoftBodyTorn;
+
+    private void DispatchSoftTears()
+    {
+        var h = SoftBodyTorn;
+        if (h == null) { return; }
+        var n = _engine.SoftTearEvents.Length;
+        for (int i = 0; i < n; i++) { h(_engine.SoftTearEvents[i]); }
+    }
 }

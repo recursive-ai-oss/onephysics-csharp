@@ -269,9 +269,13 @@ internal sealed partial class Engine3D : ISnapshotSection
             DropShapePairs(s);
             Bp.DestroyProxy(Proxy[s]);
             ReleaseGeom(GeomOf[s]);
+            _actuators?.DropShape(s);
         }
 
+        _actuators?.DropBody(b);
         DropCharacterOfBody(b);
+        DropBicycleOfBody(b);
+        DropRailOfBody(b);
         DropVehicleOfBody(b);
         DropRagdollOfBody(b);
         ResetBuoyancy(b);
@@ -282,6 +286,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         for (int k = 0; k < 6; k++) { Inertia[6 * b + k] = 0f; }
         // The last step's displacement is saved for every slot; a body that diverged to NaN must not leave it behind.
         Dp[3 * b] = 0f; Dp[3 * b + 1] = 0f; Dp[3 * b + 2] = 0f;
+        DestroyBikeOrphan();
     }
 
     // ------------------------------------------------------------------ shapes
@@ -289,6 +294,8 @@ internal sealed partial class Engine3D : ISnapshotSection
     public ShapeHandle AddShape(BodyHandle body, byte[] recipe, in ShapeDef def)
     {
         def.Surface.Validate(Core.Layout.PositionLanes);
+        var aero = def.Aero?.ToSpec();
+        aero?.Prepare(planar: false, areaRequired: false);
         Nonnegative(def.Density, "Density");
         Coefficient(def.Friction, "Friction");
         Coefficient(def.RollingResistance, "RollingResistance");
@@ -331,6 +338,7 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         if (ShapeTail[b] >= 0) { NextShape[ShapeTail[b]] = s; } else { ShapeHead[b] = s; }
         ShapeTail[b] = s;
+        if (aero != null) { Actuators.SetSurface(sh, aero, prepared: true); }
         Proxy[s] = Bp.CreateProxy(type, tight, s);
         if (type == BodyType.Dynamic)
         {
@@ -362,6 +370,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         }
 
         ReleaseGeom(GeomOf[s]);
+        _actuators?.DropShape(s);
         Core.DestroyShape(handle);
         if (Core.Bodies.TypeOf(b) == BodyType.Dynamic) { UpdateMass(b); }
     }
@@ -917,6 +926,7 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         int nb = r.ReadCount(105, "3D bodies") /* bytes written per body: 12+4+24+4+4+4+4+4+12+12+1+4+4+12 */;
         if (nb > 1 << 22) { throw r.Error("too many 3D bodies"); }
+        RestoredBodyCount = nb;
         // Everything is read into staging arrays that the engine keeps between restores and swapped in at the end, so a restore allocates nothing once they have grown.
         var lc = Fit(ref _sLc, 3 * nb); var mass = Fit(ref _sMass, nb); var inertia = Fit(ref _sInertia, 6 * nb); var maxE = Fit(ref _sMaxE, nb); var minE = Fit(ref _sMinE, nb);
         var ld = Fit(ref _sLd, nb); var ad = Fit(ref _sAd, nb); var gs = Fit(ref _sGs, nb); var force = Fit(ref _sForce, 3 * nb); var torque = Fit(ref _sTorque, 3 * nb);
@@ -1167,6 +1177,9 @@ internal sealed partial class Engine3D : ISnapshotSection
     }
 
     /// <summary>Checks the section against the core after a restore; false when the two disagree (a damaged snapshot that parsed).</summary>
+    /// <summary>The body count of the engine section last read, for the optional sections that follow it in a snapshot.</summary>
+    internal int RestoredBodyCount { get; private set; }
+
     public bool IsConsistentWithCore()
     {
         ConsistencyProblem = "";
@@ -1174,7 +1187,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || GeomOf.Length < shapes.HighWater) { return false; }
         var cons = Core.Constraints;
-        if (!JointsConsistentWithCore() || !CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent() || !FluidsConsistent()) { return false; }
+        if (!JointsConsistentWithCore() || !CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent() || !FluidsConsistent() || !ActuatorsConsistent() || !BicyclesConsistent() || !RailConsistent()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)
         {
             if (!shapes.Handles.IsLive(s)) { continue; }

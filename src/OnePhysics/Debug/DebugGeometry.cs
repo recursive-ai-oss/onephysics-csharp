@@ -53,9 +53,11 @@ public enum DebugContent
 
     /// <summary>Rope spans and wheel arcs of pulley systems.</summary>
     Pulleys = 8192,
+    /// <summary>Aerodynamic and hydrodynamic surfaces and the forces of thrusters, boats, hovercraft and surfaces as plain data (<see cref="DebugGeometry.AeroSurfaces"/>, <see cref="DebugGeometry.AeroForces"/>).</summary>
+    Aero = 16384,
 
     /// <summary>Everything.</summary>
-    All = 16383,
+    All = 32767,
 }
 
 /// <summary>The kind of a <see cref="DebugShape"/>. The same enum serves 2D and 3D worlds; a 2D world emits the first five.</summary>
@@ -242,6 +244,19 @@ public readonly struct DebugSoftBody
         FirstTargetPoint = firstTargetPoint;
     }
 
+    /// <summary>Creates an entry that also lists the torn edges: <paramref name="brokenEdgeCount"/> pairs of particle numbers from <see cref="DebugGeometry.Indices"/>[<paramref name="firstBrokenIndex"/> ..).</summary>
+    public DebugSoftBody(int index, int generation, bool isAsleep, float particleRadius, int firstPoint, int particleCount, int firstIndex, int edgeCount, int firstTargetPoint, int firstBrokenIndex, int brokenEdgeCount)
+        : this(index, generation, isAsleep, particleRadius, firstPoint, particleCount, firstIndex, edgeCount, firstTargetPoint)
+    {
+        FirstBrokenIndex = firstBrokenIndex; BrokenEdgeCount = brokenEdgeCount;
+    }
+
+    /// <summary>Index in <see cref="DebugGeometry.Indices"/> of the first corner of the first torn edge that still joins two sides without a constraint, or -1 when there is none.</summary>
+    public int FirstBrokenIndex { get; } = -1;
+
+    /// <summary>Number of such torn edges (two particle numbers each, from <see cref="FirstBrokenIndex"/>).</summary>
+    public int BrokenEdgeCount { get; }
+
     /// <summary>Index in <see cref="DebugGeometry.Points"/> of the skinned position (the target) of particle 0, or -1 when the body has no skin. The targets of the other particles follow it, in particle order.</summary>
     public int FirstTargetPoint { get; } = -1;
 
@@ -392,6 +407,53 @@ public readonly struct DebugWheel
     public Vector3F ContactNormal { get; }
 }
 
+/// <summary>A track as plain data: its centreline sampled along its length, and its gauge. Emitted with <see cref="DebugContent.Vehicles"/>.</summary>
+public readonly struct DebugTrack
+{
+    /// <summary>Creates an entry.</summary>
+    public DebugTrack(int track, Vector3D[] centerline, float gauge) { Track = track; Centerline = centerline; Gauge = gauge; }
+
+    /// <summary>The track's slot.</summary>
+    public int Track { get; }
+
+    /// <summary>Points on the centre of the track at rail-head height, from its start to its end.</summary>
+    public Vector3D[] Centerline { get; }
+
+    /// <summary>Distance between the inner rail faces, m.</summary>
+    public float Gauge { get; }
+}
+
+/// <summary>One wheel-rail contact of a rail vehicle's wheelset as plain data: where it is, the surface normal, the normal force and the tangential (creep) force. Emitted with <see cref="DebugContent.Vehicles"/>.</summary>
+public readonly struct DebugRailContact
+{
+    /// <summary>Creates an entry.</summary>
+    public DebugRailContact(BodyHandle wheelset, int index, Vector3D point, Vector3F normal, float normalForce, Vector3F creepForce, bool isFlange)
+    {
+        Wheelset = wheelset; Index = index; Point = point; Normal = normal; NormalForce = normalForce; CreepForce = creepForce; IsFlange = isFlange;
+    }
+
+    /// <summary>The wheelset's body.</summary>
+    public BodyHandle Wheelset { get; }
+
+    /// <summary>The wheelset's index in its vehicle.</summary>
+    public int Index { get; }
+
+    /// <summary>The contact point on the rail head, world coordinates.</summary>
+    public Vector3D Point { get; }
+
+    /// <summary>The track's up direction at the contact.</summary>
+    public Vector3F Normal { get; }
+
+    /// <summary>The wheel-rail normal force (tread plus flange) in newtons.</summary>
+    public float NormalForce { get; }
+
+    /// <summary>The tangential creep force on the wheel in newtons, in world axes.</summary>
+    public Vector3F CreepForce { get; }
+
+    /// <summary>True when the flange touches the rail's gauge face.</summary>
+    public bool IsFlange { get; }
+}
+
 /// <summary>A character as plain data: its capsule (vertical axis, centred on <see cref="Center"/>) and what it stands on.</summary>
 public readonly struct DebugCharacter
 {
@@ -438,6 +500,9 @@ public sealed partial class DebugGeometry
     private DebugJoint[] _joints = new DebugJoint[4];
     private DebugCharacter[] _characters = new DebugCharacter[4];
     private DebugWheel[] _wheels = new DebugWheel[4];
+    private DebugTrack[] _tracks = new DebugTrack[2];
+    private DebugRailContact[] _railContacts = new DebugRailContact[4];
+    private int _nTracks, _nRailContacts;
     private DebugSoftBody[] _soft = new DebugSoftBody[4];
     private int[] _indices = new int[64];
     private int _nIndices;
@@ -473,11 +538,17 @@ public sealed partial class DebugGeometry
     /// <summary>Vehicle wheels, by vehicle slot then wheel index.</summary>
     public ReadOnlySpan<DebugWheel> Wheels => _wheels.AsSpan(0, _nWheels);
 
+    /// <summary>Tracks, by slot (with the vehicles content).</summary>
+    public ReadOnlySpan<DebugTrack> Tracks => _tracks.AsSpan(0, _nTracks);
+
+    /// <summary>Wheel-rail contacts of rail vehicles, by vehicle slot, wheelset and side (with the vehicles content).</summary>
+    public ReadOnlySpan<DebugRailContact> RailContacts => _railContacts.AsSpan(0, _nRailContacts);
+
     /// <summary>Soft bodies, by slot.</summary>
     public ReadOnlySpan<DebugSoftBody> SoftBodies => _soft.AsSpan(0, _nSoft);
 
     /// <summary>Empties every list (capacity is kept).</summary>
-    public void Clear() { _nPulleySpans=0; _nPulleyWheels=0; _nRodSegments=0; _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; }
+    public void Clear() { _nPulleySpans=0; _nPulleyWheels=0; _nAeroSurfaces=0; _nAeroForces=0; _nRodSegments=0; _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; _nTracks = _nRailContacts = 0; }
 
     private static void Push<T>(ref T[] a, ref int n, in T v)
     {
@@ -511,6 +582,12 @@ public sealed partial class DebugGeometry
 
     /// <summary>Appends a wheel entry.</summary>
     public void Add(in DebugWheel w) => Push(ref _wheels, ref _nWheels, in w);
+
+    /// <summary>Appends a track entry.</summary>
+    public void Add(in DebugTrack t) => Push(ref _tracks, ref _nTracks, in t);
+
+    /// <summary>Appends a rail contact entry.</summary>
+    public void Add(in DebugRailContact c) => Push(ref _railContacts, ref _nRailContacts, in c);
 
     /// <summary>Appends a soft body entry.</summary>
     public void Add(in DebugSoftBody b) => Push(ref _soft, ref _nSoft, in b);

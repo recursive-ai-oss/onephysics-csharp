@@ -36,6 +36,7 @@ internal sealed partial class VehicleState
         c.Coef = (float[])Coef.Clone();
         c.Compression = (float[])Compression.Clone();
         c.Stop = (float[])Stop.Clone();
+        c.ExtraTorque = (float[])ExtraTorque.Clone();
         c.Def = Def.Clone();
         c.Track = Track?.Clone();
         c.Bike = Bike?.Clone();

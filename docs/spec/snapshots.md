@@ -154,6 +154,20 @@ omitted. Built-in sections implement the same hook.
 
 Two optional sections of the planar world, written only while used: "VEH2" (`0x32484556`, version 1: vehicles) and "RAG2" (`0x32474152`, version 1: ragdolls). Layouts are in `world2d.md` → Vehicles. They follow the section rules above (an older reader rejects them by id and length; worlds without vehicles or ragdolls keep their bytes).
 
+
+## Optional aerodynamics section
+
+One optional section in both worlds, "AERO" (`0x4F524541`, version 1): thrusters, boats, hovercraft, shape surfaces and the air density. Written only while any of them exists or the air density is not 1.225 kg/m³; registered after every other section (2D order: engine, fields, rods, machines, mass offsets, tiles, SF2D, VEH2, RAG2, AERO). Entity kinds for the desync finder and regions: `thruster`, `boat`, `hovercraft`, `aero` (by shape slot). Layout in `actuators.md`. Stored axes are kept bit for bit so a restored world re-serializes to the same bytes.
+
+## Diverged worlds
+
+Restore refuses a non-finite body position or origin, so writing one would produce bytes nothing can read.
+Every snapshot write (`Snapshot`, `TrySnapshot`, `GetSnapshotSize`, `GetSnapshotSizeBound`) therefore first checks
+the origin lanes and then every body-slot position lane in index order, and raises `NonFiniteStateException`
+naming the first non-finite value (`Body slot S position lane L is V`) before anything is written. The world is
+unchanged, `ComputeHash` still hashes it, and destroying or resetting the body makes it saveable again. Velocities
+and rotations are not checked at write time, because restore accepts them (the next step reports such a body).
+
 ## Named fields and desync reports
 
 `SnapshotDesync.Compare(fullA, fullB)` validates both full snapshots with the

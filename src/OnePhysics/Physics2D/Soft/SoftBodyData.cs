@@ -46,11 +46,15 @@ internal sealed partial class SoftBodyData
     public float[] TriRest2 = Array.Empty<float>();   // twice the rest area of each triangle
     public int[] Outline = Array.Empty<int>();
     public float PressureRest;                        // rest area enclosed by the outline; 0 when there is none
+    public float[] EdgeRest0 = Array.Empty<float>(), TriRest20 = Array.Empty<float>();   // the rest values of the undeformed mesh, for the plastic limit
+    public long[] Broken = Array.Empty<long>();       // sorted keys of the broken edges (tearing); their constraints do not exist
     public float[] Lambda = Array.Empty<float>();     // per constraint in solver order (edges, bends, triangles, pressure), scratch of the current substep
 
     // The step works on float32 copies of the positions relative to an origin near the body (X, XP: current and substep-start positions).
     public float[] X = Array.Empty<float>(), XP = Array.Empty<float>();
     public double Ox, Oy;
+    public float[] X0 = Array.Empty<float>();         // positions at the start of the step (scratch)
+    public float StepSpeed2;                          // largest squared net speed over the step of any free particle (scratch)
     public float[] GradP = Array.Empty<float>();      // gradient scratch of the pressure constraint
 
     // Kinematic targets (HasTargets false: none). Targets are state; the interpolated target of a substep is scratch.
@@ -179,6 +183,7 @@ internal sealed partial class SoftBodyData
         }
 
         EdgeKey = Distinct(keys);
+        if (Broken.Length != 0) { EdgeKey = Array.FindAll(EdgeKey, k => !SoftTopology.Has(Broken, k)); }
         int ne = EdgeKey.Length;
         EdgeA = new int[ne]; EdgeB = new int[ne]; EdgeRest = new float[ne];
         for (int i = 0; i < ne; i++)
@@ -192,7 +197,13 @@ internal sealed partial class SoftBodyData
         {
             int n = Outline.Length;
             var far = new List<long>(n);
-            for (int i = 0; i < n; i++) { far.Add(EdgeOf(Outline[(i + n - 1) % n], Outline[(i + 1) % n])); }
+            for (int i = 0; i < n; i++)
+            {
+                // A hinge at an outline vertex needs both of its segments.
+                if (Broken.Length != 0 && (SoftTopology.Has(Broken, EdgeOf(Outline[(i + n - 1) % n], Outline[i])) || SoftTopology.Has(Broken, EdgeOf(Outline[i], Outline[(i + 1) % n])))) { continue; }
+                far.Add(EdgeOf(Outline[(i + n - 1) % n], Outline[(i + 1) % n]));
+            }
+
             HingeKey = Distinct(far);
             BendA = new int[HingeKey.Length]; BendB = new int[HingeKey.Length]; BendRest = new float[HingeKey.Length];
             for (int i = 0; i < HingeKey.Length; i++)
@@ -204,6 +215,7 @@ internal sealed partial class SoftBodyData
 
         TriRest2 = new float[nt];
         for (int e = 0; e < nt; e++) { TriRest2[e] = (float)Cross(Tris[3 * e], Tris[3 * e + 1], Tris[3 * e + 2]); }
+        EdgeRest0 = (float[])EdgeRest.Clone(); TriRest20 = (float[])TriRest2.Clone();
 
         PressureRest = 0f;
         if (Outline.Length >= 3)
@@ -220,11 +232,12 @@ internal sealed partial class SoftBodyData
         for (int i = 0; i < ne; i++) { edgeSum += EdgeRest[i]; }
         Radius = Def.ParticleRadius != 0f ? Def.ParticleRadius : (float)Math.Max(1e-4, 0.25 * edgeSum / Math.Max(1, ne));
         Lambda = new float[ConstraintCount];
-        X = new float[2 * N]; XP = new float[2 * N];
+        X = new float[2 * N]; XP = new float[2 * N]; X0 = new float[2 * N];
         GradP = PressureRest > 0f ? new float[2 * N] : Array.Empty<float>();   // the pressure may be switched on later through the handle
         ParticleShape = Shape2D.CreateCircle(default, Radius);
         ColourConstraints();
         BuildClusters();
+        BuildSurface();
     }
 
     /// <summary>Particle <paramref name="i"/> is held by a target with maximum distance 0: kinematic, never collides.</summary>
@@ -273,7 +286,8 @@ internal sealed partial class SoftBodyData
         c.Pos = (double[])Pos.Clone(); c.Prev = (double[])Prev.Clone(); c.Vel = (float[])Vel.Clone();
         c.InvMass = (float[])InvMass.Clone(); c.Pinned = (byte[])Pinned.Clone();
         c.Lambda = (float[])Lambda.Clone();
-        c.X = (float[])X.Clone(); c.XP = (float[])XP.Clone();
+        c.ClonePlastic();
+        c.X = (float[])X.Clone(); c.XP = (float[])XP.Clone(); c.X0 = (float[])X0.Clone();
         c.GradP = (float[])GradP.Clone();
         c.MatchMu = (float[])MatchMu.Clone();
         c.TargetOn = (byte[])TargetOn.Clone(); c.TargetMax = (float[])TargetMax.Clone();

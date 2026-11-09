@@ -339,8 +339,8 @@ internal sealed partial class Engine2D
         _pairCount = 0;
         int total = 0;
         float rmax = 0f;
-        bool any = _awakeSoftCount > 1;
-        for (int a = 0; a < _awakeSoftCount; a++)
+        bool any = _pairSoftCount > 1;
+        for (int a = 0; a < _pairSoftCount; a++)
         {
             var d = _awakeSoft[a];
             total += d.N;
@@ -483,6 +483,12 @@ internal sealed partial class Engine2D
 
     private void SolvePairs()
     {
+        SolveDiscPairs();
+        if (_seCount > 0) { SolveSurfacePairs(); }
+    }
+
+    private void SolveDiscPairs()
+    {
         for (int p = 0; p < _pairCount; p++)
         {
             int gi = _pairA[p], gj = _pairB[p];
@@ -515,13 +521,7 @@ internal sealed partial class Engine2D
         for (int a = 0; a < _awakeSoftCount; a++)
         {
             var d = _awakeSoft[a];
-            float vmax2 = 0f;
-            for (int i = 0; i < d.N; i++)
-            {
-                float vx = d.Vel[2 * i], vy = d.Vel[2 * i + 1];
-                float v2 = vx * vx + vy * vy;
-                if (v2 > vmax2) { vmax2 = v2; }
-            }
+            float vmax2 = d.StepSpeed2;
 
             if (!Opt.SleepEnabled || !d.Def.AllowSleep || d.HadMovingContact || d.TargetsMoved || !(vmax2 < thr2)) { d.SleepTime = 0f; continue; }
             d.SleepTime += dt;

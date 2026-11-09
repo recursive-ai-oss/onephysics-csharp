@@ -81,6 +81,13 @@ internal sealed partial class Engine3D
                 s.Add("vehicle", i); changed |= s.AddBody(d.Body);
                 foreach (int b in d.GroundBody) { changed |= s.AddBody(b); }
             }
+            for (int i = 0; i < BikeHandles.HighWater; i++)
+            {
+                if (!BikeHandles.IsLive(i)) { continue; }
+                var d = Bikes[i]!;
+                if (!s.Bodies[d.Frame] && !s.Bodies[d.Fork] && !s.Contains("bicycle", i)) { continue; }
+                s.Add("bicycle", i); changed |= s.AddBody(d.Frame); changed |= s.AddBody(d.Fork);
+            }
             for (int i = 0; i < CharHandles.HighWater; i++)
             {
                 if (!CharHandles.IsLive(i)) { continue; }
@@ -89,6 +96,7 @@ internal sealed partial class Engine3D
             }
         } while (changed);
         SnapshotRegions.Complete(Core, s);
+        _actuators?.SelectRegion(s);
         for (int i = 0; i < Core.Shapes.HighWater; i++)
         { if (s.Contains("shape", i)) { s.Add("geometry", GeomOf[i]); } }
         for (int i = 0; i < PairHigh; i++)

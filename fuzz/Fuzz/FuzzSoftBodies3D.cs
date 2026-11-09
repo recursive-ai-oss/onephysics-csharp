@@ -298,6 +298,14 @@ internal static class FuzzSoftBodies3D
         for (int i = 0; i < nv; i++) { ji[4 * i + 1] = 1; jw[4 * i] = 1f - (i % 6) / 5f; jw[4 * i + 1] = (i % 6) / 5f; jm[i] = i < 6 ? 0f : 0.06f; jb[i] = 0.04f; jr[i] = 0.03f; }
         var skin = SoftSkin.Create(sheet, new[] { -1, 0 }, new[] { new Vector3F(0, 0, 0), new Vector3F(0, 0, 0.5f) }, ji, jw, jm, jb, jr);
         var banner = w.AddSoftBody(new SoftBodyDef { Mesh = sheet, Skin = skin, Position = new Vector3D(0, 2.5, 3) });
+        // A cloth that tears and a plastic tetrahedral box with surface collision off, so the snapshot has the broken edges, split particles and plastic rest values of section version 3.
+        var strip = SoftBodyDef.Cloth(SoftBodyMesh.Cloth(1.2f, 0.2f, 6, 1), new Vector3D(-4, 3, 0));
+        strip.EdgeCompliance = 1e-4f; strip.TearStrain = 0.02f; strip.PlasticYield = 0.01f; strip.GravityScale = 0f; strip.Mass = 1f;
+        var torn = w.AddSoftBody(strip);
+        for (int i = 0; i < torn.ParticleCount; i++) { torn.ApplyImpulse(i, new Vector3F(torn.GetPosition(i).X < -4 ? -0.4f : 0.4f, 0f, 0f)); }
+        var plastic = SoftBodyDef.Jelly(SoftBodyMesh.Box(new Vector3F(0.5f, 0.5f, 0.5f), 2, 2, 2), new Vector3D(7, 2, 0));
+        plastic.PlasticYield = 0.02f; plastic.SurfaceCollision = false;
+        w.AddSoftBody(plastic);
         for (int s = 0; s < 30; s++)
         {
             banner.SetSkeletonPose(new[] { QuaternionF.Identity, QuaternionF.CreateFromAxisAngle(new Vector3F(1f, 0f, 0f), 0.02f * s) }, new Vector3D(0, 2.5, 3));

@@ -126,6 +126,16 @@ cannot reverse the current relative velocity in one step. Angular drag uses the
 implicit rate once per body. Buoyant torque is the moment arm cross lift.
 Spatial buoyancy fields reuse the existing clipped-volume buoyancy implementation.
 
+**Evaluation pose.** The force is applied once per step and held across the substeps, which would be explicit
+in position and feed energy into an undamped floating body (growth about 4% per period at 4 substeps).
+Both dimensions therefore cut the hull at the pose the substeps will have reached by the middle of the step:
+position advanced by `v * lead` and orientation by `omega * lead` (first order, renormalised), with
+`lead = dt * (n - 1) / (2n)` and `n = Substeps` (`n = 1` gives no lead). Islands on a shorter schedule are
+over-compensated, which only adds a little damping. An undamped box released at rest stays within its release
+amplitude plus 1% over 40 s. Saved state may hold a finite rotation that is not unit length; the plane normal is
+renormalised and a plane that cannot be formed cuts nothing. Torque and force have no magnitude limit (a large
+heavy spinner is valid); a non-finite result applies nothing.
+
 ## Explosions
 
 `Explode(center, impulse, radius, occluded=true)` visits dynamic bodies by slot.

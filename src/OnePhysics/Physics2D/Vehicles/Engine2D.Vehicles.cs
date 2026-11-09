@@ -41,6 +41,9 @@ internal sealed class VehicleState
     public int[] GroundShape = Array.Empty<int>();
     public float[] Torque = Array.Empty<float>(), Coef = Array.Empty<float>(), Compression = Array.Empty<float>(), Stop = Array.Empty<float>();
 
+    /// <summary>Torque a rider adds to each wheel for the coming step, N·m, and a per-wheel brake input that replaces the vehicle's (negative: none). Set again every step by their owner, so neither is saved.</summary>
+    public float[] ExtraTorque = Array.Empty<float>(), WheelBrake = Array.Empty<float>();
+
     public int Wheels => Def.Wheels.Length;
 
     public void Allocate()
@@ -62,6 +65,7 @@ internal sealed class VehicleState
         CastShapes = new Shape2D[n];
         for (int i = 0; i < n; i++) { CastShapes[i] = Shape2D.CreateCircle(new Vec2(0f, 0f), Def.Wheels[i].Radius); }
         GroundShape = new int[n]; Torque = new float[n]; Coef = new float[n]; Compression = new float[n]; Stop = new float[n];
+        ExtraTorque = new float[n]; WheelBrake = new float[n]; Array.Fill(WheelBrake, -1f);
     }
 
     public VehicleState CloneForFork()
@@ -74,6 +78,7 @@ internal sealed class VehicleState
         c.Curve = (float[])Curve.Clone(); c.Ratios = (float[])Ratios.Clone(); c.CastShapes = (Shape2D[])CastShapes.Clone();
         c.GroundShape = (int[])GroundShape.Clone(); c.Torque = (float[])Torque.Clone(); c.Coef = (float[])Coef.Clone();
         c.Compression = (float[])Compression.Clone(); c.Stop = (float[])Stop.Clone();
+        c.ExtraTorque = (float[])ExtraTorque.Clone(); c.WheelBrake = (float[])WheelBrake.Clone();
         c.Def = Def.Clone(); c.Track = Track?.Clone(); c.Bike = Bike?.Clone();
         return c;
     }
@@ -304,8 +309,11 @@ internal sealed partial class Engine2D
             float omega = s.Omega[i];
             float inv = 1f / wd.Inertia;
             // Wheel speed after the drive torque and the brakes; the tyre then acts on this speed (a split step that stays stable for any torque).
-            float ws = omega + h * s.Torque[i] * inv;
+            float driveTorque = s.Torque[i];
+            if (s.ExtraTorque[i] != 0f) { driveTorque += s.ExtraTorque[i]; }
+            float ws = omega + h * driveTorque * inv;
             float bi = s.Kind == VehicleKind.Tracked ? s.TrackBrake : brakeInput;
+            if (s.WheelBrake[i] >= 0f) { bi = s.WheelBrake[i]; }
             float brakeT = bi * wd.MaxBrakeTorque + s.Handbrake * wd.MaxHandbrakeTorque;
             if (brakeT > 0f)
             {

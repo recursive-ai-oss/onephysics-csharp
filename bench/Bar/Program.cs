@@ -27,8 +27,11 @@ public static class Program
             case "pulley-run": return PulleyRuns.Run(opts);
             case "fields-stability": return FieldStability.Run();
             case "soft2d-stability": return SoftStability2D.Run();
+            case "soft3d-timing": return SoftTiming3D.Run(args.Length > 1 ? int.Parse(args[1]) : 1);
             case "soft2d-timing": return SoftStability2D.Time(args.Length > 1 ? int.Parse(args[1]) : 1);
             case "vehicles2d-stability": return Vehicles2DStability.Run(opts);
+            case "railbike-stability": return RailBikeStability.Run(opts);
+            case "actuators-stability": return ActuatorStability.Run(opts);
             case "micro-boxbox": return MicroBoxBox.Run(opts);
             case "queries-indicative": return MixedQueryTiming.Run(opts);
             case "recording-indicative": return RecordingTiming.Run(opts);
