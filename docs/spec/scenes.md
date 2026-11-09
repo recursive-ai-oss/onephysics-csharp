@@ -118,6 +118,15 @@ The `character` record applies in 3D too: the last `body` must be a single y-ali
 | `soft-mesh-3d` | 1 (+20 soft) | 600 | the triangle-mesh terrain of `mesh-terrain-3d` with ten `jelly` cubes (0.6 m, 2.5 kg) and ten `rubber` cubes (0.5 m, 2 kg) dropped 1 to 1.6 m above its hills near the origin |
 | `soft-skinned-3d` | 3 (+1 soft) | 600 | a skinned `cloth` sleeve (`sleeve` kind: radius 0.1, length 1, 12 around x 11 rings, 0.5 kg) on a two-joint arm that swings (joint 0 about z by 0.5 x tri(step, 90), joint 1 about x by a further 0.9 x tri(step + 20, 70), tri a triangle wave from -1 to 1) above a floor, with a static sphere (radius 0.2) at (0.6, 0.9, 0) and a 0.15 m box (density 30) dropped on the top. The base ring is kinematic; the other rings may stray 0.06 m from their skinned position and keep out of a back-stop sphere of radius 0.04 centred 0.04 m behind it along the skinned normal. Only `onephysics` runs it |
 
+Two more 3D scenes are built in code (`tests/Common/SoftFracture3DScene.cs`, no reference engine, thresholds are ours) and measure surface contact and tearing:
+
+| scene | bodies | steps | content |
+|---|---|---|---|
+| `cloth-fold-3d` | 1 (+1 soft) | 600 | a 2.4 m `cloth` (24 x 24 cells, 1.5 kg, `SelfCollision`) stood on end (rotated 90 degrees about x) at y = 1.25 over a floor with a push of (0.6, 0, 0.3) m/s: it topples and crumples onto itself |
+| `tear-3d` | 1 (+2 soft, 2 kinematic) | 600 | a 1.6 x 1.2 m cloth (16 x 12 cells, 0.6 kg, `EdgeCompliance` 2e-4, `TearStrain` 0.2) hung by its top row with a kinematic sphere (radius 0.15) pushed through it at 1.2 m/s, and a 1.4 m jelly bar of tetrahedra (14 x 2 x 2 cells, 2 kg, `TearStrain` 0.15, `PlasticYield` 0.06) pinned at both ends with a kinematic sphere (radius 0.12) dragged down through its middle at 1 m/s; the spheres stop at step 240 |
+
+Metrics for these two: `maxSpeed` (any particle), `maxIntersections` (pairs of surface triangles of a body that cross each other, a segment of one through the other, pairs sharing a vertex excluded; counted every 10th step by `SoftFracture3DScene.TriangleIntersections`), `tears` (edges torn over the run), `asleep` (soft bodies asleep at the end), `escapes` and `nan`. Limits: `cloth-fold-3d` maxSpeed 20 (measured 11.1), maxIntersections 0 (0; 847 at the worst step without `SelfCollision`), all bodies asleep, escapes 0, nan 0; `tear-3d` maxSpeed 20 (13.2), tears at least 50 (253), all bodies asleep, escapes 0, nan 0. Measured x64, 1 thread.
+
 The first four list `onephysics` and `jitter2` as their engines; `soft-skinned-3d` lists `onephysics` only (no other engine skins soft bodies). Its extra metrics: `skinMaxDistance` (the largest amount by which a free particle is farther from its skinned position than 0.06 m, over the dumped frames after the first, against an independent double-precision skinning of the pose set before the frame's last step), `skinBackstop` (the largest amount by which a free particle is inside the back-stop sphere), `skinCuffError` (the largest distance of a kinematic particle from its skinned position). Thresholds: `soft-skinned-3d` softMaxSpeed 5, softPenetration 0.02, softFinalPenetration 0.005, edgeStrain 0.15 (1.5 x ours, 2.6 / 0.0118 / 0 / 0.077 on the development machine, rounded up), skinMaxDistance 1e-4, skinBackstop 1e-4, skinCuffError 1e-5 (the limits are hard; ours measure 3e-8, 7e-8 and 6e-9, float32 rounding). Jolt's rendered documentation describes skinned soft bodies but its driver is not written, so there is no reference row.
 
  Metrics (soft bodies; computed from the particle dump by `Metrics3Soft.cs`; the particle sphere radius is a quarter of the body's mean rest edge length for every engine):
@@ -143,6 +152,7 @@ Built in code by `tests/Common/SoftBodies2DScene.cs` from a seeded generator (no
 | scene | contents |
 |---|---|
 | `soft-pile-2d` | 120 bodies of five kinds (jelly box, rubber disc, balloon, shape-matching blob, rubber slab) dropped in a 15 x 8 loose grid into a walled 12 m yard |
+| `plastic-2d` | 24 plastic soft bodies (jelly slab 0.8 x 0.5, rubber disc, shape-matching blob; yield 0.04, creep 0.3, limit 0.4) dropped in columns of four into a walled 8 m yard |
 | `soft-rigid-2d` | a rigid pyramid of 15 boxes with a jelly box, a rubber disc and a balloon dropped on it; three jelly slabs under a rigid slab and box; four rigid circles dropped into the yard |
 | `balloon-2d` | a height-field valley (0.15 x^2 capped at 4 m, 41 samples 0.5 m apart) between two walls, nine balloons dropped in and a rigid slab (density 20) dropped on them |
 
@@ -154,7 +164,7 @@ Metrics: `maxSpeed` (any particle, any step), `maxPenetration` (largest amount b
 | `soft-rigid-2d` | 15 | 0.05 | 0.02 | 0.10 | 1.5 | 9.8 / 0.031 / 0.0002 / 0.031 / 0.035 |
 | `balloon-2d` | 20 | 0.06 | 0.02 | 0.05 | 1.0 | 12.2 / 0.038 / 0.0015 / 0.0003 / 0.10 |
 
-Thresholds are about 1.5 times the measured values (taken before the sweep-direction rule in `softbody.md`, which lowered `finalSpeed99`), rounded up. A symmetric drop of a balloon stays symmetric (the sum of angular momentum about its centre is under 0.05 after 100 steps, test `SymmetricBalloonDropStaysSymmetric`). In the 120-body pile 2 bodies are asleep at 600 steps, 10 at 1200 and 24 at 3600 (the mean of the bodies' fastest particle is about 0.11 m/s against a sleep threshold of 0.05): the particles of touching bodies are discs, so bodies are porous and keep working against each other. That is open; a full sleep is not a threshold.
+Thresholds are about 1.5 times the measured values (taken before the sweep-direction rule in `softbody.md`, which lowered `finalSpeed99`), rounded up. A symmetric drop of a balloon stays symmetric (the sum of angular momentum about its centre is under 0.05 after 100 steps, test `SymmetricBalloonDropStaysSymmetric`). With surface contacts and the net-speed sleep rule (`softbody.md`) all 120 bodies of the pile are asleep at 600 steps (2 before, 24 at 3600), and the deepest overlap of discs of different bodies is 0.0075 (0.093 before); the `soft-pile-2d` limits are tightened to maxOverlap 0.03 and finalSpeed99 0.5 (measured 18.4 / 0.049 / 0.0125 / 0.0075 / 0). `plastic-2d` (24 bodies: jelly slabs, rubber discs and shape-matching blobs with `PlasticYield` 0.04, creep 0.3, maximum 0.4, dropped in six columns of four into a 8 m yard) has limits 8 / 0.03 / 0.05 / 0.01 / 0.3 (measured 5.5 / 0.020 / 0 / 0.0024 / 0), all bodies asleep.
 
 ## Step-state dump
 
