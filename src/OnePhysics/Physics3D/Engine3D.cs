@@ -313,7 +313,7 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         int gid = AcquireGeom(recipe);
         var g = Geoms[gid]!;
-        if ((g.Soup != null || (g.IsConvex && g.Convex.Kind == ConvexShapeKind3D.Plane)) && type != BodyType.Static)
+        if ((g.IsStaticSoup || (g.IsConvex && g.Convex.Kind == ConvexShapeKind3D.Plane)) && type != BodyType.Static)
         {
             ReleaseGeom(gid);
             throw new StaticOnlyShapeException("Triangle meshes, height fields and infinite planes can only be attached to static bodies.");
@@ -617,7 +617,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         {
             if (!(Density[s] > 0f) || IsSensor(s)) { continue; }
             var g = Geoms[GeomOf[s]]!;
-            if (g.Soup != null || (g.IsConvex && g.Convex.Kind == ConvexShapeKind3D.Empty)) { continue; }
+            if (g.IsStaticSoup || (g.IsConvex && g.Convex.Kind == ConvexShapeKind3D.Empty)) { continue; }
             var m = g.UnitMass;
             if (g.Compound != null && m.Mass == 0f) { continue; }
             float d = Density[s];
@@ -1194,7 +1194,7 @@ internal sealed partial class Engine3D : ISnapshotSection
             if (!shapes.Handles.IsLive(s)) { continue; }
             int owner = shapes.Owner[s];
             if (!bodies.IsLive(owner) || !Bp.IsProxy(Proxy[s]) || Bp.GetUserId(Proxy[s]) != s) { return false; }
-            if ((Geoms[GeomOf[s]]!.Soup != null || (Geoms[GeomOf[s]]!.IsConvex && Geoms[GeomOf[s]]!.Convex.Kind == ConvexShapeKind3D.Plane)) && bodies.TypeOf(owner) != BodyType.Static) { return false; }
+            if ((Geoms[GeomOf[s]]!.IsStaticSoup || (Geoms[GeomOf[s]]!.IsConvex && Geoms[GeomOf[s]]!.Convex.Kind == ConvexShapeKind3D.Plane)) && bodies.TypeOf(owner) != BodyType.Static) { return false; }
         }
 
         for (int b = 0; b < bodies.HighWater; b++)

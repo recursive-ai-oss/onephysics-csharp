@@ -14,7 +14,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct ShapeSpec3D
 {
-    internal const byte KSphere = 1, KBox = 2, KCapsule = 3, KTapered = 4, KCylinder = 5, KHull = 6, KTaperedCylinder = 10, KTriangle = 11, KEmpty = 12, KMassOffset = 13, KPlane = 14, KVoxelGrid = 15;
+    internal const byte KSphere = 1, KBox = 2, KCapsule = 3, KTapered = 4, KCylinder = 5, KHull = 6, KTaperedCylinder = 10, KTriangle = 11, KEmpty = 12, KMassOffset = 13, KPlane = 14, KVoxelGrid = 15, KSdf = 16;
 
     private readonly byte[]? _recipe;
 
@@ -59,6 +59,17 @@ public readonly struct ShapeSpec3D
         var w = StateWriter.ToBuffer();
         w.NamedByte(KVoxelGrid); w.NamedInt32(sizeX); w.NamedInt32(sizeY); w.NamedInt32(sizeZ); w.NamedSingle(cellSize);
         foreach (bool solid in occupancy) w.NamedBool(solid);
+        return new ShapeSpec3D(w.ToArray());
+    }
+
+    /// <summary>A sampled signed distance field as a collision shape. Static, or on a dynamic body: its mass properties come from the region where the field is negative (see SdfGrid3D.ComputeMass), scaled by the shape's density. The field is copied into the recipe, so equal fields share one geometry; a world with a large field carries its samples in every snapshot.</summary>
+    public static ShapeSpec3D Sdf(SdfGrid3D grid)
+    {
+        ArgumentNullException.ThrowIfNull(grid);
+        var w = StateWriter.ToBuffer();
+        w.NamedByte(KSdf); w.NamedInt32(grid.SizeX); w.NamedInt32(grid.SizeY); w.NamedInt32(grid.SizeZ); w.NamedSingle(grid.CellSize);
+        w.NamedSingle(grid.Origin.X); w.NamedSingle(grid.Origin.Y); w.NamedSingle(grid.Origin.Z);
+        foreach (float v in grid.Samples) w.NamedSingle(v);
         return new ShapeSpec3D(w.ToArray());
     }
 
@@ -155,6 +166,9 @@ internal sealed partial class Geom3D
 
     public bool IsConvex => Kind == GeomKind.Convex;
 
+    /// <summary>A triangle soup that must stay on a static body: meshes, height fields and voxel grids (a signed distance field may move).</summary>
+    public bool IsStaticSoup => Soup != null && Soup is not SdfSoup3D;
+
     /// <summary>Builds the geometry from a recipe. Malformed numbers surface as the typed errors of the shape factories, or as <see cref="SnapshotFormatException"/> from the reader.</summary>
     public static Geom3D Build(byte[] recipe)
     {
@@ -229,6 +243,18 @@ internal sealed partial class Geom3D
             for (int i = 0; i < solid.Length; i++) solid[i] = r.ReadBool();
             var grid = new VoxelGrid3D(nx, ny, nz, solid, size);
             g.Soup = grid; g.LocalBounds = grid.Bounds;
+        }
+        else if (kind == ShapeSpec3D.KSdf)
+        {
+            g.Kind = GeomKind.Mesh;
+            int nx = r.ReadInt32(), ny = r.ReadInt32(), nz = r.ReadInt32(); float size = r.ReadSingle(); var origin = new Vector3F(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+            long count = (long)nx * ny * nz;
+            if (nx < 2 || nx > 512 || ny < 2 || ny > 512 || nz < 2 || nz > 512 || count > SdfGrid3D.MaxSamples || count > r.Remaining / 4) throw r.Error("invalid signed distance field dimensions or truncated samples");
+            var samples = new float[(int)count];
+            for (int i = 0; i < samples.Length; i++) samples[i] = r.ReadSingle();
+            var grid = new SdfGrid3D(nx, ny, nz, samples, size, origin);
+            var soup = new SdfSoup3D(grid);
+            g.Soup = soup; g.LocalBounds = grid.Bounds; g.UnitMass = grid.ComputeMass();
         }
         else if (kind == KHeightField)
         {
