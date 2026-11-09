@@ -71,19 +71,21 @@ internal sealed partial class FluidStore
     private FluidTaskBuf[] _tb = Array.Empty<FluidTaskBuf>();
     private int _taskCount;
 
+    // Each array is checked on its own: the persistent and scratch arrays are swapped after every sort and
+    // grow separately (particles are appended between sorts), so their lengths can differ.
+    private static void Fit<T>(ref T[] a, int n) { if (a.Length < n) { Array.Resize(ref a, Math.Max(n, a.Length * 2)); } }
+
     private void EnsureWork(int n)
     {
-        if (_x.Length >= n) { return; }
-        int c = Math.Max(n, _x.Length * 2);
-        Array.Resize(ref _x, c); Array.Resize(ref _y, c); Array.Resize(ref _z, c);
-        Array.Resize(ref _x0, c); Array.Resize(ref _y0, c); Array.Resize(ref _z0, c);
-        Array.Resize(ref _lam, c); Array.Resize(ref _rho, c);
-        Array.Resize(ref _dx, c); Array.Resize(ref _dy, c); Array.Resize(ref _dz, c);
-        Array.Resize(ref _nvx, c); Array.Resize(ref _nvy, c); Array.Resize(ref _nvz, c);
-        Array.Resize(ref _omx, c); Array.Resize(ref _omy, c); Array.Resize(ref _omz, c);
-        Array.Resize(ref _sId, c); Array.Resize(ref _sFluid, c);
-        Array.Resize(ref _order, c); Array.Resize(ref _cellOf, c);
-        Array.Resize(ref _nbrCount, c); Array.Resize(ref _cFirst, c); Array.Resize(ref _cCount, c);
+        Fit(ref _x, n); Fit(ref _y, n); Fit(ref _z, n);
+        Fit(ref _x0, n); Fit(ref _y0, n); Fit(ref _z0, n);
+        Fit(ref _lam, n); Fit(ref _rho, n);
+        Fit(ref _dx, n); Fit(ref _dy, n); Fit(ref _dz, n);
+        Fit(ref _nvx, n); Fit(ref _nvy, n); Fit(ref _nvz, n);
+        Fit(ref _omx, n); Fit(ref _omy, n); Fit(ref _omz, n);
+        Fit(ref _sId, n); Fit(ref _sFluid, n);
+        Fit(ref _order, n); Fit(ref _cellOf, n);
+        Fit(ref _nbrCount, n); Fit(ref _cFirst, n); Fit(ref _cCount, n);
     }
 
     // ------------------------------------------------------------------ grid
