@@ -23,6 +23,8 @@
     <Compile Include="../../tests/Common/ContactSurfaceScene.cs" LinkBase="Common" />
     <EmbeddedResource Include="../../testdata/replay/*.oppr" LogicalName="replay.%(Filename)" />
     <ProjectReference Include="../../src/OnePhysics/OnePhysics.csproj" />
+    <ProjectReference Include="../../src/OnePhysics.Tools/OnePhysics.Tools.csproj" />
+    <Compile Include="../../tests/Common/ToolsMeshes.cs;../../tests/Common/DecomposedPileScene.cs" LinkBase="Checks" />
     <!-- The batching experiment's simulation code (not its command-line program) is hashed here. -->
     <Compile Include="../../experiments/batching/Sim/*.cs" LinkBase="Batching" />
     <!-- Existing determinism checks and the shared scene definitions, linked from where they live. -->

@@ -70,6 +70,10 @@ ulong hash = world.ComputeHash();
 - **Handles you can hold.** `Body`, `Shape` and `Joint` are small structs; a destroyed one throws a `StaleHandleException` naming it.
 - **Hostile input is refused,** with typed errors that name the value and the limit.
 
+## Authoring tools
+
+`RecursiveAI.OnePhysics.Tools` is a separate package for work done at authoring or load time, never needed to run a world: approximate convex decomposition of triangle meshes into compounds of hulls, hull simplification with a measured error, mesh weld and clean (with non-manifold and hole reports), closed-mesh mass properties, convex decomposition of 2D polygons with holes, and sprite alpha masks to outlines and convex pieces. It depends on this package and follows the same determinism rules: the same input gives the same bits on every platform and at every thread count. See [the tool specification](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/spec/tools.md).
+
 ## Guide
 
 - [Install](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/install.md) and [quick start](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/quick-start.md)

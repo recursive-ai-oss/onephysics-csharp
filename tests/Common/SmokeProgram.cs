@@ -231,9 +231,11 @@ internal static class SmokeProgram
         Console.WriteLine((rods ? "OK rods " : "FAIL rods ") + rodHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool pulleys = PulleySmoke.Run(out ulong pulleyHash);
         Console.WriteLine((pulleys ? "OK pulleys " : "FAIL pulleys ") + pulleyHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        bool tools = ToolsSmoke.Run(out ulong toolsHash);
+        Console.WriteLine((tools ? "OK tools " : "FAIL tools ") + toolsHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool machines = JointMachineSmoke.Run();
         Console.WriteLine(machines ? "OK machines" : "FAIL machines");
-        return railBike && abilities && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
+        return tools && railBike && abilities && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
     }
 
     private static bool MissingShapes()

@@ -7,9 +7,11 @@
   </Configurations>
   <Folder Name="/src/">
     <Project Path="src/OnePhysics/OnePhysics.csproj" />
+    <Project Path="src/OnePhysics.Tools/OnePhysics.Tools.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OnePhysics.Tests/OnePhysics.Tests.csproj" />
+    <Project Path="tests/OnePhysics.Tools.Tests/OnePhysics.Tools.Tests.csproj" />
     <Project Path="tests/ReadmeExamples/ReadmeExamples.csproj" />
     <Project Path="tests/AotSmoke/AotSmoke.csproj" />
     <Project Path="tests/AotSnapshot2D/AotSnapshot2D.csproj" />
