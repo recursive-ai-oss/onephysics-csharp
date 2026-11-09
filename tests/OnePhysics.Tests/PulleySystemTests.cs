@@ -96,4 +96,43 @@ public sealed class PulleySystemTests(ITestOutputHelper helper)
         for(int i=0;i<60;i++){haul.ApplyForce(new(0,-f2));w.Step(Dt);}
         output.WriteLine($"pull: measured a={(load.LinearVelocity.Y-v0)/(60*Dt):F5} expected {a:F5}; hauling end speed {-haul.LinearVelocity.Y:F4} = {n} x load speed {n*load.LinearVelocity.Y:F4}");
     }
+
+    [Fact]
+    public void WinchLiftsAtRatedSpeedAndHoldsWithTheBrake()
+    {
+        var w=World2();const double r=.2,g=9.81;
+        var load=w.AddBox(new(.4f,.4f),at:new(-r,2),density:125);   // 20 kg
+        var winch=w.AddWinch(default,new(0,6),(float)r,P2.RopeEnd.On(load,default),drumInertia:.5f,maxTorque:100);
+        winch.SetMotor(0,-5,100);
+        double t0=winch.FreeLength(0);
+        for(int i=0;i<120;i++)w.Step(Dt);
+        double v=load.LinearVelocity.Y,rate=-5*r;
+        output.WriteLine($"lift: speed {v:F5} m/s (rated {-rate:F3}), free length {winch.FreeLength(0):F4} (was {t0:F4}), drum torque {winch.WheelTorque(0):F3} (load {load.Mass*g*r:F3}), tension {winch.Tension(0):F3}");
+        winch.SetMotor(0,0,0);winch.SetBrake(0,60);
+        double y0=load.Position.Y;double vmax=0;
+        for(int i=0;i<240;i++){w.Step(Dt);vmax=Math.Max(vmax,Math.Abs(load.LinearVelocity.Y));}
+        output.WriteLine($"hold with 60 N m brake (load needs {load.Mass*g*r:F2}): drift {load.Position.Y-y0:E3} m, max speed {vmax:E3}, brake torque {winch.DriveTorque(0):F3}");
+        winch.SetBrake(0,20);
+        for(int i=0;i<60;i++)w.Step(Dt);
+        output.WriteLine($"weak 20 N m brake: speed {load.LinearVelocity.Y:F3} m/s, expected a={(load.Mass*g*r-20)/(load.Mass*r*r+.5)*r:F3}, measured a={load.LinearVelocity.Y/(60*Dt):F3}");
+    }
+
+    [Fact]
+    public void ChainDriveRunsAtTheToothRatio()
+    {
+        var w=World2(0);
+        var ground=w.AddBox(new(1,1),at:new(0,-5),type:BodyType.Static);
+        double pitch=.02;int n1=20,n2=40;double r1=n1*pitch/(2*Math.PI),r2=n2*pitch/(2*Math.PI);
+        var a=w.AddCircle((float)r1,at:new(0,0),density:200);var b=w.AddCircle((float)r2,at:new(.5,0),density:200);
+        w.AddHinge(ground,a,new(0,0));w.AddHinge(ground,b,new(.5,0));
+        var chain=w.AddChainDrive([new P2.Sprocket(a,default,n1),new P2.Sprocket(b,default,n2)],(float)pitch);
+        output.WriteLine($"chain: spans {chain.SpanCount}, length {chain.TotalLength:F5} = {chain.TotalLength/pitch:F3} pitches, radii {r1:F5} {r2:F5}");
+        double maxErr=0;
+        for(int i=0;i<600;i++)
+        {
+            a.ApplyTorque(.05f);w.Step(Dt);
+            if(i>60){double e=Math.Abs(b.AngularVelocity*n2-a.AngularVelocity*n1)/Math.Abs(a.AngularVelocity*n1);maxErr=Math.Max(maxErr,e);}
+        }
+        output.WriteLine($"w1={a.AngularVelocity:F4} w2={b.AngularVelocity:F4} ratio error max={maxErr:E3}; tensions {chain.Tension(0):F3} {chain.Tension(1):F3}, angle ratio {b.Angle/a.Angle:F6}");
+    }
 }
