@@ -939,3 +939,86 @@ constraint ordering, manifold arithmetic, snapshot layout and physics hashes
 remain unchanged. All 21 three-dimensional stability scenes passed with the
 span experiment; the 23-world hash subset matched the original at one thread,
 eight threads and with AVX2 disabled.
+
+### Cross-pair convex batching experiment (2026-11-08, not retained)
+
+A hybrid narrowphase prototype grouped fresh convex pairs by ordered shape-kind
+pair, then by stable shape-pair key. It gathered each homogeneous batch into
+contiguous float32 component rows. Box face and edge SAT and sphere/capsule
+closest-segment tests ran across pairs using scalar, 128-bit and 256-bit twins;
+ambiguous or parallel segment cases retained the analytic leaf. Box clipping,
+box–capsule, sphere–polyhedron and general hull leaves remained scalar. This was
+**not** a fully wide GJK or clipping implementation.
+
+Two placements were tested: groups within each original 64-pair chunk, and
+world-wide groups cut into fixed 64-pair batches. The global version reserved one
+output slot per convex pair before dispatch and scattered each result to that
+slot. Matching and constraint application still visited the original pair order,
+so type grouping did not reorder warm starts, events or constraint colors. All
+buffers were rebuildable scratch; snapshot version 1 and payloads were unchanged.
+
+The global prototype's scalar and vector leaves agreed with the original
+manifolds. Tests covered tails of 0–64 pairs, each float offset within a 256-bit
+alignment, signed zero, subnormal and exceptional raw lanes, mixed-world widths,
+thread counts, snapshot/restore and forks. The 23-world manifest remained
+`c399045948bd52588cc1cc050db2c2f489f6c6e9fd2a61faf88e283685721224` on x64 JIT,
+eight threads, AVX2 disabled, AVX-512 disabled, hardware intrinsics disabled,
+NativeAOT, browser-WASM, and arm64 JIT/eight threads/NativeAOT. All 21 3D stability
+scenes passed at one thread. This establishes correctness for the tested hybrid,
+not a speed benefit.
+
+Temporary benchmark-owned clock callbacks measured actual fresh convex calls
+in the scene, including gather, scalar completion and scatter. No clock was read
+by production code. Arithmetic means over the measured steps, ns per fresh pair:
+
+| scene | fresh pairs/step | original leaf + emission | queue | gather + wide tests + scalar completion + scatter | collect + sort | prototype total |
+|---|---:|---:|---:|---:|---:|---:|
+| sleep-wake-3d | 1606.93 | 556.66 | 29.38 | 607.49 | 40.20 | 677.07 |
+| ragdoll-pile-3d | 770.96 | 352.72 | 29.39 | 339.57 | 40.08 | 409.04 |
+
+These regions exclude the unchanged shape-frame construction. Callback overhead
+is included, not subtracted: the prototype has more boundaries than the original.
+They are diagnostic costs, not an isolated kernel benchmark or a decomposition
+of median whole-step time. The ragdoll leaf region became slightly cheaper, but
+queueing and sorting more than consumed that gain.
+
+Three interleaved repetitions compared original, global hybrid and BepuPhysics
+2.5.0-beta.33 at default options. Tiering was disabled and both thread counts
+were pinned to logical CPUs 0–7. Processor: Ryzen 9 7950X3D, 32 logical CPUs;
+Linux Mint 22.3, SDK 10.0.403, runtime 10.0.14. The table is best per-run median:
+
+| scene | threads | original ms | global hybrid ms | reference ms |
+|---|---:|---:|---:|---:|
+| sleep-wake-3d | 1 | 2.75960 | 2.96435 | 1.12999 |
+| ragdoll-pile-3d | 1 | 2.04645 | 2.09432 | 0.91656 |
+| large-pile-3d | 1 | 6.54991 | 6.57471 | 6.65679 |
+| queries-3d | 1 | 7.85377 | 8.14653 | 6.58973 |
+| mesh-terrain-3d | 1 | 1.71870 | 1.73036 | 1.58227 |
+| sleep-wake-3d | 8 | 0.80683 | 0.90970 | 0.50000 |
+| ragdoll-pile-3d | 8 | 1.41994 | 0.84909 | 0.53251 |
+| large-pile-3d | 8 | 13.03615 | 6.93062 | 3.17137 |
+| queries-3d | 8 | 10.57602 | 4.67388 | 1.85717 |
+| mesh-terrain-3d | 8 | 0.83569 | 0.57850 | 0.52433 |
+
+**Indicative only.** The two prototype timing jobs overlapped, alongside other
+work. Load was about five initially, rose to 22.61, and ended at 17.68. In
+particular the eight-thread rows are heavily contended and cannot demonstrate an
+improvement: original ragdoll medians spanned 1.42–4.12 ms and original query
+medians 10.58–12.49 ms. One-thread sleep-wake regressed in every repetition for
+both local and global grouping. Peak RSS on the global one-thread headline rows
+was original/prototype/reference 85.0/88.3/52.7 MiB (sleep-wake) and
+81.2/83.3/53.8 MiB (ragdolls).
+
+A follow-up kept face tests wide but compacted only face-overlapping box pairs
+without a valid edge hint into the nine-axis edge test. At load 5.51 before,
+5.08 during and 5.00 after, three one-thread interleaved repetitions still gave
+original/prototype/reference 2.747/2.914/1.123 ms on sleep-wake and
+2.018/2.083/0.922 ms on ragdolls. Thus the headline misses remained about 2.60
+and 2.26 times the reference, not within 1.15. This follow-up was discarded too.
+
+No batching runtime code or temporary clock hooks are retained. These results
+reject the tested hybrids, not cross-pair SIMD in general: untouched scalar
+leaves and clipping remain a material limitation. A future fully wide design
+must price the queue, type partition, frame gather, divergent geometric cases,
+scalar completion and scatter together, and preserve cheap face rejection and
+edge-hint reuse rather than eagerly evaluating every edge axis.
