@@ -38,6 +38,7 @@ public static class ScaledShape3D
         bool sharp = shape.ConvexRadius == 0f;
         switch (shape.Kind)
         {
+            case ConvexShapeKind3D.Plane:
             case ConvexShapeKind3D.Empty:
                 return ScaleSupport3D.PerAxis;
             case ConvexShapeKind3D.Box:
@@ -97,7 +98,13 @@ public static class ScaledShape3D
 
         try
         {
-            return Build(shape, scale);
+            if (shape.Kind == ConvexShapeKind3D.Plane)
+            {
+                var n = shape.PlaneNormal;
+                var inverseNormal = new Vector3F(n.X / scale.X, n.Y / scale.Y, n.Z / scale.Z);
+                return ConvexShape3D.Plane(inverseNormal, shape.PlaneOffset);
+            }
+            return Build(shape, scale).WithCenterOfMassOffset(shape.CenterOfMassOffset * scale);
         }
         catch (ArgumentException e) when (e is ArgumentOutOfRangeException || e is HullBuildException)
         {

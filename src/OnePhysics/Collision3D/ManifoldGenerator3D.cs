@@ -88,6 +88,7 @@ public sealed partial class ManifoldGenerator3D
         ClearanceOut = 0f; ClearanceAxisOut = default;
         HintOut = default; // nothing to keep unless the polyhedron test sets it; a value left by the previous pair would depend on which thread ran it
         if (a.Kind == ConvexShapeKind3D.Empty || b.Kind == ConvexShapeKind3D.Empty) { return Empty; }
+        if (HalfSpace3D.HasPlane(a, b)) return PlaneManifold(a, b, bInA, speculativeDistance);
         ConvexShapeKind3D ka = a.Kind, kb = b.Kind;
         bool segA = IsSegmentLike(ka), segB = IsSegmentLike(kb);
         bool polyA = IsPoly(ka), polyB = IsPoly(kb);

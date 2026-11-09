@@ -90,6 +90,9 @@ public enum DebugShapeKind : byte
 
     /// <summary>No geometry or points; a placeholder shape.</summary>
     Empty = 12,
+
+    /// <summary>3D infinite half-space: a surface point and that point plus the outward unit normal. Solid is opposite the normal.</summary>
+    Plane = 13,
 }
 
 /// <summary>How a body takes part right now.</summary>

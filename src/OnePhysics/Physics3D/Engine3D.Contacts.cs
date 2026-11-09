@@ -677,6 +677,7 @@ internal sealed partial class Engine3D
         if (existingCons < 0 && _skip[p].Clear > 0f && StillApart(in _skip[p], qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))) { return; }
         // A touching convex pair that has barely moved reuses its manifold; this is tried before the shape frames are built, which the reuse does not need.
         if (RecycleManifolds && existingCons >= 0 && ga.Soup == null && gb.Soup == null && ga.IsConvex && gb.IsConvex
+            && !HalfSpace3D.HasPlane(ga.Convex, gb.Convex)
             && TryRecycle(sc, existingCons, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))))
         {
             _resCount[i] = 1;

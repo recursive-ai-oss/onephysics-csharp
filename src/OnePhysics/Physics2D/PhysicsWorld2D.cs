@@ -32,6 +32,7 @@ public sealed partial class PhysicsWorld2D
         _core.AddSection(_engine);
         BindBodyControlOptions();
         _core.AddSection(_engine.MachineSnapshotSection);
+        _core.AddSection(new ShapeMassOffsets2D(_engine));
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 

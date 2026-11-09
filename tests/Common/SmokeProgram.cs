@@ -109,6 +109,11 @@ internal static class SmokeProgram
         var b = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D();
         b.AddTriangle(new(-5,0,-5),new(0,0,5),new(5,0,-5));
         b.AddTaperedCylinder(0.5f,0.2f,0.4f,at:new(0,2,0));
+        b.AddPlane(V3F.UnitY,at:new(0,-3,0));
+        var ma=a.CreateBody(new RecursiveAI.OnePhysics.Physics2D.BodyDef { Position=new(10,2) });
+        a.CreateShape(ma,Shape2D.CreateCircle(default,0.3f).WithCenterOfMassOffset(new(0,-0.1f)));
+        var mb=b.CreateBody(new RecursiveAI.OnePhysics.Physics3D.BodyDef { Position=new(10,2,0) });
+        b.CreateShape(mb,RecursiveAI.OnePhysics.Physics3D.ShapeSpec3D.Sphere(0.3f).WithCenterOfMassOffset(new(0,-0.1f,0)));
         b.AddEmpty(at:new(5,4,0),mass:2,inertia:new V3F(3,4,5));
         var ca=a.Fork(); var cb=b.Fork();
         for(int i=0;i<60;i++)

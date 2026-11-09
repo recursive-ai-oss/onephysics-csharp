@@ -357,6 +357,16 @@ public partial class Broadphase<TBox> : ISnapshotSection where TBox : struct, IB
         return true;
     }
 
+    // Global-domain geometry, unlike finite geometry, keeps its proxy domain fixed when an origin shift occurs.
+    internal void ResetProxyBounds(int key, in TBox tight)
+    {
+        var tree = Resolve(key, out int node);
+        if (!tight.IsValid(out string reason)) throw new ArgumentOutOfRangeException(nameof(tight), reason);
+        var fat = tight.Fatten(MarginOf(key & 3), default, 0.0);
+        tree.MoveProxy(node, fat);
+        MarkMoved(tree, node, key);
+    }
+
     /// <summary>Moves every stored box by <c>-offset</c> in place after the world origin shifted; tree shapes, flags, refit counts and the move buffer are untouched.</summary>
     public void Translate(ReadOnlySpan<double> offset)
     {

@@ -123,6 +123,7 @@ public static class Gjk3D
     public static ConvexDistance3D Distance(in ConvexShape3D a, in ConvexShape3D b, in RigidTransformF bInA)
     {
         if (a.Kind == ConvexShapeKind3D.Empty || b.Kind == ConvexShapeKind3D.Empty) { return new ConvexDistance3D(float.PositiveInfinity, false, default, default, default, 0); }
+        if (HalfSpace3D.HasPlane(a, b)) return HalfSpace3D.Distance(a, b, bInA);
         var pair = new ConvexPair(a, b, bInA);
         Simplex s = default;
         Run(pair, ref s, out Vector3F v, out bool coresOverlap, out int iterations, out _);
@@ -251,6 +252,7 @@ public static class Gjk3D
             throw new ArgumentOutOfRangeException(nameof(motionOfA), motionOfA, $"motionOfA is {motionOfA}; finite components are expected.");
         }
 
+        if (HalfSpace3D.HasPlane(a, b)) return HalfSpace3D.Cast(a, b, bInA, motionOfA, out hit);
         var pair = new ConvexPair(a, b, bInA);
         float radii = pair.Radii;
         // A moving by m overlaps B when -m*t lies in D = A - B: a ray from the origin along r = -m against D inflated by the radii.
@@ -408,6 +410,7 @@ public static class Gjk3D
         double startFraction = 0.0;
         Vector3F castOrigin = origin;
         float castMax = maxFraction;
+        if (shape.Kind == ConvexShapeKind3D.Plane) return HalfSpace3D.Ray(shape, shapeInRay, origin, direction, maxFraction, out hit);
         Vector3F far = shapeInRay.Translation - origin;
         // A ray whose whole length is a hair (a denormal fraction, say) gives the cast no motion to measure against its tolerances, which are then coarser than the ray: it would report a hit on a shape
         // metres away. It takes the same bounds test.

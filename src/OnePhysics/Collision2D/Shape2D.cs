@@ -24,6 +24,7 @@ public struct Shape2D
     internal float _radius;
     internal byte _flags;
     internal Vec2 _centroid;
+    internal Vec2 _massOffset;
     internal Vec2 _ghost1;
     internal Vec2 _ghost2;
     internal Vec2x8 _v;
@@ -97,6 +98,22 @@ public struct Shape2D
 
     /// <summary>No geometry, area or inertia; rays and casts miss and contacts are empty. Unlike a zero-radius circle, this is not a point. Use body mass/inertia overrides for a physical placeholder.</summary>
     public static Shape2D Empty => new() { _kind = ShapeKind2D.Empty };
+
+    /// <summary>Offsets this shape's mass centre without moving any collision geometry. Offsets are metres, finite within ±2^20; inertia increases by area times squared offset. Nested offsets add. Zero-area shapes are unchanged.</summary>
+    /// <exception cref="InvalidShapeException">The offset or accumulated offset is not finite or exceeds ±2^20.</exception>
+    public readonly Shape2D WithCenterOfMassOffset(Vec2 offset)
+    {
+        CheckPoint(offset, nameof(offset));
+        if (MassData2D.Compute(in this).Area == 0) return this;
+        var copy = this;
+        var total = CenterOfMassOffset + offset;
+        CheckPoint(total, "accumulated offset");
+        copy._massOffset = total;
+        return copy;
+    }
+
+    /// <summary>Mass-centre offset in metres, zero by default. This does not move the vertices or geometric centroid.</summary>
+    public readonly Vec2 CenterOfMassOffset => _massOffset;
 
     // ---------------------------------------------------------------- factories
 

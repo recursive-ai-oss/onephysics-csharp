@@ -80,6 +80,7 @@ public sealed class Epa3D
     public ConvexContact3D Collide(in ConvexShape3D a, in ConvexShape3D b, in RigidTransformF bInA)
     {
         if (a.Kind == ConvexShapeKind3D.Empty || b.Kind == ConvexShapeKind3D.Empty) { return new ConvexContact3D(float.PositiveInfinity, default, default, default); }
+        if (HalfSpace3D.HasPlane(a, b)) return HalfSpace3D.Contact(a, b, bInA);
         var pair = new ConvexPair(a, b, bInA);
         Simplex s = default;
         Gjk3D.Run(pair, ref s, out Vector3F v, out bool coresOverlap, out _, out float scale2);

@@ -14,7 +14,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct ShapeSpec3D
 {
-    internal const byte KSphere = 1, KBox = 2, KCapsule = 3, KTapered = 4, KCylinder = 5, KHull = 6, KTaperedCylinder = 10, KTriangle = 11, KEmpty = 12;
+    internal const byte KSphere = 1, KBox = 2, KCapsule = 3, KTapered = 4, KCylinder = 5, KHull = 6, KTaperedCylinder = 10, KTriangle = 11, KEmpty = 12, KMassOffset = 13, KPlane = 14;
 
     private readonly byte[]? _recipe;
 
@@ -29,6 +29,28 @@ public readonly struct ShapeSpec3D
         foreach (float f in v) { w.NamedSingle(f); }
         return new ShapeSpec3D(w.ToArray());
     }
+
+    /// <summary>An infinite static half-space dot(normal, point) ≤ offset. Normal is normalized on attachment; offset is metres. Throws ArgumentOutOfRangeException on attachment for invalid normal/offset, or StaticOnlyShapeException on a non-static body.</summary>
+    public static ShapeSpec3D Plane(Vector3F normal, float offset = 0f) => Make(KPlane, normal.X, normal.Y, normal.Z, offset);
+
+    /// <summary>Offsets mass centre without moving geometry, in metres within ±2^21. Inertia uses the parallel-axis theorem. Works on convex, compound, mesh and height-field recipes. Nested offsets add, at most 16 decorators; validation occurs on attachment.</summary>
+    public ShapeSpec3D WithCenterOfMassOffset(Vector3F offset)
+    {
+        ConvexShape3D.CheckOffset(offset);
+        var w = StateWriter.ToBuffer();
+        w.NamedByte(KMassOffset); w.NamedSingle(offset.X); w.NamedSingle(offset.Y); w.NamedSingle(offset.Z);
+        w.NamedBytes(Recipe);
+        return new ShapeSpec3D(w.ToArray());
+    }
+
+    /// <summary>A compound of convex parts; plane children are rejected. Parts and transforms are validated on attachment.</summary>
+    public static ShapeSpec3D Compound(ReadOnlySpan<CompoundPart> parts) => new(Geom3D.CompoundRecipe(parts));
+
+    /// <summary>A static triangle mesh. Vertices, indices and nonnegative flat tolerance are validated on attachment.</summary>
+    public static ShapeSpec3D Mesh(ReadOnlySpan<Vector3F> vertices, ReadOnlySpan<int> indices, double flatTolerance = 0.01) => new(Geom3D.MeshRecipe(vertices, indices, flatTolerance));
+
+    /// <summary>A static sampled height field. Heights, scale, sample counts and optional cell holes are validated on attachment.</summary>
+    public static ShapeSpec3D HeightField(ReadOnlySpan<float> heights, int nx, int nz, Vector3F scale, ReadOnlySpan<bool> holes = default, double flatTolerance = 0.01) => new(Geom3D.HeightFieldRecipe(heights, nx, nz, scale, holes, flatTolerance));
 
     /// <summary>No collision geometry or mass contribution, even when used as a sensor. Use body mass/inertia overrides for a physical placeholder.</summary>
     public static ShapeSpec3D Empty => Make(KEmpty);
@@ -129,10 +151,11 @@ internal sealed partial class Geom3D
         var r = new StateReader(recipe);
         var g = new Geom3D { Recipe = recipe };
         byte kind = r.ReadByte();
-        if (kind >= ShapeSpec3D.KSphere && kind <= ShapeSpec3D.KHull || kind == ShapeSpec3D.KTaperedCylinder || kind == ShapeSpec3D.KTriangle || kind == ShapeSpec3D.KEmpty)
+        var offset = ReadOffsets(r, ref kind);
+        if (kind >= ShapeSpec3D.KSphere && kind <= ShapeSpec3D.KHull || kind == ShapeSpec3D.KTaperedCylinder || kind == ShapeSpec3D.KTriangle || kind == ShapeSpec3D.KEmpty || kind == ShapeSpec3D.KPlane)
         {
             g.Kind = GeomKind.Convex;
-            g.Convex = ReadConvex(r, kind);
+            g.Convex = ReadConvex(r, kind).WithCenterOfMassOffset(offset);
             g.UnitMass = g.Convex.GetMassProperties();
             switch (g.Convex.Kind)
             {
@@ -216,15 +239,47 @@ internal sealed partial class Geom3D
             throw r.Error("unknown shape kind " + kind.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
+        if (!g.IsConvex && (offset.X != 0 || offset.Y != 0 || offset.Z != 0))
+        {
+            var m = g.UnitMass;
+            g.UnitMass = new MassPropertiesF(m.Mass, m.Center + offset, InertiaF.ShiftToPoint(m.Inertia, m.Mass, offset));
+        }
         if (r.Remaining != 0) { throw r.Error("trailing bytes in a shape recipe"); }
         return g;
     }
 
     /// <summary>Reads the numbers of one convex shape (after its kind byte).</summary>
+    private static Vector3F ReadOffsets(StateReader r, ref byte kind)
+    {
+        var offset = default(Vector3F);
+        int depth = 0;
+        while (kind == ShapeSpec3D.KMassOffset)
+        {
+            if (++depth > 16) throw r.Error("more than 16 mass-centre decorators");
+            var next = new Vector3F(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+            ConvexShape3D.CheckOffset(next);
+            offset += next;
+            ConvexShape3D.CheckOffset(offset);
+            kind = r.ReadByte();
+        }
+        return offset;
+    }
+
     public static ConvexShape3D ReadConvex(StateReader r, byte kind)
+    {
+        var offset = ReadOffsets(r, ref kind);
+        return ReadConvexGeometry(r, kind).WithCenterOfMassOffset(offset);
+    }
+
+    private static ConvexShape3D ReadConvexGeometry(StateReader r, byte kind)
     {
         switch (kind)
         {
+            case ShapeSpec3D.KPlane:
+            {
+                var normal = new Vector3F(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+                return ConvexShape3D.Plane(normal, r.ReadSingle());
+            }
             case ShapeSpec3D.KEmpty: return ConvexShape3D.Empty;
             case ShapeSpec3D.KSphere: return ConvexShape3D.Sphere(r.ReadSingle());
             case ShapeSpec3D.KBox:

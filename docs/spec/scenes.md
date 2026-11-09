@@ -392,3 +392,26 @@ an exact-state interchange extension understood by this library and viewers
 using it; reference benchmark drivers continue to consume version 1 authoring
 records. A viewer can load either form and inspect the resulting world without
 reflecting over scene or world types.
+
+### Additional authoring shape records
+
+The public scene v1 reader also accepts these additive shape kinds. The existing
+`shape kind material density radius parameters...` prefix is unchanged:
+
+- Both dimensions: `empty`, no parameters.
+- 3D `plane`: normal xyz, offset; static bodies only. The normal is normalized
+  with its offset, as in the collision specification.
+- 3D `triangle`: three xyz vertices; the radius field is spherical inflation.
+  Unit area density sets mass; inflation does not affect it.
+- 3D `frustum`: half height, top radius, bottom radius; radius field unused.
+- 2D `heightfield`: sample count n, spacing, n heights, n-1 hole flags (0 or 1).
+  Samples start at body-local x=0; translate the body to place the field.
+- `offset-<kind>`: the underlying kind's ordinary parameters followed by two
+  (2D) or three (3D) local mass-centre offset components. One prefix is accepted
+  in authoring text; arbitrary nested API decorators are preserved by exact-state
+  scene v2 instead. Zero-area 2D kinds ignore the validated offset.
+
+These records build through the same validated geometry constructors as the world
+APIs. A scene using them is a public-library authoring scene; reference-engine
+benchmark drivers need not accept these extension kinds. Existing benchmark
+records, scene generation and their checksums are unchanged.

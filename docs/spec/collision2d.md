@@ -90,3 +90,30 @@ other geometry. They are not zero-radius circles (points). World queries
 exclude them. Debug kind 12 carries no points. `AddEmpty` supplies explicit
 body mass and inertia overrides, unit values by default, so a placeholder
 still integrates and can participate in joints without collision geometry.
+
+### Per-shape mass-centre offsets
+
+`Shape2D.WithCenterOfMassOffset(o)` leaves vertices, normals, ghost vertices,
+geometric centroid, bounds, contact ids and all query answers unchanged.
+Offsets are finite local metres within ±2^20; nested offsets add and validate the
+sum. Given unit-density area A, centroid c and polar inertia J at c, the decorated
+mass properties are `(A, c+o, J + A*dot(o,o))`. Multi-shape bodies combine these
+per-shape mass properties before applying any body-wide override. Zero-area shapes
+(segments, chains, empty shapes) are unchanged. `PhysicsWorld2D.CreateShape`
+attaches validated geometry with or without an offset; it rejects default
+geometry (use `Shape2D.Empty` for a placeholder).
+
+The fixed-size v1 geometry record is unchanged. An optional registered section
+`0x324D4F43` carries the offsets: int32 version 1, int32 nonzero-entry count,
+then ordered entries `(int32 live shape slot, float32 x, float32 y)`. Only live
+positive-area shapes with nonzero offsets occur. All fields are little-endian;
+slots strictly increase, components are finite and bounded. An absent section
+clears offsets. The world hash includes this section only when nonempty; worlds
+without offsets retain their existing snapshot bytes and hashes. Restore, fork,
+exact-state scene v2 and replay preserve it.
+
+`AddWithCenterOfMassOffset(geometry, offset, ...)` is the single-body convenience
+form: it returns a body with one decorated shape. Defaults match other single-
+shape helpers (dynamic, unit density, default material, zero pose). The 3D world
+exposes the same helper over `ShapeSpec3D`; `CreateShape` attaches decorated
+geometry to an existing body on either dimension's definition-level surface.

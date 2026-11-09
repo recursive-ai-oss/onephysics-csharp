@@ -10,6 +10,36 @@ internal static class MissingShapeScenarios
     [ModuleInitializer]
     internal static void Init()
     {
+        Scenarios.Register("world2d/mass-offset", ctx =>
+        {
+            var w = new P2.PhysicsWorld2D(new() { WorldId = 995, ThreadCount = ctx.Threads });
+            w.AddBox(new(20,1),at:new(0,-0.5),type:BodyType.Static);
+            var body=w.CreateBody(new P2.BodyDef { Position=new(0,2) });
+            w.CreateShape(body,Shape2D.CreateCircle(default,0.5f).WithCenterOfMassOffset(new(0,-0.2f)));
+            w.CreateCircle(body,0.3f,new(1,0));
+            for(int i=0;i<180;i++)
+            {
+                w.Step(1f/60);
+                if(i==90){var bytes=w.Snapshot();w.Restore(bytes);if(!bytes.AsSpan().SequenceEqual(w.Snapshot()))throw new InvalidOperationException("Mass-offset restore differs.");}
+                ctx.Write((long)w.ComputeHash());ctx.EndStep();
+            }
+        });
+        Scenarios.Register("world3d/plane-mass-offset", ctx =>
+        {
+            var w = new P3.PhysicsWorld3D(new() { WorldId = 996, ThreadCount = ctx.Threads });
+            w.AddPlane(RecursiveAI.OneMath.Vector3F.UnitY);
+            var body=w.CreateBody(new P3.BodyDef { Position=new(0,2,0) });
+            w.CreateShape(body,P3.ShapeSpec3D.Box(new(1,1,1)).WithCenterOfMassOffset(new(0,-0.2f,0)));
+            w.CreateSphere(body,0.3f,new P3.ShapeDef { LocalPosition=new(1,0,0) });
+            w.AddTaperedCylinder(0.4f,0.2f,0.3f,at:new(3,2,0));
+            for(int i=0;i<180;i++)
+            {
+                if(i==60) w.ShiftOrigin(new(1024,0,0));
+                w.Step(1f/60);
+                if(i==90){var bytes=w.Snapshot();w.Restore(bytes);if(!bytes.AsSpan().SequenceEqual(w.Snapshot()))throw new InvalidOperationException("Plane restore differs.");}
+                ctx.Write((long)w.ComputeHash());ctx.EndStep();
+            }
+        });
         Scenarios.Register("world2d/heightfield", ctx =>
         {
             var w = new P2.PhysicsWorld2D(new() { WorldId = 993, ThreadCount = ctx.Threads });

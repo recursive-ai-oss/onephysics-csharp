@@ -250,6 +250,7 @@ public abstract class CompoundShape3D
     {
         PlacedShape3D p = c.Placed;
         ConvexShape3D s = p.Shape;
+        if (s.Kind == ConvexShapeKind3D.Plane) throw new ShapeCompositionException(ShapeCompositionError.InvalidShape, "An infinite plane cannot be a compound child.");
         if (s.Kind == ConvexShapeKind3D.Sphere && s.ConvexRadius == 0f)
         {
             throw new ShapeCompositionException(ShapeCompositionError.InvalidShape, $"{what} has the zero-size point shape (or is a default value); a sphere, box, capsule, cylinder or hull is expected.", what);
@@ -620,6 +621,7 @@ public abstract class CompoundShape3D
     /// <exception cref="ShapeCompositionException">An argument is unusable.</exception>
     public bool ShapeCast(in ConvexShape3D shape, in RigidTransformF shapeInCompound, Vector3F motion, out CompoundCastHit3D hit)
     {
+        if (shape.Kind == ConvexShapeKind3D.Plane) throw new ShapeCompositionException(ShapeCompositionError.InvalidShape, "An infinite plane cannot be a compound child.");
         if (shape.Kind == ConvexShapeKind3D.Sphere && shape.ConvexRadius == 0f)
         {
             throw new ShapeCompositionException(ShapeCompositionError.InvalidShape, "shape is the zero-size point shape; use RayCast for a point.", nameof(shape));

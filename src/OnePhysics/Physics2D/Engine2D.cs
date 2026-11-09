@@ -715,6 +715,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         r.ReadSingles(dp.AsSpan(0, 2 * nb), true, "displacements");
 
         int ns = r.ReadCount(1, "2D shapes");
+        RestoredShapeCount = ns;
         if (ns > 1 << 22) { throw r.Error("too many 2D shapes"); }
         var geom = Fit(ref _sGeom, ns); var proxy = Fit(ref _sProxy, ns); var fr = Fit(ref _sFr, ns); var re = Fit(ref _sRe, ns); var ro = Fit(ref _sRo, ns); var de = Fit(ref _sDe, ns);
         var cat = Fit(ref _sCat, ns); var mask = Fit(ref _sMask, ns); var grp = Fit(ref _sGrp, ns); var next = Fit(ref _sNext, ns); var live = Fit(ref _sLive, ns);
@@ -831,6 +832,8 @@ internal sealed partial class Engine2D : ISnapshotSection
     private int[] _sHead = new int[8], _sTail = new int[8], _sProxy = new int[8], _sGrp = new int[8], _sNext = new int[8], _sPa = new int[8], _sPb = new int[8], _sPc = new int[8], _sFree = new int[8];
     private Shape2D[] _sGeom = new Shape2D[8];
     private uint[] _sCat = new uint[8], _sMask = new uint[8];
+    internal int RestoredShapeCount { get; private set; }
+    internal bool RestoredShapeIsLive(int s) => s >= 0 && s < RestoredShapeCount && _sLive[s];
     private bool[] _sLive = new bool[8], _sPl = new bool[8];
     private JointData2D[] _sJoints = new JointData2D[16];
 
