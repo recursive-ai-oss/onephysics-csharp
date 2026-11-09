@@ -198,3 +198,11 @@ without a table, otherwise width*height. The segment count/handles follow.
 Readers accept both versions and reject version 2 with no extra state. Core
 snapshot format v1 is unchanged. Material-bearing grids round-trip, fork and
 record exactly as ordinary grids.
+
+Character sweeps against one-sided chain segments validate each candidate
+hit using the ordinary ghost-aware chain contact routine at the swept capsule
+pose, with a 0.002 m speculative margin. A hit belonging to a neighbouring
+segment's Voronoi region is discarded. Convex sweeps alone see rounded segment
+endpoints even when ghost ownership excludes them; those phantom endpoints
+otherwise pin a character just before a ramp crest. Ordinary two-sided segment
+casts and the underlying convex distance algorithm are unchanged.

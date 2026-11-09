@@ -13,11 +13,13 @@ internal static class SmokeProgram
         var w=new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new(){WorldId=991,ThreadCount=threads});
         var terrain=w.AddTileGrid(3,1,[TileKind2D.Solid,TileKind2D.Solid,TileKind2D.Solid]);
         w.AddCircle(0.2f,new(1,3));
+        var character=w.AddCharacter(new(0.4,2.2));
         for(int i=0;i<60;i++)
         {
             if(i==20)w.SetTile(terrain,0,0,TileKind2D.SlopeUpRight);
+            character.MoveVelocity(new(0.2f,character.IsGrounded?0:-2),1f/60);
             w.Step(1f/60);
-            if(i==30 && restore) {var bytes=w.Snapshot();w=w.Fork();w.Restore(bytes);}
+            if(i==30 && restore) {var bytes=w.Snapshot();w=w.Fork();w.Restore(bytes);character=w.GetCharacter(new(w.Id,character.RawHandle.Index,character.RawHandle.Generation));}
         }
         return w.ComputeHash();
     }

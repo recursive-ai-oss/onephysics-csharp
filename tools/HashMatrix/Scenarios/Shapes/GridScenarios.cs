@@ -16,12 +16,14 @@ internal static class GridScenarios
             var terrain=w.AddTileGrid(6,2,[TileKind2D.Solid,TileKind2D.Solid,TileKind2D.Solid,TileKind2D.Solid,TileKind2D.Solid,TileKind2D.Solid,TileKind2D.Empty,TileKind2D.Empty,TileKind2D.SlopeUpRight,TileKind2D.Solid,TileKind2D.SlopeUpLeft,TileKind2D.Empty],materials:[new(0),new(1)],materialIndices:[0,0,0,1,1,1,0,0,0,1,1,1]);
             w.AddBox(new(0.7f,0.7f),new(1,4)); w.AddCircle(0.3f,new(4,5));
             w.AddHeightField([0,0,0],spacing:2,at:new(10,0),materials:[new(0),new(1)],materialIndices:[0,1]);w.AddCircle(0.3f,new(11,3));
+            var character=w.AddCharacter(new(0.4,2),new(){SlopeLimitRadians=0.87266463f});
             for(int step=0;step<180;step++)
             {
                 if(step==30)w.SetTile(terrain,3,1,TileKind2D.Empty);
-                if(step==60) { var bytes=w.Snapshot();w=w.Fork();w.Restore(bytes);terrain=w.GetBody(w.Core.HandleOfBody(0));ctx.Write(w.Snapshot()); }
+                if(step==60) { var bytes=w.Snapshot();w=w.Fork();w.Restore(bytes);terrain=w.GetBody(w.Core.HandleOfBody(0));character=w.GetCharacter(new(w.Id,character.RawHandle.Index,character.RawHandle.Generation));ctx.Write(w.Snapshot()); }
                 if(step==90){w.SetTiles(terrain,2,1,3,1,TileKind2D.HalfBottom);w.SetTileMaterials(terrain,[new(0.2f),new(0.8f)],[0,0,0,1,1,1,0,0,0,1,1,1]);}
                 if(step==120)w.ShiftOrigin(new(8,-4));
+                character.MoveVelocity(new(0.8f,character.IsGrounded?0:-2),1f/60);
                 w.Step(1f/60);ctx.Write((long)w.ComputeHash());ctx.EndStep();
             }
         });

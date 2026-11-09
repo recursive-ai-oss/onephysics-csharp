@@ -319,6 +319,22 @@ public sealed class GridShapeTests
     }
 
     [Fact]
+    public void CharacterCrossesTileRampWithinItsSlopeLimit()
+    {
+        var tiles=new TileKind2D[128];for(int i=0;i<64;i++)tiles[i]=TileKind2D.Solid;
+        tiles[88]=TileKind2D.SlopeUpRight;for(int i=25;i<29;i++)tiles[64+i]=TileKind2D.Solid;tiles[93]=TileKind2D.SlopeUpLeft;
+        var w=new P2.PhysicsWorld2D();w.AddTileGrid(64,2,tiles,0.5f);
+        var character=w.AddCharacter(new(1,1.5),new(){SlopeLimitRadians=0.87266463f});double highest=character.Position.Y;
+        for(int i=0;i<600;i++)
+        {
+            character.MoveVelocity(new(1.5f,character.IsGrounded?0:-2),1f/60);w.Step(1f/60);highest=Math.Max(highest,character.Position.Y);
+        }
+        Assert.InRange(highest,1.85,2.05);Assert.InRange(character.Position.Y,1.39,1.41);
+        Console.WriteLine(FormattableString.Invariant($"tile ramp progress={character.Position.X-1:R} finalHeight={character.Position.Y:R}"));
+        Assert.True(character.Position.X>13,$"Ramp traversal stopped at {character.Position}.");
+    }
+
+    [Fact]
     public void HostileGridInputsAreTyped()
     {
         Assert.Throws<ArgumentOutOfRangeException>(()=>new TileGrid2D(0,1,[]));
