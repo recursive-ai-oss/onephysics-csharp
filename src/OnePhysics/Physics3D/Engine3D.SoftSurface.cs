@@ -407,6 +407,7 @@ internal sealed partial class Engine3D
     // The motion of the step as a whole: the substeps' last velocity can swing back and forth around a position that barely moves, so rest is judged from the net displacement of the step,
     // smoothed over about ten steps. The mass-weighted mean square speed of the free particles.
     private const float SmoothK = 0.1f;
+    private const float MaxNetSpeed2 = 1e30f;
 
     private static void NetSpeed(SoftBodyData d, float invDt)
     {
@@ -420,6 +421,8 @@ internal sealed partial class Engine3D
         }
 
         float now = mass > 0.0 ? (float)(ke / mass) : 0f;
+        // A diverged body (a particle at infinity or not a number) reads as moving as fast as the format allows, so the value stays finite and a snapshot of it restores.
+        if (!(now <= MaxNetSpeed2)) { now = MaxNetSpeed2; }
         d.StepSpeed2 += (now - d.StepSpeed2) * SmoothK;
     }
 

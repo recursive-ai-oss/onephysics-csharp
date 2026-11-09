@@ -32,6 +32,7 @@ internal sealed partial class Engine2D
     private const float WakeK = 8f;
     // Weight of the latest step in the smoothed net speed that decides rest.
     private const float SmoothK = 0.1f;
+    private const float MaxNetSpeed2 = 1e30f;
     private int _pairSoftCount;        // the awake bodies, then the sleeping bodies touched by them (immovable obstacles for the step)
 
     private bool SoftTouch(SoftBodyData d, SoftBodyData o)
@@ -263,6 +264,8 @@ internal sealed partial class Engine2D
         }
 
         float now = mass > 0.0 ? (float)(ke / mass) : 0f;
+        // A diverged body (a particle at infinity or not a number) reads as moving as fast as the format allows, so the value stays finite and a snapshot of it restores.
+        if (!(now <= MaxNetSpeed2)) { now = MaxNetSpeed2; }
         d.StepSpeed2 += (now - d.StepSpeed2) * SmoothK;
     }
 
