@@ -27,7 +27,7 @@ public enum DebugContent
     /// <summary>One entry per body with its centre of mass, type, sleep state and island (<see cref="DebugGeometry.Bodies"/>).</summary>
     Bodies = 16,
 
-    /// <summary>One entry per joint (<see cref="DebugGeometry.Joints"/>); one per live joint, in constraint-slot order.</summary>
+    /// <summary>One entry per joint (<see cref="DebugGeometry.Joints"/>); one per live joint, in constraint-slot order. Also emits one <see cref="DebugGeometry.ActiveRagdolls"/> entry per active ragdoll.</summary>
     Joints = 32,
 
     /// <summary>One entry per character with its capsule, ground state and ground normal (<see cref="DebugGeometry.Characters"/>); worlds without characters emit none.</summary>
@@ -310,6 +310,54 @@ public readonly struct DebugBody
     public int Island { get; }
 }
 
+/// <summary>
+/// An active ragdoll's controller as plain data: its centre of mass, the capture point on the ground, the support box (bounding box of the grounded feet's soles) and, while a foot swings, the point it is aimed at.
+/// Emitted with <see cref="DebugContent.Joints"/>, in ragdoll slot order; 2D worlds fill X and Y (Z is 0).
+/// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
+public readonly struct DebugActiveRagdoll
+{
+    /// <summary>Creates an entry.</summary>
+    public DebugActiveRagdoll(int index, int generation, ActiveMode mode, GaitPhase phase, int groundedFeet, Vector3D centerOfMass, Vector3D capturePoint, Vector3D supportMin, Vector3D supportMax, bool hasLanding, Vector3D landing)
+    {
+        Index = index; Generation = generation; Mode = mode; Phase = phase; GroundedFeet = groundedFeet; CenterOfMass = centerOfMass; CapturePoint = capturePoint;
+        SupportMin = supportMin; SupportMax = supportMax; HasLanding = hasLanding; Landing = landing;
+    }
+
+    /// <summary>The ragdoll's slot index.</summary>
+    public int Index { get; }
+
+    /// <summary>The ragdoll's generation.</summary>
+    public int Generation { get; }
+
+    /// <summary>The controller mode.</summary>
+    public ActiveMode Mode { get; }
+
+    /// <summary>The gait's finite state.</summary>
+    public GaitPhase Phase { get; }
+
+    /// <summary>How many feet were on the ground.</summary>
+    public int GroundedFeet { get; }
+
+    /// <summary>Centre of mass of the whole figure.</summary>
+    public Vector3D CenterOfMass { get; }
+
+    /// <summary>The capture point (centre of mass plus velocity over the pendulum frequency), at ground height under the support.</summary>
+    public Vector3D CapturePoint { get; }
+
+    /// <summary>One corner of the support box (minimum along the figure's forward and left axes, in world x and z).</summary>
+    public Vector3D SupportMin { get; }
+
+    /// <summary>The opposite corner of the support box.</summary>
+    public Vector3D SupportMax { get; }
+
+    /// <summary>True while a foot swings and <see cref="Landing"/> holds where it is aimed.</summary>
+    public bool HasLanding { get; }
+
+    /// <summary>The swing foot's target on the ground (meaningful only with <see cref="HasLanding"/>).</summary>
+    public Vector3D Landing { get; }
+}
+
 /// <summary>A joint as two world anchors.</summary>
 public readonly struct DebugJoint
 {
@@ -498,6 +546,8 @@ public sealed partial class DebugGeometry
     private DebugContact[] _contacts = new DebugContact[16];
     private DebugBody[] _bodies = new DebugBody[16];
     private DebugJoint[] _joints = new DebugJoint[4];
+    private DebugActiveRagdoll[] _active = new DebugActiveRagdoll[2];
+    private int _nActive;
     private DebugCharacter[] _characters = new DebugCharacter[4];
     private DebugWheel[] _wheels = new DebugWheel[4];
     private DebugTrack[] _tracks = new DebugTrack[2];
@@ -532,6 +582,10 @@ public sealed partial class DebugGeometry
     /// <summary>Joints.</summary>
     public ReadOnlySpan<DebugJoint> Joints => _joints.AsSpan(0, _nJoints);
 
+    /// <summary>Active ragdolls' controller state (emitted with <see cref="DebugContent.Joints"/>).</summary>
+    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
+    public ReadOnlySpan<DebugActiveRagdoll> ActiveRagdolls => _active.AsSpan(0, _nActive);
+
     /// <summary>Characters, by character slot.</summary>
     public ReadOnlySpan<DebugCharacter> Characters => _characters.AsSpan(0, _nCharacters);
 
@@ -548,7 +602,7 @@ public sealed partial class DebugGeometry
     public ReadOnlySpan<DebugSoftBody> SoftBodies => _soft.AsSpan(0, _nSoft);
 
     /// <summary>Empties every list (capacity is kept).</summary>
-    public void Clear() { _nPulleySpans=0; _nPulleyWheels=0; _nAeroSurfaces=0; _nAeroForces=0; _nRodSegments=0; _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; _nTracks = _nRailContacts = 0; }
+    public void Clear() { _nActive = 0; _nPulleySpans=0; _nPulleyWheels=0; _nAeroSurfaces=0; _nAeroForces=0; _nRodSegments=0; _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; _nTracks = _nRailContacts = 0; }
 
     private static void Push<T>(ref T[] a, ref int n, in T v)
     {
@@ -594,4 +648,8 @@ public sealed partial class DebugGeometry
 
     /// <summary>Appends a joint entry.</summary>
     public void Add(in DebugJoint j) => Push(ref _joints, ref _nJoints, in j);
+
+    /// <summary>Appends an active ragdoll entry.</summary>
+    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
+    public void Add(in DebugActiveRagdoll a) => Push(ref _active, ref _nActive, in a);
 }

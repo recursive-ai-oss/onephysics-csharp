@@ -136,6 +136,33 @@ public class ActiveRagdoll3DTests
     }
 
     [Fact]
+    public void DebugGeometryCarriesTheControllersCentreCaptureSupportAndLanding()
+    {
+        var w = NewWorld(1, 93);
+        Floor(w);
+        var r = w.AddRagdoll(RagdollDef.Humanoid, new Vector3D(0, 0, 0));
+        r.EnableActive();
+        r.Stand();
+        Run(w, 90);
+        r.GetBody(1).ApplyImpulse(new Vector3F(0f, 0f, 40f));   // a push that makes the figure take a recovery step
+        var g = new RecursiveAI.OnePhysics.Debug.DebugGeometry();
+        bool sawLanding = false;
+        for (int i = 0; i < 120; i++)
+        {
+            w.Step(Dt);
+            w.GetDebugGeometry(RecursiveAI.OnePhysics.Debug.DebugContent.Joints, g);
+            Assert.Equal(1, g.ActiveRagdolls.Length);
+            var d = g.ActiveRagdolls[0];
+            Assert.True(double.IsFinite(d.CenterOfMass.Y) && d.GroundedFeet >= 0);
+            sawLanding |= d.HasLanding;
+        }
+
+        Assert.True(sawLanding, "a swing foot had a target");
+        w.GetDebugGeometry(RecursiveAI.OnePhysics.Debug.DebugContent.Shapes, g);
+        Assert.Equal(0, g.ActiveRagdolls.Length);
+    }
+
+    [Fact]
     public void SnapshotRestoreAndForkReplayTheSameHashes()
     {
         var w = NewWorld();

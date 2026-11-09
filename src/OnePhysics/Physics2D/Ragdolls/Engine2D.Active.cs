@@ -5,6 +5,7 @@ using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.Active;
 using RecursiveAI.OnePhysics.LowLevel;
+using RecursiveAI.OnePhysics.Debug;
 
 namespace RecursiveAI.OnePhysics.Physics2D;
 
@@ -27,6 +28,8 @@ internal sealed class ActiveState2D : ActiveCommon
     public float[] AnkleTorque = Array.Empty<float>();
     public bool[] TorqueMode = Array.Empty<bool>();
     public int SwingLeg = -1;                                // the leg the controller is swinging (0 or 1), or -1; not saved
+    public bool HasLanding;                                  // a foot swings and Landing is where it is aimed; not saved
+    public double LandX, LandY;
 
     public void Allocate(int parts)
     {
@@ -91,6 +94,19 @@ internal sealed partial class Engine2D
         else { ReleaseActiveDrives(r); }
         Actives[r] = a;
         return a;
+    }
+
+    internal void AddDebugActive(DebugGeometry g)
+    {
+        for (int r = 0; r < RagHandles.HighWater; r++)
+        {
+            if (!RagHandles.IsLive(r)) { continue; }
+            var a = ActiveOf(r);
+            if (a == null) { continue; }
+            var i = a.Info;
+            g.Add(new DebugActiveRagdoll(r, RagHandles.GenerationOf(r), i.Mode, i.Phase, i.GroundedFeet, new Vector3D(i.CenterOfMassX, i.CenterOfMassHeight, 0), new Vector3D(i.CapturePointX, 0, 0),
+                new Vector3D(i.SupportMinX, 0, 0), new Vector3D(i.SupportMaxX, 0, 0), a.HasLanding, new Vector3D(a.LandX, a.LandY, 0)));
+        }
     }
 
     internal void ReleaseActiveDrives(int r) { Actives[r]?.Driven.AsSpan().Clear(); }
@@ -469,6 +485,13 @@ internal sealed partial class Engine2D
             Own(a, sh, -lo.KneeFlex);
             Own(a, ft, lo.FootRho - a.PartRho[sh]);
             if (lo.AnkleTorque) { a.TorqueMode[ft] = true; a.AnkleTorque[ft] = lo.TorqueRho; }
+        }
+
+        a.HasLanding = a.SwingLeg >= 0;
+        if (a.HasLanding)
+        {
+            ref var st = ref (a.SwingLeg == 0 ? ref inp.Right : ref inp.Left);
+            a.LandX = px + st.AnkleF + a.Gait.PlaceF; a.LandY = py + st.GroundU;
         }
 
         a.Info = new ActiveRagdollInfo((ActiveMode)a.Mode, (GaitPhase)a.Gait.Phase, a.Gait.Steps, a.Gait.Time, (float)cx, (float)cy, 0f,

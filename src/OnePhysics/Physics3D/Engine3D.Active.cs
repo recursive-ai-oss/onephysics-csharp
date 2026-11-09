@@ -4,6 +4,7 @@ using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.Active;
 using RecursiveAI.OnePhysics.LowLevel;
+using RecursiveAI.OnePhysics.Debug;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 
@@ -22,6 +23,8 @@ internal sealed class ActiveState3D : ActiveCommon
     public bool[] Owned = Array.Empty<bool>(), TorqueMode = Array.Empty<bool>();
     public float[] ISub = Array.Empty<float>(), ILoad = Array.Empty<float>();
     public int SwingLeg = -1;
+    public bool HasLanding;
+    public double LandX, LandY, LandZ;
     public bool Stance0, Stance1;
     public Func<Shape, bool>? GroundFilter;
     public ActiveRagdollInfo Info;
@@ -69,6 +72,19 @@ internal sealed partial class Engine3D
     internal void DropActive(int r)
     {
         if (r < Actives.Length && Actives[r] != null) { Actives[r] = null; ActiveCount--; }
+    }
+
+    internal void AddDebugActive(DebugGeometry g)
+    {
+        for (int r = 0; r < RagHandles.HighWater; r++)
+        {
+            if (!RagHandles.IsLive(r)) { continue; }
+            var a = ActiveOf(r);
+            if (a == null) { continue; }
+            var i = a.Info;
+            g.Add(new DebugActiveRagdoll(r, RagHandles.GenerationOf(r), i.Mode, i.Phase, i.GroundedFeet, new Vector3D(i.CenterOfMassX, i.CenterOfMassHeight, i.CenterOfMassZ), new Vector3D(i.CapturePointX, 0, i.CapturePointZ),
+                new Vector3D(i.SupportMinX, 0, i.SupportMinZ), new Vector3D(i.SupportMaxX, 0, i.SupportMaxZ), a.HasLanding, new Vector3D(a.LandX, a.LandY, a.LandZ)));
+        }
     }
 
     internal ActiveState3D? ActiveOf(int r) => r < Actives.Length ? Actives[r] : null;
@@ -590,6 +606,13 @@ internal sealed partial class Engine3D
             }
 
             Own(a, ft, Normalized(a.Delta[sh].Conjugated() * TargetDelta(legYawQ, footRho, footPhi)));
+        }
+
+        a.HasLanding = a.SwingLeg >= 0;
+        if (a.HasLanding)
+        {
+            ref var st = ref (a.SwingLeg == 0 ? ref inp.Right : ref inp.Left);
+            a.LandX = px + (st.AnkleF + a.Gait.PlaceF) * fx + (st.AnkleL + a.Gait.PlaceL) * lx; a.LandZ = pz + (st.AnkleF + a.Gait.PlaceF) * fz + (st.AnkleL + a.Gait.PlaceL) * lz; a.LandY = py + st.GroundU;
         }
 
         a.Info = new ActiveRagdollInfo((ActiveMode)a.Mode, (GaitPhase)a.Gait.Phase, a.Gait.Steps, a.Gait.Time, (float)cx, (float)cy, (float)cz,
