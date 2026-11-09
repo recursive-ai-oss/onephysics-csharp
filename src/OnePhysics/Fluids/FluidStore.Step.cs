@@ -29,7 +29,7 @@ internal sealed partial class FluidStore
             _mass[f] = s.Mass; _invMass[f] = 1f / s.Mass; _n0[f] = s.N0;
             _visc[f] = d.Viscosity; _vort[f] = d.Vorticity; _tens[f] = d.TensileCorrection; _fric[f] = d.Friction;
             _maxSpeed[f] = d.MaxSpeed; _gscale[f] = d.GravityScale;
-            _epsA[f] = d.Relaxation / _spacing2;
+            _epsA[f] = d.Relaxation * s.GradNorm;
             if (d.Viscosity > 0f) { _anyVisc = true; }
             if (d.Vorticity > 0f) { _anyVort = true; }
         }

@@ -34,6 +34,9 @@ public readonly struct ParticleFluid
     /// <summary>Number of live particles of this fluid.</summary>
     public int ParticleCount => Resolve().CountOf(Index);
 
+    /// <summary>The SPH density of a particle in a rest lattice of this fluid, kg/m³: what <c>FluidDensityAt</c> reads inside the fluid at rest, a little under <see cref="ParticleFluidDef.RestDensity"/> because the kernel sum over a lattice is not exactly the continuous integral. The density constraint holds the fluid at this value.</summary>
+    public float RestSphDensity => Resolve().Fluids[Index]!.N0;
+
     /// <summary>Mass of one particle, kg (kg per metre of depth in a planar world).</summary>
     public float ParticleMass => Resolve().Fluids[Index]!.Mass;
 

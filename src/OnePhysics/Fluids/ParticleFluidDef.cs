@@ -39,8 +39,8 @@ public sealed class ParticleFluidDef
     /// <summary>Artificial pressure strength against clumping at the free surface (the tensile-instability correction); it also gives a little surface tension. Range 0 to 10. Default 0.05.</summary>
     public float TensileCorrection { get; set; } = 0.05f;
 
-    /// <summary>Constraint-force mixing: how soft the density constraint is, relative to 1/spacing². Larger is softer and more stable. Range 1e-6 to 100. Default 0.01.</summary>
-    public float Relaxation { get; set; } = 0.01f;
+    /// <summary>Constraint-force mixing: how soft the density constraint is, as a fraction of the squared gradient norm of the constraint in a rest lattice (so the same value means the same softness in 2D, 3D and at any spacing). Larger is softer and more stable. Range 1e-6 to 100. Default 0.03.</summary>
+    public float Relaxation { get; set; } = 0.03f;
 
     /// <summary>Friction coefficient against shapes (combined with the shape's friction by the geometric mean). Range 0 to 100. Default 0.1.</summary>
     public float Friction { get; set; } = 0.1f;

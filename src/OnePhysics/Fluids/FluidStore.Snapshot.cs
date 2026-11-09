@@ -262,7 +262,7 @@ internal sealed partial class FluidStore
         EmitterHandles = new HandleTable(); EmitterHandles.CopyFrom(s.EmitterHandles);
         DrainHandles = new HandleTable(); DrainHandles.CopyFrom(s.DrainHandles);
         Fluids = new FluidState?[s.Fluids.Length];
-        for (int i = 0; i < Fluids.Length; i++) { var f = s.Fluids[i]; if (f != null) { Fluids[i] = new FluidState { Def = f.Def.Clone(), Mass = f.Mass, N0 = f.N0, Count = f.Count }; } }
+        for (int i = 0; i < Fluids.Length; i++) { var f = s.Fluids[i]; if (f != null) { Fluids[i] = new FluidState { Def = f.Def.Clone(), Mass = f.Mass, N0 = f.N0, GradNorm = f.GradNorm, Count = f.Count }; } }
         Emitters = new EmitterState?[s.Emitters.Length];
         for (int i = 0; i < Emitters.Length; i++) { var e = s.Emitters[i]; if (e != null) { Emitters[i] = new EmitterState { Fluid = e.Fluid, FluidGen = e.FluidGen, Def = e.Def.Clone(), Phase = e.Phase, Emitted = e.Emitted }; } }
         Drains = new DrainState?[s.Drains.Length];

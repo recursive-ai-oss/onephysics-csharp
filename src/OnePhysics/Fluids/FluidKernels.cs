@@ -42,6 +42,33 @@ internal readonly struct FluidKernels
         return Poly6 * t * t * t;
     }
 
+    /// <summary>
+    /// The squared gradient norm of the density constraint of a particle in a rest lattice, sum over the neighbours of |m grad W / n0|^2 with the spiky gradient (the cross terms cancel by symmetry), in 1/m². It is the scale the constraint-force
+    /// mixing is measured against, so the same relaxation setting means the same softness in 2D and 3D and at any spacing.
+    /// </summary>
+    public double RestGradientNorm(float spacing, double mass, double n0)
+    {
+        double s = spacing, sum = 0.0;
+        int n = (int)(H / spacing) + 1;
+        double sp = Spiky;
+        for (int k = Dim == 3 ? -n : 0; k <= (Dim == 3 ? n : 0); k++)
+        {
+            for (int j = -n; j <= n; j++)
+            {
+                for (int i = -n; i <= n; i++)
+                {
+                    double r2 = ((double)i * i + (double)j * j + (double)k * k) * s * s;
+                    if (r2 == 0.0 || !(r2 < (double)H * H)) { continue; }
+                    double q = H - Math.Sqrt(r2);
+                    double g = sp * q * q * mass / n0;
+                    sum += g * g;
+                }
+            }
+        }
+
+        return sum;
+    }
+
     /// <summary>Sum of the poly6 weights of a cubic (square) lattice of the spacing around one of its points, itself included: the density a unit mass would see.</summary>
     public double LatticeSum(float spacing)
     {

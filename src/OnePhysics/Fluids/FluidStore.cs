@@ -64,6 +64,7 @@ internal sealed class FluidState
     public ParticleFluidDef Def = new();
     public float Mass;       // kg per particle
     public float N0;         // SPH density of a particle in a rest lattice, kg/m³ (m³ in 2D: kg/m²)
+    public float GradNorm;   // squared gradient norm of its density constraint in that lattice, 1/m²
     public int Count;        // live particles, derived
 }
 
@@ -173,6 +174,7 @@ internal sealed partial class FluidStore : ISnapshotSection
         var k = new FluidKernels(Dim, Spacing * KernelScale);
         s.Mass = s.Def.RestDensity * (Dim == 3 ? Spacing * Spacing * Spacing : Spacing * Spacing);
         s.N0 = (float)(s.Mass * k.LatticeSum(Spacing));
+        s.GradNorm = (float)k.RestGradientNorm(Spacing, s.Mass, s.N0);
     }
 
     internal void SetFluidDef(int i, ParticleFluidDef def)
