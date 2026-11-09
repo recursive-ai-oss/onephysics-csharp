@@ -34,6 +34,8 @@ internal static class TrackDefIo
             if (kind > (byte)TrackElementKind.Transition) { throw r.Error("unknown track element kind"); }
             els[i] = kind == 0 ? TrackElement.Straight(len) : kind == 1 ? TrackElement.Arc(len, 1f / k0) : TrackElement.Transition(len, k0, k1);
             if (kind == 1 && !(k0 != 0f)) { throw r.Error("an arc without curvature"); }
+            // The element is rebuilt from its kind, so the saved curvatures must be exactly what that kind writes (a straight's are zero, an arc's are equal and survive 1/(1/k)); otherwise the next save would differ.
+            if (BitConverter.SingleToInt32Bits(els[i].StartCurvature) != BitConverter.SingleToInt32Bits(k0) || BitConverter.SingleToInt32Bits(els[i].EndCurvature) != BitConverter.SingleToInt32Bits(k1)) { throw r.Error("a track element whose curvatures do not match its kind"); }
         }
 
         d.Elements = els;
