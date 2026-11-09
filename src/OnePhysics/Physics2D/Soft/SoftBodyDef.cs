@@ -151,6 +151,9 @@ public sealed class SoftBodyDef
     public float PlasticMax { get; set; } = 0.5f;
 
 
+    /// <summary>Fabric behaviour of a strip or membrane: direction-dependent stretch, strain limit and wind (see <see cref="StripParams"/>). Needs a triangle mesh. Default none.</summary>
+    public StripParams? Strip { get; set; }
+
     /// <summary>Indices of particles held where they are (infinite mass) until released; see <see cref="SoftBody.SetPinned"/>. Default none. Indices must be valid and are de-duplicated.</summary>
     public IReadOnlyList<int>? PinnedParticles { get; set; }
 
@@ -171,6 +174,7 @@ public sealed class SoftBodyDef
     {
         var c = (SoftBodyDef)MemberwiseClone();
         c.PinnedParticles = PinnedParticles == null ? null : new List<int>(PinnedParticles);
+        c.Strip = Strip?.Clone();
         return c;
     }
 
@@ -252,6 +256,12 @@ public sealed class SoftBodyDef
         if (InternalPressure != 0f && !Mesh.IsClosed)
         {
             throw new SoftBodyException(SoftBodyError.NotClosed, "SoftBodyDef.InternalPressure is " + InternalPressure.ToString("R", CultureInfo.InvariantCulture) + " but the mesh has no single closed outline.", nameof(InternalPressure));
+        }
+
+        if (Strip != null)
+        {
+            if (Mesh.TriangleCount == 0) { throw new SoftBodyException(SoftBodyError.InvalidDefinition, "SoftBodyDef.Strip is set on a mesh without triangles; a strip needs a triangle mesh.", nameof(Strip)); }
+            Strip.Validate();
         }
 
         if (PinnedParticles != null)

@@ -61,7 +61,7 @@ internal sealed partial class Engine3D
         s = w4 * dl; x[kd] += g4x * s; x[kd + 1] += g4y * s; x[kd + 2] += g4z * s;
     }
 
-    private const int ClothLimitSweeps = 2;
+    private const int ClothLimitSweeps = 4;
 
     // The limits of a cloth after a pass: edges and tethers are pulled back to their longest allowed length, by inverse-mass shares. Sweeps alternate direction with the pass number so no end of the cloth is always last.
     private static void ClothLimits(SoftBodyData d, int pass)

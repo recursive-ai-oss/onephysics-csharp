@@ -155,7 +155,12 @@ internal sealed partial class Engine2D
             if (k < _e._stStages) { _e.RunSoftTask(_e._stStart[k] + task, _h, ((stage / _perPass + _e._softSubstep) & 1) != 0); }
             else if (k == _e._stStages) { _e.SolveContactTask(task, _h, _invH); }
             else if (k == _e._stStages + 1) { _e.SolvePairs(); }
-            else { LimitTargets(_e._awakeSoft[_e._targetBody[task]]); }
+            else
+            {
+                var body = _e._awakeSoft[_e._targetBody[task]];
+                if (body.HasStripLimits) { StripLimits(body, stage / _perPass); }
+                if (body.HasTargets) { LimitTargets(body); }
+            }
         }
 
         // Implemented here so that the single-thread path does not box the struct to reach the interface's default.
@@ -178,7 +183,7 @@ internal sealed partial class Engine2D
         _targetCount = 0;
         for (int a = 0; a < _awakeSoftCount; a++)
         {
-            if (!_awakeSoft[a].HasTargets) { continue; }
+            if (!_awakeSoft[a].HasTargets && !_awakeSoft[a].HasStripLimits) { continue; }
             GrowTo(ref _targetBody, _targetCount + 1);
             _targetBody[_targetCount++] = a;
         }

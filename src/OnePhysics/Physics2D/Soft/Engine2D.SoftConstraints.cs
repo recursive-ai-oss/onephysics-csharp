@@ -18,7 +18,13 @@ internal sealed partial class Engine2D
         if (first == end) { return; }
         var def = d.Def;
         float alpha = def.EdgeCompliance / (h * h), gamma = def.EdgeDamping / h;
-        for (int e0 = first; e0 < end; e0++) { int e = reverse ? first + end - 1 - e0 : e0; XpbdDistance(d.X, d.XP, d.InvMass, d.SEdgeA[e], d.SEdgeB[e], d.SEdgeRest[e], alpha, gamma, ref d.Lambda[e]); }
+        var comp = d.SEdgeComp;
+        for (int e0 = first; e0 < end; e0++)
+        {
+            int e = reverse ? first + end - 1 - e0 : e0;
+            // A weave with its own compliance per thread direction has one per edge.
+            XpbdDistance(d.X, d.XP, d.InvMass, d.SEdgeA[e], d.SEdgeB[e], d.SEdgeRest[e], comp != null ? comp[e] / (h * h) : alpha, gamma, ref d.Lambda[e]);
+        }
     }
 
     private static void SolveBends(SoftBodyData d, int first, int end, float h, bool reverse)

@@ -145,7 +145,14 @@ internal sealed partial class Engine2D
 
     // Version 1 has no tearing, plasticity or surface switch and no net speed. Version 2 (always written) adds per body the new definition fields and the broken edges after the definition, the smoothed net speed after
     // the sleep time, and after the targets a flag for the rest values plasticity changed, followed by them.
-    private const int SoftSectionVersion = 2;
+    private const int SoftSectionVersion = 3;
+
+    // Version 3 adds, per body after the broken edges, a flag for strip settings and the settings themselves; it is written only while a body has them, so worlds without strips keep their bytes and hashes (version 2).
+    private bool AnyStrip()
+    {
+        for (int i = 0; i < SoftHandles.HighWater; i++) { if (SoftHandles.IsLive(i) && SoftData[i]!.Def.Strip != null) { return true; } }
+        return false;
+    }
     private SoftSection? _softSection;
 
     public ISnapshotSection SoftSnapshotSection => _softSection ??= new SoftSection(this);
@@ -179,7 +186,8 @@ internal sealed partial class Engine2D
     {
         // Version 2 carries the smoothed net speed that decides sleep, so every world with a soft body writes it.
         const bool v2 = true;
-        w.NamedInt32(SoftSectionVersion);
+        int wver = AnyStrip() ? 3 : 2;
+        w.NamedInt32(wver);
         w.NamedInt32(Opt.SoftSubsteps); w.NamedInt32(Opt.SoftIterations);
         w.DescribeTable("softbody");
         SoftHandles.Write(w);
@@ -210,6 +218,17 @@ internal sealed partial class Engine2D
                 w.NamedSingle(def.PlasticYield); w.NamedSingle(def.PlasticCreep); w.NamedSingle(def.PlasticMax);
                 w.NamedInt32(d.Broken.Length);
                 foreach (long k in d.Broken) { w.NamedInt64(k, "def.BrokenEdge"); }
+                if (wver >= 3)
+                {
+                    var st = def.Strip;
+                    w.NamedBool(st != null);
+                    if (st != null)
+                    {
+                        w.NamedSingle(st.AlongAxis.X); w.NamedSingle(st.AlongAxis.Y);
+                        w.NamedSingle(st.AlongCompliance); w.NamedSingle(st.AcrossCompliance); w.NamedSingle(st.ShearCompliance);
+                        w.NamedSingle(st.StrainLimit); w.NamedSingle(st.Drag); w.NamedSingle(st.LiftSlope);
+                    }
+                }
             }
 
             w.NamedBool(d.Asleep); w.NamedSingle(d.SleepTime);
@@ -228,7 +247,7 @@ internal sealed partial class Engine2D
     private void ReadSoft(StateReader r)
     {
         int version = r.ReadInt32();
-        if (version != 1 && version != SoftSectionVersion) { throw r.Error("unsupported 2D soft-body section version " + version.ToString(CultureInfo.InvariantCulture)); }
+        if (version < 1 || version > SoftSectionVersion) { throw r.Error("unsupported 2D soft-body section version " + version.ToString(CultureInfo.InvariantCulture)); }
         int substeps = r.ReadInt32(), iterations = r.ReadInt32();
         if (substeps < 1 || substeps > 64 || iterations < 1 || iterations > 32) { throw r.Error("invalid soft-body options"); }
         var handles = HandleTable.Read(r, "soft bodies");
@@ -277,6 +296,15 @@ internal sealed partial class Engine2D
                         int ea = (int)(key >> 20), eb = (int)(key & 0xFFFFF);
                         if (key < 0 || ea >= eb || eb >= nv || (k > 0 && key <= broken[k - 1])) { throw r.Error("invalid soft-body broken edge"); }
                         broken[k] = key;
+                    }
+
+                    if (version >= 3 && r.ReadBool())
+                    {
+                        def.Strip = new StripParams
+                        {
+                            AlongAxis = new Vector2F(r.ReadSingle(), r.ReadSingle()), AlongCompliance = r.ReadSingle(), AcrossCompliance = r.ReadSingle(), ShearCompliance = r.ReadSingle(),
+                            StrainLimit = r.ReadSingle(), Drag = r.ReadSingle(), LiftSlope = r.ReadSingle(),
+                        };
                     }
                 }
 

@@ -238,6 +238,7 @@ internal sealed partial class SoftBodyData
         ColourConstraints();
         BuildClusters();
         BuildSurface();
+        BuildStrip();
     }
 
     /// <summary>Particle <paramref name="i"/> is held by a target with maximum distance 0: kinematic, never collides.</summary>
