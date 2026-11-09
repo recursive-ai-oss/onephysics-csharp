@@ -102,9 +102,9 @@ potential energy across a single step (bodies added or cut between steps exclude
 | scene | maxSpeed | penetration | bodies | escapes | energy gain |
 |---|---|---|---|---|---|
 | `fracture-wall-3d` (48-cell bonded wall, projectiles at 35 m/s) | <= 55 | <= 0.55 | <= 400 | 0 | <= 0.02 |
-| `fracture-runtime-3d` (24 crates, depth 1, budget 300, freeze 120) | <= 25 | <= 0.95 | <= 500 | 0 | <= 0.02 |
+| `fracture-runtime-3d` (24 crates, depth 1, budget 300, freeze 120) | <= 25 | <= 0.05 | <= 500 | 0 | <= 0.02 |
 | `breakable-bridge-3d` (10-cell static bridge, anchored both ends, growing load until it collapses) | <= 5 | <= 0.7 | <= 100 | 0 | n/a |
 | `fracture-2d` (20 crates, depth 1) | <= 15 | <= 0.2 | <= 400 | 0 | <= 0.02 |
 | `slice-2d` (boxes cut in flight) | <= 15 | <= 0.2 | <= 200 | 0 | <= 0.06 |
 
-Thin shards spinning into the floor overlap it more than whole crates do (0.63 m against 0.22 m for plain crates in `fracture-runtime-3d`); that is the narrowphase on long thin hulls, not the fracture.
+`fracture-runtime-3d` once showed 0.63 m of penetration (0.95 was its threshold). It was the narrowphase, not the fracture: a fragment that sank into the floor had a manifold of one grazing point, because the clipped face contact missed its deepest corner, so nothing held it. With the deepest point of a deep overlap in the manifold (`collision3d.md`, deep overlaps) and contacts found ahead of fast impacts (`world3d.md`, fast pairs) the scene's deepest contact is 0.023 m (x64).

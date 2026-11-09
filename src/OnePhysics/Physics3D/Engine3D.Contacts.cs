@@ -205,6 +205,15 @@ internal sealed partial class Engine3D
                 if (_boxInside[s] != 0) { continue; }
                 int o = 6 * s;
                 var tight = new Aabb3D(_boxes[o], _boxes[o + 1], _boxes[o + 2], _boxes[o + 3], _boxes[o + 4], _boxes[o + 5]);
+                if (FastTravel(b, out double tx, out double ty, out double tz))
+                {
+                    // The stored box is made around the box grown by the body's travel on the side it moves towards, so the test above holds for the whole of the next step. It never shrinks the box and
+                    // stays far enough inside the range the broadphase accepts for the margin the broadphase adds.
+                    double lim = BoxLimits.MaxCoordinate - Opt.BroadphaseMargin - 1.0;
+                    tight = new Aabb3D(Math.Min(tight.MinX, Math.Max(-lim, tight.MinX - Math.Max(0.0, -tx))), Math.Min(tight.MinY, Math.Max(-lim, tight.MinY - Math.Max(0.0, -ty))), Math.Min(tight.MinZ, Math.Max(-lim, tight.MinZ - Math.Max(0.0, -tz))),
+                        Math.Max(tight.MaxX, Math.Min(lim, tight.MaxX + Math.Max(0.0, tx))), Math.Max(tight.MaxY, Math.Min(lim, tight.MaxY + Math.Max(0.0, ty))), Math.Max(tight.MaxZ, Math.Min(lim, tight.MaxZ + Math.Max(0.0, tz))));
+                }
+
                 Bp.MoveProxy(Proxy[s], tight, WorldCore.Grid(Dp[3 * b]), WorldCore.Grid(Dp[3 * b + 1]), WorldCore.Grid(Dp[3 * b + 2]));
             }
         }
@@ -497,7 +506,8 @@ internal sealed partial class Engine3D
             int lo = task * BodyInitChunk, hi = Math.Min(lo + BodyInitChunk, e._initCount);
             for (int b = lo; b < hi; b++)
             {
-                if (!bodies.IsLive(b)) { e._active[b] = 0; e._isSleeper[b] = 0; continue; }
+                if (!bodies.IsLive(b)) { e._active[b] = 0; e._isSleeper[b] = 0; e.ReachLinear[b] = 0f; e.ReachTurn[b] = 0f; e.ReachSum[b] = 0f; continue; }
+                e.SetReach(b);
                 e._active[b] = IsActive(bodies, b) ? (byte)1 : (byte)0;
                 e.StartPos[3 * b] = pos[3 * b]; e.StartPos[3 * b + 1] = pos[3 * b + 1]; e.StartPos[3 * b + 2] = pos[3 * b + 2];
                 for (int k = 0; k < 4; k++) { e.StartRot[4 * b + k] = rot[4 * b + k]; }
@@ -545,7 +555,15 @@ internal sealed partial class Engine3D
                     if (float.IsFinite(dp[b3]) && float.IsFinite(dp[b3 + 1]) && float.IsFinite(dp[b3 + 2]))
                     {
                         ref readonly var fat = ref e.Bp.FatBoundsOfLive(e.Proxy[s]);
-                        if (fat.MinX <= x0 && fat.MinY <= y0 && fat.MinZ <= z0 && z1 <= fat.MaxZ && y1 <= fat.MaxY && x1 <= fat.MaxX) { inside = 1; }
+                        // A body that can travel farther than the speculative distance in one step needs room in its stored box for that travel. Otherwise a body that has used up its slack since the box was
+                        // made can cross the last gap to a surface inside one step with no pair made for it yet, and meets the surface with no contact. Slow bodies keep the plain test.
+                        if (e.FastTravel(b, out double tx, out double ty, out double tz))
+                        {
+                            // Room for the travel on the side it moves towards.
+                            if (fat.MinX <= x0 - Math.Max(0.0, -tx) && fat.MinY <= y0 - Math.Max(0.0, -ty) && fat.MinZ <= z0 - Math.Max(0.0, -tz)
+                                && z1 + Math.Max(0.0, tz) <= fat.MaxZ && y1 + Math.Max(0.0, ty) <= fat.MaxY && x1 + Math.Max(0.0, tx) <= fat.MaxX) { inside = 1; }
+                        }
+                        else if (fat.MinX <= x0 && fat.MinY <= y0 && fat.MinZ <= z0 && z1 <= fat.MaxZ && y1 <= fat.MaxY && x1 <= fat.MaxX) { inside = 1; }
                     }
 
                     e._boxInside[s] = inside;
@@ -651,7 +669,73 @@ internal sealed partial class Engine3D
         public QuaternionF Rwa;
         public Vector3F ArmA;
         public Vector3F ComDiff;
+        // Set when the pair is searched beyond the fixed speculative distance: the bodies' velocities, the fixed distance and the step, for the per-point closing test in Emit.
+        public bool Approach;
+        public Vector3F VA, WA, VB, WB;
+        public float Spec, Dt;
     }
+
+    /// <summary>Fills <see cref="ReachLinear"/> and <see cref="ReachTurn"/> of a body from its velocities and the step (nothing for a static body, no swing for a kinematic one).</summary>
+    private void SetReach(int b)
+    {
+        var bodies = Core.Bodies;
+        var type = bodies.TypeOf(b);
+        float dt = Core.ContactStepDt, linear = 0f, turn = 0f;
+        if (type != BodyType.Static)
+        {
+            var v = bodies.LinearVelocityOf(b);
+            linear = float.Sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) * dt;
+            if (type == BodyType.Dynamic)
+            {
+                var w = bodies.AngularVelocityOf(b);
+                turn = float.Sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]) * MaxExtent[b] * dt;
+            }
+        }
+
+        ReachLinear[b] = linear; ReachTurn[b] = turn; ReachSum[b] = linear + turn;
+    }
+
+    /// <summary>
+    /// Whether a body's centre can travel more than four times the speculative distance in the coming step; then <paramref name="tx"/>, <paramref name="ty"/>, <paramref name="tz"/> are that travel (velocity
+    /// times the step). A NaN anywhere gives false: such a body is rejected elsewhere. The turn of a body is not part of this: a turning body's box changes every step anyway, and its swing into a
+    /// surface is continuous collision's.
+    /// </summary>
+    private bool FastTravel(int b, out double tx, out double ty, out double tz)
+    {
+        double dt = Core.ContactStepDt;
+        var bodies = Core.Bodies;
+        tx = ty = tz = 0.0;
+        if (bodies.TypeOf(b) == BodyType.Static) { return false; }
+        var v = bodies.LinearVelocityOf(b);
+        tx = v[0] * dt; ty = v[1] * dt; tz = v[2] * dt;
+        return Math.Sqrt((tx * tx) + (ty * ty) + (tz * tz)) > FastFactor * Opt.SpeculativeDistance;
+    }
+
+    /// <summary>
+    /// The distance up to which the narrowphase looks for contact points between two bodies. The fixed speculative distance covers slow approaches; a pair whose surfaces can close by more than twice
+    /// that in one step (a fast fall, or the far end of a long shape swinging in) is searched out to the closing distance, so a point that will meet the other surface during the step already has a
+    /// contact when the step starts, instead of being found after the shapes overlap (Catto, GDC 2013, continuous collision: a speculative contact has to reach as far as the motion of the step).
+    /// Which of the points found are kept is decided by each point's own closing speed (see <see cref="Emit"/>). Pairs that move slowly keep the fixed distance, so a settled world is untouched.
+    /// </summary>
+    private float PairSpeculativeDistance(int ba, int bb)
+    {
+        float spec = Opt.SpeculativeDistance;
+        // The two bodies' own reaches bound the closing distance, so a pair of slow bodies is settled without looking at the velocities.
+        if (!(ReachSum[ba] + ReachSum[bb] > (float)FastFactor * spec)) { return spec; }
+        var bodies = Core.Bodies;
+        if (bodies.TypeOf(ba) == BodyType.Dynamic && bodies.TypeOf(bb) == BodyType.Dynamic) { return spec; }
+        var va = bodies.LinearVelocityOf(ba); var vb = bodies.LinearVelocityOf(bb);
+        float dx = vb[0] - va[0], dy = vb[1] - va[1], dz = vb[2] - va[2];
+        // The swing of a turning body counts against a static or kinematic partner only; between two dynamic bodies the relative linear speed decides, so a tumbling pile is not searched farther.
+        float turn = (bodies.TypeOf(bb) != BodyType.Dynamic ? ReachTurn[ba] : 0f) + (bodies.TypeOf(ba) != BodyType.Dynamic ? ReachTurn[bb] : 0f);
+        float sweep = (float.Sqrt(dx * dx + dy * dy + dz * dz) * Core.ContactStepDt) + turn;
+        if (!(sweep > (float)FastFactor * spec)) { return spec; }
+        return sweep < MaxPairSpeculation ? sweep : MaxPairSpeculation;
+    }
+
+    private const float MaxPairSpeculation = 0.25f;
+    // A body counts as fast when it can travel or swing more than this many times the speculative distance in a step (about 4.8 m/s at 60 Hz with the default distance).
+    private const double FastFactor = 4.0;
 
     private void Collide(int i, NarrowScratch sc)
     {
@@ -662,10 +746,11 @@ internal sealed partial class Engine3D
         ref readonly Aabb3D fb = ref Bp.FatBoundsOfLive(Proxy[sb]);
         if (!Aabb3D.Overlaps(fa, fb)) { _resStatus[i] = 2; return; }
         _resStatus[i] = 1;
+        float pairSpec = PairSpeculativeDistance(Core.Shapes.Owner[sa], Core.Shapes.Owner[sb]);
         // Tight boxes (this step's for a shape that moved, the stored fat box for one that did not); the extra margin keeps the shortcut clear of rounding at the threshold.
         {
             const double Gap = 0.005;
-            double gap = Opt.SpeculativeDistance + Gap;
+            double gap = pairSpec + Gap;
             double a0, a1, a2, a3, a4, a5, b0, b1, b2, b3, b4, b5;
             if (_boxStamp[sa] == _stamp) { int o = 6 * sa; a0 = _boxes[o]; a1 = _boxes[o + 1]; a2 = _boxes[o + 2]; a3 = _boxes[o + 3]; a4 = _boxes[o + 4]; a5 = _boxes[o + 5]; }
             else { a0 = fa.MinX; a1 = fa.MinY; a2 = fa.MinZ; a3 = fa.MaxX; a4 = fa.MaxY; a5 = fa.MaxZ; }
@@ -686,23 +771,23 @@ internal sealed partial class Engine3D
         var qA = RotationOfBody(ba); var qB = RotationOfBody(bb);
         // A pair without a constraint whose last query proved the shapes apart stays empty until their relative motion has used up the margin by which they were apart.
         int existingCons = PairCons[p];
-        if (existingCons < 0 && _skip[p].Clear > 0f && StillApart(in _skip[p], qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))) { return; }
+        if (existingCons < 0 && _skip[p].Clear > 0f && StillApart(in _skip[p], qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]), _skip[p].Spec - pairSpec)) { return; }
         // A touching convex pair that has barely moved reuses its manifold; this is tried before the shape frames are built, which the reuse does not need.
         if (!ContactModifications.Refresh && RecycleManifolds && existingCons >= 0 && ga.Soup == null && gb.Soup == null && ga.IsConvex && gb.IsConvex
             && !HalfSpace3D.HasPlane(ga.Convex, gb.Convex)
-            && TryRecycle(sc, existingCons, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))))
+            && TryRecycle(sc, existingCons, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])), pairSpec))
         {
             _resCount[i] = 1;
             return;
         }
 
-        CollideFresh(i, sc, p, sa, sb, ga, gb, ba, bb, pA, pB, qA, qB);
+        CollideFresh(i, sc, p, sa, sb, ga, gb, ba, bb, pA, pB, qA, qB, pairSpec);
     }
 
     // The pairs that need a narrowphase run are a minority (most are skipped, found apart by their boxes or reuse their manifold), so the work for them is out of line: the early exits above
     // then run in a frame that holds none of the shape frames and manifolds this part needs.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void CollideFresh(int i, NarrowScratch sc, int p, int sa, int sb, Geom3D ga, Geom3D gb, int ba, int bb, ReadOnlySpan<double> pA, ReadOnlySpan<double> pB, QuaternionF qA, QuaternionF qB)
+    private void CollideFresh(int i, NarrowScratch sc, int p, int sa, int sb, Geom3D ga, Geom3D gb, int ba, int bb, ReadOnlySpan<double> pA, ReadOnlySpan<double> pB, QuaternionF qA, QuaternionF qB, float spec)
     {
         sc.Fresh++;
         var la = Local[sa]; var lb = Local[sb];
@@ -717,7 +802,15 @@ internal sealed partial class Engine3D
         var inv = rwa.Conjugated();
         var bInA = new RigidTransformF(inv * rwb, inv.Rotate(new Vector3F((float)dx, (float)dy, (float)dz)));
         var f = new PairFrame { Rwa = rwa, ArmA = armA, ComDiff = new Vector3F((float)(pA[0] - pB[0]), (float)(pA[1] - pB[1]), (float)(pA[2] - pB[2])) };
-        float spec = Opt.SpeculativeDistance;
+        if (spec > Opt.SpeculativeDistance)
+        {
+            // Points farther than the fixed distance are kept only as far as the surfaces at that point close in during the step (see Emit).
+            var bodies = Core.Bodies;
+            var va = bodies.LinearVelocityOf(ba); var wa = bodies.AngularVelocityOf(ba); var vb = bodies.LinearVelocityOf(bb); var wb = bodies.AngularVelocityOf(bb);
+            f.Approach = true; f.Spec = Opt.SpeculativeDistance; f.Dt = Core.ContactStepDt;
+            f.VA = new Vector3F(va[0], va[1], va[2]); f.VB = new Vector3F(vb[0], vb[1], vb[2]);
+            f.WA = bodies.TypeOf(ba) == BodyType.Dynamic ? new Vector3F(wa[0], wa[1], wa[2]) : default; f.WB = bodies.TypeOf(bb) == BodyType.Dynamic ? new Vector3F(wb[0], wb[1], wb[2]) : default;
+        }
 
         if (ga.Soup is SdfSoup3D fieldA && gb.Soup is SdfSoup3D fieldB)
         {
@@ -729,7 +822,7 @@ internal sealed partial class Engine3D
             var other = soupIsA ? gb : ga;
             // Temporal coherence for a convex shape on a triangle soup: while it has hardly moved relative to the soup, every triangle contact of the pair keeps its manifold (the pair's triangle set can only
             // change by a triangle coming within speculative range, which the next full query, at most a few millimetres of motion later, finds).
-            if (!ContactModifications.Refresh && RecycleManifolds && other.IsConvex && PairCons[p] >= 0 && TryRecycleSoup(sc, p, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])), soupIsA ? 1 : 2))
+            if (!ContactModifications.Refresh && RecycleManifolds && other.IsConvex && PairCons[p] >= 0 && TryRecycleSoup(sc, p, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])), soupIsA ? 1 : 2, spec))
             {
                 _resCount[i] = sc.OutCount - _resFirst[i];
                 return;
@@ -766,7 +859,7 @@ internal sealed partial class Engine3D
                 var qr = invA * qB;
                 float sg = qr.W < 0f ? -1f : 1f;
                 var axis = la.Rotation.Rotate(gen.ClearanceAxisOut);
-                _skip[p] = new SkipFrame3 { Nx = axis.X, Ny = axis.Y, Nz = axis.Z, X = d.X, Y = d.Y, Z = d.Z, Qx = sg * qr.X, Qy = sg * qr.Y, Qz = sg * qr.Z, Qw = sg * qr.W, Clear = gen.ClearanceOut, Reach = ReachOfShape(bb, sb) };
+                _skip[p] = new SkipFrame3 { Nx = axis.X, Ny = axis.Y, Nz = axis.Z, X = d.X, Y = d.Y, Z = d.Z, Qx = sg * qr.X, Qy = sg * qr.Y, Qz = sg * qr.Z, Qw = sg * qr.W, Clear = gen.ClearanceOut, Spec = spec, Reach = ReachOfShape(bb, sb) };
             }
             else { _skip[p].Clear = 0f; }
 
@@ -794,6 +887,8 @@ internal sealed partial class Engine3D
     internal struct SkipFrame3
     {
         public float X, Y, Z, Qx, Qy, Qz, Qw, Clear;
+        /// <summary>The search distance of the query that found the pair apart; <see cref="Clear"/> is the gap beyond it.</summary>
+        public float Spec;
         public float Nx, Ny, Nz; // optional separating direction in A's body frame
 
         /// <summary>Farthest point of B's shape from B's centre of mass; a kinematic or static body has no stored extent, so the bound comes from the shape.</summary>
@@ -813,7 +908,7 @@ internal sealed partial class Engine3D
 
     // Whether a pair recorded as apart still is. Every point of B's shape moves, relative to A, by at most the change of B's centre of mass in A's frame plus the chord of the relative turn times the point's distance
     // from that centre (chord = 2 sin(angle / 2) = twice the vector part of the relative rotation). The slack covers float rounding of the relative pose, which grows with its size.
-    internal static bool StillApart(in SkipFrame3 f, QuaternionF qA, QuaternionF qB, float dx, float dy, float dz)
+    internal static bool StillApart(in SkipFrame3 f, QuaternionF qA, QuaternionF qB, float dx, float dy, float dz, float searchChange = 0f)
     {
         var invA = qA.Conjugated();
         var d = invA.Rotate(new Vector3F(dx, dy, dz));
@@ -838,7 +933,8 @@ internal sealed partial class Engine3D
             used = closing + turn * f.Reach * float.Sqrt(axis2) + slack;
         }
         else { used = float.Sqrt(ex * ex + ey * ey + ez * ez) + turn * f.Reach + slack; }
-        return used <= f.Clear; // false for NaN
+        // The gap now needed is the one the pair is searched to now, so a longer search leaves less room (searchChange is the old distance minus the new one).
+        return used <= f.Clear + searchChange; // false for NaN
     }
 
     /// <summary>Contacts of a triangle soup (mesh or height field) with a convex shape or a compound. <paramref name="soupIsA"/> says which side of the pair the soup is.</summary>
@@ -927,7 +1023,7 @@ internal sealed partial class Engine3D
             Vector3F triN = triNormal;
             Vector3F towards = soupIsA ? n : soupFromA.Rotation.Rotate(-n); // from the triangle towards the other shape, in the soup's frame
             float d = Vector3F.Dot(towards, triN);
-            if (d >= -0.1f && d < GhostCosine)
+            if (d >= -0.1f && d < FlatPatchCosine)
             {
                 for (int k = 0; k < count; k++)
                 {
@@ -942,7 +1038,7 @@ internal sealed partial class Engine3D
         if (filter && tri.SharedPatch)
         {
             Vector3F towards = soupIsA ? n : soupFromA.Rotation.Rotate(-n);
-            if (Vector3F.Dot(towards, triNormal) >= GhostCosine)
+            if (Vector3F.Dot(towards, triNormal) >= FlatPatchCosine)
             {
                 o.FlatPatch = true; o.FlatPlane = Vector3F.Dot(triNormal, tri.V0);
                 if (soupIsA) o.SubA = tri.CoplanarPatchId; else o.SubB = tri.CoplanarPatchId;
@@ -951,22 +1047,38 @@ internal sealed partial class Engine3D
         }
         Vector3F nw = f.Rwa.Rotate(n);
         o.Nx = nw.X; o.Ny = nw.Y; o.Nz = nw.Z;
+        int written = 0;
         for (int k = 0; k < count; k++)
         {
             var mp = m[k];
             Vector3F pt = map ? mapToA.TransformPoint(mp.Point) : mp.Point;
             Vector3F ra = f.ArmA + f.Rwa.Rotate(pt);
             Vector3F rb = ra + f.ComDiff;
-            int q = k * 7;
+            if (f.Approach && mp.Separation > f.Spec)
+            {
+                // The pair was searched beyond the fixed distance. A point beyond it stays only if the surfaces there close in by more than the gap during the step: the speed at which B's point
+                // approaches A's along the contact normal, from both bodies' linear and angular velocities.
+                Vector3F vrel = f.VB + Vector3F.Cross(f.WB, rb) - f.VA - Vector3F.Cross(f.WA, ra);
+                float closing = -(vrel.X * nw.X + vrel.Y * nw.Y + vrel.Z * nw.Z);
+                if (!(mp.Separation <= f.Spec + (closing > 0f ? closing * f.Dt : 0f))) { continue; }
+            }
+
+            int q = written * 7;
             o.P[q] = ra.X; o.P[q + 1] = ra.Y; o.P[q + 2] = ra.Z; o.P[q + 3] = rb.X; o.P[q + 4] = rb.Y; o.P[q + 5] = rb.Z; o.P[q + 6] = mp.Separation;
-            o.Id[k] = mp.Id;
+            o.Id[written] = mp.Id;
+            written++;
         }
 
-        o.Count = count;
+        if (written == 0) { sc.OutCount--; return; }
+        o.Count = written;
     }
 
     // A manifold whose normal agrees with the triangle's own normal to within this cosine (under 0.3 degrees) needs no treatment.
     private const float GhostCosine = 0.99999f;
+
+    // A manifold on a flat mesh whose normal is within this cosine (about 1.8 degrees) of the triangle's normal is that triangle's face contact. A hull lying a degree off flat gets a normal from its
+    // own faces or edges, a hair off the floor's, and every one of its contacts near a seam used to be dropped as a seam contact, leaving the shape no contact at all over a whole cell.
+    private const float FlatPatchCosine = 0.9995f;
 
     private static bool IsGhostRegion(Vector3F pointInSoup, in SoupTriangle3D tri)
     {
@@ -1151,7 +1263,7 @@ internal sealed partial class Engine3D
     }
 
     /// <summary>Builds the pair's manifold from the one kept in the constraint's payload when B has moved and turned relative to A by less than the bound; false when the narrowphase has to run.</summary>
-    private bool TryRecycle(NarrowScratch sc, int c, int ba, int bb, QuaternionF qA, QuaternionF qB, Vector3F dW, int soup = 0)
+    private bool TryRecycle(NarrowScratch sc, int c, int ba, int bb, QuaternionF qA, QuaternionF qB, Vector3F dW, float spec, int soup = 0)
     {
         var cs = Core.Constraints;
         int count = cs.PointCount[c];
@@ -1184,7 +1296,7 @@ internal sealed partial class Engine3D
             Vector3F rb = qB.Rotate(new Vector3F(pl[b + 3], pl[b + 4], pl[b + 5]));
             // Separation now: the one when made plus the motion of B's point relative to A's point along the normal.
             float sep = pl[b + 6] + Vector3F.Dot(dW + rb - ra, n);
-            if (!(sep <= Opt.SpeculativeDistance && sep >= -RecycleDepth)) { sc.OutCount--; return false; }
+            if (!(sep <= spec && sep >= -RecycleDepth)) { sc.OutCount--; return false; }
             int q = k * 7;
             o.P[q] = ra.X; o.P[q + 1] = ra.Y; o.P[q + 2] = ra.Z; o.P[q + 3] = rb.X; o.P[q + 4] = rb.Y; o.P[q + 5] = rb.Z; o.P[q + 6] = sep;
         }
@@ -1196,12 +1308,12 @@ internal sealed partial class Engine3D
     }
 
     /// <summary>Reuses every triangle contact of a convex-on-soup pair, or none: false (with nothing emitted) as soon as one of them has moved too far.</summary>
-    private bool TryRecycleSoup(NarrowScratch sc, int p, int ba, int bb, QuaternionF qA, QuaternionF qB, Vector3F dW, int soup)
+    private bool TryRecycleSoup(NarrowScratch sc, int p, int ba, int bb, QuaternionF qA, QuaternionF qB, Vector3F dW, int soup, float spec)
     {
         int start = sc.OutCount;
         for (int c = PairCons[p]; c >= 0; c = ConsNext[c])
         {
-            if (!TryRecycle(sc, c, ba, bb, qA, qB, dW, soup)) { sc.OutCount = start; return false; }
+            if (!TryRecycle(sc, c, ba, bb, qA, qB, dW, spec, soup)) { sc.OutCount = start; return false; }
         }
 
         return sc.OutCount > start;

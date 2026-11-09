@@ -190,7 +190,7 @@ unchanged. Indexed materials further partition a plane by material index, each
 partition using its lowest triangle id. Plane/material keys are reconstructed
 in fixed numeric triangle order.
 
-A front contact within cosine 0.99999 of a face with inactive edges uses the
+A front contact within cosine 0.9995 (about 1.8 degrees) of a face with inactive edges uses the
 face normal exactly. Coplanar contacts with the same child and material patch
 merge into at most four points (Gregorius 2015, contact manifold coherence and
 point reduction, slides 96 and 103–113). Selection starts at the lexicographically

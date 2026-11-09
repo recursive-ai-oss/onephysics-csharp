@@ -547,7 +547,8 @@ internal sealed partial class Engine3D
     /// <summary>
     /// Continuous collision against static geometry for a body that moved far compared with its size this step: a linear shape cast of each shape along the centre-of-mass motion, with the shape held at its
     /// start orientation, finds the first touch; the body is moved back to just before it (a gap of 5 mm along the motion) with its rotation interpolated. Velocity is unchanged: the next step finds a
-    /// speculative contact. Rotation during the step is not part of the cast; it only counts towards deciding that the body moved far enough to need one.
+    /// speculative contact. The rotation is not part of these casts (it counts towards deciding that the body moved far enough to need one); the corners of boxes and hulls are swept through the turn
+    /// separately, see <see cref="CornerSweep"/>.
     /// </summary>
     private void Continuous(int b)
     {
@@ -612,6 +613,9 @@ internal sealed partial class Engine3D
             }
         }
 
+        // A turning body also sweeps the corners of its boxes and hulls, which the linear casts above (shapes held at their start orientation) cannot see. A vehicle's chassis is left out: its wheels
+        // are suspension casts from the chassis pose, and clamping the pose back by the hull's corners can leave a wheel inside the geometry (the suspension then pushes it out hard).
+        if (spin > Opt.SpeculativeDistance && VehicleOfBody(b) < 0) { best = CornerSweep(b, cx, cy, cz, m, qStart, qEnd, spin, best); }
         if (best >= 1f) { return; }
         Core.BodyReadback.CcdState[b] |= 2;
         float t = best - 0.005f / len;
