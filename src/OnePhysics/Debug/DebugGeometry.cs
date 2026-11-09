@@ -62,8 +62,11 @@ public enum DebugContent
     /// <summary>Seams, attachments and tethers of cloth and the wind force on each triangle of an aerodynamic cloth (<see cref="DebugGeometry.ClothLinks"/>, <see cref="DebugGeometry.ClothWind"/>).</summary>
     Cloth = 65536,
 
+    /// <summary>The bonds of breakable compounds with their stress (<see cref="DebugGeometry.Bonds"/>).</summary>
+    Destruction = 131072,
+
     /// <summary>Everything.</summary>
-    All = 131071,
+    All = 262143,
 }
 
 /// <summary>The kind of a <see cref="DebugShape"/>. The same enum serves 2D and 3D worlds; a 2D world emits the first five.</summary>

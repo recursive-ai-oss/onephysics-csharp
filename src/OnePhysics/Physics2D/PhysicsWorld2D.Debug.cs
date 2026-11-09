@@ -18,6 +18,8 @@ public sealed partial class PhysicsWorld2D
     {
         ArgumentNullException.ThrowIfNull(geometry);
         geometry.Clear();
+        geometry.ClearBonds();
+        if ((flags & DebugContent.Destruction) != 0) _engine.Destruction.CollectDebug(geometry);
         if ((flags & DebugContent.Rods) != 0)
         {
             for (int r = 0; r < _engine.Rods.Data.Length; r++)

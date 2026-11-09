@@ -51,6 +51,7 @@ public sealed partial class PhysicsWorld3D
         _core.AddSection(_engine.Extensions);
         _core.AddSection(_engine.ActiveSnapshotSection);
         _core.AddSection(_engine.ClothLinkSnapshotSection);
+        _core.AddSection(_engine.Destruction);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -146,6 +147,7 @@ public sealed partial class PhysicsWorld3D
     private void StepPrepared(float dt)
     {
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
+        BeginDestruction();
         _engine.BeginBodyControls(dt);
         _engine.Actuators.BeginStep();
         if (_engine.Fields.Count != 0) _engine.Fields.Step(dt);
@@ -181,6 +183,7 @@ public sealed partial class PhysicsWorld3D
             if (_engine.SoftTearEvents.Length > 0) { DispatchSoftTears(); }
         }
         else if (_jointHandlers.Count > 0) { RetireBrokenJointHandlers(); }
+        EndDestruction(dt);
     }
 
     private void SyncCoreOptions()

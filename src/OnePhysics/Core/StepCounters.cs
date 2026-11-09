@@ -79,6 +79,14 @@ public sealed class StepCounters
     public int Characters { get; internal set; }
     /// <summary>Live vehicle controllers after the step.</summary>
     public int Vehicles { get; internal set; }
+    /// <summary>Bodies replaced by fracture or slicing in the last step (impact, manual and slices since the step began).</summary>
+    public int Fractures { get; internal set; }
+    /// <summary>Bonds broken by stress in the last step.</summary>
+    public int BondBreaks { get; internal set; }
+    /// <summary>Fragments the debris policy removed in the last step (budget and lifetime).</summary>
+    public int FragmentsCulled { get; internal set; }
+    /// <summary>Fragments the debris policy tracks after the step.</summary>
+    public int Fragments { get; internal set; }
     internal Span<int> Colors => _colors;
     internal void Reset()
     {
