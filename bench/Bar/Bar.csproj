@@ -22,6 +22,8 @@
     <Compile Include="../../tests/Common/SoftBodies2DScene.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/Vehicles2DScene.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/Actuators3DScene.cs" LinkBase="Common" />
+    <Compile Include="../../tests/Common/CharacterAbilityScenes3D.cs" LinkBase="Common" />
+    <Compile Include="../../tests/Common/CharacterAbilityScenes2D.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/Actuators2DScene.cs" LinkBase="Common" />
     <PackageReference Include="Box2D.NET" Version="3.1.654" />
     <PackageReference Include="BepuPhysics" Version="2.5.0-beta.33" />

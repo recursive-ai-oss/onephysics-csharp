@@ -59,6 +59,9 @@ internal struct CharacterExtState
     public int Rod, RodGen, Particle;
 
     public float Fraction;
+
+    /// <summary>Set when a record is read: the generation of the character the snapshot says it belongs to, checked once against the restored characters (0: nothing to check).</summary>
+    public int SavedGeneration;
 }
 
 /// <summary>
@@ -217,16 +220,18 @@ internal sealed class CharacterExtStore : ISnapshotSection
         bool planar = _host.Planar;
         int n = r.ReadCount(86, "character abilities");
         var states = new CharacterExtState[Math.Max(8, 0)];
+        // Every character has a body of its own, so a character slot is below the body count of the snapshot being restored; that also bounds what the arrays below grow to.
+        int slotLimit = (_host.Core.RestoringBodies ?? _host.Core.Bodies).HighWater;
         int last = -1, active = 0;
         for (int k = 0; k < n; k++)
         {
             int c = r.ReadInt32(), gen = r.ReadInt32();
-            if (c <= last || c > 1 << 24 || gen < 1) { throw r.Error("character abilities out of order or for an invalid character"); }
+            if (c <= last || c >= slotLimit || gen < 1) { throw r.Error("character abilities out of order or for an invalid character"); }
             last = c;
             if (c >= states.Length) { Array.Resize(ref states, Math.Max(c + 1, states.Length * 2)); }
             byte flags = r.ReadByte();
             if (flags > 7) { throw r.Error("invalid character ability flags"); }
-            var s = new CharacterExtState { CanClimb = (flags & 1) != 0, ExactCarry = (flags & 2) != 0, Riding = (flags & 4) != 0 };
+            var s = new CharacterExtState { CanClimb = (flags & 1) != 0, ExactCarry = (flags & 2) != 0, Riding = (flags & 4) != 0, SavedGeneration = gen };
             byte mode = r.ReadByte();
             if (mode > (byte)CharacterMode.Roped) { throw r.Error("invalid character mode " + mode.ToString(CultureInfo.InvariantCulture)); }
             s.Mode = (CharacterMode)mode;
@@ -257,7 +262,9 @@ internal sealed class CharacterExtStore : ISnapshotSection
             }
 
             if (!Finite(s.Normal) || !Finite(s.Along)) { throw r.Error("non-finite character ability"); }
-            if (IsActive(in s)) { active++; }
+            // The writer leaves out records with nothing in use, so one that is all zero was not written by this library.
+            if (!IsActive(in s)) { throw r.Error("character ability record with nothing in use"); }
+            active++;
             states[c] = s;
         }
 
@@ -324,6 +331,8 @@ internal sealed class CharacterExtStore : ISnapshotSection
         {
             if (!IsActive(in States[c])) { continue; }
             if (c >= _host.CharacterHighWater || !_host.CharacterLive(c)) { return false; }
+            if (States[c].SavedGeneration != 0 && States[c].SavedGeneration != _host.CharacterGeneration(c)) { return false; }
+            States[c].SavedGeneration = 0;
         }
 
         return true;
