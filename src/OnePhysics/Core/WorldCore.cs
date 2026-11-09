@@ -1501,7 +1501,7 @@ public sealed partial class WorldCore
         foreach (var s in _sections)
         {
             if (s.IsOptional && !s.IsPresent) { continue; }
-            w.DescribeSection(s.SectionId switch { 0x42503244 => "broadphase2d", 0x42503344 => "broadphase3d", 0x32445747 => "engine2d", 0x33445747 => "engine3d", 0x534F4654 => "softbody3d", 0x524F4453 => "rods", 0x53463244 => "softbody2d", 0x42534C50 => "body sleep", 0x4243544C => "body controls", _ => "section " + s.SectionId.ToString(CultureInfo.InvariantCulture) });
+            w.DescribeSection(s.SectionId switch { 0x42503244 => "broadphase2d", 0x42503344 => "broadphase3d", 0x32445747 => "engine2d", 0x33445747 => "engine3d", 0x534F4654 => "softbody3d", 0x524F4453 => "rods", 0x53463244 => "softbody2d", 0x4341424C => "pulley systems", 0x42534C50 => "body sleep", 0x4243544C => "body controls", _ => "section " + s.SectionId.ToString(CultureInfo.InvariantCulture) });
             w.NamedInt32(s.SectionId);
             if (w.IsHashing)
             {

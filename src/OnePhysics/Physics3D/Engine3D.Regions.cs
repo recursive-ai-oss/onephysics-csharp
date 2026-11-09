@@ -21,11 +21,13 @@ internal sealed partial class Engine3D
         // Fluids are world fields: keep them all, even when their volume lies outside the seed box.
         for (int i = 0; i < FluidHandles.HighWater; i++) { if (FluidHandles.IsLive(i)) { s.Add("fluid", i); } }
         Rods.SelectRegion(s,min,max,archive);
+        Cables.SelectRegion(s,min,max,archive);
         bool changed;
         do
         {
             changed = SnapshotRegions.CloseConstraints(Core, s);
             changed |= Rods.CloseRegion(s);
+            changed |= Cables.CloseRegion(s);
             // Conservative soft/rigid coupling closure. A selected soft body keeps every rigid shape touching its particle bounds;
             // a selected mass-bearing rigid body keeps touching soft bodies. Static anchors never fan out to unrelated soft bodies.
             for (int i = 0; i < SoftHandles.HighWater; i++)

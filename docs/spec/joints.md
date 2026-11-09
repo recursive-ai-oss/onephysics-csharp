@@ -188,3 +188,10 @@ Indicative regression checks use three alternating baseline/changed processes,
 and the best of three medians. Both sides run at one thread on the same pinned
 logical core with tiered compilation disabled. Loaded-host indicative results
 are not publishable bar rows.
+
+## Ropes over wheels, belts and chains
+
+The pulley, gear and rack joints above are two-body constraints. A rope that runs over several wheels, a winch, a belt or
+a chain connects any number of bodies and has capstan friction and a conserved length, so it is not a joint: it is a pulley
+system, specified in `rods.md` (Pulley systems), with its own optional snapshot section and its own stage before the rigid
+step. Break thresholds, force and torque readback and the host hooks follow the same rules as joints.

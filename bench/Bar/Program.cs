@@ -24,6 +24,7 @@ public static class Program
             }
             case "grid-study": return GridStudy.Run(opts);
             case "rod-run": return RodRuns.Run(opts);
+            case "pulley-run": return PulleyRuns.Run(opts);
             case "fields-stability": return FieldStability.Run();
             case "soft2d-stability": return SoftStability2D.Run();
             case "soft2d-timing": return SoftStability2D.Time(args.Length > 1 ? int.Parse(args[1]) : 1);
