@@ -32,7 +32,7 @@ public sealed class PulleyNodeDef
     public float Inertia { get; set; } = 0.05f;
     /// <summary>Bearing damping of a rotor, per second, 0 to 1000. Default 0.</summary>
     public float BearingDamping { get; set; }
-    /// <summary>The carrier is mounted: a static body, or a body held by a joint (a boom, a chassis, a hinge-mounted wheel). The solver then treats it as immovable and passes the rope's force on to the body, where its joints take it. Default false: a free body such as a hanging block moves with the rope.</summary>
+    /// <summary>The carrier is mounted: a static body, or a body held by a joint (a boom, a chassis, a hinge-mounted wheel). The solver then treats it as immovable and passes the rope's force on to the body, where its joints take it. Applies to anchors too; a body that carries any node marked this way is held for the whole system (it is not predicted to fall). Default false: a free body such as a hanging block moves with the rope.</summary>
     public bool FixedAxle { get; set; }
     /// <summary>Extra full turns of rope around the wheel beyond the geometric wrap, 0 to 64. Default 0.</summary>
     public int ExtraTurns { get; set; }

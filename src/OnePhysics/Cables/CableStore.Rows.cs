@@ -16,7 +16,7 @@ internal sealed partial class CableStore
         {
             if (e < 0) return t;
             ref var b = ref sc.B[e];
-            if (b.Dyn) { t.Be = e; t.Lin = dir; t.Ang = Vector3D.Cross(pt - b.X, dir); b.InSolver = true; }
+            if (b.Dyn && !node.FixedAxle) { t.Be = e; t.Lin = dir; t.Ang = Vector3D.Cross(pt - b.X, dir); b.InSolver = true; }
             else cst += Vector3D.Dot(dir, b.V + Vector3D.Cross(b.W, pt - b.X));
             return t;
         }

@@ -217,4 +217,27 @@ public sealed class PulleySystem3DTests(ITestOutputHelper helper)
         Assert.Equal(hashes.Length,n);Assert.Equal(w.Snapshot(),copy.Snapshot());Assert.Equal(1,copy.PulleySystemCount);
         var fork=w.Fork();Assert.Equal(1,fork.PulleySystemCount);Assert.Equal(w.ComputeHash(),fork.ComputeHash());
     }
+
+    [Fact]
+    public void RegionSnapshotsAndTheDesyncFinderSeePulleySystems()
+    {
+        var (w,load,rope)=Hanging(94,-.25,.5);
+        for(int i=0;i<30;i++)w.Step(Dt);
+        var region=w.SnapshotRegion(new(-10,-10,-10),new(10,10,10));var hash=w.ComputeRegionHash(new(-10,-10,-10),new(10,10,10));
+        // a fork at the same tick whose rope and load were changed: restoring the region puts the rope's state back
+        var divergent=w.Fork();
+        var pulley=divergent.Core.Bodies;
+        Assert.Equal(1,divergent.PulleySystemCount);
+        divergent.Core.Bodies.PositionOf(load.RawHandle.Index)[0]+=.5;
+        Assert.NotEqual(hash,divergent.ComputeRegionHash(new(-10,-10,-10),new(10,10,10)));
+        divergent.RestoreRegion(region);
+        _log($"region restore: region hash {divergent.ComputeRegionHash(new(-10,-10,-10),new(10,10,10)):X16} vs {hash:X16}");
+        Assert.Equal(hash,divergent.ComputeRegionHash(new(-10,-10,-10),new(10,10,10)));
+        _ = pulley;
+        // the desync finder names the pulley section's fields
+        var before=w.Snapshot();rope.AdjustLength(.05);var after=w.Snapshot();
+        var report=SnapshotDesync.Compare(before,after);
+        _log("desync: "+report.First);
+        Assert.True(report.Count>0);Assert.Contains("pulley",report.First!.ToString(),StringComparison.OrdinalIgnoreCase);
+    }
 }

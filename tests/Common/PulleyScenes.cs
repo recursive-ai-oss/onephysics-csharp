@@ -142,6 +142,16 @@ internal sealed class PulleyScene
         if(Spatial!=null)Spatial.Step(Dt);else Planar!.Step(Dt);
     }
     internal ulong Hash()=>Spatial?.ComputeHash()??Planar!.ComputeHash();
+    /// <summary>Exact bit patterns of the first span's tension and material length and of every body's position, for comparing platforms.</summary>
+    internal string Trace()
+    {
+        var sb=new System.Text.StringBuilder();
+        foreach(var s in Systems3){sb.Append($"T={BitConverter.DoubleToInt64Bits(s.Tension(0)):x16} M={BitConverter.DoubleToInt64Bits(s.MaterialLength(0)):x16} S={BitConverter.DoubleToInt64Bits(s.Stretch(0)):x16} ");}
+        foreach(var s in Systems2){sb.Append($"T={BitConverter.DoubleToInt64Bits(s.Tension(0)):x16} M={BitConverter.DoubleToInt64Bits(s.MaterialLength(0)):x16} S={BitConverter.DoubleToInt64Bits(s.Stretch(0)):x16} ");}
+        var store=Spatial?.Core.Bodies??Planar!.Core.Bodies;
+        for(int b=0;b<store.HighWater;b++)if(store.IsLive(b)){var p=store.PositionOf(b);var v=store.LinearVelocityOf(b);sb.Append($"b{b}[{BitConverter.DoubleToInt64Bits(p[1]):x16} {BitConverter.SingleToInt32Bits(v[1]):x8}] ");}
+        return sb.ToString();
+    }
 
     /// <summary>The largest overstretch of a loaded system: its total path length minus its rope, over the systems that carry tension. Rope sliding through a wheel does not change it.</summary>
     internal double MaxLoadedStretch()

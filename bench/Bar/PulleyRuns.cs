@@ -24,11 +24,13 @@ internal static class PulleyRuns
         int steps=int.Parse(options.Get("steps","600"),CultureInfo.InvariantCulture);bool timing=options.Has("indicative");
         Console.WriteLine($"scene={scene} threads={threads} steps={steps} runtime={RuntimeInformation.FrameworkDescription} os={RuntimeInformation.OSDescription}");
         var fixture=PulleyScene.Create(scene,threads);
+        bool trace=options.Has("trace");
         double speed=0,stretch=0,penetration=0,drift=0;int tunnelled=0;
         var samples=new long[steps];
         for(int step=0;step<steps;step++)
         {
             long before=timing?Stopwatch.GetTimestamp():0;fixture.Step(step);if(timing)samples[step]=Stopwatch.GetTimestamp()-before;
+            if(trace&&step<4)Console.WriteLine($"trace step {step}: {fixture.Trace()} hash={fixture.Hash():x16}");
             speed=Math.Max(speed,fixture.MaxSpeed());stretch=Math.Max(stretch,fixture.MaxLoadedStretch());penetration=Math.Max(penetration,fixture.Penetration());drift=Math.Max(drift,fixture.LengthDrift());tunnelled=Math.Max(tunnelled,fixture.Tunnelled());
         }
         var limit=Limits(scene);

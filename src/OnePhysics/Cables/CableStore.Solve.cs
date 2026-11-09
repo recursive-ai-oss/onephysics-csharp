@@ -22,7 +22,7 @@ internal sealed partial class CableStore
     private struct Ent
     {
         internal int Slot;
-        internal bool Dyn, Awake, InSolver;
+        internal bool Dyn, Awake, InSolver, Held;
         internal Vector3D X, V, W, Force, Torque;
         internal Frame R;
         internal double InvM, I0, I1, I2, I3, I4, I5;
@@ -134,6 +134,7 @@ internal sealed partial class CableStore
             var node = m.Nodes[i];
             if (node.Body >= 0 && (!bodies.Handles.IsAlive(node.Body, node.BodyGeneration) || !bodies.IsLive(node.Body))) return false;
             int e = EntOf(sc, node.Body); sc.NodeEnt[i] = e;
+            if (e >= 0 && node.FixedAxle) sc.B[e].Held = true;
             sc.Center[i] = WorldPoint(sc, node, e);
             if (node.IsWheel)
             {
@@ -327,9 +328,9 @@ internal sealed partial class CableStore
             ref var b = ref sc.B[e];
             if (b.Dyn)
             {
-                // What the rigid step will add on its own: gravity, and any force or torque already queued (user forces, fields).
+                // What the rigid step will add on its own: gravity, and any force or torque already queued (user forces, fields). A held body's joints cancel its translation, so only its spin (a sprocket's) is predicted.
                 Host.PendingLoad(b.Slot, out var pf, out var pt);
-                b.V = b.V + new Vector3D(g.X, g.Y, Host.Planar ? 0 : g.Z) * ((double)b.GravityScale * h) + new Vector3D(pf.X, pf.Y, pf.Z) * (b.InvM * h);
+                if (!b.Held) b.V = b.V + new Vector3D(g.X, g.Y, Host.Planar ? 0 : g.Z) * ((double)b.GravityScale * h) + new Vector3D(pf.X, pf.Y, pf.Z) * (b.InvM * h);
                 b.W = b.W + b.Inertia(Host.Planar, new Vector3D(pt.X, pt.Y, pt.Z)) * h;
             }
             b.Force = default; b.Torque = default;
