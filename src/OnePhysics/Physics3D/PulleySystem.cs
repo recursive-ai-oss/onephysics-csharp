@@ -56,7 +56,7 @@ public readonly struct PulleySystem
     /// <summary>Positive when the span is longer than its rope (the solver is pulling it back), negative when slack, metres.</summary>
     public double Stretch(int span) => Data.Stretch[Span(span)];
     /// <summary>Tension in newtons in the last step; zero for a slack span.</summary>
-    public double Tension(int span) { var d = Data; return d.LastDt > 0 ? d.Impulse[Span(span)] / d.LastDt : 0; }
+    public double Tension(int span) { var d = Data; int k = Span(span); return d.LastDt > 0 ? d.Impulse[k] / d.LastDt : 0; }
     /// <summary>Largest span tension, newtons.</summary>
     public double MaximumTension { get { var d = Data; double t = 0; if (d.LastDt > 0) foreach (double l in d.Impulse) t = Math.Max(t, l / d.LastDt); return t; } }
     /// <summary>Estimated sag of a slack span in metres, from a parabola of the same excess length: sqrt(3 L excess / 8).</summary>
