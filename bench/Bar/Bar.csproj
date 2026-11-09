@@ -20,6 +20,7 @@
   <ItemGroup>
     <Compile Include="../../tests/Common/ToolsMeshes.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/DecomposedPileScene.cs" LinkBase="Common" />
+    <Compile Include="../../tests/Common/TetBlob.cs;../../tests/Common/TestSkeleton.cs;../../tests/Common/TetDropScene.cs;../../tests/Common/AutoRagdollScenes.cs" LinkBase="Common" />
     <ProjectReference Include="../../src/OnePhysics.Tools/OnePhysics.Tools.csproj" />
     <Compile Include="../../tests/Common/FieldScenes.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/SoftBodies2DScene.cs" LinkBase="Common" />

@@ -251,6 +251,10 @@ Built in code by `tests/Common/Cloth3DScene.cs` and `Strip2DScene.cs` (shared by
 | `cloth-garment-3d` | two 0.6 x 0.8 m denim panels laid round a 0.2 m cylinder, stitched along both sides (1e-4 m/N), hung by pinned top rows with tethers | 2.3 (3.5) | 0.007 (0.02) | 0.040 (0.06) | seam gap below the pinned row after step 300 0.058 (0.09) |
 | `strip-2d` | two 1.2 m and 0.8 m strips pinned at one end above a box in a gusting upward wind | 10.4 (16) | | 0.074 (0.11) | 2D; highest particle 3.41 m |
 
+### Authoring-tool scenes (own scenes, no reference engine)
+
+`tet-drop-3d`, `tri-drop-2d`, `autoragdoll-pile-3d`, `autoragdoll-stand-3d` and `autoragdoll-pile-2d` (`tests/Common/TetDropScene.cs`, `tests/Common/AutoRagdollScenes.cs`; rows from `bar authoring-stability`). Definitions, thresholds and what they measured are in `docs/spec/tools.md` (Scenes and hash matrix, part 2).
+
 ## Step-state dump
 
 Every driver writes the same binary file in stability mode. Little-endian. Header: the ASCII bytes `OPDUMP01`, `u32` body count, `u32` 0. Then frames: `u32` step number (0 = initial state), `u32` 0, and `7 × n` doubles per frame in scene body order: x, y, angle (body origin, radians), vx, vy (centre-of-mass velocity as the engine reports it), w, awake (1 or 0). In 3D the header word is 3 and a frame is `14 × n` doubles: x, y, z, qx, qy, qz, qw (body origin, unit quaternion), vx, vy, vz, wx, wy, wz (centre-of-mass velocity as the engine reports it), awake. A frame's second `u32` is the count of extra doubles after the body rows: for scenes with vehicles, x, y, z of every wheel centre of every car (four per car, in body order).

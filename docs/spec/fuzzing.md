@@ -22,6 +22,8 @@ tools/fuzz.sh report                   # executions, coverage, wall time and fin
 
 State (instrumented build, corpora, crashes, logs, `stats.tsv`) lives under `$FUZZ_HOME`, default `~/onephysics/fuzz`, never in the checkout. Corpora persist between chunks, so coverage keeps accumulating; the heap is capped at 2 GB per process so runaway allocation shows up as a finding.
 
+The authoring tools have their own targets: `tools-mesh-clean`, `tools-mesh-mass`, `tools-hull-simplify`, `tools-decompose3d`, `tools-polygon`, `tools-sprite`, and for the tetrahedralizer, the polygon mesher and the ragdoll fitter `tools-tetrahedralize`, `tools-triangulate2d` and `tools-autoragdoll` (3D and 2D, each definition also given to `AddRagdoll`; a definition the engine refuses is a finding, so the fitter checks sizes and masses against the engine's limits itself). The instrumented build covers the runtime assembly only, so guided runs of these targets steer by the runtime code they reach (hulls, the ragdoll builders) and by crashes.
+
 ## Seeds and regression tests
 
 `testdata/fuzz-seeds/<target>/` holds small seed inputs written by our own generator (`dotnet run --project fuzz/Fuzz -- --seeds testdata/fuzz-seeds`): seeded random bytes of growing length, a valid snapshot for the raw snapshot reader, and a cube for the hull builder.

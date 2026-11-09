@@ -107,6 +107,9 @@ internal static class Program
         ["world3d-cloth"] = FuzzCloth.Run,
         ["world3d-cloth-snapshot"] = FuzzCloth.SnapshotTarget3,
         ["world2d-strip-snapshot"] = FuzzCloth.SnapshotTarget2,
+        ["tools-tetrahedralize"] = FuzzAuthoring.Tetrahedralize,
+        ["tools-triangulate2d"] = FuzzAuthoring.Triangulate2D,
+        ["tools-autoragdoll"] = FuzzAuthoring.AutoRagdoll,
     };
 
     private static int Main(string[] args)
