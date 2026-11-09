@@ -185,3 +185,23 @@ hit. Input requests are prepared before timing. Each operation warms four times
 and reports the best of three measured repetitions. Hit counts must match or the
 command fails. These are indicative comparisons, not publishable bar rows;
 they do not measure reference engines or imply isolation from other workloads.
+
+## Deformable queries
+
+Ray, shape cast, overlap and closest point against soft bodies, cloth, strips and rods, in single, all and any forms, both dimensions (`RaycastDeformables`, `ShapeCastDeformables`, `SphereCastDeformables`/`CircleCastDeformables`, `OverlapDeformables`, `ClosestDeformable` and their `…All`/`…Any` forms on the world, the same through `PhysicsQuery*`, batches `RaycastDeformablesBatch`, `SphereCastDeformablesBatch`/`CircleCastDeformablesBatch`, `Overlap…DeformablesCountBatch`). They read the particles as they are between steps and change no state.
+
+**Elements.** Soft bodies and cloth (3D) are queried on their surface triangles (the mesh's, or the boundary faces of a tetrahedral mesh) as bare two-sided triangles; a body with no surface is queried on its particles as spheres of the particle radius. 2D soft bodies are queried on the edges of their outline (strips and meshes without an outline: their edge list) as capsules of the particle radius, or on particles. Rods: each segment as a capsule of the rod's radius (a segment shorter than a millionth of its radius, or of zero length, is a sphere). **Cloth** means fabric or strip, or a body with no tetrahedra and no enclosed volume.
+
+**Order.** Soft bodies and cloth by slot, then rods by slot; inside a body by element index. Hits sort by distance, then kind (soft body, cloth, rod), slot, element kind, index; equal distances are therefore stable. A buffer takes the nearest `results.Length`. `Any` forms stop at the first element found in scan order. Batches run in tasks of 64 inputs into disjoint output slots and equal the loop of single calls bit for bit at any thread count.
+
+**Hit data.** `DeformableHit*`: kind, slot and generation of the deformable, element kind and index, the particles of the element (−1 for unused), barycentric weights of the hit point on them (for a point off a triangle's plane: its projection; outside the triangle a weight is negative), the point, the unit normal pointing at the query (zero if it started inside, and for overlaps), `Fraction` (of the cast length) and `Distance` (travelled; for closest-point queries the gap, 0 inside). A ray starting inside an element hits at 0.
+
+**Maths.** The element shape is placed relative to the query origin in float32 (the double positions subtracted first), then the convex routines of the rigid queries run: `Gjk3D.RayCast`, `ShapeCast` and `Distance` in 3D, the 2D ray cast, `Distance2D.ShapeCast` and `Distance2D.Compute` in 2D. Bounding boxes cull in double. The scan is serial per query; callers' buffers and per-thread scratch make warm calls allocation-free.
+
+**Filters.** `DeformableFilter*`: kinds, layer mask, category and mask bits, with the rigid-shape bit rules applied to the soft body's `Layer`/`CategoryBits`/`MaskBits` or the rod's. A shape that is a plane (3D) or empty (2D) is rejected with `ArgumentException`; inputs are validated as for the rigid queries (`ArgumentOutOfRangeException` naming the value).
+
+**Fluids.** The particle-fluid queries (`OverlapFluidSphere`, `OverlapFluidBox`, `RaycastFluid`, `FluidDensityAt`) and shallow-water queries (`QueryWater`, `RaycastWater`) are separate calls with their own hit types, because a fluid has no elements to name; they exist in both worlds with identical names.
+
+## Deformable contact events
+
+`TrackDeformableContacts` (world property, default off, a host setting that is not state and not saved or forked). When on, before and after every step the world finds, for each soft body, cloth and rod (soft bodies by slot, rods by slot), the rigid bodies it touches: the broadphase boxes around the deformable's particles (grown by the radius and 0.05 m) give the candidate shapes in shape-slot order, filtered by the layer matrix, group, category and mask of the deformable; a shape is touched when a sphere of the deformable's particle radius (for rods also one at the middle of each segment) is within 5 mm of it. The sets before and after are compared in order (deformable kind class, slot, body slot): `Began` for bodies only in the later set, `Ended` for bodies only in the earlier; events fire after the step (unless callbacks are suppressed) through `DeformableContactChanged` and are polled with `DeformableContactEvents`. The earlier set is found from geometry at the start of the step, so a restored or forked world produces the same events.

@@ -71,10 +71,20 @@ internal static class Swimming
         return r * r * Math64.Acos(c) - (r - e) * Math.Sqrt(s < 0.0 ? 0.0 : s);
     }
 
-    /// <summary>The state after a look at the water, with hysteresis; <paramref name="ratio"/> is the character's density over the water's (a light character floats on less water).</summary>
-    public static CharacterWaterState Next(CharacterWaterState previous, float immersion, float ratio)
+    /// <summary>Immersion at which a character that has nothing under its feet and is not rising starts to swim: it is in water too deep to walk in.</summary>
+    public const float AirborneEnter = 0.35f;
+
+    /// <summary>Immersion below which a swimmer with nothing under its feet stops swimming (it has left the water).</summary>
+    public const float AirborneExit = 0.2f;
+
+    /// <summary>
+    /// The state after a look at the water, with hysteresis; <paramref name="ratio"/> is the character's density over the water's (a light character floats on less water). <paramref name="airborne"/>: nothing is under
+    /// the character's feet and it is not rising, so water over its knees is water it falls into, not water it wades in.
+    /// </summary>
+    public static CharacterWaterState Next(CharacterWaterState previous, float immersion, float ratio, bool airborne = false)
     {
         float enter = Math.Min(SwimEnter, 0.9f * ratio), exit = Math.Min(SwimExit, 0.7f * ratio);
+        if (airborne) { enter = Math.Min(enter, AirborneEnter); exit = Math.Min(exit, AirborneExit); }
         if (enter < EnterWet) { enter = EnterWet; }
         if (exit < ExitWet) { exit = ExitWet; }
         switch (previous)

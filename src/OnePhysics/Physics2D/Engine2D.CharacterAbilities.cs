@@ -179,7 +179,7 @@ internal sealed partial class Engine2D : ICharacterExtHost
         if (st.Mode == CharacterMode.Roped) { ReleaseCharacter(c); }
         var next = new CharacterExtState
         {
-            CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, Mode = CharacterMode.Seated, Body = seatBody, BodyGen = Core.Bodies.Handles.GenerationOf(seatBody),
+            CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, NoSwim = st.NoSwim, SwimDensity = st.SwimDensity, SwimDamping = st.SwimDamping, Water = st.Water, Immersion = st.Immersion, Mode = CharacterMode.Seated, Body = seatBody, BodyGen = Core.Bodies.Handles.GenerationOf(seatBody),
             Local = new Vector3F(local.X, local.Y, 0f), LocalRotation = PlanarQuaternion(angleCos, angleSin),
         };
         _charExt!.Set(c, in next);
@@ -415,7 +415,7 @@ internal sealed partial class Engine2D : ICharacterExtHost
         var nl = q.InverseRotate(new Vec2(nx, ny));
         var st = new CharacterExtState
         {
-            CanClimb = cur.CanClimb, ExactCarry = cur.ExactCarry, Mode = mode, Body = body, BodyGen = Core.Bodies.Handles.GenerationOf(body),
+            CanClimb = cur.CanClimb, ExactCarry = cur.ExactCarry, NoSwim = cur.NoSwim, SwimDensity = cur.SwimDensity, SwimDamping = cur.SwimDamping, Water = cur.Water, Immersion = cur.Immersion, Mode = mode, Body = body, BodyGen = Core.Bodies.Handles.GenerationOf(body),
             Local = new Vector3F(local.X, local.Y, 0f), LocalRotation = QuaternionF.Identity, Normal = new Vector3F(nl.X, nl.Y, 0f), Along = new Vector3F(0f, 1f, 0f),
         };
         if (cur.Mode == CharacterMode.Roped) { ReleaseCharacter(c); }

@@ -396,7 +396,7 @@ internal sealed partial class Engine3D : ICharacterExtHost
         var local = inv.Rotate(new Vector3F((float)(centre.X - origin.X), (float)(centre.Y - origin.Y), (float)(centre.Z - origin.Z)));
         var st = new CharacterExtState
         {
-            CanClimb = cur.CanClimb, ExactCarry = cur.ExactCarry, Mode = mode, Body = body, BodyGen = Core.Bodies.Handles.GenerationOf(body), Local = local,
+            CanClimb = cur.CanClimb, ExactCarry = cur.ExactCarry, NoSwim = cur.NoSwim, SwimDensity = cur.SwimDensity, SwimDamping = cur.SwimDamping, Water = cur.Water, Immersion = cur.Immersion, Mode = mode, Body = body, BodyGen = Core.Bodies.Handles.GenerationOf(body), Local = local,
             LocalRotation = QuaternionF.Identity, Normal = inv.Rotate(normal), Along = inv.Rotate(along),
         };
         if (cur.Mode == CharacterMode.Roped) { ReleaseCharacter(c); }

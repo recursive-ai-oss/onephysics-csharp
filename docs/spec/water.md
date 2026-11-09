@@ -60,7 +60,25 @@ The store runs in two serial stages of the step, grids in slot order.
 
 Why the displacement is a factor (`displacement`, default 0.5): with all of the volume added, a long hull in a narrow channel rings (the body pushes water up, the raised water around it pushes the body back a few steps later); half of it is stable in the scenes below, and the water volume bookkeeping stays exact because the same fraction is removed again.
 
-Kinematic and static bodies take no part: static shapes are the bed; a kinematic body neither floats nor displaces. Soft bodies, rods and characters do not touch the water in this version; query it (`QueryWater`) to couple them.
+Static shapes are the bed. A kinematic body does not float (its motion is its own), but it displaces water exactly like a dynamic one: the same submerged volume, times `displacement`, put under its footprint each step and taken out where it was, so a paddle or a plunger makes waves. It takes part from the first step it overlaps a grid; no force is added to it. Soft bodies, cloth, rods and characters are below.
+
+## Soft bodies, cloth and rods
+
+Every particle of a soft body, cloth or rod (awake soft bodies; rods always) is a small blob of the volume it stands for, treated before the soft and rod steps, grids in slot order, soft bodies by slot then particle, rods by slot then particle:
+
+- **Volume.** A soft body with a volume (tetrahedra, or a closed surface held by pressure; in 2D triangles or a closed outline) gives a particle the share `V·m_i/M` of its rest volume `V` (rest area in 2D); a body with none (cloth, strips, open surfaces) gives it a ball (disc) of the particle radius. A rod particle gets the circular cross-section times half the lengths of its segments (a strip of width 2r in 2D).
+- **Level.** The surface plane at the body: for a soft body the water read around the box of its particles as for rigid bodies (a plane at the box's centre with slope along x and z, and the water's velocity there); for a rod particle the level around the particle, a segment-length wide.
+- **Submerged fraction.** `t = (level − (y − s)) / (2s)` clamped to [0, 1] and `f = t²(3 − 2t)`, the volume fraction of a sphere cut by the level, with `s` the larger of the particle radius and half the particle's cell size (`∛V` in 3D, `√V` in 2D; for a rod half a segment). The submerged volume is `f·V`.
+- **Buoyancy** adds `ρ_w·g·f·V·(1/m)·dt` upward to the particle's velocity (a particle with zero inverse mass, pinned or kinematic, feels none).
+- **Drag** takes the particle's velocity relative to the water and removes `(½ρ_w·C_d·A·f·|v|² + ν·ρ_w·f·V·|v|)·(1/m)·dt` of it along its direction, never more than all of it; `C_d` is the grid's `LinearDrag`, `ν` its `ViscousDamping`, `A` the particle's frontal area (`π s²`; `2s` in 2D; for rods the segment length times the diameter).
+- **Displacement.** `f·V·displacement` is deposited in the cell under the particle. The grid keeps, per cell, what was deposited the step before (state, ascending cell index); each step it adds the difference between the new and the old amounts, so the water the bodies hold is exact and leaves when they leave. A cell cannot be pushed below zero depth (the shortfall is counted in `LostVolume`).
+- A sleeping soft body is left alone unless the water at it moves faster than 0.05 m/s or its surface slopes more than 0.01, which wakes it.
+
+Buoyancy volumes (`AddFluid`) and fluid fields do not yet act on soft bodies or rods.
+
+## Characters in water
+
+See `world3d.md` → Swimming. A character is a body like any other for the water: a virtual character's kinematic capsule displaces water (so it makes a wake), a rigid character floats like any dynamic body. The swim state is read from the same grids.
 
 ## The water the actuators see
 
@@ -72,7 +90,7 @@ Boats, thrusters, hovercraft fans and aerodynamic surfaces ask for the water at 
 
 ## Snapshot section
 
-Optional section `"SWTR"` (`0x52545753`), version 1, registered after every other section in both worlds, written only while a grid exists, so worlds that never use water keep their bytes and hashes. Layout (little-endian, entity kinds `shallow water` by slot, records as `body` by body slot): `int32 version`; the handle table of grids; for each live grid in slot order: `bool planar`, `int32 nx`, `int32 nz`, `float32 dx`, `float64 originX`, `float64 originZ`, `float64 baseY`, `float32 density, linearDrag, angularDrag, viscousDamping, bottomFriction, damping, displacement, cfl`, `int32 maxSubsteps`, four sides of (`byte kind`, `float32 level`, `float32 speed`), `int32 sourceCount` and per source `float32 x, z, radius, rate`, `float64 lostVolume`, `nx·nz` bed values, `nx·nz` depths, `nx·nz` momenta along x, `nx·nz` momenta along z (float32 each), `int32 recordCount` and per record `int32 slot`, `int32 generation`, `float32 volume`, `float32 submerged`, `float32 x0, x1, z0, z1`. The reader checks sizes against the bytes left before allocating, every float finite, depths in `[0, 2^22]`, coefficients in range, kinds known, records ascending and naming live dynamic bodies of the saved generation. Scratch (slopes, fluxes, the stage copy) and the pending volumes are not saved. A fork copies the grids; a region snapshot keeps every grid whole and the records of the selected bodies.
+Optional section `"SWTR"` (`0x52545753`), version 1 (version 2 while any grid holds water displaced by soft bodies, cloth or rods; see below), registered after every other section in both worlds, written only while a grid exists, so worlds that never use water keep their bytes and hashes. Layout (little-endian, entity kinds `shallow water` by slot, records as `body` by body slot): `int32 version`; the handle table of grids; for each live grid in slot order: `bool planar`, `int32 nx`, `int32 nz`, `float32 dx`, `float64 originX`, `float64 originZ`, `float64 baseY`, `float32 density, linearDrag, angularDrag, viscousDamping, bottomFriction, damping, displacement, cfl`, `int32 maxSubsteps`, four sides of (`byte kind`, `float32 level`, `float32 speed`), `int32 sourceCount` and per source `float32 x, z, radius, rate`, `float64 lostVolume`, `nx·nz` bed values, `nx·nz` depths, `nx·nz` momenta along x, `nx·nz` momenta along z (float32 each), `int32 recordCount` and per record `int32 slot`, `int32 generation`, `float32 volume`, `float32 submerged`, `float32 x0, x1, z0, z1`. The reader checks sizes against the bytes left before allocating, every float finite, depths in `[0, 2^22]`, coefficients in range, kinds known, records ascending and naming live dynamic bodies of the saved generation. In version 2 each grid ends with `int32 holdCount` and per entry `int32 cell` (ascending) and `float32 volume` (above 0, at most 1e12): the displaced volume the grid holds for soft bodies and rods (the reader checks the count against the cell count). Version 1 files read as an empty hold. Records name dynamic or kinematic bodies. Scratch (slopes, fluxes, the stage copy) and the pending volumes are not saved. A fork copies the grids; a region snapshot keeps every grid whole and the records of the selected bodies.
 
 ## Debug geometry
 

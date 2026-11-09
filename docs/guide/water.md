@@ -31,5 +31,31 @@ The 2D world is the same along one axis: `world.AddShallowWater(minX, maxX, leve
 - **Boats and everything that reads water** (`AddBoat`, thrusters, hovercraft fans, aerodynamic surfaces) see the local surface and current where a shallow water covers them, and the flat water elsewhere.
 - **Bodies float and displace.** Awake dynamic bodies get buoyancy and drag from the water around them; sleeping bodies wake when the water moves them. `Displacement` (default 0.5) is how much of a body's volume is added to the water; 1 is physically complete but can make a long hull in a narrow channel ring.
 - **Damping** (default 0.1 per second) lets a splash die out; set it to 0 for water that rings for ever, and `BottomFriction` for drag from the bed.
-- **Not yet in it:** kinematic bodies, soft bodies, rods and characters do not touch the water; read it with `QueryWater` and apply your own force.
+- **Kinematic bodies, soft bodies, cloth, rods and characters** are in it too: a kinematic paddle or plunger pushes water like a dynamic body (and makes waves), soft particles and rod particles float and drag and displace, and characters swim (below).
 - Water is part of the snapshot, the hash, `Fork`, region snapshots and `ShiftOrigin`, and is in `DebugContent.ShallowWater`.
+
+## Swimming
+
+```csharp
+var def = new CharacterDef { SwimDensity = 900f, CanClimb = true };      // a person floats; try 1100 for one that sinks
+var swimmer = world.AddCharacter(new Vector3D(0, 2, 5), def);
+world.CharacterWaterChanged += e => Log(e.Kind);                         // EnteredWater, StartedSwimming, StoppedSwimming, LeftWater
+
+if (swimmer.IsSwimming)  swimmer.Move(strokeVelocity * dt, dt);          // while swimming, Move takes a stroke relative to the water, not a step
+else                     swimmer.Move(walkAndGravity * dt, dt);          // wading slows the walk by the depth; gravity is still yours
+```
+
+A character walks until the water is up to its chest (75% of its height; a light character floats earlier), then swims: the displacement you give `Move` is a swim intent relative to the water, and the world adds the current, buoyancy and drag. An idle swimmer drifts with the current and floats at the waterline its density gives; with a vertical stroke it dives and surfaces. Next to a ledge `TryGrabLedge` and `ClimbUp` get it out. It works in buoyancy volumes, shallow water and particle fluid, in both dimensions; rigid characters float like any body and take their strokes as velocity targets. `character.WaterState`, `Immersion` and `SwimVelocity` tell you where it is.
+
+## Querying deformables
+
+```csharp
+if (world.RaycastDeformables(origin, direction, out var hit))
+{
+    // hit.Kind: SoftBody, Cloth or Rod; hit.Slot -> world.GetSoftBody(slot) / GetRod(slot); hit.Element, hit.Index; hit.Barycentric weights on hit.ParticleA/B/C
+}
+world.TrackDeformableContacts = true;                                    // opt in: soft body, cloth and rod contact begin/end with rigid bodies
+world.DeformableContactChanged += e => Log(e.Kind, e.Deformable, e.Slot, e.Body);
+```
+
+`ShapeCastDeformables`, `OverlapDeformablesAll`, `ClosestDeformable` and the `PhysicsQuery` batches work the same way, in both dimensions.
