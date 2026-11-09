@@ -51,8 +51,13 @@ public enum DebugContent
     /// <summary>Rod segment polylines and material frames.</summary>
     Rods = 4096,
 
+    /// <summary>Rope spans and wheel arcs of pulley systems.</summary>
+    Pulleys = 8192,
+    /// <summary>Aerodynamic and hydrodynamic surfaces and the forces of thrusters, boats, hovercraft and surfaces as plain data (<see cref="DebugGeometry.AeroSurfaces"/>, <see cref="DebugGeometry.AeroForces"/>).</summary>
+    Aero = 16384,
+
     /// <summary>Everything.</summary>
-    All = 8191,
+    All = 32767,
 }
 
 /// <summary>The kind of a <see cref="DebugShape"/>. The same enum serves 2D and 3D worlds; a 2D world emits the first five.</summary>
@@ -530,7 +535,7 @@ public sealed partial class DebugGeometry
     public ReadOnlySpan<DebugSoftBody> SoftBodies => _soft.AsSpan(0, _nSoft);
 
     /// <summary>Empties every list (capacity is kept).</summary>
-    public void Clear() { _nRodSegments=0; _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; _nTracks = _nRailContacts = 0; }
+    public void Clear() { _nPulleySpans=0; _nPulleyWheels=0; _nAeroSurfaces=0; _nAeroForces=0; _nRodSegments=0; _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; _nTracks = _nRailContacts = 0; }
 
     private static void Push<T>(ref T[] a, ref int n, in T v)
     {

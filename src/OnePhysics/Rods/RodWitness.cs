@@ -8,6 +8,8 @@ internal struct RodWitness
     internal Vector3F Normal;
     internal Vector3D Surface;
     internal int Subshape;
+    // True when the shape is one convex piece, so the witness plane separates it from the whole rod segment and a sweep may use the speed along the normal.
+    internal bool Convex;
 }
 
 internal static class RodGeometry

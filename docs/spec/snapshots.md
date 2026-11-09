@@ -154,6 +154,11 @@ omitted. Built-in sections implement the same hook.
 
 Two optional sections of the planar world, written only while used: "VEH2" (`0x32484556`, version 1: vehicles) and "RAG2" (`0x32474152`, version 1: ragdolls). Layouts are in `world2d.md` → Vehicles. They follow the section rules above (an older reader rejects them by id and length; worlds without vehicles or ragdolls keep their bytes).
 
+
+## Optional aerodynamics section
+
+One optional section in both worlds, "AERO" (`0x4F524541`, version 1): thrusters, boats, hovercraft, shape surfaces and the air density. Written only while any of them exists or the air density is not 1.225 kg/m³; registered after every other section (2D order: engine, fields, rods, machines, mass offsets, tiles, SF2D, VEH2, RAG2, AERO). Entity kinds for the desync finder and regions: `thruster`, `boat`, `hovercraft`, `aero` (by shape slot). Layout in `actuators.md`. Stored axes are kept bit for bit so a restored world re-serializes to the same bytes.
+
 ## Named fields and desync reports
 
 `SnapshotDesync.Compare(fullA, fullB)` validates both full snapshots with the

@@ -40,5 +40,14 @@ internal sealed partial class Engine2D : IRodHost
         int b=Core.Shapes.Owner[s];var box=TightBox(b,in Geom[s]);
         minimum=new(box.MinX,box.MinY,0);maximum=new(box.MaxX,box.MaxY,0);
     }
+    private readonly struct RodShapeCollector(System.Collections.Generic.List<int> output) : IOverlapCallback
+    {
+        public bool Report(int proxy, int userId) { output.Add(userId); return true; }
+    }
+    void IRodHost.CollectShapes(Vector3D min,Vector3D max,bool moving,System.Collections.Generic.List<int> output)
+    {
+        var box=new Aabb2D(min.X,min.Y,max.X,max.Y);var collector=new RodShapeCollector(output);
+        Bp.QueryAabb(in box,ref collector,moving?BodyTypeMask.Kinematic|BodyTypeMask.Dynamic:BodyTypeMask.Static);
+    }
     ReplayMutationScope IRodHost.RodMutation(string name) => World!.RecordMutation(name);
 }

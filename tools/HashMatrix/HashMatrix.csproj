@@ -17,7 +17,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
-  <ItemGroup><Compile Include="../../tests/Common/RodScenes.cs" LinkBase="Common" /></ItemGroup>
+  <ItemGroup><Compile Include="../../tests/Common/RodScenes.cs" LinkBase="Common" /><Compile Include="../../tests/Common/PulleyScenes.cs" LinkBase="Common" /></ItemGroup>
   <ItemGroup>
     <Compile Include="../../tests/Common/FieldScenes.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/ContactSurfaceScene.cs" LinkBase="Common" />
@@ -34,6 +34,8 @@
     <Compile Include="../../tests/Common/Characters3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Vehicles3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Vehicles2DScene.cs" LinkBase="Checks" />
+    <Compile Include="../../tests/Common/Actuators3DScene.cs" LinkBase="Checks" />
+    <Compile Include="../../tests/Common/Actuators2DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/VehicleKinds3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Ragdolls3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../bench/Bar/Scene.cs;../../bench/Bar/Gen.cs;../../bench/Bar/Gen3.cs;../../bench/Bar/GenMachines.cs;../../bench/Bar/SceneBuilder2D.cs;../../bench/Bar/SceneBuilder3D.cs;../../bench/Bar/SoftGen.cs;../../bench/Bar/SleeveRig.cs" LinkBase="Scenes" />

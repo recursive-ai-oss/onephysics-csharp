@@ -180,13 +180,16 @@ internal sealed partial class Engine3D
         }
 
         if (!(_fvolume > 0f)) { return 0f; }
+        if (_actuators != null) { _actuators.AddSubmerged(b, _fvolume); }
         var force = _fforce;
         var torque = _ftorque;
 
         // Quadratic drag against the flow (Cd * 1/2 * density * A * |v|^2), through the centre of mass; never more than stops the body within the step.
         if (speed > 0f && (fluid.LinearDrag > 0f || fluid.ViscousDamping > 0f))
         {
-            float mag = 0.5f * fluid.Density * fluid.LinearDrag * _farea * speed * speed + fluid.ViscousDamping * fluid.Density * _fvolume * speed;
+            // A boat's hull has its own drag and heave damping per axis, so the fluid's generic linear drag is left out for it.
+            bool hull = _actuators != null && _actuators.OwnsHullDrag(b);
+            float mag = hull ? 0f : 0.5f * fluid.Density * fluid.LinearDrag * _farea * speed * speed + fluid.ViscousDamping * fluid.Density * _fvolume * speed;
             float cap = Mass[b] * speed / dt;
             if (mag > cap) { mag = cap; }
             force = new Vector3F(force.X - dir.X * mag, force.Y - dir.Y * mag, force.Z - dir.Z * mag);

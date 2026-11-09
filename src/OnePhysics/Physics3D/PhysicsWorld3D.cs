@@ -44,6 +44,8 @@ public sealed partial class PhysicsWorld3D
         _core.AddSection(_engine.Rods);
         BindBodyControlOptions();
         _core.AddSection(_engine.SoftSnapshotSection);
+        _core.AddSection(_engine.Cables);
+        _core.AddSection(_engine.Actuators);
         _core.AddSection(_engine.BicycleSnapshotSection);
         _core.AddSection(_engine.RailSnapshotSection);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
@@ -142,11 +144,14 @@ public sealed partial class PhysicsWorld3D
     {
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.BeginBodyControls(dt);
+        _engine.Actuators.BeginStep();
         if (_engine.Fields.Count != 0) _engine.Fields.Step(dt);
         _engine.StepRail(dt);
         _engine.StepBicycles(dt);
         _engine.StepVehicles(this, dt);
         _engine.StepFluids(dt);
+        if (_engine.Cables.Count != 0) _engine.Cables.Step(dt);
+        _engine.Actuators.Step(dt);
         bool soft = _engine.SoftHandles.Count > 0;
         if (soft) { _engine.BeginSoftStep(); }
         if (_engine.Rods.Count != 0) _engine.Rods.BeginStep();
@@ -317,12 +322,14 @@ public sealed partial class PhysicsWorld3D
         _engine.CheckRailShift(offset);
         _engine.Fields.CheckShift(offset);
         _engine.Rods.CheckShift(offset);
+        _engine.Cables.CheckShift(offset);
         _core.ShiftOrigin(d);
         _engine.ShiftJoints(d);
         _engine.ShiftRail(offset);
         _engine.ShiftFluids(offset.X, offset.Y, offset.Z);
         _engine.Fields.Shift(offset);
         _engine.Rods.Shift(offset);
+        _engine.Cables.Shift(offset);
         _engine.ShiftSoft(offset.X, offset.Y, offset.Z);
         _engine.ShiftProxies(d);
         InvalidateQueryPad();

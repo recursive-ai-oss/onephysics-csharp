@@ -27,6 +27,7 @@ public sealed partial class PhysicsWorld2D
                     geometry.Add(new DebugRodSegment(r,j,d.PositionData[j],d.PositionData[j+1],d.FrameData[j],d.Material.Radius));
             }
         }
+        if ((flags & DebugContent.Pulleys) != 0) _engine.Cables.CollectDebug(geometry);
         if ((flags & DebugContent.Fields) != 0)
         {
             for (int i=0;i<_engine.Fields.Definitions.Length;i++)
@@ -99,6 +100,7 @@ public sealed partial class PhysicsWorld2D
         if ((flags & DebugContent.Characters) != 0) { _engine.AddDebugCharacters(geometry); }
         if ((flags & DebugContent.SoftBodies) != 0) { _engine.AddDebugSoftBodies(geometry); }
         if ((flags & DebugContent.Vehicles) != 0) { _engine.AddDebugVehicles(geometry); _engine.AddDebugRail(geometry); }
+        if ((flags & DebugContent.Aero) != 0) { _engine.Actuators.AddDebug(geometry); }
     }
 
     private void AddDebugShape(DebugGeometry g, int b, int s, BodyHandle bh, ShapeHandle sh)

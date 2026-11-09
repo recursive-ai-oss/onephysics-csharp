@@ -27,12 +27,14 @@ internal sealed partial class Engine2D
             float massDisplaced=d.Density*cut.Area,factor=Fields.BuoyancyFactor(b);
             var buoyancy=new Vector3F(-Opt.Gravity.X*massDisplaced*factor,-Opt.Gravity.Y*massDisplaced*factor,0);
             torque+=ax*buoyancy.Y-ay*buoyancy.X;
-            float drag=Math.Min(d.Drag*massDisplaced+0.5f*d.Density*d.QuadraticDrag*float.Sqrt(cut.Area)*speed,dragBudget);
+            // A boat's hull has its own drag and heave damping, so the field's linear drag is left out for it.
+            float drag=_actuators!=null&&_actuators.OwnsHullDrag(b)?0f:Math.Min(d.Drag*massDisplaced+0.5f*d.Density*d.QuadraticDrag*float.Sqrt(cut.Area)*speed,dragBudget);
             dragBudget-=drag;
             force+=buoyancy+new Vector3F(vx,vy,0)*drag;
         }
         if(totalArea>0)
         {
+            _actuators?.AddSubmerged(b,totalArea);
             float angularRate=d.AngularDrag/(1+dt*d.AngularDrag),invI=bodies.InverseInertia[b];
             if(invI>0)torque-=omega*angularRate/invI;
             FieldDefinition.CheckVector(force,"buoyancy force");FieldDefinition.Check(torque,"buoyancy torque");

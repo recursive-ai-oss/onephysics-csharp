@@ -17,6 +17,8 @@
     <Compile Include="../Common/SmokeProgram.cs" LinkBase="Common" />
     <Compile Include="../Common/InspectionSmoke.cs" LinkBase="Common" />
     <Compile Include="../Common/RodSmoke.cs" LinkBase="Common" />
+    <Compile Include="../Common/PulleySmoke.cs" LinkBase="Common" />
+    <Compile Include="../Common/PulleyScenes.cs" LinkBase="Common" />
     <Compile Include="../Common/JointMachineSmoke.cs" LinkBase="Common" />
     <Compile Include="../Common/Services3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/SoftBodies3DScene.cs" LinkBase="Common" />
@@ -25,6 +27,8 @@
     <Compile Include="../Common/Characters3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Vehicles3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Vehicles2DScene.cs" LinkBase="Common" />
+    <Compile Include="../Common/Actuators3DScene.cs" LinkBase="Common" />
+    <Compile Include="../Common/Actuators2DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/VehicleKinds3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Ragdolls3DScene.cs" LinkBase="Common" />
     <Compile Include="../OnePhysics.Tests/Collision3D/Collision3DHash.cs" LinkBase="Common" />
