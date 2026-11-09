@@ -85,6 +85,7 @@ internal sealed partial class SoftBodyData
         var idx = new int[2 * ne];
         for (int i = 0; i < ne; i++) { idx[2 * i] = EdgeA[i]; idx[2 * i + 1] = EdgeB[i]; }
         var eo = Pack(ne, 2, idx, stamp, ref stampId, out var eStart, out var eQuad);
+        EdgeOrder = eo;
         SEdgeA = new int[ne]; SEdgeB = new int[ne]; SEdgeRest = new float[ne];
         for (int i = 0; i < ne; i++) { int s = eo[i]; SEdgeA[i] = EdgeA[s]; SEdgeB[i] = EdgeB[s]; SEdgeRest[i] = EdgeRest[s]; }
 
@@ -99,6 +100,7 @@ internal sealed partial class SoftBodyData
 
         // Tetrahedra have no lane kernel; the packing only gives them the block order.
         var to = Pack(nt, 4, Tets, stamp, ref stampId, out var tStart, out var tQuad);
+        TetOrder = to;
         STets = new int[4 * nt]; STetRest = new float[nt];
         for (int i = 0; i < nt; i++)
         {

@@ -161,6 +161,7 @@ public sealed partial class PhysicsWorld3D
         if (_suppressed == 0)
         {
             if (_handlers.Count > 0 || _jointHandlers.Count > 0) { DispatchEvents(); }
+            if (_engine.SoftTearEvents.Length > 0) { DispatchSoftTears(); }
         }
         else if (_jointHandlers.Count > 0) { RetireBrokenJointHandlers(); }
     }

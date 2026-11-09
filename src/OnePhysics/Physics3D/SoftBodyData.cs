@@ -39,6 +39,10 @@ internal sealed partial class SoftBodyData
     public float[] TetRest = Array.Empty<float>();    // six times the rest volume
     public int[] Tris = Array.Empty<int>();           // surface triangles, for pressure
     public float PressureRest;                        // rest volume of the closed surface; 0 when there is no pressure constraint
+    public float[] EdgeRest0 = Array.Empty<float>(), TetRest0 = Array.Empty<float>();   // the rest values of the undeformed mesh, for the plastic limit
+    public long[] Broken = Array.Empty<long>();       // sorted keys of the broken edges (tearing); their constraints do not exist
+    public float[] X0 = Array.Empty<float>();         // positions at the start of the step (scratch)
+    public float StepSpeed2;                          // smoothed squared net speed over the steps (state: it decides rest)
     public float[] Lambda = Array.Empty<float>();     // per constraint in solver order (edges, bends, tetrahedra, pressure), scratch of the current substep
 
     // The step works on float32 copies of the positions relative to an origin near the body (X, XP: current and substep-start positions), so the constraint kernels run on floats and
@@ -169,7 +173,7 @@ internal sealed partial class SoftBodyData
 
         keys.Sort();
         var edgeKeys = new List<long>(keys.Count);
-        for (int i = 0; i < keys.Count; i++) { if (i == 0 || keys[i] != keys[i - 1]) { edgeKeys.Add(keys[i]); } }
+        for (int i = 0; i < keys.Count; i++) { if ((i == 0 || keys[i] != keys[i - 1]) && (Broken.Length == 0 || !SoftTopology.Has(Broken, keys[i]))) { edgeKeys.Add(keys[i]); } }
         EdgeKey = edgeKeys.ToArray();
         int ne = EdgeKey.Length;
         EdgeA = new int[ne]; EdgeB = new int[ne]; EdgeRest = new float[ne];
@@ -197,6 +201,7 @@ internal sealed partial class SoftBodyData
                 if ((hk[i] >> 22) != (hk[i + 1] >> 22)) { continue; }
                 int t1 = (int)(hk[i] & 0x3FFFFF), t2 = (int)(hk[i + 1] & 0x3FFFFF);
                 long edge = hk[i] >> 22;
+                if (Broken.Length != 0 && SoftTopology.Has(Broken, edge)) { continue; }
                 int p0 = (int)(edge >> 20), p1 = (int)(edge & 0xFFFFF);
                 int o1 = Opposite(tris, t1, p0, p1), o2 = Opposite(tris, t2, p0, p1);
                 if (o1 == o2 || o1 < 0 || o2 < 0) { continue; }
@@ -218,6 +223,7 @@ internal sealed partial class SoftBodyData
         TetRest = new float[Tets.Length / 4];
         for (int e = 0; e < TetRest.Length; e++) { TetRest[e] = (float)Volume6(Tets[4 * e], Tets[4 * e + 1], Tets[4 * e + 2], Tets[4 * e + 3]); }
         Tris = tris.ToArray();
+        EdgeRest0 = (float[])EdgeRest.Clone(); TetRest0 = (float[])TetRest.Clone();
         PressureRest = 0f;
         if (mesh.IsClosed)
         {
@@ -243,10 +249,11 @@ internal sealed partial class SoftBodyData
             JointPos = new double[3 * nj]; JointRot = new float[4 * nj]; JointPosPrev = new double[3 * nj]; JointRotPrev = new float[4 * nj];
             TgtPrev = new double[3 * N]; TgtCur = new double[3 * N]; NrmCur = new float[3 * N];
         }
-        X = new float[3 * N]; XP = new float[3 * N];
+        X = new float[3 * N]; XP = new float[3 * N]; X0 = new float[3 * N];
         GradP = PressureRest > 0f ? new float[3 * N] : Array.Empty<float>();   // the pressure may be switched on later through the handle
         ColourConstraints();
         SphereShape = ConvexShape3D.Sphere(Radius);
+        BuildSurface();
     }
 
     private static long EdgeOf(int a, int b) => a < b ? ((long)a << 20) | (long)b : ((long)b << 20) | (long)a;

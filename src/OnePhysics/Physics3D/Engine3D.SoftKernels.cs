@@ -446,8 +446,8 @@ internal sealed partial class Engine3D
         _pairCount = 0;
         int total = 0;
         float rmax = 0f;
-        bool any = _awakeSoftCount > 1;
-        for (int a = 0; a < _awakeSoftCount; a++)
+        bool any = _pairSoftCount > 1;
+        for (int a = 0; a < _pairSoftCount; a++)
         {
             var d = _awakeSoft[a];
             total += d.N;
@@ -590,6 +590,12 @@ internal sealed partial class Engine3D
 
     private void SolvePairs()
     {
+        SolveDiscPairs();
+        if (_vtCount + _eeCount > 0) { SolveSurfacePairs(); }
+    }
+
+    private void SolveDiscPairs()
+    {
         for (int p = 0; p < _pairCount; p++)
         {
             int gi = _pairA[p], gj = _pairB[p];
@@ -622,13 +628,7 @@ internal sealed partial class Engine3D
         for (int a = 0; a < _awakeSoftCount; a++)
         {
             var d = _awakeSoft[a];
-            float vmax2 = 0f;
-            for (int i = 0; i < d.N; i++)
-            {
-                float vx = d.Vel[3 * i], vy = d.Vel[3 * i + 1], vz = d.Vel[3 * i + 2];
-                float v2 = vx * vx + vy * vy + vz * vz;
-                if (v2 > vmax2) { vmax2 = v2; }
-            }
+            float vmax2 = d.StepSpeed2;
 
             if (!Opt.SleepEnabled || !d.Def.AllowSleep || d.HadMovingContact || d.SkinMoved || !(vmax2 < thr2)) { d.SleepTime = 0f; continue; }
             d.SleepTime += dt;
