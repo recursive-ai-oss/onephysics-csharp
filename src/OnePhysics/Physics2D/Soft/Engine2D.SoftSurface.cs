@@ -57,14 +57,21 @@ internal sealed partial class Engine2D
         {
             var d = _awakeSoft[a];
             d.SurfBase = -1;
-            // How far the body can carry a feature in the substep: its fastest particle's travel and the fall under gravity. A sleeping (passive) body does not move.
-            d.SurfTravel = (a < _awakeSoftCount ? MaxParticleSpeed(d) * h + 0.5f * gmag * h * h : 0f);
+            d.SurfTravel = 0f;
             if (!d.Def.SurfaceCollision || d.SurfA.Length == 0) { continue; }
             bodies++;
             self |= d.Def.SelfCollision;
         }
 
         if (bodies == 0 || (bodies < 2 && !self)) { return; }
+        for (int a = 0; a < _pairSoftCount; a++)
+        {
+            var d = _awakeSoft[a];
+            if (!d.Def.SurfaceCollision || d.SurfA.Length == 0) { continue; }
+            // How far the body can carry a feature in the substep: its fastest particle's travel and the fall under gravity. A sleeping (passive) body does not move.
+            d.SurfTravel = (a < _awakeSoftCount ? MaxParticleSpeed(d) * h + 0.5f * gmag * h * h : 0f);
+        }
+
         int ne = 0;
         for (int a = 0; a < _pairSoftCount; a++)
         {

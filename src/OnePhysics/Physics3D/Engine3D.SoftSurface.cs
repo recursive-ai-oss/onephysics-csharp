@@ -69,14 +69,21 @@ internal sealed partial class Engine3D
         {
             var d = _awakeSoft[a];
             d.SurfTriBase = -1;
-            // How far the body can carry a feature in the step: its fastest particle's travel and the fall under gravity. A sleeping (passive) body does not move.
-            d.SurfTravel = (a < _awakeSoftCount ? MaxParticleSpeed(d) * dt + 0.5f * gmag * dt * dt : 0f);
+            d.SurfTravel = 0f;
             if (!d.Def.SurfaceCollision || d.SurfTris.Length == 0) { continue; }
             bodies++;
             self |= d.Def.SelfCollision;
         }
 
         if (bodies == 0 || (bodies < 2 && !self)) { return; }
+        for (int a = 0; a < _pairSoftCount; a++)
+        {
+            var d = _awakeSoft[a];
+            if (!d.Def.SurfaceCollision || d.SurfTris.Length == 0) { continue; }
+            // How far the body can carry a feature in the step: its fastest particle's travel and the fall under gravity. A sleeping (passive) body does not move.
+            d.SurfTravel = (a < _awakeSoftCount ? MaxParticleSpeed(d) * dt + 0.5f * gmag * dt * dt : 0f);
+        }
+
         MarkSurfaceBodies();
         int nt = 0, ne = 0;
         for (int a = 0; a < _pairSoftCount; a++)
