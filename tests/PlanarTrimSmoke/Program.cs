@@ -5,6 +5,7 @@ using RecursiveAI.OnePhysics.Replay;
 
 var world=new PhysicsWorld2D(new WorldOptions2D { WorldId=106 });
 world.AddCircle(0.5f,at:new(0,3));
+world.AddRope(new(2,3),new(3,3),4);
 using var stream=new MemoryStream();
 using(var recorder=world.StartRecording(stream))world.Step(1f/60);
 stream.Position=0;var player=new ReplayPlayer(stream);var copy=player.CreateWorld2D();

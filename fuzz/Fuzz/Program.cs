@@ -14,6 +14,8 @@ internal static class Program
 {
     internal static readonly Dictionary<string, Action<byte[]>> Targets = new(StringComparer.Ordinal)
     {
+        ["rod-definition"] = FuzzRods.Definition,
+        ["rod-snapshot"] = FuzzRods.Snapshot,
         ["field-snapshot"] = FuzzFields.Snapshot,
         ["snapshot-desync"] = FuzzSnapshotEncoding.Desync,
         ["snapshot-region"] = FuzzSnapshotEncoding.Region,

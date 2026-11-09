@@ -8,6 +8,7 @@ internal sealed partial class Engine2D
     internal RegionSelection SelectRegion(double[] min, double[] max, RegionSnapshot? archive = null)
     {
         var s = SnapshotRegions.Seed(Core, min, max, archive);
+        Rods.SelectRegion(s,min,max,archive);
         bool changed;
         do
         {
