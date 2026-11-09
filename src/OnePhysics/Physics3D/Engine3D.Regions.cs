@@ -22,6 +22,7 @@ internal sealed partial class Engine3D
         for (int i = 0; i < FluidHandles.HighWater; i++) { if (FluidHandles.IsLive(i)) { s.Add("fluid", i); } }
         Rods.SelectRegion(s,min,max,archive);
         Cables.SelectRegion(s,min,max,archive);
+        ParticleFluids.SelectRegion(s, min, max, archive);
         bool changed;
         do
         {

@@ -9,6 +9,7 @@ internal sealed partial class Engine2D
     {
         var s = SnapshotRegions.Seed(Core, min, max, archive);
         Rods.SelectRegion(s,min,max,archive);
+        ParticleFluids.SelectRegion(s, min, max, archive);
         if (archive == null)
         {
             for (int i = 0; i < SoftHandles.HighWater; i++)

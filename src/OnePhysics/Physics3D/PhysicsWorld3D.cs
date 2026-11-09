@@ -51,6 +51,7 @@ public sealed partial class PhysicsWorld3D
         _core.AddSection(_engine.Extensions);
         _core.AddSection(_engine.ActiveSnapshotSection);
         _core.AddSection(_engine.ClothLinkSnapshotSection);
+        _core.AddSection(_engine.ParticleFluids);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -165,6 +166,7 @@ public sealed partial class PhysicsWorld3D
 
         if (soft) { _engine.StepSoft(dt); }
         if (_engine.Rods.Count != 0) _engine.Rods.Step(dt);
+        _engine.ParticleFluids.Step(dt);
         _engine.EndCharacterSupport();
         _engine.EndBodyControls();
         _engine.EndActive();
@@ -332,6 +334,7 @@ public sealed partial class PhysicsWorld3D
         _engine.Fields.CheckShift(offset);
         _engine.Rods.CheckShift(offset);
         _engine.Cables.CheckShift(offset);
+        if (!_engine.ParticleFluids.CanShift(d)) { throw new ArgumentOutOfRangeException(nameof(offset), offset, "Shifting the origin by " + offset + " would leave a fluid particle outside the supported range. Nothing was changed."); }
         _core.ShiftOrigin(d);
         _engine.ShiftJoints(d);
         _engine.ShiftRail(offset);
@@ -339,6 +342,7 @@ public sealed partial class PhysicsWorld3D
         _engine.Fields.Shift(offset);
         _engine.Rods.Shift(offset);
         _engine.Cables.Shift(offset);
+        _engine.ParticleFluids.ShiftOrigin(d);
         _engine.ShiftSoft(offset.X, offset.Y, offset.Z);
         _engine.ShiftProxies(d);
         InvalidateQueryPad();

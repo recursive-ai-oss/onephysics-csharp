@@ -62,8 +62,11 @@ public enum DebugContent
     /// <summary>Seams, attachments and tethers of cloth and the wind force on each triangle of an aerodynamic cloth (<see cref="DebugGeometry.ClothLinks"/>, <see cref="DebugGeometry.ClothWind"/>).</summary>
     Cloth = 65536,
 
+    /// <summary>Particles of particle fluids and the volumes of their emitters and drains (<see cref="DebugGeometry.FluidParticles"/>, <see cref="DebugGeometry.FluidVolumes"/>).</summary>
+    Fluids = 262144,
+
     /// <summary>Everything.</summary>
-    All = 131071,
+    All = 524287,
 }
 
 /// <summary>The kind of a <see cref="DebugShape"/>. The same enum serves 2D and 3D worlds; a 2D world emits the first five.</summary>
@@ -617,7 +620,7 @@ public sealed partial class DebugGeometry
     public ReadOnlySpan<DebugClothWind> ClothWind => _clothWind.AsSpan(0, _nClothWind);
 
     /// <summary>Empties every list (capacity is kept).</summary>
-    public void Clear() { _nHolds=0; _nActive = 0; _nPulleySpans=0; _nPulleyWheels=0; _nAeroSurfaces=0; _nAeroForces=0; _nRodSegments=0; _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; _nTracks = _nRailContacts = 0; _nClothLinks = _nClothWind = 0; }
+    public void Clear() { _nHolds=0; _nActive = 0; _nPulleySpans=0; _nPulleyWheels=0; _nAeroSurfaces=0; _nAeroForces=0; _nRodSegments=0; _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; _nTracks = _nRailContacts = 0; _nClothLinks = _nClothWind = 0; ClearFluids(); }
 
     private static void Push<T>(ref T[] a, ref int n, in T v)
     {
