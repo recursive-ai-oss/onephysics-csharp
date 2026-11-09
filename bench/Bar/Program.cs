@@ -32,6 +32,7 @@ public static class Program
             case "vehicles2d-stability": return Vehicles2DStability.Run(opts);
             case "railbike-stability": return RailBikeStability.Run(opts);
             case "actuators-stability": return ActuatorStability.Run(opts);
+            case "character-abilities-stability": return CharacterAbilityStability.Run(opts);
             case "micro-boxbox": return MicroBoxBox.Run(opts);
             case "queries-indicative": return MixedQueryTiming.Run(opts);
             case "recording-indicative": return RecordingTiming.Run(opts);

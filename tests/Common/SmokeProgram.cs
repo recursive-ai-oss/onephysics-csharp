@@ -161,6 +161,22 @@ internal static class SmokeProgram
         ulong rb21 = RailBikeScenes2D.Run(1, false), rb23 = RailBikeScenes2D.Run(3, false), rb2r = RailBikeScenes2D.Run(1, true);
         bool railBike = rb31 == rb33 && rb31 == rb3r && rb21 == rb23 && rb21 == rb2r;
         Console.WriteLine((railBike ? "OK railbike " : "FAIL railbike ") + rb31.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) + " " + rb21.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        // Characters that sit, hang, climb, grip ropes and stand on soft bodies, ropes and decks, in both dimensions: same state on one and three threads and after a restore.
+        bool abilities = true;
+        foreach (string scene in CharacterAbilityScenes3D.Names)
+        {
+            ulong q1 = CharacterAbilityScenes3D.Run(scene, 1, false), q3 = CharacterAbilityScenes3D.Run(scene, 3, false), qr = CharacterAbilityScenes3D.Run(scene, 1, true);
+            abilities &= q1 == q3 && q1 == qr;
+            Console.WriteLine((q1 == q3 && q1 == qr ? "OK abilities3d " : "FAIL abilities3d ") + scene + " " + q1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        foreach (string scene in CharacterAbilityScenes2D.Names)
+        {
+            ulong q1 = CharacterAbilityScenes2D.Run(scene, 1, false), q3 = CharacterAbilityScenes2D.Run(scene, 3, false), qr = CharacterAbilityScenes2D.Run(scene, 1, true);
+            abilities &= q1 == q3 && q1 == qr;
+            Console.WriteLine((q1 == q3 && q1 == qr ? "OK abilities2d " : "FAIL abilities2d ") + scene + " " + q1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
         ulong rg1 = Ragdolls2DHash(1), rg3 = Ragdolls2DHash(3);
         Console.WriteLine((rg1 == rg3 ? "OK ragdolls2d " : "FAIL ragdolls2d ") + rg1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         // 3D tracked vehicles and motorcycles (pivoting tank, tank on a ramp, bike in a turn, bike braking): same state on one and three threads and after a restore.
@@ -217,7 +233,7 @@ internal static class SmokeProgram
         Console.WriteLine((pulleys ? "OK pulleys " : "FAIL pulleys ") + pulleyHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool machines = JointMachineSmoke.Run();
         Console.WriteLine(machines ? "OK machines" : "FAIL machines");
-        return railBike && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
+        return railBike && abilities && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
     }
 
     private static bool MissingShapes()

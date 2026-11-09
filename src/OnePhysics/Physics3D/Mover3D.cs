@@ -171,6 +171,17 @@ public struct CharacterDef
 
     private uint _maxPushForce;
 
+    /// <summary>
+    /// The character may grab ledges (<see cref="Character.TryGrabLedge"/>) and climb surfaces marked <see cref="Shape.Climbable"/> (<see cref="Character.TryClimb"/>). Default false. Needs a virtual character.
+    /// </summary>
+    public bool CanClimb { get; set; }
+
+    /// <summary>
+    /// A character standing on a moving body is carried by that body's pose (position and rotation after the step) instead of by its velocity, so it neither slides on a turning or accelerating deck
+    /// nor drifts off a platform that rotates. Default false, which keeps the velocity-based carry. Needs a virtual character.
+    /// </summary>
+    public bool ExactPlatformCarry { get; set; }
+
     /// <summary>A person: 1.8 m tall, 0.3 m radius, 45 degree slope limit, 0.3 m step, 70 kg.</summary>
     public static CharacterDef Humanoid => new();
 
@@ -216,8 +227,11 @@ public struct MoverState3D
     /// <summary>Normal of the surface under the character when it is on ground or on a steep slope; zero in the air.</summary>
     public Vector3F GroundNormal { get; internal set; }
 
-    /// <summary>The body under the character when on ground (may be static); the default (invalid) body otherwise. The next move carries the character with this body's velocity.</summary>
+    /// <summary>The body under the character when on ground (may be static); the default (invalid) body otherwise (also when it stands on a soft body or a rod). The next move carries the character with this body's velocity.</summary>
     public Body GroundBody { get; internal set; }
+
+    /// <summary>Leave the carrying of the ground to the caller (the pose-based carry of <see cref="CharacterDef.ExactPlatformCarry"/>).</summary>
+    internal bool NoCarry { get; set; }
 }
 
 /// <summary>A surface the mover touched and was deflected by, in the order the solver met them.</summary>
