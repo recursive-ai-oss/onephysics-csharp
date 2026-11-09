@@ -319,7 +319,6 @@ internal sealed partial class Engine3D
         float kp = inertia * w * w * strength, kd = 2f * a.Def.PdDampingRatio * inertia * w * strength;
         if (torqueSource) { kp = TorqueSourceStiffness * strength; kd = TorqueSourceDamping * strength; }
         float cap = rg.Def.Parts[part].MaxTorque * a.Def.TorqueScale * strength * torqueScale;
-        if (BipedGait.Dbg && part == a.Def.Bones.LeftFoot || BipedGait.Dbg && part == a.Def.Bones.LeftShin || BipedGait.Dbg && part == a.Def.Bones.LeftThigh) { Console.Error.WriteLine($"   drive part{part} inertia={inertia:F2} hz={hertz:F2} kp={kp:F0} kd={kd:F0} cap={cap:F0} strength={strength:F2}"); }
         if (!(cap > 0f) || !float.IsFinite(kp) || !float.IsFinite(kd)) { ReleaseJoint(rg, part); return; }
         jd.Flags |= JointData3D.FlagDrive;
         jd.DriveTarget = target; jd.Length = kp; jd.Ratio = kd; jd.MaxMotor = cap;

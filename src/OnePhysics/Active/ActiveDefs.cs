@@ -142,7 +142,7 @@ public sealed class BalanceDef
 public sealed class WalkerDef
 {
     /// <summary>Duration of one step (one leg's swing), s. Default 0.42.</summary>
-    public float StepTime { get; set; } = 0.47f;
+    public float StepTime { get; set; } = 0.36f;
 
     /// <summary>Peak swing-foot clearance above the straight line from lift-off to landing, m. Default 0.08.</summary>
     public float StepHeight { get; set; } = 0.0867f;
@@ -151,7 +151,7 @@ public sealed class WalkerDef
     public float StepWidth { get; set; } = 0.2f;
 
     /// <summary>Hip height as a fraction of the straight leg length. Within (0.5, 1). Default 0.95.</summary>
-    public float HipHeight { get; set; } = 0.8785f;
+    public float HipHeight { get; set; } = 0.9141f;
 
     /// <summary>The fastest commanded speed, m/s; a command above it is clamped. Default 2.5.</summary>
     public float MaxSpeed { get; set; } = 2.5f;
@@ -171,8 +171,8 @@ public sealed class WalkerDef
     /// <summary>The fastest a walking target may move, rad/s (replaces <see cref="ActiveRagdollDef.TargetSlew"/> while walking). Within 0.1..1000. Default 17.2.</summary>
     public float TargetSlew { get; set; } = 17.2f;
 
-    /// <summary>Multiplier on every joint's torque limit while walking (on top of <see cref="ActiveRagdollDef.TorqueScale"/>): a walker needs more than a standing figure. Within 0..1000. Default 1.74.</summary>
-    public float TorqueScale { get; set; } = 1.74f;
+    /// <summary>Multiplier on every joint's torque limit while walking (on top of <see cref="ActiveRagdollDef.TorqueScale"/>): a walker needs more than a standing figure. Within 0..1000. Default 0.96.</summary>
+    public float TorqueScale { get; set; } = 0.96f;
 
     /// <summary>Sideways feedback on the foot placement (3D), same scale. Default 1.3.</summary>
     public float LateralFeedback { get; set; } = 1.3f;

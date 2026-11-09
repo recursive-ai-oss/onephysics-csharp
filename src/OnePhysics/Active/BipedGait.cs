@@ -84,16 +84,27 @@ internal struct BipedOut
     public float StanceYaw;               // yaw offset of the legs' targets from the pelvis heading, radians
 }
 
+/// <summary>Tuned constants of the walking controller (see the notes where each is used); fixed numbers, never read from the environment.</summary>
 internal static class Tun
 {
-    internal static float G(string n, float d) { var v = Environment.GetEnvironmentVariable("T_" + n); return v == null ? d : float.Parse(v, System.Globalization.CultureInfo.InvariantCulture); }
-    internal static readonly float Ds = G("DS", 0.06f), Lean = G("LEAN", 0.055f), LeanRate = G("LEANRATE", 0.108f), Launch = G("LAUNCH", 0.1156f), Tau = G("TAU", 0.05f), LatTol = G("LATTOL", 0.04f), Ki = G("KI", 0.5f), Over = G("OVER", 1f), TrimLat = G("TRIMLAT", 0.04f), TrimMax = G("TRIMMAX", 0.1083f), TrimMin = G("TRIMMIN", -0.0282f), MinStep = G("MINSTEP", -0.1757f), Filt = G("FILT", 0.0716f), Rate = G("RATE", 0.15f);
+    internal const float Ds = 0.06f;          // short double support after each landing, s
+    internal const float Lean = 0.1378f;      // how far ahead of the feet the hip leans before the first step, m
+    internal const float LeanRate = 0.108f;   // how fast, m/s
+    internal const float Launch = 0.1156f;    // the capture point must be this far ahead of the feet's middle before the first step
+    internal const float Tau = 0.05f;         // look-ahead of the hip target, s
+    internal const float LatTol = 0.04f;      // how far from the stance ankle the centre of mass may be sideways before the first step (3D), m
+    internal const float Ki = 0.0202f;        // learning rate of the speed correction per step
+    internal const float Over = 1f;           // fraction of the sideways weight shift before the first step (3D)
+    internal const float TrimLat = 0.04f;     // sideways pressure-point trim limit (3D), m
+    internal const float TrimMax = 0.1083f;   // forward pressure-point trim limits, m
+    internal const float TrimMin = -0.0282f;
+    internal const float MinStep = -0.0418f;  // the farthest behind the stance foot a step may land, m
+    internal const float Filt = 0.0716f;      // time constant of the velocity filter, s
+    internal const float Rate = 0.15f;        // how fast the hip height changes, fraction of a leg per second
 }
 
 internal static class BipedGait
 {
-    internal static float LambdaIk = 1f;
-    internal static readonly bool Dbg = Environment.GetEnvironmentVariable("DBGGAIT") != null;
     internal const float Pi = 3.1415927f;
 
     private static float TanSlope(float rho)
@@ -271,7 +282,6 @@ internal static class BipedGait
             float hd = float.Sqrt(pf * pf + pl * pl);
             if (hd > reach) { float k = reach / hd; pf *= k; pl *= k; }
             s.PlaceF = pf; s.PlaceL = pl;
-            if (Dbg && (int)(s.Time / dt + 0.5f) % 2 == 0) { Console.Error.WriteLine($"  swing{swingLeg} t={s.Time:F2} raw={inp.VelF:F2} comRel={comRelF:F2} v={inn.VelF:F2} xi={comRelF + inn.VelF / w0:F2} xiEnd={xiF:F2} b={bF:F2} pf={pf:F2} ankleSw={swingL.AnkleF - stance.AnkleF:F2} w0={w0:F2}"); }
 
             // Swing foot path: smooth interpolation from lift-off to landing with a clearance arch.
             float ss = Smooth(sFrac);
@@ -296,7 +306,6 @@ internal static class BipedGait
                     s.BiasL = planar ? 0f : Clamp(s.BiasL + Tun.Ki * (inn.CmdL - s.SumL / s.SumT), -0.5f, 0.5f);
                 }
 
-                if (Dbg) { Console.Error.WriteLine($" LAND step={s.Steps} vAvg={(s.SumT > 0f ? s.SumF / s.SumT : 0f):F2} cmd={inn.CmdF:F2} bias={s.BiasF:F2} pfPlanned={pf:F2} actualStride={swingL.AnkleF - stance.AnkleF:F2} tSwing={s.Time:F2} xiEnd={xiF:F2} xiNomEnd={xiNomEnd:F2} sFrac={sFrac:F2}"); }
                 s.SumF = 0f; s.SumL = 0f; s.SumT = 0f;
                 if (walking) { s.Phase = (byte)GaitPhase.Shift; }
                 else { s.Phase = (byte)GaitPhase.DoubleSupport; }
@@ -381,14 +390,12 @@ internal static class BipedGait
                         yh = yhN + nl.AnkleL - lg.AnkleL + lg.HipL - nl.HipL;
                     }
 
-                    if (Dbg) { Console.Error.WriteLine($"   stance{k} t={s.Time:F2} xiNom={xiNom:F2} xi={comRel + inn.VelF / w0:F2} trim={trim:F2} xhNow={lg.HipF - lg.AnkleF:F2} xh={xh:F2} yh={yh:F2} pelvY={-lg.AnkleU:F2} pelRho={inn.PelvisRho:F2} standH={standH:F2}"); }
                 }
 
                 // On a slope the hip runs parallel to the ground, which leaves the pendulum's frequency unchanged when it is measured from the stance foot (a mass on a line parallel to the slope obeys x'' = g x / h).
                 float tanS = TanSlope(lg.SlopeRho);
                 Ik(inn.Geom.L1, inn.Geom.L2, -xh, planar ? 0f : -yh, -(standH + tanS * xh), out float th, out float thPhi, out float kn);
                 lo.ThighRho = th + gain * (inn.PelvisRho - pelvisRhoDes); lo.KneeFlex = kn;
-                if (Dbg && !planar) { Console.Error.WriteLine($"   leg{k} ph={(GaitPhase)s.Phase} t={s.Time:F2} xh={xh:F2} yh={yh:F2} th={th:F2} thPhi={thPhi:F2} kn={kn:F2} actThPhi={lg.ThighPhi:F2} pelPhi={inn.PelvisPhi:F2} ankL={lg.AnkleL:F2} hipL={lg.HipL:F2} actTh={lg.ThighRho:F2} actSh={lg.ShinRho:F2} hipF={lg.HipF:F2} ankF={lg.AnkleF:F2} footRho={lg.FootRho:F2} pelRho={inn.PelvisRho:F2} standH={standH:F2}"); }
                 if (!planar) { lo.ThighPhi = thPhi + gain * (inn.PelvisPhi - pelvisPhiDes); }
                 // The ankle leans the shin to where the solved leg has it; the foot stays flat on the ground.
                 lo.FootRho = lg.SlopeRho + (lg.ShinRho - (th - kn));

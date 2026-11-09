@@ -125,6 +125,39 @@ public class ActiveRagdoll2DTests
         if (!mayStep) { Assert.Equal(0, r.GetActiveInfo().StepCount); }
     }
 
+    [Theory]
+    [InlineData(0.0, 1.0f)]
+    [InlineData(3.0, 0.8f)]
+    [InlineData(-3.0, 0.8f)]
+    public void WalkerWalksFiftyMetresWithoutFallingAndHoldsItsSpeed(double slopeDegrees, float speed)
+    {
+        // A planar figure walks 50 m along the ground (flat, or sloped 3 degrees up or down) without falling, and its mean speed over the last 40 s stays within 0.15 m/s of the command.
+        var w = NewWorld();
+        double a = slopeDegrees * Math.PI / 180.0, tanA = Math.Tan(a);
+        w.AddBox(new Vector2F(400f, 1f), at: new Vector2D(150 * Math.Cos(a) + 0.5 * Math.Sin(a), 150 * Math.Sin(a) - 0.5 * Math.Cos(a)), angleRadians: (float)a, type: BodyType.Static);
+        var r = w.AddRagdoll(RagdollDef.Humanoid, new Vector2D(0, 0));
+        r.EnableActive();
+        r.Stand();
+        Run(w, 90);
+        r.Walk(speed);
+        int steps = (int)(55 / speed * 60) + 400;
+        double x40 = 0; int at40 = steps - 40 * 60;
+        double lowest = double.MaxValue;
+        for (int i = 0; i < steps; i++)
+        {
+            w.Step(Dt);
+            var p = r.GetBody(0).Position;
+            lowest = Math.Min(lowest, p.Y - p.X * tanA);
+            if (i == at40) { x40 = p.X; }
+        }
+
+        var end = r.GetBody(0).Position;
+        Assert.True(lowest > 0.6, "the pelvis stayed above 0.6 m over the ground (the figure never fell): lowest " + lowest.ToString("F2"));
+        Assert.True(end.X > 50.0, "walked past 50 m: " + end.X.ToString("F1"));
+        double mean = (end.X - x40) / 40.0;
+        Assert.InRange(mean, speed - 0.15, speed + 0.15);
+    }
+
     [Fact]
     public void SnapshotRestoreAndForkReplayTheSameHashes()
     {
