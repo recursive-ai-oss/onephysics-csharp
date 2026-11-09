@@ -299,6 +299,7 @@ public class SoftBody2DScenes
     [InlineData("soft-pile-2d", 25.0, 0.08, 0.05, 0.15, 1.5)]
     [InlineData("soft-rigid-2d", 15.0, 0.05, 0.02, 0.10, 1.5)]
     [InlineData("balloon-2d", 20.0, 0.06, 0.02, 0.05, 1.0)]
+    [InlineData("plastic-2d", 25.0, 0.08, 0.05, 0.15, 1.5)]
     public void TheSceneIsStable(string name, double maxSpeed, double maxPenetration, double areaError, double softOverlap, double finalSpeed99)
     {
         var m = SoftBodies2DScene.Measure(name);
@@ -316,6 +317,7 @@ public class SoftBody2DScenes
     [InlineData("soft-pile-2d")]
     [InlineData("soft-rigid-2d")]
     [InlineData("balloon-2d")]
+    [InlineData("plastic-2d")]
     public void TheSceneIsTheSameOnAnyThreadCountAndAfterARestore(string name)
     {
         ulong a = SoftBodies2DScene.Run(name, 1, false);

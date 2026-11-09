@@ -10,7 +10,7 @@ internal static class SoftBodies2DScene
 {
     internal const float Dt = 1f / 60f;
 
-    internal static readonly string[] Names = { "soft-pile-2d", "soft-rigid-2d", "balloon-2d" };
+    internal static readonly string[] Names = { "soft-pile-2d", "soft-rigid-2d", "balloon-2d", "plastic-2d" };
 
     // A small seeded generator so the scene is the same on every platform (System.Random is not specified to be).
     private sealed class Lcg
@@ -28,6 +28,7 @@ internal static class SoftBodies2DScene
             case "soft-pile-2d": Pile(w); break;
             case "soft-rigid-2d": Rigid(w); break;
             case "balloon-2d": Balloons(w); break;
+            case "plastic-2d": Plastic(w); break;
             default: throw new ArgumentException("unknown scene " + name, nameof(name));
         }
 
@@ -78,6 +79,31 @@ internal static class SoftBodies2DScene
                 case 2: AddBalloon(w, 0.3f, at, 14, 20f); break;
                 case 3: AddBlob(w, 0.3f, at, 2, 20f); break;
                 default: AddBox(w, new Vector2F(0.7f, 0.4f), at, SoftMaterial.Rubber, 2, 20f); break;
+            }
+        }
+    }
+
+    // Plastic bodies dropped in columns and stacked in a walled yard: jelly slabs and discs whose rest shape follows large deformations (yield 4%, creep 0.3), and plastic shape-matching blobs.
+    private static void Plastic(PhysicsWorld2D w)
+    {
+        Container(w, 4.0, 40.0);
+        for (int col = 0; col < 6; col++)
+        {
+            for (int row = 0; row < 4; row++)
+            {
+                var at = new Vector2D(-3.3 + col * 1.3 + (row % 2) * 0.1, 0.5 + row * 0.9);
+                SoftBodyDef def;
+                double area;
+                switch ((col + row) % 3)
+                {
+                    case 0: def = SoftBodyDef.Jelly(SoftBodyMesh.Box(new Vector2F(0.8f, 0.5f), 4, 3), at); area = 0.4; break;
+                    case 1: def = SoftBodyDef.Rubber(SoftBodyMesh.Disc(0.35f, 2, 12), at); area = Math.PI * 0.35 * 0.35; break;
+                    default: def = SoftBodyDef.Blob(SoftBodyMesh.Disc(0.35f, 2, 12), at); area = Math.PI * 0.35 * 0.35; break;
+                }
+
+                def.PlasticYield = 0.04f; def.PlasticCreep = 0.3f; def.PlasticMax = 0.4f;
+                if (def.Model == SoftBodyModel.Network) { def.EdgeCompliance = Math.Max(def.EdgeCompliance, 2e-4f); }
+                Add(w, def, area, 20f);
             }
         }
     }
