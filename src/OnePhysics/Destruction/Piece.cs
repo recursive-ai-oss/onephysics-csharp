@@ -44,6 +44,43 @@ internal sealed class Piece
         return a.Z.CompareTo(b.Z);
     }
 
+    /// <summary>Number of distinct vertices of a polygon piece (a 2D piece's single face).</summary>
+    public int PolygonCount => Planar ? _faces[0].Length : Vertices().Length;
+
+    /// <summary>The polygon with the least significant vertices dropped until at most <paramref name="max"/> remain (each step drops the vertex whose triangle with its neighbours is smallest, lowest index on ties). 2D only.</summary>
+    public Piece Simplified(int max)
+    {
+        var poly = new List<Vector3D>(_faces[0]);
+        while (poly.Count > max)
+        {
+            int best = 0; double bestArea = double.MaxValue;
+            for (int i = 0; i < poly.Count; i++)
+            {
+                var a = poly[(i + poly.Count - 1) % poly.Count]; var b = poly[i]; var c = poly[(i + 1) % poly.Count];
+                double area = Math.Abs((b.X - a.X) * (c.Y - a.Y) - (b.Y - a.Y) * (c.X - a.X));
+                if (area < bestArea) { bestArea = area; best = i; }
+            }
+            poly.RemoveAt(best);
+        }
+        return new Piece(true, [poly.ToArray()]);
+    }
+
+    /// <summary>Splits a polygon into convex polygons of at most <paramref name="max"/> vertices by fanning from its first vertex. 2D only.</summary>
+    public List<Piece> FanSplit(int max)
+    {
+        var result = new List<Piece>();
+        var poly = new List<Vector3D>(_faces[0]);
+        while (poly.Count > max)
+        {
+            var head = new Vector3D[max];
+            for (int i = 0; i < max; i++) head[i] = poly[i];
+            result.Add(new Piece(true, [head]));
+            poly.RemoveRange(1, max - 2);
+        }
+        result.Add(new Piece(true, [poly.ToArray()]));
+        return result;
+    }
+
     /// <summary>Float vertices for a hull or polygon shape.</summary>
     public Vector3F[] FloatPoints()
     {

@@ -39,6 +39,8 @@ internal interface IDestructionHost
     int EngineSectionId { get; }
     DestructionStore Destruction { get; }
     bool Planar { get; }
+    /// <summary>The most vertices one convex shape may have (8 in 2D).</summary>
+    int MaxPieceVertices { get; }
     /// <summary>Appends every shape of the body; false when one is not a convex polygon or polyhedron (then fracture is refused).</summary>
     bool ReadShapes(int body, List<ShapeInfo> into);
     /// <summary>True when the body takes part in no joint, vehicle, character, ragdoll or other machine, so replacing it cannot orphan anything.</summary>

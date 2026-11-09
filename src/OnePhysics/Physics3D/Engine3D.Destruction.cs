@@ -14,6 +14,7 @@ internal sealed partial class Engine3D : IDestructionHost
     WorldCore IDestructionHost.DestructionCore => Core;
     int IDestructionHost.EngineSectionId => Id;
     bool IDestructionHost.Planar => false;
+    int IDestructionHost.MaxPieceVertices => int.MaxValue;
     Vector3F IDestructionHost.Gravity => Opt.Gravity;
     float IDestructionHost.GravityScaleOf(int body) => GravityScale[body];
     long IDestructionHost.StepCount => Core.StepCount;
@@ -115,7 +116,11 @@ internal sealed partial class Engine3D : IDestructionHost
             AllowSleep = (Core.Bodies.Flags[source] & (byte)BodyBits.NoSleep) == 0,
         };
         if (type == BodyType.Dynamic && Core.Bodies.TypeOf(source) == BodyType.Dynamic) def.SleepSettings = Core.GetBodySleepSettings(handle);
-        return CreateBody(in def);
+        var handle2 = CreateBody(in def);
+        // Keep the source's rotation bit for bit instead of renormalising it.
+        var src = Core.Bodies.RotationOf(source); var dst = Core.Bodies.RotationOf(handle2.Index);
+        for (int i = 0; i < 4; i++) dst[i] = src[i];
+        return handle2;
     }
 
     ShapeHandle IDestructionHost.AddPiece(BodyHandle body, Vector3F[] points, in ShapeTemplate t)

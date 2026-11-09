@@ -105,6 +105,7 @@ internal sealed partial class Engine2D
         } while (changed);
         SnapshotRegions.Complete(Core, s);
         _actuators?.SelectRegion(s);
+        _destruction?.SelectRegion(s);
         for (int i = 0; i < PairHigh; i++)
         { if (Pairs[i].Live && s.Contains("shape", Pairs[i].A) && s.Contains("shape", Pairs[i].B)) { s.Add("pair", i); } }
         return s;

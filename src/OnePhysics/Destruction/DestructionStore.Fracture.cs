@@ -92,14 +92,26 @@ internal sealed partial class DestructionStore
             var handle = host.CloneBody(source, g.Type);
             var shapes = new List<ShapeHandle>(g.Pieces.Count);
             var kept = new Group { Type = g.Type, Seed = g.Seed };
+            int max = host.MaxPieceVertices;
             for (int i = 0; i < g.Pieces.Count; i++)
             {
-                try
+                var piece = g.Pieces[i];
+                // A 2D shape holds at most eight vertices: a bonded part is simplified to fit, any other piece is split into convex fans (several shapes).
+                var pieces = new List<Piece>(1);
+                if (piece.Planar && piece.PolygonCount > max)
                 {
-                    var sh = host.AddPiece(handle, g.Pieces[i].FloatPoints(), g.Templates[i]);
-                    shapes.Add(sh); kept.Add(g.Pieces[i], g.Templates[i], g.PartTags[i]);
+                    if (g.PartTags[i] >= 0) pieces.Add(piece.Simplified(max)); else pieces.AddRange(piece.FanSplit(max));
                 }
-                catch (ArgumentException) { _dropped++; }
+                else pieces.Add(piece);
+                foreach (var sub in pieces)
+                {
+                    try
+                    {
+                        var sh = host.AddPiece(handle, sub.FloatPoints(), g.Templates[i]);
+                        shapes.Add(sh); kept.Add(sub, g.Templates[i], g.PartTags[i]);
+                    }
+                    catch (ArgumentException) { _dropped++; }
+                }
             }
             if (shapes.Count == 0) { host.DestroyBody(handle); continue; }
             result.Add(new Created { Body = handle, Shapes = shapes.ToArray(), Group = kept });
