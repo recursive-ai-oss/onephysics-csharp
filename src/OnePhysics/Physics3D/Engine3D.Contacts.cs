@@ -208,9 +208,11 @@ internal sealed partial class Engine3D
                 double reach = FastReach(b);
                 if (reach > 0.0)
                 {
-                    // The stored box is made around the box grown by the body's travel, so the test above holds for the whole of the next step; it stays inside the range the broadphase accepts.
-                    const double L = BoxLimits.MaxCoordinate;
-                    tight = new Aabb3D(Math.Max(-L, tight.MinX - reach), Math.Max(-L, tight.MinY - reach), Math.Max(-L, tight.MinZ - reach), Math.Min(L, tight.MaxX + reach), Math.Min(L, tight.MaxY + reach), Math.Min(L, tight.MaxZ + reach));
+                    // The stored box is made around the box grown by the body's travel, so the test above holds for the whole of the next step. It never shrinks the box and stays far enough inside the range
+                    // the broadphase accepts for the margin the broadphase adds.
+                    double lim = BoxLimits.MaxCoordinate - Opt.BroadphaseMargin - 1.0;
+                    tight = new Aabb3D(Math.Min(tight.MinX, Math.Max(-lim, tight.MinX - reach)), Math.Min(tight.MinY, Math.Max(-lim, tight.MinY - reach)), Math.Min(tight.MinZ, Math.Max(-lim, tight.MinZ - reach)),
+                        Math.Max(tight.MaxX, Math.Min(lim, tight.MaxX + reach)), Math.Max(tight.MaxY, Math.Min(lim, tight.MaxY + reach)), Math.Max(tight.MaxZ, Math.Min(lim, tight.MaxZ + reach)));
                 }
 
                 Bp.MoveProxy(Proxy[s], tight, WorldCore.Grid(Dp[3 * b]), WorldCore.Grid(Dp[3 * b + 1]), WorldCore.Grid(Dp[3 * b + 2]));
