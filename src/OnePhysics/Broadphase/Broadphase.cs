@@ -220,6 +220,18 @@ public partial class Broadphase<TBox> : ISnapshotSection where TBox : struct, IB
         _trees = new[] { new DynamicTree<TBox>(), new DynamicTree<TBox>(), new DynamicTree<TBox>() };
     }
 
+    // Discard history-dependent tree placement, fat bounds, flags and move order together.
+    // The engine recreates live proxies in shape-slot order immediately after this call.
+    internal void ResetForCanonicalization()
+    {
+        _trees = new[] { new DynamicTree<TBox>(), new DynamicTree<TBox>(), new DynamicTree<TBox>() };
+        _moves.Clear();
+        _moveStage.Clear();
+        Array.Clear(_refitsSinceRebuild);
+        _pairCount = 0;
+        _movedCount = 0;
+    }
+
     /// <inheritdoc/>
     public int SectionId { get; }
 

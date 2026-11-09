@@ -49,7 +49,7 @@ public readonly partial struct Body : IEquatable<Body>
     /// <summary>False for sleeping dynamic bodies; kinematic bodies are always awake.</summary>
     public bool IsAwake { get { var (w, b) = Resolve(); var t = w.Core.Bodies.TypeOf(b); return t == BodyType.Kinematic || (t == BodyType.Dynamic && w.Core.Bodies.IsAwake(b)); } }
 
-    /// <summary>The body origin in world coordinates. Setting it teleports the body (and wakes it).</summary>
+    /// <summary>Body origin in metres relative to the world origin. Setting accepts finite components in inclusive ±2^21, otherwise throws ArgumentOutOfRangeException, and teleports and wakes the body. All Q31.32 values round-trip exactly through double on that closed interval; OneMath FixedBridge accepts only the open interior. Simulation may advance to ±2^22 before Step rejects out-of-bounds state.</summary>
     public Vector3D Position
     {
         get

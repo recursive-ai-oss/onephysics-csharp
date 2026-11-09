@@ -585,7 +585,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         bool services = HasServiceState();
         bool joints = LiveJointCount() > 0;
         bool chars = CharHandles.Count > 0;
-        w.NamedUInt32(chars ? WithCharacters : joints ? Extended : services ? Services : Version);
+        w.NamedUInt32(chars ? (HasExactCharacterSlopes() ? WithRadianSlopes : WithCharacters) : joints ? Extended : services ? Services : Version);
         w.NamedSingle(Opt.ContactHertz); w.NamedSingle(Opt.ContactDampingRatio); w.NamedSingle(Opt.PushOutVelocity); w.NamedSingle(Opt.RestitutionThreshold);
         w.NamedSingle(Opt.MaxLinearSpeed); w.NamedSingle(Opt.MaxRotationPerSubstep); w.NamedBool(Opt.ContinuousEnabled); w.NamedSingle(Opt.ContactSlop);
         int nb = Core.Bodies.HighWater;
@@ -642,7 +642,7 @@ internal sealed partial class Engine2D : ISnapshotSection
             w.NamedUInt32((joints ? BlockJoints : 0u) | (services ? BlockServices : 0u) | BlockCharacters);
             if (joints) { WriteJoints(w); }
             if (services) { WriteServices(w, ns); }
-            WriteCharacters(w);
+            WriteCharacters(w, HasExactCharacterSlopes());
         }
         else if (joints)
         {
@@ -690,7 +690,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     public void Read(StateReader r)
     {
         uint v = r.ReadUInt32();
-        if (v != Version && v != Services && v != Extended && v != WithCharacters) { throw r.Error("unsupported 2D engine section version " + v.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+        if (v != Version && v != Services && v != Extended && v != WithCharacters && v != WithRadianSlopes) { throw r.Error("unsupported 2D engine section version " + v.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
         float hertz = r.ReadSingle(), zeta = r.ReadSingle(), push = r.ReadSingle(), thr = r.ReadSingle(), maxSpeed = r.ReadSingle(), maxRot = r.ReadSingle();
         bool continuous = r.ReadBool();
         float slop = r.ReadSingle();
@@ -755,7 +755,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         ServiceBlock? svc = null;
         CharacterBlock? chars = null;
         bool jointsRead = false;
-        if (v == Extended || v == WithCharacters)
+        if (v == Extended || v == WithCharacters || v == WithRadianSlopes)
         {
             bool hasJoints = true, hasServices, hasChars = false;
             if (v == Extended) { hasServices = r.ReadBool(); }
@@ -775,7 +775,7 @@ internal sealed partial class Engine2D : ISnapshotSection
 
             if (hasChars)
             {
-                chars = ReadCharacters(r, nb);
+                chars = ReadCharacters(r, nb, v == WithRadianSlopes);
                 if (chars.Handles.Count == 0) { throw r.Error("2D section version 4 holds no characters"); }
             }
 

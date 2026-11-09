@@ -165,7 +165,7 @@ A deterministic host drives these from its own per-tick loop. All of them work o
 
 ## Origin and coordinates
 
-Body positions are double and relative to the world origin; the public boundary takes them as double, exact within ±2^21 (a 31.32 fixed-point value converts exactly there), and rejects a component beyond it. Rotations, velocities and solver math are float32. `ShiftOrigin(offset)` subtracts a double offset (finite, a multiple of 2^-31, magnitude ≤ 2^22, one value per position lane) from every body position and adds it to the saved origin, so `origin + position` is unchanged; positions on the 2^-31 grid shift exactly. The host calls it between steps, on every peer at the same step. Engines shift whatever they keep in world coordinates themselves. The origin is part of the snapshot and the hash.
+Body positions are double and relative to the world origin; the public boundary takes them as double, exact within ±2^21 (a Q31.32 fixed-point value converts exactly on the closed interval, including both endpoints; OneMath 1.0 FixedBridge deliberately accepts only the open interval), and rejects a component beyond it. Rotations, velocities and solver math are float32. `ShiftOrigin(offset)` subtracts a double offset (finite, a multiple of 2^-31, magnitude ≤ 2^22, one value per position lane) from every body position and adds it to the saved origin, so `origin + position` is unchanged; positions on the 2^-31 grid shift exactly. The host calls it between steps, on every peer at the same step. Engines shift whatever they keep in world coordinates themselves. The origin is part of the snapshot and the hash.
 
 ## 3D requirements
 
@@ -200,3 +200,11 @@ change the step, span accessors, snapshot v1 or hash order. Custom sections use
 metadata, never bytes in the full snapshot. Region archives are a separate,
 versioned value-resync format; their topology/context checks and closure are in
 [snapshots.md](snapshots.md).
+
+`ShiftOrigin` vector arguments use fixed stack storage (two or three doubles),
+not a heap array. With recording disabled the call allocates nothing. An offset
+off the 2^-31 grid raises `ArgumentException`; non-finite or magnitude > 2^22
+raises `ArgumentOutOfRangeException`. Every other Q31.32 raw integer is on this
+offset grid; accepting all Q31.32 raw values would incorrectly allow half-grid
+shifts. Creation/teleport bounds are inclusive ±2^21; ±2^22 is simulation and
+shape headroom, not a larger public creation interval.

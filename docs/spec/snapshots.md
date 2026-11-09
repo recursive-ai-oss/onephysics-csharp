@@ -313,6 +313,58 @@ callbacks/events are not dispatched. Global allocation/free-list history is not
 replaced. This intentionally favors correctness and inspection/resync utility
 over allocation-free or constant-time regional restore.
 
+## Full-hash comparison after regional repair
+
+A regional archive does not import broadphase tree history. `RestoreRegion` alone
+therefore promises regional, **not full-world**, hash equality. For full-hash
+resynchronization call `CanonicalizeBroadphase()` on **both** worlds between the
+same steps, after repair. This explicit operation leaves existing snapshots and
+hashes unchanged for worlds that never call it. It allocates and is a tooling
+operation, not a per-step requirement.
+
+Canonicalization validates every current shape bound before mutation, discards
+all three trees, clears move/staging/pair buffers and resets the three refit
+counters to zero. It then visits live shape slots in ascending index order,
+creating each proxy in its body's type tree from its current tight bound, using
+the usual static/dynamic margin and zero predicted displacement. Proxy keys in
+the engine are rewritten; every live proxy is queued for pair discovery in that
+same order. This replaces history-dependent bounds, placement, node flags, free
+lists and move membership together. Existing pair/contact caches, islands,
+constraints, events, bodies, subscriptions and options are not changed.
+
+If the non-broadphase state already matches (including topology, global handle
+and pair-slot histories, tick, caches and options), this procedure gives identical
+full snapshot bytes and hashes and identical next steps. It does not hide a
+remaining outside-region divergence or repair incompatible allocation histories;
+use the desync finder and a full snapshot for those. Repeating it without changing
+state is byte-idempotent. Historical proxy keys/tree references obtained through
+the raw tier must be reacquired afterward. Call `Warmup` again if subsequent
+steps must allocate nothing: tree scratch capacity is rebuilt too. Rebuilding from geometry is simpler
+than importing partial tree nodes, whose parent/free-list topology crosses the
+region boundary.
+
+## Exact character slope inputs
+
+Character definitions store `SlopeLimitRadians` as float32 radians; the getter
+returns the input bits, including signed zero. For compatibility they retain a
+legacy degree wire value. If converting that degree value to radians reproduces
+the public radian bits, the existing snapshot bytes and solver double-radian
+conversion are retained (including the default and Giant presets). Otherwise the
+solver uses the exact float32 radians widened to double.
+
+A world with at least one slope that cannot survive the legacy conversion uses
+**engine section version 5 in 2D, version 3 in 3D**. Full snapshot envelope version
+1 is unchanged. These section versions have the preceding character-capable
+version's layout and flags, except that each live character record starts with
+one boolean byte before its body index: false means its slope field retains
+legacy degrees, true means the same float32 field contains exact radians. At
+least one true record is required, and a true record whose radians survive the
+legacy conversion is rejected as noncanonical. All other block orders and fields
+are unchanged. Old readers reject the new section version cleanly. Current
+readers accept legacy sections and reserialize them byte-exactly. Mixed legacy
+and exact slopes retain each legacy record's degree bits. Worlds without exact
+slope inputs keep their previous section version, snapshot bytes and hashes.
+
 ## Indicative measurement method
 
 `bench/SnapshotFoundations` uses the shared generated `large-pile` and
