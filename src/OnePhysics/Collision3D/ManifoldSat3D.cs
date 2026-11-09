@@ -248,7 +248,10 @@ public sealed partial class ManifoldGenerator3D
         bool haveC = false;
         // A face axis whose nearest vertex of the other core lies over the face itself measures the true distance: that vertex and its projection on the face are the closest points of the two cores,
         // exactly what GJK would return, so they are written down directly. Only the other cases (a vertex or edge past the face's rim, where the axis test can under-estimate the gap) need GJK to confirm.
-        if (best > 0f && !useEdge && NearestVertexOverFace(useB ? pb : pa, useB ? pa : pb, useB ? faceB : faceA, out Vector3F nearest))
+        // Overlapping shapes (best below zero) take the same route: the vertex that is deepest behind the reference face is the deepest point of the overlap. The clipped incident face can miss it altogether
+        // when the overlap is deep (the face most opposed to the reference normal may lie wholly outside the other shape while a corner of a neighbouring face is far inside), and a manifold without
+        // its deepest point reports the shapes as barely touching.
+        if (!useEdge && NearestVertexOverFace(useB ? pb : pa, useB ? pa : pb, useB ? faceB : faceA, out Vector3F nearest))
         {
             Vector3F nFace = useB ? -pb.N[faceB] : pa.N[faceA];
             Vector3F coreA = useB ? nearest : nearest - (nFace * best);
