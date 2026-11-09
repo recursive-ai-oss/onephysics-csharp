@@ -33,6 +33,7 @@ public static class Program
             case "railbike-stability": return RailBikeStability.Run(opts);
             case "actuators-stability": return ActuatorStability.Run(opts);
             case "character-abilities-stability": return CharacterAbilityStability.Run(opts);
+            case "terrain-edit-stability": return TerrainEditStability.Run(opts);
             case "micro-boxbox": return MicroBoxBox.Run(opts);
             case "queries-indicative": return MixedQueryTiming.Run(opts);
             case "recording-indicative": return RecordingTiming.Run(opts);
