@@ -111,9 +111,11 @@ internal static class SmokeProgram
         Console.WriteLine(formats ? "OK formats" : "FAIL formats");
         bool inspection = InspectionSmoke.Run(out ulong inspectionHash);
         Console.WriteLine((inspection ? "OK inspection " : "FAIL inspection ") + inspectionHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        bool rods = RodSmoke.Run(out ulong rodHash);
+        Console.WriteLine((rods ? "OK rods " : "FAIL rods ") + rodHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool machines = JointMachineSmoke.Run();
         Console.WriteLine(machines ? "OK machines" : "FAIL machines");
-        return missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+        return rods && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
     }
 
     private static bool MissingShapes()
