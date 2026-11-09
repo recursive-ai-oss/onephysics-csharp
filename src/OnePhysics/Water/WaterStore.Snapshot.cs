@@ -79,7 +79,7 @@ internal sealed partial class WaterStore
             for (int e = 0; e < 4; e++)
             {
                 byte kind = r.ReadByte();
-                if (kind > (byte)WaterEdge.Inflow) { throw r.Error("invalid shallow water boundary kind " + kind.ToString(CultureInfo.InvariantCulture)); }
+                if (kind > (byte)WaterEdge.Level) { throw r.Error("invalid shallow water boundary kind " + kind.ToString(CultureInfo.InvariantCulture)); }
                 g.Edges[e] = (WaterEdge)kind; g.EdgeLevel[e] = r.ReadSingle(); g.EdgeSpeed[e] = r.ReadSingle();
                 if (!float.IsFinite(g.EdgeLevel[e]) || Math.Abs(g.EdgeLevel[e]) > 4194304f || !(Math.Abs(g.EdgeSpeed[e]) <= 1000f)) { throw r.Error("invalid shallow water inflow"); }
             }

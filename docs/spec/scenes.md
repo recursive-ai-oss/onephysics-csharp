@@ -220,6 +220,16 @@ No other engine has any of these, so the five scenes are built in code by `tests
 
 Metrics: `maxSpeed` the fastest body, `maxPenetration` the deepest contact separation of a craft with a static body, `minGap` the smallest fan gap, `maxSpin` the largest glider angular speed. The analytic checks are in `Actuator3DTests` and `Actuator2DTests`: the plate and wing curves against the documented model from -90° to 90° in 5° steps (relative error under 2e-4), a bluff body's drag on its silhouette, a glider that trims to a steady glide whose ratio (11.66 in 3D, 11.56 in 2D) matches the lift to drag of its surfaces within 5 %, a thrust-to-weight 1.0 rig that hovers with zero drift over 600 steps, a hovercraft at the predicted gap 0.14645 m (0.1464466 predicted, 0.14644659 measured), a dinghy at 4.84 m/s against a predicted 4.79 (3D) and 4.26 against 4.20 (2D), and a rudder that turns the dinghy right at 1.44 rad/s (3D, at 4.9 m/s, rudder alone).
 
+
+### Shallow water (own scenes, no reference engine)
+
+No other engine couples shallow-water waves to floating bodies and boats, so the two scenes are built in code by `tests/Common/WaterScenes.cs` and measured by `bar water-stability [--scene name] [--threads n] [--timing]`. 900 steps at 1/60, default options; a pulse of water is added at the west end every 120 steps from step 60. Thresholds are 1.5 times the measured values (x64 and arm64 agree to every printed digit, at 1 and 8 threads), rounded up; they are ours. The analytic checks (Stoker's dam break on a wet bed, a lake at rest over uneven ground and with dry banks in 1D and 2D for 6000 and 3000 steps, conservation, wave speed, thread independence) are in `ShallowWaterSolverTests`.
+
+| scene | what | thresholds | measured |
+|---|---|---|---|
+| `shallow-water-3d` | a 40 m × 24 m basin (80 × 48 cells of 0.5 m) 3 m deep with a ramp for a beach at the east end, a dinghy (150 kg) and a barge (6 t) under way, ten crates, three spheres and a 1.5 m block dropped from 4 m | `nan` = `escapes` (outside the basin) = `capsized` (up axis more than 78° from vertical) = `sunk` (origin below 0.8 m) = 0, `maxSpeed` <= 12, `volumeError` <= 1.5e-6 (the water's volume against what it started with plus the pulses, relative), `lostVolume` <= 1e-9, `maxWave` <= 0.75 (the highest wet surface above 2 m), `waterSpeed` <= 0.5 (the fastest water at the end) | 0, 0, 0, 0, 8.01, 1.3e-7, 0, 0.485, 0.323 |
+| `shallow-water-2d` | the same side-on: 160 cells of 0.25 m, a dinghy, a 4 t barge, eight crates, three discs and a block | as `shallow-water-3d` with `maxSpeed` <= 9, `volumeError` <= 1.5e-6, `maxWave` <= 1.2, `waterSpeed` <= 2.1 | 0, 0, 0, 0, 5.40, 7.5e-7, 0, 0.758, 1.40 |
+
 ### Rail vehicles and bicycles (own scenes, no reference engine)
 
 No other engine has rail vehicles or bicycles, so these four scenes are built in code by `tests/Common/RailBikeScenes3D.cs` and `RailBikeScenes2D.cs` and measured by `bar railbike-stability [--scene name] [--threads n] [--timing]` (600 steps at 1/60, default options; scripts read only world state, so a restored or forked world continues bit for bit). The numbers are from the same code at 1 and 4 threads (identical); thresholds are 1.5 times ours, rounded.

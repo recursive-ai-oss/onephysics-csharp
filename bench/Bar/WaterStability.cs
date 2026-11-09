@@ -31,6 +31,45 @@ internal static class WaterStability
         return fails;
     }
 
+    /// <summary>Indicative timing: a 256 x 256 grid (0.5 m cells) of 3D water with 20 floating bodies, and a 2048-cell planar channel with 20 bodies; median and mean step time over 300 steps after 100 of warm-up, and the water's share of it.</summary>
+    internal static int Timing(Opts opts)
+    {
+        int threads = int.Parse(opts.Get("threads", "1"), CultureInfo.InvariantCulture);
+        var w = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new RecursiveAI.OnePhysics.Physics3D.WorldOptions3D { ThreadCount = threads, WorldId = 140 });
+        w.AddBox(new Vector3F(140f, 1f, 140f), new Vector3D(64, -0.5, 64), type: BodyType.Static);
+        var water = w.CreateShallowWater(new RecursiveAI.OnePhysics.Physics3D.ShallowWaterDef { CellsX = 256, CellsZ = 256, CellSize = 0.5f, Level = 2.0, FloorHeight = -1.0, SampleBed = false, Bed = new float[256 * 256] });
+        for (int i = 0; i < 20; i++)
+        {
+            double x = 20 + 18 * (i % 5), z = 20 + 20 * (i / 5);
+            if (i % 2 == 0) w.AddBox(new Vector3F(1.5f, 0.6f, 3f), new Vector3D(x, 2.5, z), density: 400f); else w.AddSphere(0.6f, new Vector3D(x, 3.0, z), density: 500f);
+        }
+
+        var times = new List<double>(); var sw = new Stopwatch();
+        for (int step = 0; step < 400; step++)
+        {
+            if (step % 100 == 50) water.AddVolume(2, 2, 6, 126, 80f);
+            sw.Restart(); w.Step(WaterScenes.Dt); if (step >= 100) times.Add(sw.Elapsed.TotalMilliseconds);
+        }
+
+        times.Sort();
+        Console.WriteLine($"water-3d-256x256 bodies=20 threads={threads} stepMs median={F(times[times.Count / 2])} p90={F(times[(int)(0.9 * (times.Count - 1))])} mean={F(times.Average())} substeps={w.Engine.Water.LastSubsteps}");
+
+        var w2 = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new RecursiveAI.OnePhysics.Physics2D.WorldOptions2D { ThreadCount = threads, WorldId = 141 });
+        w2.AddBox(new Vector2F(600f, 1f), new Vector2D(256, -0.5), type: BodyType.Static);
+        var water2 = w2.CreateShallowWater(new RecursiveAI.OnePhysics.Physics2D.ShallowWaterDef { Cells = 2048, CellSize = 0.25f, Level = 2.0, FloorHeight = -1.0, SampleBed = false, Bed = new float[2048] });
+        for (int i = 0; i < 20; i++) { if (i % 2 == 0) w2.AddBox(new Vector2F(1.5f, 0.6f), new Vector2D(20 + 22 * i, 2.5), density: 400f); else w2.AddCircle(0.6f, new Vector2D(20 + 22 * i, 3.0), density: 500f); }
+        times.Clear();
+        for (int step = 0; step < 400; step++)
+        {
+            if (step % 100 == 50) water2.AddVolume(2, 6, 4f);
+            sw.Restart(); w2.Step(WaterScenes.Dt); if (step >= 100) times.Add(sw.Elapsed.TotalMilliseconds);
+        }
+
+        times.Sort();
+        Console.WriteLine($"water-2d-2048 bodies=20 threads={threads} stepMs median={F(times[times.Count / 2])} p90={F(times[(int)(0.9 * (times.Count - 1))])} mean={F(times.Average())}");
+        return 0;
+    }
+
     static void Report(string name, int steps, int threads, SortedDictionary<string, double> r, bool ok, bool timing, List<double> times)
     {
         Console.WriteLine($"{name} steps={steps} threads={threads} " + string.Join(' ', r.Select(kv => kv.Key + "=" + F(kv.Value))) + (ok ? " PASS" : " FAIL"));
@@ -143,9 +182,9 @@ internal static class WaterStability
         return ok ? 0 : 1;
     }
 
-    // Thresholds are 1.5 times the worse of the x64 and arm64 runs (see docs/spec/scenes.md).
+    // Thresholds are 1.5 times the worse of the x64 and arm64 runs, which agree to every digit (see docs/spec/scenes.md).
     static class Thresholds
     {
-        internal const double Speed3 = 1e9, Speed2 = 1e9, Volume = 1e-3, Lost = 1e-3, Wave3 = 1e9, Wave2 = 1e9, WaterSpeed3 = 1e9, WaterSpeed2 = 1e9;
+        internal const double Speed3 = 12, Speed2 = 9, Volume = 1.5e-6, Lost = 1e-9, Wave3 = 0.75, Wave2 = 1.2, WaterSpeed3 = 0.5, WaterSpeed2 = 2.1;
     }
 }

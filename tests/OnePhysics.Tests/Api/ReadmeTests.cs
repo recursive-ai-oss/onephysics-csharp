@@ -103,6 +103,12 @@ public class ReadmeTests
         Assert.InRange(soft.ClothY, 0.0, 1.8);
         Assert.InRange(soft.CubeVolumeRatio, 0.9, 1.1);
 
+        var wt = GuideExamples.Water.Run();
+        Assert.Equal(wt, GuideExamples.Water.Run());
+        Assert.True(wt.Events >= 1);
+        Assert.InRange(wt.CrateY, 1.8, 2.3);
+        Assert.True(wt.Depth > 1.9f);
+
         var t = GuideExamples.Tiers.Run();
         Assert.Equal(t, GuideExamples.Tiers.Run());
         Assert.True(t.Contacts > 0);

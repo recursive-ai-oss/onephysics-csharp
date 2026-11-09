@@ -16,5 +16,6 @@ Task-oriented pages with examples that are compiled and run by the test suite. F
 | [Soft bodies](soft-bodies.md) | make a cloth, a jelly or a pressurised ball; know what they collide with and how they push rigid bodies |
 | [Editable and sampled terrain](terrain.md) | carve a 2D bitmask, dig a voxel grid, collide with a signed distance field |
 | [Destruction](destruction.md) | fracture, slice and bond bodies; budget the debris |
+| [Shallow water](water.md) | make a lake or wave tank that floats bodies and boats, reads currents and takes waves |
 | [Input limits](limits.md) | know what is refused |
 | [Coming from Unity](unity-mapping.md) | find the name of the thing you know |

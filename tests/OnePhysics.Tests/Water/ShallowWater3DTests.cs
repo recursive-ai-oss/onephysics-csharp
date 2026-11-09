@@ -343,4 +343,27 @@ public class ShallowWater3DTests
         Assert.True(water.TryGetSample(5, 5, out var s));
         Assert.InRange(s.Velocity.X, 0.8f, 2.2f);
     }
+
+    [Fact]
+    public void TheGuideExampleRuns()
+    {
+        var world = new PhysicsWorld3D();
+        world.AddBox(new Vector3F(60f, 1f, 60f), at: new Vector3D(10, -0.5, 10), type: BodyType.Static);
+        var water = world.AddShallowWater(minX: 0, minZ: 0, maxX: 20, maxZ: 20, level: 2.0, cellSize: 0.5f, floor: -1.0);
+        var crate = world.AddBox(new Vector3F(1f, 1f, 1f), at: new Vector3D(10, 3, 10), density: 500f);
+        int events = 0;
+        world.BodyWaterChanged += _ => events++;
+        for (int i = 0; i < 600; i++)
+        {
+            if (i == 200) { water.AddVolume(0, 0, 2, 20, 20f); }
+            world.Step(1f / 60f);
+        }
+
+        Assert.True(events >= 1, "events " + events + " crate " + crate.Position + " count " + world.ShallowWaterCount);
+        Assert.True(world.QueryWater(new Vector3D(10, 0, 10), out var sample));
+        Assert.True(sample.Depth > 1.9f);
+        Assert.True(world.RaycastWater(new Vector3D(10, 10, 10), new Vector3F(0, -1, 0), out var hit));
+        Assert.InRange(hit.Distance, 7f, 8.5f);
+        Assert.InRange(crate.Position.Y, 1.8, 2.3);
+    }
 }

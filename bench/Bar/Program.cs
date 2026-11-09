@@ -40,6 +40,7 @@ public static class Program
             case "railbike-stability": return RailBikeStability.Run(opts);
             case "actuators-stability": return ActuatorStability.Run(opts);
             case "water-stability": return WaterStability.Run(opts);
+            case "water-timing": return WaterStability.Timing(opts);
             case "character-abilities-stability": return CharacterAbilityStability.Run(opts);
             case "terrain-edit-stability": return TerrainEditStability.Run(opts);
             case "terrain-edit-timing": return TerrainEditStability.Time(opts);

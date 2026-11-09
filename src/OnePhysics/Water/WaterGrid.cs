@@ -53,6 +53,9 @@ internal sealed partial class WaterGrid
     public const int MaxCellsPerGrid = 1 << 22;
     public const int MaxSources = 64;
 
+    /// <summary>The deepest water a cell may hold, metres, and the fastest it may flow, m/s: a state beyond them (a step stretched past what the wave speed allows, a huge added volume) is cut back so that it stays finite and saveable.</summary>
+    public const float MaxDepth = 4194304f, MaxSpeed = 1000f;
+
     public bool Planar;
     public int Nx, Nz;
     public float Dx;
@@ -243,10 +246,18 @@ internal sealed partial class WaterGrid
         }
     }
 
+    // The running total of lost water, kept finite and non-negative whatever was lost.
+    private static double AddLost(double total, double lost)
+    {
+        double t = total + lost;
+        return t >= 0.0 && t < 1e30 ? t : double.IsNaN(t) || t < 0.0 ? total : 1e30;
+    }
+
     private void Apply(int c, float dh)
     {
         float h = H[c] + dh;
-        if (h < 0f) { LostVolume -= (double)h * CellArea; h = 0f; }
+        if (h < 0f) { LostVolume = AddLost(LostVolume, -(double)h * CellArea); h = 0f; }
+        else if (!(h <= MaxDepth)) { h = MaxDepth; }
         H[c] = h;
         if (!(h > DryDepth)) { Hu[c] = 0f; Hv[c] = 0f; }
     }

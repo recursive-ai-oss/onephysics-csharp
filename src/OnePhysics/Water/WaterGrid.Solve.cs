@@ -42,7 +42,7 @@ internal sealed partial class WaterGrid
             executor.For(blocks, new CombineTask(this));
             double lost = 0;
             for (int b = 0; b < blocks; b++) { lost += _lost[b]; _lost[b] = 0f; }
-            LostVolume += lost * CellArea;
+            LostVolume = AddLost(LostVolume, lost * CellArea);
         }
 
         return n;
@@ -267,13 +267,21 @@ internal sealed partial class WaterGrid
                 int c = k * Nx + i;
                 float h = 0.5f * (_h0[c] + H[c]);
                 float q = 0.5f * (_u0[c] + Hu[c]), r = 0.5f * (_v0[c] + Hv[c]);
+                // A state that is not finite or lies beyond the limits (only reachable when the substep cap stretches a step past stability) is cut back; NaN becomes dry still water.
+                if (!(h >= 0f)) { h = 0f; } else if (!(h <= MaxDepth)) { h = MaxDepth; }
                 if (!(h > DryDepth)) { q = 0f; r = 0f; }
-                else if (cf > 0f)
+                else
                 {
-                    // Quadratic bottom drag, implicit in the momentum so it can only slow the water down.
-                    float u = q / h, v = r / h;
-                    float f = 1f / (1f + dt * cf * float.Sqrt(u * u + v * v) / h);
-                    q *= f; r *= f;
+                    float lim = h * MaxSpeed;
+                    if (!(q > -lim && q < lim)) { q = float.IsNaN(q) ? 0f : q > 0f ? lim : -lim; }
+                    if (!(r > -lim && r < lim)) { r = float.IsNaN(r) ? 0f : r > 0f ? lim : -lim; }
+                    if (cf > 0f)
+                    {
+                        // Quadratic bottom drag, implicit in the momentum so it can only slow the water down.
+                        float u = q / h, v = r / h;
+                        float f = 1f / (1f + dt * cf * float.Sqrt(u * u + v * v) / h);
+                        q *= f; r *= f;
+                    }
                 }
 
                 if (Damping > 0f) { q *= damp; r *= damp; }
