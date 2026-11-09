@@ -37,6 +37,7 @@ internal static class SceneBuilder3D
     {
         var opt = new P3.WorldOptions3D { Gravity = new Vector3F((float)s.Gx, (float)s.Gy, (float)s.Gz), ThreadCount = threads };
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
+        if (s.WorldLimits is BodyControlSettings worldLimits) { opt.MaxLinearSpeed = worldLimits.MaxLinearSpeed; opt.MaxAngularSpeed = worldLimits.MaxAngularSpeed; opt.PushOutVelocity = worldLimits.MaxDepenetrationSpeed; }
         var world = new P3.PhysicsWorld3D(opt);
 
         if (s.Bodies.Exists(b => b.Script != null)) world.SetLayerCollision(1, 1, false); // characters pass through each other (layer 1); the world and the crates are layer 0
@@ -64,9 +65,15 @@ internal static class SceneBuilder3D
                 LinearVelocity = new Vector3F((float)ob.Vx, (float)ob.Vy, (float)ob.Vz),
                 AngularVelocity = new Vector3F((float)ob.Wx, (float)ob.Wy, (float)ob.W),
                 IsBullet = ob.Bullet,
+                Controls = ob.Controls, SleepSettings = ob.SleepSettings, AllowSleep = !ob.NeverSleep, MassOverride = ob.MassOverride,
+                CenterOfMassOverride = ob.CenterOverride.HasValue ? ob.CenterOverride.Value : null,
+                InertiaOverride = ob.InertiaOverride.HasValue ? ob.InertiaOverride.Value : null,
+                InertiaRotationOverride = ob.InertiaRotation,
+
             };
             bodies[i] = world.CreateBody(in bd);
             foreach (var sh in ob.Shapes) { s.ActiveLine = sh.SourceLine; CreateShape(world, bodies[i], sh, s); }
+            if (ob.TargetPosition is Vector3D target) bodies[i].MoveKinematic(target, ob.TargetRotation);
             if (ob.Vehicle != null)
             {
                 var vehicle = ob.Vehicle.Preset switch

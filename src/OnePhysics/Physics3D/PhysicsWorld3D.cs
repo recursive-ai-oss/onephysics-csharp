@@ -38,6 +38,7 @@ public sealed partial class PhysicsWorld3D
         _engine = new Engine3D(_core, bp, o) { World = this };
         _core.AddSection(bp);
         _core.AddSection(_engine);
+        BindBodyControlOptions();
         _core.AddSection(_engine.SoftSnapshotSection);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
@@ -118,9 +119,11 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="BodyOutOfBoundsException">A moving body is outside the supported range or has a non-finite position, velocity or rotation; the world is unchanged. Move, destroy it or call <see cref="ShiftOrigin"/>.</exception>
     public void Step(float dt)
     {
+        if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.Opt.Validate();
         _engine.CheckBounds();
         _engine.CheckSoftBounds();
+        if (_core.Controls.Active) _engine.ValidateTargetMotion(dt);
         SyncCoreOptions();
         if (_recorder != null) { RecordPreparedStep(dt); return; }
         StepPrepared(dt);
@@ -129,12 +132,16 @@ public sealed partial class PhysicsWorld3D
     // The unrecorded path has no recording scope or exception region in its simulation body.
     private void StepPrepared(float dt)
     {
+        if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
+        _engine.BeginBodyControls(dt);
         _engine.StepVehicles(this, dt);
         _engine.StepFluids(dt);
         bool soft = _engine.SoftHandles.Count > 0;
         if (soft) { _engine.BeginSoftStep(); }
         _core.Step(new Stages3D(_engine), dt);
+
         if (soft) { _engine.StepSoft(dt); }
+        _engine.EndBodyControls();
         _engine.ReconcileJoints();
         InvalidateQueryPad();
         BuildPublicEvents();

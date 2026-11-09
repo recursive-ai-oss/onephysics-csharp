@@ -67,6 +67,7 @@ internal sealed partial class Engine3D
         Mem.At(w, p6 + 3) = t10 * r10 + t11 * r11 + t12 * r12;
         Mem.At(w, p6 + 4) = t10 * r20 + t11 * r21 + t12 * r22;
         Mem.At(w, p6 + 5) = t20 * r20 + t21 * r21 + t22 * r22;
+        if (Core.Controls.HasLocks) ProjectInertia(b);
     }
 
     /// <summary>Two unit vectors perpendicular to a unit normal and to each other, chosen by a fixed rule so the same normal always gives the same pair.</summary>
@@ -121,10 +122,10 @@ internal sealed partial class Engine3D
             return;
         }
 
-        if (Wide.Length < batches * W3D.GroupFloats)
+        if (Wide.Length < batches * ContactGroupFloats)
         {
-            int cap = Math.Max(batches, Wide.Length / W3D.GroupFloats * 2);
-            Wide = new float[cap * W3D.GroupFloats]; WideIdx = new int[cap * W3D.IdxPerGroup];
+            int cap = Math.Max(batches, Wide.Length / ContactGroupFloats * 2);
+            Wide = new float[cap * ContactGroupFloats]; WideIdx = new int[cap * W3D.IdxPerGroup];
         }
 
         int nc = Core.Constraints.HighWater;
@@ -195,7 +196,7 @@ internal sealed partial class Engine3D
         var bodies = core.Bodies;
         ReadOnlySpan<int> bodyA = cs.BodyA, bodyB = cs.BodyB;
         ReadOnlySpan<float> invMass = bodies.InverseMass;
-        var w = Wide.AsSpan(group * W3D.GroupFloats, W3D.GroupFloats);
+        var w = Wide.AsSpan(group * ContactGroupFloats, ContactGroupFloats);
         var idx = WideIdx.AsSpan(group * W3D.IdxPerGroup, W3D.IdxPerGroup);
         for (int l = 0; l < W3D.Lanes; l++) { idx[l] = 0; idx[8 + l] = 0; idx[16 + l] = -1; idx[24 + l] = -1; }
         int maxPoints = 1, anyRolling = 0, anyRestitution = 0;
@@ -207,13 +208,14 @@ internal sealed partial class Engine3D
             if (cs.KindOf(c) == ConstraintKind.Joint)
             {
                 byte jt = Joints[c].Type;
-                if (WidePointBlock(jt))
+                if (JointIsLocked(c)) SlotOf[c] = -1;
+                if (!JointIsLocked(c) && WidePointBlock(jt))
                 {
                     if (jlane == 0) { ClearJointIdx(group); }
                     PreparePointJoint(c, group, jlane++);
                 }
 
-                if (jt != (byte)JointType3D.Point) { PrepareJoint(c, in ctx); scalarJoints = 1; }
+                if (jt != (byte)JointType3D.Point || JointIsLocked(c)) { PrepareJoint(c, in ctx); scalarJoints = 1; }
 
                 continue;
             }
@@ -279,6 +281,7 @@ internal sealed partial class Engine3D
             else { ContactKernel3D.PrepareMasses<Lanes256>(w, idx, linP, angP, Pk, maxPoints); }
         }
 
+        if (Core.Controls.Active) PrepareControlledContacts(constraints);
         if (constraints.Length > 0) { var bi = BatchInfo.AsSpan(4 * constraints[0], 4); bi[0] = group; bi[1] = lane; bi[2] = jlane; bi[3] = scalarJoints; }
         idx[W3D.MaxPointsSlot] = maxPoints; idx[W3D.AnyRollingSlot] = anyRolling; idx[W3D.AnyRestitutionSlot] = anyRestitution;
     }
@@ -305,7 +308,7 @@ internal sealed partial class Engine3D
                 continue;
             }
 
-            var w = Wide.AsSpan((slot >> 3) * W3D.GroupFloats, W3D.GroupFloats);
+            var w = Wide.AsSpan((slot >> 3) * ContactGroupFloats, ContactGroupFloats);
             int lane = slot & 7;
             var pl = cs.Payload(c);
             int count = cs.PointCount[c];
@@ -370,7 +373,7 @@ internal sealed partial class Engine3D
                 if (cons.KindOf(c) == ConstraintKind.Joint)
                 {
                     // A joint's own rows first, then its point block, as the joint's rows have always been ordered.
-                    if (Joints[c].Type != (byte)JointType3D.Point) { SolveJoint(c, phase, in ctx); }
+                    if ((Joints[c].Type != (byte)JointType3D.Point || JointIsLocked(c))) { SolveJoint(c, phase, in ctx); }
                     if (slot >= 0) { JointKernel3D.Run<Lanes1>(this, slot >> 3, slot & 7, 1, phase, in jp); }
                 }
                 else if (slot >= 0) { ContactKernel3D.Run<Lanes1>(this, slot >> 3, slot & 7, 1, phase, in kp); }
@@ -388,7 +391,7 @@ internal sealed partial class Engine3D
             for (int i = 0; i < constraints.Length; i++)
             {
                 int c = constraints[i];
-                if (cons.KindOf(c) == ConstraintKind.Joint && Joints[c].Type != (byte)JointType3D.Point) { SolveJoint(c, phase, in ctx); }
+                if (cons.KindOf(c) == ConstraintKind.Joint && (Joints[c].Type != (byte)JointType3D.Point || JointIsLocked(c))) { SolveJoint(c, phase, in ctx); }
             }
         }
 
@@ -414,20 +417,24 @@ internal sealed partial class Engine3D
         if (KernelWidth == 1) { IntegrateKernel3D.Velocities<Lanes1>(this, list, ctx.SubstepDt); }
         else if (KernelWidth == 4) { IntegrateKernel3D.Velocities<Lanes128>(this, list, ctx.SubstepDt); }
         else { IntegrateKernel3D.Velocities<Lanes256>(this, list, ctx.SubstepDt); }
+        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitBodyControls(b);
     }
 
     /// <summary>Displacement, rotations, world inverse inertia and the packed rows of the bodies of the list, eight at a time (see <see cref="IntegrateKernel3D"/>).</summary>
     public void IntegratePositions(ReadOnlySpan<int> list, in StepContext ctx)
     {
+        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitBodyControls(b);
         if (KernelWidth == 1) { IntegrateKernel3D.Positions<Lanes1>(this, list, ctx.SubstepDt); }
         else if (KernelWidth == 4) { IntegrateKernel3D.Positions<Lanes128>(this, list, ctx.SubstepDt); }
         else { IntegrateKernel3D.Positions<Lanes256>(this, list, ctx.SubstepDt); }
+        if (Core.Controls.HasLocks) foreach (int b in list) { ProjectInertia(b); PackBody(b); }
     }
 
     // ------------------------------------------------------------------ finalize: forces and continuous collision
 
     public void FinalizeBodies(ReadOnlySpan<int> list, in StepContext ctx)
     {
+        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitBodyControls(b);
         var bodies = Core.Bodies;
         foreach (int b in list)
         {

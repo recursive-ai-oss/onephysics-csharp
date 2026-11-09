@@ -187,6 +187,7 @@ public sealed partial class WorldCore
         _origin = new double[Layout.PositionLanes];
         _bodySleep = new BodySleepStore(this);
         AddSection(_bodySleep);
+        Controls = new BodyControlStore(this); AddSection(Controls);
     }
 
     /// <summary>The id stamped into this world's handles.</summary>
@@ -330,7 +331,7 @@ public sealed partial class WorldCore
         }
 
         int b = _bodies.AllocateSlot();
-        _bodySleep.Set(b, default);
+        _bodySleep.Set(b, default); Controls.Set(b, default);
         _bodies.ClearSlot(b);
         position.CopyTo(_bodies.PositionOf(b));
         if (rotation.Length > 0) { rotation.CopyTo(_bodies.RotationOf(b)); } else { l.WriteIdentityRotation(_bodies.RotationOf(b)); }
@@ -396,7 +397,7 @@ public sealed partial class WorldCore
         }
 
         _islands.RemoveBody(_bodies, b);
-        _bodySleep.Set(b, default);
+        _bodySleep.Set(b, default); Controls.Set(b, default);
         _bodies.ClearSlot(b);
         _bodies.Handles.Free(b);
     }
@@ -577,6 +578,8 @@ public sealed partial class WorldCore
         {
             if (!_bodies.IsLive(b)) { continue; }
             for (int k = 0; k < lanes; k++) { pos[b * lanes + k] -= offset[k]; }
+            var control = Controls.Get(b);
+            if ((control.Overrides & 8) != 0) { var target = control.TargetPosition; control.TargetPosition = new(target.X - offset[0], target.Y - offset[1], lanes == 3 ? target.Z - offset[2] : 0); Controls.Set(b, control); }
         }
         for (int i = 0; i < lanes; i++) { _origin[i] += offset[i]; }
     }
@@ -1434,7 +1437,7 @@ public sealed partial class WorldCore
         foreach (var s in _sections)
         {
             if (s.IsOptional && !s.IsPresent) { continue; }
-            w.DescribeSection(s.SectionId switch { 0x42503244 => "broadphase2d", 0x42503344 => "broadphase3d", 0x32445747 => "engine2d", 0x33445747 => "engine3d", 0x534F4654 => "softbody3d", 0x42534C50 => "body sleep", _ => "section " + s.SectionId.ToString(CultureInfo.InvariantCulture) });
+            w.DescribeSection(s.SectionId switch { 0x42503244 => "broadphase2d", 0x42503344 => "broadphase3d", 0x32445747 => "engine2d", 0x33445747 => "engine3d", 0x534F4654 => "softbody3d", 0x42534C50 => "body sleep", 0x4243544C => "body controls", _ => "section " + s.SectionId.ToString(CultureInfo.InvariantCulture) });
             w.NamedInt32(s.SectionId);
             if (w.IsHashing)
             {
@@ -1586,6 +1589,7 @@ public sealed partial class WorldCore
             if (!_sectionPresent[i]) { _sections[i].Reset(); continue; }
             sub.Reset(data, _sectionRange[2 * i], _sectionRange[2 * i + 1]);
             if (ReferenceEquals(_sections[i], _bodySleep)) _bodySleep.Read(sub, bodies);
+            else if (ReferenceEquals(_sections[i], Controls)) Controls.Read(sub, bodies);
             else _sections[i].Read(sub);
             if (sub.Remaining != 0) { throw new SnapshotFormatException("section " + _sections[i].SectionId.ToString(CultureInfo.InvariantCulture) + " left unread bytes", r.Position); }
         }

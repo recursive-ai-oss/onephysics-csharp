@@ -44,7 +44,7 @@ internal sealed partial class Engine3D
         if (_sleepers.Length < bodies) { _sleepers = new int[bodies]; }
 
         int batches = contacts / ConstraintColoring.Lanes + ConstraintColoring.ColorCount + 2;
-        if (Wide.Length < batches * W3D.GroupFloats) { Wide = new float[batches * W3D.GroupFloats]; WideIdx = new int[batches * W3D.IdxPerGroup]; }
+        if (Wide.Length < batches * ContactGroupFloats) { Wide = new float[batches * ContactGroupFloats]; WideIdx = new int[batches * W3D.IdxPerGroup]; }
         if (SlotOf.Length < contacts) { SlotOf = new int[contacts]; }
         if (BatchInfo.Length < 4 * contacts) { BatchInfo = new int[4 * contacts]; }
         if (_sortTmp.Length < contacts) { _sortTmp = new int[contacts]; }

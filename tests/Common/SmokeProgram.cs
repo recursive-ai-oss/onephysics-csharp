@@ -96,12 +96,19 @@ internal static class SmokeProgram
     {
         var a = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new() { WorldId = 3100, Gravity = default });
         var b = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new() { WorldId = 3101, Gravity = default });
-        var x = a.CreateBody(new() { LinearVelocity = new(0.1f, 0), SleepSettings = new(0.2f, 0.3f, 0.1f) });
-        var y = b.CreateBody(new() { LinearVelocity = new(0.1f, 0, 0), SleepSettings = new(0.2f, 0.3f, 0.1f) });
+        var x = a.CreateBody(new() { LinearVelocity = new(0.1f, 0), SleepSettings = new(0.2f, 0.3f, 0.1f), Controls = new(RigidbodyConstraints.FreezeRotationZ,1,1,1), MassOverride=2, InertiaOverride=3 });
+        var y = b.CreateBody(new() { LinearVelocity = new(0.1f, 0, 0), SleepSettings = new(0.2f, 0.3f, 0.1f), Controls = new(RigidbodyConstraints.FreezeRotationZ,1,1,1), MassOverride=2, InertiaOverride=new V3F(2,3,4) });
+        var platform=a.CreateBody(new(){Type=BodyType.Kinematic});platform.MovePosition(new(0.01,0));
+        var platform3=b.CreateBody(new(){Type=BodyType.Kinematic});platform3.MovePosition(new(0.01,0,0));
         var f = new RecursiveAI.OnePhysics.Physics2D.FixedStepAccumulator(a, 0.125f);
         var g = new RecursiveAI.OnePhysics.Physics3D.FixedStepAccumulator(b, 0.125f);
         f.Advance(0.1875); g.Advance(0.1875);
         var p = f.GetInterpolatedPose(x); var q = g.GetInterpolatedPose(y);
+        a.AddBox(new(4,1),at:new(10,-0.5),type:BodyType.Static);
+        b.AddBox(new(4,1,4),at:new(10,-0.5,0),type:BodyType.Static);
+        var fixedPlanar=a.AddBox(new(1,1),at:new(10,0.4));fixedPlanar.Constraints=RigidbodyConstraints.FreezeAll;
+        var fixedSpatial=b.AddBox(new(1,1,1),at:new(10,0.4,0));fixedSpatial.Constraints=RigidbodyConstraints.FreezeAll;
+        a.Step(0.01f);b.Step(0.01f);
         var aCopy = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new() { WorldId = 3100 });
         var bCopy = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new() { WorldId = 3101 });
         aCopy.Restore(a.Snapshot()); bCopy.Restore(b.Snapshot());

@@ -36,9 +36,9 @@ internal sealed partial class Engine2D
         // Solver rows: one group per batch of lanes, plus the part-filled batch every color can end with.
         int batches = contacts / W2D.Lanes + ConstraintColoring.ColorCount + 2;
         if (BodyState.Length < (bodies + 1) * BS2D.Stride) { BodyState = new float[(bodies + 1) * BS2D.Stride]; }
-        if (Wide.Length < batches * W2D.GroupFloats)
+        if (Wide.Length < batches * ContactGroupFloats)
         {
-            Wide = new float[batches * W2D.GroupFloats]; WideIdx = new int[batches * W2D.IdxPerGroup]; WideCons = new int[batches * W2D.Lanes];
+            Wide = new float[batches * ContactGroupFloats]; WideIdx = new int[batches * W2D.IdxPerGroup]; WideCons = new int[batches * W2D.Lanes];
             GroupRestitution = new byte[batches]; GroupRolling = new byte[batches]; GroupPoints = new byte[batches];
         }
 

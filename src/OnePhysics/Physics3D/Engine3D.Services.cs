@@ -170,7 +170,7 @@ internal sealed partial class Engine3D
             int slot = SlotOf[c];
             if (slot < 0) { continue; }
             // The relative normal velocity from the start of the step is still in the contact's wide group: the kernel only reads it.
-            var w = Wide.AsSpan((slot >> 3) * W3D.GroupFloats, W3D.GroupFloats);
+            var w = Wide.AsSpan((slot >> 3) * ContactGroupFloats, ContactGroupFloats);
             int lane = slot & 7;
             var pl = cs.Payload(c);
             int count = cs.PointCount[c];

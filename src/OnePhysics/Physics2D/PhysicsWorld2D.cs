@@ -29,6 +29,7 @@ public sealed partial class PhysicsWorld2D
         _engine = new Engine2D(_core, bp, o) { World = this };
         _core.AddSection(bp);
         _core.AddSection(_engine);
+        BindBodyControlOptions();
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -108,8 +109,10 @@ public sealed partial class PhysicsWorld2D
     /// <exception cref="BodyOutOfBoundsException">A moving body's bounds are beyond ±2^22 or not finite, or its position, velocity or rotation is not finite; nothing was changed.</exception>
     public void Step(float dt)
     {
+        if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.Opt.Validate();
         _engine.CheckBounds();
+        if (_core.Controls.Active) _engine.ValidateTargetMotion(dt);
         SyncCoreOptions();
         if (_recorder != null) { RecordPreparedStep(dt); return; }
         StepPrepared(dt);
@@ -118,7 +121,10 @@ public sealed partial class PhysicsWorld2D
     // The unrecorded path has no recording scope or exception region in its simulation body.
     private void StepPrepared(float dt)
     {
+        if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
+        _engine.BeginBodyControls(dt);
         _core.Step(new Stages2D(_engine), dt);
+        _engine.EndBodyControls();
         InvalidateQueryPad();
         _engine.ReconcileJoints();
         _recorder?.SimulationEnded();

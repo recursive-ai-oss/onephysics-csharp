@@ -41,7 +41,7 @@ public sealed partial class PhysicsWorld2D
 
     internal PhysicsWorld2D(WorldCore core, Engine2D engine)
     {
-        _core = core; _engine = engine; engine.World = this;
+        _core = core; _engine = engine; engine.World = this; BindBodyControlOptions();
     }
 
     /// <summary>Returns a readable desync report and typed differences, including events and all engine sections. Does not step or mutate either world. Allocates tooling buffers.</summary>
