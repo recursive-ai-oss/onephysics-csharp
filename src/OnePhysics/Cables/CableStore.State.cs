@@ -64,7 +64,7 @@ internal sealed partial class CableStore
                 node.Inertia = r.ReadSingle(); node.Bearing = r.ReadSingle(); node.FixedAxle = r.ReadBool();
                 node.MotorSpeed = r.ReadSingle(); node.MotorTorque = r.ReadSingle(); node.BrakeTorque = r.ReadSingle();
                 node.Spin = r.ReadSingle(); node.RotorAngle = r.ReadDouble(); node.AlphaIn = r.ReadDouble(); node.AlphaOut = r.ReadDouble(); node.Reference = r.ReadDouble();
-                node.SlipState = (byte)r.ReadInt32(); node.MotorImpulse = r.ReadSingle(); node.BrakeImpulse = r.ReadSingle();
+                int slip = r.ReadInt32(); if ((uint)slip > 2) throw r.Error($"Invalid pulley system node {k}."); node.SlipState = (byte)slip; node.MotorImpulse = r.ReadSingle(); node.BrakeImpulse = r.ReadSingle();
                 if (!ValidNode(node, Host.Planar, bodies)) throw r.Error($"Invalid pulley system node {k}.");
                 m.Nodes[k] = node;
             }

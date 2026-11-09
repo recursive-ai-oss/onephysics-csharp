@@ -19,6 +19,8 @@ internal static class Program
         ["grid-snapshot"] = FuzzGrids.Snapshot,
         ["rod-definition"] = FuzzRods.Definition,
         ["rod-snapshot"] = FuzzRods.Snapshot,
+        ["pulley-definition"] = FuzzPulleys.Definition,
+        ["pulley-snapshot"] = FuzzPulleys.Snapshot,
         ["field-snapshot"] = FuzzFields.Snapshot,
         ["snapshot-desync"] = FuzzSnapshotEncoding.Desync,
         ["snapshot-region"] = FuzzSnapshotEncoding.Region,
