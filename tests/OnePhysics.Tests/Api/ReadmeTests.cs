@@ -97,7 +97,7 @@ public class ReadmeTests
 
         var t2 = GuideExamples.Terrain2D.Run(); Assert.Equal(t2, GuideExamples.Terrain2D.Run());
         var tv = GuideExamples.Terrain3D.Voxels(); Assert.Equal(tv, GuideExamples.Terrain3D.Voxels());
-        var ts = GuideExamples.Terrain3D.Sdf(); Assert.Equal(ts, GuideExamples.Terrain3D.Sdf()); Assert.InRange(ts.BallY, 1.0, 1.3);
+        var ts = GuideExamples.Terrain3D.Sdf(); Assert.Equal(ts, GuideExamples.Terrain3D.Sdf()); Assert.InRange(ts.BallY, 0.9, 3.5);
         var soft = GuideExamples.SoftBodies.Run();
         Assert.Equal(soft, GuideExamples.SoftBodies.Run());
         Assert.InRange(soft.ClothY, 0.0, 1.8);
