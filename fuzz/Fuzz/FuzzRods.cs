@@ -30,7 +30,7 @@ internal static class FuzzRods
         if (planar)
         {
             if (s_planar != null) return s_planar;
-            var w=new P2.PhysicsWorld2D(new() { WorldId=36 }); var disc=w.AddCircle(.1f,at:new(1,0)); var rope=w.AddRope(default,new(1,0),4); rope.Attach(4,disc,new(.05f,0),breakForce:1e6f); w.Step(1f/60); return s_planar=w.Snapshot();
+            var w=new P2.PhysicsWorld2D(new() { WorldId=36 }); var disc=w.AddCircle(.1f,at:new(1,0)); var line=w.AddRope(default,new(1,0),4); line.Attach(4,disc,new(.05f,0),breakForce:1e6f); w.Step(1f/60); return s_planar=w.Snapshot();
         }
         if (s_spatial != null) return s_spatial;
         var world=new P3.PhysicsWorld3D(new() { WorldId=36 }); var ball=world.AddSphere(.1f,at:new(1,0,0)); var rope=world.AddRope(default,new(1,0,0),4); rope.Attach(4,ball,new(.05f,0,0),breakForce:1e6f); world.Step(1f/60); return s_spatial=world.Snapshot();
