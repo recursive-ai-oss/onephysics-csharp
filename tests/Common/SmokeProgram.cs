@@ -63,6 +63,29 @@ internal static class SmokeProgram
         }
         return w.ComputeHash();
     }
+    // Active ragdolls in both dimensions: standing, walking and blending for 100 steps, a snapshot round trip with equal hashes afterwards, and the debug entry. Returns a hash of both worlds.
+    private static bool ActiveSmoke(out ulong hash)
+    {
+        var o2 = new RecursiveAI.OnePhysics.Physics2D.WorldOptions2D { WorldId = 41 }; RecursiveAI.OnePhysics.Physics2D.Ragdoll.ApplyRecommendedOptions(o2);
+        var w2 = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(o2);
+        w2.AddBox(new RecursiveAI.OneMath.Vector2F(100f, 1f), new RecursiveAI.OneMath.Vector2D(0, -0.5), type: BodyType.Static);
+        var r2 = w2.AddRagdoll(RecursiveAI.OnePhysics.Physics2D.RagdollDef.Humanoid, new RecursiveAI.OneMath.Vector2D(0, 0)); r2.EnableActive(); r2.Walk(1f);
+        var o3 = new RecursiveAI.OnePhysics.Physics3D.WorldOptions3D { WorldId = 42 }; RecursiveAI.OnePhysics.Physics3D.Ragdoll.ApplyRecommendedOptions(o3);
+        var w3 = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(o3);
+        w3.AddBox(new RecursiveAI.OneMath.Vector3F(100f, 1f, 100f), new RecursiveAI.OneMath.Vector3D(0, -0.5, 0), type: BodyType.Static);
+        var r3 = w3.AddRagdoll(RecursiveAI.OnePhysics.Physics3D.RagdollDef.Humanoid, new RecursiveAI.OneMath.Vector3D(0, 0, 0)); r3.EnableActive(); r3.Stand(); r3.SetBlendWeight(3, 0.3f);
+        for (int i = 0; i < 100; i++) { w2.Step(1f / 60f); w3.Step(1f / 60f); }
+        var s2 = w2.Snapshot(); var s3 = w3.Snapshot();
+        var c2 = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(o2); c2.Restore(s2);
+        var c3 = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(o3); c3.Restore(s3);
+        for (int i = 0; i < 20; i++) { w2.Step(1f / 60f); w3.Step(1f / 60f); c2.Step(1f / 60f); c3.Step(1f / 60f); }
+        var g = new RecursiveAI.OnePhysics.Debug.DebugGeometry();
+        w2.GetDebugGeometry(RecursiveAI.OnePhysics.Debug.DebugContent.Joints, g);
+        bool dbg = g.ActiveRagdolls.Length == 1;
+        hash = w2.ComputeHash() * 31UL + w3.ComputeHash();
+        return dbg && w2.ComputeHash() == c2.ComputeHash() && w3.ComputeHash() == c3.ComputeHash() && r2.GetActiveInfo().StepCount >= 0;
+    }
+
     private static ulong Ragdolls2DHash(int threads)
     {
         var w = Vehicles2DScene.RagdollPileScene(threads).World;
@@ -233,9 +256,11 @@ internal static class SmokeProgram
         Console.WriteLine((pulleys ? "OK pulleys " : "FAIL pulleys ") + pulleyHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool tools = ToolsSmoke.Run(out ulong toolsHash);
         Console.WriteLine((tools ? "OK tools " : "FAIL tools ") + toolsHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        bool active = ActiveSmoke(out ulong activeHash);
+        Console.WriteLine((active ? "OK active " : "FAIL active ") + activeHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool machines = JointMachineSmoke.Run();
         Console.WriteLine(machines ? "OK machines" : "FAIL machines");
-        return tools && railBike && abilities && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
+        return tools && active && railBike && abilities && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
     }
 
     private static bool MissingShapes()

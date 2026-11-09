@@ -18,7 +18,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// means the same rotation of the limb whatever the parent is doing (the usual local animation rotation when bone axes are aligned with the bind pose). Entry 0, the root, orients the whole figure in <see cref="SetPose"/> and <see cref="MoveToPose"/> and is ignored by <see cref="DriveToPose"/>.</para>
 /// </remarks>
 [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
-public readonly struct Ragdoll : IEquatable<Ragdoll>
+public readonly partial struct Ragdoll : IEquatable<Ragdoll>
 {
     private readonly PhysicsWorld3D? _world;
     private readonly int _index;
@@ -127,6 +127,7 @@ public readonly struct Ragdoll : IEquatable<Ragdoll>
         CheckPose(s, pose);
         if (!(strength >= 0f && strength <= 1f)) { throw new ArgumentOutOfRangeException(nameof(strength), strength, "The strength must be within 0..1."); }
         if (!(strength > 0f)) { StopDriving(); return; }
+        if (_world!.Engine.ActiveOf(_index) != null) { throw new InvalidOperationException("The ragdoll is active: its joints are driven by the active layer. Use SetAnimationPose and the blend weights, or DisableActive first."); }
         for (int i = 1; i < s.Parts; i++)
         {
             if (!_world!.Engine.RagdollJointAlive(s, i)) { continue; }

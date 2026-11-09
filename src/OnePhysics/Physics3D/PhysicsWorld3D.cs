@@ -49,6 +49,7 @@ public sealed partial class PhysicsWorld3D
         _core.AddSection(_engine.BicycleSnapshotSection);
         _core.AddSection(_engine.RailSnapshotSection);
         _core.AddSection(_engine.Extensions);
+        _core.AddSection(_engine.ActiveSnapshotSection);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -147,6 +148,7 @@ public sealed partial class PhysicsWorld3D
         _engine.BeginBodyControls(dt);
         _engine.Actuators.BeginStep();
         if (_engine.Fields.Count != 0) _engine.Fields.Step(dt);
+        _engine.StepActive(dt);
         _engine.StepRail(dt);
         _engine.StepBicycles(dt);
         _engine.StepVehicles(this, dt);
@@ -164,6 +166,7 @@ public sealed partial class PhysicsWorld3D
         if (_engine.Rods.Count != 0) _engine.Rods.Step(dt);
         _engine.EndCharacterSupport();
         _engine.EndBodyControls();
+        _engine.EndActive();
         _engine.StepCharacterAbilities();
         _engine.ReconcileJoints();
         UpdateInspectionCounters();

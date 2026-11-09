@@ -19,7 +19,7 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// Entry 0, the root, turns the whole figure in <see cref="SetPose"/> and <see cref="MoveToPose"/> and is ignored by <see cref="DriveToPose"/>.</para>
 /// </remarks>
 [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
-public readonly struct Ragdoll : IEquatable<Ragdoll>
+public readonly partial struct Ragdoll : IEquatable<Ragdoll>
 {
     private readonly PhysicsWorld2D? _world;
     private readonly int _index;
@@ -139,6 +139,7 @@ public readonly struct Ragdoll : IEquatable<Ragdoll>
         if (!(strength >= 0f && strength <= 1f)) { throw new ArgumentOutOfRangeException(nameof(strength), strength, "The strength must be within 0..1."); }
         if (!(strength > 0f)) { StopDriving(); return; }
         var e = _world!.Engine;
+        if (e.ActiveOf(_index) != null) { throw new InvalidOperationException("The ragdoll is active: its joints are driven by the active layer. Use SetAnimationPose and the blend weights, or DisableActive first."); }
         bool wake = !s.Powered || s.Strength != strength;
         for (int i = 1; i < s.Parts; i++)
         {

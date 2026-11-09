@@ -45,6 +45,7 @@ public sealed partial class PhysicsWorld2D
         _core.AddSection(_engine.BicycleSnapshotSection);
         _core.AddSection(_engine.RailSnapshotSection);
         _core.AddSection(_engine.Extensions);
+        _core.AddSection(_engine.ActiveSnapshotSection);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -144,6 +145,7 @@ public sealed partial class PhysicsWorld2D
         _engine.Actuators.BeginStep();
         if (_engine.Fields.Count != 0) _engine.Fields.Step(dt);
         _engine.StepRagdolls();
+        _engine.StepActive(dt);
         _engine.StepRail(dt);
         _engine.StepBicycles();
         _engine.StepVehicles(this, dt);
@@ -158,6 +160,7 @@ public sealed partial class PhysicsWorld2D
         _engine.StepSoft(dt);
         _engine.EndCharacterSupport();
         _engine.EndBodyControls();
+        _engine.EndActive();
         _engine.StepCharacterAbilities();
         InvalidateQueryPad();
         _engine.ReconcileJoints();

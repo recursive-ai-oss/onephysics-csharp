@@ -66,6 +66,7 @@ internal sealed partial class Engine3D
 
     public void CancelRagdoll(int r)
     {
+        DropActive(r);
         Ragdolls[r] = null;
         RagHandles.Free(r);
     }
