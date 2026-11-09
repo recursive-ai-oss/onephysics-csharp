@@ -158,7 +158,12 @@ internal sealed partial class Engine3D
             if (k < _e._stStages) { _e.RunSoftTask(_e._stStart[k] + task, _h); }
             else if (k == _e._stStages) { _e.SolveContactTask(task, _h, _invH); }
             else if (k == _e._stStages + 1) { _e.SolvePairs(); }
-            else { SolveSkin(_e._awakeSoft[_e._skinBody[task]], _tSkin); }
+            else
+            {
+                var body = _e._awakeSoft[_e._skinBody[task]];
+                if (body.HasClothLimits) { ClothLimits(body, stage / _perPass); }
+                if (body.IsSkinned) { SolveSkin(body, _tSkin); }
+            }
         }
 
         // Implemented here so that the single-thread path does not box the struct to reach the interface's default.
@@ -180,7 +185,7 @@ internal sealed partial class Engine3D
         _skinCount = 0;
         for (int a = 0; a < _awakeSoftCount; a++)
         {
-            if (!_awakeSoft[a].IsSkinned) { continue; }
+            if (!_awakeSoft[a].IsSkinned && !_awakeSoft[a].HasClothLimits) { continue; }
             GrowTo(ref _skinBody, _skinCount + 1);
             _skinBody[_skinCount++] = a;
         }

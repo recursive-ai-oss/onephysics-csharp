@@ -87,8 +87,17 @@ public sealed class SoftBodyDef
     /// <summary>Whether the body may fall asleep when every particle has been slow for <see cref="WorldOptions3D.TimeToSleep"/>. Default true.</summary>
     public bool AllowSleep { get; set; } = true;
 
-    /// <summary>Whether the surface of the body (its triangles, or the boundary faces of a tetrahedral mesh) stops the particles and edges of other bodies, and, with <see cref="SelfCollision"/>, of this body: particles are kept out of triangles and edges out of edges, so a body is not porous between its surface particles and a cloth does not pass through itself. Without it only the particle spheres collide. Costs a search each step while two awake bodies with surface collision exist or a body has <see cref="SelfCollision"/> (measured at 1.5 to 3 times the step time of a pile or a draped cloth without it), so it is opt in. Default false.</summary>
-    public bool SurfaceCollision { get; set; }
+    /// <summary>Whether the surface of the body (its triangles, or the boundary faces of a tetrahedral mesh) stops the particles and edges of other bodies, and, with <see cref="SelfCollision"/>, of this body: particles are kept out of triangles and edges out of edges, so a body is not porous between its surface particles and a cloth does not pass through itself. Without it only the particle spheres collide. The search keeps its candidate pairs between substeps and only looks again when particles have moved farther than a skin of their own radius, so a body at rest costs almost nothing. Default true, except for a skinned body, which defaults to false (its kinematic particles move by pose, not by speed).</summary>
+    public bool SurfaceCollision { get => _surfaceCollision ?? Skin == null; set => _surfaceCollision = value; }
+
+    private bool? _surfaceCollision;
+
+    /// <summary>Fabric behaviour: direction-dependent stretch, strain limit, rest-curvature bending, aerodynamics and tethers (see <see cref="ClothParams"/>). Needs a triangle mesh. Default none.</summary>
+    public ClothParams? Fabric { get; set; }
+
+    /// <summary>Where the particles start, in the mesh frame, when that differs from the rest shape the mesh describes (a flat sheet whose rest shape is curved, say). Same count as the mesh's vertices; null (default) starts at the rest shape.
+    /// Used when the body is made; not part of a snapshot (the particles' positions are).</summary>
+    public IReadOnlyList<Vector3F>? StartVertices { get; set; }
 
     /// <summary>Tearing by strain: an edge whose length exceeds its rest length by this fraction at the end of a step breaks. The strain is measured after the solve, so edges with zero <see cref="EdgeCompliance"/> never reach it; use <see cref="TearForce"/> for those. 0 (default) turns it off. Finite, 0 to 100. A skinned body cannot tear.</summary>
     public float TearStrain { get; set; }
@@ -129,6 +138,7 @@ public sealed class SoftBodyDef
     {
         var c = (SoftBodyDef)MemberwiseClone();
         c.PinnedParticles = PinnedParticles == null ? null : new List<int>(PinnedParticles);
+        c.Fabric = Fabric?.Clone();
         return c;
     }
 
@@ -203,6 +213,22 @@ public sealed class SoftBodyDef
         if (Skin != null && Skin.ParticleCount != Mesh.VertexCount)
         {
             throw new SoftBodyException(SoftBodyError.BadCount, "SoftBodyDef.Skin was made for " + Skin.ParticleCount.ToString(CultureInfo.InvariantCulture) + " particles; the mesh has " + Mesh.VertexCount.ToString(CultureInfo.InvariantCulture) + ".", nameof(Skin));
+        }
+
+        if (Fabric != null)
+        {
+            if (Mesh.TetrahedronCount != 0) { throw new SoftBodyException(SoftBodyError.InvalidDefinition, "SoftBodyDef.Fabric is set on a tetrahedral mesh; fabric needs a triangle mesh.", nameof(Fabric)); }
+            Fabric.Validate(Mesh.VertexCount);
+        }
+
+        if (StartVertices != null)
+        {
+            if (StartVertices.Count != Mesh.VertexCount) { throw new SoftBodyException(SoftBodyError.BadCount, "SoftBodyDef.StartVertices holds " + StartVertices.Count.ToString(CultureInfo.InvariantCulture) + " positions; the mesh has " + Mesh.VertexCount.ToString(CultureInfo.InvariantCulture) + " vertices.", nameof(StartVertices)); }
+            for (int i = 0; i < StartVertices.Count; i++)
+            {
+                var sv = StartVertices[i];
+                if (!float.IsFinite(sv.X) || !float.IsFinite(sv.Y) || !float.IsFinite(sv.Z) || Math.Abs(sv.X) > MaxCoordinate || Math.Abs(sv.Y) > MaxCoordinate || Math.Abs(sv.Z) > MaxCoordinate) { throw new SoftBodyException(SoftBodyError.NonFinite, "SoftBodyDef.StartVertices[" + i.ToString(CultureInfo.InvariantCulture) + "] is " + sv + "; coordinates must be finite and within ±2^21.", nameof(StartVertices)); }
+            }
         }
 
         if (PinnedParticles != null)

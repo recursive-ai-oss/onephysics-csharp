@@ -214,6 +214,7 @@ internal sealed partial class Engine3D
             PrepareSurfacePairs(h, gmag);
             for (int a = 0; a < _awakeSoftCount; a++)
             {
+                if (_awakeSoft[a].Def.Fabric is { Drag: > 0f }) { ClothAero(_awakeSoft[a], h); }
                 PredictSoft(_awakeSoft[a], h, g);
                 if (_awakeSoft[a].IsSkinned) { PredictSkin(_awakeSoft[a], tSkin); }
             }

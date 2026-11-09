@@ -86,9 +86,10 @@ internal sealed partial class SoftBodyData
         float qn = float.Sqrt(q.X * q.X + q.Y * q.Y + q.Z * q.Z + q.W * q.W);
         q = new QuaternionF(q.X / qn, q.Y / qn, q.Z / qn, q.W / qn);
         d.Def.Rotation = q;
+        var start = def.StartVertices;
         for (int i = 0; i < d.N; i++)
         {
-            var r = q.Rotate(new Vector3F(d.Rest[3 * i], d.Rest[3 * i + 1], d.Rest[3 * i + 2]));
+            var r = start != null ? q.Rotate(new Vector3F(start[i].X * def.Scale, start[i].Y * def.Scale, start[i].Z * def.Scale)) : q.Rotate(new Vector3F(d.Rest[3 * i], d.Rest[3 * i + 1], d.Rest[3 * i + 2]));
             d.Pos[3 * i] = p.X + r.X; d.Pos[3 * i + 1] = p.Y + r.Y; d.Pos[3 * i + 2] = p.Z + r.Z;
             d.Vel[3 * i] = def.LinearVelocity.X; d.Vel[3 * i + 1] = def.LinearVelocity.Y; d.Vel[3 * i + 2] = def.LinearVelocity.Z;
         }
@@ -100,6 +101,7 @@ internal sealed partial class SoftBodyData
         }
 
         d.Def.PinnedParticles = null;
+        d.Def.StartVertices = null;
         _ = mesh;
         if (d.IsSkinned)
         {
@@ -254,6 +256,7 @@ internal sealed partial class SoftBodyData
         ColourConstraints();
         SphereShape = ConvexShape3D.Sphere(Radius);
         BuildSurface();
+        BuildCloth();
     }
 
     private static long EdgeOf(int a, int b) => a < b ? ((long)a << 20) | (long)b : ((long)b << 20) | (long)a;

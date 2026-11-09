@@ -69,6 +69,14 @@ internal sealed partial class Engine3D
             {
                 float alpha = def.EdgeCompliance * ih2, gamma = def.EdgeDamping * ih;
                 int e = first;
+                if (d.SEdgeComp != null)
+                {
+                    // A weave with its own compliance per thread direction: scalar, in index order.
+                    var comp = d.SEdgeComp;
+                    for (; e < end; e++) { XpbdDistance(x, xp, inv, d.SEdgeA[e], d.SEdgeB[e], d.SEdgeRest[e], comp[e] * ih2, gamma, ref lam[e]); }
+                    break;
+                }
+
                 if (SoftLanes && lanes)
                 {
                     for (; e + 4 <= end; e += 4) { EdgeLanes(x, xp, inv, d.SEdgeA, d.SEdgeB, d.SEdgeRest, lam, e, alpha, gamma); }
@@ -81,6 +89,12 @@ internal sealed partial class Engine3D
             {
                 float alpha = def.BendCompliance * ih2, gamma = def.BendDamping * ih;
                 int e = first;
+                if (d.SBendSin0 != null)
+                {
+                    for (; e < end; e++) { XpbdBendDihedral(d, e, alpha, gamma, ref lam[ne + e]); }
+                    break;
+                }
+
                 if (SoftLanes && lanes)
                 {
                     for (; e + 4 <= end; e += 4) { BendLanes(d, e, alpha, gamma, ne); }
