@@ -136,6 +136,26 @@ The first four list `onephysics` and `jitter2` as their engines; `soft-skinned-3
 
 Thresholds (maximum): `cloth-drape-3d` softMaxSpeed 10, softPenetration 0.07, softFinalPenetration 0.015, softRestKE 0.0007, edgeStrain 0.15 (1.5 x Jitter2's values 6.1, 0.040, 0.010, 0.00046, 0.093 on the benchmark machine, rounded up; Jitter2's rest energy varies between machines, 0.00018 to 0.00046, so the larger value sets the limit. Jitter2 is stable here, so this scene binds). `soft-pile-3d`: softMaxSpeed 10, softPenetration 0.02, softFinalPenetration 0.01, softRestKE 0.02, volumeError 0.05. `soft-rigid-3d`: softMaxSpeed 10, softPenetration 0.07, softFinalPenetration 0.01, softRestKE 0.001, volumeError 0.03, maxSpeed 10, restKE 0.1. `soft-mesh-3d`: softMaxSpeed 10, softPenetration 0.02, softFinalPenetration 0.01, softRestKE 0.01, volumeError 0.03. In the last three Jitter2 is not stable (its tetrahedra collapse and particles end inside the floor, walls and boxes: `softTunnelled` 340 to 380 in the pile and the cushions, volumeError 0.45 to 0.97), so these thresholds are this library's values with a margin and no reference binds them. Jitter2 is driven from its published API reference as vertices that are rigid bodies (mass spread evenly), one spring constraint per edge (20 Hz, damping ratio 0.5; 8 Hz and 0.3 for `jelly`; the documentation gives no stiffness values), triangle shapes (thickness half the mean edge length) or tetrahedron shapes, and its soft-body collision filters. Jolt's soft bodies are not driven yet.
 
+### 2D soft bodies
+
+Built in code by `tests/Common/SoftBodies2DScene.cs` from a seeded generator (not scene files; `scenes/SHA256SUMS` is unchanged), shared by the tests, the hash-matrix runner, the stability command `bar soft2d-stability` and the smoke apps. 600 steps at 1/60. Soft bodies have an areal density of 20 kg/m^2 (10 for the balloons of `balloon-2d`); the library default of 1000 is a slab of water.
+
+| scene | contents |
+|---|---|
+| `soft-pile-2d` | 120 bodies of five kinds (jelly box, rubber disc, balloon, shape-matching blob, rubber slab) dropped in a 15 x 8 loose grid into a walled 12 m yard |
+| `soft-rigid-2d` | a rigid pyramid of 15 boxes with a jelly box, a rubber disc and a balloon dropped on it; three jelly slabs under a rigid slab and box; four rigid circles dropped into the yard |
+| `balloon-2d` | a height-field valley (0.15 x^2 capped at 4 m, 41 samples 0.5 m apart) between two walls, nine balloons dropped in and a rigid slab (density 20) dropped on them |
+
+Metrics: `maxSpeed` (any particle, any step), `maxPenetration` (largest amount by which a particle disc is inside a rigid shape, from the closest-point query every 10th step), `areaError` (largest relative error of the enclosed area of a pressure body against its target over the last 3 steps), `maxSoftOverlap` (deepest overlap of two particle discs of different bodies at steps 100, 200, ...), `finalSpeed99` (99th percentile particle speed over the last 3 steps), `escapes` (particles beyond 40 m sideways, below -1 m or above 100 m) and `nan`. `escapes` and `nan` must be 0.
+
+| scene | maxSpeed | maxPenetration | areaError | maxSoftOverlap | finalSpeed99 | measured (x64, 1 thread) |
+|---|---|---|---|---|---|---|
+| `soft-pile-2d` | 25 | 0.08 | 0.05 | 0.15 | 1.5 | 15.6 / 0.049 / 0.0091 / 0.090 / 0.66 |
+| `soft-rigid-2d` | 15 | 0.05 | 0.02 | 0.10 | 1.5 | 10.1 / 0.031 / 0.0006 / 0.034 / 0.53 |
+| `balloon-2d` | 20 | 0.06 | 0.02 | 0.05 | 1.0 | 12.6 / 0.038 / 0.0013 / 0.001 / 0.16 |
+
+Thresholds are about 1.5 times the measured values, rounded up. A pressure body resting on a floor rolls slowly because nothing resists rolling, so `finalSpeed99` stays above zero; the pile never fully sleeps for that reason (a ring settles into rolling from the rounding of its contact order).
+
 ## Step-state dump
 
 Every driver writes the same binary file in stability mode. Little-endian. Header: the ASCII bytes `OPDUMP01`, `u32` body count, `u32` 0. Then frames: `u32` step number (0 = initial state), `u32` 0, and `7 × n` doubles per frame in scene body order: x, y, angle (body origin, radians), vx, vy (centre-of-mass velocity as the engine reports it), w, awake (1 or 0). In 3D the header word is 3 and a frame is `14 × n` doubles: x, y, z, qx, qy, qz, qw (body origin, unit quaternion), vx, vy, vz, wx, wy, wz (centre-of-mass velocity as the engine reports it), awake. A frame's second `u32` is the count of extra doubles after the body rows: for scenes with vehicles, x, y, z of every wheel centre of every car (four per car, in body order).

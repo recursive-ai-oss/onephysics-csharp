@@ -85,3 +85,47 @@ Contacts lose against the limits: a particle pushed by a shape beyond D comes ba
 ## Scenes and thresholds
 
 See `docs/spec/scenes.md` ("Soft bodies"). Reference: Jitter2's soft bodies (vertices as rigid bodies, springs, triangle and tetrahedron shapes); Jolt's are not driven.
+
+# Soft bodies (2D)
+
+`PhysicsWorld2D` has the same soft bodies as the 3D engine, with the same architecture and API shape: particles in their own store (not rigid bodies, not in the islands or the colouring), solved by extended position-based dynamics in small steps after the rigid step. The 2D code is a separate scalar implementation, not shared with 3D, so no 3D result depends on it. Public types are `[Experimental("OPHYS0003")]`: `SoftBody`, `SoftBodyDef`, `SoftBodyMesh`, `SoftMaterial`, `SoftBodyModel`, `SoftBodyException`, `SoftBodyOutOfBoundsException`.
+
+## Meshes and masses
+
+A mesh is either triangles (an area body) or a closed outline (a skin). `FromTriangles` repairs a clockwise triangle by swapping its last two vertices and refuses degenerate, unused or out-of-range input; `FromOutline` needs a counter-clockwise loop of positive area; `FromPolygon` triangulates a simple polygon by ear clipping; `Box`, `Disc` and `Ring` generate meshes. The outline of a triangle mesh is its boundary when that is one closed loop (then `IsClosed`).
+Mass is shared among the particles in proportion to a third of the area of each triangle's rest area (a skin: half of each of the two segments at a vertex). `Mass` 0 means 1000 kg per square metre of rest area for a triangle mesh and 10 kg per square metre of enclosed area for a skin. Particle radius 0 means a quarter of the mean edge length; a particle collides as a disc of that radius.
+
+## Models and constraints
+
+Every constraint is an XPBD constraint (compliance alpha / h^2 with h the soft substep, Lagrange multipliers zeroed at the start of every substep, damping time gamma / h), so stiffness does not depend on the substep or pass count (Macklin, Müller and Chentanez 2016; Macklin et al. 2019).
+- **Edge:** distance on every distinct edge of the triangles (or of the outline), in `(smaller, larger)` order.
+- **Area:** `C = 2A - 2A0` per triangle (twice the signed area), the 2D analogue of the 3D volume constraint.
+- **Bend:** only for a mesh without triangles: the distance between the two outline neighbours of every outline vertex keeps a skin from folding. A triangle mesh gets no hinge bend because the area constraint already resists shear.
+- **Pressure:** `C = 2A - 2 p A0` on the doubled area enclosed by the outline (shoelace sum about the first outline vertex), p = `InternalPressure`, with the area compliance.
+- **Shape matching** (Müller et al. 2005), with XPBD's multiplier: per cluster, the best rotation of the rest offsets onto the current offsets (the polar factor of the 2 x 2 moment matrix, as a unit vector from `(a00 + a11, a10 - a01)`, no trigonometry) gives goals `g_i = c + R q_i`; the quadratic mode also fits the 2 x 5 matrix over `(q, qx^2, qy^2, qx qy)` and aims at `blend * (fit) + (1 - blend) * (rigid goal)`. Each membership is a soft constraint `x_i = g_i` with multiplier update `dmu = -((x_i - g_i) + a mu) / (1 + a)`, `a = MatchCompliance / h^2` (seconds squared); the correction is the same for every member, so it is momentum-neutral inside the cluster. Clusters are bisection cells of the rest shape grown by 25% of their longer side, at most 256, of about 32 particles (one cluster up to 64); a pivot below 1e-9 of the largest entry of the 5 x 5 moment matrix falls back to the linear fit.
+`SoftBodyModel` selects network, shape matching, or both.
+
+## A step
+
+After the rigid step (rigid poses are kept from before it, so a body that moved far is met where it was), `SoftSubsteps` (default 4) substeps of `SoftIterations` (default 3) passes each. Per substep: predict (gravity times `GravityScale`, velocity damping `1 / (1 + damping h)`), find contacts, solve, derive velocities, restitution zero, friction. A pass is: the interior constraints of every block (one task per block of at most 80 particles, at most 32 blocks per body, cut by recursive bisection of the rest shape), the boundary constraints plus pressure plus clusters of every body (one task per body), the contacts with shapes, the particle pairs, then the target limits. Tasks come from the mesh alone, so the result is identical on any thread count. All arithmetic is IEEE float32 on positions relative to the middle of the body's bounds (the subtraction is done in double), with the double positions stored in the world.
+
+## Contacts, friction, coupling
+
+Particle discs collide with every non-sensor shape the filters allow (circle, capsule, polygon, segment, chain and height-field segments with their one-sided rule and ghosts) through the same manifold routines the rigid engine uses, continuously for a particle that moves farther than half its radius in a substep. Particle pairs of different bodies collide (and of one body when `SelfCollision` is set, except neighbours joined by an edge or a hinge); particles of different bodies interpenetrate more than rigid shapes do, because each is a small disc on a mesh whose edges are longer than the discs. Friction is Coulomb as a position correction with the geometric mean of the body's and the shape's coefficients. A dynamic rigid body in contact is part of the position solve (generalised inverse masses) and receives one impulse at the end of the step, so momentum is conserved (tests: 2% over 120 steps). A body sleeps when every particle has been slower than `SleepThreshold` for `TimeToSleep`; an awake rigid body near it wakes it.
+
+## Targets, pins
+
+`SetTarget(i, position, maxDistance)` gives a particle a target, `SetTargetPose(at, angle, maxDistance, teleport)` targets every particle at the rest shape placed in the world (the 2D counterpart of skinning). Targets interpolate linearly from the previous step's across the substeps; maximum distance 0 makes the particle kinematic (it sits on the target and takes no contacts), otherwise a hard distance limit is the last constraint of every pass. Pins give a particle infinite mass.
+
+## Soft sensors
+
+`OverlapSoftBodies(shape, position, angle, results)` is a stateless query: the soft bodies, by ascending slot, with a particle disc touching the shape. There are no soft events.
+
+## Snapshot section
+
+Optional section id `0x53463244` ("SF2D"), version 1, written only once the world has made a soft body, so worlds without them keep their bytes and hashes; not part of the 3D section. Layout (little-endian, in this order): `int32 version`, `int32 SoftSubsteps`, `int32 SoftIterations`, the handle table, then per slot (live or not, entity-described) for a live body: vertex count and `float32` vertices, triangle count and `int32` indices, position (`float64` x 2), angle, scale, linear velocity (x 2), angular velocity, mass, particle radius, model (byte), edge compliance and damping, bend compliance and damping, area compliance and damping, internal pressure, match compliance, quadratic flag, match blend, cluster size, friction, linear damping, gravity scale, self-collision flag, allow-sleep flag, category, mask, group, layer, asleep flag and sleep time, positions and previous positions (`float64`), velocities (`float32`), pin bytes, a targets flag followed by target flags, maximum distances, targets and previous targets. Constraints, blocks and clusters are rebuilt from the mesh and definition on restore and never saved. Restore validates exactly (ranges, finiteness, consistency with the mesh) and refuses a snapshot whose triangles the mesh would repair. The hash covers the same bytes.
+The replay live-options payload is 128 bytes, or 136 when `SoftSubsteps` or `SoftIterations` differ from their defaults (4 and 3), the extra eight bytes being the two values.
+
+## Scenes and thresholds
+
+`soft-pile-2d`, `soft-rigid-2d` and `balloon-2d` (see `scenes.md`); no reference engine has 2D soft bodies, so thresholds are this library's own.
