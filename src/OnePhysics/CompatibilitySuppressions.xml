@@ -8,4 +8,18 @@
     <Right>lib/net10.0/RecursiveAI.OnePhysics.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:RecursiveAI.OnePhysics.Physics2D.Material2D.#ctor(System.Single,System.Single,System.Single)</Target>
+    <Left>lib/net10.0/RecursiveAI.OnePhysics.dll</Left>
+    <Right>lib/net10.0/RecursiveAI.OnePhysics.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:RecursiveAI.OnePhysics.Physics3D.Material3D.#ctor(System.Single,System.Single,System.Single)</Target>
+    <Left>lib/net10.0/RecursiveAI.OnePhysics.dll</Left>
+    <Right>lib/net10.0/RecursiveAI.OnePhysics.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
 </Suppressions>
