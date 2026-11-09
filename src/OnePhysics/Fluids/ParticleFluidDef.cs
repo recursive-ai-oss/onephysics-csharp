@@ -266,3 +266,37 @@ public readonly struct FluidBodyState
     /// <summary>The average force of the fluid on the body during the last step, newtons (a planar world: z is zero).</summary>
     public Vector3F Force { get; }
 }
+
+/// <summary>What the last fluid step did, for inspection and tests. Not simulation state.</summary>
+public readonly struct FluidStepStatistics
+{
+    /// <summary>Creates the value.</summary>
+    public FluidStepStatistics(bool stepped, bool asleep, int particles, int shapes, int deformables, int contacts, int coupledContacts, float maxSpeed)
+    {
+        Stepped = stepped; Asleep = asleep; Particles = particles; Shapes = shapes; Deformables = deformables; Contacts = contacts; CoupledContacts = coupledContacts; MaxSpeed = maxSpeed;
+    }
+
+    /// <summary>False when the fluids were asleep or absent and the step did no work.</summary>
+    public bool Stepped { get; }
+
+    /// <summary>Whether the fluids are asleep now.</summary>
+    public bool Asleep { get; }
+
+    /// <summary>Particles in the world.</summary>
+    public int Particles { get; }
+
+    /// <summary>Shapes near enough to the fluid to be tested against it.</summary>
+    public int Shapes { get; }
+
+    /// <summary>Soft-body particles and rod segments near the fluid.</summary>
+    public int Deformables { get; }
+
+    /// <summary>Particle contacts in the last substep.</summary>
+    public int Contacts { get; }
+
+    /// <summary>Of those, contacts that gave a reaction to a rigid body, soft body or rod.</summary>
+    public int CoupledContacts { get; }
+
+    /// <summary>Fastest particle after the step, m/s.</summary>
+    public float MaxSpeed { get; }
+}

@@ -33,8 +33,8 @@ internal static class FluidRodCoupling
             var r = rods.Data[d.Owner[e] & 0xFFFFFF];
             if (r == null) { continue; }
             int pa = d.PA[e], pb = d.PB[e];
-            if (d.InvA[e] > 0f) { r.VelocityData[pa] += new RecursiveAI.OneMath.Vector3F(d.JAx[e] * d.InvA[e], d.JAy[e] * d.InvA[e], d.JAz[e] * d.InvA[e]); }
-            if (d.InvB[e] > 0f) { r.VelocityData[pb] += new RecursiveAI.OneMath.Vector3F(d.JBx[e] * d.InvB[e], d.JBy[e] * d.InvB[e], d.JBz[e] * d.InvB[e]); }
+            if (d.InvA[e] > 0f) { float sa = d.DvScaleA(e); r.VelocityData[pa] += new RecursiveAI.OneMath.Vector3F(d.JAx[e] * sa, d.JAy[e] * sa, d.JAz[e] * sa); }
+            if (d.InvB[e] > 0f) { float sb = d.DvScaleB(e); r.VelocityData[pb] += new RecursiveAI.OneMath.Vector3F(d.JBx[e] * sb, d.JBy[e] * sb, d.JBz[e] * sb); }
         }
     }
 }

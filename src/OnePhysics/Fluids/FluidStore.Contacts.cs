@@ -427,7 +427,9 @@ internal sealed partial class FluidStore
                 iwx = b.Iw0 * rnx + b.Iw1 * rny + b.Iw2 * rnz; iwy = b.Iw1 * rnx + b.Iw3 * rny + b.Iw4 * rnz; iwz = b.Iw2 * rnx + b.Iw4 * rny + b.Iw5 * rnz;
                 wb = b.InvMass + rnx * iwx + rny * iwy + rnz * iwz;
             }
-            else { float tt = c.Rx, s1 = 1f - tt; wb = s1 * s1 * _def.InvA[c.Def] + tt * tt * _def.InvB[c.Def]; }
+            // A soft body or rod is a surface for the fluid's solve (its particles are held by their own constraints, which a lone particle's inverse mass knows nothing of): the fluid particle takes the whole correction and the
+            // deformable gets the matching momentum as a velocity, which its own constraints then absorb.
+            else { wb = 0f; }
 
             // The other side has already moved away by wb times what earlier passes applied, which opens the gap as well.
             float cv = c.C0 + nx * (_x[i] - c.X) + ny * (_y[i] - c.Y) + nz * (_z[i] - c.Z) + wb * c.Applied;
@@ -454,6 +456,12 @@ internal sealed partial class FluidStore
                 float tt = c.Rx, s1 = 1f - tt;
                 _def.JAx[d] -= s1 * nx * li; _def.JAy[d] -= s1 * ny * li; _def.JAz[d] -= s1 * nz * li;
                 _def.JBx[d] -= tt * nx * li; _def.JBy[d] -= tt * ny * li; _def.JBz[d] -= tt * nz * li;
+                if (c.Applied == lam)
+                {
+                    // The first time this contact acts in the substep: its fluid particle is in contact with the deformable.
+                    float mf = 1f / wp;
+                    _def.MA[d] += s1 * mf; _def.MB[d] += tt * mf;
+                }
             }
 
             if (c.Mu > 0f) { FrictionCoupled(ref c, i, wp, wb, lam, h, invH, rnx, rny, rnz); }
@@ -479,7 +487,7 @@ internal sealed partial class FluidStore
             float ix2 = b.Iw0 * qx + b.Iw1 * qy + b.Iw2 * qz, iy2 = b.Iw1 * qx + b.Iw3 * qy + b.Iw4 * qz, iz2 = b.Iw2 * qx + b.Iw4 * qy + b.Iw5 * qz;
             wbt = b.InvMass + qx * ix2 + qy * iy2 + qz * iz2;
         }
-        else { float tt = c.Rx, s1 = 1f - tt; wbt = s1 * s1 * _def.InvA[c.Def] + tt * tt * _def.InvB[c.Def]; }
+        else { wbt = 0f; }
 
         float lim = c.Mu * (normalLambda * wp);
         float want = tl;

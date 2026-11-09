@@ -16,6 +16,9 @@ public sealed partial class PhysicsWorld2D
     /// <summary>Number of live particle fluids (see <see cref="AddParticleFluid"/>). Default 0; a world without them pays nothing.</summary>
     public int ParticleFluidCount => _engine.ParticleFluids.FluidHandles.Count;
 
+    /// <summary>What the last step did (work done, contacts, speed). Zero before the first step.</summary>
+    public FluidStepStatistics FluidStatistics { get { var s = _engine.ParticleFluids; return new FluidStepStatistics(s.LastStepped, s.Asleep, s.Count, s.LastCandidates, s.LastDeformables, s.LastContacts, s.LastCoupledContacts, s.LastMaxSpeed); } }
+
     /// <summary>Number of fluid particles in the world.</summary>
     public int FluidParticleCount => _engine.ParticleFluids.Count;
 

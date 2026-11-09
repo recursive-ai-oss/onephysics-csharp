@@ -101,6 +101,7 @@ internal sealed partial class FluidStore
             _x[i] = (float)(PX[i] - _ox); _y[i] = (float)(PY[i] - _oy); _z[i] = Dim == 3 ? (float)(PZ[i] - _oz) : 0f;
         }
 
+        _def.Substeps = Settings.Substeps;
         if (_def.Count > 0) { BuildDeformableGrid(); }
         LastContacts = 0; LastCoupledContacts = 0;
         int substeps = Settings.Substeps, iterations = Settings.Iterations;

@@ -37,7 +37,7 @@ internal sealed partial class Engine3D
             float maxDv = 0f;
             while (end < f.Count && (f.Owner[end] >> 24) == 0 && (f.Owner[end] & 0xFFFFFF) == slot)
             {
-                float dx = f.JAx[end] * f.InvA[end], dy = f.JAy[end] * f.InvA[end], dz = f.JAz[end] * f.InvA[end];
+                float sc = f.InvA[end] > 0f ? f.DvScaleA(end) : 0f; float dx = f.JAx[end] * sc, dy = f.JAy[end] * sc, dz = f.JAz[end] * sc;
                 float m = float.Sqrt(dx * dx + dy * dy + dz * dz);
                 if (m > maxDv) { maxDv = m; }
                 end++;
@@ -55,7 +55,9 @@ internal sealed partial class Engine3D
                 for (int k = e; k < end; k++)
                 {
                     int p = f.PA[k];
-                    d.Vel[3 * p] += f.JAx[k] * f.InvA[k]; d.Vel[3 * p + 1] += f.JAy[k] * f.InvA[k]; d.Vel[3 * p + 2] += f.JAz[k] * f.InvA[k];
+                    if (f.InvA[k] <= 0f) { continue; }
+                    float sc = f.DvScaleA(k);
+                    d.Vel[3 * p] += f.JAx[k] * sc; d.Vel[3 * p + 1] += f.JAy[k] * sc; d.Vel[3 * p + 2] += f.JAz[k] * sc;
                 }
             }
 

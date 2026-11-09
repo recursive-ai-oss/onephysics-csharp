@@ -20,6 +20,15 @@ internal sealed class FluidDeformables
     public int[] Owner = new int[16], PA = new int[16], PB = new int[16];
     // Accumulated by the fluid step.
     public float[] JAx = new float[16], JAy = new float[16], JAz = new float[16], JBx = new float[16], JBy = new float[16], JBz = new float[16];
+    /// <summary>Fluid mass in contact with each end, summed over the substeps (divide by the substep count): the share of the fluid a deformable's particle is given as extra inertia when it receives the fluid's momentum.</summary>
+    public float[] MA = new float[16], MB = new float[16];
+    public int Substeps = 1;
+
+    /// <summary>The velocity change end A gets from its accumulated momentum: the momentum over its own mass plus the fluid mass in contact with it.</summary>
+    public float DvScaleA(int e) => 1f / (1f / InvA[e] + MA[e] / Substeps);
+
+    /// <summary>The same for end B.</summary>
+    public float DvScaleB(int e) => 1f / (1f / InvB[e] + MB[e] / Substeps);
 
     public void Clear() { Count = 0; }
 
@@ -30,6 +39,7 @@ internal sealed class FluidDeformables
         Array.Resize(ref Radius, c); Array.Resize(ref InvA, c); Array.Resize(ref InvB, c);
         Array.Resize(ref Vax, c); Array.Resize(ref Vay, c); Array.Resize(ref Vaz, c); Array.Resize(ref Vbx, c); Array.Resize(ref Vby, c); Array.Resize(ref Vbz, c);
         Array.Resize(ref Owner, c); Array.Resize(ref PA, c); Array.Resize(ref PB, c);
+        Array.Resize(ref MA, c); Array.Resize(ref MB, c);
         Array.Resize(ref JAx, c); Array.Resize(ref JAy, c); Array.Resize(ref JAz, c); Array.Resize(ref JBx, c); Array.Resize(ref JBy, c); Array.Resize(ref JBz, c);
     }
 
@@ -43,7 +53,7 @@ internal sealed class FluidDeformables
         Radius[n] = radius; InvA[n] = invA; InvB[n] = invB;
         Vax[n] = vax; Vay[n] = vay; Vaz[n] = vaz; Vbx[n] = vbx; Vby[n] = vby; Vbz[n] = vbz;
         Owner[n] = owner; PA[n] = pa; PB[n] = pb;
-        JAx[n] = 0f; JAy[n] = 0f; JAz[n] = 0f; JBx[n] = 0f; JBy[n] = 0f; JBz[n] = 0f;
+        JAx[n] = 0f; JAy[n] = 0f; JAz[n] = 0f; JBx[n] = 0f; JBy[n] = 0f; JBz[n] = 0f; MA[n] = 0f; MB[n] = 0f;
         Count = n + 1;
     }
 }
