@@ -121,6 +121,7 @@ public sealed partial class PhysicsWorld2D
         _core.Step(new Stages2D(_engine), dt);
         InvalidateQueryPad();
         _engine.ReconcileJoints();
+        UpdateInspectionCounters();
         _recorder?.SimulationEnded();
         if (ContactModifier != null || _core.ContactBatchModifier != null) { _recorder?.SimulationEffect("ContactModification"); }
         if (_suppressed == 0)
@@ -134,6 +135,7 @@ public sealed partial class PhysicsWorld2D
     {
         var o = _engine.Opt;
         var c = _core.Options;
+        c.DetailedInspection = o.DetailedInspection;
         c.Gravity = new Vector3F(o.Gravity.X, o.Gravity.Y, 0f);
         c.Substeps = o.Substeps; c.VelocityIterations = o.VelocityIterations; c.RelaxIterations = o.RelaxIterations;
         c.ContactSubsteps = o.ContactSubsteps; c.ContactVelocityIterations = o.ContactVelocityIterations; c.ContactRelaxIterations = o.ContactRelaxIterations;

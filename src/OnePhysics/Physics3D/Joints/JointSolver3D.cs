@@ -49,6 +49,14 @@ internal sealed partial class Engine3D
     private struct JS3
     {
         public Vector3F VA, WA, VB, WB;
+        public JointReadback Readback;
+        public int Constraint;
+        public void Row(int slot, in JointRow r, float error, JointRowBits flags)
+        {
+            if (!Readback.Enabled) { return; }
+            bool angular = r.LA.X == 0f && r.LA.Y == 0f && r.LA.Z == 0f && r.LB.X == 0f && r.LB.Y == 0f && r.LB.Z == 0f;
+            Readback.Row(Constraint, slot, error, flags | (angular ? JointRowBits.Angular : 0));
+        }
         public float MA, MB;
         public Sym IA, IB;
 
@@ -56,6 +64,7 @@ internal sealed partial class Engine3D
 
         public void Apply(in JointRow r, float l)
         {
+            if (Readback.Enabled) { Readback.Add(Constraint, r.LA, r.AA, r.LB, r.AB, l); }
             VA += r.LA * (MA * l); WA += IA.Mul(r.AA) * l;
             VB += r.LB * (MB * l); WB += IB.Mul(r.AB) * l;
         }
@@ -106,6 +115,7 @@ internal sealed partial class Engine3D
         var bodies = Core.Bodies;
         ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity, invMass = bodies.InverseMass;
         j = default;
+        j.Readback = Core.JointReadback; j.Constraint = -1;
         j.VA = V(lin, 3 * a); j.WA = V(ang, 3 * a); j.VB = V(lin, 3 * b); j.WB = V(ang, 3 * b);
         j.MA = invMass[a]; j.MB = invMass[b];
         var wa = WInvI.AsSpan(6 * a, 6); var wb = WInvI.AsSpan(6 * b, 6);
@@ -160,6 +170,7 @@ internal sealed partial class Engine3D
     {
         ReadOnlySpan<JointRow> r = rows;
         ReadOnlySpan<float> cv = c;
+        for (int i = 0; i < n; i++) { j.Row(slot + i, r[i], cv[i], JointRowBits.Active); }
         if (warm)
         {
             for (int i = 0; i < n; i++) { j.Apply(r[i], p[slot + i]); }
@@ -208,7 +219,7 @@ internal sealed partial class Engine3D
     /// <summary>A one-sided row (a limit): speculative when the limit is not reached (C &gt; 0), soft when violated; the accumulated impulse stays at least zero.</summary>
     private static void LimitRow(ref JS3 j, Span<float> p, int slot, in JointRow r, float c, bool useBias, float jb, float jm, float ji, float invH, bool warm)
     {
-        if (warm) { j.Apply(r, p[slot]); return; }
+        if (warm) { j.Row(slot, r, c, JointRowBits.Limit | (c <= 0f || p[slot] != 0f ? JointRowBits.Active : 0)); j.Apply(r, p[slot]); return; }
         float mass = j.Mass(r);
         float bias = 0f, ms = 1f, isc = 0f;
         if (c > 0f) { bias = c * invH; }
@@ -219,12 +230,14 @@ internal sealed partial class Engine3D
         if (nl < 0f) { nl = 0f; }
         imp = nl - lambda;
         p[slot] = nl;
+        j.Row(slot, r, c, JointRowBits.Limit | (c <= 0f || nl != 0f ? JointRowBits.Active : 0));
         j.Apply(r, imp);
     }
 
     /// <summary>A motor row: drives Cdot to <paramref name="speed"/>, accumulated impulse capped at ±<paramref name="maxImpulse"/>.</summary>
     private static void MotorRow(ref JS3 j, Span<float> p, int slot, in JointRow r, float speed, float maxImpulse, bool warm)
     {
+        j.Row(slot, r, j.Cdot(r) - speed, JointRowBits.Motor | JointRowBits.Velocity | (maxImpulse > 0f ? JointRowBits.Active : 0));
         if (warm) { j.Apply(r, p[slot]); return; }
         float imp = -j.Mass(r) * (j.Cdot(r) - speed);
         float nl = Clamp(p[slot] + imp, maxImpulse);
@@ -236,6 +249,7 @@ internal sealed partial class Engine3D
     /// <summary>A user spring row on C with the coefficients of <c>MakeSpring</c>; acts once per substep, in the biased pass.</summary>
     private static void SpringRow(ref JS3 j, Span<float> p, int slot, in JointRow r, float c, float stiffness, float massScale, float impulseScale, bool useBias, bool warm)
     {
+        j.Row(slot, r, c, JointRowBits.Spring | JointRowBits.Active);
         if (warm) { j.Apply(r, p[slot]); return; }
         if (!useBias) { return; }
         float imp = -j.Mass(r) * (massScale * j.Cdot(r) + stiffness * c) - impulseScale * p[slot];
@@ -254,6 +268,7 @@ internal sealed partial class Engine3D
         var s = JScratch.AsSpan(c * JRow3.Stride, JRow3.Stride);
         var p = cs.Payload(c);
         LoadJoint(a, b, s, out JS3 j, out JGeo g);
+        j.Constraint = c;
         bool warm = phase == SolvePhase.WarmStart, useBias = phase == SolvePhase.Solve;
         float invH = ctx.InverseSubstepDt;
         var rigid = useBias ? new Soft(s[JRow3.JMass], s[JRow3.JMass] * s[JRow3.JBias], s[JRow3.JImp]) : new Soft(1f, 0f, 0f);
@@ -304,6 +319,7 @@ internal sealed partial class Engine3D
         var row = JointRow.Lin(axis, g.RA, g.RB);
         float jb = s[JRow3.JBias], jm = s[JRow3.JMass], ji = s[JRow3.JImp];
         bool range = d.Lower < d.Upper;
+        if (!d.Spring || !range) { j.Row(0, row, len - d.Length, JointRowBits.Active); }
         if (d.Spring && range)
         {
             SpringRow(ref j, p, JP.Spring, row, len - d.Length, s[JRow3.SBias], s[JRow3.SMass], s[JRow3.SImp], useBias, warm);
@@ -417,6 +433,12 @@ internal sealed partial class Engine3D
         JRowBuf rows = default;
         rows[0] = JointRow.Ang(g.AxA); rows[1] = JointRow.Ang(g.AyA); rows[2] = JointRow.Ang(g.AzA);
         ReadOnlySpan<JointRow> r = rows;
+        var errorQ = rel * d.DriveTarget.Conjugated();
+        float errorSign = errorQ.W < 0f ? -2f : 2f;
+        JointRowBits driveActivity = d.MaxMotor > 0f && (d.Length > 0f || d.Ratio > 0f) ? JointRowBits.Active : 0;
+        j.Row(JP.Drive, r[0], errorSign * errorQ.X, JointRowBits.Motor | JointRowBits.Spring | driveActivity);
+        j.Row(JP.Drive + 1, r[1], errorSign * errorQ.Y, JointRowBits.Motor | JointRowBits.Spring | driveActivity);
+        j.Row(JP.Drive + 2, r[2], errorSign * errorQ.Z, JointRowBits.Motor | JointRowBits.Spring | driveActivity);
         if (warm)
         {
             for (int i = 0; i < 3; i++) { j.Apply(r[i], p[JP.Drive + i]); }
@@ -616,7 +638,9 @@ internal sealed partial class Engine3D
         var row = new JointRow { AA = aA, AB = aB * d.Ratio };
         JRowBuf rows = default; JF3 c = default;
         rows[0] = row;
+        float velocityError = j.Cdot(row);
         Block(ref j, p, 0, 1, rows, c, new Soft(1f, 0f, 0f), warm);
+        j.Row(0, row, velocityError, JointRowBits.Velocity | JointRowBits.Active);
     }
 
     private static void SolveRack(ref JS3 j, in JGeo g, ref JointData3D d, Span<float> p, bool warm)
@@ -626,7 +650,9 @@ internal sealed partial class Engine3D
         var row = new JointRow { AA = aA * d.Ratio, LB = -aB };
         JRowBuf rows = default; JF3 c = default;
         rows[0] = row;
+        float velocityError = j.Cdot(row);
         Block(ref j, p, 0, 1, rows, c, new Soft(1f, 0f, 0f), warm);
+        j.Row(0, row, velocityError, JointRowBits.Velocity | JointRowBits.Active);
     }
 
     private static void SolvePulley(ref JS3 j, in JGeo g, ref JointData3D d, ReadOnlySpan<float> s, Span<float> p, Soft rigid, bool useBias, float invH, bool warm)

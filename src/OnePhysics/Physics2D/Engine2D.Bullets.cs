@@ -158,6 +158,7 @@ internal sealed partial class Engine2D
         float spin = Math.Abs(q1c * q2s - q1s * q2c) * MaxExtent[b];
         float moved = float.Sqrt(mx * mx + my * my) + spin;
         if (!(moved > 0.5f * MinExtent[b])) { return; }
+        Core.BodyReadback.CcdState[b] = 5;
 
         var lc = new Vec2(LocalCenter[2 * b], LocalCenter[2 * b + 1]);
         var sweep = new Sweep2D(lc, default, new Vec2(mx, my), new Rot2(q1c, q1s), new Rot2(q2c, q2s));
@@ -181,6 +182,7 @@ internal sealed partial class Engine2D
         }
 
         if (best >= 1f) { return; }
+        Core.BodyReadback.CcdState[b] |= 2;
         float t = best;
         pos[0] = c1x + (double)(t * mx);
         pos[1] = c1y + (double)(t * my);

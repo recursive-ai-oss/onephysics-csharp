@@ -296,6 +296,10 @@ Sampled profile of large-pile-3d at one thread, before: solver 48 %, contacts 44
 
 **Allocation.** After warm-up a step allocates nothing on large-pile-3d and, apart from rare growth of reusable buffers, nothing on mesh-terrain-3d and heightfield-terrain-3d (median 0 bytes per step; it was 9.8 KB and 7 KB). The garbage came from handle checks that built their message text before testing (`Resolve`), a fresh options object per option check, `Span.Sort`/`Array.Sort` with a comparer (a delegate per call; pairs and events now use `Core/Sorting.cs`, whose orders are total so the result is unchanged), and the list a continuous-collision cast against a mesh allocated per call (now one per thread). Island body lists that outgrow their island go to a small spare pool that the next growth draws from. What is left is growth of narrowphase result buffers (one per 64-pair chunk, doubling) and island lists when a bigger contact set than before appears.
 
+**Empty-pair separating planes.** An empty convex query may supply a positive clearance beyond the speculative distance. A separating-axis query also supplies its direction from A towards B: A's face normal, the negated transformed face normal of B, or the selected edge axis. The pair keeps the clearance, B's centre and orientation relative to A's body, B's reach about its centre of mass, and the direction rotated into A's body frame. These are transient hints, cleared on pair reuse and restore; changing a body's centre of mass or the speculative distance clears all empty-pair hints too, since their coordinate frames, reaches or clearance threshold changed. No snapshot layout changes.
+
+For the next query, let `e` be B's current centre in A's body frame minus its saved centre. Let `turn` be twice the norm of the vector part of the relative turn since the saved pose. With a separating direction `n` whose squared norm lies strictly between 0.99 and 1.01, the consumed clearance is `-dot(e,n) + turn*reach*sqrt(dot(n,n)) + slack`. Here `slack = 0.001 + 1e-6*(abs(dx)+abs(dy)+abs(dz)+reach)` and `(dx,dy,dz)` is the current centre difference in world axes. Translation parallel to the plane cannot close its gap. Without a usable direction, consumption remains `length(e) + turn*reach + slack`. The query stays empty while consumption is at most the saved clearance; NaN fails this test. This is the separating-plane motion bound described by Catto, *Continuous Collision* (GDC 2013), applied to a cached empty pair rather than a time-of-impact search. Edge-axis rejections retain their positive clearance too, and a newly empty pair can retain it even when it still has a constraint waiting to be removed by the serial apply pass.
+
 **Tight-box rejection.** Each step the tight box of every shape of a moving body is kept. A pair whose boxes (this step's for a moving shape, the stored fat box for one that did not move) are farther apart than the speculative distance plus 0.005 has no contact points and returns an empty manifold before either shape is loaded. Before round 23, on large-pile-3d 32,100 pairs were live and 17,600 passed this test (fat boxes carried a 0.1 margin plus twice the last displacement); with the 0.03 margin 20,600 are live and the same 17,600 pass (round 23). Results are identical to running the narrowphase.
 
 **Manifold reuse.** A touching convex-convex pair keeps its manifold while B has moved and turned relative to A by less than a bound: `|change of B's centre in A's frame| + 2|vector part of the change of B's rotation in A| * MaxExtent(B) <= 0.0035` (metres; Catto's contact reuse, Box2D 3.2 release notes), and every reused point stays within -0.02 and the speculative distance. The payload keeps, after the edge hint, a copy fixed to the bodies (`ManifoldLayout.RecycleOffset`, 40 floats): an owner flag (1 = the normal follows A, 2 = B), the normal in the owner's frame, B's centre in A's frame and B's rotation in A (3 + 4), and per point the arm on A in A's frame, the arm on B in B's frame and the separation when made. The owner is B when the normal is parallel (cosine > 0.99999) to a face normal of B and not of A (box axes, hull faces, cylinder caps); otherwise A (edge against edge, balls and capsules then follow A, which is right to within the allowed motion divided by the shapes' size). A reused manifold rebuilds arms from the stored locals with the current rotations, the normal from the owner's rotation, and each separation as the one when made plus the motion of B's point relative to A's point along the normal; feature ids, warm-start impulses and the hint stay. Materials are re-mixed. Pairs that are not convex-convex (compounds, meshes, height fields) and sensor pairs are never reused. The payload of `DimensionLayout.Spatial` grew from 64 to 104 floats, which changes snapshot bytes and every world hash that includes a 3D or core payload. On large-pile-3d about 99.7 % of touching pairs are reused once the pile has settled; collision time 14.2 to 7.2 ms per step at one thread, step time 37.8 to 26.3 ms (8 threads 10.9 to 9.5). The bound was picked from a sweep (0.0003 to 0.005): the ragdoll-pile-3d restKE and sleep-wake-3d escapes metrics are chaotic across it (restKE 0.33 to 0.78 against a limit of 0.5; escapes 0 to 17 against 10), 0.0035 passes both.
@@ -806,3 +810,132 @@ An indicative comparison of the existing deferred payload writes against immedia
 The immediate-write variant required an unchanged constraint chain, no sleeping dynamic end and no user material mixer. It kept arithmetic and hashes unchanged but moved most payload-write time into the narrowphase rather than removing it. A narrower variant that fused only reused convex contacts also failed to improve both headline scenes consistently. Neither variant is retained.
 
 In the existing pipeline, one-thread stage medians were about 0.037 ms for tight bounds, 1.406 ms for narrowphase and 0.256 ms for contact application on sleep-wake; ragdoll was 0.039, 0.502 and 0.092 ms respectively. Ragdoll preparation plus solve/integration was already about 1.183 ms, exceeding 1.15 times the reference's 0.956 ms whole step even before bounds and contact updates. Tight-bounds arithmetic and contact-write locality alone therefore cannot close that scene's gap. Sleep-wake still ran about 2,204 fresh narrowphase queries per measured step (median), against 307 for ragdoll; reducing fresh collision cost remains more promising there than optimizing bounds arithmetic.
+
+### Ragdoll constraint-type profile
+
+The `ragdoll-pile-3d` scene contains 1,350 **point joints**, not swing-twist joints. Angular-limit row caching therefore cannot improve this row. A one-thread diagnostic split measured approximately 0.56 ms in contact kernels, 0.21 ms in wide point blocks and 0.15 ms in integration; scalar angular-joint work was zero. These diagnostic times include clock-hook overhead and are not performance-gate rows.
+
+The median step had 17 nonempty colours, no overflow work, 34 colour runs for warm starting, 34 for the biased solve and 68 for relaxation. Its two substeps each use four passes; the final restitution pass adds 17 colour runs. Colours 14 and 16 frequently contained only one constraint, while the static-contact colour 20 contained about 1,115 constraints when active. Several other singleton colours appeared only briefly. The colour count is not uniformly small work: most constraints remain in the large early colours and static-contact colour.
+
+Exact-pose reuse of point-joint anchors was bit-identical in targeted tests but slower once the extra cached rows, writes and phase bookkeeping were counted: best indicative ragdoll medians were 2.035 versus 2.160 ms at one thread and 0.648 versus 0.726 ms at eight threads. The point-block warm-start bucket grew from about 0.057 to 0.080 ms. That experiment was discarded. Compact kernel-width dispatch was also discarded: its loaded-machine comparison did not establish a no-regression result, including a 5.9% sleep-wake slowdown at eight threads. The fixed-width kernels, batching, colour order and schedules remain unchanged.
+
+### Fresh small-manifold evaluation
+
+The small-manifold paths in `collision3d.md` preserve the SAT winners, feature IDs,
+point coordinates and point order. An indicative Release comparison used three
+interleaved runs per engine, tiered compilation off, one or eight threads restricted
+to one eight-logical-CPU core complex. Hardware was a Ryzen 9 7950X3D (32 logical
+processors), SDK 10.0.403, runtime 10.0.14. Load remained high after a five-minute
+quiet wait: 10.50 before, 9.98–13.19 during, 12.59 after. These are design-selection
+measurements, not performance-gate rows. The reference was BepuPhysics
+2.5.0-beta.33 at the harness defaults.
+
+| scene | threads | previous ms | small-manifold ms | reference ms |
+|---|---:|---:|---:|---:|
+| sleep-wake-3d | 1 | 2.8622 | 2.7677 | 1.1443 |
+| sleep-wake-3d | 8 | 0.7962 | 0.7685 | 0.5759 |
+| ragdoll-pile-3d | 1 | 1.9668 | 1.9725 | 0.9307 |
+| ragdoll-pile-3d | 8 | 0.5658 | 0.4994 | 0.4822 |
+| large-pile-3d | 1 | 6.4571 | 6.5014 | 6.6483 |
+| large-pile-3d | 8 | 1.4565 | 1.4367 | 1.4135 |
+| queries-3d | 1 | 7.9202 | 8.0098 | 6.7362 |
+| queries-3d | 8 | 1.8443 | 1.6732 | 1.5044 |
+
+Values are the best of three per-run median step times. The variable load and
+spread of the eight-thread repetitions do not establish a whole-step improvement
+there. The one-thread ragdoll and queries results are effectively flat, not wins.
+The two headline one-thread rows still miss the reference-relative speed target.
+
+The fresh box microbenchmark on the same scene poses (steps 150, 250, 300 and 340;
+40 inner repetitions, three interleaved invocations) was more consistent.
+Sleep-wake's best aggregate cost fell from 164.7 to 154.4 ns per call; ragdoll's
+from 185.1 to 176.5 ns. The micro includes empty pairs: dividing total time by the
+number of nonempty manifolds gives 662.6 to 621.0 ns for sleep-wake and 545.5 to
+520.2 ns for ragdoll, **not** isolated timings of successful calls. Manifold and
+point counts and all digests were unchanged. This modest local saving is not a
+several-fold collision improvement and cannot close the whole-step gap alone.
+
+Moving the existing zero-restitution-group rejection from the contact kernel up to
+batch dispatch did not establish a useful whole-step gain and was discarded. It
+still left all colour-stage boundaries in place and added a test to every other
+pass. No solver, colour packing, schedule or manifold-reuse threshold change is
+retained by this comparison.
+
+### Pair-update cost: whole-scene measurements versus collision micros
+
+A fixed-pose collision micro is not an estimate of the fresh-collision cost of a
+running scene. Its pair selection and empty/nonempty distribution differ. In a
+contact-stage investigation, the live-pair walk was not the entire unexplained
+cost: fresh manifold generation itself remained substantial.
+
+The following diagnostic bucket times are **instrumented**, not production
+latencies. Benchmark-owned timestamps surrounded the regions; the runtime did
+not read a clock. The bucket totals were averaged over measured steps (300 for
+sleep-wake, 540 for ragdolls), then divided by the median live-pair count (5,654
+and 4,873 respectively). Thus these are normalized ns per median live pair, not
+per invocation of the named method. Timestamp/delegate overhead is included;
+regions should not be summed and compared directly to uninstrumented step
+medians. Values compare the original code with a subsequently discarded
+seven-float-span experiment.
+
+| region | sleep original | sleep experiment | ragdoll original | ragdoll experiment |
+|---|---:|---:|---:|---:|
+| pair result setup and fat/tight bounds | 32.4 | 31.9 | 37.6 | 36.9 |
+| geometry and body-pose loads | 18.2 | 17.9 | 25.4 | 25.0 |
+| empty-pair separating-plane test | 21.6 | 21.2 | 26.3 | 25.7 |
+| manifold-reuse test and point transforms | 20.8 | 20.6 | 41.0 | 40.2 |
+| fresh-call dispatch | 10.7 | 10.6 | 5.1 | 5.3 |
+| fresh frame construction and hint lookup | 28.8 | 28.6 | 15.8 | 15.6 |
+| fresh convex manifold generator | 155.8 | 152.4 | 51.6 | 51.2 |
+| fresh clearance bookkeeping and emission | 24.1 | 23.5 | 11.9 | 11.8 |
+| result counting, constraint matching, apply-list selection | 21.6 | 21.3 | 26.1 | 25.7 |
+| fresh payload write including reuse frame | 37.6 | 33.2 | 17.5 | 15.3 |
+| recycled payload write | 1.5 | 1.2 | 11.4 | 10.7 |
+
+The generator bucket alone averaged 0.881 ms over 1,606.9 calls per measured
+sleep-wake step: approximately **548 ns per actual fresh call**, including its
+instrumentation, rather than the approximately 155 ns from the differently
+selected box micro. Ragdolls averaged 0.252 ms over 771 calls. These means include
+all measured steps, not just the four poses used by the micro. Do not subtract
+micro cost times median fresh-call count from median stage time and label the
+remainder memory overhead.
+
+Managed stack sampling agreed that fresh generation and reuse were material
+costs. Hardware/instruction sampling was unavailable because the system denied
+performance-counter access. JIT assembly of our pair walk showed dependent
+proxy/tree array lookups, range checks, and a non-inlined box-overlap call. The
+reuse method occupied 3,141 code bytes. Replacing per-component point indexing
+with seven-float span slices reduced that to 2,861 bytes and slightly reduced the
+instrumented payload-write buckets, but did not establish a useful whole-step
+improvement.
+
+Three interleaved repetitions at one and eight threads compared original,
+experiment, and BepuPhysics 2.5.0-beta.33. All were restricted to logical CPUs
+0–7, tiered compilation was disabled, and the table uses the best per-run median.
+The processor was a Ryzen 9 7950X3D (32 logical CPUs), Linux x64, SDK 10.0.403,
+runtime 10.0.14. After waiting five minutes for load to fall below six, it was
+still 15.71 before measurement, 8.36–13.34 during, and 11.07 afterward. These
+loaded-machine numbers are indicative only, not performance-gate rows.
+
+| scene | threads | original ms | experiment ms | reference ms | experiment/original |
+|---|---:|---:|---:|---:|---:|
+| sleep-wake-3d | 1 | 2.7618 | 2.7342 | 1.1616 | 0.990 |
+| sleep-wake-3d | 8 | 0.7283 | 0.7419 | 0.5013 | 1.019 |
+| ragdoll-pile-3d | 1 | 2.0463 | 2.0553 | 0.9497 | 1.004 |
+| ragdoll-pile-3d | 8 | 0.6024 | 0.5382 | 0.4125 | 0.893 |
+| large-pile-3d | 1 | 6.5177 | 6.4712 | 6.5542 | 0.993 |
+| large-pile-3d | 8 | 1.4376 | 1.5726 | 1.2910 | 1.094 |
+| queries-3d | 1 | 8.1509 | 7.8784 | 6.5863 | 0.967 |
+| queries-3d | 8 | 1.6550 | 1.6483 | 1.2630 | 0.996 |
+
+The headline one-thread misses remained 2.35 and 2.16 times the reference.
+Large-pile's eight-thread experiment was slower in every repetition, so the
+smaller reuse method was **discarded**, not traded for a regression elsewhere.
+Also discarded were a per-shape fat/tight-bound scratch cache (flat whole-step
+results, extra initialization) and packed pair-result rows combined with
+per-shape reach precomputation (no measured gain). None of these caches, rows,
+span changes or temporary per-pair profiling hooks is retained. Pair traversal,
+constraint ordering, manifold arithmetic, snapshot layout and physics hashes
+remain unchanged. All 21 three-dimensional stability scenes passed with the
+span experiment; the 23-world hash subset matched the original at one thread,
+eight threads and with AVX2 disabled.

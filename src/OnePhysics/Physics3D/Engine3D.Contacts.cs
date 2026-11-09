@@ -112,6 +112,7 @@ internal sealed class NarrowScratch
     public static TriangleShapeBuffer3D TriBuf => H.TriBuf;
     public ContactOut[] Out = new ContactOut[128];
     public int OutCount;
+    public int Recycled, RecycledPoints, FreshQueries;
     /// <summary>Pairs of this chunk that passed the tight-box test, and those among them that ran the narrowphase (not skipped as apart, not reusing a manifold); read by the work counters.</summary>
     public int Reached, Fresh;
 
@@ -153,6 +154,7 @@ internal sealed partial class Engine3D
     private int[] _boxStamp = new int[8];
     private byte[] _boxInside = new byte[8]; // per shape, set with the tight box: 1 when the box lies inside the proxy's stored box, so the tree update has nothing to do
     private int _stamp;
+    private int _skipMarginBits;
     private double[] _boxes = new double[48];
     private int[] _updateList = new int[64];
     private byte[] _resStatus = new byte[64]; // 0 untouched, 1 manifolds computed, 2 boxes no longer overlap
@@ -169,6 +171,9 @@ internal sealed partial class Engine3D
         int nb = bodies.HighWater;
         EnsureBodies(nb);
         ReconcileJoints();
+        // A clearance is measured beyond the speculative margin used by that query.
+        int marginBits = BitConverter.SingleToInt32Bits(Opt.SpeculativeDistance);
+        if (_skipMarginBits != marginBits) { Array.Clear(_skip); _skipMarginBits = marginBits; }
 
         // 0. A changed filter re-evaluates the pair table before anything else (see Refilter).
         Refilter();
@@ -183,6 +188,7 @@ internal sealed partial class Engine3D
         var awakeList = world.AwakeBodies;
         int boxChunks = (awakeList.Length + BoxChunk - 1) / BoxChunk;
         world.Executor.For(boxChunks, new TightBoxTask(this, boxChunks));
+        Core.Profile.Mark(StepStage.Move);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Move);
 #endif
@@ -199,6 +205,7 @@ internal sealed partial class Engine3D
         }
 
         // 2. Start-of-step pose, zero accumulated motion and world-axes inverse inertia for every body (sleeping bodies may wake during the stage).
+        Core.Profile.Mark(StepStage.Init);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Init);
 #endif
@@ -217,11 +224,13 @@ internal sealed partial class Engine3D
             if (_isSleeper[b] != 0) { _sleepers[_sleeperCount++] = b; }
         }
 
+        Core.Profile.Mark(StepStage.Pairs);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Pairs);
 #endif
         // 3. New pairs from the broadphase, in its sorted order.
         var found = Bp.UpdatePairs(new PairFilter(this), world.Executor);
+        world.Counters.BroadphasePairs = found.Length;
         bool anyFresh = false;
         for (int i = 0; i < found.Length; i++)
         {
@@ -239,6 +248,7 @@ internal sealed partial class Engine3D
         // Most pairs end up with one constraint; making room for them (and half as many again) at once saves the repeated doubling when thousands of pairs appear in one step.
         world.Constraints.Reserve(PairHigh + (PairHigh >> 1));
         if (_skip.Length < PairHigh) { Array.Resize(ref _skip, Math.Max(PairHigh, _skip.Length * 2)); }
+        Core.Profile.Mark(StepStage.Narrowphase);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Narrowphase);
 #endif
@@ -281,7 +291,7 @@ internal sealed partial class Engine3D
         StatNewPairs = found.Length;
         if (_applyCount.Length < chunks) { _applyCount = new int[Math.Max(chunks, _applyCount.Length * 2)]; }
         if (_applyIdx.Length < chunks * 64) { _applyIdx = new int[Math.Max(chunks * 64, _applyIdx.Length * 2)]; }
-        for (int i = 0; i < chunks; i++) { _scratch[i].OutCount = 0; _scratch[i].Reached = 0; _scratch[i].Fresh = 0; }
+        for (int i = 0; i < chunks; i++) { _scratch[i].OutCount = 0; _scratch[i].Reached = 0; _scratch[i].Fresh = 0; _scratch[i].Recycled = 0; }
         StatUpdated = _updateCount;
         StatReached = 0; StatFresh = 0;
         // The serial pass only adds, matches and removes constraints (their order fixes the colors); writing the manifolds into the payloads is independent per constraint and runs afterwards in parallel.
@@ -289,6 +299,15 @@ internal sealed partial class Engine3D
         _deferWrite = Opt.MaterialMixer == null && _updateCount >= 64;
         world.Executor.For(chunks, new CollideTask(this));
         for (int i = 0; i < chunks; i++) { StatReached += _scratch[i].Reached; StatFresh += _scratch[i].Fresh; }
+        world.Counters.UpdatedPairs = _updateCount;
+        for (int i = 0; i < chunks; i++)
+        {
+            world.Counters.NarrowphasePairs += _scratch[i].FreshQueries;
+            world.Counters.RecycledManifolds += _scratch[i].Recycled;
+            world.Counters.RecycledContactPoints += _scratch[i].RecycledPoints;
+        }
+
+        Core.Profile.Mark(StepStage.Apply);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Apply);
 #endif
@@ -596,15 +615,24 @@ internal sealed partial class Engine3D
             int lo = task * 64, hi = Math.Min(lo + 64, _e._updateCount);
             var sc = _e._scratch[task];
             var e = _e;
-            int listed = 0;
+            int listed = 0, recycled = 0, recycledPoints = 0, soupReuse = 0;
             for (int i = lo; i < hi; i++)
             {
                 e.Collide(i, sc);
+                int count = e._resCount[i];
+                if (count != 0 && sc.Out[e._resFirst[i]].Recycled)
+                {
+                    recycled += count;
+                    for (int k = 0; k < count; k++) { recycledPoints += sc.Out[e._resFirst[i] + k].Count; }
+                    int pair = e._updateList[i];
+                    if (e.Geoms[e.GeomOf[e.PairA[pair]]]!.Soup != null || e.Geoms[e.GeomOf[e.PairB[pair]]]!.Soup != null) { soupReuse++; }
+                }
                 // Worth the serial pass: the boxes no longer overlap (the pair goes), or the pair has points or a constraint to match.
                 // A pair whose new contacts are exactly its constraints, one for one, changes nothing the serial pass owns (no constraint is added or removed, so no color moves); it only needs its payloads written.
                 if ((e._resStatus[i] == 2 || e._resCount[i] != 0 || e.PairCons[e._updateList[i]] != -1) && !(e._deferWrite && e.MatchesInPlace(i, sc))) { e._applyIdx[lo + listed++] = i; }
             }
 
+            sc.Recycled = recycled; sc.RecycledPoints = recycledPoints; sc.FreshQueries = sc.Fresh - soupReuse;
             e._applyCount[task] = listed;
         }
     }
@@ -717,14 +745,15 @@ internal sealed partial class Engine3D
             var cstore = Core.Constraints;
             gen.HintIn = oldCons >= 0 && cstore.PointCount[oldCons] > 0 ? new EdgeHint3D(cstore.Payload(oldCons).Slice(ManifoldLayout.HintOffset, 7)) : default;
             var m = gen.Collide(ga.Convex, gb.Convex, bInA, spec);
-            if (m.PointCount == 0 && oldCons < 0 && gen.ClearanceOut > 0f)
+            if (m.PointCount == 0 && gen.ClearanceOut > 0f)
             {
                 // The pose of B's body in A's body at this query, and how far apart the shapes were.
                 var invA = qA.Conjugated();
                 var d = invA.Rotate(new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])));
                 var qr = invA * qB;
                 float sg = qr.W < 0f ? -1f : 1f;
-                _skip[p] = new SkipFrame3 { X = d.X, Y = d.Y, Z = d.Z, Qx = sg * qr.X, Qy = sg * qr.Y, Qz = sg * qr.Z, Qw = sg * qr.W, Clear = gen.ClearanceOut, Reach = ReachOfShape(bb, sb) };
+                var axis = la.Rotation.Rotate(gen.ClearanceAxisOut);
+                _skip[p] = new SkipFrame3 { Nx = axis.X, Ny = axis.Y, Nz = axis.Z, X = d.X, Y = d.Y, Z = d.Z, Qx = sg * qr.X, Qy = sg * qr.Y, Qz = sg * qr.Z, Qw = sg * qr.W, Clear = gen.ClearanceOut, Reach = ReachOfShape(bb, sb) };
             }
             else { _skip[p].Clear = 0f; }
 
@@ -749,9 +778,10 @@ internal sealed partial class Engine3D
     }
 
     /// <summary>The pose of B's body in A's body when a pair without a constraint last had no contact points, and how far apart the shapes were then (beyond the speculative distance).</summary>
-    private struct SkipFrame3
+    internal struct SkipFrame3
     {
         public float X, Y, Z, Qx, Qy, Qz, Qw, Clear;
+        public float Nx, Ny, Nz; // optional separating direction in A's body frame
 
         /// <summary>Farthest point of B's shape from B's centre of mass; a kinematic or static body has no stored extent, so the bound comes from the shape.</summary>
         public float Reach;
@@ -770,7 +800,7 @@ internal sealed partial class Engine3D
 
     // Whether a pair recorded as apart still is. Every point of B's shape moves, relative to A, by at most the change of B's centre of mass in A's frame plus the chord of the relative turn times the point's distance
     // from that centre (chord = 2 sin(angle / 2) = twice the vector part of the relative rotation). The slack covers float rounding of the relative pose, which grows with its size.
-    private static bool StillApart(in SkipFrame3 f, QuaternionF qA, QuaternionF qB, float dx, float dy, float dz)
+    internal static bool StillApart(in SkipFrame3 f, QuaternionF qA, QuaternionF qB, float dx, float dy, float dz)
     {
         var invA = qA.Conjugated();
         var d = invA.Rotate(new Vector3F(dx, dy, dz));
@@ -784,7 +814,17 @@ internal sealed partial class Engine3D
         float rz = w * -f.Qz + f.Qw * z + (x * -f.Qy - y * -f.Qx);
         float turn = 2f * float.Sqrt(rx * rx + ry * ry + rz * rz);
         float slack = 0.001f + 1e-6f * (float.Abs(dx) + float.Abs(dy) + float.Abs(dz) + f.Reach);
-        float used = float.Sqrt(ex * ex + ey * ey + ez * ez) + turn * f.Reach + slack;
+        float axis2 = f.Nx * f.Nx + f.Ny * f.Ny + f.Nz * f.Nz;
+        float used;
+        if (axis2 > 0.99f && axis2 < 1.01f)
+        {
+            // Catto 2013, continuous collision: project motion onto a separating plane.
+            // Only translation towards the supporting plane closes its gap; tangential motion
+            // cannot. Turning B can close it by at most the chord times B's reach and |axis|.
+            float closing = -(ex * f.Nx + ey * f.Ny + ez * f.Nz);
+            used = closing + turn * f.Reach * float.Sqrt(axis2) + slack;
+        }
+        else { used = float.Sqrt(ex * ex + ey * ey + ez * ez) + turn * f.Reach + slack; }
         return used <= f.Clear; // false for NaN
     }
 
@@ -972,6 +1012,7 @@ internal sealed partial class Engine3D
         var ids = cs.FeatureIdsOf(c);
         int oldCount = cs.PointCount[c];
         // Warm starting: impulses of the old point with the same feature id carry over.
+        int matchedMask = 0;
         var old = default(ImpulseBuffer);
         for (int k = 0; k < res.Count; k++)
         {
@@ -979,11 +1020,13 @@ internal sealed partial class Engine3D
             for (int j = 0; j < oldCount; j++)
             {
                 if (ids[j] != id) { continue; }
+                matchedMask |= 1 << k;
                 old[k] = pl[ManifoldLayout.NormalImpulse(j)]; old[4 + k] = pl[ManifoldLayout.Tangent1Impulse(j)]; old[8 + k] = pl[ManifoldLayout.Tangent2Impulse(j)];
                 break;
             }
         }
 
+        Core.InspectContactBirth(c, res.Count, matchedMask);
         float r0 = 0f, r1 = 0f, r2 = 0f;
         if (oldCount > 0) { r0 = pl[ManifoldLayout.RollingImpulse]; r1 = pl[ManifoldLayout.RollingImpulse + 1]; r2 = pl[ManifoldLayout.RollingImpulse + 2]; }
         pl.Clear();

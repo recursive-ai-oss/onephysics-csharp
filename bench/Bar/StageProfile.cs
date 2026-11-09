@@ -5,8 +5,8 @@ using System.Text;
 namespace Bar;
 
 /// <summary>
-/// Per-stage times of this library's step, read from the stage boundaries the library reports when it is built in the Profile configuration (the STAGE_TIMERS symbol). The clock lives here, in the benchmark.
-/// Enabled by the OP_PROFILE environment variable, like the reference drivers' profile output; a normal build reports the stages as unavailable.
+/// Per-stage times of this library's step through its public per-world profile. The clock lives here, in the benchmark.
+/// Enabled by the OP_PROFILE environment variable, like the reference drivers' profile output. Profile builds additionally collect solve-run diagnostics.
 /// </summary>
 static class StageProfile
 {
@@ -16,9 +16,7 @@ static class StageProfile
 
 #if STAGE_TIMERS
     public const bool Available = true;
-    static readonly long[] stamp = new long[256];
-    static readonly int[] order = new int[256];
-    static int marks;
+    static RecursiveAI.OnePhysics.StepProfile? current;
     static readonly List<double[]> perStep = [];
     // Inside the solve stage: time and task counts per kind of stage (integration, then warm start, solve, relax and restitution, each for the colours and for the overflow set).
     public static readonly string[] SolveNames = ["intV", "intP", "warm", "warmOv", "solve", "solveOv", "relax", "relaxOv", "rest", "restOv"];
@@ -26,9 +24,11 @@ static class StageProfile
     static readonly List<double[]> perStepSolve = [];
 
     /// <summary>Starts recording boundaries.</summary>
-    public static void Install()
+    public static void Install(RecursiveAI.OnePhysics.StepProfile profile)
     {
-        RecursiveAI.OnePhysics.LowLevel.StageProbe.OnMark = stage => { stamp[marks] = Stopwatch.GetTimestamp(); order[marks++] = stage; };
+        current = profile;
+        profile.TimestampSource = Stopwatch.GetTimestamp;
+        perStep.Clear(); perStepSolve.Clear();
         RecursiveAI.OnePhysics.LowLevel.StageProbe.OnSolveRun = (kind, phase, tasks, begin) =>
         {
             int label = kind <= 1 ? kind : 2 + 2 * Math.Min(phase, 3) + (kind == 2 ? 1 : 0);
@@ -38,15 +38,14 @@ static class StageProfile
     }
 
     /// <summary>Call before a step.</summary>
-    public static void Begin() { marks = 0; Array.Clear(solveMs); Array.Clear(solveTasks); Array.Clear(solveCalls); }
+    public static void Begin() { Array.Clear(solveMs); Array.Clear(solveTasks); Array.Clear(solveCalls); }
 
     /// <summary>Call after a step: turns the boundaries into stage durations (ms); a step the library cut short (no boundary reached) is dropped. The last boundary is the end of the step.</summary>
     public static void End(int step, int warmup)
     {
-        if (step < warmup || marks < 2) return;
+        if (step < warmup || current == null) return;
         var d = new double[Names.Length];
-        for (int i = 0; i + 1 < marks; i++)
-            if (order[i] < d.Length) d[order[i]] += (stamp[i + 1] - stamp[i]) * 1000.0 / Stopwatch.Frequency;
+        for (int i = 0; i < d.Length; i++) d[i] = current.Durations[i] * 1000.0 / Stopwatch.Frequency;
         perStep.Add(d);
         var e = new double[30];
         for (int k = 0; k < 10; k++) { e[k] = solveMs[k]; e[10 + k] = solveTasks[k]; e[20 + k] = solveCalls[k]; }
@@ -75,10 +74,33 @@ static class StageProfile
         }
     }
 #else
-    public const bool Available = false;
-    public static void Install() { Console.Error.WriteLine("onephysics stage times need a build in the Profile configuration (dotnet build -c Profile); reporting none"); }
+    public const bool Available = true;
+    static RecursiveAI.OnePhysics.StepProfile? current;
+    static readonly List<double[]> perStep = [];
+    public static void Install(RecursiveAI.OnePhysics.StepProfile profile)
+    {
+        current = profile;
+        profile.TimestampSource = Stopwatch.GetTimestamp;
+        perStep.Clear();
+    }
     public static void Begin() { }
-    public static void End(int step, int warmup) { }
-    public static void Write(StringBuilder sb) { }
+    public static void End(int step, int warmup)
+    {
+        if (step < warmup || current == null) return;
+        var d = new double[Names.Length];
+        for (int i = 0; i < d.Length; i++) d[i] = current.Durations[i] * 1000.0 / Stopwatch.Frequency;
+        perStep.Add(d);
+    }
+    public static void Write(StringBuilder sb)
+    {
+        if (perStep.Count == 0) return;
+        for (int k = 0; k < Names.Length; k++)
+        {
+            var col = perStep.Select(d => d[k]).OrderBy(x => x).ToArray();
+            sb.Append(CultureInfo.InvariantCulture, $"prof_{Names[k]}_ms={col[col.Length / 2]:F5}\n");
+        }
+        var totals = perStep.Select(d => d.Sum()).OrderBy(x => x).ToArray();
+        sb.Append(CultureInfo.InvariantCulture, $"prof_step_ms={totals[totals.Length / 2]:F5}\n");
+    }
 #endif
 }

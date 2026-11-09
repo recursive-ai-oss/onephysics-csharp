@@ -95,6 +95,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         core.ContactMaterials.SubshapeCount = s => (uint)s < (uint)GeomOf.Length && (uint)GeomOf[s] < (uint)Geoms.Count && Geoms[GeomOf[s]] is { } geometry ? geometry.Soup?.TriangleIdCount ?? 1 : -1;
         core.ContactMaterials.PlaneId = (s, t) => Geoms[GeomOf[s]]!.Soup is { } soup && soup.TryGetTriangle(t, out var triangle) ? triangle.CoplanarPatchId : t;
         Core = core;
+        bp.Profile = core.Profile;
         Bp = bp;
         Opt = opt;
     }
@@ -641,6 +642,9 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         MaxExtent[b] = maxExt;
         MinExtent[b] = minExt;
+        // Empty-pair planes and reaches are expressed about the centres of mass. Changing a
+        // centre changes that coordinate frame without moving its shapes in world space.
+        if (PairHigh > 0 && (newLc.X != oldLc.X || newLc.Y != oldLc.Y || newLc.Z != oldLc.Z)) { Array.Clear(_skip); }
     }
 
     /// <summary>Farthest point of any shape of the body from <paramref name="lc"/> (its centre of mass), and the smallest half-width of any shape. A restore recomputes these to check the saved ones.</summary>

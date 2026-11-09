@@ -23,6 +23,90 @@ public class ManifoldReuse3DTests
         return w;
     }
 
+    [Fact]
+    public void IncreasingSpeculativeDistanceInvalidatesEmptyPairClearance()
+    {
+        PhysicsWorld3D Empty() => new(new WorldOptions3D { WorldId = 91, Gravity = default, SleepEnabled = false });
+        var w = Empty();
+        var q = new QuaternionF(0f, 0f, (float)Math.Sin(Math.PI / 8), (float)Math.Cos(Math.PI / 8));
+        var a = w.AddBox(new Vector3F(0.2f, 4f, 0.2f), default, q);
+        var normal = a.Rotation.Rotate(Vector3F.UnitX);
+        w.AddBox(new Vector3F(0.2f, 4f, 0.2f), new Vector3D(normal.X * 0.24f, normal.Y * 0.24f, 0), q);
+        w.Step(Dt); w.Step(Dt);
+        w.Options.SpeculativeDistance = 0.06f;
+        var restored = Empty(); restored.Restore(w.Snapshot());
+        for (int i = 0; i < 4; i++)
+        {
+            w.Step(Dt); restored.Step(Dt);
+            Assert.Equal(restored.ComputeHash(), w.ComputeHash());
+        }
+        Assert.Equal(restored.Snapshot(), w.Snapshot());
+    }
+
+    [Fact]
+    public void AddingAnOffsetMassInvalidatesTheOldSeparatingPlane()
+    {
+        PhysicsWorld3D Empty() => new(new WorldOptions3D { WorldId = 91, Gravity = default, SleepEnabled = false });
+        var w = Empty();
+        var q = new QuaternionF(0f, 0f, (float)Math.Sin(Math.PI / 8), (float)Math.Cos(Math.PI / 8));
+        var a = w.AddBox(new Vector3F(0.2f, 4f, 0.2f), default, q);
+        var normal = a.Rotation.Rotate(Vector3F.UnitX);
+        var b = w.AddBox(new Vector3F(0.2f, 4f, 0.2f), new Vector3D(normal.X * 0.24f, normal.Y * 0.24f, 0), q);
+        w.Step(Dt); w.Step(Dt); // Keep an empty pair whose oriented boxes are separated inside overlapping AABBs.
+        w.CreateSphere(a, 0.1f, new ShapeDef { LocalPosition = new Vector3F(-3, 0, 0), Density = 1000f });
+        b.LinearVelocity = normal * -0.2f;
+        var restored = Empty();
+        restored.Restore(w.Snapshot()); // Restoring clears all transient empty-pair hints.
+        for (int i = 0; i < 120; i++)
+        {
+            w.Step(Dt); restored.Step(Dt);
+            Assert.Equal(restored.ComputeHash(), w.ComputeHash());
+        }
+        Assert.Equal(restored.Snapshot(), w.Snapshot());
+    }
+
+    [Fact]
+    public void SeparatingPlaneBudgetIgnoresTangentialMotionButRejectsClosingMotion()
+    {
+        var frame = new Engine3D.SkipFrame3 { X = 1.06f, Qw = 1f, Clear = 0.04f, Reach = 0.867f, Nx = 1f };
+        Assert.True(Engine3D.StillApart(in frame, QuaternionF.Identity, QuaternionF.Identity, 1.06f, 2f, 0f));
+        Assert.True(Engine3D.StillApart(in frame, QuaternionF.Identity, QuaternionF.Identity, 3f, 0f, 0f));
+        Assert.False(Engine3D.StillApart(in frame, QuaternionF.Identity, QuaternionF.Identity, 1.01f, 0f, 0f));
+        frame.Nx = 0f; // Without an axis, the Euclidean motion budget is the conservative fallback.
+        Assert.False(Engine3D.StillApart(in frame, QuaternionF.Identity, QuaternionF.Identity, 1.06f, 2f, 0f));
+    }
+
+    [Fact]
+    public void SeparatingPlaneBudgetIsConservativeAgainstBoxVertexProjection()
+    {
+        var random = new Random(9721);
+        var normal = new Vector3F(0.6f, 0.8f, 0f);
+        var start = normal * 1.46f; // Both half-unit boxes reach 0.7 along this axis; gap 0.06.
+        var frame = new Engine3D.SkipFrame3 { X = start.X, Y = start.Y, Qw = 1f, Clear = 0.04f, Reach = 0.867f, Nx = normal.X, Ny = normal.Y };
+        int accepted = 0;
+        for (int i = 0; i < 2000; i++)
+        {
+            float angle = (float)(random.NextDouble() * 0.3 - 0.15);
+            var q = new QuaternionF(0f, 0f, (float)Math.Sin(angle * 0.5), (float)Math.Cos(angle * 0.5));
+            if ((i & 1) == 0) { q = new QuaternionF(-q.X, -q.Y, -q.Z, -q.W); }
+            var delta = new Vector3F((float)(random.NextDouble() * 0.4 - 0.2), (float)(random.NextDouble() * 0.4 - 0.2), (float)(random.NextDouble() * 2 - 1));
+            var at = start + delta;
+            if (!Engine3D.StillApart(in frame, QuaternionF.Identity, q, at.X, at.Y, at.Z)) { continue; }
+            accepted++;
+            float min = float.PositiveInfinity;
+            for (int v = 0; v < 8; v++)
+            {
+                var corner = new Vector3F((v & 1) == 0 ? -0.5f : 0.5f, (v & 2) == 0 ? -0.5f : 0.5f, (v & 4) == 0 ? -0.5f : 0.5f);
+                float projection = Vector3F.Dot(at + q.Rotate(corner), normal);
+                if (projection < min) { min = projection; }
+            }
+
+            Assert.True(min - 0.7f > 0.02f, "An accepted cached plane must leave the boxes beyond the speculative distance.");
+        }
+
+        Assert.True(accepted > 100);
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(8)]

@@ -42,8 +42,11 @@ public enum DebugContent
     /// <summary>One entry per soft body with its particles and edges (<see cref="DebugGeometry.SoftBodies"/>, <see cref="DebugGeometry.Points"/>, <see cref="DebugGeometry.Indices"/>). Ignored by 2D worlds.</summary>
     SoftBodies = 512,
 
+    /// <summary>Body/island states, constraint colours, joint row errors and force/impulse arrows as plain data.</summary>
+    Inspection = 1024,
+
     /// <summary>Everything.</summary>
-    All = 1023,
+    All = 2047,
 }
 
 /// <summary>The kind of a <see cref="DebugShape"/>. The same enum serves 2D and 3D worlds; a 2D world emits the first five.</summary>
@@ -403,7 +406,7 @@ public readonly struct DebugCharacter
 /// Plain data a host draws: nothing here calls back. Create one buffer and pass it to <c>GetDebugGeometry</c> every frame; its lists keep their capacity, so after the first few frames filling it allocates nothing.
 /// The same types serve 2D and 3D worlds (a 2D world leaves z at 0). Entries come in a fixed order: shapes, boxes and broadphase boxes by shape slot, contacts by constraint index, bodies by body slot.
 /// </summary>
-public sealed class DebugGeometry
+public sealed partial class DebugGeometry
 {
     private DebugShape[] _shapes = new DebugShape[16];
     private Vector3D[] _points = new Vector3D[64];
@@ -453,7 +456,7 @@ public sealed class DebugGeometry
     public ReadOnlySpan<DebugSoftBody> SoftBodies => _soft.AsSpan(0, _nSoft);
 
     /// <summary>Empties every list (capacity is kept).</summary>
-    public void Clear() => _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0;
+    public void Clear() { ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; }
 
     private static void Push<T>(ref T[] a, ref int n, in T v)
     {

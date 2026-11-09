@@ -70,7 +70,7 @@ public delegate Material2D MaterialMixer(Material2D a, Material2D b);
 /// <summary>Decides whether two shapes may collide, beyond the category/mask/group rule. Called once when the pair is first found; must be a pure function of the shapes' static properties.</summary>
 public delegate bool PairPredicate(Shape a, Shape b);
 
-/// <summary>Options of a <see cref="PhysicsWorld2D"/>. Every value that influences the simulation is saved in snapshots and covered by the world hash; only <see cref="ThreadCount"/> and <see cref="WorldId"/> are not.</summary>
+/// <summary>Options of a <see cref="PhysicsWorld2D"/>. Every value that influences the simulation is saved in snapshots and covered by the world hash; <see cref="DetailedInspection"/>, <see cref="ThreadCount"/> and <see cref="WorldId"/> are not.</summary>
 public sealed class WorldOptions2D
 {
     internal Action<string>? ReplayChanged;
@@ -110,6 +110,9 @@ public sealed class WorldOptions2D
     /// <summary>Worker threads for the parallel phases; never changes a result. Default 1.</summary>
     public int ThreadCount { get => _replayThreadCount; set { _replayThreadCount = value; ReplayChanged?.Invoke("WorldOptions2D.ThreadCount"); } }
     private int _replayThreadCount = 1;
+
+    /// <summary>Collect whole-step body input/damping impulses and joint reactions/row errors. Default false. Set before stepping (and before direct impulses to record them). Not saved or hashed; does not change simulation results. Detail getters throw DetailedInspectionDisabledException unless enabled for the latest step.</summary>
+    public bool DetailedInspection { get; set; }
 
     /// <summary>Id stamped into handles; 0 takes the next number of a process-wide counter. Not saved.</summary>
     public int WorldId { get => _replayWorldId; set { _replayWorldId = value; ReplayChanged?.Invoke("WorldOptions2D.WorldId"); } }
@@ -242,6 +245,7 @@ public sealed class WorldOptions2D
         {
             Layout = DimensionLayout.Planar,
             ThreadCount = ThreadCount,
+            DetailedInspection = DetailedInspection,
             WorldId = WorldId,
             Gravity = new Vector3F(Gravity.X, Gravity.Y, 0f),
             Substeps = Substeps,

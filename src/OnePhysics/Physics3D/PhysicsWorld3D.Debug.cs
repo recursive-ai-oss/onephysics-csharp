@@ -69,7 +69,7 @@ public sealed partial class PhysicsWorld3D
             }
         }
 
-        if ((flags & DebugContent.Bodies) != 0)
+        if ((flags & (DebugContent.Bodies | DebugContent.Inspection)) != 0)
         {
             for (int b = 0; b < bodies.HighWater; b++)
             {
@@ -83,6 +83,7 @@ public sealed partial class PhysicsWorld3D
             }
         }
 
+        if ((flags & DebugContent.Inspection) != 0) { geometry.AddInspection(_core); }
         if ((flags & DebugContent.Joints) != 0) { AddDebugJoints(geometry); }
         if ((flags & DebugContent.Characters) != 0) { _engine.AddDebugCharacters(geometry); }
         if ((flags & DebugContent.Vehicles) != 0) { _engine.AddDebugVehicles(geometry); }

@@ -170,6 +170,8 @@ public readonly struct AcceptAllPairs : IPairFilter
 [Experimental("OPHYS0001")]
 public partial class Broadphase<TBox> : ISnapshotSection where TBox : struct, IBox<TBox>
 {
+    internal StepProfile? Profile { get; set; }
+
     private const int ChunkSize = 16;
     private const int Version = 1;
 
@@ -546,6 +548,7 @@ public partial class Broadphase<TBox> : ISnapshotSection where TBox : struct, IB
             }
         }
 
+        Profile?.Mark(StepStage.Search);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Search);
 #endif
@@ -574,10 +577,12 @@ public partial class Broadphase<TBox> : ISnapshotSection where TBox : struct, IB
         }
 
         _pairCount = total;
+        Profile?.Mark(StepStage.Sort);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Sort);
 #endif
         SortPairs(total);
+        Profile?.Mark(StepStage.Alloc);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Alloc);
 #endif

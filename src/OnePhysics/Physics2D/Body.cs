@@ -212,6 +212,7 @@ public readonly partial struct Body : IEquatable<Body>
         var v = bodies.LinearVelocityOf(b);
         float m = bodies.InverseMass[b];
         v[0] += m * impulse.X; v[1] += m * impulse.Y;
+        if (w.Options.DetailedInspection) { w.Core.BodyReadback.Pending(b, new(impulse.X, impulse.Y, 0), default); }
         WakeBody(w, b);
     }
 
@@ -229,6 +230,7 @@ public readonly partial struct Body : IEquatable<Body>
         float m = bodies.InverseMass[b];
         v[0] += m * impulse.X; v[1] += m * impulse.Y;
         bodies.AngularVelocityOf(b)[0] += bodies.InverseInertia[b] * (rx * impulse.Y - ry * impulse.X);
+        if (w.Options.DetailedInspection) { w.Core.BodyReadback.Pending(b, new(impulse.X, impulse.Y, 0), new(0, 0, rx * impulse.Y - ry * impulse.X)); }
         WakeBody(w, b);
     }
 

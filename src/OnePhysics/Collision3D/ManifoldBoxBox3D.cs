@@ -13,6 +13,7 @@ public sealed partial class ManifoldGenerator3D
         /// <summary>For each face of the unit cube: its axis (0, 1, 2) and the sign of its outward normal.</summary>
         public readonly int[] FaceAxis = new int[6];
         public readonly float[] FaceSign = new float[6];
+        public readonly int[] SignedAxis = new int[6];
 
         /// <summary>The unit cube hull's outward face normals, its corners, and per face the four corners and edge codes (half-edge index / 2) in the order the face's edge loop visits them.</summary>
         public readonly Vector3F[] FaceNormal = new Vector3F[6];
@@ -51,6 +52,7 @@ public sealed partial class ManifoldGenerator3D
                 float c = axis == 0 ? n.X : axis == 1 ? n.Y : n.Z;
                 FaceAxis[f] = axis;
                 FaceSign[f] = c > 0f ? 1f : -1f;
+                SignedAxis[f] = 2 * axis + (c > 0f ? 0 : 1);
             }
 
             for (int f = 0; f < 6; f++)
@@ -96,16 +98,19 @@ public sealed partial class ManifoldGenerator3D
         float rx = (a00 * hB.X) + (a01 * hB.Y) + (a02 * hB.Z);
         float ry = (a10 * hB.X) + (a11 * hB.Y) + (a12 * hB.Z);
         float rz = (a20 * hB.X) + (a21 * hB.Y) + (a22 * hB.Z);
-        Span<float> lo = stackalloc float[3];
-        lo[0] = -rx - hA.X; lo[1] = -ry - hA.Y; lo[2] = -rz - hA.Z;
+        float lx = -rx - hA.X, ly = -ry - hA.Y, lz = -rz - hA.Z;
         float tx = t.X, ty = t.Y, tz = t.Z;
+        // Evaluate the signed axes once, then visit them in topology order so ties
+        // keep precisely the same face. This removes axis selection from the loop.
+        Span<float> separations = stackalloc float[6];
+        separations[0] = (1f * tx) + lx; separations[1] = (-1f * tx) + lx;
+        separations[2] = (1f * ty) + ly; separations[3] = (-1f * ty) + ly;
+        separations[4] = (1f * tz) + lz; separations[5] = (-1f * tz) + lz;
         sepA = float.NegativeInfinity;
         faceA = 0;
         for (int f = 0; f < 6; f++)
         {
-            int axis = topo.FaceAxis[f];
-            float tc = axis == 0 ? tx : axis == 1 ? ty : tz;
-            float sep = (topo.FaceSign[f] * tc) + lo[axis];
+            float sep = separations[topo.SignedAxis[f]];
             if (sep > sepA) { sepA = sep; faceA = f; }
         }
 
@@ -116,15 +121,15 @@ public sealed partial class ManifoldGenerator3D
         float u0 = (r.M11 * tx) + (r.M21 * ty) + (r.M31 * tz);
         float u1 = (r.M12 * tx) + (r.M22 * ty) + (r.M32 * tz);
         float u2 = (r.M13 * tx) + (r.M23 * ty) + (r.M33 * tz);
-        Span<float> loB = stackalloc float[3];
-        loB[0] = -ca0 - hB.X; loB[1] = -ca1 - hB.Y; loB[2] = -ca2 - hB.Z;
+        lx = -ca0 - hB.X; ly = -ca1 - hB.Y; lz = -ca2 - hB.Z;
+        separations[0] = (-1f * u0) + lx; separations[1] = (1f * u0) + lx;
+        separations[2] = (-1f * u1) + ly; separations[3] = (1f * u1) + ly;
+        separations[4] = (-1f * u2) + lz; separations[5] = (1f * u2) + lz;
         sepB = float.NegativeInfinity;
         faceB = 0;
         for (int f = 0; f < 6; f++)
         {
-            int axis = topo.FaceAxis[f];
-            float uc = axis == 0 ? u0 : axis == 1 ? u1 : u2;
-            float sep = (-topo.FaceSign[f] * uc) + loB[axis];
+            float sep = separations[topo.SignedAxis[f]];
             if (sep > sepB) { sepB = sep; faceB = f; }
         }
     }

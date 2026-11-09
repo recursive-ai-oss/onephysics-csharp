@@ -101,6 +101,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         core.ContactModifications.ShapeFriction = s => Friction[s];
         core.ContactMaterials.SubshapeCount = _ => 1;
         Core = core;
+        bp.Profile = core.Profile;
         Bp = bp;
         Opt = opt;
     }

@@ -18,6 +18,35 @@ public class BoxBoxTests
     }
 
     [Fact]
+    public void ContainedIncidentQuadKeepsAllFourCornersAndSortedFeatures()
+    {
+        var generator = new ManifoldGenerator3D();
+        var slab = ConvexShape3D.Box(new Vector3F(20f, 0.5f, 20f));
+        var box = ConvexShape3D.Box(new Vector3F(0.5f, 0.5f, 0.5f));
+        for (int turn = 0; turn < 16; turn++)
+        {
+            float angle = turn * 0.19f;
+            var q = new QuaternionF(0f, (float)Math.Sin(angle / 2f), 0f, (float)Math.Cos(angle / 2f));
+            var relative = new RigidTransformF(q, new Vector3F(3f, 0.98f, -2f));
+            var m = generator.Collide(slab, box, relative);
+            Assert.Equal(4, m.PointCount);
+            Assert.True(m.Normal.Y > 0.999f);
+            uint previous = 0;
+            for (int i = 0; i < m.PointCount; i++)
+            {
+                var point = m[i];
+                Assert.True(Math.Abs(point.Point.Y - 0.49f) < 1e-6f);
+                Assert.True(Math.Abs(point.Separation + 0.02f) < 1e-6f);
+                var local = q.Conjugated().Rotate(point.Point - new Vector3F(3f, 0.98f, -2f));
+                Assert.True(Math.Abs(Math.Abs(local.X) - 0.5f) < 1e-6f);
+                Assert.True(Math.Abs(Math.Abs(local.Z) - 0.5f) < 1e-6f);
+                Assert.True(i == 0 || point.Id >= previous);
+                previous = point.Id;
+            }
+        }
+    }
+
+    [Fact]
     public void AgreesWithTheGeneralRouteOnRandomPoses()
     {
         var rng = new TestRng(2024);

@@ -166,10 +166,12 @@ internal static class JointKernel3D
     /// joint changes by the rotation of one substep, which the soft step formulation tolerates, as it tolerates reusing the contact masses prepared once per step).
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void WarmStart<T>(ref BodyLanes<T> a, ref BodyLanes<T> b2, Span<float> wide, int l0, V3<T> imp, T two) where T : struct, ILane<T>
+    private static void WarmStart<T>(ref BodyLanes<T> a, ref BodyLanes<T> b2, Span<float> wide, int l0, V3<T> imp, T two, Span<float> diagnostics) where T : struct, ILane<T>
     {
         var rA = Rotate(a.Qx, a.Qy, a.Qz, a.Qw, Vec<T>(wide, J3D.RA, l0), two);
         var rB = Rotate(b2.Qx, b2.Qy, b2.Qz, b2.Qw, Vec<T>(wide, J3D.RB, l0), two);
+        var c = (Vec<T>(wide, J3D.D, l0) + (b2.Dp - a.Dp) + rB) - rA;
+        Report(diagnostics, l0, imp, rA, rB, c);
         Apply(ref a, ref b2, rA, rB, imp);
         BuildInverse(a.InvMass + b2.InvMass, a.I, b2.I, rA, rB, wide, l0);
     }
@@ -190,10 +192,11 @@ internal static class JointKernel3D
 
     /// <summary>One solve or relax pass of the three point rows: the block K of the current anchors and inertias, the soft or rigid impulse, applied to both bodies.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void SolveBlock<T>(ref BodyLanes<T> a, ref BodyLanes<T> b2, ReadOnlySpan<float> wide, int l0, ref V3<T> imp, T ms, T kk, T isc, T two) where T : struct, ILane<T>
+    private static void SolveBlock<T>(ref BodyLanes<T> a, ref BodyLanes<T> b2, ReadOnlySpan<float> wide, int l0, ref V3<T> imp, T ms, T kk, T isc, T two, Span<float> diagnostics) where T : struct, ILane<T>
     {
         Anchors(in a, in b2, wide, l0, two, out var rA, out var rB, out var c, out var dv);
         Block(wide, l0, c, dv, ms, kk, isc, ref imp, out var step);
+        Report(diagnostics, l0, step, rA, rB, c);
         Apply(ref a, ref b2, rA, rB, step);
     }
 
@@ -233,6 +236,16 @@ internal static class JointKernel3D
         imp = imp + step;
     }
 
+    private static void Report<T>(Span<float> target, int lane, V3<T> p, V3<T> ra, V3<T> rb, V3<T> c) where T : struct, ILane<T>
+    {
+        if (target.IsEmpty) { return; }
+        var ta = V3<T>.Cross(ra, p); var tb = V3<T>.Cross(rb, p);
+        p.X.StoreAt(target, lane); p.Y.StoreAt(target, 8 + lane); p.Z.StoreAt(target, 16 + lane);
+        ta.X.StoreAt(target, 24 + lane); ta.Y.StoreAt(target, 32 + lane); ta.Z.StoreAt(target, 40 + lane);
+        tb.X.StoreAt(target, 48 + lane); tb.Y.StoreAt(target, 56 + lane); tb.Z.StoreAt(target, 64 + lane);
+        c.X.StoreAt(target, 72 + lane); c.Y.StoreAt(target, 80 + lane); c.Z.StoreAt(target, 88 + lane);
+    }
+
     /// <summary>
     /// Runs lanes <paramref name="lane0"/> to <paramref name="lane0"/> + <paramref name="n"/> - 1 of a group, <c>T.Count</c> at a time. Lanes past the end of the batch compute on whatever the group holds and are never written back.
     /// The restitution pass does nothing for joints.
@@ -241,6 +254,7 @@ internal static class JointKernel3D
     {
         if (phase == SolvePhase.Restitution) { return; }
         int width = T.Count;
+        var diagnostics = e.Opt.DetailedInspection ? e.Core.JointReadback.WideScratch.AsSpan(group * 96, 96) : Span<float>.Empty;
         var wide = e.WideJ.AsSpan(group * J3D.GroupFloats, J3D.GroupFloats);
         var idx = e.WideJIdx.AsSpan(group * J3D.IdxPerGroup, J3D.IdxPerGroup);
         var bodies = e.Core.Bodies;
@@ -260,8 +274,8 @@ internal static class JointKernel3D
             GatherBody<T>(out var a, lin, ang, pk, idx.Slice(l0, width), offs, Field<T>(wide, J3D.InvMassA, l0));
             GatherBody<T>(out var b2, lin, ang, pk, idx.Slice(8 + l0, width), offs, Field<T>(wide, J3D.InvMassB, l0));
             var imp = Vec<T>(wide, J3D.Impulse, l0);
-            if (warm) { WarmStart(ref a, ref b2, wide, l0, imp, two); }
-            else { SolveBlock(ref a, ref b2, wide, l0, ref imp, ms, kk, isc, two); }
+            if (warm) { WarmStart(ref a, ref b2, wide, l0, imp, two, diagnostics); }
+            else { SolveBlock(ref a, ref b2, wide, l0, ref imp, ms, kk, isc, two, diagnostics); }
 
             a.V.X.StoreAt(os, 0 * width); a.V.Y.StoreAt(os, 1 * width); a.V.Z.StoreAt(os, 2 * width);
             a.W.X.StoreAt(os, 3 * width); a.W.Y.StoreAt(os, 4 * width); a.W.Z.StoreAt(os, 5 * width);
@@ -279,5 +293,6 @@ internal static class JointKernel3D
             if (warm) { continue; }
             imp.X.StoreAt(wide, (J3D.Impulse + 0) * 8 + l0); imp.Y.StoreAt(wide, (J3D.Impulse + 1) * 8 + l0); imp.Z.StoreAt(wide, (J3D.Impulse + 2) * 8 + l0);
         }
+        if (e.Opt.DetailedInspection) { e.Core.JointReadback.ReadWide(group, lane0, n, 3); }
     }
 }

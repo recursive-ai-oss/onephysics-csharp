@@ -130,6 +130,9 @@ public sealed class WorldOptions3D
     public int ThreadCount { get => _replayThreadCount; set { _replayThreadCount = value; ReplayChanged?.Invoke("WorldOptions3D.ThreadCount"); } }
     private int _replayThreadCount = 1;
 
+    /// <summary>Collect whole-step body input/damping impulses and joint reactions/row errors. Default false. Set before stepping (and before direct impulses to record them). Not saved or hashed; does not change simulation results. Detail getters throw DetailedInspectionDisabledException unless enabled for the latest step.</summary>
+    public bool DetailedInspection { get; set; }
+
     /// <summary>World id used in handles; 0 picks one. Default 0.</summary>
     public int WorldId { get => _replayWorldId; set { _replayWorldId = value; ReplayChanged?.Invoke("WorldOptions3D.WorldId"); } }
     private int _replayWorldId;
@@ -279,7 +282,7 @@ public sealed class WorldOptions3D
     private void FillCore(WorldOptions o)
     {
         o.Layout = DimensionLayout.Spatial;
-        o.ThreadCount = ThreadCount;
+        o.ThreadCount = ThreadCount; o.DetailedInspection = DetailedInspection;
         o.WorldId = WorldId;
         o.Gravity = Gravity;
         o.Substeps = Substeps;

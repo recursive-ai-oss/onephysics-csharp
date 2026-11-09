@@ -50,6 +50,7 @@ internal sealed partial class Engine3D
         if (_sortTmp.Length < contacts) { _sortTmp = new int[contacts]; }
         if (ConsNext.Length < contacts) { Array.Resize(ref ConsNext, contacts); }
         EnsureJointSlots(contacts);
+        if (LiveJointCount() != 0) { Core.JointReadback.ReserveSlots(Math.Max(contacts, Core.Constraints.HighWater)); Core.JointReadback.ReserveWide(batches); }
         if (JScratch.Length < contacts * JRow3.Stride) { JScratch = new float[contacts * JRow3.Stride]; }
         Bp.Reserve(shapes, pairs);
         PrepareThread();

@@ -56,6 +56,8 @@ public sealed partial class ManifoldGenerator3D
     /// (beyond the speculative distance, shape surfaces included); otherwise zero. A caller that knows the shapes' relative motion can skip the next queries until that motion has used the bound up.
     /// </summary>
     internal float ClearanceOut;
+    // When nonzero, the clearance is supported by this separating direction in A's frame.
+    internal Vector3F ClearanceAxisOut;
 
     /// <summary>
     /// Builds the manifold of two shapes. Everything is in the frame of A; the normal points from A to B and separations are surface distances (negative when overlapping).
@@ -83,7 +85,7 @@ public sealed partial class ManifoldGenerator3D
 
         _count = 0;
         _edgeHint = HintIn; HintIn = default; // a hint applies to one call only, so a leftover cannot reach another pair that happens to run on this thread next
-        ClearanceOut = 0f;
+        ClearanceOut = 0f; ClearanceAxisOut = default;
         HintOut = default; // nothing to keep unless the polyhedron test sets it; a value left by the previous pair would depend on which thread ran it
         ConvexShapeKind3D ka = a.Kind, kb = b.Kind;
         bool segA = IsSegmentLike(ka), segB = IsSegmentLike(kb);
@@ -170,16 +172,10 @@ public sealed partial class ManifoldGenerator3D
             return Empty;
         }
 
+        if (k <= 4) { return FinishSmall(normal, k); }
+
         int[] sel = _sel;
         int n = 0;
-        if (k <= 4)
-        {
-            for (int i = 0; i < k; i++)
-            {
-                sel[n++] = i;
-            }
-        }
-        else
         {
             int i0 = 0;
             for (int i = 1; i < k; i++)

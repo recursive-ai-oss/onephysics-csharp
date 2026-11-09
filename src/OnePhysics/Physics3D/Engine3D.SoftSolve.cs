@@ -186,6 +186,7 @@ internal sealed partial class Engine3D
         }
 
         if (_skinCount > _stMost) { _stMost = _skinCount; }
+        Core.Profile.Mark(StepStage.SoftConstraints);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.SoftConstraints);
 #endif

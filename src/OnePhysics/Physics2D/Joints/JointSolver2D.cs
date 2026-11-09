@@ -16,6 +16,8 @@ internal sealed partial class Engine2D
     private struct JS
     {
         public float VAx, VAy, WA, VBx, VBy, WB, MA, IA, MB, IB;
+        public JointReadback Readback;
+        public int Constraint;
         public float RAx, RAy, RBx, RBy;   // anchors from the centres of mass at the current rotation
         public float Dx, Dy;               // current centre of mass of B minus that of A
         public float DAc, DAs, DBc, DBs;   // rotation accumulated this step
@@ -23,16 +25,18 @@ internal sealed partial class Engine2D
         /// <summary>Linear impulse (px, py) at the anchors: pushes B along it and A against it.</summary>
         public void Lin(float px, float py)
         {
+            if (Readback.Enabled) { Readback.AddPoint(Constraint, new(px, py, 0f), new(0f, 0f, RAx * py - RAy * px), new(0f, 0f, RBx * py - RBy * px)); }
             VAx -= MA * px; VAy -= MA * py; WA -= IA * (RAx * py - RAy * px);
             VBx += MB * px; VBy += MB * py; WB += IB * (RBx * py - RBy * px);
         }
 
         /// <summary>Angular impulse: pushes B's rotation up and A's down.</summary>
-        public void Ang(float l) { WA -= IA * l; WB += IB * l; }
+        public void Ang(float l) { if (Readback.Enabled) { Readback.Add(Constraint, default, new(0f, 0f, -1f), default, new(0f, 0f, 1f), l); } WA -= IA * l; WB += IB * l; }
 
         /// <summary>Impulse <paramref name="imp"/> along a unit direction with torque arms a1 (A) and a2 (B).</summary>
         public void Axial(float imp, float ax, float ay, float a1, float a2)
         {
+            if (Readback.Enabled) { Readback.Add(Constraint, new(-ax, -ay, 0f), new(0f, 0f, -a1), new(ax, ay, 0f), new(0f, 0f, a2), imp); }
             float px = imp * ax, py = imp * ay;
             VAx -= MA * px; VAy -= MA * py; WA -= IA * a1 * imp;
             VBx += MB * px; VBy += MB * py; WB += IB * a2 * imp;
@@ -152,6 +156,8 @@ internal sealed partial class Engine2D
         var s = JScratch.AsSpan(c * JRow.Stride, JRow.Stride);
         var p = cs.Payload(c);
         LoadJoint(a, b, s, out JS j);
+        j.Readback = Core.JointReadback; j.Constraint = c;
+        if (Opt.DetailedInspection) { InspectJointRows(c, in j, in d, s, p); }
         bool warm = phase == SolvePhase.WarmStart, useBias = phase == SolvePhase.Solve;
         float invH = ctx.InverseSubstepDt;
         switch ((JointType2D)d.Type)
@@ -165,6 +171,8 @@ internal sealed partial class Engine2D
             case JointType2D.Mouse: SolveMouse(ref j, s, p, warm, useBias, b); break;
         }
 
+        if (Opt.DetailedInspection) { Core.JointReadback.RefreshLimit(c, JPay.Lower, p[JPay.Lower]); }
+        if (Opt.DetailedInspection) { Core.JointReadback.RefreshLimit(c, JPay.Upper, p[JPay.Upper]); }
         StoreJoint(a, b, in j);
     }
 

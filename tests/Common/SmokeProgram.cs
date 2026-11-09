@@ -92,7 +92,9 @@ internal static class SmokeProgram
         Console.WriteLine(contacts ? "OK contact modifiers" : "FAIL contact modifiers");
         bool formats = FileFormats();
         Console.WriteLine(formats ? "OK formats" : "FAIL formats");
-        return surfaces && contacts && formats && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+        bool inspection = InspectionSmoke.Run(out ulong inspectionHash);
+        Console.WriteLine((inspection ? "OK inspection " : "FAIL inspection ") + inspectionHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        return surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
     }
 
     private readonly struct SmokeContactModifier : IContactModifier

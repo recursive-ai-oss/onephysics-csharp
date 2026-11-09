@@ -14,6 +14,7 @@
     <Project Path="tests/AotSmoke/AotSmoke.csproj" />
     <Project Path="tests/AotSnapshot2D/AotSnapshot2D.csproj" />
     <Project Path="tests/PlanarTrimSmoke/PlanarTrimSmoke.csproj" />
+    <Project Path="tests/Trim2DSmoke/Trim2DSmoke.csproj" />
     <Project Path="tests/WasmSmoke/WasmSmoke.csproj" />
   </Folder>
   <Folder Name="/fuzz/">
@@ -24,6 +25,7 @@
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/HashMatrix/HashMatrix.csproj" />
+    <Project Path="tools/TrimCheck/TrimCheck.csproj" />
   </Folder>
   <Folder Name="/bench/">
     <Project Path="bench/Bar/Bar.csproj" />

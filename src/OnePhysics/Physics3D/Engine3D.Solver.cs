@@ -147,6 +147,7 @@ internal sealed partial class Engine3D
             WideJ = new float[jcap * J3D.GroupFloats]; WideJIdx = new int[jcap * J3D.IdxPerGroup];
         }
 
+        if (Opt.DetailedInspection && _trackedJoints > 0) { Core.JointReadback.ReserveWide(batches); }
         float jh = Opt.JointHertz > cap2 ? cap2 : Opt.JointHertz;
         MakeSoft(jh, Opt.JointDampingRatio, ctx.SubstepDt, out float jbias, out float jmass, out float jimp);
         _jointParams = new JointKernelParams(jmass, jmass * jbias, jimp);
@@ -385,6 +386,7 @@ internal sealed partial class Engine3D
                 int slot = SlotOf[c];
                 if (cons.KindOf(c) == ConstraintKind.Joint)
                 {
+                    if (Opt.DetailedInspection && phase != SolvePhase.Restitution) { Core.JointReadback.ClearRows(c); }
                     // A joint's own rows first, then its point block, as the joint's rows have always been ordered.
                     if (Joints[c].Type != (byte)JointType3D.Point) { SolveJoint(c, phase, in ctx); }
                     if (slot >= 0) { JointKernel3D.Run<Lanes1>(this, slot >> 3, slot & 7, 1, phase, in jp); }
@@ -399,6 +401,7 @@ internal sealed partial class Engine3D
         // Joints that are not point blocks (which share no dynamic body with anything else in the batch) solve one by one.
         var info = BatchInfo.AsSpan(4 * constraints[0], 4);
         int group = info[0], count = info[1], jcount = info[2];
+        if (Opt.DetailedInspection && phase != SolvePhase.Restitution && (jcount != 0 || info[3] != 0)) { foreach (int c in constraints) { if (cons.KindOf(c) == ConstraintKind.Joint) { Core.JointReadback.ClearRows(c); } } }
         if (info[3] != 0)
         {
             for (int i = 0; i < constraints.Length; i++)
@@ -448,6 +451,7 @@ internal sealed partial class Engine3D
         foreach (int b in list)
         {
             if (bodies.TypeOf(b) != BodyType.Dynamic) { continue; }
+            if (Opt.DetailedInspection) { Core.BodyReadback.Inputs(b, bodies.InverseMass[b], GravityScale[b], new(Force[3 * b], Force[3 * b + 1], Force[3 * b + 2]), new(Torque[3 * b], Torque[3 * b + 1], Torque[3 * b + 2]), Core.IntegratedTimeOfBody(b)); }
             Force[3 * b] = 0f; Force[3 * b + 1] = 0f; Force[3 * b + 2] = 0f; Torque[3 * b] = 0f; Torque[3 * b + 1] = 0f; Torque[3 * b + 2] = 0f;
             if (Opt.ContinuousEnabled) { Continuous(b); }
         }
@@ -551,6 +555,8 @@ internal sealed partial class Engine3D
         float len = float.Sqrt(m.X * m.X + m.Y * m.Y + m.Z * m.Z);
         if (!float.IsFinite(len + spin) || !(len + spin > 0.5f * MinExtent[b]) || !(len > 0f)) { return; } // non-finite motion is reported by the bounds check, not cast
 
+        Core.BodyReadback.CcdState[b] = (byte)(1 | ((Core.Bodies.Flags[b] & (byte)BodyBits.Bullet) != 0 ? 4 : 0));
+
         // Nothing static near the whole sweep: no shape can touch anything, so skip the per-shape bounds and casts. The box holds every point of every shape at the start and the end pose
         // (each within MaxExtent of the centre of mass, padded for float rounding), which contains every per-shape sweep box below, so the answer is the same as without this test.
         double reach = (double)(MaxExtent[b] * 1.01f + 1e-4f);
@@ -599,6 +605,7 @@ internal sealed partial class Engine3D
         }
 
         if (best >= 1f) { return; }
+        Core.BodyReadback.CcdState[b] |= 2;
         float t = best - 0.005f / len;
         if (t < 0f) { t = 0f; }
         pos[0] = cx + (double)(t * m.X); pos[1] = cy + (double)(t * m.Y); pos[2] = cz + (double)(t * m.Z);

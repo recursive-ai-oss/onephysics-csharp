@@ -18,6 +18,9 @@ public readonly struct HingeJoint : IEquatable<HingeJoint>
     /// <summary>The general <see cref="Joint"/> handle for this joint (the same as the implicit conversion).</summary>
     public Joint Joint => _joint;
 
+    /// <summary>Whole-step force/torque and last-pass solver errors, without allocation.</summary>
+    public JointInspection Inspect() => _joint.Inspect();
+
     /// <summary>Converts to the general handle.</summary>
     public static implicit operator Joint(HingeJoint view) => view._joint;
 
@@ -129,6 +132,9 @@ public readonly struct SliderJoint : IEquatable<SliderJoint>
 
     /// <summary>The general <see cref="Joint"/> handle for this joint (the same as the implicit conversion).</summary>
     public Joint Joint => _joint;
+
+    /// <summary>Whole-step force/torque and last-pass solver errors, without allocation.</summary>
+    public JointInspection Inspect() => _joint.Inspect();
 
     /// <summary>Converts to the general handle.</summary>
     public static implicit operator Joint(SliderJoint view) => view._joint;
@@ -242,6 +248,9 @@ public readonly struct FixedJoint : IEquatable<FixedJoint>
     /// <summary>The general <see cref="Joint"/> handle for this joint (the same as the implicit conversion).</summary>
     public Joint Joint => _joint;
 
+    /// <summary>Whole-step force/torque and last-pass solver errors, without allocation.</summary>
+    public JointInspection Inspect() => _joint.Inspect();
+
     /// <summary>Converts to the general handle.</summary>
     public static implicit operator Joint(FixedJoint view) => view._joint;
 
@@ -324,6 +333,9 @@ public readonly struct WheelJoint : IEquatable<WheelJoint>
 
     /// <summary>The general <see cref="Joint"/> handle for this joint (the same as the implicit conversion).</summary>
     public Joint Joint => _joint;
+
+    /// <summary>Whole-step force/torque and last-pass solver errors, without allocation.</summary>
+    public JointInspection Inspect() => _joint.Inspect();
 
     /// <summary>Converts to the general handle.</summary>
     public static implicit operator Joint(WheelJoint view) => view._joint;
@@ -436,6 +448,9 @@ public readonly struct DistanceJoint : IEquatable<DistanceJoint>
 
     /// <summary>The general <see cref="Joint"/> handle for this joint (the same as the implicit conversion).</summary>
     public Joint Joint => _joint;
+
+    /// <summary>Whole-step force/torque and last-pass solver errors, without allocation.</summary>
+    public JointInspection Inspect() => _joint.Inspect();
 
     /// <summary>Converts to the general handle.</summary>
     public static implicit operator Joint(DistanceJoint view) => view._joint;
@@ -552,6 +567,9 @@ public readonly struct TargetJoint : IEquatable<TargetJoint>
     /// <summary>The general <see cref="Joint"/> handle for this joint (the same as the implicit conversion).</summary>
     public Joint Joint => _joint;
 
+    /// <summary>Whole-step force/torque and last-pass solver errors, without allocation.</summary>
+    public JointInspection Inspect() => _joint.Inspect();
+
     /// <summary>Converts to the general handle.</summary>
     public static implicit operator Joint(TargetJoint view) => view._joint;
 
@@ -637,6 +655,9 @@ public readonly struct RelativeJoint : IEquatable<RelativeJoint>
 
     /// <summary>The general <see cref="Joint"/> handle for this joint (the same as the implicit conversion).</summary>
     public Joint Joint => _joint;
+
+    /// <summary>Whole-step force/torque and last-pass solver errors, without allocation.</summary>
+    public JointInspection Inspect() => _joint.Inspect();
 
     /// <summary>Converts to the general handle.</summary>
     public static implicit operator Joint(RelativeJoint view) => view._joint;
