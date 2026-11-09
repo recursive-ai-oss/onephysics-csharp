@@ -170,6 +170,8 @@ public sealed partial class PhysicsWorld3D
         Body fork;
         try { fork = CreatePart(frontPart, Pos(frontPart.CenterX, frontPart.CenterZ), rot); }
         catch (Exception) { frame.Destroy(); throw; }
+        try { AddBikeShapes(def, frame, fork); }
+        catch (Exception) { fork.Destroy(); frame.Destroy(); throw; }
 
         try
         {
@@ -210,6 +212,24 @@ public sealed partial class PhysicsWorld3D
             fork.Destroy(); frame.Destroy();
             throw;
         }
+    }
+
+    // Collision shapes that give a crashed bicycle something to lie on and let a rider hit things: a capsule for the rider and frame, a fork strut and the handlebar. They carry no mass (the parts' mass and inertia
+    // are the paper's), sit well above the ground while the bicycle is upright, and are invisible to the bicycle's own wheel casts (Engine3D.BikeCategory); the two bodies share a negative group so they never push on each other.
+    private void AddBikeShapes(BicycleDef def, Body frame, Body fork)
+    {
+        int group = -(0x40000000 + frame.Handle.Index);
+        // Paper axes (x forward, z down) to the part's local axes (X right, Y up, Z forward), relative to the part's centre of mass.
+        static Vector3F Local(BicyclePart p, float x, float up) => new(0f, up + p.CenterZ, x - p.CenterX);
+        var common = new ShapeDef { Density = 0f, Friction = 0.8f, GroupIndex = group, CategoryBits = Engine3D.BikeCategory | 1u };
+        var rider = common; rider.LocalPosition = Local(def.RearFrame, def.RearFrame.CenterX, 0.75f);
+        CreateCapsule(frame, 0.18f, 0.12f, rider);
+        float w = def.WheelBase;
+        var strut = common; strut.LocalPosition = Local(def.Front, w, 0.65f);
+        CreateCapsule(fork, 0.3f, 0.04f, strut);
+        var bar = common; bar.LocalPosition = Local(def.Front, w - 0.05f, 0.98f);
+        bar.LocalRotation = QuaternionF.CreateFromAxisSinCos(new Vector3F(0f, 0f, 1f), -0.70710677f, 0.70710677f);
+        CreateCapsule(fork, 0.22f, 0.03f, bar);
     }
 
     // A rigid part: an empty body at its centre of mass with the part's mass and inertia tensor (mapped into world axes and diagonalised).

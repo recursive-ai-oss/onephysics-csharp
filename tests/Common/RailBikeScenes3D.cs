@@ -22,8 +22,6 @@ internal static class RailBikeScenes3D
         internal Action<int> Script = _ => { };
         // Bicycles listed here start below the self-stable band and are expected to fall; the rest must stay up.
         internal int ExpectedFalls;
-        // Falls so far: a bicycle that has fallen is removed by the script (its bodies have no collision shape of their own, so a fallen frame would drop through the ground).
-        internal int Falls;
 
         /// <summary>Points the scene at a restored or forked copy of its world: handles are looked up again in it.</summary>
         internal void Rebind(PhysicsWorld3D w) { World = w; Rail = w.GetRailVehicles(); Bikes = w.GetBicycles(); }
@@ -35,7 +33,7 @@ internal static class RailBikeScenes3D
 
         internal void Measure(int step)
         {
-            double maxSpeed = M.GetValueOrDefault("maxSpeed"), nan = M.GetValueOrDefault("nan"), der = M.GetValueOrDefault("derailments"), climb = M.GetValueOrDefault("maxClimbRatio"), esc = M.GetValueOrDefault("escapes");
+            double maxSpeed = M.GetValueOrDefault("maxSpeed"), nan = M.GetValueOrDefault("nan"), der = M.GetValueOrDefault("derailments"), climb = M.GetValueOrDefault("maxClimbRatio"), esc = M.GetValueOrDefault("escapes"), pen = M.GetValueOrDefault("maxPenetration");
             var w = World;
             int hw = w.Core.Bodies.HighWater;
             for (int b = 0; b < hw; b++)
@@ -46,6 +44,7 @@ internal static class RailBikeScenes3D
                 var v = body.LinearVelocity; var p = body.Position;
                 if (!double.IsFinite(p.X) || !double.IsFinite(p.Y) || !double.IsFinite(p.Z) || !float.IsFinite(v.X) || !float.IsFinite(v.Y) || !float.IsFinite(v.Z)) { nan++; continue; }
                 maxSpeed = Math.Max(maxSpeed, Math.Sqrt((double)v.X * v.X + (double)v.Y * v.Y + (double)v.Z * v.Z));
+                foreach (var c in w.GetContacts(body)) { for (int i = 0; i < c.PointCount; i++) { pen = Math.Max(pen, -(double)c.Separation(i)); } }
                 if (Math.Abs(p.X) > 1000 || Math.Abs(p.Z) > 1000 || p.Y < -5 || p.Y > 100) { esc++; }
             }
 
@@ -70,14 +69,16 @@ internal static class RailBikeScenes3D
                 if (derailed) { der++; }
             }
 
-                        M["maxSpeed"] = maxSpeed; M["nan"] = nan; M["escapes"] = esc; M["maxClimbRatio"] = climb;
+                        M["maxSpeed"] = maxSpeed; M["nan"] = nan; M["escapes"] = esc; M["maxPenetration"] = pen; M["maxClimbRatio"] = climb;
             M["derailments"] = der;   // wheelset-steps without tread contact
                         if (step == Steps - 1)
             {
-                M["fallen"] = Falls;
+                int fallenNow = 0;
+                for (int i = 0; i < Bikes.Length; i++) { if (Bikes[i].HasFallen) { fallenNow++; } }
+                M["fallen"] = fallenNow;
                 double minProgress = double.MaxValue;
                 for (int i = 0; i < Rail.Length; i++) { minProgress = Math.Min(minProgress, Rail[i].Car.Position.Z - _start[i]); }
-                for (int i = 0; i < Bikes.Length; i++) { if (Bikes[i].IsValid) { minProgress = Math.Min(minProgress, Bikes[i].Frame.Position.Z - _start[i]); } }
+                for (int i = 0; i < Bikes.Length; i++) { { minProgress = Math.Min(minProgress, Bikes[i].Frame.Position.Z - _start[i]); } }
                 M["minProgress"] = minProgress;
                 int broken = 0;
                 for (int i = 0; i < Rail.Length; i++) { if (Rail[i].IsCouplerBroken(true)) { broken++; } if (Rail[i].IsCouplerBroken(false)) { broken++; } }
@@ -177,13 +178,6 @@ internal static class RailBikeScenes3D
         }
 
         var sc = new Scene { Name = "bicycles-3d", World = w, Bikes = bikes.ToArray(), ExpectedFalls = 2 };
-        sc.Script = _ =>
-        {
-            foreach (var b in sc.Bikes)
-            {
-                if (b.IsValid && b.HasFallen) { sc.Falls++; b.Destroy(); }
-            }
-        };
         return sc;
     }
 }

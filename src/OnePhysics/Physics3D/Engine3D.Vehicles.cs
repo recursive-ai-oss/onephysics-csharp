@@ -201,7 +201,7 @@ internal sealed partial class Engine3D
     public void StepVehicles(PhysicsWorld3D world, float dt)
     {
         if (VehHandles.Count == 0) { return; }
-        if (_vehiclePredicate == null) { _vehiclePredicate = sh => Core.Shapes.Owner[sh.Handle.Index] != _castChassis; }
+        if (_vehiclePredicate == null) { _vehiclePredicate = sh => Core.Shapes.Owner[sh.Handle.Index] != _castChassis && !((Category[sh.Handle.Index] & BikeCategory) != 0 && IsBikeBody(_castChassis)); }
         for (int v = 0; v < VehHandles.HighWater; v++)
         {
             if (!VehHandles.IsLive(v)) { continue; }

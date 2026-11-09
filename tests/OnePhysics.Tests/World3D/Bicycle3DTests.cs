@@ -269,4 +269,45 @@ public class Bicycle3DTests
         for (int i = 0; i < 30; i++) { w.Step(1f / 60f); }
         Assert.True(bike.RearWheel.GetWheel(0).IsInContact);
     }
+
+    [Fact]
+    public void ShapesAddNoMassAndAFallenBicycleLiesOnTheGround()
+    {
+        const float Dt = 1f / 60f;
+        var w = NewWorld(60);
+        var bike = w.AddBicycle(new Vector3D(0, 0, -20), BicycleDef.Benchmark, 2.5f);
+        var def = BicycleDef.Benchmark;
+        Assert.Equal(def.RearFrame.Mass, bike.Frame.Mass, 1e-3);
+        Assert.Equal(def.Front.Mass, bike.Fork.Mass, 1e-3);
+        var f = bike.Frame; var k = bike.Fork;
+        f.AngularVelocity = new Vector3F(0, 0, -0.05f); k.AngularVelocity = new Vector3F(0, 0, -0.05f);
+        for (int i = 0; i < 60 * 12; i++) { w.Step(Dt); }
+        Assert.True(bike.HasFallen, $"below the stable band it falls: lean {bike.LeanAngle}");
+        double lowest = double.MaxValue;
+        foreach (var body in new[] { bike.Frame, bike.Fork }) { lowest = Math.Min(lowest, body.Position.Y); }
+        Assert.InRange(lowest, -0.05, 1.0);   // lying on the ground, not through it
+        float speed = Math.Max(bike.Frame.LinearVelocity.Length(), bike.Fork.LinearVelocity.Length());
+        Assert.True(speed < 1.5f, $"it has come to rest: {speed}");
+        foreach (var c in w.GetContacts(bike.Frame)) { for (int i = 0; i < c.PointCount; i++) { Assert.True(-c.Separation(i) < 0.05f, "penetration"); } }
+    }
+
+    [Fact]
+    public void DestroyingEitherBodyOrTheBicycleRemovesBothBodiesAndTheWheels()
+    {
+        const float Dt = 1f / 60f;
+        for (int how = 0; how < 3; how++)
+        {
+            var w = NewWorld(60);
+            int before = w.Core.Bodies.Handles.Count;
+            var bike = w.AddBicycle(new Vector3D(0, 0, -20), BicycleDef.Road, 5f);
+            Assert.Equal(before + 2, w.Core.Bodies.Handles.Count);
+            var frame = bike.Frame; var fork = bike.Fork; var rear = bike.RearWheel; var front = bike.FrontWheel;
+            if (how == 0) { frame.Destroy(); } else if (how == 1) { fork.Destroy(); } else { bike.Destroy(); }
+            Assert.False(bike.IsValid); Assert.False(frame.IsValid); Assert.False(fork.IsValid);
+            Assert.False(rear.IsValid); Assert.False(front.IsValid);
+            Assert.Equal(before, w.Core.Bodies.Handles.Count);
+            Assert.Empty(w.GetBicycles());
+            for (int i = 0; i < 5; i++) { w.Step(Dt); }
+        }
+    }
 }

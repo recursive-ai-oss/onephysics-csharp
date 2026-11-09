@@ -43,20 +43,40 @@ internal sealed partial class Engine3D
         return b;
     }
 
+    /// <summary>Category bit of a bicycle's collision shapes; a bicycle's wheel casts ignore shapes that carry it.</summary>
+    internal const uint BikeCategory = 1u << 29;
+
+    // True when the body is a bicycle's frame or fork: its first shape carries the bicycle category.
+    private bool IsBikeBody(int body) => ShapeHead[body] >= 0 && (Category[ShapeHead[body]] & BikeCategory) != 0;
+
+    // The other body of a bicycle whose first body is being destroyed; it goes once the first body's removal has finished (it cannot be removed while the first is half gone).
+    private BodyHandle _bikeOrphan;
+
+    private void DestroyBikeOrphan()
+    {
+        var h = _bikeOrphan;
+        if (h.IsNull) { return; }
+        _bikeOrphan = default;
+        if (Core.Bodies.Handles.IsAlive(h.Index, h.Generation)) { DestroyBody(h); }
+    }
+
     public void DestroyBicycle(int i)
     {
         Bikes[i] = null;
         BikeHandles.Free(i);
     }
 
-    /// <summary>Called when a body is destroyed: a bicycle that has it as its frame or fork goes (the other body and the wheels stay).</summary>
+    /// <summary>Called when a body is destroyed: a bicycle that has it as its frame or fork goes, and so does the other body (its wheels' vehicles go with their bodies).</summary>
     public void DropBicycleOfBody(int body)
     {
         for (int i = 0; i < BikeHandles.HighWater; i++)
         {
             if (!BikeHandles.IsLive(i)) { continue; }
             var s = Bikes[i]!;
-            if (s.Frame == body || s.Fork == body) { DestroyBicycle(i); }
+            if (s.Frame != body && s.Fork != body) { continue; }
+            DestroyBicycle(i);
+            int other = s.Frame == body ? s.Fork : s.Frame, otherGen = s.Frame == body ? s.ForkGen : s.FrameGen;
+            if (Core.Bodies.Handles.IsAlive(other, otherGen)) { _bikeOrphan = new BodyHandle(Core.Id, other, otherGen); }
         }
     }
 

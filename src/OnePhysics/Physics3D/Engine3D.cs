@@ -286,6 +286,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         for (int k = 0; k < 6; k++) { Inertia[6 * b + k] = 0f; }
         // The last step's displacement is saved for every slot; a body that diverged to NaN must not leave it behind.
         Dp[3 * b] = 0f; Dp[3 * b + 1] = 0f; Dp[3 * b + 2] = 0f;
+        DestroyBikeOrphan();
     }
 
     // ------------------------------------------------------------------ shapes
