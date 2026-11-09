@@ -1180,7 +1180,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || GeomOf.Length < shapes.HighWater) { return false; }
         var cons = Core.Constraints;
-        if (!JointsConsistentWithCore() || !CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent() || !FluidsConsistent() || !ActuatorsConsistent()) { return false; }
+        if (!JointsConsistentWithCore() || !CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent() || !FluidsConsistent() || !ActuatorsConsistent() || !CharacterExtensionsConsistent()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)
         {
             if (!shapes.Handles.IsLive(s)) { continue; }

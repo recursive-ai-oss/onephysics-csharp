@@ -56,7 +56,7 @@ public readonly struct ControllerColliderHit
 /// </summary>
 /// <example><c>var player = world.AddCharacter(at: new Vector3D(0, 1, 0), CharacterDef.Humanoid); player.Move(new Vector3F(input.X * speed * dt, velocityY * dt, input.Z * speed * dt), dt); world.Step(dt);</c></example>
 [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
-public readonly struct Character : IEquatable<Character>
+public readonly partial struct Character : IEquatable<Character>
 {
     private readonly PhysicsWorld3D? _world;
     private readonly int _index;
@@ -104,6 +104,7 @@ public readonly struct Character : IEquatable<Character>
         {
             using var replayMutation = _world?.RecordMutation("Character.Position");
             var e = Resolve(out int c);
+            e.DropForTeleport(c);
             Body.SetTransform(value, Body.Rotation);
             e.CharGround[c] = GroundState.InAir; e.CharNx[c] = 0f; e.CharNy[c] = 0f; e.CharNz[c] = 0f; e.CharGroundBody[c] = -1; e.CharGroundGen[c] = 0;
         }
@@ -212,9 +213,10 @@ public readonly struct Character : IEquatable<Character>
         var e = Resolve(out int c);
         var w = _world!;
         if (e.CharDef[c].Kind == CharacterKind.Rigid) { return e.MoveRigid(w, c, displacement, dt).Flags; }
+        if (e.CharacterIsBusy(c)) { return e.MoveBusy(c, displacement, dt); }
         var body = Body;
         var def = e.CharDef[c];
-        var state = new MoverState3D { Position = body.Position, Ground = e.CharGround[c], GroundNormal = new Vector3F(e.CharNx[c], e.CharNy[c], e.CharNz[c]) };
+        var state = new MoverState3D { Position = body.Position, Ground = e.CharGround[c], GroundNormal = new Vector3F(e.CharNx[c], e.CharNy[c], e.CharNz[c]), NoCarry = e.CharacterCarriesByPose(c) };
         if (e.CharGround[c] == GroundState.OnGround && e.CharGroundBody[c] >= 0)
         {
             var gh = new BodyHandle(w.Id, e.CharGroundBody[c], e.CharGroundGen[c]);
@@ -229,8 +231,9 @@ public readonly struct Character : IEquatable<Character>
         e.CharVx[c] = v.X; e.CharVy[c] = v.Y; e.CharVz[c] = v.Z;
         e.CharGround[c] = state.Ground;
         e.CharNx[c] = state.GroundNormal.X; e.CharNy[c] = state.GroundNormal.Y; e.CharNz[c] = state.GroundNormal.Z;
-        if (state.Ground == GroundState.OnGround) { var g = state.GroundBody.RawHandle; e.CharGroundBody[c] = g.Index; e.CharGroundGen[c] = g.Generation; }
+        if (state.Ground == GroundState.OnGround && state.GroundBody.World != null) { var g = state.GroundBody.RawHandle; e.CharGroundBody[c] = g.Index; e.CharGroundGen[c] = g.Generation; }
         else { e.CharGroundBody[c] = -1; e.CharGroundGen[c] = 0; }
+        if (state.NoCarry) { e.UpdateCarried(c, state.Position, state.Ground == GroundState.OnGround ? state.GroundBody : default); }
 
         if (buffer != null && result.HitCount > 0)
         {
@@ -326,6 +329,11 @@ public sealed partial class PhysicsWorld3D
         }
 
         int c = _engine.CreateCharacter(body.RawHandle, in def);
+        if (def.CanClimb || def.ExactPlatformCarry)
+        {
+            _engine.Extensions.Set(c, new Characters.CharacterExtState { CanClimb = def.CanClimb, ExactCarry = def.ExactPlatformCarry, LocalRotation = QuaternionF.Identity });
+        }
+
         return new Character(this, c, _engine.CharHandles.GenerationOf(c));
     }
 
