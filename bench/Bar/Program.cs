@@ -24,6 +24,7 @@ public static class Program
             }
             case "grid-study": return GridStudy.Run(opts);
             case "rod-run": return RodRuns.Run(opts);
+            case "pulley-run": return PulleyRuns.Run(opts);
             case "fields-stability": return FieldStability.Run();
             case "micro-boxbox": return MicroBoxBox.Run(opts);
             case "queries-indicative": return MixedQueryTiming.Run(opts);

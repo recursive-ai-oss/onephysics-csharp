@@ -307,10 +307,12 @@ internal sealed partial class CableStore
         {
             int start = sc.RunStart[run], count = sc.RunCount[run];
             if (count < 2) continue;
+            // Rope slides through the run's wheels, so each span but the last takes the material it needs to stay exactly taut (its rate of change plus its whole stretch in one step), and the last span
+            // gives back what they took: the run's total never changes.
             double sum = 0;
             for (int a = 0; a < count - 1; a++)
             {
-                int sa = (start + a) % spans; double flow = JV(sc, ref sc.Rows[sa]) + sc.Rows[sa].Bias;
+                int sa = (start + a) % spans; double flow = JV(sc, ref sc.Rows[sa]) + (m.Geometric[sa] - m.Material[sa]) / dt;
                 m.Material[sa] += flow * dt; sum += flow;
             }
             m.Material[(start + count - 1) % spans] -= sum * dt;

@@ -55,6 +55,8 @@ public readonly struct PulleySystem
     public double SurfaceLength(int span) => Data.Geometric[Span(span)];
     /// <summary>Positive when the span is longer than its rope (the solver is pulling it back), negative when slack, metres.</summary>
     public double Stretch(int span) => Data.Stretch[Span(span)];
+    /// <summary>The system's total stretch: the path length the geometry needs minus the rope there is, metres. Positive means the rope is being pulled longer than it is (the solver pulls it back); negative, the rope has slack. Unlike the per-span values it does not change when rope slides through a wheel.</summary>
+    public double TotalStretch { get { double t = 0; foreach (double s in Data.Stretch) t += s; return t; } }
     /// <summary>Tension in newtons in the last step; zero for a slack span.</summary>
     public double Tension(int span) { var d = Data; int k = Span(span); return d.LastDt > 0 ? d.Impulse[k] / d.LastDt : 0; }
     /// <summary>Largest span tension, newtons.</summary>

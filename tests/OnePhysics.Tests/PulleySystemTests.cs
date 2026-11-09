@@ -179,4 +179,16 @@ public sealed class PulleySystemTests(ITestOutputHelper helper)
         output.WriteLine($"belt capacity predicted {capacity:F4} N m: at 0.9x speed {held:E2}; at 1.2x torque on A is {belt.WheelTorque(0):F4}, spin {slipping:F3} rad/s after 1 s (a={alpha:F3}), tensions {belt.Tension(0):F3} {belt.Tension(1):F3}");
         Assert.InRange(held,0,1e-3);Assert.InRange(Math.Abs(belt.WheelTorque(0))/capacity,.99,1.01);
     }
+
+    [Fact]
+    public void RingDown()
+    {
+        var w=World2();
+        var load=w.AddBox(new(.4f,.4f),at:new(0,3),density:625);   // 100 kg
+        var rope=w.AddRopeOverPulleys(P2.RopeEnd.At(new(0,6)),[],P2.RopeEnd.On(load,default));
+        rope.AdjustLength(-.05);
+        string line="";
+        for(int i=0;i<120;i++){w.Step(Dt);if(i%4==0)line+=$"{load.Position.Y-(3):F4} ";}
+        output.WriteLine("ring-down y-offsets every 4 steps: "+line);
+    }
 }
