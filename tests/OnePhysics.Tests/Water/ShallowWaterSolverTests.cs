@@ -84,6 +84,23 @@ public class ShallowWaterSolverTests
     }
 
     [Fact]
+    public void ALakeOverAnIrregularBedWithRoundedHeightsStaysNearlyAtRest()
+    {
+        // Heights that are not on a binary grid: the initial surface differs from the level by float rounding, so the speed need not be exactly zero (it stays below 1e-7 m/s).
+        var g = Planar(200, 0.25f, x => 0.3 * Math.Sin(x * 0.7) + 0.25 * Math.Cos(x * 2.3) + 0.3 + (x > 30 && x < 34 ? 1.2 : 0.0), _ => 1.2);
+        for (int i = 0; i < 200; i++) { g.Bed[i] = (float)(0.3 * Math.Sin((i + 0.5) * 0.25 * 0.7) + 0.25 * Math.Cos((i + 0.5) * 0.25 * 2.3) + 0.3 + ((i + 0.5) * 0.25 > 30 && (i + 0.5) * 0.25 < 34 ? 1.2 : 0.0)); g.H[i] = Math.Max(1.2f - g.Bed[i], 0f); }
+        var ex = new TaskExecutor(1);
+        float worst = 0f;
+        for (int i = 0; i < 6000; i++)
+        {
+            g.Advance(1f / 60f, G, ex);
+            for (int c = 0; c < g.H.Length; c++) { if (g.H[c] > WaterGrid.DryDepth) { worst = Math.Max(worst, Math.Abs(g.Hu[c]) / g.H[c]); } }
+        }
+
+        Assert.True(worst < 1e-6f, "largest speed " + worst);
+    }
+
+    [Fact]
     public void ALakeAtRestInTwoDimensionsStaysAtRest()
     {
         var g = new WaterGrid { Nx = 40, Nz = 32, Dx = 0.5f, Cfl = 0.25f, MaxSubsteps = 16, Damping = 0f };
