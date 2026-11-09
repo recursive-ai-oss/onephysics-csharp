@@ -102,7 +102,7 @@ public static class ScaledShape3D
             {
                 var n = shape.PlaneNormal;
                 var inverseNormal = new Vector3F(n.X / scale.X, n.Y / scale.Y, n.Z / scale.Z);
-                return ConvexShape3D.Plane(inverseNormal, shape.PlaneOffset);
+                return ConvexShape3D.Plane(inverseNormal, shape.PlaneOffset).WithCenterOfMassOffset(shape.CenterOfMassOffset * scale);
             }
             return Build(shape, scale).WithCenterOfMassOffset(shape.CenterOfMassOffset * scale);
         }

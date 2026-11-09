@@ -103,6 +103,7 @@ public sealed class PlaneMassOffsetTests
         var planar=new P2.PhysicsWorld2D();var a=planar.AddWithCenterOfMassOffset(Shape2D.CreateCircle(default,1),new(0,-0.5f),at:new(0,3));Assert.Equal(-0.5f,a.CenterOfMass.Y);Assert.Equal(3,a.Position.Y);
         var spatial=new P3.PhysicsWorld3D();var b=spatial.AddWithCenterOfMassOffset(P3.ShapeSpec3D.Sphere(1),new(0,-0.5f,0),at:new(0,3,0));Assert.Equal(-0.5f,b.CenterOfMass.Y);Assert.Equal(3,b.Position.Y);
         var kinematic=spatial.CreateBody(new P3.BodyDef{Type=BodyType.Kinematic});Assert.Throws<StaticOnlyShapeException>(()=>spatial.CreateShape(kinematic,P3.ShapeSpec3D.Plane(Vector3F.UnitY)));
+        var scaledPlane=ScaledShape3D.Create(ConvexShape3D.Plane(Vector3F.UnitY).WithCenterOfMassOffset(new(1,2,3)),new Vector3F(2,3,4));Assert.Equal(new Vector3F(2,6,12),scaledPlane.CenterOfMassOffset);
         Assert.Throws<ShapeCompositionException>(()=>Compound3D.Create([new CompoundChild3D(ConvexShape3D.Plane(Vector3F.UnitY),RigidTransformF.Identity)]));
     }
 
