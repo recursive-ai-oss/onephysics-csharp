@@ -13,6 +13,12 @@ using P2 = RecursiveAI.OnePhysics.Physics2D;
 internal static class FuzzCloth
 {
     private static byte[]? s_base3, s_base2;
+    private static int s_accepted, s_rejected, s_roundTrips;
+
+    static FuzzCloth()
+    {
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => Console.WriteLine("cloth targets: snapshots accepted " + s_accepted + ", rejected " + s_rejected + ", full round trips " + s_roundTrips);
+    }
 
     private sealed class Reader
     {
@@ -110,7 +116,8 @@ internal static class FuzzCloth
         try { snap = w.Snapshot(); } catch (Exception e) when (Allowed(e)) { return; }
         var w2 = NewWorld3();
         try { w2.Restore(snap); }
-        catch (SnapshotFormatException e) when (e.Message.Contains("out of range", StringComparison.Ordinal) || e.Message.Contains("non-finite", StringComparison.Ordinal)) { return; }
+        catch (SnapshotFormatException e) when (e.Message.Contains("out of range", StringComparison.Ordinal) || e.Message.Contains("non-finite", StringComparison.Ordinal)) { s_rejected++; return; }
+        s_roundTrips++;
         if (w2.ComputeHash() != w.ComputeHash()) { throw new InvalidOperationException("restored world hash differs"); }
         if (!w2.Snapshot().AsSpan().SequenceEqual(snap)) { throw new InvalidOperationException("restored world re-serializes differently"); }
         if (w2.ClothLinkCount != w.ClothLinkCount) { throw new InvalidOperationException("restored world has a different cloth link count"); }
@@ -167,8 +174,11 @@ internal static class FuzzCloth
         catch (SnapshotFormatException)
         {
             if (!w.Snapshot().AsSpan().SequenceEqual(empty)) { throw new InvalidOperationException("a rejected snapshot changed the world"); }
+            s_rejected++;
             return;
         }
+
+        s_accepted++;
 
         if (!w.Snapshot().AsSpan().SequenceEqual(bytes)) { throw new InvalidOperationException("accepted snapshot does not re-serialize to the same bytes"); }
         try { w.Step(1f / 60f); w.Step(1f / 60f); } catch (Exception e) when (Allowed(e) || e is SoftBodyOutOfBoundsException) { }
@@ -185,8 +195,11 @@ internal static class FuzzCloth
         catch (SnapshotFormatException)
         {
             if (!w.Snapshot().AsSpan().SequenceEqual(empty)) { throw new InvalidOperationException("a rejected snapshot changed the world"); }
+            s_rejected++;
             return;
         }
+
+        s_accepted++;
 
         if (!w.Snapshot().AsSpan().SequenceEqual(bytes)) { throw new InvalidOperationException("accepted snapshot does not re-serialize to the same bytes"); }
         try { w.Step(1f / 60f); w.Step(1f / 60f); } catch (Exception e) when (e is ArgumentException || e is PhysicsException) { }

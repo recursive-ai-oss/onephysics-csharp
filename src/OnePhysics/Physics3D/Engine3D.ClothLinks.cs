@@ -249,7 +249,8 @@ internal sealed partial class Engine3D
             if (version != 1) { throw r.Error("unsupported cloth-link section version " + version.ToString(CultureInfo.InvariantCulture)); }
             var handles = HandleTable.Read(r, "cloth links");
             var links = new ClothLink[Math.Max(4, handles.HighWater)];
-            var bodies = _e.Core.Bodies;
+            // Bodies are checked against the snapshot being restored, which the live store does not yet hold.
+            var bodies = _e.Core.RestoringBodies ?? _e.Core.Bodies;
             for (int i = 0; i < handles.HighWater; i++)
             {
                 if (!handles.IsLive(i)) { continue; }
@@ -267,7 +268,8 @@ internal sealed partial class Engine3D
                 {
                     l.Rigid = r.ReadInt32(); l.RigidGen = r.ReadInt32();
                     l.Lx = r.ReadSingle(); l.Ly = r.ReadSingle(); l.Lz = r.ReadSingle();
-                    if (!float.IsFinite(l.Lx + l.Ly + l.Lz) || !bodies.Handles.IsAlive(l.Rigid, l.RigidGen)) { throw r.Error("cloth attachment names a rigid body that does not exist or an anchor that is not finite"); }
+                    if (!float.IsFinite(l.Lx) || !float.IsFinite(l.Ly) || !float.IsFinite(l.Lz)) { throw r.Error("cloth attachment anchor is not finite"); }
+                    if (!bodies.Handles.IsAlive(l.Rigid, l.RigidGen)) { throw r.Error("cloth attachment names a rigid body that does not exist"); }
                 }
 
                 links[i] = l;
