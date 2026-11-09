@@ -42,6 +42,7 @@ public sealed partial class PhysicsWorld2D
         _core.AddSection(_engine.RagdollSnapshotSection);
         _core.AddSection(_engine.Cables);
         _core.AddSection(_engine.Actuators);
+        _core.AddSection(_engine.Extensions);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -145,12 +146,15 @@ public sealed partial class PhysicsWorld2D
         if (_engine.Cables.Count != 0) _engine.Cables.Step(dt);
         _engine.Actuators.Step(dt);
         if (_engine.Rods.Count != 0) _engine.Rods.BeginStep();
+        _engine.BeginCharacterAbilities(dt);
         _engine.BeginSoftStep();
         _core.Step(new Stages2D(_engine), dt);
         _engine.EndFieldContacts();
         if (_engine.Rods.Count != 0) _engine.Rods.Step(dt);
         _engine.StepSoft(dt);
+        _engine.EndCharacterSupport();
         _engine.EndBodyControls();
+        _engine.StepCharacterAbilities();
         InvalidateQueryPad();
         _engine.ReconcileJoints();
         UpdateInspectionCounters();

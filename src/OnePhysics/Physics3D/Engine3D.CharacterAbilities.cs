@@ -282,7 +282,7 @@ internal sealed partial class Engine3D : ICharacterExtHost
         {
             var a = d.PositionData[j]; var b = d.PositionData[j + 1];
             double ex = b.X - a.X, ey = b.Y - a.Y, ez = b.Z - a.Z, l2 = ex * ex + ey * ey + ez * ez;
-            double t = l2 > 0.0 ? Clamp01(((h.X - a.X) * ex + (h.Y - a.Y) * ey + (h.Z - a.Z) * ez) / l2) : 0.0;
+            double t = l2 > 0.0 ? CharacterGeometry.Clamp01(((h.X - a.X) * ex + (h.Y - a.Y) * ey + (h.Z - a.Z) * ez) / l2) : 0.0;
             double dx = a.X + ex * t - h.X, dy = a.Y + ey * t - h.Y, dz = a.Z + ez * t - h.Z;
             double dist = dx * dx + dy * dy + dz * dz;
             if (dist < best) { best = dist; bestS = j + (float)t; }

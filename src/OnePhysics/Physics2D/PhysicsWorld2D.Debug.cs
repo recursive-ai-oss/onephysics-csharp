@@ -101,6 +101,7 @@ public sealed partial class PhysicsWorld2D
         if ((flags & DebugContent.SoftBodies) != 0) { _engine.AddDebugSoftBodies(geometry); }
         if ((flags & DebugContent.Vehicles) != 0) { _engine.AddDebugVehicles(geometry); }
         if ((flags & DebugContent.Aero) != 0) { _engine.Actuators.AddDebug(geometry); }
+        if ((flags & DebugContent.CharacterHolds) != 0) { _engine.AddDebugHolds(geometry); }
     }
 
     private void AddDebugShape(DebugGeometry g, int b, int s, BodyHandle bh, ShapeHandle sh)

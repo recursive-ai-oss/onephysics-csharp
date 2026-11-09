@@ -15,6 +15,8 @@ internal sealed partial class Engine2D
     {
         public int Slot;
         public double Px, Py;
+        public int Particle;     // soft particle or rod segment for a deformable slot
+        public float Along;      // rod segment parameter of the contact point
     }
 
     private struct MoverCtx
@@ -23,6 +25,7 @@ internal sealed partial class Engine2D
         public float Radius, HalfLength, CosSlope, Step, Skin, Range, MaxPush;
         public uint Mask;
         public int IgnoreBody;
+        public bool Deformables;   // soft bodies and rods count as ground and obstacles
     }
 
     private struct MoverHitRec
@@ -30,6 +33,7 @@ internal sealed partial class Engine2D
         public int Slot;
         public double Px, Py;
         public float Nx, Ny;
+        public int Particle;
     }
 
     private int[] _mvCand = new int[32];
@@ -81,6 +85,7 @@ internal sealed partial class Engine2D
     private void MvPlanes(double x, double y, in MoverCtx c)
     {
         _mvPlaneCount = 0;
+        _mvDefCount = 0;
         if (_mvPlanes.Length < _mvCandCount) { _mvPlanes = new CollisionPlane2D[Math.Max(_mvCandCount, _mvPlanes.Length * 2)]; _mvMeta = new PlaneMeta[_mvPlanes.Length]; }
         var bodies = Core.Bodies;
         for (int i = 0; i < _mvCandCount; i++)
@@ -109,6 +114,8 @@ internal sealed partial class Engine2D
             };
             _mvMeta[k] = new PlaneMeta { Slot = s, Px = ox + (double)wp.X, Py = oy + (double)wp.Y };
         }
+
+        if (c.Deformables) { MvDeformablePlanes(x, y, in c); }
     }
 
     // ------------------------------------------------------------------ casts
@@ -172,10 +179,10 @@ internal sealed partial class Engine2D
 
             int slot = _mvMeta[i].Slot;
             bool seen = false;
-            for (int h = 0; h < _mvHitCount; h++) { if (_mvHits[h].Slot == slot) { seen = true; break; } }
+            for (int h = 0; h < _mvHitCount; h++) { if (_mvHits[h].Slot == slot && (slot >= 0 || _mvHits[h].Particle == _mvMeta[i].Particle)) { seen = true; break; } }
             if (seen) { continue; }
             if (_mvHitCount == _mvHits.Length) { Array.Resize(ref _mvHits, _mvHitCount * 2); }
-            _mvHits[_mvHitCount++] = new MoverHitRec { Slot = slot, Px = _mvMeta[i].Px, Py = _mvMeta[i].Py, Nx = _mvPlanes[i].Normal.X, Ny = ny };
+            _mvHits[_mvHitCount++] = new MoverHitRec { Slot = slot, Px = _mvMeta[i].Px, Py = _mvMeta[i].Py, Nx = _mvPlanes[i].Normal.X, Ny = ny, Particle = _mvMeta[i].Particle };
         }
     }
 
@@ -224,7 +231,7 @@ internal sealed partial class Engine2D
         if (!(progress > progressNow + 1e-3f)) { _mvHitCount = hits; return false; }
         // The slide may have ridden up a rounded edge; the drop must still end no higher than the step offset above where we started and no lower than where we started.
         float drop = (float)(py - y0) + 2e-3f;
-        if (!MvCast(px, py, 0f, -drop, c, out float fd, out Vec2 n, out int dropSlot, out _, out _) || n.Y < c.CosSlope || IsCharacterBody(Core.Shapes.Owner[dropSlot])) { _mvHitCount = hits; return false; }
+        if (!MvCast(px, py, 0f, -drop, c, out float fd, out Vec2 n, out int dropSlot, out _, out _) || n.Y < c.CosSlope || IsCharacterBody(MvOwner(dropSlot))) { _mvHitCount = hits; return false; }
         double landed = py - (double)(fd * drop);
         if (landed - y0 > (double)c.Step + 1e-3) { _mvHitCount = hits; return false; }
         nx = px; ny = landed;
@@ -274,7 +281,7 @@ internal sealed partial class Engine2D
         bool resting = false;
         for (int i = 0; i < _mvPlaneCount; i++)
         {
-            if (_mvPlanes[i].Normal.Y >= c.CosSlope && !IsCharacterBody(Core.Shapes.Owner[_mvMeta[i].Slot]) && _mvPlanes[i].Separation + r.X * _mvPlanes[i].Normal.X + r.Y * _mvPlanes[i].Normal.Y <= 1e-3f)
+            if (_mvPlanes[i].Normal.Y >= c.CosSlope && !IsCharacterBody(MvOwner(_mvMeta[i].Slot)) && _mvPlanes[i].Separation + r.X * _mvPlanes[i].Normal.X + r.Y * _mvPlanes[i].Normal.Y <= 1e-3f)
             {
                 resting = true;
                 // Pressing into the ground counts as a hit with it.
@@ -339,11 +346,12 @@ internal sealed partial class Engine2D
             Radius = def.Radius, HalfLength = halfLength, CosSlope = (float)cosSlope, Step = def.StepOffset, Skin = def.Skin, Range = 2f * def.Skin, MaxPush = 0.5f * def.Radius,
             Mask = def.LayerMask, IgnoreBody = ignoreBody,
         };
+        c.Deformables = MvPrepareDeformables();
 
         bool wasGrounded = state.IsGrounded;
         // Ride the ground: the body underneath moves in this step, and so does the character with it.
         Vec2 carry = default;
-        if (wasGrounded && state.GroundBody.World != null && state.GroundBody.IsValid)
+        if (wasGrounded && !state.NoCarry && state.GroundBody.World != null && state.GroundBody.IsValid)
         {
             carry = BodyVelocityAt(state.GroundBody.Handle.Index, pos.X, pos.Y) * dt;
         }
@@ -377,7 +385,7 @@ internal sealed partial class Engine2D
             {
                 float ny = _mvPlanes[i].Normal.Y;
                 float sep = _mvPlanes[i].Separation + settle.X * _mvPlanes[i].Normal.X + settle.Y * ny;
-                bool isChar = IsCharacterBody(Core.Shapes.Owner[_mvMeta[i].Slot]);
+                bool isChar = IsCharacterBody(MvOwner(_mvMeta[i].Slot));
                 if (isChar) { continue; }
                 if (ny >= c.CosSlope)
                 {
@@ -407,6 +415,7 @@ internal sealed partial class Engine2D
             for (int i = 0; i < n; i++)
             {
                 ref MoverHitRec h = ref _mvHits[i];
+                if (h.Slot < 0) { MvPushDeformable(in def, in h, displacement, dt, in c); continue; }
                 int hb = Core.Shapes.Owner[h.Slot];
                 if (Core.Bodies.TypeOf(hb) != BodyType.Dynamic || IsCharacterBody(hb) || h.Ny >= c.CosSlope) { continue; }
                 float want = (displacement.X * -h.Nx + displacement.Y * -h.Ny) / dt;
@@ -429,18 +438,20 @@ internal sealed partial class Engine2D
                 new Body(world, Core.HandleOfBody(gb)).ApplyImpulse(Opt.Gravity * (def.Mass * dt));
             }
         }
+        else if (grounded && c.Deformables) { MvWakeDeformables(in c); }
 
         int written = 0;
         for (int i = 0; i < n && written < hits.Length; i++)
         {
             ref MoverHitRec h = ref _mvHits[i];
+            if (h.Slot < 0) { continue; }
             hits[written++] = new MoverHit2D(new Shape(world, Core.HandleOfShape(h.Slot)), new Vector2D(h.Px, h.Py), new Vector2F(h.Nx, h.Ny));
         }
 
         state.Position = new Vector2D(x, y);
         state.Ground = ground;
         state.GroundNormal = ground != GroundState.InAir ? new Vector2F(gnx, gny) : default;
-        state.GroundBody = grounded ? new Body(world, Core.HandleOfBody(Core.Shapes.Owner[gslot])) : default;
+        state.GroundBody = grounded && gslot >= 0 ? new Body(world, Core.HandleOfBody(Core.Shapes.Owner[gslot])) : default;
         return new MoveResult2D(flags, new Vector2F((float)(x - pos.X), (float)(y - pos.Y)), written);
     }
 

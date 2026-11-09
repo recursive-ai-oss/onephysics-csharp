@@ -53,7 +53,7 @@ public readonly struct ControllerColliderHit
 /// <see cref="StaleHandleException"/> once the character is destroyed; the state lives in the world and in its snapshots.
 /// </summary>
 /// <example><c>var player = world.AddCharacter(at: new Vector2D(0, 1), CharacterDef.Humanoid); player.Move(new Vector2F(input * speed * dt, velocityY * dt), dt); world.Step(dt);</c></example>
-public readonly struct Character : IEquatable<Character>
+public readonly partial struct Character : IEquatable<Character>
 {
     private readonly PhysicsWorld2D? _world;
     private readonly int _index;
@@ -97,6 +97,7 @@ public readonly struct Character : IEquatable<Character>
         {
             using var replayMutation = _world?.RecordMutation("Character.Position");
             var e = Resolve(out int c);
+            e.DropForTeleport(c);
             Body.SetTransform(value, 0f);
             e.CharGround[c] = GroundState.InAir; e.CharNx[c] = 0f; e.CharNy[c] = 0f; e.CharGroundBody[c] = -1; e.CharGroundGen[c] = 0;
         }
@@ -200,9 +201,10 @@ public readonly struct Character : IEquatable<Character>
         using var replayMutation = _world?.RecordMutation("Character.Move");
         var e = Resolve(out int c);
         var w = _world!;
+        if (e.CharacterIsBusy(c)) { return e.MoveBusy(c, displacement, dt); }
         var body = Body;
         var def = e.CharDef[c];
-        var state = new MoverState2D { Position = body.Position, Ground = e.CharGround[c], GroundNormal = new Vector2F(e.CharNx[c], e.CharNy[c]) };
+        var state = new MoverState2D { Position = body.Position, Ground = e.CharGround[c], GroundNormal = new Vector2F(e.CharNx[c], e.CharNy[c]), NoCarry = e.CharacterCarriesByPose(c) };
         if (e.CharGround[c] == GroundState.OnGround && e.CharGroundBody[c] >= 0)
         {
             var gh = new BodyHandle(w.Id, e.CharGroundBody[c], e.CharGroundGen[c]);
@@ -217,8 +219,9 @@ public readonly struct Character : IEquatable<Character>
         e.CharVx[c] = v.X; e.CharVy[c] = v.Y;
         e.CharGround[c] = state.Ground;
         e.CharNx[c] = state.GroundNormal.X; e.CharNy[c] = state.GroundNormal.Y;
-        if (state.IsGrounded) { var g = state.GroundBody.RawHandle; e.CharGroundBody[c] = g.Index; e.CharGroundGen[c] = g.Generation; }
+        if (state.IsGrounded && state.GroundBody.World != null) { var g = state.GroundBody.RawHandle; e.CharGroundBody[c] = g.Index; e.CharGroundGen[c] = g.Generation; }
         else { e.CharGroundBody[c] = -1; e.CharGroundGen[c] = 0; }
+        if (state.NoCarry) { e.UpdateCarried(c, state.Position, state.IsGrounded ? state.GroundBody : default); }
 
         if (buffer != null && result.HitCount > 0)
         {
@@ -305,6 +308,11 @@ public sealed partial class PhysicsWorld2D
         }
 
         int c = _engine.CreateCharacter(body.RawHandle, in def);
+        if (def.CanClimb || def.ExactPlatformCarry)
+        {
+            _engine.Extensions.Set(c, new Characters.CharacterExtState { CanClimb = def.CanClimb, ExactCarry = def.ExactPlatformCarry, LocalRotation = QuaternionF.Identity });
+        }
+
         return new Character(this, c, _engine.CharHandles.GenerationOf(c));
     }
 
