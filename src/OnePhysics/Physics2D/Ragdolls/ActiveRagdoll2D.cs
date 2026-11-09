@@ -37,7 +37,7 @@ public readonly partial struct Ragdoll
         _world!.Engine.EnableActive(_index, def ?? ActiveRagdollDef.Humanoid);
     }
 
-    /// <summary>Removes the active layer: drives stop, pinned bones become ordinary dynamic bodies. Does nothing when the ragdoll is not active.</summary>
+    /// <summary>Removes the active layer: drives stop, pinned bones become ordinary simulated bodies. Does nothing when the ragdoll is not active.</summary>
     /// <exception cref="StaleHandleException">The ragdoll was removed.</exception>
     public void DisableActive()
     {
