@@ -111,7 +111,21 @@ internal static class FluidStability
         int threads = int.Parse(opts.Get("threads", "1"), CultureInfo.InvariantCulture);
         int side = int.Parse(opts.Get("side", "37"), CultureInfo.InvariantCulture);
         float spacing = 0.5f / (side + 0.2f);
-        var w = FluidScenes.Build3D("dam-break-3d", threads, spacing);
+        string material = opts.Get("material", "water");
+        P3.PhysicsWorld3D w;
+        if (material == "sand")
+        {
+            // A block of sand (50 particles a side, 20 deep at 2 cm: 50 000) dropped half a metre into a box, timed from the start of its fall.
+            w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { ThreadCount = threads });
+            w.AddBox(new Vector3F(4f, 0.2f, 4f), at: new Vector3D(0, -0.1, 0), type: BodyType.Static);
+            w.AddBox(new Vector3F(0.2f, 2f, 1.4f), at: new Vector3D(-0.6, 1.0, 0), type: BodyType.Static);
+            w.AddBox(new Vector3F(0.2f, 2f, 1.4f), at: new Vector3D(0.6, 1.0, 0), type: BodyType.Static);
+            w.AddBox(new Vector3F(1.4f, 2f, 0.2f), at: new Vector3D(0, 1.0, -0.6), type: BodyType.Static);
+            w.AddBox(new Vector3F(1.4f, 2f, 0.2f), at: new Vector3D(0, 1.0, 0.6), type: BodyType.Static);
+            var sand = w.AddParticleFluid(ParticleFluidDef.Sand(0.02f));
+            w.FillFluidBox(sand, new Vector3D(-0.5, 0.5, -0.5), new Vector3D(0.5, 0.9, 0.5));
+        }
+        else { w = FluidScenes.Build3D("dam-break-3d", threads, spacing); }
         for (int i = 0; i < 30; i++) w.Step(FluidScenes.Dt);
         var times = new List<double>();
         var sw = new Stopwatch();
@@ -123,7 +137,7 @@ internal static class FluidStability
         }
 
         times.Sort();
-        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"dam-break-3d particles={w.FluidParticleCount} threads={threads} medianMs={times[times.Count / 2]:F2} meanMs={times.Average():F2} minMs={times[0]:F2} maxMs={times[^1]:F2}"));
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{(material == "sand" ? "sand-block-3d" : "dam-break-3d")} particles={w.FluidParticleCount} threads={threads} medianMs={times[times.Count / 2]:F2} meanMs={times.Average():F2} minMs={times[0]:F2} maxMs={times[^1]:F2}"));
         return 0;
     }
 }
