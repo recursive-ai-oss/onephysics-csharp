@@ -394,11 +394,11 @@ public class Actuator3DTests
 
     // ------------------------------------------------------------------ host hooks
 
-    private static PhysicsWorld3D Scene(int threads, int id = 75)
+    private static PhysicsWorld3D Scene(int threads, int id = 75, bool wind = true)
     {
         var w = NewWorld(null, threads, id);
         w.AddWater(0.0, 1000f, default, 0f);
-        w.AddWind(new Vector3F(1f, 0f, 2f));
+        if (wind) { w.AddWind(new Vector3F(1f, 0f, 2f)); }
         w.AddBox(new Vector3F(100f, 1f, 100f), new Vector3D(0, -3.5, 0), type: BodyType.Static);
         var hull = w.CreateBody(BodyType.Dynamic, new Vector3D(0, 0.2, 0));
         w.CreateBox(hull, new Vector3F(1.2f, 0.6f, 3f), 0f, new ShapeDef { Density = 150f / (1.2f * 0.6f * 3f), Aero = AeroSurface.Body(0.5f) });
@@ -440,6 +440,18 @@ public class Actuator3DTests
         // A fork steps the same way.
         var fork = a.Fork();
         for (int i = 0; i < 60; i++) { a.Step(Dt); fork.Step(Dt); Assert.Equal(a.ComputeHash(), fork.ComputeHash()); }
+    }
+
+    [Fact]
+    public void SteppingWithActuatorsAllocatesNothingOnceWarm()
+    {
+        // No wind field here: any area field costs the field stage 432 bytes a step (a separate finding), which is not the actuators' doing.
+        var w = Scene(1, 79, wind: false);
+        for (int i = 0; i < 900; i++) { w.Step(Dt); }   // long enough for everything to have landed, so no contact appears or disappears below
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 120; i++) { w.Step(Dt); }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(allocated <= 4096, "allocated " + allocated + " bytes over 120 steps");
     }
 
     [Fact]
