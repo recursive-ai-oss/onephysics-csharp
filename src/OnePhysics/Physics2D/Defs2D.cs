@@ -277,7 +277,7 @@ public struct BodyDef
 
     private byte _type;
 
-    /// <summary>Position of the body origin, metres, within +-2^21 of the world origin. Default (0, 0).</summary>
+    /// <summary>Body origin in metres relative to the world origin, inclusive ±2^21 per component; non-finite or larger values throw ArgumentOutOfRangeException on creation. Default zero. Q31.32 values round-trip exactly through double on this closed interval; OneMath FixedBridge deliberately accepts only its open interior. Simulation has ±2^22 bounds for integration headroom, not a larger creation range.</summary>
     public Vector2D Position { get; set; }
 
     /// <summary>Rotation in radians. Default 0.</summary>

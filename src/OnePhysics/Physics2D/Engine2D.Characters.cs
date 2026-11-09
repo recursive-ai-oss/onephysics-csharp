@@ -93,7 +93,18 @@ internal sealed partial class Engine2D
 
     // ------------------------------------------------------------------ snapshot block
 
-    private void WriteCharacters(StateWriter w)
+    private const uint WithRadianSlopes = 5;
+
+    private bool HasExactCharacterSlopes()
+    {
+        for (int c = 0; c < CharHandles.HighWater; c++)
+        {
+            if (CharHandles.IsLive(c) && CharDef[c].NeedsExactSlope) { return true; }
+        }
+        return false;
+    }
+
+    private void WriteCharacters(StateWriter w, bool radians)
     {
         w.DescribeTable("character");
         CharHandles.Write(w);
@@ -102,8 +113,9 @@ internal sealed partial class Engine2D
             w.DescribeEntity("character", c, CharHandles.GenerationOf(c));
             if (!CharHandles.IsLive(c)) { continue; }
             var d = CharDef[c];
+            if (radians) { w.NamedBool(d.NeedsExactSlope); }
             w.NamedInt32(CharBody[c]); w.NamedInt32(CharBodyGen[c]);
-            w.NamedSingle(d.Radius); w.NamedSingle(d.Height); w.NamedSingle(d.SlopeLimitDegrees); w.NamedSingle(d.StepOffset); w.NamedSingle(d.Skin);
+            w.NamedSingle(d.Radius); w.NamedSingle(d.Height); w.NamedSingle(radians && d.NeedsExactSlope ? d.SlopeLimitRadians : d.SlopeLimitDegrees); w.NamedSingle(d.StepOffset); w.NamedSingle(d.Skin);
             w.NamedUInt32(d.LayerMask); w.NamedSingle(d.PushStrength); w.NamedInt32(d.Layer); w.NamedUInt32(d.CategoryBits); w.NamedUInt32(d.MaskBits);
             w.NamedSingle(d.Mass); w.NamedSingle(d.MaxPushForce);
             w.NamedByte((byte)CharGround[c]); w.NamedSingle(CharNx[c]); w.NamedSingle(CharNy[c]);
@@ -124,7 +136,7 @@ internal sealed partial class Engine2D
     private readonly CharacterBlock _charStage = new();
 
     // Reads into the engine's staging block, which is kept between restores so nothing is allocated once it has grown.
-    private CharacterBlock ReadCharacters(StateReader r, int bodyCount)
+    private CharacterBlock ReadCharacters(StateReader r, int bodyCount, bool radians)
     {
         var b = _charStage;
         b.Handles.ReadInto(r, "character");
@@ -142,9 +154,11 @@ internal sealed partial class Engine2D
             Array.Clear(b.Nx, 0, n); Array.Clear(b.Ny, 0, n); Array.Clear(b.Vx, 0, n); Array.Clear(b.Vy, 0, n);
         }
 
+        bool anyExactSlope = false;
         for (int c = 0; c < n; c++)
         {
             if (!b.Handles.IsLive(c)) { continue; }
+            bool exactSlope = radians && r.ReadBool();
             b.Body[c] = r.ReadInt32(); b.BodyGen[c] = r.ReadInt32();
             if (b.Body[c] < 0 || b.Body[c] >= bodyCount || b.BodyGen[c] < 1) { throw r.Error("invalid character body"); }
             var d = new CharacterDef
@@ -152,6 +166,12 @@ internal sealed partial class Engine2D
                 Radius = r.ReadSingle(), Height = r.ReadSingle(), SlopeLimitDegrees = r.ReadSingle(), StepOffset = r.ReadSingle(), Skin = r.ReadSingle(),
                 LayerMask = r.ReadUInt32(), PushStrength = r.ReadSingle(), Layer = r.ReadInt32(), CategoryBits = r.ReadUInt32(), MaskBits = r.ReadUInt32(),
             };
+            if (exactSlope)
+            {
+                d.SlopeLimitRadians = d.SlopeLimitDegrees;
+                if (!d.NeedsExactSlope) { throw r.Error("redundant exact character slope encoding"); }
+                anyExactSlope = true;
+            }
             d.Mass = r.ReadSingle();
             d.MaxPushForce = r.ReadSingle();
             try { d.Validate(); }
@@ -167,6 +187,7 @@ internal sealed partial class Engine2D
             if (b.GroundBody[c] < -1 || b.GroundBody[c] >= bodyCount || (b.GroundBody[c] >= 0 && b.GroundGen[c] < 1)) { throw r.Error("invalid character ground body"); }
         }
 
+        if (radians && !anyExactSlope) { throw r.Error("radian character section has no exact slope inputs"); }
         return b;
     }
 

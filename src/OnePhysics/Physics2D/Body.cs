@@ -48,7 +48,7 @@ public readonly partial struct Body : IEquatable<Body>
     /// <summary>True while the body is awake. Static bodies are never awake; kinematic bodies always are.</summary>
     public bool IsAwake { get { var (w, b) = Resolve(); return w.Core.Bodies.TypeOf(b) == BodyType.Kinematic || (w.Core.Bodies.TypeOf(b) == BodyType.Dynamic && w.Core.Bodies.IsAwake(b)); } }
 
-    /// <summary>Position of the body origin in world coordinates relative to the world origin, in double precision (exact for 31.32 fixed-point values within +-2^21).</summary>
+    /// <summary>Body origin in metres relative to the world origin. Setting accepts finite components in inclusive ±2^21, otherwise throws ArgumentOutOfRangeException. All Q31.32 values round-trip exactly through double on that closed interval; OneMath FixedBridge accepts only the open interior. Simulation may advance to ±2^22 before Step rejects out-of-bounds state.</summary>
     public Vector2D Position
     {
         get

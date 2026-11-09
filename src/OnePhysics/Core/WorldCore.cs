@@ -572,9 +572,11 @@ public sealed partial class WorldCore
 
     /// <summary>
     /// Shifts the world origin by <paramref name="offset"/> (one double per position lane): every body position decreases by it and <see cref="Origin"/> increases by it, so host coordinates (origin + stored position) do not change.
-    /// Offsets must be finite multiples of 2^-31 (every 31.32 value is) with magnitude at most 2^22; with positions on that grid the subtraction is exact. Call between steps, on every peer at the same step.
+    /// Offsets must be finite multiples of 2^-31 (even Q31.32 raw integers) with magnitude at most 2^22; with positions on that grid the subtraction is exact. Call between steps, on every peer at the same step.
     /// Anything an engine keeps in world coordinates (broadphase bounds, cached world-space data) must be shifted by the engine as well.
     /// </summary>
+    /// <exception cref="ArgumentException">The component count differs from the dimension or a component is off the 2^-31 grid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A component is non-finite or its magnitude exceeds 2^22.</exception>
     public void ShiftOrigin(ReadOnlySpan<double> offset)
     {
         ValidateShift(offset);
