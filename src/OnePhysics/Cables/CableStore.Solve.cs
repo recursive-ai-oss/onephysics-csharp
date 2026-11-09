@@ -50,6 +50,7 @@ internal sealed partial class CableStore
     private sealed class Scratch
     {
         internal Ent[] B = new Ent[16]; internal int NB;
+        internal Vector3D Origin;
         internal SpinEnt[] Spin = new SpinEnt[16];
         internal int[] NodeEnt = new int[16];
         internal Vector3D[] Center = new Vector3D[16], AxisW = new Vector3D[16], E1 = new Vector3D[16], E2 = new Vector3D[16], P = new Vector3D[16], Q = new Vector3D[16], Dir = new Vector3D[16];
@@ -84,7 +85,7 @@ internal sealed partial class CableStore
         ref var e = ref sc.B[sc.NB];
         e = default; e.Slot = slot;
         var p = bodies.PositionOf(slot);
-        e.X = new(p[0], p[1], Host.Planar ? 0 : p[2]);
+        e.X = new Vector3D(p[0], p[1], Host.Planar ? 0 : p[2]) - sc.Origin;
         var r = bodies.RotationOf(slot);
         if (Host.Planar) e.R = new Frame { C0 = new(r[0], r[1], 0), C1 = new(-r[1], r[0], 0), C2 = new(0, 0, 1) };
         else
@@ -113,7 +114,7 @@ internal sealed partial class CableStore
 
     private Vector3D WorldPoint(Scratch sc, CableNode n, int ent)
     {
-        if (ent < 0) return n.Local;
+        if (ent < 0) return n.Local - sc.Origin;
         ref var b = ref sc.B[ent];
         var lc = Host.LocalCenter(b.Slot);
         return b.X + b.R.Rotate(new(n.Local.X - lc.X, n.Local.Y - lc.Y, n.Local.Z - lc.Z));
@@ -124,6 +125,10 @@ internal sealed partial class CableStore
         var bodies = Host.CableCore.Bodies;
         int n = m.Nodes.Length;
         sc.Ensure(n); sc.NB = 0;
+        // Everything is computed relative to the first node's carrier: differences of positions on the world grid are exact, so a shifted world sees exactly the same numbers.
+        var first = m.Nodes[0];
+        if (first.Body >= 0 && bodies.Handles.IsAlive(first.Body, first.BodyGeneration) && bodies.IsLive(first.Body)) { var p0 = bodies.PositionOf(first.Body); sc.Origin = new Vector3D(p0[0], p0[1], Host.Planar ? 0 : p0[2]); }
+        else sc.Origin = first.Body < 0 ? first.Local : default;
         for (int i = 0; i < n; i++)
         {
             var node = m.Nodes[i];

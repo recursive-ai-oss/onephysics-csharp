@@ -143,4 +143,78 @@ public sealed class PulleySystem3DTests(ITestOutputHelper helper)
         var rope2=w.AddRopeOverPulleys(P3.RopeEnd.On(a,default),[new P3.Pulley(new(0,5,0),.2f)],P3.RopeEnd.At(new(2,5,0)));
         a.Destroy();w.Step(Dt);Assert.True(rope2.IsBroken);
     }
+
+    private static (P3.PhysicsWorld3D World,P3.Body Load,P3.PulleySystem Rope) Hanging(int id=91,double x=-.3,double slack=.3)
+    {
+        var w=new P3.PhysicsWorld3D(new(){WorldId=id,SleepEnabled=false});
+        var load=w.AddBox(new(.4f,.4f,.4f),at:new(x,2,0),density:100);   // 6.4 kg
+        var rope=w.AddRopeOverPulleys(P3.RopeEnd.On(load,default),[new P3.Pulley(new(0,5,0),.3f,clockwise:true,friction:.2f)],P3.RopeEnd.At(new(1.5,5,0)),slack:slack);
+        return (w,load,rope);
+    }
+
+    [Fact]
+    public void BreakingOnTensionReleasesTheLoadForGood()
+    {
+        var (w,load,rope)=Hanging(91,-.3,0);
+        rope.BreakForce=80;   // the load weighs 62.8 N
+        for(int i=0;i<60;i++)w.Step(Dt);
+        Assert.False(rope.IsBroken);Assert.InRange(rope.MaximumTension,62,64);
+        load.ApplyImpulse(new(0,-40,0));   // a jerk
+        w.Step(Dt);
+        _log($"break: tension at the jerk {rope.MaximumTension:F1} against 80, broken {rope.IsBroken}");
+        Assert.True(rope.IsBroken);Assert.Equal(0,rope.Tension(0));
+        double y=load.Position.Y,v=load.LinearVelocity.Y;for(int i=0;i<30;i++)w.Step(Dt);
+        Assert.True(load.Position.Y<y-1);   // free fall: a broken system exerts nothing
+        Assert.True(rope.IsBroken);
+    }
+
+    [Fact]
+    public void DebugGeometryReportsSpansAndWheels()
+    {
+        var (w,load,rope)=Hanging();
+        for(int i=0;i<60;i++)w.Step(Dt);
+        var g=new RecursiveAI.OnePhysics.Debug.DebugGeometry();
+        w.GetDebugGeometry(RecursiveAI.OnePhysics.Debug.DebugContent.Pulleys,g);
+        Assert.Equal(2,g.PulleySpans.Length);Assert.Single(g.PulleyWheels.ToArray());
+        var wheel=g.PulleyWheels[0];
+        _log($"debug: span0 {g.PulleySpans[0].Start} -> {g.PulleySpans[0].End} T={g.PulleySpans[0].Tension:F2}, wheel wrap {wheel.Wrap:F4}, radius {wheel.Radius}");
+        Assert.InRange(wheel.Wrap,1.5,3.2);Assert.True((wheel.Enter-wheel.Center).Length()>.29&&(wheel.Enter-wheel.Center).Length()<.31);
+        Assert.InRange(g.PulleySpans[0].Tension,60,64);
+    }
+
+    [Fact]
+    public void ShiftedWorldStepsBitIdentically()
+    {
+        var (a,la,ra)=Hanging(92,-.25);var (b,lb,rb)=Hanging(92,-.25);
+        for(int i=0;i<40;i++){a.Step(Dt);b.Step(Dt);}
+        b.ShiftOrigin(new(16,-8,2));
+        for(int i=0;i<200;i++){la.ApplyForce(new(1,0,.5f));lb.ApplyForce(new(1,0,.5f));a.Step(Dt);b.Step(Dt);}
+        var pa=a.Core.Bodies.PositionOf(la.RawHandle.Index);var pb=b.Core.Bodies.PositionOf(lb.RawHandle.Index);
+        _log($"shift: unshifted {pa[0]:R} {pa[1]:R} {pa[2]:R}, shifted+offset {pb[0]+16:R} {pb[1]-8:R} {pb[2]+2:R}");
+        Assert.Equal(pa[0],pb[0]+16);Assert.Equal(pa[1],pb[1]-8);Assert.Equal(pa[2],pb[2]+2);
+        Assert.Equal(ra.Tension(0),rb.Tension(0));
+    }
+
+    [Fact]
+    public void RecordedSessionReplaysAndForkKeepsSystems()
+    {
+        var w=new P3.PhysicsWorld3D(new(){WorldId=93,SleepEnabled=false});
+        var load=w.AddBox(new(.4f,.4f,.4f),at:new(-.3,2,0),density:100);
+        var hashes=new ulong[60];using var stream=new System.IO.MemoryStream();
+        P3.PulleySystem rope=default;
+        using(var recorder=w.StartRecording(stream))
+        {
+            for(int i=0;i<hashes.Length;i++)
+            {
+                if(i==5)rope=w.AddRopeOverPulleys(P3.RopeEnd.On(load,default),[new P3.Pulley(new(0,5,0),.3f,clockwise:true,friction:.2f)],P3.RopeEnd.At(new(1.5,5,0)),slack:.5);
+                if(i==30)rope.AdjustLength(-.2);
+                if(i==40)rope.BreakForce=5000;
+                w.Step(Dt);hashes[i]=w.ComputeHash();
+            }
+        }
+        stream.Position=0;var player=new RecursiveAI.OnePhysics.Replay.ReplayPlayer(stream);var copy=player.CreateWorld3D();
+        int n=0;while(player.ReadNextStep(copy))Assert.Equal(hashes[n++],copy.ComputeHash());
+        Assert.Equal(hashes.Length,n);Assert.Equal(w.Snapshot(),copy.Snapshot());Assert.Equal(1,copy.PulleySystemCount);
+        var fork=w.Fork();Assert.Equal(1,fork.PulleySystemCount);Assert.Equal(w.ComputeHash(),fork.ComputeHash());
+    }
 }

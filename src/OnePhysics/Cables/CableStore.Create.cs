@@ -98,3 +98,33 @@ internal sealed partial class CableStore
         return data;
     }
 }
+
+internal sealed partial class CableStore
+{
+    /// <summary>Appends every system's spans and wheels, from the bodies' current poses, in system and span order.</summary>
+    internal void CollectDebug(Debug.DebugGeometry geometry)
+    {
+        var sc = Sc;
+        for (int s = 0; s < Data.Length; s++)
+        {
+            if (Data[s] is not { } m || !LoadFrames(sc, m)) continue;
+            ComputeSpans(sc, m);
+            int n = m.Nodes.Length, spans = m.Spans;
+            for (int k = 0; k < spans; k++)
+            {
+                if (!sc.Valid[k]) continue;
+                double tension = m.LastDt > 0 && !m.Broken ? m.Impulse[k] / m.LastDt : 0;
+                geometry.Add(new Debug.DebugPulleySpan(s, k, sc.P[k] + sc.Origin, sc.Q[k] + sc.Origin, tension, tension == 0 && m.Material[k] > m.Geometric[k]));
+            }
+            for (int i = 0; i < n; i++)
+            {
+                var node = m.Nodes[i]; if (!node.IsWheel) continue;
+                int outSpan = (!m.Closed && i == n - 1) ? -1 : i, inSpan = (!m.Closed && i == 0) ? -1 : (i + n - 1) % n;
+                var enter = (inSpan >= 0 && sc.Valid[inSpan] ? sc.Q[inSpan] : sc.Center[i]) + sc.Origin;
+                var leave = (outSpan >= 0 && sc.Valid[outSpan] ? sc.P[outSpan] : sc.Center[i]) + sc.Origin;
+                var axis = sc.AxisW[i];
+                geometry.Add(new Debug.DebugPulleyWheel(s, i, sc.Center[i] + sc.Origin, new Vector3F((float)axis.X, (float)axis.Y, (float)axis.Z), node.Radius, enter, leave, m.Wrap[i], node.Mode == WheelSpin.Rotor ? node.Spin : 0));
+            }
+        }
+    }
+}

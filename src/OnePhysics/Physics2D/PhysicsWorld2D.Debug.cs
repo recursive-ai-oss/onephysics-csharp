@@ -27,6 +27,7 @@ public sealed partial class PhysicsWorld2D
                     geometry.Add(new DebugRodSegment(r,j,d.PositionData[j],d.PositionData[j+1],d.FrameData[j],d.Material.Radius));
             }
         }
+        if ((flags & DebugContent.Pulleys) != 0) _engine.Cables.CollectDebug(geometry);
         if ((flags & DebugContent.Fields) != 0)
         {
             for (int i=0;i<_engine.Fields.Definitions.Length;i++)
