@@ -12,9 +12,9 @@ public class ExtendedQueryParityTests
     [Fact]
     public void NewSurfaceHasMatchingOverloadCountsAndNoRequiredStructCallbacks()
     {
-        Check(typeof(P2.PhysicsWorld2D), typeof(P3.PhysicsWorld3D), ["QueryBatch", "QueryAnyBatch", "QueryAllBatch", "QueryAabb", "Penetration", "PenetrationAny", "PenetrationAll", "ComputePenetration", "SweepBody"]);
-        Check(typeof(P2.Body), typeof(P3.Body), ["Raycast", "ShapeCast", "OverlapShape", "ClosestPoint", "Sweep"]);
-        Check(typeof(P2.Shape), typeof(P3.Shape), ["Raycast", "ShapeCast", "OverlapShape", "ClosestPoint"]);
+        Check(typeof(P2.PhysicsWorld2D), typeof(P3.PhysicsWorld3D), ["QueryBatch", "QueryAnyBatch", "QueryAllBatch", "QueryAabb", "Penetration", "PenetrationAny", "PenetrationAll", "ComputePenetration", "SweepBody", "Depenetrate", "Depenetrate"]);
+        Check(typeof(P2.Body), typeof(P3.Body), ["Raycast", "ShapeCast", "OverlapShape", "ClosestPoint", "Sweep", "Depenetrate", "Depenetrate"]);
+        Check(typeof(P2.Shape), typeof(P3.Shape), ["Raycast", "ShapeCast", "OverlapShape", "ClosestPoint", "Depenetrate"]);
         Check(typeof(P2.QueryInput2D), typeof(P3.QueryInput3D), ["Ray", "Cast", "Overlap", "Closest", "Penetration"]);
     }
 

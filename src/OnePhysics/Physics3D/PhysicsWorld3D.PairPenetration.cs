@@ -15,9 +15,9 @@ public sealed partial class PhysicsWorld3D
         var qa = CheckRotation(rotationA); var qb = CheckRotation(rotationB);
         ShapeBounds3D.Compute(a, new RigidTransformF(qa, default), out var minA, out var maxA);
         ShapeBounds3D.Compute(b, new RigidTransformF(qb, default), out var minB, out var maxB);
-        if (positionA.X + maxA.X < positionB.X + minB.X || positionB.X + maxB.X < positionA.X + minA.X ||
+        if (!HalfSpace3D.HasPlane(a, b) && (positionA.X + maxA.X < positionB.X + minB.X || positionB.X + maxB.X < positionA.X + minA.X ||
             positionA.Y + maxA.Y < positionB.Y + minB.Y || positionB.Y + maxB.Y < positionA.Y + minA.Y ||
-            positionA.Z + maxA.Z < positionB.Z + minB.Z || positionB.Z + maxB.Z < positionA.Z + minA.Z) { return false; }
+            positionA.Z + maxA.Z < positionB.Z + minB.Z || positionB.Z + maxB.Z < positionA.Z + minA.Z)) { return false; }
         var relative = new RigidTransformF(qa.Conjugated() * qb, qa.Conjugated().Rotate(new Vector3F((float)(positionB.X - positionA.X), (float)(positionB.Y - positionA.Y), (float)(positionB.Z - positionA.Z))));
         var contact = (t_pairPenetration ??= new Epa3D()).Collide(a, b, relative);
         if (!(contact.Separation < 0f)) { return false; }

@@ -193,6 +193,19 @@ internal sealed partial class Engine3D
         }
 
         float best = float.PositiveInfinity;
+        if (mover.Kind == ConvexShapeKind3D.Plane)
+        {
+            var leaves = new LeafCursor(g, sc.TriBuf);
+            while (leaves.MoveNext(out var leaf, out var local))
+            {
+                var d = Gjk3D.Distance(leaf, mover, local.Inverted() * moverInShape);
+                float dist = d.Overlapping ? 0f : d.Distance;
+                if (dist >= best || dist > maxDist) { continue; }
+                best = dist; sub = leaves.CurrentId;
+                point = local.TransformPoint(d.PointA); normal = local.Rotation.Rotate(d.Normal);
+            }
+            return best;
+        }
         if (g.Compound != null)
         {
             var comp = g.Compound;
@@ -416,7 +429,14 @@ internal sealed partial class Engine3D
                 var motion = inv.Rotate(new Vector3F(q.Tx, q.Ty, q.Tz));
                 var rel = new RigidTransformF(inv * q.MoverRot, lo);
                 float f; Vector3F n, p; int sub = 0; bool startsOverlapping;
-                if (g.IsConvex)
+                if (q.Mover.Kind == ConvexShapeKind3D.Plane)
+                {
+                    // A half-space's reference point need not be near any target leaf.
+                    // Finite mover clipping and proxy boxes are not valid rejection tests.
+                    if (!CastPlaneMover(g, q.Mover, rel, motion, sc, out var hit, out sub)) { return false; }
+                    f = hit.Fraction; n = hit.Normal; p = hit.PointA; startsOverlapping = hit.StartsOverlapping;
+                }
+                else if (g.IsConvex)
                 {
                     if (QuickRejects && MoverBox(in q.Mover, in rel, out var mmin, out var mmax))
                     {
@@ -592,7 +612,7 @@ internal sealed partial class Engine3D
                     if (mode == QueryMode.Any && scratch.Count != 0) { break; }
                 }
             }
-            else if (BruteQueries) { Brute(ref v); }
+            else if (BruteQueries || q.Mover.Kind == ConvexShapeKind3D.Plane) { Brute(ref v); }
             else if (q.Kind == QueryKind.Closest) { ClosestSearch(ref v); }
             else { Trees(ref v); }
             return scratch;

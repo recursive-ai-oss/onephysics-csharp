@@ -110,7 +110,7 @@ internal sealed partial class Engine2D
 
     /// <summary>
     /// How far any moving proxy's stored (fat) box may be behind the body's pose: bodies move during a step but their proxies are updated at the start of the next one, so between steps a box can be stale.
-    /// Queries grow the kinematic and dynamic trees' boxes by this (computed lazily once per step; it never changes simulation state).
+    /// Queries grow the moving-body trees' boxes by this (computed lazily once per step; it never changes simulation state).
     /// </summary>
     private double QueryPad()
     {
@@ -154,6 +154,16 @@ internal sealed partial class Engine2D
     }
 
     /// <summary>The narrow phase for one candidate shape. All of it is float arithmetic in the shape's own frame after one double subtraction, like the contact stage.</summary>
+    internal static Manifold2D QueryPenetration(in Shape2D target, in Shape2D mover, Transform2 relative)
+    {
+        // A geometric separation query tests the surface, not solver ghost-edge or
+        // one-way contact suppression. This matches the overlap/distance queries.
+        var a = target; var b = mover;
+        if (a.Kind == ShapeKind2D.ChainSegment) { a._kind = ShapeKind2D.Segment; a._flags = Shape2D.FlagTwoSided; }
+        if (b.Kind == ShapeKind2D.ChainSegment) { b._kind = ShapeKind2D.Segment; b._flags = Shape2D.FlagTwoSided; }
+        return Collide2D.Collide(a, b, relative, 0f);
+    }
+
     private bool Narrow(in QueryParams q, QueryMode mode, int s, out RawHit h)
     {
         h = default;
@@ -166,7 +176,7 @@ internal sealed partial class Engine2D
             case QueryKind.Penetration:
             {
                 var relative = Transform2.InvMul(new Transform2(default, bq), new Transform2(new Vec2((float)(q.X - ox), (float)(q.Y - oy)), q.MoverRot));
-                var manifold = Collide2D.Collide(in Geom[s], in q.Mover, relative, 0f);
+                var manifold = QueryPenetration(in Geom[s], in q.Mover, relative);
                 if (manifold.PointCount == 0) { return false; }
                 var point = manifold.Point0;
                 for (int i = 1; i < manifold.PointCount; i++) { if (manifold[i].Separation < point.Separation) { point = manifold[i]; } }

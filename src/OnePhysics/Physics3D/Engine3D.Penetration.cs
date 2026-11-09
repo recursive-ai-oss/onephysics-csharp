@@ -17,6 +17,18 @@ internal sealed partial class Engine3D
             return contact.Separation < 0f;
         }
         bool found = false;
+        if (mover.Kind == ConvexShapeKind3D.Plane)
+        {
+            var leaves = new LeafCursor(geometry, scratch.TriBuf);
+            while (leaves.MoveNext(out var leaf, out var local))
+            {
+                var candidate = epa.Collide(leaf, mover, local.Inverted() * relative);
+                if (!(candidate.Separation < 0f) || (found && candidate.Separation >= contact.Separation)) { continue; }
+                found = true; sub = leaves.CurrentId;
+                contact = new ConvexContact3D(candidate.Separation, local.Rotation.Rotate(candidate.Normal), local.TransformPoint(candidate.PointA), local.TransformPoint(candidate.PointB));
+            }
+            return found;
+        }
         if (geometry.Compound is { } compound)
         {
             for (int i = 0; i < compound.SlotCount; i++)

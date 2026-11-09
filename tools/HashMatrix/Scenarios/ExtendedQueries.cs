@@ -53,6 +53,15 @@ internal static class ExtendedQueryScenarios
             }
             context.EndStep();
         }
+        var rotating=new P2.PhysicsWorld2D(new P2.WorldOptions2D { Gravity=default,ThreadCount=context.Threads,WorldId=62 });
+        var bar=rotating.AddBox(new Vector2F(4,0.1f)); rotating.AddCircle(0.1f,new Vector2D(0,1.5),BodyType.Static);
+        context.Write(bar.Sweep(default,6.2831855f,out var angular)?1:0);
+        context.Write(angular.Fraction); context.Write(angular.Point.X); context.Write(angular.Point.Y);
+        var correction=rotating.Depenetrate(Shape2D.CreateCircle(default,0.25f),new Vector2D(0.1,0.1),0f);
+        context.Write((int)correction.Status); context.Write(correction.Iterations); context.Write(correction.RemainingDepth);
+        context.Write(correction.Translation.X); context.Write(correction.Translation.Y);
+        context.EndStep();
+
     }
 
     private static void Run3D(ScenarioContext context)
@@ -94,5 +103,19 @@ internal static class ExtendedQueryScenarios
             }
             context.EndStep();
         }
+        var rotating=new P3.PhysicsWorld3D(new P3.WorldOptions3D { Gravity=default,ThreadCount=context.Threads,WorldId=62 });
+        var bar=rotating.AddBox(new Vector3F(4,0.1f,0.1f)); rotating.AddSphere(0.1f,new Vector3D(0,1.5,0),BodyType.Static);
+        context.Write(bar.Sweep(default,new Vector3F(0,0,6.2831855f),out var angular)?1:0);
+        context.Write(angular.Fraction); context.Write(angular.Point.X); context.Write(angular.Point.Y); context.Write(angular.Point.Z);
+        var correction=rotating.Depenetrate(ConvexShape3D.Sphere(0.25f),new Vector3D(0.1,0.1,0),default);
+        context.Write((int)correction.Status); context.Write(correction.Iterations); context.Write(correction.RemainingDepth);
+        context.Write(correction.Translation.X); context.Write(correction.Translation.Y); context.Write(correction.Translation.Z);
+        var plane=ConvexShape3D.Plane(Vector3F.UnitX);
+        context.Write(rotating.Penetration(plane,new Vector3D(4194304,0,0),default,out var planeContact)?1:0);
+        context.Write(planeContact.Distance); context.Write(planeContact.Point.X);
+        var planeCorrection=rotating.Depenetrate(plane,new Vector3D(4194304,0,0),default,maxDistance:P3.PhysicsWorld3D.MaxQueryDistance);
+        context.Write((int)planeCorrection.Status); context.Write(planeCorrection.Translation.X); context.Write(planeCorrection.RemainingDepth);
+        context.EndStep();
+
     }
 }

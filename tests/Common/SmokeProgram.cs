@@ -29,6 +29,10 @@ internal static class SmokeProgram
         good &= source3.Sweep(new V3F(1, 0, 0), out var sweep3, 10f) && sweep3.Distance > 3f;
         good &= a.Penetration(Shape2D.CreateCircle(default, 0.5f), default, 0f, out _);
         good &= b.Penetration(ConvexShape3D.Sphere(0.5f), default, default, out _);
+        good &= source2.Sweep(new RecursiveAI.OneMath.Vector2F(10,0),1f,out _);
+        good &= source3.Sweep(new V3F(10,0,0),new V3F(0,0,1),out _);
+        good &= a.Depenetrate(Shape2D.CreateCircle(default,0.5f),new RecursiveAI.OneMath.Vector2D(5,0),0).Converged;
+        good &= b.Depenetrate(ConvexShape3D.Sphere(0.5f),new V3D(5,0,0),default).Converged;
         Console.WriteLine(good ? "OK extended-queries" : "FAIL extended-queries");
         return good;
     }

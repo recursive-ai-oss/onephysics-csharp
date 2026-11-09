@@ -123,7 +123,7 @@ internal static class Fuzz2DServices
         {
             try
             {
-                switch (r.Byte() % 24)
+                switch (r.Byte() % 26)
                 {
                     case 0: { s_queries++; if (w.Raycast(r.V2D(), r.V2F(), out var h, r.Float(), Filter(r))) { s_hits++; Check(in h); } break; }
                     case 1: { s_queries++; int n = w.RaycastAll(r.V2D(), r.V2F(), buffer, r.Float(), Filter(r)); s_hits += n; CheckSorted(buffer, n); break; }
@@ -135,6 +135,8 @@ internal static class Fuzz2DServices
                     case 7: { s_queries++; if (w.OverlapPoint(r.V2D(), out var h, Filter(r))) { s_hits++; Check(in h); } break; }
                     case 8: { s_queries++; if (w.ClosestPoint(r.V2D(), out var h, r.Float(), Filter(r))) { s_hits++; Check(in h); } break; }
                     case 9: { s_queries++; int n = w.ClosestPointAll(r.V2D(), buffer, r.Float(), Filter(r)); s_hits += n; CheckSorted(buffer, n); break; }
+                    case 24: { var body = bodies[r.Byte() % made]; body.Sweep(r.V2F(), r.Float(), out _, tolerance: r.Float()); break; }
+                    case 25: { w.Depenetrate(Shape2D.CreateCircle(default, 0.5f), r.V2D(), r.Float(), maxIterations: r.Byte() % 16, tolerance: r.Float(), maxDistance: r.Float()); break; }
                     case 20: { var shapes = new Shape[4]; w.QueryAabb(r.V2D(), r.V2D(), shapes, Filter(r)); break; }
                     case 21: { s_queries++; if (w.Penetration(Shape2D.CreateCircle(default, 0.5f), r.V2D(), r.Float(), out var h, Filter(r))) { s_hits++; Check(in h); } break; }
                     case 22: { var input = new[] { QueryInput2D.Ray(r.V2D(), r.V2F(), r.Float()) }; w.QueryBatch(input, buffer); break; }
