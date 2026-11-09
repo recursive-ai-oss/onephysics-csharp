@@ -9,11 +9,48 @@ internal sealed partial class Engine2D
     {
         var s = SnapshotRegions.Seed(Core, min, max, archive);
         Rods.SelectRegion(s,min,max,archive);
+        if (archive == null)
+        {
+            for (int i = 0; i < SoftHandles.HighWater; i++)
+            {
+                if (!SoftHandles.IsLive(i)) { continue; }
+                var d = SoftData[i]!;
+                for (int p = 0; p < d.N; p++)
+                { if (SnapshotRegions.Inside(d.Pos.AsSpan(2 * p, 2), min, max)) { s.Add("softbody", i); break; } }
+            }
+        }
+
         bool changed;
         do
         {
             changed = SnapshotRegions.CloseConstraints(Core, s);
             changed |= Rods.CloseRegion(s);
+            // Conservative soft/rigid coupling closure. A selected soft body keeps every rigid shape touching its particle bounds;
+            // a selected mass-bearing rigid body keeps touching soft bodies. Static anchors never fan out to unrelated soft bodies.
+            for (int i = 0; i < SoftHandles.HighWater; i++)
+            {
+                if (!SoftHandles.IsLive(i)) { continue; }
+                var d = SoftData[i]!;
+                double minX = d.Pos[0], minY = d.Pos[1], maxX = minX, maxY = minY;
+                for (int p = 1; p < d.N; p++)
+                {
+                    minX = Math.Min(minX, d.Pos[2 * p]); maxX = Math.Max(maxX, d.Pos[2 * p]);
+                    minY = Math.Min(minY, d.Pos[2 * p + 1]); maxY = Math.Max(maxY, d.Pos[2 * p + 1]);
+                }
+
+                minX -= d.Radius; minY -= d.Radius; maxX += d.Radius; maxY += d.Radius;
+                for (int sh = 0; sh < Core.Shapes.HighWater; sh++)
+                {
+                    if (!Core.Shapes.Handles.IsLive(sh)) { continue; }
+                    int b = Core.Shapes.Owner[sh];
+                    if (!s.Contains("softbody", i) && (!s.Bodies[b] || !Core.Bodies.IsDynamic(b))) { continue; }
+                    var box = TightBox(b, in Geom[sh]);
+                    if (box.MinX > maxX || box.MaxX < minX || box.MinY > maxY || box.MaxY < minY) { continue; }
+                    if (s.Contains("softbody", i)) { changed |= s.AddBody(b); }
+                    if (s.Bodies[b] && Core.Bodies.IsDynamic(b)) { changed |= s.Add("softbody", i); }
+                }
+            }
+
             // Sensor overlaps live in the pair table rather than the constraint store. They need the same anchor closure.
             for (int p = 0; p < PairHigh; p++)
             {

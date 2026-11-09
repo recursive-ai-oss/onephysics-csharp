@@ -154,6 +154,15 @@ internal static class SmokeProgram
         ulong sk1 = SoftSkinned3DScene.Run(1, false), sk3 = SoftSkinned3DScene.Run(3, false), skr = SoftSkinned3DScene.Run(1, true);
         bool skSame = sk1 == sk3 && sk1 == skr;
         Console.WriteLine((skSame ? "OK softskinned3d " : "FAIL softskinned3d ") + sk1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        // 2D soft bodies (a pile, soft bodies on and under rigid stacks, balloons in a height-field valley): same state on one and three threads and after a restore.
+        bool soft2d = true;
+        foreach (string scene in SoftBodies2DScene.Names)
+        {
+            ulong g1 = SoftBodies2DScene.Run(scene, 1, false), g3 = SoftBodies2DScene.Run(scene, 3, false), gr = SoftBodies2DScene.Run(scene, 1, true);
+            soft2d &= g1 == g3 && g1 == gr;
+            Console.WriteLine((g1 == g3 && g1 == gr ? "OK softbodies2d " : "FAIL softbodies2d ") + scene + " " + g1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
         bool missingShapes = MissingShapes();
         Console.WriteLine(missingShapes ? "OK shape-recipes" : "FAIL shape-recipes");
         bool surfaces = RecursiveAI.OnePhysics.Tests.Common.ContactSurfaceScene.Planar(1, restore: true) == RecursiveAI.OnePhysics.Tests.Common.ContactSurfaceScene.Planar(3)
@@ -173,7 +182,7 @@ internal static class SmokeProgram
         Console.WriteLine((rods ? "OK rods " : "FAIL rods ") + rodHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool machines = JointMachineSmoke.Run();
         Console.WriteLine(machines ? "OK machines" : "FAIL machines");
-        return rods && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+        return rods && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
     }
 
     private static bool MissingShapes()

@@ -27,6 +27,18 @@ internal static class Program
         var inputs = new[] { QueryInput2D.Ray(new Vector2D(0, 3), new Vector2F(0, -1), 5) };
         good &= queries.QueryBatch(inputs, new QueryHit2D[1]) == 1;
         Console.WriteLine(good ? "OK trimmed 2D inspection" : "FAIL trimmed 2D inspection");
+        // Soft bodies: a balloon and a blob on a floor, a rigid box dropped on them, snapshot and restore into a fresh world.
+        var soft = new PhysicsWorld2D(new WorldOptions2D { WorldId = 9 });
+        soft.AddBox(new Vector2F(20, 1), new Vector2D(0, -0.5), type: BodyType.Static);
+        var balloon = soft.AddBalloon(0.5f, new Vector2D(0, 1));
+        soft.AddBlob(0.4f, new Vector2D(2, 1));
+        soft.AddBox(new Vector2F(0.4f, 0.4f), new Vector2D(0, 3), density: 5f);
+        for (int i = 0; i < 90; i++) { soft.Step(1f / 60); }
+        var copy = new PhysicsWorld2D(new WorldOptions2D { WorldId = 9 });
+        copy.Restore(soft.Snapshot());
+        bool softGood = Math.Abs(balloon.Area / balloon.RestArea - 1) < 0.05 && copy.ComputeHash() == soft.ComputeHash() && copy.SoftBodyCount == 2;
+        Console.WriteLine(softGood ? "OK trimmed 2D soft bodies" : "FAIL trimmed 2D soft bodies");
+        good &= softGood;
         return good ? 0 : 1;
     }
 }

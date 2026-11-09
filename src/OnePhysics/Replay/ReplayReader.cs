@@ -136,7 +136,7 @@ public sealed class ReplayReader
                     if (CompletedSteps == long.MaxValue) { throw Error(RecordOffset, "step count within Int64 range"); }
                     break;
                 case ReplayRecordKind.LiveOptions:
-                    if (_version != 2 || length != (Dimension == 2 ? ReplayOptions2D.Size : ReplayOptions3D.Size)) throw Error(RecordOffset, "version 2 live option payload for this dimension");
+                    if (_version != 2 || length != (Dimension == 2 ? ReplayOptions2D.Size : ReplayOptions3D.Size) && !(Dimension == 2 && length == ReplayOptions2D.SizeWithSoft)) throw Error(RecordOffset, "version 2 live option payload for this dimension");
                     break;
                 case ReplayRecordKind.BeginStep:
                     if (_version != 2 || _frameOpen || length != 4 || CompletedSteps == long.MaxValue) throw Error(RecordOffset, "version 2 BeginStep with four bytes outside a frame");

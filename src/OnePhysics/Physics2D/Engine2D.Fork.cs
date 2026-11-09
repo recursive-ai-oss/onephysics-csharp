@@ -18,6 +18,11 @@ internal sealed partial class Engine2D
     internal void CopyFrom(Engine2D s)
     {
         _bullets = (int[])s._bullets.Clone();
+        SoftHandles.CopyFrom(s.SoftHandles);
+        SoftBlockSizeForTests = s.SoftBlockSizeForTests;
+        _softParticles = s._softParticles;
+        SoftData = new SoftBodyData?[s.SoftData.Length];
+        for (int i = 0; i < SoftData.Length; i++) { SoftData[i] = s.SoftData[i]?.CloneForFork(); }
         _bulletCount = s._bulletCount;
         _bulletPad = s._bulletPad;
         CharHandles.CopyFrom(s.CharHandles);

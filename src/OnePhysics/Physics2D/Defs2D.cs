@@ -217,6 +217,14 @@ public sealed class WorldOptions2D
         get => ReadAngularSpeed?.Invoke() ?? _angularSpeed;
         set { BodyControlSettings.ValidateSpeed(value, nameof(value)); _angularSpeed = value; WriteAngularSpeed?.Invoke(value); }
     }
+    /// <summary>Substeps of the soft-body solver per step, 1..64. Many small steps with one pass each beat few large steps with many passes (Macklin et al. 2019). Default 4. Saved with the soft bodies.</summary>
+    public int SoftSubsteps { get => _replaySoftSubsteps; set { _replaySoftSubsteps = value; ReplayChanged?.Invoke("WorldOptions2D.SoftSubsteps"); } }
+    private int _replaySoftSubsteps = 4;
+
+    /// <summary>Gauss-Seidel passes over the soft-body constraints per soft substep, 1..32. Default 3. Saved with the soft bodies.</summary>
+    public int SoftIterations { get => _replaySoftIterations; set { _replaySoftIterations = value; ReplayChanged?.Invoke("WorldOptions2D.SoftIterations"); } }
+    private int _replaySoftIterations = 3;
+
     /// <summary>Alias for PushOutVelocity, in m/s. Default and validation are identical.</summary>
     public float MaxDepenetrationSpeed { get => PushOutVelocity; set => PushOutVelocity = value; }
 
@@ -225,6 +233,8 @@ public sealed class WorldOptions2D
     /// <summary>Checks every value; throws <see cref="ArgumentOutOfRangeException"/> naming the first bad one.</summary>
     internal void Validate()
     {
+        if (SoftSubsteps < 1 || SoftSubsteps > 64) { throw new ArgumentOutOfRangeException(nameof(SoftSubsteps), SoftSubsteps, "SoftSubsteps must be in 1..64."); }
+        if (SoftIterations < 1 || SoftIterations > 32) { throw new ArgumentOutOfRangeException(nameof(SoftIterations), SoftIterations, "SoftIterations must be in 1..32."); }
         if (PairCapacity < 0 || PairCapacity > MaxCapacity) { throw new ArgumentOutOfRangeException(nameof(PairCapacity), PairCapacity, "PairCapacity must be in 0..16777216."); }
         if (ContactCapacity < 0 || ContactCapacity > MaxCapacity) { throw new ArgumentOutOfRangeException(nameof(ContactCapacity), ContactCapacity, "ContactCapacity must be in 0..16777216."); }
         if (IslandCapacity < 0 || IslandCapacity > MaxCapacity) { throw new ArgumentOutOfRangeException(nameof(IslandCapacity), IslandCapacity, "IslandCapacity must be in 0..16777216."); }
