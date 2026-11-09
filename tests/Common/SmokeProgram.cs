@@ -212,6 +212,20 @@ internal static class SmokeProgram
             Console.WriteLine((g1 == g3 && g1 == gr ? "OK softfracture3d " : "FAIL softfracture3d ") + scene + " " + g1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         }
 
+        // Cloth with fabric settings, seams, attachments and wind, and a 2D strip: same state on one and three threads and after a restore.
+        foreach (string scene in Cloth3DScene.Names)
+        {
+            ulong g1 = Cloth3DScene.Run(scene, 1, false, null, 60), g3 = Cloth3DScene.Run(scene, 3, false, null, 60), gr = Cloth3DScene.Run(scene, 1, true, null, 60);
+            soft2d &= g1 == g3 && g1 == gr;
+            Console.WriteLine((g1 == g3 && g1 == gr ? "OK cloth3d " : "FAIL cloth3d ") + scene + " " + g1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        {
+            ulong g1 = Strip2DScene.Run(1, false, null, 60), g3 = Strip2DScene.Run(3, false, null, 60), gr = Strip2DScene.Run(1, true, null, 60);
+            soft2d &= g1 == g3 && g1 == gr;
+            Console.WriteLine((g1 == g3 && g1 == gr ? "OK strip2d " : "FAIL strip2d ") + g1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
         bool missingShapes = MissingShapes();
         Console.WriteLine(missingShapes ? "OK shape-recipes" : "FAIL shape-recipes");
         bool surfaces = RecursiveAI.OnePhysics.Tests.Common.ContactSurfaceScene.Planar(1, restore: true) == RecursiveAI.OnePhysics.Tests.Common.ContactSurfaceScene.Planar(3)
