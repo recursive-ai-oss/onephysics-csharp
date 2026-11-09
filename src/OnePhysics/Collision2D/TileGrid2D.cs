@@ -18,31 +18,28 @@ public enum TileKind2D : byte
     SlopeUpLeft,
 }
 
-/// <summary>Immutable static tile geometry. Shared edges cancel on a half-cell integer lattice, collinear outer edges merge, and each closed boundary supplies both ghost vertices. Origin is the bottom-left grid corner.</summary>
-public sealed class TileGrid2D
+/// <summary>Immutable static tile geometry. Shared edges cancel on a half-cell integer lattice, collinear outer edges merge, and each closed boundary supplies both ghost vertices. Origin is the bottom-left grid corner. A contour grid (see the constructor) treats each cell as a sample of a bitmask and extracts the boundary by marching squares instead.</summary>
+public sealed partial class TileGrid2D
 {
     /// <summary>Maximum tile count, 65536; dimensions must be in 1..1024.</summary>
     public const int MaxTiles = 65536;
     private readonly TileKind2D[] _tiles;
     private readonly int[] _materialIndices;
-    private readonly int[] _segmentMaterials;
-    private readonly Shape2D[] _segments;
-    private readonly SortedSet<Edge> _edges;
+    private Seg[] _seg=[];
 
-    /// <summary>Copies tiles in x-fastest order. Dimensions are 1..1024, count exactly width*height and at most 65536. Tile size must be finite, at least 4e-5 metres, and total extent at most 2^20 metres. Optional nonnegative material indices contain one entry per tile; empty means zero throughout. Throws ArgumentOutOfRangeException for invalid dimensions, count, size, tile kind or indices.</summary>
-    public TileGrid2D(int width, int height, ReadOnlySpan<TileKind2D> tiles, float tileSize = 1f, ReadOnlySpan<int> materialIndices = default)
+    /// <summary>Copies tiles in x-fastest order. Dimensions are 1..1024, count exactly width*height and at most 65536. Tile size must be finite, at least 4e-5 metres, and total extent at most 2^20 metres. Optional nonnegative material indices contain one entry per tile; empty means zero throughout. With <paramref name="contour"/> the grid is a bitmask: every nonempty cell is one solid sample at its centre and the boundary is the marching-squares contour of the samples (octilinear segments through the midpoints between neighbouring samples, with isolated corners cut off); only Empty and Solid cells and no material indices are allowed. Throws ArgumentOutOfRangeException for invalid dimensions, count, size, tile kind or indices.</summary>
+    public TileGrid2D(int width, int height, ReadOnlySpan<TileKind2D> tiles, float tileSize = 1f, ReadOnlySpan<int> materialIndices = default, bool contour = false)
     {
         if(width<1 || width>1024) throw new ArgumentOutOfRangeException(nameof(width),width,"Tile dimension must be in 1..1024.");
         if(height<1 || height>1024) throw new ArgumentOutOfRangeException(nameof(height),height,"Tile dimension must be in 1..1024.");
         if((long)width*height>MaxTiles || tiles.Length != width*height) throw new ArgumentOutOfRangeException(nameof(tiles),tiles.Length,"Tile count must equal width * height and be at most 65536.");
         if(!float.IsFinite(tileSize) || tileSize<4e-5f || (double)Math.Max(width,height)*tileSize>1048576) throw new ArgumentOutOfRangeException(nameof(tileSize),tileSize,"Tile size must be finite, at least 4e-5 metres, with extent at most 1048576 metres.");
-        for(int i=0;i<tiles.Length;i++) CheckKind(tiles[i]);
+        for(int i=0;i<tiles.Length;i++) { CheckKind(tiles[i]); if(contour && tiles[i]>TileKind2D.Solid) throw new ArgumentOutOfRangeException(nameof(tiles),tiles[i],"A contour grid holds only Empty and Solid cells."); }
         ValidateIndices(materialIndices,tiles.Length);
+        if(contour && materialIndices.Length!=0) throw new ArgumentOutOfRangeException(nameof(materialIndices),"A contour grid has no material indices.");
         _materialIndices=materialIndices.ToArray();
-        Width=width; Height=height; TileSize=tileSize; _tiles=tiles.ToArray();
-        _edges=new SortedSet<Edge>();
-        for(int y=0;y<Height;y++) for(int x=0;x<Width;x++) ChangeEdges(_edges,x,y,_tiles[y*Width+x],false);
-        (_segments,_segmentMaterials)=Build();
+        Width=width; Height=height; TileSize=tileSize; _tiles=tiles.ToArray(); IsContour=contour;
+        _seg=BuildGlobal();
     }
     /// <summary>Number of columns.</summary>
     public int Width { get; }
@@ -50,17 +47,22 @@ public sealed class TileGrid2D
     public int Height { get; }
     /// <summary>Tile side length in metres.</summary>
     public float TileSize { get; }
+    /// <summary>True for a bitmask grid whose boundary is a marching-squares contour of the cell centres.</summary>
+    public bool IsContour { get; }
     /// <summary>Copied tiles in x-fastest order.</summary>
     public ReadOnlySpan<TileKind2D> Tiles => _tiles;
     /// <summary>Optional per-tile material indices, x-fastest; empty means index zero throughout. Indices are nonnegative; a world validates them against its material table.</summary>
     public ReadOnlySpan<int> MaterialIndices => _materialIndices;
     /// <summary>Returns the table index on a boundary segment; throws ArgumentOutOfRangeException outside the segment range.</summary>
-    public int GetSegmentMaterialIndex(int index) { _=GetSegment(index);return _segmentMaterials[index]; }
+    public int GetSegmentMaterialIndex(int index) { _=GetSegment(index);return _seg[index].Material; }
     /// <summary>Returns immutable geometry partitioned at material boundaries. Empty indices restore a single default region. Invalid length or negative indices throw ArgumentOutOfRangeException.</summary>
     public TileGrid2D WithMaterialIndices(ReadOnlySpan<int> indices)
     {
         ValidateIndices(indices,_tiles.Length);
-        return new TileGrid2D(this,(TileKind2D[])_tiles.Clone(),new SortedSet<Edge>(_edges),indices.ToArray());
+        if(IsContour && indices.Length!=0) throw new ArgumentOutOfRangeException(nameof(indices),"A contour grid has no material indices.");
+        var copy=new TileGrid2D(this,(TileKind2D[])_tiles.Clone(),indices.ToArray());
+        copy._seg=copy.BuildGlobal();
+        return copy;
     }
     private static void ValidateIndices(ReadOnlySpan<int> indices,int count)
     {
@@ -68,12 +70,12 @@ public sealed class TileGrid2D
         foreach(int index in indices)if(index<0)throw new ArgumentOutOfRangeException(nameof(indices),index,"Material indices must be nonnegative.");
     }
     /// <summary>Number of merged exposed chain segments; zero for empty terrain.</summary>
-    public int SegmentCount => _segments.Length;
+    public int SegmentCount => _seg.Length;
     /// <summary>Returns a one-sided outer segment and its two ghosts. Throws ArgumentOutOfRangeException outside [0, SegmentCount).</summary>
     public Shape2D GetSegment(int index)
     {
-        if((uint)index >= (uint)_segments.Length) throw new ArgumentOutOfRangeException(nameof(index),index,"Segment index must be in [0, SegmentCount).");
-        return _segments[index];
+        if((uint)index >= (uint)_seg.Length) throw new ArgumentOutOfRangeException(nameof(index),index,"Segment index must be in [0, SegmentCount).");
+        return _seg[index].Shape;
     }
     /// <summary>Returns the tile at (x,y). Throws ArgumentOutOfRangeException outside the grid.</summary>
     public TileKind2D GetTile(int x,int y) { CheckRectangle(x,y,1,1); return _tiles[y*Width+x]; }
@@ -81,20 +83,43 @@ public sealed class TileGrid2D
     public TileGrid2D WithRectangle(int x,int y,int width,int height,TileKind2D kind)
     {
         CheckKind(kind); CheckRectangle(x,y,width,height);
-        var tiles=(TileKind2D[])_tiles.Clone();
-        var edges=new SortedSet<Edge>(_edges);
+        return WithCells(x,y,width,height,default,kind);
+    }
+    /// <summary>Returns an edited immutable copy with the cells of a rectangle set to <paramref name="kind"/> wherever <paramref name="mask"/> is true (x-fastest, width*height entries; an empty mask means every cell). Only the boundary near the changed cells is re-extracted; every other segment is carried over unchanged, so a destroyed-and-recreated world segment appears exactly where the boundary changed. Returns this instance when no cell changes. Throws ArgumentOutOfRangeException for an invalid kind, rectangle or mask length, or a kind other than Empty and Solid on a contour grid.</summary>
+    public TileGrid2D WithCells(int x,int y,int width,int height,ReadOnlySpan<bool> mask,TileKind2D kind) => Edit(x,y,width,height,mask,kind,out _);
+
+    /// <summary>The cells an edit changed: their number and inclusive bounds.</summary>
+    internal readonly record struct Changed(int Count,int X0,int Y0,int X1,int Y1);
+
+    internal TileGrid2D Edit(int x,int y,int width,int height,ReadOnlySpan<bool> mask,TileKind2D kind,out Changed changed)
+    {
+        changed=default;
+        CheckKind(kind); CheckRectangle(x,y,width,height);
+        if(IsContour && kind>TileKind2D.Solid) throw new ArgumentOutOfRangeException(nameof(kind),kind,"A contour grid holds only Empty and Solid cells.");
+        if(mask.Length!=0 && mask.Length!=width*height) throw new ArgumentOutOfRangeException(nameof(mask),mask.Length,"Mask must be empty or contain width * height entries.");
+        TileKind2D[]? tiles=null; int x0=int.MaxValue,y0=int.MaxValue,x1=-1,y1=-1,count=0;
         for(int j=y;j<y+height;j++) for(int i=x;i<x+width;i++)
         {
+            if(mask.Length!=0 && !mask[(j-y)*width+(i-x)]) continue;
             int slot=j*Width+i;
-            if(tiles[slot]==kind) continue;
-            ChangeEdges(edges,i,j,tiles[slot],true); ChangeEdges(edges,i,j,kind,false); tiles[slot]=kind;
+            if(_tiles[slot]==kind) continue;
+            tiles??=(TileKind2D[])_tiles.Clone();
+            tiles[slot]=kind; count++; if(i<x0)x0=i; if(i>x1)x1=i; if(j<y0)y0=j; if(j>y1)y1=j;
         }
-        return new TileGrid2D(this,tiles,edges,_materialIndices);
+        if(tiles==null) return this;
+        var grid=new TileGrid2D(this,tiles,_materialIndices);
+        grid._seg=grid.BuildLocal(_seg,x0,y0,x1,y1);
+        changed=new(count,x0,y0,x1,y1);
+        return grid;
     }
     private static void CheckKind(TileKind2D kind) { if(kind>TileKind2D.SlopeUpLeft) throw new ArgumentOutOfRangeException(nameof(kind),kind,"Unknown tile kind; expected Empty, Solid, HalfBottom, SlopeUpRight or SlopeUpLeft."); }
     private void CheckRectangle(int x,int y,int width,int height)
     {
         if(x<0 || y<0 || width<0 || height<0 || (long)x+width>Width || (long)y+height>Height) throw new ArgumentOutOfRangeException(nameof(x),"Tile rectangle must lie within the grid.");
+    }
+    private TileGrid2D(TileGrid2D source,TileKind2D[] tiles,int[] materialIndices)
+    {
+        Width=source.Width; Height=source.Height; TileSize=source.TileSize; IsContour=source.IsContour; _tiles=tiles; _materialIndices=materialIndices;
     }
     private readonly record struct Point(int X,int Y) : IComparable<Point>
     {
@@ -104,36 +129,64 @@ public sealed class TileGrid2D
     {
         public int CompareTo(Edge other) { int c=A.CompareTo(other.A); return c!=0?c:B.CompareTo(other.B); }
     }
-    private TileGrid2D(TileGrid2D source,TileKind2D[] tiles,SortedSet<Edge> edges,int[] materialIndices)
+    /// <summary>One chain segment with its lattice corners: the ghost before, both ends, the ghost after.</summary>
+    private readonly record struct Seg(Shape2D Shape,int Material,Point G1,Point A,Point B,Point G2);
+
+    private bool Sample(int x,int y) => (uint)x<(uint)Width && (uint)y<(uint)Height && _tiles[y*Width+x]!=TileKind2D.Empty;
+    private static void Unit(Edge[] buf,ref int n,Point from,Point to)
     {
-        Width=source.Width; Height=source.Height; TileSize=source.TileSize; _tiles=tiles; _edges=edges; _materialIndices=materialIndices; (_segments,_segmentMaterials)=Build();
+        int steps=Math.Max(Math.Abs(to.X-from.X),Math.Abs(to.Y-from.Y)); int dx=(to.X-from.X)/steps, dy=(to.Y-from.Y)/steps;
+        for(int i=0;i<steps;i++) { var p=new Point(from.X+i*dx,from.Y+i*dy); buf[n++]=new Edge(p,new Point(p.X+dx,p.Y+dy)); }
     }
-    private static void ChangeEdges(SortedSet<Edge> edges,int x,int y,TileKind2D kind,bool remove)
+    private static void Polygon(Edge[] buf,ref int n,ReadOnlySpan<Point> poly)
     {
-        int xx=2*x, yy=2*y;
-        Point a=new(xx,yy), b=new(xx+2,yy), c=new(xx+2,yy+2), d=new(xx,yy+2);
-        switch(kind)
+        for(int i=0;i<poly.Length;i++) Unit(buf,ref n,poly[i],poly[(i+1)%poly.Length]);
+    }
+    /// <summary>Writes the counter-clockwise unit lattice edges of one cell: a tile in tile mode, a marching-squares dual cell (whose corners are four neighbouring samples) in contour mode. At most 12 edges.</summary>
+    private int CellEdges(int cx,int cy,Edge[] buf)
+    {
+        int n=0;
+        if(!IsContour)
         {
-            case TileKind2D.Solid: Add(a,b); Add(b,c); Add(c,d); Add(d,a); break;
-            case TileKind2D.HalfBottom: c=new(xx+2,yy+1); d=new(xx,yy+1); Add(a,b); Add(b,c); Add(c,d); Add(d,a); break;
-            case TileKind2D.SlopeUpRight: Add(a,b); Add(b,c); Add(c,a); break;
-            case TileKind2D.SlopeUpLeft: Add(a,b); Add(b,d); Add(d,a); break;
-        }
-        void Add(Point from,Point to)
-        {
-            if(remove) (from,to)=(to,from);
-            int n=Math.Max(Math.Abs(to.X-from.X),Math.Abs(to.Y-from.Y)); int dx=(to.X-from.X)/n, dy=(to.Y-from.Y)/n;
-            for(int i=0;i<n;i++)
+            var kind=_tiles[cy*Width+cx]; int xx=2*cx, yy=2*cy;
+            Point a=new(xx,yy), b=new(xx+2,yy), c=new(xx+2,yy+2), d=new(xx,yy+2);
+            switch(kind)
             {
-                Point p=new(from.X+i*dx,from.Y+i*dy), q=new(p.X+dx,p.Y+dy);
-                if(!edges.Remove(new(q,p))) edges.Add(new(p,q));
+                case TileKind2D.Solid: Polygon(buf,ref n,[a,b,c,d]); break;
+                case TileKind2D.HalfBottom: Polygon(buf,ref n,[a,b,new Point(xx+2,yy+1),new Point(xx,yy+1)]); break;
+                case TileKind2D.SlopeUpRight: Polygon(buf,ref n,[a,b,c]); break;
+                case TileKind2D.SlopeUpLeft: Polygon(buf,ref n,[a,b,d]); break;
             }
+            return n;
         }
+        // Marching squares (Lorensen and Cline 1987, in 2D) over the cell-centre samples: sample (x,y) sits at lattice
+        // point (2x+1,2y+1), so the midpoints between neighbouring samples fall on lattice points and the contour keeps
+        // the integer lattice used for edge cancellation. Samples outside the grid are empty.
+        int x0=2*cx-1, y0=2*cy-1;
+        bool bl=Sample(cx-1,cy-1), br=Sample(cx,cy-1), tr=Sample(cx,cy), tl=Sample(cx-1,cy);
+        Point pbl=new(x0,y0), pbr=new(x0+2,y0), ptr=new(x0+2,y0+2), ptl=new(x0,y0+2);
+        Point mb=new(x0+1,y0), mr=new(x0+2,y0+1), mt=new(x0+1,y0+2), ml=new(x0,y0+1);
+        if(bl && tr && !br && !tl) { Polygon(buf,ref n,[pbl,mb,ml]); Polygon(buf,ref n,[ptr,mt,mr]); return n; }
+        if(br && tl && !bl && !tr) { Polygon(buf,ref n,[mb,pbr,mr]); Polygon(buf,ref n,[ptl,ml,mt]); return n; }
+        var list=new Point[8]; int k=0;
+        if(bl) list[k++]=pbl; if(bl!=br) list[k++]=mb;
+        if(br) list[k++]=pbr; if(br!=tr) list[k++]=mr;
+        if(tr) list[k++]=ptr; if(tr!=tl) list[k++]=mt;
+        if(tl) list[k++]=ptl; if(tl!=bl) list[k++]=ml;
+        if(k>=3) Polygon(buf,ref n,list.AsSpan(0,k));
+        return n;
     }
-    private (Shape2D[],int[]) Build()
+    private int CellCountX => IsContour?Width+1:Width;
+    private int CellCountY => IsContour?Height+1:Height;
+    private static void Toggle(SortedSet<Edge> edges,Edge e) { if(!edges.Remove(new(e.B,e.A))) edges.Add(e); }
+    private Seg[] BuildGlobal()
     {
-        var edges=new SortedSet<Edge>(_edges);
-        var segments=new List<(Shape2D Shape,int Material)>();
+        var edges=new SortedSet<Edge>(); var buf=new Edge[16]; var net=new int[8];
+        for(int y=0;y<CellCountY;y++) for(int x=0;x<CellCountX;x++)
+        {
+            int n=CellEdges(x,y,buf); for(int i=0;i<n;i++) Toggle(edges,buf[i]);
+        }
+        var segments=new List<Seg>();
         while(edges.Count!=0)
         {
             Edge start=edges.Min, current=start;
@@ -142,15 +195,10 @@ public sealed class TileGrid2D
             {
                 edges.Remove(current); loop.Add(current.A);
                 if(current.B==start.A) break;
-                var low=new Edge(current.B,new(int.MinValue,int.MinValue));
-                var high=new Edge(current.B,new(int.MaxValue,int.MaxValue));
-                Edge next=default; int best=9;
-                foreach(var candidate in edges.GetViewBetween(low,high))
-                {
-                    int turn=(Direction(candidate)-Direction(current)+8)%8;
-                    if(turn<best) { next=candidate; best=turn; }
-                }
-                if(best==9) throw new InvalidOperationException("Tile boundary is not closed.");
+                Net(current.B,buf,net);
+                int pick=ChooseOut(net,Direction(current));
+                Edge next=new(current.B,new Point(current.B.X+StepX[pick],current.B.Y+StepY[pick]));
+                if(!edges.Contains(next)) throw new InvalidOperationException("Tile boundary is not closed.");
                 current=next;
             } while(true);
             // Keep only corners, so a flat floor is one face regardless of its tile count.
@@ -161,13 +209,12 @@ public sealed class TileGrid2D
                 if((b.X-a.X)*(c.Y-b.Y)!=(b.Y-a.Y)*(c.X-b.X) || Material(new(a,b))!=Material(new(b,c))) corners.Add(b);
             }
             for(int i=0;i<corners.Count;i++)
-                segments.Add((Shape2D.CreateChainSegment(Vec(corners[(i+corners.Count-1)%corners.Count]),Vec(corners[i]),Vec(corners[(i+1)%corners.Count]),Vec(corners[(i+2)%corners.Count]),false),Material(new(corners[i],corners[(i+1)%corners.Count]))));
+                segments.Add(MakeSegment(corners[(i+corners.Count-1)%corners.Count],corners[i],corners[(i+1)%corners.Count],corners[(i+2)%corners.Count]));
         }
         segments.Sort(static(a,b)=>SegmentComparer.Instance.Compare(a.Shape,b.Shape));
-        var shapes=new Shape2D[segments.Count];var materials=new int[segments.Count];
-        for(int i=0;i<shapes.Length;i++){shapes[i]=segments[i].Shape;materials[i]=segments[i].Material;}
-        return(shapes,materials);
+        return segments.ToArray();
     }
+    private Seg MakeSegment(Point g1,Point a,Point b,Point g2) => new(Shape2D.CreateChainSegment(Vec(g1),Vec(a),Vec(b),Vec(g2),false),Material(new(a,b)),g1,a,b,g2);
     private int Material(Edge edge)
     {
         if(_materialIndices.Length==0)return 0;

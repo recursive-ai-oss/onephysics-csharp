@@ -10,7 +10,7 @@ namespace RecursiveAI.OnePhysics.Scene;
 internal static class AdditionalSceneShapes
 {
     internal static bool Recognizes(int dimension, string kind) => kind.StartsWith("offset-", StringComparison.Ordinal) || kind == "empty" ||
-        (dimension == 3 ? kind is "plane" or "triangle" or "frustum" or "voxelgrid" : kind is "heightfield" or "tilegrid");
+        (dimension == 3 ? kind is "plane" or "triangle" or "frustum" or "voxelgrid" : kind is "heightfield" or "tilegrid" or "bitmask");
 
     private static (string Kind, double[] P, Vector3F Offset) Parts(int dim, ShapeDef s)
     {
@@ -35,6 +35,13 @@ internal static class AdditionalSceneShapes
         return new HeightField2D(h,(float)p[1],holes);
     }
 
+    internal static TileGrid2D Bitmask(double[] p)
+    {
+        if(p.Length<3 || p[0]<1 || p[0]>1024 || p[1]<1 || p[1]>1024 || p[0]!=Math.Truncate(p[0]) || p[1]!=Math.Truncate(p[1]) || p[0]*p[1]>TileGrid2D.MaxTiles || p.Length!=3+p[0]*p[1]) throw new ArgumentException("Bitmask terrain expects width, height, cell size and width*height flags.");
+        var cells=new TileKind2D[p.Length-3];
+        for(int i=0;i<cells.Length;i++) { double t=p[i+3]; if(t!=0 && t!=1) throw new ArgumentException("Bitmask flag must be 0 or 1."); cells[i]=t==1?TileKind2D.Solid:TileKind2D.Empty; }
+        return new TileGrid2D((int)p[0],(int)p[1],cells,(float)p[2],default,true);
+    }
     internal static TileGrid2D Tiles(double[] p)
     {
         if(p.Length<3 || p[0]<1 || p[0]>1024 || p[1]<1 || p[1]>1024 || p[0]!=Math.Truncate(p[0]) || p[1]!=Math.Truncate(p[1]) || p[0]*p[1]>TileGrid2D.MaxTiles || p.Length!=3+p[0]*p[1]) throw new ArgumentException("Tile grid expects width, height, tile size and width*height tile kinds.");
@@ -110,6 +117,7 @@ internal static class AdditionalSceneShapes
             Shape2D.CheckPoint(new(offset.X,offset.Y),"mass offset");
             if(kind=="heightfield"){_=Field(p);return;}
             if(kind=="tilegrid"){_=Tiles(p);return;}
+            if(kind=="bitmask"){_=Bitmask(p);return;}
             if(kind=="chain") { if(p.Length<4 || p.Length%2!=0)throw new ArgumentException("Complete chain vertices required.");for(int i=0;i+3<p.Length;i+=2)_=Shape2D.CreateSegment(new((float)p[i],(float)p[i+1]),new((float)p[i+2],(float)p[i+3]));return; }
             _=Geometry2(kind,p,(float)s.Radius).WithCenterOfMassOffset(new(offset.X,offset.Y));
         }
@@ -125,6 +133,7 @@ internal static class AdditionalSceneShapes
         var(kind,p,offset)=Parts(2,s);
         if(kind=="heightfield"){world.CreateHeightField(body,Field(p),def);return;}
         if(kind=="tilegrid"){world.CreateTileGrid(body,Tiles(p),def);return;}
+        if(kind=="bitmask"){world.CreateTileGrid(body,Bitmask(p),def);return;}
         if(kind=="chain"){for(int i=0;i+3<p.Length;i+=2)world.CreateSegment(body,new((float)p[i],(float)p[i+1]),new((float)p[i+2],(float)p[i+3]),def);return;}
         world.CreateShape(body,Geometry2(kind,p,(float)s.Radius).WithCenterOfMassOffset(new(offset.X,offset.Y)),def);
     }

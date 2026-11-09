@@ -8,13 +8,14 @@ namespace RecursiveAI.OnePhysics.LowLevel;
 
 /// <summary>An immutable dense occupancy grid, static only. Cell (x,y,z) occupies [x,x+1] × [y,y+1] × [z,z+1] times CellSize. Only exposed faces collide; coplanar joins and face diagonals are inactive edges.</summary>
 [Experimental("OPHYS0001")]
-public sealed class VoxelGrid3D : TriangleSoup3D
+public sealed partial class VoxelGrid3D : TriangleSoup3D
 {
     /// <summary>Maximum total cells, 2^20; each dimension must be in 1..1024.</summary>
     public const int MaxCells = 1 << 20;
-    private readonly bool[] _solid;
-    private readonly int _triangleCount;
-    private readonly int[] _patches;
+    private bool[] _solid;
+    private int _triangleCount;
+    private bool _shared;
+    private int[] _patches;
     private readonly Bounds3F _bounds;
 
     /// <summary>Copies occupancy in x-fastest, then y, then z order. Empty grids are allowed. Dimensions are 1..1024, total cells at most 2^20, cell size finite and at least 1e-5 metres, total extent at most 2^20 metres. Throws ArgumentOutOfRangeException for invalid dimensions, count or size.</summary>

@@ -377,7 +377,8 @@ moved; it does not allocate or change any shape's collision geometry.
 
 ## Voxel grids
 
-`VoxelGrid3D` is immutable, static-only dense occupancy: dimensions 1..1024,
+`VoxelGrid3D` is static-only dense occupancy (its world edits it in place; see
+"Runtime voxel edits" below; as a value it is only read): dimensions 1..1024,
 at most 1048576 cells. Cell size is finite, at least 1e-5 metres, with the full
 extent on every axis at most 1048576 metres. Occupancy order is X fastest,
 then Y, then Z. The body origin is the minimum corner; an empty grid is valid.
@@ -429,16 +430,15 @@ broad movers while retaining exactly the same narrowphase and tie rules.
 provide definition-based attachment. Geometry recipe kind 15 consists of one
 kind byte, three int32 dimensions, float32 cell size, and one canonical bool
 byte per cell. This is an additive recipe in the existing engine section, not
-a change to any fixed snapshot record or core format. Occupancy is immutable,
-so no additional mutable state section is needed. Fork, regional archives,
+a change to any fixed snapshot record or core format. Runtime edits rewrite the
+recipe's occupancy bytes in place, so no additional state section is needed. Fork, regional archives,
 scene state, replay and world hashing retain that recipe. Debug kind VoxelGrid
 uses the mesh-triangle flag and emits only exposed triangles.
 
 Authoring scene kind `voxelgrid` has parameters sizeX, sizeY, sizeZ, cell size,
 then sizeX*sizeY*sizeZ flags (0 empty, 1 solid). Voxel stairs are discrete steps,
 not a smooth ramp: characters can negotiate risers no greater than their
-configured step height; larger voxel stairs are walls. Runtime voxel edits and
-carving are not part of this shape.
+configured step height; larger voxel stairs are walls.
 
 Voxel faces also carry coherent coplanar patches. Union exposed faces with their
 negative-axis tangential neighbours of the same orientation. The face parent
@@ -456,3 +456,108 @@ That store partitions coherent planes by material index before contact
 reduction. Empty spans remove overrides; nondefault per-entry Surface settings
 are rejected because surfaces are shape-wide. Indexed voxel state lives in the
 existing optional material section, not in the immutable occupancy recipe.
+
+### Runtime voxel edits
+
+`SetVoxels` (a block of cells), `SetVoxel`, `StampSphere` and `StampBox` (cells whose
+centres lie inside a world-space sphere or oriented box; a cell's centre is
+`(i+0.5)*cellSize` in the shape's frame) set cells solid or empty; `Shape.DigSphere`,
+`FillSphere`, `StampBox`, `SetVoxel(s)` and `Body.Voxels` are the happy-path forms. Cell lists
+are generated in increasing index order, cells already in the requested state are skipped,
+and the result is the number of cells that changed. An edit is a recorded mutation (named
+`PhysicsWorld3D.SetVoxels`, `StampSphere`, `StampBox`, `DetachVoxelIslands`).
+
+Ids stay put: triangle ids are `12*cell+2*face+half`, so a face that no edit touched keeps
+its id. Only faces of the changed cells and of their six neighbours can change exposure;
+the exposed-triangle count changes by twice the net change in exposed faces. Coplanar patch
+ids are recomputed for every patch containing such a face or lying next to one in its plane:
+those patches are flood filled over the join rule above and every face of a patch takes the
+smallest face index in it (`6*cell+face`), which is what the constructor's union-find
+yields, so an edited grid and a fresh grid with the same occupancy are identical (checked
+face by face in the tests). The cost is the edited region plus the size of the coplanar
+patches it touches, not the grid.
+
+The world owns its grid: a voxel shape builds its own geometry (voxel geometries are not
+shared by recipe), the grid's occupancy and the recipe bytes change together, a fork shares
+the grid until either side edits it (the first editor takes a private copy), and a shape
+that still shares a geometry after an old snapshot restore takes its own copy first.
+Contact work after an edit: dynamic bodies whose broadphase box meets the edited region
+(its box, one cell wider, plus 0.05 m) wake, their pairs with the grid end their constraints
+and are found again in the next step, and pairs that had proven themselves apart forget it
+(a merged flat contact names the first cell of its patch, so contacts cannot be matched to
+cells). Bodies elsewhere are untouched: a body or character far from an edit moves bit for
+bit as it does without it. New solid cells take the material index the caller gives
+(default 0, checked against the shape's table); the merged-plane table of indexed materials
+is rebuilt on next use.
+
+`DetachVoxelIslands(shape, anchors, minCells, maxBodies)` takes the 6-connected pieces of
+solid cells (in order of lowest cell index); a piece touching an anchored face (default the
+bottom layer) stays. A detached piece is removed from the grid and becomes one dynamic
+body at its centroid with the grid's pose, covered by boxes (greedy blocks grown along x,
+then y, then z in cell order), so its volume is cells times cell size cubed; density is the
+grid's, or 1 when that is zero. A voxel grid itself is never a dynamic shape.
+
+## Signed distance field shapes
+
+`SdfGrid3D` is an immutable sampled field: 2..512 samples per axis, at most 2^22, cell size
+at least 1e-4, negative inside. Between samples it is trilinear; `Gradient` is the
+interpolant's gradient, normalised (+Y where it vanishes). Outside the grid box the value is
+the distance to the box plus the clamped value floored at zero, so the solid ends at the box.
+`Lipschitz` is the largest gradient magnitude of the interpolant: the largest corner
+one-sided difference over the cell size, times sqrt(3), never below 1. `Trace` is sphere
+tracing (Hart 1996): each step is value / Lipschitz, which cannot cross the zero set; it
+stops within 1e-4 cells of the surface, after 2048 steps or past the maximum distance.
+
+Builders: `FromFunction` (samples at origin + index * cell, x fastest), the primitives
+`Sphere`, `Box`, `Capsule`, `HalfSpace` and `Union`, `Intersection`, `Difference`, and
+`FromMesh`. `FromMesh` takes a closed, consistently oriented, non-self-intersecting triangle
+mesh (counter-clockwise outside) and computes the exact distance to the nearest triangle with
+a bucket grid search (rings of buckets, stopping when the best distance is below the next
+ring's minimum; ties by lowest triangle index). The sign is that of the dot product of the
+vector from the closest point with the angle-weighted pseudo-normal of the feature the
+closest point lies on (Bærentzen and Aanæs 2005: face normal, edge: sum of the two face
+normals, vertex: corner-angle weighted sum; angles from `atan2(|u x v|, u . v)`). Input is
+rejected with `SdfBuildException` (`NotClosed` when a directed edge repeats or has no
+partner, `Degenerate` for an area below 1e-9 of the mesh size squared, an index outside the
+vertices or a repeated vertex in a triangle, `NonFinite`, `OutOfRange`, `Empty`). The field
+agrees with the exact distance within half a cell with the right sign away from the surface
+(tests on a box and a torus).
+
+`ComputeMass` is the solid's mass properties at unit density: cells with every corner
+negative count as whole cubes, crossing cells are split into s^3 sub-cubes (default 4) whose
+centres are tested against the interpolant; sums are in double in cell order; the inertia is
+about the centroid.
+
+Collision. `ShapeSpec3D.Sdf` (recipe kind 16: kind byte, three int32 sizes, float32 cell size,
+three float32 origin components, one float32 per sample) is a geometry that is a triangle
+soup for everything that works on triangles and a field for convex contacts. The soup
+`SdfSoup3D` triangulates the zero set by marching tetrahedra (every cell cut into six
+tetrahedra along its main diagonal, corner index x+2y+4z, tetrahedra {0,1,3,7}, {0,1,5,7},
+{0,2,3,7}, {0,2,6,7}, {0,4,5,7}, {0,4,6,7}; vertices linear along edges; triangles face the
+positive side); triangle id is `12*cell+2*tetrahedron+k`, all edges active, and a cell is cut only if its
+corners are not all one sign. Characters, soft particles, rods, penetration queries and
+shape casts use these triangles; ray casts walk the field by sphere tracing and report the
+triangle of the nearest crossing cell. A field may be on a dynamic body: mass properties come
+from `ComputeMass` times the shape's density, scaled by `ShapeDef.Density`; a static
+body's field has density 0.
+
+Convex shape against a field. The shape is probed at the core support point of 26 fixed
+directions (all of {-1,0,1}^3 except zero, z slowest) and, three times, at the support point opposite the
+gradient at the deepest probe. A probe at core point c with convex radius r has separation
+field(c) - r along the gradient there; probes farther than the speculative distance are
+dropped, equal core points are probed once. When the field is on a moving body, its own surface
+points (cell centres of crossing cells moved onto the zero set by two Newton steps, at most 512 at an
+even stride in cell order) inside the shape's bounds are also probed with an ordinary tiny sphere-against-shape
+manifold (radius 1e-3), and the deepest probe is slid along the field's surface (projected
+gradient descent, step halving from half a cell, at most 10 iterations, then two Newton steps back
+onto the surface) to where the shape is closest. The manifold normal is the deepest probe's
+normal (from the field outward), points are chosen by `PickSpread`: the deepest probe, then
+the extremes of the probes within half a cell of the deepest along two fixed in-plane axes
+(a cross product of the normal with +X, or +Y when the normal's x is 0.7 or more), a probe
+displacing an earlier one only when 0.02 cell farther, skipping points within a quarter cell of a chosen one.
+Contact point: midway between the shape's surface point and the field's. Feature ids:
+`0xC000 | probe index` on the shape's side, `0xC000` on the field's.
+Field against field (a moving field against a static or moving one): the surface points of each are
+tested against the other, probes sorted into the same selection, the deepest refined by sliding
+over its own surface. Fields do not collide with meshes, height fields, voxel grids or planes
+(those pairs are skipped, as soup against soup is).

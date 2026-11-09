@@ -200,6 +200,14 @@ internal static class SmokeProgram
             Console.WriteLine((q1 == q3 && q1 == qr ? "OK abilities2d " : "FAIL abilities2d ") + scene + " " + q1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         }
 
+        // Terrain that is edited or sampled at run time: same state on one and three threads and after a restore.
+        foreach (string scene in TerrainEditScenes.Names)
+        {
+            ulong t1 = TerrainEditScenes.Run(scene, 1, false), t3 = TerrainEditScenes.Run(scene, 3, false), tr = TerrainEditScenes.Run(scene, 1, true);
+            abilities &= t1 == t3 && t1 == tr;
+            Console.WriteLine((t1 == t3 && t1 == tr ? "OK terrain " : "FAIL terrain ") + scene + " " + t1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
         ulong rg1 = Ragdolls2DHash(1), rg3 = Ragdolls2DHash(3);
         Console.WriteLine((rg1 == rg3 ? "OK ragdolls2d " : "FAIL ragdolls2d ") + rg1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         // 3D tracked vehicles and motorcycles (pivoting tank, tank on a ramp, bike in a turn, bike braking): same state on one and three threads and after a restore.

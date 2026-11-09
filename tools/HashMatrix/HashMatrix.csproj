@@ -38,6 +38,7 @@
     <Compile Include="../../tests/Common/SoftSkinned3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Characters3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/CharacterAbilityScenes3D.cs" LinkBase="Checks" />
+    <Compile Include="../../tests/Common/TerrainEditScenes.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/CharacterAbilityScenes2D.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Vehicles3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Vehicles2DScene.cs" LinkBase="Checks" />
