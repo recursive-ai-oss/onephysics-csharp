@@ -269,8 +269,10 @@ internal sealed partial class Engine3D : ISnapshotSection
             DropShapePairs(s);
             Bp.DestroyProxy(Proxy[s]);
             ReleaseGeom(GeomOf[s]);
+            _actuators?.DropShape(s);
         }
 
+        _actuators?.DropBody(b);
         DropCharacterOfBody(b);
         DropVehicleOfBody(b);
         DropRagdollOfBody(b);
@@ -289,6 +291,8 @@ internal sealed partial class Engine3D : ISnapshotSection
     public ShapeHandle AddShape(BodyHandle body, byte[] recipe, in ShapeDef def)
     {
         def.Surface.Validate(Core.Layout.PositionLanes);
+        var aero = def.Aero?.ToSpec();
+        aero?.Prepare(planar: false, areaRequired: false);
         Nonnegative(def.Density, "Density");
         Coefficient(def.Friction, "Friction");
         Coefficient(def.RollingResistance, "RollingResistance");
@@ -331,6 +335,7 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         if (ShapeTail[b] >= 0) { NextShape[ShapeTail[b]] = s; } else { ShapeHead[b] = s; }
         ShapeTail[b] = s;
+        if (aero != null) { Actuators.SetSurface(sh, aero, prepared: true); }
         Proxy[s] = Bp.CreateProxy(type, tight, s);
         if (type == BodyType.Dynamic)
         {
@@ -362,6 +367,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         }
 
         ReleaseGeom(GeomOf[s]);
+        _actuators?.DropShape(s);
         Core.DestroyShape(handle);
         if (Core.Bodies.TypeOf(b) == BodyType.Dynamic) { UpdateMass(b); }
     }
@@ -1174,7 +1180,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || GeomOf.Length < shapes.HighWater) { return false; }
         var cons = Core.Constraints;
-        if (!JointsConsistentWithCore() || !CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent() || !FluidsConsistent()) { return false; }
+        if (!JointsConsistentWithCore() || !CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent() || !FluidsConsistent() || !ActuatorsConsistent()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)
         {
             if (!shapes.Handles.IsLive(s)) { continue; }
