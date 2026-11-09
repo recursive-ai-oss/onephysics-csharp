@@ -18,6 +18,11 @@ public sealed partial class PhysicsWorld2D
     {
         ArgumentNullException.ThrowIfNull(geometry);
         geometry.Clear();
+        if ((flags & DebugContent.Fields) != 0)
+        {
+            for (int i=0;i<_engine.Fields.Definitions.Length;i++)
+                if (_engine.Fields.Definitions[i] is {} definition) geometry.Add(new DebugField(i,definition));
+        }
         var shapes = _core.Shapes;
         var bodies = _core.Bodies;
         var e = _engine;

@@ -13,6 +13,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="../Common/FieldScenes.cs" LinkBase="Common" />
     <Compile Include="../Common/SmokeProgram.cs" LinkBase="Common" />
     <Compile Include="../Common/InspectionSmoke.cs" LinkBase="Common" />
     <Compile Include="../Common/JointMachineSmoke.cs" LinkBase="Common" />

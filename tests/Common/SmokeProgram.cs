@@ -10,6 +10,9 @@ internal static class SmokeProgram
 {
     private static int Main()
     {
+        ulong fields2=FieldScenes.Run2(1,false),fields3=FieldScenes.Run3(1,false);
+        if(fields2!=FieldScenes.Run2(3,true)||fields3!=FieldScenes.Run3(3,true))throw new InvalidOperationException("Field smoke hashes differ.");
+        Console.WriteLine("OK fields "+fields2.ToString("x16",System.Globalization.CultureInfo.InvariantCulture)+" "+fields3.ToString("x16",System.Globalization.CultureInfo.InvariantCulture));
         const float dt = 1f / 60f;
         var a = ParticleScene.CreatePile(200, 42, threadCount: 1, worldId: 1);
         var b = ParticleScene.CreatePile(200, 42, threadCount: 4, worldId: 1);
