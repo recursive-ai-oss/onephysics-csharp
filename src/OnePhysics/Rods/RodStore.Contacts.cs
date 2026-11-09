@@ -164,11 +164,11 @@ internal sealed partial class RodStore
         if(!(weight>0)||separation>=0)return;
         // A contact near a segment end, where the other end is pinned or heavy, has a tiny weight: undoing the penetration of the
         // contact point then needs the free particle to move penetration/u, which is unbounded as u -> 0 (a rope pinned on a surface
-        // threw a particle kilometres away). No particle moves more than a few penetration depths (at most a few radii) per pass: normal
-        // contacts, whose particles move about one depth, are unchanged, and the pinned-end case becomes a bounded push.
+        // threw a particle kilometres away). No particle moves more than four penetration depths per pass: normal contacts, whose
+        // particles move about one depth, are unchanged, and the pinned-end case becomes a bounded push.
         double lambdaExact=-separation/weight;
         double reach=Math.Max((1-u)*a.InverseMass[c.Segment],u*a.InverseMass[c.Segment+1]);
-        double allowed=4*Math.Min(-separation,a.Material.Radius);
+        double allowed=4*-separation;
         // Needing more than sixteen penetration depths means the contact point is all but fixed (a pinned end resting on the surface): the
         // penetration cannot be undone by any motion of the rod, so the contact is left alone instead of pushing the free end every pass.
         if(reach*lambdaExact>16*-separation)return;

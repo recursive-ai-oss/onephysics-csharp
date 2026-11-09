@@ -193,7 +193,7 @@ average force over the last whole step.
 
 A contact at parameter u on a segment moves the segment's end particles by penetration/u when the other end
 cannot move (pinned) or is much heavier, which is unbounded as u approaches 0: a rope pinned on a surface used
-to throw its free end kilometres away. Per pass no particle moves more than 4 × min(penetration, radius); when
+to throw its free end kilometres away. Per pass no particle moves more than 4 penetration depths; when
 the contact point needs more than 16 penetration depths of motion (the contact is all but at the pin, and no
 motion of the rod can undo the penetration) the contact is left alone for that pass.
 
