@@ -162,6 +162,14 @@ public sealed class BodyDef
 public sealed class JointDef
 {
     internal int SourceLine { get; set; }
+    /// <summary>Type-specific machine joint parameters; empty by default. Ordered fields are specified in the joint scene format.</summary>
+    public double[] Data { get; set; } = [];
+    /// <summary>Whole steps until joint expiry; zero means unlimited. Must be nonnegative.</summary>
+    public int LifetimeSteps { get; set; }
+    /// <summary>Whole-step force threshold in N; infinity means unlimited.</summary>
+    public float BreakForce { get; set; } = float.PositiveInfinity;
+    /// <summary>Whole-step torque threshold in N m; infinity means unlimited.</summary>
+    public float BreakTorque { get; set; } = float.PositiveInfinity;
     /// <summary>Scene Kind field; defaults and SI units follow the scene record specification. Invalid values are rejected when loading a world.</summary>
     public string Kind { get; set; } = "revolute";
     /// <summary>Scene A field; defaults and SI units follow the scene record specification. Invalid values are rejected when loading a world.</summary>
@@ -284,6 +292,13 @@ public sealed partial class Scene
     public List<SoftDef> Softs { get; set; } = [];
 
     static string F(double v) => v.ToString("R", CultureInfo.InvariantCulture);
+    static float BreakThreshold(string s)
+    {
+        if (s == "Infinity") return float.PositiveInfinity;
+        double v = D(s);
+        if (v > float.MaxValue || v < 0) throw new FormatException("expected nonnegative float32 break threshold or Infinity");
+        return (float)v;
+    }
     static double D(string s) { double v = double.Parse(s, NumberStyles.Float, CultureInfo.InvariantCulture); if (!double.IsFinite(v)) throw new FormatException("expected finite number, found " + s); return v; }
     static int I(string s) => int.Parse(s, CultureInfo.InvariantCulture);
 
@@ -393,6 +408,9 @@ public sealed partial class Scene
                             j.HasDrive = true; j.DriveK = D(t[k + 1]); j.DriveC = D(t[k + 2]); j.DriveMax = D(t[k + 3]);
                             j.DriveAx = D(t[k + 4]); j.DriveAy = D(t[k + 5]); j.DriveAz = D(t[k + 6]); j.DriveAmp = D(t[k + 7]); j.DrivePeriod = I(t[k + 8]); k += 9;
                         }
+                        else if (t[k] == "data") { int n = I(t[k + 1]); j.Data = new double[n]; for (int z = 0; z < n; z++) j.Data[z] = D(t[k + 2 + z]); k += 2 + n; }
+                        else if (t[k] == "lifetime") { j.LifetimeSteps = I(t[k + 1]); k += 2; }
+                        else if (t[k] == "break") { j.BreakForce = BreakThreshold(t[k + 1]); j.BreakTorque = BreakThreshold(t[k + 2]); k += 3; }
                         else throw new InvalidDataException("unknown joint option " + t[k]);
                     }
                     s.Joints.Add(j); break;
@@ -477,6 +495,9 @@ public sealed partial class Scene
             if (j.HasMotor) sb.Append(" motor ").Append(F(j.MotorSpeed)).Append(' ').Append(F(j.MaxTorque));
             if (j.HasSwing) sb.Append(" swing ").Append(F(j.SwingY)).Append(' ').Append(F(j.SwingZ));
             if (j.HasDrive) sb.Append(" drive ").Append(F(j.DriveK)).Append(' ').Append(F(j.DriveC)).Append(' ').Append(F(j.DriveMax)).Append(' ').Append(F(j.DriveAx)).Append(' ').Append(F(j.DriveAy)).Append(' ').Append(F(j.DriveAz)).Append(' ').Append(F(j.DriveAmp)).Append(' ').Append(j.DrivePeriod);
+            if (j.Data.Length != 0) { sb.Append(" data ").Append(j.Data.Length); foreach (double v in j.Data) sb.Append(' ').Append(F(v)); }
+            if (j.LifetimeSteps != 0) sb.Append(" lifetime ").Append(j.LifetimeSteps);
+            if (float.IsFinite(j.BreakForce) || float.IsFinite(j.BreakTorque)) sb.Append(" break ").Append(F(j.BreakForce)).Append(' ').Append(F(j.BreakTorque));
             sb.Append('\n');
         }
         foreach (var q in Queries) { sb.Append("query ").Append(q.Kind); foreach (var v in q.P) sb.Append(' ').Append(F(v)); sb.Append('\n'); }

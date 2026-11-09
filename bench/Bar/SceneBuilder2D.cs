@@ -22,6 +22,14 @@ public static class SceneBuilder2D
     /// <summary>Builds the scene; bodies with a <c>character</c> script become characters (their bodies are in the array), returned with their scripts in body order.</summary>
     public static (PhysicsWorld2D World, Body[] Bodies, WorldOptions2D Options) Build(Scene s, int threads, out List<(Character Character, CharacterScript Script, int Body)> characters)
     {
+        if (s.Joints.Exists(j => j.Kind is "gear" or "rack" or "pulley" or "wheel" or "motor" or "mouse" or "path" or "configurable" or "filter"))
+        {
+            var machineWorld = s.CreateWorld2D(threads);
+            var machineBodies = new Body[s.Bodies.Count];
+            for (int i = 0; i < machineBodies.Length; i++) machineBodies[i] = machineWorld.GetBody(machineWorld.Core.HandleOfBody(i));
+            characters = [];
+            return (machineWorld, machineBodies, machineWorld.Options);
+        }
         var opt = new WorldOptions2D { Gravity = new Vector2F((float)s.Gx, (float)s.Gy), ThreadCount = threads };
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
         Tweak?.Invoke(opt);

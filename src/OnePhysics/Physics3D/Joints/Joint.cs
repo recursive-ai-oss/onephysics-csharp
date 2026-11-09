@@ -27,7 +27,7 @@ public readonly struct JointBreak
     /// <summary>The joint's second body.</summary>
     public readonly Body BodyB;
 
-    /// <summary>The reaction force (N) or torque (N·m) that exceeded the threshold, as measured at the end of the step.</summary>
+    /// <summary>The whole-step reaction force (N) or COM torque (N·m) that exceeded the threshold; zero for lifetime expiry.</summary>
     public float Value { get; }
 
     /// <inheritdoc/>
@@ -45,7 +45,8 @@ public readonly struct JointBreak
 public readonly partial struct Joint : IEquatable<Joint>
 {
     private const uint Hinge = 1u << (int)JointType3D.Hinge, Slider = 1u << (int)JointType3D.Slider, Distance = 1u << (int)JointType3D.Distance, Path = 1u << (int)JointType3D.Path;
-    private const uint LimitTypes = Hinge | Slider | Distance, MotorTypes = Hinge | Slider | Path, SpringTypes = Hinge | Slider | Distance;
+    private const uint Wheel = 1u << (int)JointType3D.Wheel;
+    private const uint LimitTypes = Hinge | Slider | Distance | Wheel, MotorTypes = Hinge | Slider | Path | Wheel, SpringTypes = Hinge | Slider | Distance | Wheel;
 
     private readonly PhysicsWorld3D? _world;
     private readonly JointHandle _handle;
@@ -81,6 +82,7 @@ public readonly partial struct Joint : IEquatable<Joint>
     {
         edited.Validate();
         d = edited;
+        w.Engine.JointBreakingDirty = true;
         var cs = w.Core.Constraints;
         w.Core.Wake(w.Core.HandleOfBody(cs.BodyA[c]));
         w.Core.Wake(w.Core.HandleOfBody(cs.BodyB[c]));
@@ -138,11 +140,11 @@ public readonly partial struct Joint : IEquatable<Joint>
 
     /// <summary>Slider joints: the lower translation limit along the axis, metres.</summary>
     /// <exception cref="InvalidJointException">The joint is not a slider.</exception>
-    public float LowerTranslation => LimitValue(false, "translation limit", Slider);
+    public float LowerTranslation => LimitValue(false, "translation limit", Slider | Wheel);
 
     /// <summary>Slider joints: the upper translation limit along the axis, metres.</summary>
     /// <exception cref="InvalidJointException">The joint is not a slider.</exception>
-    public float UpperTranslation => LimitValue(true, "translation limit", Slider);
+    public float UpperTranslation => LimitValue(true, "translation limit", Slider | Wheel);
 
     /// <summary>Distance joints: the shortest length the limit allows, metres.</summary>
     /// <exception cref="InvalidJointException">The joint is not a distance joint.</exception>
@@ -219,7 +221,7 @@ public readonly partial struct Joint : IEquatable<Joint>
     private static void NeedTorqueMotor(in JointData3D d)
     {
         if (d.Type == (byte)JointType3D.Slider || d.Type == (byte)JointType3D.Path) { throw new InvalidJointException("A " + JointData3D.Name((JointType3D)d.Type) + " joint's motor is linear and takes a force: use MaxMotorForce."); }
-        Need(in d, "motor torque", Hinge);
+        Need(in d, "motor torque", Hinge | Wheel);
     }
 
     // ---- spring ----

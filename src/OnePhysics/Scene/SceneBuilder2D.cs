@@ -12,7 +12,7 @@ using P2 = RecursiveAI.OnePhysics.Physics2D;
 namespace RecursiveAI.OnePhysics.Scene;
 
 /// <summary>Builds a 2D world from a scene definition. Shared by the bar runner and the hash-matrix scenarios. Revolute joints (the only 2D kind the scene format has) are created; a joint between two non-dynamic bodies is dropped.</summary>
-internal static class SceneBuilder2D
+internal static partial class SceneBuilder2D
 {
     /// <summary>Applied to the world options before the world is created; the stability sweeps use it to perturb contact stiffness or the substep count. Null in every other use.</summary>
 
@@ -22,6 +22,7 @@ internal static class SceneBuilder2D
     public static (PhysicsWorld2D World, Body[] Bodies, WorldOptions2D Options) Build(Scene s, int threads, out List<(Character Character, CharacterScript Script, int Body)> characters)
     {
         var opt = new WorldOptions2D { Gravity = new Vector2F((float)s.Gx, (float)s.Gy), ThreadCount = threads };
+        if (s.Params.TryGetValue("world-id", out var ids)) opt.WorldId = int.Parse(ids[0], CultureInfo.InvariantCulture);
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
         if (s.WorldLimits is BodyControlSettings worldLimits) { opt.MaxLinearSpeed = worldLimits.MaxLinearSpeed; opt.MaxAngularSpeed = worldLimits.MaxAngularSpeed; opt.PushOutVelocity = worldLimits.MaxDepenetrationSpeed; }
         var world = new PhysicsWorld2D(opt);
@@ -63,6 +64,7 @@ internal static class SceneBuilder2D
         foreach (var j in s.Joints)
         {
             s.ActiveLine = j.SourceLine;
+            if (BuildMachine(world, bodies, j)) { continue; }
             var ba = s.Bodies[j.A]; var bb = s.Bodies[j.B];
             if (ba.Type != "dynamic" && bb.Type != "dynamic") continue; // the scene format drops a joint between two non-dynamic bodies
             if (j.Kind != "revolute") throw new InvalidDataException("unsupported 2D joint kind " + j.Kind);
@@ -74,7 +76,7 @@ internal static class SceneBuilder2D
                 EnableLimit = j.HasLimit, LowerAngle = (float)j.Lower, UpperAngle = (float)j.Upper,
                 EnableMotor = j.HasMotor, MotorSpeed = (float)j.MotorSpeed, MaxMotorTorque = (float)j.MaxTorque,
             };
-            world.CreateJoint(in jd);
+            var joint = world.CreateJoint(in jd); joint.BreakForce = j.BreakForce; joint.BreakTorque = j.BreakTorque; joint.LifetimeStepsRemaining = j.LifetimeSteps;
         }
         for (int i = 0; i < bodies.Length; i++) if (s.Bodies[i].Asleep) bodies[i].Sleep();
 

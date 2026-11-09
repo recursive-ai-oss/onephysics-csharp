@@ -38,6 +38,15 @@ public static class SceneBuilder3D
     /// <summary>As above, and swing-twist joints with a <c>drive</c> are returned with their definitions in joint order, for the caller to retarget every step.</summary>
     public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads, out List<(P3.Character Character, CharacterScript Script, int Body)> characters, out List<(P3.Vehicle Vehicle, VehicleScript Script, int Body)> vehicles, out List<(P3.Joint Joint, JointDef Def)> drives)
     {
+        if (s.Joints.Exists(j => j.Kind is "gear" or "rack" or "pulley" or "wheel" or "motor" or "mouse" or "path" or "configurable" or "filter"))
+        {
+            var machineWorld = s.CreateWorld3D(threads);
+            var machineBodies = new P3.Body[s.Bodies.Count];
+            for (int i = 0; i < machineBodies.Length; i++) machineBodies[i] = machineWorld.GetBody(machineWorld.Core.HandleOfBody(i));
+            characters = [];
+            vehicles = []; drives = [];
+            return (machineWorld, machineBodies, machineWorld.Options);
+        }
         var opt = new P3.WorldOptions3D { Gravity = new Vector3F((float)s.Gx, (float)s.Gy, (float)s.Gz), ThreadCount = threads };
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
         Tweak?.Invoke(opt);

@@ -44,6 +44,15 @@ public enum JointType3D : byte
 
     /// <summary>A rope over two fixed points: the two lengths stay in a fixed ratio.</summary>
     Pulley = 12,
+    /// <summary>Disables collision between the bodies without applying impulses.</summary>
+    Filter = 13,
+    /// <summary>Suspension along frame A x, with wheel spin about frame y.</summary>
+    Wheel = 14,
+    /// <summary>Capped relative-pose drive.</summary>
+    Motor = 15,
+    /// <summary>Capped soft drag of body B to a world target.</summary>
+    Mouse = 16,
+
 }
 
 /// <summary>What a six-degrees-of-freedom joint does about one axis.</summary>
@@ -165,6 +174,9 @@ public struct FixedJointDef : IJointDef3D
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>Point (ball-and-socket) joint: the two frame positions coincide, rotation is free.</summary>
@@ -195,6 +207,9 @@ public struct PointJointDef : IJointDef3D
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>Distance joint between the two frame positions. Rigid at <see cref="Length"/> unless the spring is on; with a spring the length may range between <see cref="MinLength"/> and <see cref="MaxLength"/>.</summary>
@@ -252,6 +267,9 @@ public struct DistanceJointDef : IJointDef3D
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>Hinge joint about the x axis of the frames. The angle is zero when the frames' y axes agree.</summary>
@@ -315,6 +333,9 @@ public struct HingeJointDef : IJointDef3D
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>Slider joint along the x axis of the frames, rotation locked. The translation is zero when the frame positions coincide.</summary>
@@ -374,6 +395,9 @@ public struct SliderJointDef : IJointDef3D
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>Cone joint: a point joint that keeps the two frame x axes within <see cref="HalfConeAngle"/> of each other.</summary>
@@ -409,6 +433,9 @@ public struct ConeJointDef : IJointDef3D
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>Swing-twist joint (a ball-and-socket for limbs): twist about the frame x axis within a range, swing of that axis inside an elliptical cone.</summary>
@@ -459,6 +486,9 @@ public struct SwingTwistJointDef : IJointDef3D
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>
@@ -556,6 +586,9 @@ public struct SixDofJointDef : IJointDef3D
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>
@@ -609,6 +642,9 @@ public struct PathJointDef : IJointDef3D
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>Gear joint: the angular speeds about the two frames' x axes satisfy <c>ωA·axisA + Ratio·ωB·axisB = 0</c>. Joint frames' rotations give the axes; positions are ignored.</summary>
@@ -644,6 +680,9 @@ public struct GearJointDef : IJointDef3D
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>Rack-and-pinion joint: <c>Ratio·ωA·axisA = vB·axisB</c> with A the pinion (rotating about its frame x axis) and B the rack (moving along its frame x axis); Ratio is metres per radian.</summary>
@@ -679,6 +718,9 @@ public struct RackAndPinionJointDef : IJointDef3D
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>Pulley joint: a rope from body A's anchor up to <see cref="FixedPointA"/>, over to <see cref="FixedPointB"/> and down to B's anchor, with <c>lengthA + Ratio·lengthB</c> held between the limits.</summary>
@@ -730,4 +772,7 @@ public struct PulleyJointDef : IJointDef3D
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }

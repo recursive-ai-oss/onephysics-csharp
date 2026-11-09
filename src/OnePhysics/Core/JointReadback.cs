@@ -48,10 +48,11 @@ public sealed class JointReadback
     internal int[] WideSlots = Array.Empty<int>();
     internal float[] WideScratch = Array.Empty<float>();
     internal double InverseDt;
-    internal bool Enabled => _world.Options.DetailedInspection;
+    private bool _breaking;
+    internal bool Enabled => _world.Options.DetailedInspection || _breaking;
     private bool _available;
     private void RequireDetail()
-    { if (!Enabled || !_available) { throw new DetailedInspectionDisabledException(); } }
+    { if (!_world.Options.DetailedInspection || !_available) { throw new DetailedInspectionDisabledException(); } }
     internal JointReadback(WorldCore world) { _world = world; }
     internal void Track(int c, bool refreshMetadata = false)
     {
@@ -81,11 +82,24 @@ public sealed class JointReadback
     }
     internal void Begin(float dt)
     {
-        if (!Enabled && !_available) { return; }
-        _available = Enabled;
         InverseDt = 1.0 / dt;
+        if (!Enabled && !_available) { return; }
+        _available = _world.Options.DetailedInspection;
         if (_generation.Length == 0) { return; }
         Array.Clear(_impulses); Array.Clear(_rows); Array.Clear(_broken);
+    }
+    internal void ConfigureBreaking(bool enabled)
+    {
+        if (enabled) { ReserveSlots(_world.Constraints.HighWater); }
+        if (enabled && !_breaking && !_available) { Array.Clear(_impulses); Array.Clear(_rows); }
+        _breaking = enabled;
+    }
+    internal void Reaction(int c, out double force, out double torque)
+    {
+        int o = c * 12;
+        double Magnitude(int at) => double.Sqrt(_impulses[at] * _impulses[at] + _impulses[at + 1] * _impulses[at + 1] + _impulses[at + 2] * _impulses[at + 2]) * InverseDt;
+        force = System.Math.Max(Magnitude(o), Magnitude(o + 6));
+        torque = System.Math.Max(Magnitude(o + 3), Magnitude(o + 9));
     }
     internal void ReserveWide(int groups)
     {

@@ -939,3 +939,6 @@ constraint ordering, manifold arithmetic, snapshot layout and physics hashes
 remain unchanged. All 21 three-dimensional stability scenes passed with the
 span experiment; the 23-world hash subset matched the original at one thread,
 eight threads and with AVX2 disabled.
+
+Machine-joint additions, planar equivalents, whole-step breaking, lifetime and
+the additive snapshot section are specified in [joints.md](joints.md).

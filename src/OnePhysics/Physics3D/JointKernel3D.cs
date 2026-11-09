@@ -254,7 +254,7 @@ internal static class JointKernel3D
     {
         if (phase == SolvePhase.Restitution) { return; }
         int width = T.Count;
-        var diagnostics = e.Opt.DetailedInspection ? e.Core.JointReadback.WideScratch.AsSpan(group * 96, 96) : Span<float>.Empty;
+        var diagnostics = e.Core.JointReadback.Enabled ? e.Core.JointReadback.WideScratch.AsSpan(group * 96, 96) : Span<float>.Empty;
         var wide = e.WideJ.AsSpan(group * J3D.GroupFloats, J3D.GroupFloats);
         var idx = e.WideJIdx.AsSpan(group * J3D.IdxPerGroup, J3D.IdxPerGroup);
         var bodies = e.Core.Bodies;
@@ -293,6 +293,6 @@ internal static class JointKernel3D
             if (warm) { continue; }
             imp.X.StoreAt(wide, (J3D.Impulse + 0) * 8 + l0); imp.Y.StoreAt(wide, (J3D.Impulse + 1) * 8 + l0); imp.Z.StoreAt(wide, (J3D.Impulse + 2) * 8 + l0);
         }
-        if (e.Opt.DetailedInspection) { e.Core.JointReadback.ReadWide(group, lane0, n, 3); }
+        if (e.Core.JointReadback.Enabled) { e.Core.JointReadback.ReadWide(group, lane0, n, 3); }
     }
 }

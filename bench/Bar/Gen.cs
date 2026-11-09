@@ -298,7 +298,7 @@ public static class Gen
     }
 
     public static List<Scene> All() =>
-        [Pyramid(20), Pyramid(100), LargePile(), Tumbler(), JointGrid(), Chain(), SleepWake(), MixedTerrain(), Bullets(), Queries(), Characters(), ..Gen3.All()];
+        [Pyramid(20), Pyramid(100), LargePile(), Tumbler(), JointGrid(), Chain(), SleepWake(), MixedTerrain(), Bullets(), Queries(), Characters(), GenMachines.Build(2), GenMachines.Build(3), ..Gen3.All()];
 
     /// <summary>Writes every scene into <paramref name="dir"/> and a SHA256SUMS manifest beside them.</summary>
     public static void WriteAll(string dir)

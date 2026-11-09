@@ -25,6 +25,19 @@ public enum JointType2D : byte
 
     /// <summary>Pulls an anchor of B towards a world target like a spring, with capped force (a dragging handle).</summary>
     Mouse = 7,
+    /// <summary>Disables collision between the bodies without applying impulses.</summary>
+    Filter = 8,
+    /// <summary>Couples angular velocities at a fixed ratio.</summary>
+    Gear = 9,
+    /// <summary>Couples a pinion's rotation to rack translation.</summary>
+    RackAndPinion = 10,
+    /// <summary>Conserves the ratio-weighted rope length over fixed points.</summary>
+    Pulley = 11,
+    /// <summary>Follows a Catmull-Rom spline attached to body A.</summary>
+    Path = 12,
+    /// <summary>Independently locks, limits or frees x, y and angle with optional drives.</summary>
+    Configurable = 13,
+
 }
 
 /// <summary>Creation parameters of a revolute (hinge) joint. Anchors are in each body's own frame (measured from the body origin); the angle is B's rotation minus A's rotation minus <see cref="ReferenceAngle"/>.</summary>
@@ -84,6 +97,9 @@ public struct RevoluteJointDef
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>Creation parameters of a prismatic (slider) joint. The axis is a direction in A's frame; the translation is measured from the anchors' coincidence along it.</summary>
@@ -148,6 +164,9 @@ public struct PrismaticJointDef
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>Creation parameters of a weld joint. With both hertz values 0 the weld is rigid; a positive value makes that part a spring.</summary>
@@ -192,6 +211,9 @@ public struct WeldJointDef
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>Creation parameters of a wheel joint: a suspension along an axis of A, with B free to spin.</summary>
@@ -259,6 +281,9 @@ public struct WheelJointDef
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>Creation parameters of a distance joint. Rigid at <see cref="Length"/> unless <see cref="EnableSpring"/> is set and the length range is not degenerate.</summary>
@@ -322,6 +347,9 @@ public struct DistanceJointDef
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>Creation parameters of a motor joint: B's origin is driven to <see cref="LinearOffset"/> (in A's frame) from A's origin and B's angle to <see cref="AngularOffset"/> from A's, with capped force and torque.</summary>
@@ -362,6 +390,9 @@ public struct MotorJointDef
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }
 
 /// <summary>Creation parameters of a mouse (target) joint: an anchor on <see cref="BodyB"/> is pulled to <see cref="Target"/> by a spring with capped force. <see cref="BodyA"/> only anchors the joint in the constraint graph (a static ground body is typical) and is not moved by it.</summary>
@@ -406,4 +437,7 @@ public struct MouseJointDef
     public float BreakTorque { readonly get => ZeroDefault.Get(_breakTorque, float.PositiveInfinity); set => _breakTorque = ZeroDefault.Set(value, float.PositiveInfinity); }
 
     private uint _breakTorque;
+
+    /// <summary>Whole steps until breaking, including sleeping steps. Default zero means unlimited; negative values throw on creation.</summary>
+    public int LifetimeSteps { get; set; }
 }

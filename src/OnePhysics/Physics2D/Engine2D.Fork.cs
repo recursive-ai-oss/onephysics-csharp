@@ -163,6 +163,8 @@ internal sealed partial class Engine2D
         _sJoints = (JointData2D[])s._sJoints.Clone();
         ConsistencyProblem = s.ConsistencyProblem;
         Joints = (JointData2D[])s.Joints.Clone();
+        Machines = new MachineData2D?[s.Machines.Length];
+        for (int c = 0; c < Machines.Length; c++) { Machines[c] = s.Machines[c]?.Copy(); }
         JScratch = (float[])s.JScratch.Clone();
         JointForce = (float[])s.JointForce.Clone();
         JointTorque = (float[])s.JointTorque.Clone();

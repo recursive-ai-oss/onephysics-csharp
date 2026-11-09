@@ -55,6 +55,23 @@ internal sealed partial class Engine2D
         if (JointForce.Length < n) { Array.Resize(ref JointForce, Joints.Length); Array.Resize(ref JointTorque, Joints.Length); }
     }
 
+    internal bool JointBreakingDirty = true;
+    private bool _collectJointBreaking;
+    private void ConfigureJointBreaking()
+    {
+        if (!JointBreakingDirty) { Core.JointReadback.ConfigureBreaking(_collectJointBreaking); return; }
+        JointBreakingDirty = false;
+        bool collect = false;
+        var cs = Core.Constraints;
+        for (int c = 0; c < cs.HighWater && !collect; c++)
+        {
+            if (!cs.IsLive(c) || cs.KindOf(c) != ConstraintKind.Joint) { continue; }
+            collect = Joints[c].Type >= (byte)JointType2D.Gear || float.IsFinite(Joints[c].BreakForce) || float.IsFinite(Joints[c].BreakTorque);
+        }
+        _collectJointBreaking = collect;
+        Core.JointReadback.ConfigureBreaking(collect);
+    }
+
     // ------------------------------------------------------------------ creation
 
     /// <summary>Creates a joint between two live bodies. The record is validated before anything changes.</summary>
@@ -75,7 +92,9 @@ internal sealed partial class Engine2D
         d.BodyA = a; d.BodyB = b; d.GenA = ha.Generation; d.GenB = hb.Generation;
         d.Gen = Core.Constraints.Handles.GenerationOf(c);
         Joints[c] = d;
+        JointLifetime.Set(Core.Constraints, c, d.LifetimeSteps);
         _trackedJoints++;
+        JointBreakingDirty = true;
         if (!d.Collide)
         {
             _noCollideJoints++;
@@ -105,7 +124,9 @@ internal sealed partial class Engine2D
     {
         ref JointData2D j = ref Joints[c];
         j.Gen = 0;
+        if (c < Machines.Length) { Machines[c] = null; }
         _trackedJoints--;
+        JointBreakingDirty = true;
         if (j.Collide) { return; }
         _noCollideJoints--;
         var h = Core.Bodies.Handles;
@@ -166,6 +187,7 @@ internal sealed partial class Engine2D
             j.GenA = bodies.Handles.GenerationOf(j.BodyA); j.GenB = bodies.Handles.GenerationOf(j.BodyB);
             j.Gen = cs.Handles.GenerationOf(c);
             _trackedJoints++;
+            JointBreakingDirty = true;
             if (!j.Collide) { _noCollideJoints++; }
         }
     }
@@ -239,6 +261,7 @@ internal sealed partial class Engine2D
             bool isJoint = cs.IsLive(c) && cs.KindOf(c) == ConstraintKind.Joint;
             bool has = c < Joints.Length && Joints[c].Type != 0;
             if (isJoint != has) { return false; }
+            if (has && NeedsMachine(Joints[c].Type) && (c >= Machines.Length || Machines[c] == null)) { return false; }
         }
 
         return true;
@@ -373,7 +396,7 @@ internal sealed partial class Engine2D
 
     // ------------------------------------------------------------------ results and breaking
 
-    /// <summary>After the last substep: reaction force and torque of each joint from its accumulated impulses (impulse of the last substep divided by the substep), and a break request when a threshold is exceeded.</summary>
+    /// <summary>After the last substep: records the convenience reaction magnitudes and tests whole-step applied force/COM torque against break thresholds.</summary>
     public void StoreJointResults(ReadOnlySpan<int> constraints, in StepContext ctx)
     {
         var cs = Core.Constraints;
@@ -387,6 +410,7 @@ internal sealed partial class Engine2D
             float axial = p[JPay.Spring] + p[JPay.Motor] + p[JPay.Lower] - p[JPay.Upper];
             switch ((JointType2D)j.Type)
             {
+                case JointType2D.Filter: lx = 0f; ly = 0f; torque = 0f; break;
                 case JointType2D.Revolute: lx = p[JPay.P0]; ly = p[JPay.P1]; torque = axial; break;
                 case JointType2D.Weld: lx = p[JPay.P0]; ly = p[JPay.P1]; torque = p[JPay.P2]; break;
                 case JointType2D.Motor: lx = p[JPay.P0]; ly = p[JPay.P1]; torque = p[JPay.P2]; break;
@@ -398,9 +422,18 @@ internal sealed partial class Engine2D
 
             float force = float.Sqrt(lx * lx + ly * ly) * inv;
             torque = (torque < 0f ? -torque : torque) * inv;
+            if (j.Type >= (byte)JointType2D.Gear)
+            {
+                Core.JointReadback.Reaction(c, out double meanForce, out double meanTorque);
+                force = (float)meanForce; torque = (float)meanTorque;
+            }
             JointForce[c] = force; JointTorque[c] = torque;
-            if (force > j.BreakForce) { cs.Flags[c] |= (byte)ConstraintBits.BreakRequested; cs.BreakValue[c] = force; }
-            else if (torque > j.BreakTorque) { cs.Flags[c] |= (byte)ConstraintBits.BreakRequested; cs.BreakValue[c] = torque; }
+            if (float.IsFinite(j.BreakForce) || float.IsFinite(j.BreakTorque))
+            {
+                Core.JointReadback.Reaction(c, out double meanForce, out double meanTorque);
+                if (meanForce > j.BreakForce) { cs.Flags[c] |= (byte)ConstraintBits.BreakRequested; cs.BreakValue[c] = meanForce > float.MaxValue ? float.MaxValue : (float)meanForce; }
+                else if (meanTorque > j.BreakTorque) { cs.Flags[c] |= (byte)ConstraintBits.BreakRequested; cs.BreakValue[c] = meanTorque > float.MaxValue ? float.MaxValue : (float)meanTorque; }
+            }
         }
     }
 }

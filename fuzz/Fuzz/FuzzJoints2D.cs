@@ -125,7 +125,7 @@ internal static class FuzzJoints2D
 
     private static void Op(PhysicsWorld2D w, Body[] bodies, System.Collections.Generic.List<Joint> joints, Reader r)
     {
-        switch (r.Byte() % 14)
+        switch (r.Byte() % 20)
         {
             case 0: { var d = new RevoluteJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), LocalAnchorA = r.V2F(), LocalAnchorB = r.V2F(), ReferenceAngle = r.Float(), EnableLimit = r.Bool(), LowerAngle = r.Float(), UpperAngle = r.Float(), EnableMotor = r.Bool(), MotorSpeed = r.Float(), MaxMotorTorque = r.Float(), EnableSpring = r.Bool(), SpringHertz = r.Float(), SpringDampingRatio = r.Float(), CollideConnected = r.Bool(), BreakForce = r.Float(), BreakTorque = r.Float() }; Add(joints, w.CreateJoint(in d)); break; }
             case 1: { var d = new PrismaticJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), LocalAnchorA = r.V2F(), LocalAnchorB = r.V2F(), LocalAxisA = r.V2F(), ReferenceAngle = r.Float(), EnableLimit = r.Bool(), LowerTranslation = r.Float(), UpperTranslation = r.Float(), EnableMotor = r.Bool(), MotorSpeed = r.Float(), MaxMotorForce = r.Float(), EnableSpring = r.Bool(), SpringHertz = r.Float(), SpringDampingRatio = r.Float(), CollideConnected = r.Bool(), BreakForce = r.Float(), BreakTorque = r.Float() }; Add(joints, w.CreateJoint(in d)); break; }
@@ -134,6 +134,12 @@ internal static class FuzzJoints2D
             case 4: { var d = new DistanceJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), LocalAnchorA = r.V2F(), LocalAnchorB = r.V2F(), Length = r.Float(), EnableSpring = r.Bool(), SpringHertz = r.Float(), SpringDampingRatio = r.Float(), EnableLimit = r.Bool(), MinLength = r.Float(), MaxLength = r.Float(), EnableMotor = r.Bool(), MotorSpeed = r.Float(), MaxMotorForce = r.Float(), CollideConnected = r.Bool(), BreakForce = r.Float() }; Add(joints, w.CreateJoint(in d)); break; }
             case 5: { var d = new MotorJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), LinearOffset = r.V2F(), AngularOffset = r.Float(), MaxForce = r.Float(), MaxTorque = r.Float(), CorrectionFactor = r.Float(), CollideConnected = r.Bool(), BreakForce = r.Float() }; Add(joints, w.CreateJoint(in d)); break; }
             case 6: { var d = new MouseJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), LocalAnchorB = r.V2F(), Target = new Vector2D(r.Double(), r.Double()), Hertz = r.Float(), DampingRatio = r.Float(), MaxForce = r.Float(), BreakForce = r.Float() }; Add(joints, w.CreateJoint(in d)); break; }
+            case 14: Add(joints, w.CreateJoint(new GearJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), Ratio = r.Float(), LifetimeSteps = r.Byte() })); break;
+            case 15: Add(joints, w.CreateJoint(new RackAndPinionJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), Ratio = r.Float(), LocalAxisB = r.V2F() })); break;
+            case 16: Add(joints, w.CreateJoint(new PulleyJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), FixedPointA = new(r.Double(), r.Double()), FixedPointB = new(r.Double(), r.Double()), Ratio = r.Float(), Length = r.Float() })); break;
+            case 17: Add(joints, w.CreateJoint(new PathJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), Points = [r.V2F(), r.V2F(), r.V2F()], Loop = r.Bool(), AlignTangent = r.Bool(), EnableMotor = r.Bool(), MotorSpeed = r.Float(), MaxMotorForce = r.Float() })); break;
+            case 18: Add(joints, w.CreateJoint(new ConfigurableJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), X = new() { Mode = (JointAxisMode)r.Byte(), EnableSpring = r.Bool(), SpringHertz = r.Float(), SpringDampingRatio = r.Float() } })); break;
+            case 19: Add(joints, w.CreateJoint(new FilterJointDef { BodyA = Pick(bodies, r), BodyB = Pick(bodies, r), LifetimeSteps = r.Byte() })); break;
             case 7: { int n = 1 + r.Byte() % 5; for (int i = 0; i < n; i++) { StepTolerant(w); } break; }
             case 8: Edit(joints, r); break;
             case 9: { if (joints.Count > 0) { joints[r.Byte() % joints.Count].Destroy(); } break; }
@@ -227,6 +233,9 @@ internal static class FuzzJoints2D
         var mouse = w.AddTarget(b[0], b[6], new Vector2D(1, 6));
         mouse.Target = new Vector2D(3, 7);
         w.AddRelative(b[3], b[4], 50f, 50f).SetOffset(new Vector2F(1f, 0f), 0.1f);
+        w.AddPulley(b[3], b[4], b[3].Position, b[4].Position, new Vector2D(-2, 10), new Vector2D(0, 10));
+        w.AddPath(b[0], b[5], [new Vector2D(-3, 5), new Vector2D(0, 6), new Vector2D(3, 5)]);
+        w.AddConfigurable(b[0], b[6], b[6].Position).LifetimeStepsRemaining = 80;
         for (int i = 0; i < 20; i++) { w.StepChecked(1f / 60f); }
         var snap = w.Snapshot();
         if (services) { s_baseServices = snap; } else { s_base = snap; }
