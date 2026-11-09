@@ -97,6 +97,8 @@ public class ReadmeTests
 
         var soft = GuideExamples.SoftBodies.Run();
         Assert.Equal(soft, GuideExamples.SoftBodies.Run());
+        var fluids = GuideExamples.Fluids.Run();
+        Assert.Equal(fluids, GuideExamples.Fluids.Run());
         Assert.InRange(soft.ClothY, 0.0, 1.8);
         Assert.InRange(soft.CubeVolumeRatio, 0.9, 1.1);
 
