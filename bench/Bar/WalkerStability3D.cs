@@ -36,7 +36,7 @@ internal static class WalkerStability3D
             }
 
             var res = new SortedDictionary<string, double> { ["meanProgress"] = prog, ["reached"] = reached, ["trials"] = trials, ["falls"] = falls, ["stopFalls"] = stopFalls, ["offPath"] = off, ["speedError"] = speedErr, ["maxSpeed"] = maxSpeed, ["nan"] = nan, ["escapes"] = escapes, ["maxPenetration"] = maxPen, ["jointError"] = jointErr, ["maxOffset"] = offMax };
-            bool ok = reached >= 30 && nan == 0 && escapes == 0 && speedErr <= 0.2;
+            bool ok = reached == trials && falls == 0 && off == 0 && nan == 0 && escapes == 0 && speedErr <= 0.07 && maxPen <= 0.23 && jointErr <= 0.04 && maxSpeed <= 34;   // 1.5x the worst of x64 and arm64 (the two agree to the bit); stopFalls is reported, not gated
             Console.WriteLine($"walkers-3d/{t} steps={steps} threads={threads} " + string.Join(' ', res.Select(kv => kv.Key + "=" + F(kv.Value))) + (ok ? " PASS" : " FAIL"));
             if (!ok) fails++;
         }
