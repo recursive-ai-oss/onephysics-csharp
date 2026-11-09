@@ -462,16 +462,11 @@ public class Cloth3DTests
     {
         ulong Hash(double skin)
         {
-            double was = Engine3D.SkinFactor;
-            Engine3D.SkinFactor = skin;
-            try
-            {
-                var w = Cloth3DScene.Build("cloth-throw-3d", 1);
-                ulong h = 14695981039346656037UL;
-                for (int i = 0; i < 90; i++) { w.Step(Dt); h = (h ^ w.ComputeHash()) * 1099511628211UL; }
-                return h;
-            }
-            finally { Engine3D.SkinFactor = was; }
+            var w = Cloth3DScene.Build("cloth-throw-3d", 1);
+            w.Engine.SkinFactor = skin;
+            ulong h = 14695981039346656037UL;
+            for (int i = 0; i < 90; i++) { w.Step(Dt); h = (h ^ w.ComputeHash()) * 1099511628211UL; }
+            return h;
         }
 
         ulong a = Hash(0.25);

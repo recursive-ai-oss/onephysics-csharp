@@ -100,10 +100,8 @@ internal sealed partial class Engine3D
     private const double TravelFactor = 1.5;
     private const double MaxCellVisits = 512.0, MaxCellCoordinate = 1e15;
     // How far a particle may wander from its listed position before the lists are rebuilt, in particle radii (on top of the substep's travel).
-    internal static double SkinFactor = 1.0;
-    internal static bool SurfProf;
-    internal static readonly long[] ProfCounts = new long[6];   // substeps listed, rebuilds, candidate pairs (sum over substeps), active pairs (sum)
-    private void PM(StepStage st) { if (SurfProf) { Core.Profile.Mark(st); } }
+    // Speed only: any value gives the same result (a test checks it), a larger one rebuilds less often and lists more pairs.
+    internal double SkinFactor = 1.0;
     // Items per search task.
     private const int SurfaceChunk = 96;
 
@@ -162,7 +160,6 @@ internal sealed partial class Engine3D
             _bTr[a] = a < _awakeSoftCount && _bPart[a] ? TravelFactor * (MaxParticleSpeed(d) * (double)h + 0.5 * gmag * (double)h * h) : 0.0;
         }
 
-        PM(StepStage.Init);
         GrowTo(ref _bMd, 3 * _pairSoftCount); GrowTo(ref _bDev, _pairSoftCount); GrowTo(ref _bMv, 3 * _pairSoftCount); GrowTo(ref _bVdev, _pairSoftCount);
         bool rebuild = !_cbValid || !SameBodies();
         if (!rebuild)
@@ -177,11 +174,8 @@ internal sealed partial class Engine3D
             for (int a = 0; a < _pairSoftCount; a++) { ComputeMotion(a, false, parts <= RelativeBodyLimit); }
         }
 
-        PM(StepStage.Pairs);
         _selH = h; _gScaleBase = gmag;
         SelectActive();
-        PM(StepStage.SoftPredict);
-        if (SurfProf) { ProfCounts[0]++; if (rebuild) { ProfCounts[1]++; } ProfCounts[2] += _vtCount + _eeCount; ProfCounts[3] += _avCount + _aeCount; }
     }
 
     private ulong LayerSignature()
@@ -327,7 +321,6 @@ internal sealed partial class Engine3D
             }
         }
 
-        PM(StepStage.Move);
         MarkSurfaceBodies();
         int nt = 0, ne = 0;
         for (int a = 0; a < _pairSoftCount; a++)
@@ -400,13 +393,10 @@ internal sealed partial class Engine3D
 
         if (targets == 0) { return; }
         // The grids of the targets are built in tasks (one per target), then the searches run in tasks of a fixed number of items each, and the hits are joined in task order.
-        PM(StepStage.Sort);
         Core.Executor.For(_pairSoftCount, new SurfGridProgram(this));
-        PM(StepStage.Search);
         BuildSearchTasks();
         for (int t = 0; t < _skCount; t++) { _sbuf[t] ??= new SurfBuf(); _sbuf[t]!.Count = 0; }
         Core.Executor.For(_skCount, new SurfSearchProgram(this));
-        PM(StepStage.Alloc);
         for (int t = 0; t < _skCount; t++)
         {
             var buf = _sbuf[t]!;
@@ -812,49 +802,111 @@ internal sealed partial class Engine3D
     // not inside the triangle or the two edges); the first pass that finds it inside sets it from where it is then.
     private double _selH;
 
+    // Candidates per selection task. Each task writes its own list of the pairs it keeps (in candidate order) and the lists are joined in task order, so the active set is the candidate order whatever the thread count.
+    private const int SelectChunk = 256;
+
+    private sealed class SelBuf
+    {
+        public int[] K = new int[SelectChunk];
+        public float[] S = new float[SelectChunk];
+        public int Count;
+    }
+
+    private SelBuf[] _selBuf = new SelBuf[8];
+    private int _selVt, _selTasks;
+
+    private readonly struct SelectProgram : IParallelBody
+    {
+        private readonly Engine3D _e;
+        public SelectProgram(Engine3D e) { _e = e; }
+        public void Run(int task) => _e.SelectTask(task);
+    }
+
     private void SelectActive()
     {
         GrowTo(ref _avK, _vtCount); GrowTo(ref _avS, _vtCount); GrowTo(ref _aeK, _eeCount); GrowTo(ref _aeS, _eeCount);
-        for (int k = 0; k < _vtCount; k++)
+        _selVt = (_vtCount + SelectChunk - 1) / SelectChunk;
+        _selTasks = _selVt + (_eeCount + SelectChunk - 1) / SelectChunk;
+        if (_selBuf.Length < _selTasks) { Array.Resize(ref _selBuf, Math.Max(_selTasks, 2 * _selBuf.Length)); }
+        for (int t = 0; t < _selTasks; t++) { _selBuf[t] ??= new SelBuf(); _selBuf[t]!.Count = 0; }
+        if (_selTasks == 0) { return; }
+        // Few candidates: not worth waking the pool.
+        if (_selTasks == 1) { SelectTask(0); } else { Core.Executor.For(_selTasks, new SelectProgram(this)); }
+        for (int t = 0; t < _selTasks; t++)
         {
-            int ba = _vtBA[k], bt = _vtBT[k];
-            var dp = _awakeSoft[ba]; var dt = _awakeSoft[bt];
-            float thick = dp.Radius + dt.Radius;
-            double reach = thick + RelTrav(ba, bt, _selH);
-            if (_vtD0[k] - RelDisp(ba, bt) - 1e-5 >= reach) { continue; }
-            int g = _vtP[k];
-            int p = g - dp.Base;
-            int el = _gtLocal[_vtT[k]];
-            int a = dt.SurfTris[3 * el], b = dt.SurfTris[3 * el + 1], c = dt.SurfTris[3 * el + 2];
-            if (dp.InvMass[p] == 0f && dt.InvMass[a] == 0f && dt.InvMass[b] == 0f && dt.InvMass[c] == 0f) { continue; }
-            double px = dp.Ox + dp.X[3 * p], py = dp.Oy + dp.X[3 * p + 1], pz = dp.Oz + dp.X[3 * p + 2];
-            double ax = dt.Ox + dt.X[3 * a], ay = dt.Oy + dt.X[3 * a + 1], az = dt.Oz + dt.X[3 * a + 2];
-            double bx = dt.Ox + dt.X[3 * b], by = dt.Oy + dt.X[3 * b + 1], bz = dt.Oz + dt.X[3 * b + 2];
-            double cx = dt.Ox + dt.X[3 * c], cy = dt.Oy + dt.X[3 * c + 1], cz = dt.Oz + dt.X[3 * c + 2];
-            if (SoftGeometry.PointTriangleSq(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz) >= reach * reach) { continue; }
-            bool inside = VertexTriangle(dp, p, dt, a, b, c, out _, out _, out _, out float dist, out _, out _, out _);
-            _avK[_avCount] = k; _avS[_avCount] = inside ? (dist >= 0f ? 1f : -1f) : 0f; _avCount++;
+            var buf = _selBuf[t]!;
+            if (t < _selVt) { Array.Copy(buf.K, 0, _avK, _avCount, buf.Count); Array.Copy(buf.S, 0, _avS, _avCount, buf.Count); _avCount += buf.Count; }
+            else { Array.Copy(buf.K, 0, _aeK, _aeCount, buf.Count); Array.Copy(buf.S, 0, _aeS, _aeCount, buf.Count); _aeCount += buf.Count; }
+        }
+    }
+
+    private void SelectTask(int t)
+    {
+        var buf = _selBuf[t]!;
+        int n = 0;
+        if (t < _selVt)
+        {
+            int from = t * SelectChunk, to = Math.Min(_vtCount, from + SelectChunk);
+            for (int k = from; k < to; k++)
+            {
+                if (SelectVertexTriangle(k, out float side)) { buf.K[n] = k; buf.S[n] = side; n++; }
+            }
+        }
+        else
+        {
+            int from = (t - _selVt) * SelectChunk, to = Math.Min(_eeCount, from + SelectChunk);
+            for (int k = from; k < to; k++)
+            {
+                if (SelectEdgeEdge(k, out float side)) { buf.K[n] = k; buf.S[n] = side; n++; }
+            }
         }
 
-        for (int k = 0; k < _eeCount; k++)
-        {
-            int ba = _eeBA[k], bb = _eeBB[k];
-            var d1 = _awakeSoft[ba]; var d2 = _awakeSoft[bb];
-            float thick = d1.Radius + d2.Radius;
-            double reach = thick + RelTrav(ba, bb, _selH);
-            if (_eeD0[k] - RelDisp(ba, bb) - 1e-5 >= reach) { continue; }
-            int g1 = _eeA[k], g2 = _eeB[k];
-            int l1 = _geLocal[g1], l2 = _geLocal[g2];
-            int a = d1.SurfEdgeA[l1], b = d1.SurfEdgeB[l1], c = d2.SurfEdgeA[l2], d = d2.SurfEdgeB[l2];
-            if (d1.InvMass[a] == 0f && d1.InvMass[b] == 0f && d2.InvMass[c] == 0f && d2.InvMass[d] == 0f) { continue; }
-            double ax = d1.Ox + d1.X[3 * a], ay = d1.Oy + d1.X[3 * a + 1], az = d1.Oz + d1.X[3 * a + 2];
-            double bx = d1.Ox + d1.X[3 * b], by = d1.Oy + d1.X[3 * b + 1], bz = d1.Oz + d1.X[3 * b + 2];
-            double cx = d2.Ox + d2.X[3 * c], cy = d2.Oy + d2.X[3 * c + 1], cz = d2.Oz + d2.X[3 * c + 2];
-            double dx = d2.Ox + d2.X[3 * d], dy = d2.Oy + d2.X[3 * d + 1], dz = d2.Oz + d2.X[3 * d + 2];
-            if (SoftGeometry.SegmentSegmentSq(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz) >= reach * reach) { continue; }
-            bool inside = EdgeEdge(d1, a, b, d2, c, d, out _, out _, out _, out float dist, out _, out _);
-            _aeK[_aeCount] = k; _aeS[_aeCount] = inside ? (dist >= 0f ? 1f : -1f) : 0f; _aeCount++;
-        }
+        buf.Count = n;
+    }
+
+    private bool SelectVertexTriangle(int k, out float side)
+    {
+        side = 0f;
+        int ba = _vtBA[k], bt = _vtBT[k];
+        var dp = _awakeSoft[ba]; var dt = _awakeSoft[bt];
+        float thick = dp.Radius + dt.Radius;
+        double reach = thick + RelTrav(ba, bt, _selH);
+        if (_vtD0[k] - RelDisp(ba, bt) - 1e-5 >= reach) { return false; }
+        int g = _vtP[k];
+        int p = g - dp.Base;
+        int el = _gtLocal[_vtT[k]];
+        int a = dt.SurfTris[3 * el], b = dt.SurfTris[3 * el + 1], c = dt.SurfTris[3 * el + 2];
+        if (dp.InvMass[p] == 0f && dt.InvMass[a] == 0f && dt.InvMass[b] == 0f && dt.InvMass[c] == 0f) { return false; }
+        double px = dp.Ox + dp.X[3 * p], py = dp.Oy + dp.X[3 * p + 1], pz = dp.Oz + dp.X[3 * p + 2];
+        double ax = dt.Ox + dt.X[3 * a], ay = dt.Oy + dt.X[3 * a + 1], az = dt.Oz + dt.X[3 * a + 2];
+        double bx = dt.Ox + dt.X[3 * b], by = dt.Oy + dt.X[3 * b + 1], bz = dt.Oz + dt.X[3 * b + 2];
+        double cx = dt.Ox + dt.X[3 * c], cy = dt.Oy + dt.X[3 * c + 1], cz = dt.Oz + dt.X[3 * c + 2];
+        if (SoftGeometry.PointTriangleSq(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz) >= reach * reach) { return false; }
+        bool inside = VertexTriangle(dp, p, dt, a, b, c, out _, out _, out _, out float dist, out _, out _, out _);
+        side = inside ? (dist >= 0f ? 1f : -1f) : 0f;
+        return true;
+    }
+
+    private bool SelectEdgeEdge(int k, out float side)
+    {
+        side = 0f;
+        int ba = _eeBA[k], bb = _eeBB[k];
+        var d1 = _awakeSoft[ba]; var d2 = _awakeSoft[bb];
+        float thick = d1.Radius + d2.Radius;
+        double reach = thick + RelTrav(ba, bb, _selH);
+        if (_eeD0[k] - RelDisp(ba, bb) - 1e-5 >= reach) { return false; }
+        int g1 = _eeA[k], g2 = _eeB[k];
+        int l1 = _geLocal[g1], l2 = _geLocal[g2];
+        int a = d1.SurfEdgeA[l1], b = d1.SurfEdgeB[l1], c = d2.SurfEdgeA[l2], d = d2.SurfEdgeB[l2];
+        if (d1.InvMass[a] == 0f && d1.InvMass[b] == 0f && d2.InvMass[c] == 0f && d2.InvMass[d] == 0f) { return false; }
+        double ax = d1.Ox + d1.X[3 * a], ay = d1.Oy + d1.X[3 * a + 1], az = d1.Oz + d1.X[3 * a + 2];
+        double bx = d1.Ox + d1.X[3 * b], by = d1.Oy + d1.X[3 * b + 1], bz = d1.Oz + d1.X[3 * b + 2];
+        double cx = d2.Ox + d2.X[3 * c], cy = d2.Oy + d2.X[3 * c + 1], cz = d2.Oz + d2.X[3 * c + 2];
+        double dx = d2.Ox + d2.X[3 * d], dy = d2.Oy + d2.X[3 * d + 1], dz = d2.Oz + d2.X[3 * d + 2];
+        if (SoftGeometry.SegmentSegmentSq(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz) >= reach * reach) { return false; }
+        bool inside = EdgeEdge(d1, a, b, d2, c, d, out _, out _, out _, out float dist, out _, out _);
+        side = inside ? (dist >= 0f ? 1f : -1f) : 0f;
+        return true;
     }
 
     // The particle's projection on the triangle's plane: unit normal (right-handed around the triangle), signed distance of the particle along it, barycentric coordinates of the projection.

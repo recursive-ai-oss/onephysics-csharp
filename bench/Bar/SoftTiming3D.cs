@@ -3,52 +3,35 @@ using System.Linq;
 
 namespace Bar;
 
-// soft3d-timing <threads>: median, mean and p99 step time over 300 steps after 60 warm-up steps for the 3D soft-body scenes (indicative; no tiering control, one process). cloth-fold-3d exists only where
+// soft3d-timing <threads> [on|off]: median, mean and p99 step time over 300 steps after 60 warm-up steps for the 3D soft-body scenes (indicative; no tiering control, one process). cloth-fold-3d exists only where
 // tests/Common/SoftFracture3DScene.cs does.
 internal static class SoftTiming3D
 {
     internal static int Run(int threads, string surface = "default")
     {
-        RecursiveAI.OnePhysics.Physics3D.Engine3D.SurfProf = Environment.GetEnvironmentVariable("OP_SURFPROF") != null;
-        var sk = Environment.GetEnvironmentVariable("OP_SKIN"); if (sk != null) { RecursiveAI.OnePhysics.Physics3D.Engine3D.SkinFactor = double.Parse(sk, System.Globalization.CultureInfo.InvariantCulture); }
         if (surface == "on") { SceneBuilder3D.SurfaceOverride = true; } else if (surface == "off") { SceneBuilder3D.SurfaceOverride = false; }
         _fold = surface != "off"; _surface = surface;
         var sc = Gen.All().First(s => s.Name == "cloth-drape-3d");
         var (w, _, _) = SceneBuilder3D.Build(sc, threads);
         SceneBuilder3D.AddSofts(sc, w);
-        Print("cloth-drape-3d " + surface, threads, Time(w, () => w.Step((float)sc.Dt)));
+        Print("cloth-drape-3d " + surface, threads, Time(() => w.Step((float)sc.Dt)));
         var sp = Gen.All().First(s => s.Name == "soft-pile-3d");
         var (w2, _, _) = SceneBuilder3D.Build(sp, threads);
         SceneBuilder3D.AddSofts(sp, w2);
-        Print("soft-pile-3d " + surface, threads, Time(w2, () => w2.Step((float)sp.Dt)));
+        Print("soft-pile-3d " + surface, threads, Time(() => w2.Step((float)sp.Dt)));
         return RunFold(threads);
     }
 
-    private static readonly string[] StageNames = ["softSetup", "softPredict", "softDetect", "softPairs", "softConstraints", "softFinish", "softEnd", "sInit", "sBoxes", "sGrids", "sSearch", "sJoin", "sSelect", "candV", "candE", "activeV", "activeE"];
-    private static readonly int[] StageIdx = [17, 18, 19, 20, 21, 24, 25, 13, 12, 15, 14, 16, 1];
-
-    private static double[] Time(RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D w, Action step)
+    private static double[] Time(Action step)
     {
         for (int i = 0; i < 60; i++) { step(); }
         var ms = new double[300];
-        var st = new double[StageIdx.Length][];
-        for (int k = 0; k < st.Length; k++) { st[k] = new double[300]; }
-        w.Profile.TimestampSource = Stopwatch.GetTimestamp;
-        int gc0 = GC.CollectionCount(0);
-        var sum = new double[300];
         for (int i = 0; i < ms.Length; i++)
         {
             long t0 = Stopwatch.GetTimestamp();
             step();
             ms[i] = Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
-            var du = w.Profile.Durations;
-            for (int k = 0; k < st.Length; k++) { st[k][i] = du[StageIdx[k]] * 1000.0 / Stopwatch.Frequency; sum[i] += st[k][i]; }
         }
-
-        w.Profile.TimestampSource = null;
-        { var pc = RecursiveAI.OnePhysics.Physics3D.Engine3D.ProfCounts; Console.WriteLine($"  surface counts (whole run incl warmup): substeps={pc[0]} rebuilds={pc[1]} avgCandidates={(pc[0] > 0 ? pc[2] / (double)pc[0] : 0):F0} avgActive={(pc[0] > 0 ? pc[3] / (double)pc[0] : 0):F0}"); Array.Clear(pc); }
-        Console.WriteLine($"  softSum median={sum.OrderBy(x => x).ElementAt(150):F3} gen0={GC.CollectionCount(0) - gc0}");
-        Console.WriteLine("  stages(median ms): " + string.Join(" ", StageNames.Take(StageIdx.Length).Select((n, k) => n + "=" + st[k].OrderBy(x => x).ElementAt(150).ToString("F3"))));
 
         return ms;
     }
@@ -66,7 +49,7 @@ internal static class SoftTiming3D
     private static int RunFold(int threads)
     {
         var w = SoftFracture3DScene.Build("cloth-fold-3d", threads, _fold);
-        Print("cloth-fold-3d " + _surface, threads, Time(w, () => w.Step(SoftFracture3DScene.Dt)));
+        Print("cloth-fold-3d " + _surface, threads, Time(() => w.Step(SoftFracture3DScene.Dt)));
         return 0;
     }
 }
