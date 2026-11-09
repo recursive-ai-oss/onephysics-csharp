@@ -77,7 +77,13 @@ internal sealed partial class SoftBodyData
         for (int i = 0; i < N; i++) { if (mark[i]) { SurfParticles[count++] = i; } }
     }
 
-    /// <summary>Distance at rest between two particles (for the self-collision exclusions).</summary>
+    /// <summary>Squared distance at rest between two particles (for the self-collision exclusions).</summary>
+    public float RestDistance2(int a, int b)
+    {
+        float dx = Rest[3 * a] - Rest[3 * b], dy = Rest[3 * a + 1] - Rest[3 * b + 1], dz = Rest[3 * a + 2] - Rest[3 * b + 2];
+        return dx * dx + dy * dy + dz * dz;
+    }
+
     public float RestDistance(int a, int b)
     {
         float dx = Rest[3 * a] - Rest[3 * b], dy = Rest[3 * a + 1] - Rest[3 * b + 1], dz = Rest[3 * a + 2] - Rest[3 * b + 2];
