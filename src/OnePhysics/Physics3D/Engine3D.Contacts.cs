@@ -691,7 +691,7 @@ internal sealed partial class Engine3D
     private double FastReach(int b)
     {
         double r = StepReach(b, true) * Core.ContactStepDt;
-        return r > Opt.SpeculativeDistance ? r : 0.0;
+        return r > 2.0 * Opt.SpeculativeDistance ? r : 0.0;
     }
 
     /// <summary>
