@@ -227,6 +227,10 @@ Notes for the three scenes above (thresholds are 1.5x the measured value, x64 lo
 
 Bicycles hold only inside the self-stable band of their definition (Benchmark 4.4 to 6.0 m/s, Road 4.5 to 7), as the physics gives it; the scene's riders do not steer, because a steering feedback loop at 60 steps per second was too sensitive. A fallen 3D bicycle lies on the ground on its collision shapes. Thresholds are x64 values; the hash matrix proves every column equal (including osx-arm64), so the metrics are the same on arm64.
 
+### Authoring-tool scenes (own scenes, no reference engine)
+
+`tet-drop-3d`, `tri-drop-2d`, `autoragdoll-pile-3d`, `autoragdoll-stand-3d` and `autoragdoll-pile-2d` (`tests/Common/TetDropScene.cs`, `tests/Common/AutoRagdollScenes.cs`; rows from `bar authoring-stability`). Definitions, thresholds and what they measured are in `docs/spec/tools.md` (Scenes and hash matrix, part 2).
+
 ## Step-state dump
 
 Every driver writes the same binary file in stability mode. Little-endian. Header: the ASCII bytes `OPDUMP01`, `u32` body count, `u32` 0. Then frames: `u32` step number (0 = initial state), `u32` 0, and `7 × n` doubles per frame in scene body order: x, y, angle (body origin, radians), vx, vy (centre-of-mass velocity as the engine reports it), w, awake (1 or 0). In 3D the header word is 3 and a frame is `14 × n` doubles: x, y, z, qx, qy, qz, qw (body origin, unit quaternion), vx, vy, vz, wx, wy, wz (centre-of-mass velocity as the engine reports it), awake. A frame's second `u32` is the count of extra doubles after the body rows: for scenes with vehicles, x, y, z of every wheel centre of every car (four per car, in body order).

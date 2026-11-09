@@ -143,7 +143,7 @@ public static class Tetrahedralizer
         double ox = x0 - a * 1.818, oy = y0 - a * 1.641, oz = z0 - a * 1.777;
         int nx = (int)Math.Ceiling((x1 - ox) / a) + 2, ny = (int)Math.Ceiling((y1 - oy) / a) + 2, nz = (int)Math.Ceiling((z1 - oz) / a) + 2;
         long cellCount = (long)nx * ny * nz;
-        if (cellCount > (1L << 23)) { throw Bad("TargetEdgeLength", a.ToString("R", System.Globalization.CultureInfo.InvariantCulture), "larger: the lattice would need " + cellCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + " cells, the limit is 2^23", nameof(options)); }
+        if (cellCount > (1L << 21)) { throw Bad("TargetEdgeLength", a.ToString("R", System.Globalization.CultureInfo.InvariantCulture), "larger: the lattice would need " + cellCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + " cells, the limit is 2^21", nameof(options)); }
 
         var tri = indices.ToArray();
         var grid = new TriangleGrid(mx, my, mz, tri, ox, oy, oz, a, nx, ny, nz);

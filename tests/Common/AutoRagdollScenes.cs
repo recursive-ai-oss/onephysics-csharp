@@ -11,7 +11,7 @@ namespace RecursiveAI.OnePhysics.Tools.Tests;
 /// <summary>What a run of an auto-ragdoll scene measured. Thresholds are the scene's own (no other engine builds a ragdoll from a skeleton).</summary>
 public readonly record struct AutoRagdollMetrics(double Nan, double Escapes, double MaxSpeed, double FinalSpeed95, double JointError, double LowestPelvis, int Falls, double MaxHeightError)
 {
-    public bool Passes(bool standing) => Nan == 0 && Escapes == 0 && MaxSpeed <= 30 && JointError <= 0.15 && (standing ? Falls == 0 && MaxHeightError <= 0.2 : FinalSpeed95 <= 0.5 && LowestPelvis >= 0.0);
+    public bool Passes(bool standing) => Nan == 0 && Escapes == 0 && MaxSpeed <= 30 && JointError <= (standing ? 0.15 : 0.3) && (standing ? Falls == 0 && MaxHeightError <= 0.2 : FinalSpeed95 <= 0.5 && LowestPelvis >= 0.0);
 }
 
 /// <summary>

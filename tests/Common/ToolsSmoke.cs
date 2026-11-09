@@ -1,3 +1,4 @@
+#pragma warning disable OPHYS0002, OPHYS0003
 using System;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics.Tools;
@@ -32,7 +33,19 @@ internal static class ToolsSmoke
         var sprite = SpriteOutliner.ToConvexPieces(mask, 24, 24);
         MixI(sprite.Length);
         foreach (var p in sprite) { foreach (var v in p) { Mix(v.X); Mix(v.Y); } }
+        // tetrahedralization, quality triangulation and the ragdoll fitter
+        var blob = TetBlob.Build(24, 32);
+        var tet = Tetrahedralizer.Generate(blob.V, blob.I, new TetrahedralizeOptions { TargetEdgeLength = 0.5f, MaxThreads = 3 });
+        MixI(tet.Tetrahedra.Length); foreach (var v in tet.Vertices) { Mix(v.X); Mix(v.Y); Mix(v.Z); } Mix((float)tet.SurfaceDeviation);
+        var mesh2 = TriangleMesher.Generate(star, new[] { new[] { new Vector2F(-0.3f, -0.3f), new Vector2F(-0.3f, 0.3f), new Vector2F(0.3f, 0.3f), new Vector2F(0.3f, -0.3f) } }, new TriangleMeshOptions { TargetEdgeLength = 0.4f });
+        MixI(mesh2.Triangles.Length); foreach (var v in mesh2.Vertices) { Mix(v.X); Mix(v.Y); }
+        var sk = TestSkeleton.Humanoid();
+        var rag = AutoRagdoller.Create(sk.Names, sk.Parents, sk.Positions, sk.Skin);
+        MixI(rag.Definition.Parts.Length);
+        foreach (var part in rag.Definition.Parts) { Mix(part.Mass); Mix(part.Position.X); Mix(part.Position.Y); Mix(part.ShapeHalfSize.X); Mix(part.ShapeHalfSize.Y); Mix(part.JointRotation.W); }
+        var rag2 = AutoRagdoller.Create2D(sk.Names, sk.Parents, sk.Positions2D(), sk.Skin2D());
+        foreach (var part in rag2.Definition.Parts) { Mix(part.Mass); Mix(part.Angle); Mix(part.ShapeHalfSize.Y); }
         digest = h;
-        return d.Hulls.Count == 2 && pieces.Length >= 2 && sprite.Length >= 3 && simple.Hull.Vertices.Length <= 20;
+        return d.Hulls.Count == 2 && pieces.Length >= 2 && sprite.Length >= 3 && simple.Hull.Vertices.Length <= 20 && tet.Tetrahedra.Length > 100 && mesh2.Triangles.Length > 30 && rag.Definition.Parts.Length == 13 && rag2.Definition.Parts.Length == 13;
     }
 }

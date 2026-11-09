@@ -212,7 +212,7 @@ internal static class SkeletonFitter
         if (n > MaxBones) { throw Err(GeometryToolError.OutOfRange, "the skeleton has " + MeshInput.Inv(n) + " bones, the limit is " + MeshInput.Inv(MaxBones), "boneNames"); }
         if (parent.Length != n) { throw Err(GeometryToolError.BadIndex, "parents has " + MeshInput.Inv(parent.Length) + " entries for " + MeshInput.Inv(n) + " bones", "parents"); }
         if (x.Length != n) { throw Err(GeometryToolError.BadIndex, "positions has " + MeshInput.Inv(x.Length) + " entries for " + MeshInput.Inv(n) + " bones", "positions"); }
-        const double Bound = 1048576.0;
+        const double Bound = 32768.0;
         for (int i = 0; i < n; i++)
         {
             if (!double.IsFinite(x[i]) || !double.IsFinite(y[i]) || !double.IsFinite(z[i]))
@@ -222,7 +222,7 @@ internal static class SkeletonFitter
 
             if (Math.Abs(x[i]) > Bound || Math.Abs(y[i]) > Bound || Math.Abs(z[i]) > Bound)
             {
-                throw Err(GeometryToolError.OutOfRange, "positions[" + MeshInput.Inv(i) + "] is beyond ±2^20", "positions");
+                throw Err(GeometryToolError.OutOfRange, "positions[" + MeshInput.Inv(i) + "] is beyond ±2^15", "positions");
             }
 
             if (parent[i] < -1 || parent[i] >= n || parent[i] == i)
@@ -263,7 +263,7 @@ internal static class SkeletonFitter
             {
                 if (!double.IsFinite(mesh.X[i]) || !double.IsFinite(mesh.Y[i]) || !double.IsFinite(mesh.Z[i]) || Math.Abs(mesh.X[i]) > Bound || Math.Abs(mesh.Y[i]) > Bound || Math.Abs(mesh.Z[i]) > Bound)
                 {
-                    throw Err(GeometryToolError.NonFinite, "skin vertex " + MeshInput.Inv(i) + " is not finite or is beyond ±2^20", "skin");
+                    throw Err(GeometryToolError.NonFinite, "skin vertex " + MeshInput.Inv(i) + " is not finite or is beyond ±2^15", "skin");
                 }
             }
 

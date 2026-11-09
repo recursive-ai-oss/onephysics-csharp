@@ -81,6 +81,26 @@ public static class AutoRagdoller
 
     private static bool UprightFrame(PartFit p, bool humanoid) => humanoid && p.Kind != BoneRole.UpperArm && p.Kind != BoneRole.Forearm && p.Kind != BoneRole.Hand;
 
+    // The engine refuses numbers outside its ranges with its own exception; a definition made here is checked first so that the tool's error is a GeometryToolException naming the part.
+    private static GeometryToolException Fail(GeometryToolError e, string message, string? param) => new(e, message, param);
+
+    private static void CheckSizes(int part, string? name, float mass, float a, float b, float c, int used, float px, float py, float pz)
+    {
+        string where = "part " + MeshInput.Inv(part) + (name is null ? string.Empty : " (" + name + ")");
+        if (!(mass > 0f) || !float.IsFinite(mass)) { throw Fail(GeometryToolError.OutOfRange, where + ": the mass " + mass.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " kg is not a positive float; raise TotalMass", "options"); }
+        float[] h = { a, b, c };
+        for (int i = 0; i < used; i++)
+        {
+            if (!(h[i] > 0f) || !(h[i] <= 65536f)) { throw Fail(GeometryToolError.OutOfRange, where + ": a shape size of " + h[i].ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " m is not a positive length within 65536 m", "bindPositions"); }
+        }
+
+        // The engine refuses a body whose mass or inertia falls outside 1e-18..1e30; mass times the smallest half size squared stands for the inertia here.
+        float smallest = float.MaxValue;
+        for (int i = 0; i < used; i++) { smallest = Math.Min(smallest, h[i]); }
+        if (!(mass * smallest * smallest >= 1e-14f) || mass > 1e12f) { throw Fail(GeometryToolError.OutOfRange, where + ": a mass of " + mass.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " kg on a shape this small (" + smallest.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " m) gives an inertia outside what the engine accepts; use a larger TotalMass or larger bones", "options"); }
+        if (!float.IsFinite(px) || !float.IsFinite(py) || !float.IsFinite(pz)) { throw Fail(GeometryToolError.NonFinite, where + ": the fitted position is not finite", "bindPositions"); }
+    }
+
     private static double Len(double x, double y, double z) => Math.Sqrt(x * x + y * y + z * z);
 
     // The perpendicular to d that is closest to +z (the way the figure faces).
@@ -110,7 +130,7 @@ public static class AutoRagdoller
     /// <summary>Makes a 3D ragdoll from a skeleton.</summary>
     /// <param name="boneNames">One name per bone, used for the role heuristics and as the part names.</param>
     /// <param name="parents">For each bone the index of its parent, or -1 for a root (at least one; several are allowed). No cycles.</param>
-    /// <param name="bindPositions">Each bone's joint position in the bind pose, m, finite and within ±2^20, in the frame described on <see cref="AutoRagdoller"/>.</param>
+    /// <param name="bindPositions">Each bone's joint position in the bind pose, m, finite and within ±2^15, in the frame described on <see cref="AutoRagdoller"/>.</param>
     /// <param name="skin">Skinned mesh points to fit shapes to, or null to use proportions.</param>
     /// <param name="options">Total mass, mass model, hands, torso split, friction, role overrides; the default is a 75 kg person.</param>
     /// <returns>The ragdoll definition, the controller bone mapping when it is a biped, and the bone-to-part map.</returns>
@@ -192,6 +212,7 @@ public static class AutoRagdoller
                 def.JointRotation = FromColumns(tx, ty, tz, yx, yy, yz, fx, fy, fz);
             }
 
+            CheckSizes(i, def.Name, def.Mass, def.ShapeHalfSize.X, def.ShapeHalfSize.Y, def.ShapeHalfSize.Z, p.Shape == FitShape.Sphere ? 1 : p.Shape == FitShape.Capsule ? 2 : 3, def.Position.X, def.Position.Y, def.Position.Z);
             parts[i] = def;
         }
 
@@ -213,7 +234,7 @@ public static class AutoRagdoller
     /// <summary>Makes a 2D ragdoll from a skeleton in a side view (x along the ground, y up).</summary>
     /// <param name="boneNames">One name per bone.</param>
     /// <param name="parents">For each bone the index of its parent, or -1 for a root.</param>
-    /// <param name="bindPositions">Each bone's joint position in the bind pose, m, finite and within ±2^20.</param>
+    /// <param name="bindPositions">Each bone's joint position in the bind pose, m, finite and within ±2^15.</param>
     /// <param name="skin">Skinned points to fit shapes to, or null.</param>
     /// <param name="options">As for the 3D form; <see cref="AutoRagdollOptions.Facing"/> gives the direction the figure faces and the self-collision mode defaults to no collisions between parts (the arms and legs overlap in a side view).</param>
     /// <returns>The 2D ragdoll definition (see <see cref="Create"/> for the rest).</returns>
@@ -273,6 +294,7 @@ public static class AutoRagdoller
                 }
             }
 
+            CheckSizes(i, def.Name, def.Mass, def.ShapeHalfSize.X, def.ShapeHalfSize.Y, 1f, p.Shape == FitShape.Sphere ? 1 : 2, def.Position.X, def.Position.Y, 0f);
             parts[i] = def;
         }
 

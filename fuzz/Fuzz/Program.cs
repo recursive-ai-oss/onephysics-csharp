@@ -93,6 +93,9 @@ internal static class Program
         ["tools-decompose3d"] = FuzzTools.Decompose3D,
         ["tools-polygon"] = FuzzTools.Polygon,
         ["tools-sprite"] = FuzzTools.Sprite,
+        ["tools-tetrahedralize"] = FuzzAuthoring.Tetrahedralize,
+        ["tools-triangulate2d"] = FuzzAuthoring.Triangulate2D,
+        ["tools-autoragdoll"] = FuzzAuthoring.AutoRagdoll,
     };
 
     private static int Main(string[] args)
