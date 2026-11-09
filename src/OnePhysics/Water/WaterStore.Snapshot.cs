@@ -34,7 +34,7 @@ internal sealed partial class WaterStore
             var g = Grids[i]!;
             w.NamedBool(g.Planar); w.NamedInt32(g.Nx); w.NamedInt32(g.Nz); w.NamedSingle(g.Dx);
             w.NamedDouble(g.OriginX); w.NamedDouble(g.OriginZ); w.NamedDouble(g.BaseY);
-            w.NamedSingle(g.Density); w.NamedSingle(g.LinearDrag); w.NamedSingle(g.AngularDrag); w.NamedSingle(g.ViscousDamping); w.NamedSingle(g.BottomFriction);
+            w.NamedSingle(g.Density); w.NamedSingle(g.LinearDrag); w.NamedSingle(g.AngularDrag); w.NamedSingle(g.ViscousDamping); w.NamedSingle(g.BottomFriction); w.NamedSingle(g.Damping); w.NamedSingle(g.Displacement);
             w.NamedSingle(g.Cfl); w.NamedInt32(g.MaxSubsteps);
             for (int e = 0; e < 4; e++) { w.NamedByte((byte)g.Edges[e]); w.NamedSingle(g.EdgeLevel[e]); w.NamedSingle(g.EdgeSpeed[e]); }
             w.NamedInt32(g.Sources.Length);
@@ -49,13 +49,13 @@ internal sealed partial class WaterStore
             {
                 ref readonly var rec = ref g.Records[r];
                 w.DescribeEntity("body", rec.Slot, rec.Generation);
-                w.NamedInt32(rec.Slot); w.NamedInt32(rec.Generation); w.NamedSingle(rec.Volume);
+                w.NamedInt32(rec.Slot); w.NamedInt32(rec.Generation); w.NamedSingle(rec.Volume); w.NamedSingle(rec.Submerged);
                 w.NamedSingle(rec.X0); w.NamedSingle(rec.X1); w.NamedSingle(rec.Z0); w.NamedSingle(rec.Z1);
             }
         }
     }
 
-    private const int RecordBytes = 28;
+    private const int RecordBytes = 32;
 
     void ISnapshotSection.Read(StateReader r)
     {
@@ -73,9 +73,9 @@ internal sealed partial class WaterStore
             if (!(g.Dx >= 0.001f && g.Dx <= 1000f)) { throw r.Error("invalid shallow water cell size " + g.Dx.ToString("R", CultureInfo.InvariantCulture)); }
             g.OriginX = r.ReadDouble(); g.OriginZ = r.ReadDouble(); g.BaseY = r.ReadDouble();
             if (!double.IsFinite(g.OriginX) || !double.IsFinite(g.OriginZ) || !double.IsFinite(g.BaseY) || Math.Abs(g.OriginX) > 4194304.0 || Math.Abs(g.OriginZ) > 4194304.0 || Math.Abs(g.BaseY) > 4194304.0) { throw r.Error("invalid shallow water origin"); }
-            g.Density = r.ReadSingle(); g.LinearDrag = r.ReadSingle(); g.AngularDrag = r.ReadSingle(); g.ViscousDamping = r.ReadSingle(); g.BottomFriction = r.ReadSingle();
+            g.Density = r.ReadSingle(); g.LinearDrag = r.ReadSingle(); g.AngularDrag = r.ReadSingle(); g.ViscousDamping = r.ReadSingle(); g.BottomFriction = r.ReadSingle(); g.Damping = r.ReadSingle(); g.Displacement = r.ReadSingle();
             g.Cfl = r.ReadSingle(); g.MaxSubsteps = r.ReadInt32();
-            if (!(g.Density > 0f && g.Density <= 1e6f) || !Within(g.LinearDrag) || !Within(g.AngularDrag) || !Within(g.ViscousDamping) || !Within(g.BottomFriction) || !(g.Cfl > 0f && g.Cfl <= 0.5f) || g.MaxSubsteps < 1 || g.MaxSubsteps > 256) { throw r.Error("invalid shallow water coefficients"); }
+            if (!(g.Density > 0f && g.Density <= 1e6f) || !Within(g.LinearDrag) || !Within(g.AngularDrag) || !Within(g.ViscousDamping) || !Within(g.BottomFriction) || !Within(g.Damping) || !(g.Displacement >= 0f && g.Displacement <= 1f) || !(g.Cfl > 0f && g.Cfl <= 0.5f) || g.MaxSubsteps < 1 || g.MaxSubsteps > 256) { throw r.Error("invalid shallow water coefficients"); }
             for (int e = 0; e < 4; e++)
             {
                 byte kind = r.ReadByte();
@@ -108,9 +108,9 @@ internal sealed partial class WaterStore
             int last = -1;
             for (int k = 0; k < nr; k++)
             {
-                var rec = new WaterBodyRecord { Slot = r.ReadInt32(), Generation = r.ReadInt32(), Volume = r.ReadSingle(), X0 = r.ReadSingle(), X1 = r.ReadSingle(), Z0 = r.ReadSingle(), Z1 = r.ReadSingle() };
+                var rec = new WaterBodyRecord { Slot = r.ReadInt32(), Generation = r.ReadInt32(), Volume = r.ReadSingle(), Submerged = r.ReadSingle(), X0 = r.ReadSingle(), X1 = r.ReadSingle(), Z0 = r.ReadSingle(), Z1 = r.ReadSingle() };
                 if (rec.Slot <= last || rec.Slot > 1 << 26 || rec.Generation < 1) { throw r.Error("shallow water body records out of order or for an invalid body"); }
-                if (!(rec.Volume > 0f && rec.Volume <= 1e12f) || !float.IsFinite(rec.X0) || !float.IsFinite(rec.X1) || !float.IsFinite(rec.Z0) || !float.IsFinite(rec.Z1) || rec.X1 < rec.X0 || rec.Z1 < rec.Z0) { throw r.Error("invalid shallow water body record"); }
+                if (!(rec.Volume >= 0f && rec.Volume <= 1e12f) || !(rec.Submerged > 0f && rec.Submerged <= 1e12f) || !float.IsFinite(rec.X0) || !float.IsFinite(rec.X1) || !float.IsFinite(rec.Z0) || !float.IsFinite(rec.Z1) || rec.X1 < rec.X0 || rec.Z1 < rec.Z0) { throw r.Error("invalid shallow water body record"); }
                 last = rec.Slot;
                 g.Records[k] = rec;
             }

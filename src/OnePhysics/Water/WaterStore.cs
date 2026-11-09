@@ -87,7 +87,7 @@ internal sealed partial class WaterStore : ISnapshotSection
         public WaterEdge[] Edges = new WaterEdge[4];
         public float[] EdgeLevel = new float[4], EdgeSpeed = new float[4];
         public WaterSourceSpec[] Sources = Array.Empty<WaterSourceSpec>();
-        public float Density = 1000f, LinearDrag = 0.5f, AngularDrag = 0.5f, ViscousDamping = 1f, BottomFriction;
+        public float Density = 1000f, LinearDrag = 0.5f, AngularDrag = 0.5f, ViscousDamping = 1f, BottomFriction, Damping = 0.1f, Displacement = 0.5f;
         public float Cfl = 0.25f;
         public int MaxSubsteps = 16;
     }
@@ -121,7 +121,8 @@ internal sealed partial class WaterStore : ISnapshotSection
         if (s.Sources.Length > WaterGrid.MaxSources) { throw new ArgumentOutOfRangeException(name, s.Sources.Length, "At most " + WaterGrid.MaxSources.ToString(CultureInfo.InvariantCulture) + " sources."); }
         foreach (var src in s.Sources) { ValidateSource(src, name); }
         if (!(s.Density > 0f && s.Density <= 1e6f)) { throw new ArgumentOutOfRangeException(name, s.Density, "Density must be within (0, 1e6] kg/m³."); }
-        Coefficient(s.LinearDrag, "LinearDrag", name); Coefficient(s.AngularDrag, "AngularDrag", name); Coefficient(s.ViscousDamping, "ViscousDamping", name); Coefficient(s.BottomFriction, "BottomFriction", name);
+        Coefficient(s.LinearDrag, "LinearDrag", name); Coefficient(s.AngularDrag, "AngularDrag", name); Coefficient(s.ViscousDamping, "ViscousDamping", name); Coefficient(s.BottomFriction, "BottomFriction", name); Coefficient(s.Damping, "Damping", name);
+        if (!(s.Displacement >= 0f && s.Displacement <= 1f)) { throw new ArgumentOutOfRangeException(name, s.Displacement, "Displacement must be within 0..1."); }
         if (!(s.Cfl > 0f && s.Cfl <= 0.5f)) { throw new ArgumentOutOfRangeException(name, s.Cfl, "Cfl must be within (0, 0.5]."); }
         if (s.MaxSubsteps < 1 || s.MaxSubsteps > 256) { throw new ArgumentOutOfRangeException(name, s.MaxSubsteps, "MaxSubsteps must be within 1..256."); }
     }
@@ -149,7 +150,7 @@ internal sealed partial class WaterStore : ISnapshotSection
         {
             Planar = _host.Planar, Nx = s.Nx, Nz = s.Nz, Dx = s.CellSize,
             OriginX = Snap(s.OriginX), OriginZ = _host.Planar ? 0.0 : Snap(s.OriginZ), BaseY = Snap(s.FloorHeight),
-            Density = s.Density, LinearDrag = s.LinearDrag, AngularDrag = s.AngularDrag, ViscousDamping = s.ViscousDamping, BottomFriction = s.BottomFriction,
+            Density = s.Density, LinearDrag = s.LinearDrag, AngularDrag = s.AngularDrag, ViscousDamping = s.ViscousDamping, BottomFriction = s.BottomFriction, Damping = s.Damping, Displacement = s.Displacement,
             Cfl = s.Cfl, MaxSubsteps = s.MaxSubsteps,
             Sources = (WaterSourceSpec[])s.Sources.Clone(),
         };

@@ -47,7 +47,6 @@ internal sealed partial class WaterStore
             {
                 if (!bodies.IsLive(b) || !bodies.IsDynamic(b)) { continue; }
                 int r = FindRecord(g, b);
-                float vOld = r >= 0 ? g.Records[r].Volume : 0f;
                 bool awake = bodies.IsAwake(b);
                 if (!_host.BodyBounds(b, out double minX, out double minY, out double minZ, out double maxX, out double maxY, out double maxZ)) { continue; }
                 double lx0 = minX - g.OriginX, lx1 = maxX - g.OriginX, lz0 = g.Planar ? 0.0 : minZ - g.OriginZ, lz1 = g.Planar ? 1.0 : maxZ - g.OriginZ;
@@ -58,26 +57,29 @@ internal sealed partial class WaterStore
                     if (!bodies.IsAwake(b)) { continue; }
                 }
 
-                float v = 0f;
-                if (over) { v = Displace(g, b, minX, minY, minZ, maxX, maxY, maxZ, dt); }
-                if (v <= 0f && r < 0) { continue; }
-                if (r >= 0)
+                float vg = 0f;
+                if (over) { vg = Displace(g, b, minX, minY, minZ, maxX, maxY, maxZ, dt); }
+                bool inWater = vg > 0f, wasIn = r >= 0;
+                if (!inWater && !wasIn) { continue; }
+                float oldSubmerged = wasIn ? g.Records[r].Submerged : 0f;
+                if (wasIn)
                 {
                     ref readonly var old = ref g.Records[r];
-                    Queue(gi, old.X0, old.X1, old.Z0, old.Z1, -old.Volume);
+                    if (old.Volume != 0f) { Queue(gi, old.X0, old.X1, old.Z0, old.Z1, -old.Volume); }
                 }
 
-                if (v > 0f)
+                if (inWater)
                 {
-                    var rec = new WaterBodyRecord { Slot = b, Generation = bodies.Handles.GenerationOf(b), Volume = v, X0 = (float)lx0, X1 = (float)lx1, Z0 = (float)lz0, Z1 = (float)lz1 };
-                    if (r >= 0) { g.Records[r] = rec; } else { InsertRecord(g, in rec); }
-                    Queue(gi, rec.X0, rec.X1, rec.Z0, rec.Z1, v);
+                    float v = vg * g.Displacement;
+                    var rec = new WaterBodyRecord { Slot = b, Generation = bodies.Handles.GenerationOf(b), Volume = v, Submerged = vg, X0 = (float)lx0, X1 = (float)lx1, Z0 = (float)lz0, Z1 = (float)lz1 };
+                    if (wasIn) { g.Records[r] = rec; } else { InsertRecord(g, in rec); }
+                    if (v != 0f) { Queue(gi, rec.X0, rec.X1, rec.Z0, rec.Z1, v); }
                 }
                 else { RemoveRecord(g, r); }
 
-                if (v > 0f != vOld > 0f)
+                if (inWater != wasIn)
                 {
-                    Events.Add(new WaterEventRecord { Entered = v > 0f, Body = b, BodyGeneration = bodies.Handles.GenerationOf(b), Water = gi, WaterGeneration = Handles.GenerationOf(gi), Volume = v > 0f ? v : vOld });
+                    Events.Add(new WaterEventRecord { Entered = inWater, Body = b, BodyGeneration = bodies.Handles.GenerationOf(b), Water = gi, WaterGeneration = Handles.GenerationOf(gi), Volume = inWater ? vg : oldSubmerged });
                 }
             }
         }
@@ -96,26 +98,58 @@ internal sealed partial class WaterStore
         }
     }
 
+    /// <summary>
+    /// The surface a body floats on: the water level around it, read a cell and a half outside its box on each side, as a plane (height at the box's centre, slope along x and z) with the water's velocity there.
+    /// The water under the body is left out on purpose: it holds the volume the body displaced and so reads higher than the level the body floats on, and feeding that back into the buoyancy
+    /// makes the pair an undamped oscillator (the body pushes water up, the raised water pushes the body up). Read around the body, the level answers to the body only as waves that have travelled out and back.
+    /// Returns false when there is no water around the body.
+    /// </summary>
+    private static bool Reference(WaterGrid g, double minX, double minZ, double maxX, double maxZ, out double surface, out float sx, out float sz, out float u, out float v)
+    {
+        double d = 0.5 * g.Dx;
+        double xc = 0.5 * (minX + maxX), zc = g.Planar ? 0.0 : 0.5 * (minZ + maxZ);
+        double sum = 0; float us = 0f, vs = 0f; int n = 0;
+        bool hasW = false, hasE = false, hasS = false, hasN = false;
+        double sw = 0, se = 0, ss = 0, sn = 0;
+        if (Ring(g, minX - d, zc, ref sum, ref us, ref vs, ref n, out sw)) { hasW = true; }
+        if (Ring(g, maxX + d, zc, ref sum, ref us, ref vs, ref n, out se)) { hasE = true; }
+        if (!g.Planar)
+        {
+            if (Ring(g, xc, minZ - d, ref sum, ref us, ref vs, ref n, out ss)) { hasS = true; }
+            if (Ring(g, xc, maxZ + d, ref sum, ref us, ref vs, ref n, out sn)) { hasN = true; }
+        }
+
+        surface = 0; sx = sz = 0f; u = v = 0f;
+        if (n == 0) { return false; }
+        surface = sum / n; u = us / n; v = vs / n;
+        if (hasW && hasE) { sx = (float)((se - sw) / (maxX - minX + 2 * d)); }
+        if (hasS && hasN) { sz = (float)((sn - ss) / (maxZ - minZ + 2 * d)); }
+        if (sx > 1f) { sx = 1f; } else if (sx < -1f) { sx = -1f; }
+        if (sz > 1f) { sz = 1f; } else if (sz < -1f) { sz = -1f; }
+        return true;
+    }
+
+    private static bool Ring(WaterGrid g, double x, double z, ref double sum, ref float us, ref float vs, ref int n, out double surface)
+    {
+        SampleAt(g, x, z, out surface, out float depth, out float u, out float v);
+        if (!(depth > WaterGrid.DryDepth)) { return false; }
+        sum += surface; us += u; vs += v; n++;
+        return true;
+    }
+
     private void WakeCheck(WaterGrid g, int b, double minX, double minY, double minZ, double maxX, double maxY, double maxZ)
     {
-        double cx = 0.5 * (minX + maxX), cz = g.Planar ? 0.0 : 0.5 * (minZ + maxZ);
-        SampleAt(g, cx, cz, out double surface, out float depth, out float u, out float v);
-        if (!(depth > WaterGrid.DryDepth) || !(minY < surface)) { return; }
-        float reach = _host.ReachOf(b);
-        SlopeAt(g, cx, cz, Math.Min(Math.Max(0.5f * reach, g.Dx), 4f * g.Dx), out float sx, out float sz);
+        if (!Reference(g, minX, minZ, maxX, maxZ, out double surface, out float sx, out float sz, out float u, out float v) || !(minY < surface)) { return; }
         if (Math.Abs(u) > WakeSpeed || Math.Abs(v) > WakeSpeed || Math.Abs(sx) > WakeSlope || Math.Abs(sz) > WakeSlope) { _host.WakeBody(b); }
     }
 
     private float Displace(WaterGrid g, int b, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, float dt)
     {
-        double cx = 0.5 * (minX + maxX), cz = g.Planar ? 0.0 : 0.5 * (minZ + maxZ);
-        SampleAt(g, cx, cz, out double surface, out float depth, out float u, out float v);
-        if (!(depth > WaterGrid.DryDepth)) { return 0f; }
+        if (!Reference(g, minX, minZ, maxX, maxZ, out double surface, out float sx, out float sz, out float u, out float v)) { return 0f; }
         float reach = _host.ReachOf(b);
-        float span = Math.Min(Math.Max(0.5f * reach, g.Dx), 4f * g.Dx);
-        SlopeAt(g, cx, cz, span, out float sx, out float sz);
         // A body wholly above the tilted surface is clear of the water.
         if (minY > surface + (Math.Abs(sx) + Math.Abs(sz)) * reach + 1e-3) { return 0f; }
+        double cx = 0.5 * (minX + maxX), cz = g.Planar ? 0.0 : 0.5 * (minZ + maxZ);
         float inv = 1f / float.Sqrt(1f + sx * sx + sz * sz);
         var n = new Vector3F(-sx * inv, inv, -sz * inv);
         double offset = n.X * cx + n.Y * surface + n.Z * cz;

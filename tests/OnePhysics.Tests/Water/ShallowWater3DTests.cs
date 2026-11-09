@@ -41,10 +41,10 @@ public class ShallowWater3DTests
         Run(w, 900);
         Assert.InRange(box.Position.Y, 1.97, 2.03);
         Assert.InRange(box.LinearVelocity.Length(), 0.0f, 0.02f);
-        // The box displaces 0.5 m³ of a 400 m² tank: the mean level is up by 1.25 mm (the surface itself still has the splash's waves in it).
+        // The box displaces 0.5 m³, half of which is added to a 400 m² tank: the mean level is up by 0.6 mm (the surface itself still has the splash's waves in it).
         double sum = 0;
         for (int iz = 0; iz < 40; iz++) { for (int ix = 0; ix < 40; ix++) { sum += water.CellSurface(ix, iz); } }
-        Assert.InRange(sum / 1600, 2.0010, 2.0015);
+        Assert.InRange(sum / 1600, 2.0005, 2.0008);
     }
 
     [Fact]

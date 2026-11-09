@@ -29,7 +29,8 @@ internal struct WaterBodyRecord
 {
     public int Slot;                // body slot; records are kept sorted by it
     public int Generation;
-    public float Volume;
+    public float Volume;            // the volume added to the water for this body: its submerged volume times the grid's displacement factor
+    public float Submerged;         // the body's submerged volume as of the last step
     public float X0, X1, Z0, Z1;    // footprint, metres from the grid's minimum corner
 }
 
@@ -53,7 +54,7 @@ internal sealed partial class WaterGrid
     public int Nx, Nz;
     public float Dx;
     public double OriginX, OriginZ, BaseY;
-    public float Density = 1000f, LinearDrag = 0.5f, AngularDrag = 0.5f, ViscousDamping = 1f, BottomFriction;
+    public float Density = 1000f, LinearDrag = 0.5f, AngularDrag = 0.5f, ViscousDamping = 1f, BottomFriction, Damping = 0.1f, Displacement = 0.5f;
     public float Cfl = 0.25f;
     public int MaxSubsteps = 16;
     public WaterEdge[] Edges = new WaterEdge[4];                        // west (-x), east (+x), south (-z), north (+z)
@@ -109,7 +110,7 @@ internal sealed partial class WaterGrid
         var c = new WaterGrid
         {
             Planar = Planar, Nx = Nx, Nz = Nz, Dx = Dx, OriginX = OriginX, OriginZ = OriginZ, BaseY = BaseY,
-            Density = Density, LinearDrag = LinearDrag, AngularDrag = AngularDrag, ViscousDamping = ViscousDamping, BottomFriction = BottomFriction,
+            Density = Density, LinearDrag = LinearDrag, AngularDrag = AngularDrag, ViscousDamping = ViscousDamping, BottomFriction = BottomFriction, Damping = Damping, Displacement = Displacement,
             Cfl = Cfl, MaxSubsteps = MaxSubsteps, LostVolume = LostVolume, RecordCount = RecordCount,
             Sources = (WaterSourceSpec[])Sources.Clone(), Bed = (float[])Bed.Clone(), H = (float[])H.Clone(), Hu = (float[])Hu.Clone(), Hv = (float[])Hv.Clone(),
             Records = (WaterBodyRecord[])Records.Clone(),

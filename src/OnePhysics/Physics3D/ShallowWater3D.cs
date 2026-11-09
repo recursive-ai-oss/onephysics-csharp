@@ -75,6 +75,16 @@ public sealed class ShallowWaterDef
     /// <summary>Quadratic drag of the bed on the water (dimensionless, about 0.003 for a rough bed), 0 to 10^6. Default 0: no bed friction.</summary>
     public float BottomFriction { get; set; }
 
+    /// <summary>Linear damping of the water's motion, 1/s, 0 to 10^6: the momentum loses this fraction per second. Real water loses wave energy to turbulence and viscosity; without it a splash rings in a closed basin for ever. Default 0.1; 0 turns it off.</summary>
+    public float Damping { get; set; } = 0.1f;
+
+    /// <summary>
+    /// How much of the volume a floating or sinking body displaces is added to the water under it, 0 to 1. At 1 the water rises by the whole displaced volume (as in a real tank) and the pair of body and water can ring
+    /// in a narrow channel: the body pushes water up, the raised water pushes the body back, with a delay of a few steps. Half of it (the default) keeps floating bodies steady in 2D and 3D basins and still makes bow and drop waves;
+    /// 0 lets bodies float without disturbing the water. Water volume is conserved either way (the part that is not added is simply not displaced).
+    /// </summary>
+    public float Displacement { get; set; } = 0.5f;
+
     /// <summary>Courant number of a substep: the largest wave crosses this fraction of a cell, above 0 and at most 0.5. Default 0.25.</summary>
     public float Cfl { get; set; } = 0.25f;
 
@@ -96,7 +106,7 @@ public sealed class ShallowWaterDef
         {
             Nx = CellsX, Nz = CellsZ, CellSize = CellSize, OriginX = MinX, OriginZ = MinZ, FloorHeight = FloorHeight, Level = Level,
             SampleBed = SampleBed, Bed = (float[]?)Bed?.Clone(),
-            Density = Density, LinearDrag = LinearDrag, AngularDrag = AngularDrag, ViscousDamping = ViscousDamping, BottomFriction = BottomFriction, Cfl = Cfl, MaxSubsteps = MaxSubsteps,
+            Density = Density, LinearDrag = LinearDrag, AngularDrag = AngularDrag, ViscousDamping = ViscousDamping, BottomFriction = BottomFriction, Damping = Damping, Displacement = Displacement, Cfl = Cfl, MaxSubsteps = MaxSubsteps,
         };
         if (!double.IsFinite(BedSearchHeight) || BedSearchHeight < 0 || BedSearchHeight > 1.0e6) { throw new ArgumentOutOfRangeException(name, BedSearchHeight, "BedSearchHeight must be within 0..1e6 metres."); }
         s.SearchTop = Math.Max(Level, FloorHeight) + BedSearchHeight;

@@ -242,6 +242,7 @@ internal sealed partial class WaterGrid
         int k0 = block * RowsPerTask, k1 = Math.Min(k0 + RowsPerTask, Nz);
         float dt = _dtStage;
         float cf = BottomFriction;
+        float damp = 1f / (1f + dt * Damping);   // linear damping of the momentum, implicit, so it only ever slows the water down
         for (int k = k0; k < k1; k++)
         {
             for (int i = 0; i < Nx; i++)
@@ -258,6 +259,7 @@ internal sealed partial class WaterGrid
                     q *= f; r *= f;
                 }
 
+                if (Damping > 0f) { q *= damp; r *= damp; }
                 if (Planar) { r = 0f; }
                 H[c] = h; Hu[c] = q; Hv[c] = r;
             }

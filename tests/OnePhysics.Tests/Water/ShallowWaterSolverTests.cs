@@ -12,7 +12,7 @@ public class ShallowWaterSolverTests
 
     private static WaterGrid Planar(int nx, float dx, Func<double, double> bed, Func<double, double> level, WaterEdge west = WaterEdge.Wall, WaterEdge east = WaterEdge.Wall)
     {
-        var g = new WaterGrid { Planar = true, Nx = nx, Nz = 1, Dx = dx, Cfl = 0.25f, MaxSubsteps = 64 };
+        var g = new WaterGrid { Planar = true, Nx = nx, Nz = 1, Dx = dx, Cfl = 0.25f, MaxSubsteps = 64, Damping = 0f };
         g.Edges[0] = west; g.Edges[1] = east;
         g.Allocate();
         for (int i = 0; i < nx; i++) { g.Bed[i] = Quantize(bed((i + 0.5) * dx)); }
@@ -86,7 +86,7 @@ public class ShallowWaterSolverTests
     [Fact]
     public void ALakeAtRestInTwoDimensionsStaysAtRest()
     {
-        var g = new WaterGrid { Nx = 40, Nz = 32, Dx = 0.5f, Cfl = 0.25f, MaxSubsteps = 16 };
+        var g = new WaterGrid { Nx = 40, Nz = 32, Dx = 0.5f, Cfl = 0.25f, MaxSubsteps = 16, Damping = 0f };
         g.Allocate();
         for (int k = 0; k < g.Nz; k++) { for (int i = 0; i < g.Nx; i++) { g.Bed[k * g.Nx + i] = Quantize(0.4 * Math.Sin(i * 0.5) * Math.Cos(k * 0.4) + 0.5 + (i > 10 && i < 14 && k > 8 && k < 12 ? 1.5 : 0.0)); } }
         g.Derive();
@@ -115,7 +115,7 @@ public class ShallowWaterSolverTests
     [Fact]
     public void ClosedWaterKeepsItsVolumeInTwoDimensions()
     {
-        var g = new WaterGrid { Nx = 48, Nz = 40, Dx = 0.25f, Cfl = 0.25f, MaxSubsteps = 16 };
+        var g = new WaterGrid { Nx = 48, Nz = 40, Dx = 0.25f, Cfl = 0.25f, MaxSubsteps = 16, Damping = 0f };
         g.Allocate(); g.Derive();
         for (int k = 0; k < g.Nz; k++) { for (int i = 0; i < g.Nx; i++) { g.H[k * g.Nx + i] = (i - 12) * (i - 12) + (k - 20) * (k - 20) < 36 ? 1.8f : 0.5f; } }
         double v0 = g.Volume();
@@ -154,7 +154,7 @@ public class ShallowWaterSolverTests
     {
         WaterGrid Make()
         {
-            var g = new WaterGrid { Nx = 64, Nz = 64, Dx = 0.25f, Cfl = 0.25f, MaxSubsteps = 16 };
+            var g = new WaterGrid { Nx = 64, Nz = 64, Dx = 0.25f, Cfl = 0.25f, MaxSubsteps = 16, Damping = 0f };
             g.Allocate();
             for (int k = 0; k < 64; k++) { for (int i = 0; i < 64; i++) { g.Bed[k * 64 + i] = 0.125f * (i % 7) * (k % 5 > 2 ? 1f : 0.5f); } }
             g.Derive();
