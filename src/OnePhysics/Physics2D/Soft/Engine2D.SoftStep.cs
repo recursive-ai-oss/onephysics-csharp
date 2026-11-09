@@ -64,6 +64,7 @@ internal sealed partial class Engine2D
     /// <summary>Remembers where every body is before the rigid step, so the soft step can follow the bodies' motion through it.</summary>
     public void BeginSoftStep()
     {
+        if (SoftHandles.Count == 0) { return; }
         var bodies = Core.Bodies;
         var pos = bodies.Position;
         var rot = bodies.Rotation;
