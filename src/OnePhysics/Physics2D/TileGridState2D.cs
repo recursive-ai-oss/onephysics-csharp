@@ -33,6 +33,7 @@ internal sealed class TileGridState2D(Engine2D engine) : ISnapshotSection
         int count=0; foreach(var e in _ordered) if(Live(e)) count++;
         int version=1;
         foreach(var e in _ordered)if(Live(e) && (e.Materials.Length!=0 || !e.Definition.Surface.IsDefault))version=2;
+        foreach(var e in _ordered)if(Live(e) && e.Grid.IsContour)version=3;
         w.NamedInt32(version,"version"); w.NamedInt32(count,"count");
         foreach(var e in _ordered)
         {
@@ -40,11 +41,12 @@ internal sealed class TileGridState2D(Engine2D engine) : ISnapshotSection
             w.DescribeEntity("body",e.Body,e.Generation);
             w.NamedInt32(e.Body,"body"); w.NamedInt32(e.Generation,"generation");
             w.NamedInt32(e.Grid.Width,"width"); w.NamedInt32(e.Grid.Height,"height"); w.NamedSingle(e.Grid.TileSize,"tileSize");
+            if(version==3) w.NamedByte(e.Grid.IsContour?(byte)1:(byte)0,"mode");
             foreach(var tile in e.Grid.Tiles) w.NamedByte((byte)tile,"tile");
             var d=e.Definition;
             w.NamedSingle(d.Density); w.NamedSingle(d.Friction); w.NamedSingle(d.Restitution); w.NamedSingle(d.RollingResistance);
             w.NamedUInt32(d.CategoryBits); w.NamedUInt32(d.MaskBits); w.NamedInt32(d.GroupIndex); w.NamedBool(d.IsSensor); w.NamedInt32(d.Layer);
-            if(version==2)
+            if(version>=2)
             {
                 WriteSurface(w,d.Surface);
                 w.NamedInt32(e.Materials.Length,"materialCount");
@@ -62,26 +64,28 @@ internal sealed class TileGridState2D(Engine2D engine) : ISnapshotSection
     }
     public void Read(StateReader r)
     {
-        int version=r.ReadInt32();if(version!=1 && version!=2) throw r.Error("unsupported tile-grid section version");
+        int version=r.ReadInt32();if(version<1 || version>3) throw r.Error("unsupported tile-grid section version");
         int count=r.ReadCount(57,"tile grids");
         if(count==0) throw r.Error("empty tile-grid section must be absent");
         if(count>engine.RestoredBodyCount)throw r.Error("tile-grid count exceeds the restored body count");
         var staging=new SortedDictionary<int,Entry>();
-        int last=-1;bool hasExtras=false;
+        int last=-1;bool hasExtras=false,anyContour=false;
         var seen=new bool[engine.RestoredShapeCount];
         for(int i=0;i<count;i++)
         {
             int body=r.ReadInt32(), generation=r.ReadInt32(), width=r.ReadInt32(), height=r.ReadInt32(); float size=r.ReadSingle();
+            bool contour=false;
+            if(version==3){ byte mode=r.ReadByte(); if(mode>1) throw r.Error("unknown tile-grid mode"); contour=mode==1; anyContour|=contour; }
             long n=(long)width*height;
             if(body<=last || body>=engine.RestoredBodyCount || generation<1 || width<1 || width>1024 || height<1 || height>1024 || n>TileGrid2D.MaxTiles || n>r.Remaining) throw r.Error("invalid tile-grid slot, dimensions or truncated tiles");
             last=body;
             var tiles=new TileKind2D[(int)n]; for(int j=0;j<tiles.Length;j++) tiles[j]=(TileKind2D)r.ReadByte();
             TileGrid2D grid;
-            try { grid=new(width,height,tiles,size); }
+            try { grid=new(width,height,tiles,size,default,contour); }
             catch(ArgumentException ex) { throw r.Error("invalid tile grid: "+ex.Message); }
             var d=new ShapeDef { Density=r.ReadSingle(),Friction=r.ReadSingle(),Restitution=r.ReadSingle(),RollingResistance=r.ReadSingle(),CategoryBits=r.ReadUInt32(),MaskBits=r.ReadUInt32(),GroupIndex=r.ReadInt32(),IsSensor=r.ReadBool(),Layer=r.ReadInt32() };
             ContactMaterial[] materials=[];
-            if(version==2)
+            if(version>=2)
             {
                 d.Surface=ReadSurface(r);
                 int nm=r.ReadCount(12,"tile material table");materials=new ContactMaterial[nm];
@@ -107,6 +111,7 @@ internal sealed class TileGridState2D(Engine2D engine) : ISnapshotSection
             staging.Add(body,new Entry { Body=body,Generation=generation,Grid=grid,Definition=d,Materials=materials,Shapes=shapes });
         }
         if(version==2 && !hasExtras)throw r.Error("tile-grid version 2 without material or surface state is noncanonical");
+        if(version==3 && !anyContour)throw r.Error("tile-grid version 3 without a contour grid is noncanonical");
         Entries.Clear(); foreach(var pair in staging) Entries.Add(pair.Key,pair.Value); RefreshOrder();
     }
     internal bool Consistent()
