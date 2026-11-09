@@ -18,7 +18,7 @@ internal interface IRodHost
     bool Matches(RodParticles rod,int shape);
     bool Layers(int a,int b);
     void Bounds(int shape,out Vector3D minimum,out Vector3D maximum);
-    // Appends the user ids (shape slots) of proxies whose stored box overlaps the box: the static tree, or the kinematic and dynamic trees.
+    // Appends the user ids (shape slots) of proxies whose stored box overlaps the box: the static tree, or the trees of moving bodies.
     void CollectShapes(Vector3D minimum,Vector3D maximum,bool moving,System.Collections.Generic.List<int> output);
     RodWitness Distance(int shape,Vector3D a,Vector3D b,float radius,float time);
     ContactMaterial Mix(int shape,int subshape,float friction,float restitution);
