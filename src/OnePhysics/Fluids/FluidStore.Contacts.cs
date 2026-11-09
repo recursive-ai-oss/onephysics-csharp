@@ -416,7 +416,10 @@ internal sealed partial class FluidStore
                 float tl = float.Sqrt(tx * tx + ty * ty + tz * tz);
                 if (tl > 1e-12f)
                 {
-                    float lim = c.Mu * corr;
+                    // Solid matter is limited by the whole push of the substep, not of this iteration alone: the weight of a pile reaches the floor over several iterations of the transfer, not of the density constraint.
+                    float load = corr;
+                    if (_isMpm[PFluid[i]]) { c.Applied += corr; load = c.Applied; }
+                    float lim = c.Mu * load;
                     float k = tl <= lim ? 1f : lim / tl;
                     _x[i] -= tx * k; _y[i] -= ty * k; _z[i] -= tz * k;
                 }

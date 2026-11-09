@@ -38,11 +38,26 @@ internal sealed partial class FluidStore
         Spacing = 0f; KernelScale = 0f;
         Count = 0; NextId = 0; Asleep = false; QuietTime = 0f; StepCount = 0;
         WetCount = 0;
+        PBe = null; PCm = null; PAux = null;
         Events.Clear(); Results.Clear();
         _qValid = false;
     }
 
-    private const int SectionVersion = 1;
+    // Version 1 holds fluids only. Version 2 is written while a definition uses viscous or solid matter: each definition then carries the nine material members and, while a solid fluid exists, each particle its elastic strain, affine
+    // velocity matrix and plastic volume ratio. Version 1 sections are read as they were.
+    private const int SectionVersion = 2;
+
+    private bool AnyMaterials()
+    {
+        for (int i = 0; i < FluidHandles.HighWater; i++) { if (FluidHandles.IsLive(i) && Fluids[i]!.Def.UsesMaterials) { return true; } }
+        return false;
+    }
+
+    private bool AnySolid()
+    {
+        for (int i = 0; i < FluidHandles.HighWater; i++) { if (FluidHandles.IsLive(i) && Fluids[i]!.Mpm) { return true; } }
+        return false;
+    }
 
     private static void WriteDef(StateWriter w, ParticleFluidDef d)
     {
@@ -52,7 +67,13 @@ internal sealed partial class FluidStore
         w.NamedBool(d.CollideWithSoftBodies); w.NamedBool(d.CollideWithRods);
     }
 
-    private static ParticleFluidDef ReadDef(StateReader r)
+    private static void WriteMaterial(StateWriter w, ParticleFluidDef d)
+    {
+        w.NamedSingle(d.DynamicViscosity); w.NamedSingle(d.ElasticModulus); w.NamedSingle(d.PoissonRatio); w.NamedSingle(d.FrictionAngle); w.NamedSingle(d.Cohesion);
+        w.NamedSingle(d.YieldStress); w.NamedSingle(d.CriticalCompression); w.NamedSingle(d.CriticalStretch); w.NamedSingle(d.Hardening);
+    }
+
+    private static ParticleFluidDef ReadDef(StateReader r, int version)
     {
         var d = new ParticleFluidDef
         {
@@ -61,6 +82,12 @@ internal sealed partial class FluidStore
             Layer = r.ReadInt32(), CategoryBits = r.ReadUInt32(), MaskBits = r.ReadUInt32(), GroupIndex = r.ReadInt32(),
             CollideWithSoftBodies = r.ReadBool(), CollideWithRods = r.ReadBool(),
         };
+        if (version >= 2)
+        {
+            d.DynamicViscosity = r.ReadSingle(); d.ElasticModulus = r.ReadSingle(); d.PoissonRatio = r.ReadSingle(); d.FrictionAngle = r.ReadSingle(); d.Cohesion = r.ReadSingle();
+            d.YieldStress = r.ReadSingle(); d.CriticalCompression = r.ReadSingle(); d.CriticalStretch = r.ReadSingle(); d.Hardening = r.ReadSingle();
+        }
+
         try { d.Validate(); }
         catch (ArgumentOutOfRangeException e) { throw r.Error("invalid particle fluid: " + e.Message); }
         return d;
@@ -70,7 +97,9 @@ internal sealed partial class FluidStore
 
     void ISnapshotSection.Write(StateWriter w)
     {
-        w.NamedInt32(SectionVersion);
+        int version = AnyMaterials() ? 2 : 1;
+        bool solid = AnySolid();
+        w.NamedInt32(version);
         w.NamedInt32(Settings.Substeps); w.NamedInt32(Settings.Iterations); w.NamedInt32(Settings.MaxParticles);
         w.NamedSingle(Settings.SleepSpeed); w.NamedSingle(Settings.TimeToSleep); w.NamedSingle(Settings.WakeBodySpeed);
         w.NamedSingle(Spacing); w.NamedSingle(KernelScale);
@@ -83,6 +112,7 @@ internal sealed partial class FluidStore
             w.DescribeEntity("particlefluid", i, FluidHandles.GenerationOf(i));
             if (!FluidHandles.IsLive(i)) { continue; }
             WriteDef(w, Fluids[i]!.Def);
+            if (version >= 2) { WriteMaterial(w, Fluids[i]!.Def); }
         }
 
         w.DescribeTable("fluid emitter");
@@ -123,6 +153,12 @@ internal sealed partial class FluidStore
             w.NamedInt32(PId[p]); w.NamedByte(PFluid[p]);
             w.NamedDouble(PX[p]); w.NamedDouble(PY[p]); w.NamedDouble(PZ[p]);
             w.NamedSingle(PVx[p]); w.NamedSingle(PVy[p]); w.NamedSingle(PVz[p]);
+            if (solid)
+            {
+                for (int k = 0; k < 6; k++) { w.NamedSingle(PBe![p * 6 + k]); }
+                for (int k = 0; k < 9; k++) { w.NamedSingle(PCm![p * 9 + k]); }
+                w.NamedSingle(PAux![p]);
+            }
         }
 
         w.DescribeEntity("world", -1);
@@ -136,7 +172,7 @@ internal sealed partial class FluidStore
     void ISnapshotSection.Read(StateReader r)
     {
         int version = r.ReadInt32();
-        if (version != SectionVersion) { throw r.Error("unsupported particle fluid section version " + version.ToString(CultureInfo.InvariantCulture)); }
+        if (version < 1 || version > SectionVersion) { throw r.Error("unsupported particle fluid section version " + version.ToString(CultureInfo.InvariantCulture)); }
         var settings = new FluidSettings
         {
             Substeps = r.ReadInt32(), Iterations = r.ReadInt32(), MaxParticles = r.ReadInt32(),
@@ -158,7 +194,7 @@ internal sealed partial class FluidStore
         for (int i = 0; i < fh.HighWater; i++)
         {
             if (!fh.IsLive(i)) { continue; }
-            var def = ReadDef(r);
+            var def = ReadDef(r, version);
             if (def.Spacing != spacing || def.KernelRadiusScale != kscale) { throw r.Error("particle fluids disagree on their spacing"); }
             firstSpacing = def.Spacing;
             fluids[i] = new FluidState { Def = def };
@@ -208,7 +244,10 @@ internal sealed partial class FluidStore
             drains[i] = s;
         }
 
-        int n = r.ReadCount(4 + 1 + 24 + 12, "fluid particles");
+        bool anySolid = false;
+        for (int i = 0; i < fh.HighWater; i++) { if (fh.IsLive(i) && fluids[i]!.Def.ElasticModulus > 0f) { anySolid = true; } }
+        int n = r.ReadCount(4 + 1 + 24 + 12 + (anySolid ? 64 : 0), "fluid particles");
+        float[]? sbe = anySolid ? new float[Math.Max(n, 1) * 6] : null, scm = anySolid ? new float[Math.Max(n, 1) * 9] : null, saux = anySolid ? new float[Math.Max(n, 1)] : null;
         var id = new int[Math.Max(n, 1)]; var fl = new byte[id.Length];
         var px = new double[id.Length]; var py = new double[id.Length]; var pz = new double[id.Length];
         var vx = new float[id.Length]; var vy = new float[id.Length]; var vz = new float[id.Length];
@@ -223,6 +262,12 @@ internal sealed partial class FluidStore
             if (!(Math.Abs(px[p]) <= 8388608.0 && Math.Abs(py[p]) <= 8388608.0 && Math.Abs(pz[p]) <= 8388608.0)) { throw r.Error("particle position is out of range or not finite"); }
             if (!(Math.Abs(vx[p]) <= 1e6f && Math.Abs(vy[p]) <= 1e6f && Math.Abs(vz[p]) <= 1e6f)) { throw r.Error("particle velocity is out of range or not finite"); }
             if (planar && (pz[p] != 0.0 || vz[p] != 0f)) { throw r.Error("planar particle has a z component"); }
+            if (anySolid)
+            {
+                for (int k = 0; k < 6; k++) { float v = r.ReadSingle(); if (!(Math.Abs(v) <= 1e6f)) { throw r.Error("solid particle strain is out of range or not finite"); } sbe![p * 6 + k] = v; }
+                for (int k = 0; k < 9; k++) { float v = r.ReadSingle(); if (!(Math.Abs(v) <= 1e6f)) { throw r.Error("solid particle velocity gradient is out of range or not finite"); } scm![p * 9 + k] = v; }
+                float a = r.ReadSingle(); if (!(a >= 0f && a <= 1e6f)) { throw r.Error("solid particle plastic volume is out of range or not finite"); } saux![p] = a;
+            }
         }
 
         int nw = r.ReadCount(12, "wet records");
@@ -240,6 +285,7 @@ internal sealed partial class FluidStore
         Spacing = fh.Count > 0 ? spacing : 0f; KernelScale = fh.Count > 0 ? kscale : 0f;
         for (int i = 0; i < fh.HighWater; i++) { if (fh.IsLive(i)) { Derive(Fluids[i]!); } }
         PId = id; PFluid = fl; PX = px; PY = py; PZ = pz; PVx = vx; PVy = vy; PVz = vz; Count = n;
+        PBe = sbe; PCm = scm; PAux = saux;
         NextId = nextId; Asleep = asleep; QuietTime = quiet; StepCount = steps;
         Wet = wet; WetCount = nw;
         Events.Clear(); Results.Clear();
@@ -268,10 +314,12 @@ internal sealed partial class FluidStore
         Drains = new DrainState?[s.Drains.Length];
         for (int i = 0; i < Drains.Length; i++) { var d = s.Drains[i]; if (d != null) { Drains[i] = new DrainState { Fluid = d.Fluid, FluidGen = d.FluidGen, Def = d.Def.Clone(), Removed = d.Removed }; } }
         Spacing = s.Spacing; KernelScale = s.KernelScale;
+        for (int i = 0; i < Fluids.Length; i++) { if (Fluids[i] != null) { Derive(Fluids[i]!); } }
         Count = s.Count; NextId = s.NextId; Asleep = s.Asleep; QuietTime = s.QuietTime; StepCount = s.StepCount;
         PId = (int[])s.PId.Clone(); PFluid = (byte[])s.PFluid.Clone();
         PX = (double[])s.PX.Clone(); PY = (double[])s.PY.Clone(); PZ = (double[])s.PZ.Clone();
         PVx = (float[])s.PVx.Clone(); PVy = (float[])s.PVy.Clone(); PVz = (float[])s.PVz.Clone();
+        PBe = (float[]?)s.PBe?.Clone(); PCm = (float[]?)s.PCm?.Clone(); PAux = (float[]?)s.PAux?.Clone();
         Wet = (WetRecord[])s.Wet.Clone(); WetCount = s.WetCount;
         Events = new System.Collections.Generic.List<FluidEvent>(s.Events);
         Results.Clear(); Results.AddRange(s.Results);

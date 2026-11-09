@@ -53,3 +53,13 @@ Particles are spheres of half the spacing for rays; `FluidDensityAt` reads the S
 - Not here yet: granular matter, viscoelastic liquids, shallow water and swimming characters.
 
 Details, the kernels and the layout of the saved state are in `docs/spec/fluids.md`.
+
+## Sand, snow, clay, mud and honey
+
+```csharp
+var sand = world.AddParticleFluid(ParticleFluidDef.Sand(spacing: 0.04f));   // ElasticModulus above 0 makes a solid
+sand.AddEmitter(new FluidEmitterDef { Position = new Vector3D(0, 1, 0), Direction = new Vector3F(0, -1, 0), Kind = FluidVolumeKind.Sphere, Size = new Vector3F(0.08f, 0.08f, 0.08f), Speed = 0.5f });
+var clay = ParticleFluidDef.Clay(0.02f);   // yields at 3 kPa and keeps its dents; Snow, Mud, Dough, Gravel likewise
+```
+
+Solids (`ElasticModulus` above 0) use the material point method: grains pile at their friction angle, snow breaks, clay keeps a dent, and they push rigid bodies, soft bodies and rods as fluids do. A stiff solid makes the world take more substeps (up to 64), so a softer `ElasticModulus` is cheaper. `Honey` (`DynamicViscosity` in Pa·s) solves viscosity implicitly. See `docs/spec/fluids.md` for the model and what is not met yet.

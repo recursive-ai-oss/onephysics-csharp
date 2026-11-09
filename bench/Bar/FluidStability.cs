@@ -26,6 +26,13 @@ internal static class FluidStability
         ["fluid-boxes-3d"] = (2, 0.04, 1),
         ["fluid-cloth-3d"] = (8, 0.03, 1),
         ["fluid-rope-2d"] = (12, 0.15, 4),
+        // Solid and viscous matter (x64 values on one thread, scaled by 1.5 and rounded up; arm64 not yet measured). The density column is the SPH density of the particle count, which the material point method does not hold near rest:
+        // it reports how far particles pile up on a floor.
+        ["sand-pile-3d"] = (4, 10, 0.5),
+        ["hopper-2d"] = (4, 8, 3),
+        ["honey-coil-3d"] = (3, 0.02, 2),
+        ["snow-impact-3d"] = (4, 4, 0.1),
+        ["clay-press-2d"] = (0.1, 0.1, 0.1),
     };
 
     internal static int Run(Opts opts)
@@ -56,7 +63,7 @@ internal static class FluidStability
         for (int i = 0; i < 600; i++)
         {
             sw.Restart();
-            if (d3) w3!.Step(FluidScenes.Dt); else w2!.Step(FluidScenes.Dt);
+            if (d3) w3!.Step(FluidScenes.Dt); else { FluidScenes.BeforeStep2D(name, w2!, i); w2!.Step(FluidScenes.Dt); }
             stepMs += sw.Elapsed.TotalMilliseconds;
             if (i % 20 != 19) continue;
             var m = d3 ? FluidScenes.Measure3D(w3!, name) : FluidScenes.Measure2D(w2!, name);

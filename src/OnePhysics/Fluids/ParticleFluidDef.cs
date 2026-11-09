@@ -69,14 +69,72 @@ public sealed class ParticleFluidDef
     /// <summary>Whether particles take part in contact with rods, ropes and hair. Default true.</summary>
     public bool CollideWithRods { get; set; } = true;
 
+    /// <summary>
+    /// Viscous matter (honey, lava): the shear viscosity in Pa·s (0 = none beyond <see cref="Viscosity"/>). For a fluid (<see cref="ElasticModulus"/> 0) it is applied implicitly each substep to the velocity field (Peer et al. 2015; Weiler et al. 2018)
+    /// with a preconditioned conjugate-gradient solve of fixed maximum length, so a jet coils and a column slumps at any viscosity without a smaller step; momentum is conserved. For a solid it adds a viscous stress (mud). Range 0 to 1e5. Default 0.
+    /// </summary>
+    public float DynamicViscosity { get; set; }
+
+    /// <summary>
+    /// Solid matter (sand, snow, clay, dough, mud): Young's modulus in Pa. Above 0 the fluid is simulated as an elastoplastic continuum with the material point method (Stomakhin et al. 2013; Klár et al. 2016; Hu et al. 2018) instead of the
+    /// density constraint: particles carry mass, velocity, an affine velocity field and an elastic strain; a grid of cells <see cref="KernelRadiusScale"/> spacings wide transfers momentum and the stress. The stiffness sets the step the solver
+    /// needs (the world takes as many substeps as the elastic wave speed requires, up to 64), so a softer material is cheaper and compresses more under its own weight. Range 0 to 1e10. Default 0 (a fluid).
+    /// </summary>
+    public float ElasticModulus { get; set; }
+
+    /// <summary>Solid matter: Poisson's ratio. Range 0 to 0.45. Default 0.3.</summary>
+    public float PoissonRatio { get; set; } = 0.3f;
+
+    /// <summary>
+    /// Granular matter: the internal friction angle in degrees (Drucker–Prager yield matched to Mohr–Coulomb, Klár et al. 2016; in a planar world matched in plane strain). Shear stress cannot exceed the pressure times the tangent of
+    /// this angle (a different constant in 2D and 3D, see the specification); material below it is elastic, material at it flows. Needs <see cref="ElasticModulus"/>. Range 0 to 80. Default 0 (none).
+    /// </summary>
+    public float FrictionAngle { get; set; }
+
+    /// <summary>Granular matter: shear strength that needs no pressure (wet sand, mud, packed snow), Pa; it also lets the material resist tension up to that strength. Needs <see cref="ElasticModulus"/>. Range 0 to 1e7. Default 0.</summary>
+    public float Cohesion { get; set; }
+
+    /// <summary>Plastic matter (clay, dough): von Mises yield stress in Pa: shear stress beyond it makes the material flow and the deformation stays; below it the material is elastic and recovers. 0 = no yield. Needs <see cref="ElasticModulus"/>. Range 0 to 1e9. Default 0.</summary>
+    public float YieldStress { get; set; }
+
+    /// <summary>Snow: the largest compression of the elastic stretch (Stomakhin et al. 2013, theta_c); beyond it the material yields. 0 with <see cref="CriticalStretch"/> 0 = no snow yield. Range 0 to 0.9. Default 0.</summary>
+    public float CriticalCompression { get; set; }
+
+    /// <summary>Snow: the largest elastic stretch (theta_s); a snowball that is stretched beyond it breaks apart. Range 0 to 10. Default 0.</summary>
+    public float CriticalStretch { get; set; }
+
+    /// <summary>Snow: how fast the material hardens as it is compacted (xi in exp(xi (1 - Jp)) on both Lamé parameters). Range 0 to 100. Default 0.</summary>
+    public float Hardening { get; set; }
+
+    /// <summary>Whether any member of the solid and viscous matter is in use (the snapshot then writes the longer material record).</summary>
+    internal bool UsesMaterials => DynamicViscosity != 0f || ElasticModulus != 0f;
+
     /// <summary>Water: 1000 kg/m³, a little viscosity.</summary>
     public static ParticleFluidDef Water(float spacing = 0.05f) => new() { Spacing = spacing };
 
     /// <summary>Oil: 800 kg/m³, more viscous than water, a little cohesive.</summary>
     public static ParticleFluidDef Oil(float spacing = 0.05f) => new() { Spacing = spacing, RestDensity = 800f, Viscosity = 0.08f, TensileCorrection = 0.1f };
 
-    /// <summary>Honey: 1400 kg/m³ and very viscous.</summary>
-    public static ParticleFluidDef Honey(float spacing = 0.05f) => new() { Spacing = spacing, RestDensity = 1400f, Viscosity = 0.6f, TensileCorrection = 0.1f, Friction = 0.5f };
+    /// <summary>Honey: 1400 kg/m³ and viscous: 10 Pa·s applied implicitly, so a jet coils and a pile slumps instead of splashing.</summary>
+    public static ParticleFluidDef Honey(float spacing = 0.05f) => new() { Spacing = spacing, RestDensity = 1400f, Viscosity = 0.02f, TensileCorrection = 0.1f, Friction = 0.5f, DynamicViscosity = 10f };
+
+    /// <summary>Dry sand: 1600 kg/m³, 33° internal friction, rough against shapes.</summary>
+    public static ParticleFluidDef Sand(float spacing = 0.05f) => new() { Spacing = spacing, RestDensity = 1600f, Viscosity = 0f, TensileCorrection = 0f, Friction = 0.5f, ElasticModulus = 2e5f, PoissonRatio = 0.3f, FrictionAngle = 33f, MaxSpeed = 30f };
+
+    /// <summary>Gravel: 1800 kg/m³, 40° internal friction.</summary>
+    public static ParticleFluidDef Gravel(float spacing = 0.05f) => new() { Spacing = spacing, RestDensity = 1800f, Viscosity = 0f, TensileCorrection = 0f, Friction = 0.6f, ElasticModulus = 3e5f, PoissonRatio = 0.3f, FrictionAngle = 40f, MaxSpeed = 30f };
+
+    /// <summary>Snow: 400 kg/m³, brittle (the clamp of Stomakhin et al. 2013 with a stretch limit of 0.2% and a compression limit of 1%, tighter than their demonstration values), so a snowball that hits a wall breaks into clumps.</summary>
+    public static ParticleFluidDef Snow(float spacing = 0.05f) => new() { Spacing = spacing, RestDensity = 400f, Viscosity = 0f, TensileCorrection = 0f, Friction = 0.4f, ElasticModulus = 3e5f, PoissonRatio = 0.2f, CriticalCompression = 0.01f, CriticalStretch = 0.002f, Hardening = 0f, MaxSpeed = 40f };
+
+    /// <summary>Mud: 1700 kg/m³, soft, cohesive and low-friction with a viscous stress: it slumps and holds a rounded heap.</summary>
+    public static ParticleFluidDef Mud(float spacing = 0.05f) => new() { Spacing = spacing, RestDensity = 1700f, Viscosity = 0f, TensileCorrection = 0f, Friction = 0.4f, ElasticModulus = 1e5f, PoissonRatio = 0.3f, FrictionAngle = 10f, Cohesion = 300f, DynamicViscosity = 20f, MaxSpeed = 30f };
+
+    /// <summary>Clay: 1800 kg/m³, elastic up to a yield stress of 3 kPa, beyond it plastic, so a dent stays.</summary>
+    public static ParticleFluidDef Clay(float spacing = 0.05f) => new() { Spacing = spacing, RestDensity = 1800f, Viscosity = 0f, TensileCorrection = 0f, Friction = 0.5f, ElasticModulus = 2e5f, PoissonRatio = 0.35f, YieldStress = 3000f, MaxSpeed = 30f };
+
+    /// <summary>Dough: 1100 kg/m³, softer than clay, yields at 1 kPa.</summary>
+    public static ParticleFluidDef Dough(float spacing = 0.05f) => new() { Spacing = spacing, RestDensity = 1100f, Viscosity = 0f, TensileCorrection = 0f, Friction = 0.6f, ElasticModulus = 5e4f, PoissonRatio = 0.4f, YieldStress = 1000f, MaxSpeed = 30f };
 
     /// <summary>An independent copy.</summary>
     public ParticleFluidDef Clone() => (ParticleFluidDef)MemberwiseClone();
@@ -99,6 +157,19 @@ public sealed class ParticleFluidDef
         Range(Friction, nameof(Friction), 0f, 100f);
         Range(MaxSpeed, nameof(MaxSpeed), 0.1f, 1000f);
         Range(GravityScale, nameof(GravityScale), -100f, 100f);
+        Range(DynamicViscosity, nameof(DynamicViscosity), 0f, 1e5f);
+        Range(ElasticModulus, nameof(ElasticModulus), 0f, 1e10f);
+        Range(PoissonRatio, nameof(PoissonRatio), 0f, 0.45f);
+        Range(FrictionAngle, nameof(FrictionAngle), 0f, 80f);
+        Range(Cohesion, nameof(Cohesion), 0f, 1e7f);
+        Range(YieldStress, nameof(YieldStress), 0f, 1e9f);
+        Range(CriticalCompression, nameof(CriticalCompression), 0f, 0.9f);
+        Range(CriticalStretch, nameof(CriticalStretch), 0f, 10f);
+        Range(Hardening, nameof(Hardening), 0f, 100f);
+        if (ElasticModulus == 0f && (FrictionAngle != 0f || Cohesion != 0f || YieldStress != 0f || CriticalCompression != 0f || CriticalStretch != 0f || Hardening != 0f))
+        {
+            throw new ArgumentOutOfRangeException(nameof(ElasticModulus), ElasticModulus, "ParticleFluidDef.ElasticModulus is 0, but FrictionAngle, Cohesion, YieldStress, CriticalCompression, CriticalStretch and Hardening need a solid (ElasticModulus above 0).");
+        }
         if ((uint)Layer > 31u) { throw new ArgumentOutOfRangeException(nameof(Layer), Layer, "ParticleFluidDef.Layer is " + Layer.ToString(CultureInfo.InvariantCulture) + "; expected 0 to 31."); }
     }
 }

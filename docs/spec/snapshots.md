@@ -161,7 +161,7 @@ One optional section in both worlds, "AERO" (`0x4F524541`, version 1): thrusters
 
 ## Optional particle-fluid section
 
-One optional section in both worlds, "PFLD" (`0x444C4650`, version 1): the fluids' definitions, emitters, drains, the particles (id, fluid, position as double, velocity), the settings, the sleep state and the wet-body records for enter and exit events. Written only while a fluid exists or the settings differ from the defaults; registered after every other section (3D: after the cloth links; 2D: after the active ragdolls). Entity kinds for the desync finder and regions: `particlefluid`, `fluid emitter`, `fluid drain`, `fluidparticle` (per particle). Layout and validation in `fluids.md`.
+One optional section in both worlds, "PFLD" (`0x444C4650`, versions 1 and 2; 2 only while a definition uses viscous or solid matter and then adds the material members and the solids' per-particle state, see `fluids.md`): the fluids' definitions, emitters, drains, the particles (id, fluid, position as double, velocity), the settings, the sleep state and the wet-body records for enter and exit events. Written only while a fluid exists or the settings differ from the defaults; registered after every other section (3D: after the cloth links; 2D: after the active ragdolls). Entity kinds for the desync finder and regions: `particlefluid`, `fluid emitter`, `fluid drain`, `fluidparticle` (per particle). Layout and validation in `fluids.md`.
 
 ## Optional character-ability section
 

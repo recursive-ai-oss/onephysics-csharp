@@ -20,6 +20,8 @@ internal static class FuzzFluids
             {
                 Spacing = 0.1f * (1 + input[1] % 4), RestDensity = F(input, 8), KernelRadiusScale = 1.2f + (input[2] % 28) / 10f, Viscosity = F(input, 12), Vorticity = F(input, 16),
                 TensileCorrection = F(input, 20), Relaxation = F(input, 24), Friction = F(input, 28), MaxSpeed = F(input, 32), GravityScale = F(input, 36), Layer = input[3] % 40, GroupIndex = (sbyte)input[4],
+                DynamicViscosity = F(input, 88), ElasticModulus = (input[0] & 4) != 0 ? F(input, 92) : 0f, PoissonRatio = F(input, 96), FrictionAngle = F(input, 100), Cohesion = F(input, 104),
+                YieldStress = F(input, 108), CriticalCompression = F(input, 112), CriticalStretch = F(input, 116), Hardening = F(input, 120),
             };
             var emitter = new FluidEmitterDef { Position = new Vector3D(F(input, 40), F(input, 44), 0), Direction = new Vector3F(F(input, 48), F(input, 52), F(input, 56)), Size = new Vector3F(F(input, 60), F(input, 64), 0.1f), Speed = F(input, 68), Kind = (FluidVolumeKind)(input[5] & 1), MaxEmitted = input[6] };
             var drain = new FluidDrainDef { Position = new Vector3D(F(input, 72), F(input, 76), 0), Size = new Vector3F(F(input, 80), F(input, 84), 1f), Kind = (FluidVolumeKind)(input[7] & 1) };

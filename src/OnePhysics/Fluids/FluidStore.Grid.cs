@@ -25,6 +25,7 @@ internal sealed class FluidTaskBuf
     public FluidContact[] C = new FluidContact[64];
     public int Count;
     public float MaxSq, MinX, MinY, MinZ, MaxX, MaxY, MaxZ;
+    public double D0, D1;
 }
 
 internal sealed partial class FluidStore
@@ -138,6 +139,17 @@ internal sealed partial class FluidStore
                 s._omx[i] = s.PVx[j]; s._omy[i] = s.PVy[j]; s._omz[i] = s.PVz[j];
                 s._sId[i] = s.PId[j]; s._sFluid[i] = s.PFluid[j];
             }
+
+            if (s.PBe != null)
+            {
+                for (int i = from; i < to; i++)
+                {
+                    int j = o[i];
+                    for (int k = 0; k < 6; k++) { s._sBe[i * 6 + k] = s.PBe[j * 6 + k]; }
+                    for (int k = 0; k < 9; k++) { s._sCm[i * 9 + k] = s.PCm![j * 9 + k]; }
+                    s._sAux[i] = s.PAux![j];
+                }
+            }
         }
     }
 
@@ -186,6 +198,7 @@ internal sealed partial class FluidStore
         double sx = (double)(mxx - mnx) * _invH, sy = (double)(mxy - mny) * _invH, sz = (double)(mxz - mnz) * _invH;
         double cells = (Math.Floor(sx) + 1.0) * (Math.Floor(sy) + 1.0) * (Math.Floor(sz) + 1.0);
         _hashed = !(cells >= 1.0 && cells <= MaxDenseCells);
+        if (_hashed && _anyMpm) { throw new FluidBudgetException("The solid matter spans " + cells.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " grid cells; the material point grid is dense and holds at most " + MaxDenseCells.ToString(System.Globalization.CultureInfo.InvariantCulture) + " (bring the particles closer together or use a larger KernelRadiusScale)."); }
         if (_hashed) { _gnx = _gny = _gnz = int.MaxValue; _cells = HashBuckets; }
         else { _gnx = (int)Math.Floor(sx) + 1; _gny = (int)Math.Floor(sy) + 1; _gnz = (int)Math.Floor(sz) + 1; _cells = _gnx * _gny * _gnz; }
         if (_cellStart.Length < _cells + 1) { _cellStart = new int[Math.Max(_cells + 1, _cellStart.Length * 2)]; }
@@ -198,13 +211,17 @@ internal sealed partial class FluidStore
         EnsureCursor(_cells);
         Array.Copy(cs, _cursor, _cells);
         for (int i = 0; i < n; i++) { _order[_cursor[_cellOf[i]]++] = i; }
+        if (PBe != null) { Fit(ref _sBe, n * 6); Fit(ref _sCm, n * 9); Fit(ref _sAux, n); }
         Core().Executor.For(_taskCount, new GatherTask { S = this });
         // Swap the permuted copies in.
+        if (PBe != null) { (PBe, _sBe) = (_sBe, PBe); (PCm, _sCm) = (_sCm, PCm); (PAux, _sAux) = (_sAux, PAux); }
         (_x, _dx) = (_dx, _x); (_y, _dy) = (_dy, _y); (_z, _dz) = (_dz, _z);
         (_x0, _nvx) = (_nvx, _x0); (_y0, _nvy) = (_nvy, _y0); (_z0, _nvz) = (_nvz, _z0);
         (PVx, _omx) = (_omx, PVx); (PVy, _omy) = (_omy, PVy); (PVz, _omz) = (_omz, PVz);
         (PId, _sId) = (_sId, PId); (PFluid, _sFluid) = (_sFluid, PFluid);
     }
+
+    private float[] _sBe = new float[6], _sCm = new float[9], _sAux = new float[1];
 
     private int[] _cursor = new int[16];
 
@@ -230,8 +247,11 @@ internal sealed partial class FluidStore
         bool d3 = Dim == 3;
         var cs = _cellStart;
         Span<int> seen = stackalloc int[27];
+        bool anyMpm = _anyMpm;
         for (int i = from; i < to; i++)
         {
+            // Solid matter has no neighbour list (it exchanges momentum through the grid) and the density constraint of the fluids does not see it.
+            if (anyMpm && _isMpm[PFluid[i]]) { _nbrCount[i] = 0; continue; }
             float xi = _x[i], yi = _y[i], zi = _z[i];
             int ix = CellCoord(xi, _gMinX, _gnx), iy = CellCoord(yi, _gMinY, _gny), iz = CellCoord(zi, _gMinZ, _gnz);
             int count = 0;
@@ -251,7 +271,7 @@ internal sealed partial class FluidStore
                         {
                             if (j == i) { continue; }
                             float dx = xi - _x[j], dy = yi - _y[j], dz = zi - _z[j];
-                            if (dx * dx + dy * dy + dz * dz < h2 && count < stride) { _nbr[bas + count++] = j; }
+                            if (dx * dx + dy * dy + dz * dz < h2 && count < stride && !(anyMpm && _isMpm[PFluid[j]])) { _nbr[bas + count++] = j; }
                         }
                     }
                 }
@@ -277,7 +297,7 @@ internal sealed partial class FluidStore
                             {
                                 if (j == i) { continue; }
                                 float dx = xi - _x[j], dy = yi - _y[j], dz = zi - _z[j];
-                                if (dx * dx + dy * dy + dz * dz < h2 && count < stride) { _nbr[bas + count++] = j; }
+                                if (dx * dx + dy * dy + dz * dz < h2 && count < stride && !(anyMpm && _isMpm[PFluid[j]])) { _nbr[bas + count++] = j; }
                             }
                         }
                     }

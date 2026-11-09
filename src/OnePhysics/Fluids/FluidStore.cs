@@ -66,6 +66,10 @@ internal sealed class FluidState
     public float N0;         // SPH density of a particle in a rest lattice, kg/m³ (m³ in 2D: kg/m²)
     public float GradNorm;   // squared gradient norm of its density constraint in that lattice, 1/m²
     public int Count;        // live particles, derived
+    public bool Mpm;         // simulated with the material point method, derived
+    public float Lame1, Lame2, DpAlpha, DpApex, VmLimit; // derived: lambda, mu, Drucker-Prager slope and tension limit (stress), von Mises limit on the deviatoric stress norm
+    public float Volume;     // volume of one particle at rest, m³ (m² in 2D)
+    public float FlowSin, FlowDSin; // sin of the static friction angle and its rise in fast flow
 }
 
 internal sealed class EmitterState
@@ -121,6 +125,10 @@ internal sealed partial class FluidStore : ISnapshotSection
     internal float[] PVx = new float[64], PVy = new float[64], PVz = new float[64];
     internal int NextId;
 
+    // State of solid matter (material point method), allocated with the first such particle: the elastic left Cauchy-Green tensor (xx, yy, zz, xy, xz, yz), the affine velocity matrix (row-major 3x3)
+    // and the plastic volume ratio (snow hardening).
+    internal float[]? PBe, PCm, PAux;
+
     internal bool Asleep;
     internal float QuietTime;
     internal long StepCount;
@@ -175,6 +183,7 @@ internal sealed partial class FluidStore : ISnapshotSection
         s.Mass = s.Def.RestDensity * (Dim == 3 ? Spacing * Spacing * Spacing : Spacing * Spacing);
         s.N0 = (float)(s.Mass * k.LatticeSum(Spacing));
         s.GradNorm = (float)k.RestGradientNorm(Spacing, s.Mass, s.N0);
+        DeriveSolid(s);
     }
 
     internal void SetFluidDef(int i, ParticleFluidDef def)
@@ -185,6 +194,13 @@ internal sealed partial class FluidStore : ISnapshotSection
         using var mutation = Host.FluidMutation("ParticleFluid.Definition");
         f.Def = def.Clone();
         Derive(f);
+        if (f.Mpm)
+        {
+            // Particles that were a fluid start from rest as solid.
+            EnsureSolid();
+            for (int p = 0; p < Count; p++) { if (PFluid[p] == i) { InitSolid(p); } }
+        }
+
         Wake();
     }
 
@@ -218,6 +234,12 @@ internal sealed partial class FluidStore : ISnapshotSection
         PId[to] = PId[from]; PFluid[to] = PFluid[from];
         PX[to] = PX[from]; PY[to] = PY[from]; PZ[to] = PZ[from];
         PVx[to] = PVx[from]; PVy[to] = PVy[from]; PVz[to] = PVz[from];
+        if (PBe != null)
+        {
+            for (int k = 0; k < 6; k++) { PBe[to * 6 + k] = PBe[from * 6 + k]; }
+            for (int k = 0; k < 9; k++) { PCm![to * 9 + k] = PCm[from * 9 + k]; }
+            PAux![to] = PAux[from];
+        }
     }
 
     internal int CountOf(int fluid)
@@ -233,11 +255,23 @@ internal sealed partial class FluidStore : ISnapshotSection
 
     private void EnsureCapacity(int n)
     {
-        if (PId.Length >= n) { return; }
-        int c = Math.Max(n, PId.Length * 2);
-        Array.Resize(ref PId, c); Array.Resize(ref PFluid, c);
-        Array.Resize(ref PX, c); Array.Resize(ref PY, c); Array.Resize(ref PZ, c);
-        Array.Resize(ref PVx, c); Array.Resize(ref PVy, c); Array.Resize(ref PVz, c);
+        if (PBe != null)
+        {
+            // The solid-matter arrays are swapped with scratch ones at every sort, so each is checked on its own.
+            if (PBe.Length < n * 6) { Array.Resize(ref PBe, Math.Max(n, PBe.Length / 6 * 2) * 6); }
+            if (PCm!.Length < n * 9) { Array.Resize(ref PCm, Math.Max(n, PCm.Length / 9 * 2) * 9); }
+            if (PAux!.Length < n) { Array.Resize(ref PAux, Math.Max(n, PAux.Length * 2)); }
+        }
+
+        // The persistent arrays are swapped with scratch ones at every sort (some of them), so their lengths can differ: each is checked on its own.
+        if (PId.Length < n) { Array.Resize(ref PId, Math.Max(n, PId.Length * 2)); }
+        if (PFluid.Length < n) { Array.Resize(ref PFluid, Math.Max(n, PFluid.Length * 2)); }
+        if (PX.Length < n) { Array.Resize(ref PX, Math.Max(n, PX.Length * 2)); }
+        if (PY.Length < n) { Array.Resize(ref PY, Math.Max(n, PY.Length * 2)); }
+        if (PZ.Length < n) { Array.Resize(ref PZ, Math.Max(n, PZ.Length * 2)); }
+        if (PVx.Length < n) { Array.Resize(ref PVx, Math.Max(n, PVx.Length * 2)); }
+        if (PVy.Length < n) { Array.Resize(ref PVy, Math.Max(n, PVy.Length * 2)); }
+        if (PVz.Length < n) { Array.Resize(ref PVz, Math.Max(n, PVz.Length * 2)); }
     }
 
     private void CheckBudget(int add)
@@ -264,6 +298,8 @@ internal sealed partial class FluidStore : ISnapshotSection
         PId[p] = NextId++; PFluid[p] = (byte)fluid;
         PX[p] = x; PY[p] = y; PZ[p] = Dim == 3 ? z : 0.0;
         PVx[p] = vx; PVy[p] = vy; PVz[p] = Dim == 3 ? vz : 0f;
+        if (Fluids[fluid]!.Mpm) { EnsureSolid(); InitSolid(p); }
+        else if (PBe != null) { InitSolid(p); }
     }
 
     internal void AddParticle(int fluid, Vector3D at, Vector3F velocity)

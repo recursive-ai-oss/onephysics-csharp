@@ -18,6 +18,11 @@ internal static class FluidScenarios
         Register3D("world3d/fluids-dam", "dam-break-3d", 0.1f);
         Register3D("world3d/fluids-boxes", "fluid-boxes-3d", 0.1f);
         Register3D("world3d/fluids-cloth", "fluid-cloth-3d", 0.1f);
+        Register3D("world3d/fluids-sand", "sand-pile-3d", FluidScenes.CoarseSpacing("sand-pile-3d"));
+        Register2D("world2d/fluids-hopper", "hopper-2d", FluidScenes.CoarseSpacing("hopper-2d"));
+        Register3D("world3d/fluids-honey", "honey-coil-3d", FluidScenes.CoarseSpacing("honey-coil-3d"));
+        Register3D("world3d/fluids-snow", "snow-impact-3d", FluidScenes.CoarseSpacing("snow-impact-3d"));
+        Register2D("world2d/fluids-clay", "clay-press-2d", FluidScenes.CoarseSpacing("clay-press-2d"));
     }
 
     private static void Register2D(string row, string scene, float spacing)
@@ -30,6 +35,7 @@ internal static class FluidScenarios
             {
                 if (i == 40) { var s = w.Snapshot(); w = w.Fork(); w.Restore(s); ctx.Write(s); }
                 if (i == 80) { w.ShiftOrigin(new Vector2D(16, -8)); }
+                FluidScenes.BeforeStep2D(scene, w, i, i >= 80 ? new Vector2D(16, -8) : default);
                 w.Step(FluidScenes.Dt);
                 ctx.Write((long)w.ComputeHash());
                 foreach (var e in w.FluidEvents) { ctx.Write((int)e.Kind); ctx.Write(e.Body.Index); ctx.Write(e.Fluid); ctx.Write(e.SubmergedFraction); }
