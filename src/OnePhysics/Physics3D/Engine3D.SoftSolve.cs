@@ -147,7 +147,7 @@ internal sealed partial class Engine3D
         {
             if (k < _e._stStages) { return _e._stStart[k + 1] - _e._stStart[k]; }
             if (k == _e._stStages) { return _e._ctTasks; }
-            if (k == _e._stStages + 1) { return _e._pairCount > 0 || _e._vtCount + _e._eeCount > 0 ? 1 : 0; }
+            if (k == _e._stStages + 1) { return _e._pairCount > 0 || _e._avCount + _e._aeCount > 0 ? 1 : 0; }
             return _e._skinCount;
         }
 

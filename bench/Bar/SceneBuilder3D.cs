@@ -186,6 +186,9 @@ public static class SceneBuilder3D
     }
 
     /// <summary>Adds the scene's soft bodies to the world, in record order, with this library's presets for their material (docs/spec/scenes.md). Meshes are built by <see cref="SoftGen"/>, the same ones every engine gets.</summary>
+    /// <summary>When set, overrides <c>SurfaceCollision</c> of every soft body AddSofts makes (timing comparisons).</summary>
+    public static bool? SurfaceOverride { get; set; }
+
     public static P3.SoftBody[] AddSofts(Scene s, P3.PhysicsWorld3D world)
     {
         var result = new P3.SoftBody[s.Softs.Count];
@@ -203,6 +206,7 @@ public static class SceneBuilder3D
             def.Mass = (float)d.Mass;
             if (m.Pins.Length > 0) def.PinnedParticles = m.Pins;
             if (skin != null) { def.Skin = skin; def.ParticleRadius = 0.01f; def.AllowSleep = false; }
+            if (SurfaceOverride is bool sb) { def.SurfaceCollision = sb; }
             result[i] = world.AddSoftBody(def);
         }
 

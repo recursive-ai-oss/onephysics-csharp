@@ -196,9 +196,7 @@ internal sealed partial class Engine3D
 #endif
         BuildDetectTasks();
         BuildPairs(margin);
-        // Slow bodies list their surface pairs once for the whole step; fast ones every substep, because the pairs a whole step's travel can reach grow with its square.
-        bool listOnce = SurfaceListingOncePerStep(dt, gmag);
-        if (listOnce) { BuildSurfacePairs(dt, gmag); }
+        _avCount = 0; _aeCount = 0;
         for (int k = 0; k < substeps; k++)
         {
             float t0 = (float)k / substeps, t1 = (float)(k + 1) / substeps;
@@ -213,7 +211,7 @@ internal sealed partial class Engine3D
 #if STAGE_TIMERS
             StageProbe.Mark(StageProbe.SoftPredict);
 #endif
-            if (!listOnce) { BuildSurfacePairs(h, gmag); }
+            PrepareSurfacePairs(h, gmag);
             for (int a = 0; a < _awakeSoftCount; a++)
             {
                 PredictSoft(_awakeSoft[a], h, g);

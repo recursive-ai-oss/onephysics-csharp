@@ -43,9 +43,6 @@ internal sealed partial class SoftBodyData
     /// <summary>Index of this body's first surface triangle and first surface edge in the step's numbering.</summary>
     public int SurfTriBase, SurfEdgeBase;
 
-    /// <summary>How far a feature of this body can travel in the step (scratch).</summary>
-    public float SurfTravel;
-
     /// <summary>Whether the body takes part in this substep's surface search (scratch).</summary>
     public bool SurfaceActive;
     public readonly double[] SurfBounds = new double[6];
