@@ -235,7 +235,7 @@ public sealed partial class PhysicsWorld2D
         ArgumentNullException.ThrowIfNull(def);
         var d = def.Clone();
         d.Validate(true);
-        d.StartHeading = 0f;
+        d.StartHeading = 1.5707964f;   // the plan view runs along +X
         var geo = new TrackGeometry(d);
         var state = new TrackState2D { Def = d, Geo = geo };
         if (d.Collide)
