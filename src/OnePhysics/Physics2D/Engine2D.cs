@@ -870,7 +870,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         var bodies = Core.Bodies;
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || Geom.Length < shapes.HighWater) { return false; }
-        if (!CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent() || !ActuatorsConsistent() || !BicyclesConsistent() || !RailConsistent() || !CharacterExtensionsConsistent()) { return false; }
+        if (!CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent() || !ActuatorsConsistent() || !BicyclesConsistent() || !RailConsistent() || !CharacterExtensionsConsistent() || !ParticleFluidsConsistent()) { return false; }
         var cons = Core.Constraints;
         if (!JointsConsistentWithCore()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)

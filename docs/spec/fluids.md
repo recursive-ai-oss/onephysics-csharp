@@ -1,0 +1,114 @@
+# Particle fluids
+
+Normative description of `src/OnePhysics/Fluids/` and the parts of `Physics2D/` and `Physics3D/` that carry it: position-based fluids in both dimensions, coupled in both directions with rigid bodies, soft bodies and cloth, and rods. One store serves both worlds; a planar world presents everything to it as 3D vectors with z = 0 (a planar particle is a disc of one metre depth) and the kernels take the 2D normalisation. Everything is float32 with IEEE `+ − × ÷ sqrt` on the particles and double for positions, masses and the rest-lattice constants; no transcendental function is called (`π` is a literal), no fused operation.
+
+This is not the buoyancy volume of `AddFluid` (the analytic water plane that floats bodies): the two do not interact. Particles are also not rigid bodies, soft bodies or rods and live in their own store, outside the islands and the constraint colouring.
+
+## Method
+
+Macklin and Müller, *Position Based Fluids* (SIGGRAPH 2013): a density constraint per particle solved by Jacobi iterations inside position-based dynamics, with the poly6 kernel for density and the spiky kernel for its gradient (Müller, Charypar, Gross 2003), an artificial pressure against tensile instability, XSPH viscosity and vorticity confinement. Contacts with solids are solved inside the loop (Macklin et al., *Unified Particle Physics for Real-Time Applications*, 2014, for the two-body contact form).
+
+### Kernels
+
+With smoothing radius `H = spacing × KernelRadiusScale` (default scale 2) and `r = |x_i − x_j|`:
+
+| | 3D | 2D |
+|---|---|---|
+| poly6 `W = c6 (H² − r²)³` | `c6 = 315 / (64 π H⁹)` | `c6 = 4 / (π H⁸)` |
+| spiky `∇W = −cs (H − r)² r̂` | `cs = 45 / (π H⁶)` | `cs = 30 / (π H⁵)` |
+
+Constants are computed in double and rounded to float. `Dq = 0.2 H`, `W(Dq)` for the artificial pressure.
+
+### Particle mass and rest density
+
+Mass `m = RestDensity × spacing^d` (d = 3, or 2 for the planar world, kg per metre of depth). `n0` is the SPH density `m Σ W` of a particle in a rest lattice of the spacing (the cubic lattice, self included, summed in double over `i, j, k` in loop order), a little above `RestDensity` (3D 1009.8 and 2D 1014.6 for water at scale 2). The constraint is `C = n / n0 − 1` and holds the fluid at `n0`. `GradNorm = Σ_j (spiky(r_j) m / n0)²` over the lattice neighbours (the cross terms cancel) is the squared gradient norm of the constraint at rest; the constraint-force mixing is `ε = Relaxation × GradNorm` (default `Relaxation` 0.03), so one setting means the same softness in 2D, 3D and at any spacing.
+
+All fluids of a world share one spacing and one kernel scale (the first sets them); they differ in density, viscosity, vorticity, tension, friction, speed limit, gravity scale and collision filter. Masses enter the density sum and the gradients, so two fluids may meet (the heavier compresses the lighter).
+
+## What runs when
+
+`FluidStore.Step(dt)` is one serial sequence of parallel stages, once per world step, **after** the rigid step, the rods and the soft bodies (3D: after `Rods.Step`; 2D: after `StepSoft`) and before the character support and body-control ends. The bodies, soft particles and rod particles are therefore in their end-of-step state, and the momentum the fluid gives them is applied to their velocities for the next step. Worlds with no fluid do nothing. Order:
+
+1. `Events` cleared. **Emitters** in slot order (below). If there are no particles, wetness is re-evaluated (so every wet body gets its exit event) and the step ends.
+2. Bounds of the particles (sequential, double), the local origin `O = floor(min − margin)` per axis (z = 0 in 2D), `margin = (vmax + 2 |g| dt + 1) dt + H`.
+3. Candidate shapes (broadphase box query over the bounds grown by the margin; ascending shape slot, unique), filtered per fluid by sensor, layer matrix, group, category and mask (a bit mask of fluid slots per candidate). Rigid bodies of candidates are loaded once (below). Soft-body particles and rod segments in the box are gathered (`FluidDeformables`).
+4. If the fluids are asleep: they stay asleep unless an emitter runs, a deformable is in the box or a moving body (kinematic, or dynamic and awake) is; the step then ends without work (positions untouched). Otherwise they wake.
+5. Particles are converted to float positions relative to `O`. Then, per substep (`Settings.Substeps`, default 2, `h = dt / Substeps`):
+   * **advance the bodies** (below) and put the deformables where their velocities carry them by the end of the substep;
+   * **predict**: `v += g × GravityScale × h`, clamp `|v| ≤ MaxSpeed`, `x0 = x`, `x += v h` (parallel by chunk of 256);
+   * **sort** by grid cell (below) and permute every per-particle array;
+   * **neighbours**, **contacts** (below);
+   * `Settings.Iterations` (default 4) iterations of: λ pass, Δp pass, apply pass (with contacts that need no reaction), then the contacts that give a reaction serially;
+   * a final apply pass without corrections when there were reaction contacts (so a push by a coupled contact is not left inside a static one);
+   * **velocity** `v = (x − x0) / h`, clamped; **XSPH and vorticity** when any fluid has them;
+   * **bodies** take the substep's momentum (below).
+6. Back to double positions `O + x`, in the final particle order. The real bodies and deformables get the step's accumulated momentum. Particles outside ±2^22 m are removed (counted); **drains** remove particles inside them (below); **sleep** is evaluated; **wetness** and events are evaluated.
+
+Every parallel stage works on chunks of 256 consecutive particles, a split that depends on the particle count alone; each task writes only its own particles (the contact buffers are joined in task order), so results are the same for any thread count and the stages use fixed-width scalar code (no vector lanes, so no scalar twin is needed).
+
+## Sorting and the grid
+
+Cell size `H`; `ix = trunc((x − min_x) / H)` per axis from the substep's bounds of the predicted positions (parallel min and max joined in task order). When the grid has at most 2^22 cells (`⌊s⌋ + 1` per axis, in double) the cell index is `ix + nx (iy + ny iz)`; otherwise it is a hash of the three integers into 2^20 buckets (multiplicative, integer arithmetic) and neighbours are found by distance alone. A stable counting sort in cell order (ties keep the earlier particle order) gives the new order; the particle arrays (positions, previous positions, velocities, ids, fluid) are permuted by gather. The order of the particles therefore changes every substep and is a function of the state alone; ids do not change.
+
+**Neighbour lists:** per particle, the particles within `H` in the 3×3(×3) cells around it (dense: one contiguous range per row of three cells; hashed: the distinct buckets), ascending in sorted order, up to a capacity of `⌈2 × (4/3 π s³ or π s²) + 8⌉` (s = kernel scale; 75 at scale 2 in 3D, 33 in 2D); neighbours beyond it are dropped in that order. The lists are built once per substep and every iteration re-evaluates distances and discards pairs that moved beyond `H`.
+
+## The density constraint
+
+Per iteration, Jacobi: each pass reads the positions of the previous one.
+
+* λ: `n = m_i W(0) + Σ_j m_j W(r)`; `C = n / n0_i − 1`; if `C ≤ 0` (a deficit, as at the free surface) `λ_i = 0`; otherwise with `g_i = Σ_j m_j ∇W_ij / n0_i` and `Σ_j |m_j ∇W_ij / n0_i|²`: `λ_i = −C / (|g_i|² + Σ_j |m_j ∇W_ij / n0_i|² + ε)`. Pairs at `r < 1e-9` have no gradient.
+* Δp: `Δp_i = Σ_j [ (λ_i + s_corr) m_j / n0_i + λ_j m_i / n0_j ] ∇W_ij`, `s_corr = −TensileCorrection × spacing² × (W(r) / W(Dq))⁴`; the length is capped at `H / 4` (the mixed-mass form of equation 14 of the paper).
+* Apply: `x += Δp`, then the contacts of the particle that take no reaction.
+
+## Contacts
+
+Contact radius of a particle `rc = spacing / 2`. Per substep, after the sort, each particle is tested against every candidate shape whose box (at the end-of-substep pose of its body, united with the box at the start) meets the particle's box grown by `rc + spec`, where `spec = spacing / 4 + 2 × (the distance the particle moved this substep)`. A particle that moved more than `rc / 2` is swept first (the shape cast of a soft-body particle: the particle's path relative to the shape's own motion against the shape at the end); a hit gives a contact at the hit point with separation 0. Otherwise the discrete sphere-against-shape test of the engine's own narrowphase gives the deepest manifold point (normal from shape to particle, separation, the point on the shape). At most six contacts per particle (the deepest, ties keep the earlier). Contacts are joined in task order, so the list is ascending by particle.
+
+A contact is the plane `n · (x − X) + C0 ≥ 0` (X the particle position at detection). **Without reaction** (static and kinematic shapes, sleeping bodies' shapes): push out `min(−cv, H/2)` along `n`; Coulomb friction removes the particle's displacement along the surface (relative to the surface velocity at the contact times `h`) up to `μ ×` the push, `μ = sqrt(fluid.Friction × shape friction)`.
+
+### Rigid bodies
+
+Rigid bodies are coupled in both directions as in XPBD and the unified-particle contact: each contact with a dynamic body (finite mass, any sleep state) solves `λ = −cv / (w_p + w_b)` with `w_p = 1/m_particle`, `w_b = 1/M + (r × n)ᵀ I⁻¹ (r × n)` (world inverse inertia, `r` from the centre of mass to the contact point on the shape), `cv = C0 + n·(x − X) + w_b × (the sum of multipliers this contact has applied so far)`, `λ` capped so the particle moves at most `H/2`. The particle moves by `w_p λ n`; the body receives the momentum `−n λ / h` and angular momentum `−(r × n) λ / h`. These contacts are solved serially in contact order (ascending particle), so the sums are the same for any thread count. Friction: the particle's displacement relative to the surface motion (including the body's spin) along the tangent, limited to `μ ×` the particle's normal displacement, with the same two-body weights.
+
+The body's pose during the step is virtual: at the step start the body is loaded (centre-of-mass pose, velocities, mass, world inverse inertia, gravity × scale); per substep a dynamic awake body's velocity gains `g h` (the fluid sees the body falling as the next rigid step will make it, so a body in equilibrium needs exactly the weight from the fluid, with no one-step lag) and the pose advances by the velocity (rotation `q += ½ (ω, 0) ⊗ q`, renormalised); a kinematic body advances by its velocity. After the substep the momentum accumulated by the contacts changes the virtual velocity (`J / M`, `I⁻¹ L`). At the step end the real body's velocity changes by the whole step's sum (`ΣJ / M`, `I⁻¹ ΣL`) and nothing else: gravity is the rigid step's. A body that is asleep takes the push only if one step changes its velocity by more than `WakeBodySpeed` (default 0.05 m/s, 0.05 rad/s), when it wakes; smaller pushes are dropped. Momentum is conserved to float rounding (tested: a struck sphere and its blob).
+
+### Soft bodies, cloth and rods
+
+Soft-body particles (spheres of the body's radius) and rod segments (capsules of the rod's radius, between two particles) are gathered at the end of the step and move during it with their own velocities (positions at the end of substep `k` are `x + v h (k+1)`), so a surface that moves into the fluid pushes it gradually. For the fluid solve they are **surfaces**: the fluid particle takes the whole correction (`w_b = 0`), with friction against the surface's velocity at the contact. A particle held by its own constraints has an effective mass that its inverse mass knows nothing of; the first version, which solved the two-body contact with the lone particle's mass, let the fluid through a cloth (cloth particles weigh 1/100 of a fluid particle). The deformable receives the momentum `−n λ / h` as a velocity (a rod contact splits it over the two ends by `(1−t, t)`, `t` the position along the segment), through its own mass **plus the fluid mass in contact with it** (`1 / (1/w + M_contact / substeps)`, `M_contact` the mass of the fluid particles that touched it, summed over the substeps), which is the inertia the particle carries along with the fluid pressing on it. That keeps the velocity a light node is given finite; its own constraints (stretch, bend, pins) absorb the rest. A pinned end takes nothing. A sleeping soft body takes the push only if the largest velocity change among its particles exceeds `WakeBodySpeed`, when it wakes. `CollideWithSoftBodies` and `CollideWithRods` select what a fluid meets.
+
+Leak-free cloth needs the cloth's collision radius plus the fluid contact radius to exceed half the diagonal of a cloth cell: spacing 0.05 m cloth with radius 0.02 m and 0.05 m fluid (contact radius 0.025) holds (the scene `fluid-cloth-3d`).
+
+## Emitters, drains, budget, sleep
+
+* **Emitter** (`FluidEmitterDef`): a disc (sphere) or box nozzle at `Position` facing `Direction` (unit-normalised in double; two unit vectors across it by crossing with the world axis least aligned with it, in 2D the in-plane normal). Each step the phase advances by `Speed × dt`; one **layer** is emitted per full spacing at the offset `phase` downstream of the nozzle plane (so a stream is continuous), the layer being the lattice of the spacing on `u, v` through the nozzle centre (`⌊size/spacing⌋` either side of the centre, a disc keeping points within the radius), all at `Speed` along the direction. Emitters in slot order; stops at `MaxEmitted` or when the budget is used up (the phase stays within one spacing).
+* **Drain**: at the end of the step every particle of its fluid (or any fluid) inside the box (inclusive) or sphere is removed, in particle order; drains in slot order, the first that holds a particle takes it.
+* **Budget**: `FluidSettings.MaxParticles` (default 262144). Emitters stop at it; `AddFluidParticle` and the fills throw `FluidBudgetException` before adding anything. Neighbour storage beyond 1.5 × 10⁹ entries is a `FluidBudgetException` from `Step`.
+* **Sleep**: the fluids sleep when the fastest particle stays below `SleepSpeed` (0.02 m/s) for `TimeToSleep` (1 s) and no emitter is enabled; all velocities are zeroed. They wake by `Wake` calls (creating, filling, editing, destroying), a running emitter, a deformable in the box or a moving body in the box. Asleep, a step does nothing and the particles keep their positions. Static geometry that changes does not wake them. (The speed test is on the whole world's particles; one active splash keeps a lake awake.)
+* **Culling**: particles outside ±2^22 m after a step are removed (`LastCulled` in the store, not public state).
+
+## Queries and events
+
+* `GetFluidParticles` copies particles in storage order (changes every step); `OverlapFluidSphere` and `OverlapFluidBox` (ascending storage order, the sphere inclusive, with the total even when the caller's span is shorter); `RaycastFluid` (nearest particle sphere of radius `spacing / 2`, ties by lower storage index); `FluidDensityAt` (the poly6 sum of masses, world-space point). They use a query grid rebuilt on demand from the double positions (cell `H`, hashed buckets of a stable counting sort; not saved, never read before it matches the state). A ray is walked in steps of half a cell and reads the 3×3×3 cells around each.
+* **Submerged fraction.** A body in the candidate set that is dynamic or kinematic gets a lattice of up to 64 sample points inside its shapes (`4³` for one convex shape or compound, `3³` for up to three shapes, `2³` for up to eight, 1 beyond; in 2D 8², 5², 3², 1), each with its depth below the shape's surface (the penetration of a 1 mm sphere). A point is wet for a fluid when a particle of that fluid lies within `depth + 0.75 spacing` of it, evaluated at the body's pose at the start of the step. The fraction is wet points over points: an estimate at the resolution of the lattice (a floating box with the true fraction 0.5 reads 0.5 to 0.6). The surface wetted is the number of contacts in the last substep times `spacing^(d−1)`. The force is the step's momentum over `dt` (only for bodies that take a reaction).
+* **Events**: a (body, fluid) pair enters when its fraction rises to 0.05 and exits when it falls below 0.02 (or the body is destroyed, or the fluid empties), once per step at most. They are listed in `FluidEvents` ordered by body slot then fluid slot, valid until the next step; the state "wet" is saved, so a restored world reports the same events.
+* `GetFluidState(body, fluid)`: fraction, wetted area and force of the last step; zero for a body the fluid has not met.
+
+## State, snapshot and hash
+
+Optional section **"PFLD"** (`0x444C4650`, version 1), registered after every other section (3D: after the cloth links; 2D: after the active ragdolls), written only while a fluid exists or the settings differ from the defaults, so worlds that never use fluids keep their bytes and hashes. Layout (little-endian, `StateWriter`): version; settings (substeps, iterations, budget as int32; sleep speed, time to sleep, wake speed as float32); spacing and kernel scale (float32); next id (int32); asleep (bool); quiet time (float32); step count (int64); the fluid table (a handle table, then per live slot the definition: ten float32 — spacing, rest density, kernel scale, viscosity, vorticity, tensile correction, relaxation, friction, max speed, gravity scale —, layer int32, category and mask uint32, group int32, two bools); the emitter table (per live slot: fluid slot and generation, position as three doubles, direction three float32, kind byte, size three float32, speed float32, enabled bool, `MaxEmitted` int32, phase float32, emitted int32); the drain table (fluid slot or −1 and generation, position three doubles, kind byte, size three float32, enabled bool, removed int32); the particle count, then per particle in storage order: id int32, fluid byte, position three doubles, velocity three float32; the count of wet records and per record body slot, body generation and fluid slot (ascending by body slot then fluid slot). Not saved: neighbour data, contacts, the query grid, the pending events (rebuilt by the next step from the saved wet records), the statistics. Restore validates counts against the bytes left, every definition by its own range rules, positions within ±8388608 m, velocities within ±10⁶ m/s, ids below the next id, fluid slots live, planar particles with z = 0, wet records in order; any failure is a `SnapshotFormatException` and the world is unchanged.
+
+The world hash covers the section as written. Entity kinds for the desync finder and regions: `particlefluid`, `fluid emitter`, `fluid drain` (per slot) and `fluidparticle` (per particle). A region selects the particles whose positions lie in its box and keeps the fluids, emitters and drains; a regional restore needs the same particle count and promises regional hash equality. A fork copies everything (with no event subscription to carry). `ShiftOrigin` subtracts the offset from every particle, emitter and drain position (the local origin of each step is chosen from the particles, so a shifted fluid steps like the unshifted one in exact arithmetic but not bit for bit; the bodies' own shift is bit-exact). The replay recorder records every mutating call (`RecordMutation`).
+
+## Debug geometry
+
+`DebugContent.Fluids` (262144): every particle (id, fluid slot, position, velocity) in storage order, then emitters and drains by slot (kind, centre, size, direction, enabled). `DebugContent.All` is 524287.
+
+## Scenes and thresholds
+
+Scenes are built in code (`tests/Common/FluidScenes.cs`) and shared by the tests, the hash-matrix runner, the smoke apps and `bar fluid-stability`. No reference engine runs them; the thresholds are ours (1.5 × the worst of the x64 and arm64 values, rounded up), per scene over 600 steps at 1/60 s sampled every 20 steps: **dam-break-2d** (a 0.6 m square column, spacing 0.02, 900 particles; maxSpeed ≤ 6, density 95th percentile of compression ≤ 0.1, final speed ≤ 1.5), **dam-break-3d** (a 0.5 m cube in a 0.5 m channel, spacing 0.04, 1728; ≤ 4, 0.02, 0.5), **fluid-boxes-3d** (a 1 m pool 0.5 m deep and boxes of density 300, 800 and 2500, spacing 0.05, 4000; ≤ 2, 0.04, 1; the light box's draft within 0.05 m of its density ratio, the heavy box's bottom within 0.1 m of the floor), **fluid-cloth-3d** (a denim hammock with a nozzle, spacing 0.05, 1200 then 2700; ≤ 8, 0.03, 1; no leaks, sag between 0 and 0.3 m), **fluid-rope-2d** (a rope swinging into a pool, a nozzle and a drain, spacing 0.03; ≤ 12, 0.15, 4). Always zero: non-finite values, escapes from the scene's bounds, particles a shape overlaps by more than a quarter of the contact radius.
+
+Correctness (tests): a settled column's 95th percentile compression below 5% and its mean interior density within 5% of `n0`; the hydrostatic profile read as the force on neutral bodies at three depths within 15% of their weight; the dam-break front within 8% (2D, spacing 0.02) and 20% (3D between side walls, spacing 0.025) of Martin and Moyce's table 1 (n² = 1) for dimensionless time 0.43 to 2.42; the waterline of a floating box within max(2 cm, 0.8 spacing) of its density ratio in both dimensions (it floats about half a spacing deep); momentum conserved to 1%; a cloth sheet that lets nothing through.
+
+## Limits
+
+Surface reconstruction is not done (the particles are the output). One spacing per world. A fluid asleep is not woken by changed static geometry. A very light body in a heavy fluid can bob (the impulses are explicit); a deformable lighter than the fluid it carries gets velocity through the added-mass share above, not a conserved exchange. Planar particles are discs of one metre depth; 2D vorticity is the out-of-plane component. Granular matter, viscoelastic and elastoplastic materials, shallow water and swimming characters are separate features.

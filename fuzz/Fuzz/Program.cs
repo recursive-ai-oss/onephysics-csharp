@@ -26,6 +26,8 @@ internal static class Program
         ["sdf-grid2d"] = FuzzTerrain.SdfGrid2D,
         ["rod-definition"] = FuzzRods.Definition,
         ["rod-snapshot"] = FuzzRods.Snapshot,
+        ["fluid-definition"] = FuzzFluids.Definition,
+        ["fluid-snapshot"] = FuzzFluids.Snapshot,
         ["pulley-definition"] = FuzzPulleys.Definition,
         ["pulley-snapshot"] = FuzzPulleys.Snapshot,
         ["rail-bike-definition"] = FuzzRailBike.Definition,

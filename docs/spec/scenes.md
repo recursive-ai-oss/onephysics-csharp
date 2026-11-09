@@ -578,3 +578,7 @@ other shapes). Indices are nonnegative and within the material table. Empty
 arrays are omitted by the writer. These two records are written immediately
 after their shape, leaving older scenes byte-identical. Full-state version 2
 scenes carry the optional runtime surface/material/motion sections unchanged.
+
+## Particle-fluid scenes
+
+`dam-break-2d`, `dam-break-3d`, `fluid-boxes-3d`, `fluid-cloth-3d` and `fluid-rope-2d` are built in code by `tests/Common/FluidScenes.cs` (no files, integer-free and byte-identical on every platform) and measured by `bar fluid-stability [--scene name] [--threads n] [--spacing s]`; `bar fluid-timing [--threads n] [--side k]` times the dam break at about 50 000 particles (indicative). 600 steps at 1/60, default options. No other engine runs them; the thresholds are ours and are listed with the scenes and their metrics in `fluids.md`. The hash-matrix rows `world2d/fluids-dam`, `world2d/fluids-rope`, `world3d/fluids-dam`, `world3d/fluids-boxes`, `world3d/fluids-cloth` run them at coarse spacing (0.06 to 0.1) for 120 steps with a fork and restore at step 40, an origin shift at step 80 and, each step, the events, an overlap query and a ray.
