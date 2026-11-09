@@ -63,6 +63,13 @@ internal static class SmokeProgram
         }
         return w.ComputeHash();
     }
+    private static ulong Ragdolls2DHash(int threads)
+    {
+        var w = Vehicles2DScene.RagdollPileScene(threads).World;
+        for (int i = 0; i < 120; i++) { w.Step(Vehicles2DScene.Dt); }
+        return w.ComputeHash();
+    }
+
     private static int Main()
     {
         ulong grids2=Grid2(1,false),grids3=Grid3(1,false);
@@ -138,6 +145,12 @@ internal static class SmokeProgram
         ulong x1 = Vehicles3DScene.Run(1, false), x3 = Vehicles3DScene.Run(3, false), xr = Vehicles3DScene.Run(1, true);
         bool xSame = x1 == x3 && x1 == xr;
         Console.WriteLine((xSame ? "OK vehicles3d " : "FAIL vehicles3d ") + x1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        // 2D vehicles (car, limited-slip car, truck, tank, motorcycle on a height field with bumps and a ramp) and a pile of ragdolls: same state on one and three threads and after a restore.
+        ulong v21 = Vehicles2DScene.Run(1, false), v23 = Vehicles2DScene.Run(3, false), v2r = Vehicles2DScene.Run(1, true);
+        bool v2Same = v21 == v23 && v21 == v2r;
+        Console.WriteLine((v2Same ? "OK vehicles2d " : "FAIL vehicles2d ") + v21.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        ulong rg1 = Ragdolls2DHash(1), rg3 = Ragdolls2DHash(3);
+        Console.WriteLine((rg1 == rg3 ? "OK ragdolls2d " : "FAIL ragdolls2d ") + rg1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         // 3D tracked vehicles and motorcycles (pivoting tank, tank on a ramp, bike in a turn, bike braking): same state on one and three threads and after a restore.
         ulong vk1 = VehicleKinds3DScene.Run(1, false), vk3 = VehicleKinds3DScene.Run(3, false), vkr = VehicleKinds3DScene.Run(1, true);
         bool kkSame = vk1 == vk3 && vk1 == vkr;

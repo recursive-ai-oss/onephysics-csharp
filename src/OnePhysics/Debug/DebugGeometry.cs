@@ -36,7 +36,7 @@ public enum DebugContent
     /// <summary>With <see cref="Shapes"/>: triangle meshes and height fields emit their triangles too (large; off by default). Ignored by 2D worlds.</summary>
     MeshTriangles = 128,
 
-    /// <summary>One entry per wheel of every vehicle (<see cref="DebugGeometry.Wheels"/>): suspension top, wheel centre, contact point and normal. Ignored by 2D worlds.</summary>
+    /// <summary>One entry per wheel of every vehicle (<see cref="DebugGeometry.Wheels"/>): suspension top, wheel centre, contact point and normal.</summary>
     Vehicles = 256,
 
     /// <summary>One entry per soft body with its particles and edges (<see cref="DebugGeometry.SoftBodies"/>, <see cref="DebugGeometry.Points"/>, <see cref="DebugGeometry.Indices"/>); in 2D worlds the points have z = 0.</summary>

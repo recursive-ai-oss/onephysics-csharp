@@ -210,6 +210,8 @@ internal sealed partial class Engine2D : ISnapshotSection
         }
 
         DropCharacterOfBody(b);
+        DropVehicleOfBody(b);
+        DropRagdollOfBody(b);
         Core.DestroyBody(handle);
         ShapeHead[b] = -1; ShapeTail[b] = -1;
         Mass[b] = 0f; Inertia[b] = 0f;
@@ -860,7 +862,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         var bodies = Core.Bodies;
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || Geom.Length < shapes.HighWater) { return false; }
-        if (!CharactersConsistent()) { return false; }
+        if (!CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent()) { return false; }
         var cons = Core.Constraints;
         if (!JointsConsistentWithCore()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)

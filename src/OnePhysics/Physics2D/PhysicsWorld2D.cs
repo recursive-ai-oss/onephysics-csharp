@@ -38,6 +38,8 @@ public sealed partial class PhysicsWorld2D
         _core.AddSection(new ShapeMassOffsets2D(_engine));
         _core.AddSection(_engine.Tiles);
         _core.AddSection(_engine.SoftSnapshotSection);
+        _core.AddSection(_engine.VehicleSnapshotSection);
+        _core.AddSection(_engine.RagdollSnapshotSection);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -135,6 +137,8 @@ public sealed partial class PhysicsWorld2D
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.BeginBodyControls(dt);
         if (_engine.Fields.Count != 0) _engine.Fields.Step(dt);
+        _engine.StepRagdolls();
+        _engine.StepVehicles(this, dt);
         if (_engine.Rods.Count != 0) _engine.Rods.BeginStep();
         _engine.BeginSoftStep();
         _core.Step(new Stages2D(_engine), dt);
@@ -305,6 +309,7 @@ public sealed partial class PhysicsWorld2D
         _engine.Rods.CheckShift(new Vector3D(offset.X,offset.Y,0));
         _core.ShiftOrigin(d);
         _engine.ShiftMachineJoints(d);
+        _engine.ShiftVehicles(d);
         _engine.Fields.Shift(new Vector3D(offset.X,offset.Y,0));
         _engine.Rods.Shift(new Vector3D(offset.X,offset.Y,0));
         _engine.ShiftProxies(d);

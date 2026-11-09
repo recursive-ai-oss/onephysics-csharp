@@ -60,6 +60,24 @@ internal sealed partial class Engine2D
                 { changed |= s.AddBody(a); changed |= s.AddBody(b); }
             }
 
+            for (int i = 0; i < RagHandles.HighWater; i++)
+            {
+                if (!RagHandles.IsLive(i)) { continue; }
+                var d = Ragdolls[i]!;
+                bool selected = s.Contains("ragdoll", i);
+                foreach (int b in d.Body) { selected |= s.Bodies[b]; }
+                if (!selected) { continue; }
+                s.Add("ragdoll", i);
+                foreach (int b in d.Body) { changed |= s.AddBody(b); }
+            }
+            for (int i = 0; i < VehHandles.HighWater; i++)
+            {
+                if (!VehHandles.IsLive(i)) { continue; }
+                var d = Vehicles[i]!;
+                if (!s.Bodies[d.Body] && !s.Contains("vehicle", i)) { continue; }
+                s.Add("vehicle", i); changed |= s.AddBody(d.Body);
+                foreach (int b in d.GroundBody) { if (b >= 0) { changed |= s.AddBody(b); } }
+            }
             for (int i = 0; i < CharHandles.HighWater; i++)
             {
                 if (!CharHandles.IsLive(i)) { continue; }
