@@ -152,8 +152,6 @@ internal static class FuzzActuators
     {
         try { w.StepChecked(1f / 60f); s_steps++; }
         catch (RecursiveAI.OnePhysics.Physics2D.BodyOutOfBoundsException e) { e.Body.Destroy(); }
-        // A 2D buoyancy field refuses, at the step, a force or torque beyond 1e12 (a body of enormous mass or inertia spinning in water; an accepted hostile snapshot can hold one). That limit is the field's, not the actuators': not a finding here.
-        catch (ArgumentOutOfRangeException e) when (e.ParamName != null && e.ParamName.StartsWith("buoyancy", StringComparison.Ordinal)) { s_refused++; }
     }
 
     private static PhysicsWorld3D NewWorld3() => new(new WorldOptions3D { WorldId = 9, Substeps = 4 });

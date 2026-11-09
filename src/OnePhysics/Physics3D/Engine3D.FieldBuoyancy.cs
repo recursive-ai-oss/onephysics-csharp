@@ -1,5 +1,4 @@
 using System;
-using RecursiveAI.OneMath.Physics;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics.Fields;
 
@@ -28,10 +27,13 @@ internal sealed partial class Engine3D
             }
         }
     }
+    /// <summary>World-frame torque of an angular acceleration: R · I_local · Rᵀ · alpha, built from rotations so no matrix object is allocated.</summary>
     internal Vector3F FieldAngularTorque(int b,Vector3F alpha)
     {
         var local=Inertia.AsSpan(6*b,6);
-        var tensor=InertiaF.Rotate(new Matrix3x3F(local[0],local[1],local[2],local[1],local[3],local[4],local[2],local[4],local[5]),RotationOfBody(b));
-        return new(tensor.M11*alpha.X+tensor.M12*alpha.Y+tensor.M13*alpha.Z,tensor.M21*alpha.X+tensor.M22*alpha.Y+tensor.M23*alpha.Z,tensor.M31*alpha.X+tensor.M32*alpha.Y+tensor.M33*alpha.Z);
+        var q=RotationOfBody(b);
+        var a=q.Conjugated().Rotate(alpha);
+        var t=new Vector3F(local[0]*a.X+local[1]*a.Y+local[2]*a.Z,local[1]*a.X+local[3]*a.Y+local[4]*a.Z,local[2]*a.X+local[4]*a.Y+local[5]*a.Z);
+        return q.Rotate(t);
     }
 }

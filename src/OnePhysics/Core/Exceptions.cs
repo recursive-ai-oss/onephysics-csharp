@@ -45,6 +45,16 @@ public sealed class SnapshotFormatException : PhysicsException
     }
 }
 
+/// <summary>
+/// A snapshot was asked of a world whose state is not finite (a diverged simulation: a body position or the origin is NaN or infinite). The snapshot format holds only finite positions, so writing one
+/// would produce bytes that restore refuses; this is raised instead, before anything is written, and names the first offending field. The world hash still works. Destroy or reset the body first.
+/// </summary>
+public sealed class NonFiniteStateException : PhysicsException
+{
+    /// <summary>Creates the exception with a message naming the first non-finite field.</summary>
+    public NonFiniteStateException(string message) : base(message) { }
+}
+
 /// <summary>An operation that does not apply to the body's type: a velocity or teleport on a static body, a force, impulse or buoyancy on a body that is not dynamic.</summary>
 public sealed class BodyTypeException : PhysicsException
 {

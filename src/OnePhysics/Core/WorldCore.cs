@@ -1401,8 +1401,25 @@ public sealed partial class WorldCore
         return w.Hash;
     }
 
+    /// <summary>The snapshot holds finite positions only (restore refuses anything else), so a diverged world is refused at write time with the first bad field named, rather than writing bytes nothing can read.</summary>
+    private void CheckStateFinite()
+    {
+        int lanes = Layout.PositionLanes;
+        for (int i = 0; i < lanes; i++)
+        {
+            if (!double.IsFinite(_origin[i])) { throw new NonFiniteStateException("The world origin lane " + i.ToString(CultureInfo.InvariantCulture) + " is " + _origin[i].ToString("R", CultureInfo.InvariantCulture) + ", so the world cannot be saved."); }
+        }
+
+        var position = Bodies.Position;
+        for (int i = 0; i < position.Length; i++)
+        {
+            if (!double.IsFinite(position[i])) { throw new NonFiniteStateException("Body slot " + (i / lanes).ToString(CultureInfo.InvariantCulture) + " position lane " + (i % lanes).ToString(CultureInfo.InvariantCulture) + " is " + position[i].ToString("R", CultureInfo.InvariantCulture) + ", so the simulation diverged and the world cannot be saved. Destroy the body or reset it first."); }
+        }
+    }
+
     private void WriteSnapshot(StateWriter w)
     {
+        CheckStateFinite();
         w.Reset();
         w.NamedUInt32(Magic);
         w.NamedUInt32(FormatVersion);
