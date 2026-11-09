@@ -53,6 +53,8 @@ internal sealed partial class SoftBodyData
     // The step works on float32 copies of the positions relative to an origin near the body (X, XP: current and substep-start positions).
     public float[] X = Array.Empty<float>(), XP = Array.Empty<float>();
     public double Ox, Oy;
+    public float[] X0 = Array.Empty<float>();         // positions at the start of the step (scratch)
+    public float StepSpeed2;                          // largest squared net speed over the step of any free particle (scratch)
     public float[] GradP = Array.Empty<float>();      // gradient scratch of the pressure constraint
 
     // Kinematic targets (HasTargets false: none). Targets are state; the interpolated target of a substep is scratch.
@@ -230,7 +232,7 @@ internal sealed partial class SoftBodyData
         for (int i = 0; i < ne; i++) { edgeSum += EdgeRest[i]; }
         Radius = Def.ParticleRadius != 0f ? Def.ParticleRadius : (float)Math.Max(1e-4, 0.25 * edgeSum / Math.Max(1, ne));
         Lambda = new float[ConstraintCount];
-        X = new float[2 * N]; XP = new float[2 * N];
+        X = new float[2 * N]; XP = new float[2 * N]; X0 = new float[2 * N];
         GradP = PressureRest > 0f ? new float[2 * N] : Array.Empty<float>();   // the pressure may be switched on later through the handle
         ParticleShape = Shape2D.CreateCircle(default, Radius);
         ColourConstraints();
@@ -285,7 +287,7 @@ internal sealed partial class SoftBodyData
         c.InvMass = (float[])InvMass.Clone(); c.Pinned = (byte[])Pinned.Clone();
         c.Lambda = (float[])Lambda.Clone();
         c.ClonePlastic();
-        c.X = (float[])X.Clone(); c.XP = (float[])XP.Clone();
+        c.X = (float[])X.Clone(); c.XP = (float[])XP.Clone(); c.X0 = (float[])X0.Clone();
         c.GradP = (float[])GradP.Clone();
         c.MatchMu = (float[])MatchMu.Clone();
         c.TargetOn = (byte[])TargetOn.Clone(); c.TargetMax = (float[])TargetMax.Clone();

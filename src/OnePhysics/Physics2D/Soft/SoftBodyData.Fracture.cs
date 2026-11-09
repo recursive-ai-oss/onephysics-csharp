@@ -16,6 +16,22 @@ internal sealed partial class SoftBodyData
     /// <summary>Whether plasticity has changed any rest value from the mesh's own: the rest arrays are then part of a snapshot.</summary>
     public bool PlasticTouched;
 
+    // A sleeping body touched by an awake one is an immovable obstacle for the step: its inverse masses read as zero until RestorePassive.
+    private float[]? _liveInvMass;
+    private float[]? _zeroInvMass;
+
+    public void MakePassive()
+    {
+        _liveInvMass = InvMass;
+        if (_zeroInvMass == null || _zeroInvMass.Length != N) { _zeroInvMass = new float[N]; }
+        InvMass = _zeroInvMass;
+    }
+
+    public void RestorePassive()
+    {
+        if (_liveInvMass != null) { InvMass = _liveInvMass; _liveInvMass = null; }
+    }
+
     // ------------------------------------------------------------------ surface
 
     /// <summary>The boundary edges, directed so that the body's material is on the left (the outward normal is on the right): the edges that belong to one triangle, or the unbroken segments of an outline.</summary>

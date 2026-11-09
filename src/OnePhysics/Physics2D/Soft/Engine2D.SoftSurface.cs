@@ -52,7 +52,7 @@ internal sealed partial class Engine2D
         int bodies = 0;
         bool self = false;
         float rmax = 0f;
-        for (int a = 0; a < _awakeSoftCount; a++)
+        for (int a = 0; a < _pairSoftCount; a++)
         {
             var d = _awakeSoft[a];
             d.SurfBase = -1;
@@ -64,7 +64,7 @@ internal sealed partial class Engine2D
 
         if (bodies == 0 || (bodies < 2 && !self)) { return; }
         int ne = 0;
-        for (int a = 0; a < _awakeSoftCount; a++)
+        for (int a = 0; a < _pairSoftCount; a++)
         {
             var d = _awakeSoft[a];
             if (!d.Def.SurfaceCollision || d.SurfA.Length == 0) { continue; }
@@ -77,7 +77,7 @@ internal sealed partial class Engine2D
         _edgeGrid.Grow(ne);
         double reach = 1.5 * 2.0 * rmax + 2.0 * travel;
         double maxExt = 0.0;
-        for (int a = 0; a < _awakeSoftCount; a++)
+        for (int a = 0; a < _pairSoftCount; a++)
         {
             var d = _awakeSoft[a];
             if (d.SurfBase < 0) { continue; }
@@ -131,11 +131,7 @@ internal sealed partial class Engine2D
             }
         }
 
-        if (DebugSurf) { Console.Error.WriteLine($"surf bodies={bodies} edges={ne} pairs={_seCount} travel={travel} reach={reach} cs={cs}"); }
     }
-
-    internal static bool DebugNoSolve = Environment.GetEnvironmentVariable("SURFOFF") != null;
-    internal static bool DebugSurf = Environment.GetEnvironmentVariable("SURFDBG") != null;
 
     private void TryAddSurfacePair(SoftBodyData dp, int p, double px, double py, int ge, double reach)
     {
@@ -170,7 +166,6 @@ internal sealed partial class Engine2D
     // end particles' discs hold the contact). The particle moves along s n, the edge's particles by their barycentric shares the other way; Coulomb friction removes the relative tangential displacement up to mu times the normal correction.
     private void SolveSurfacePairs()
     {
-        if (DebugNoSolve) { return; }
         for (int k = 0; k < _seCount; k++)
         {
             int g = _sePG[k];
@@ -197,14 +192,16 @@ internal sealed partial class Engine2D
                 _seS[k] = s;
             }
 
-            float c = s * -(nx * vax + ny * vay) - (dp.Radius + de.Radius);
+            float thick = dp.Radius + de.Radius;
+            float c = s * -(nx * vax + ny * vay) - thick;
             if (!(c < 0f)) { continue; }
+            // A particle that is already well behind the edge is brought back by at most the contact thickness per pass, so a wrong side never launches it.
+            if (c < -thick) { c = -thick; }
             float wp = dp.InvMass[p], wa = de.InvMass[a], wb = de.InvMass[b];
             float sa = (1f - t), sb = t;
             float w = wp + sa * sa * wa + sb * sb * wb;
             if (!(w > 0f)) { continue; }
             float lam = -c / w;
-            if (DebugSurf && -c > 0.12f) { Console.Error.WriteLine($"step={Core.StepCount} sub={_softSubstep} vel={dp.Vel[kp]},{dp.Vel[kp+1]} big c={c} s={s} t={t} T={dp.Radius + de.Radius} dist={-(nx * vax + ny * vay)} wp={wp} wa={wa} wb={wb} pIsNew={_seS[k] == s}"); }
             float sx = s * nx, sy = s * ny;
             dp.X[kp] += sx * wp * lam; dp.X[kp + 1] += sy * wp * lam;
             de.X[ka] -= sx * sa * wa * lam; de.X[ka + 1] -= sy * sa * wa * lam;
