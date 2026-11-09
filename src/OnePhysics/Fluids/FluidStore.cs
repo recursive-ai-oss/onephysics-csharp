@@ -460,8 +460,27 @@ internal sealed partial class FluidStore : ISnapshotSection
         return true;
     }
 
+    /// <summary>Particles that have left the world's range (±2^22 m) are removed, as there is no way to step them; counted in <see cref="LastCulled"/>.</summary>
+    internal int LastCulled;
+
+    private void Cull()
+    {
+        LastCulled = 0;
+        const double Limit = 4194304.0;
+        int w = 0;
+        for (int p = 0; p < Count; p++)
+        {
+            if (!(Math.Abs(PX[p]) <= Limit && Math.Abs(PY[p]) <= Limit && Math.Abs(PZ[p]) <= Limit)) { LastCulled++; continue; }
+            if (w != p) { MoveParticle(p, w); }
+            w++;
+        }
+
+        Count = w;
+    }
+
     private void DrainAll()
     {
+        Cull();
         bool any = false;
         for (int d = 0; d < DrainHandles.HighWater; d++) { if (DrainHandles.IsLive(d) && Drains[d]!.Def.Enabled) { any = true; break; } }
         if (!any || Count == 0) { return; }

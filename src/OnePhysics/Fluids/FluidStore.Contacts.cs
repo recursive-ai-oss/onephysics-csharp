@@ -138,8 +138,9 @@ internal sealed partial class FluidStore
             _dax = new float[c]; _day = new float[c]; _daz = new float[c]; _dbx = new float[c]; _dby = new float[c]; _dbz = new float[c]; _defList = new int[c];
         }
 
-        float maxReach = 0f;
+        float maxReach = 0f, maxTravel = 0f;
         float mnx = float.MaxValue, mny = float.MaxValue, mnz = float.MaxValue;
+        float dt = _h * Settings.Substeps;
         for (int i = 0; i < n; i++)
         {
             _dax[i] = (float)(_def.Ax[i] - _ox); _day[i] = (float)(_def.Ay[i] - _oy); _daz[i] = (float)(_def.Az[i] - _oz);
@@ -147,11 +148,15 @@ internal sealed partial class FluidStore
             float ex = _dbx[i] - _dax[i], ey = _dby[i] - _day[i], ez = _dbz[i] - _daz[i];
             float reach = 0.5f * float.Sqrt(ex * ex + ey * ey + ez * ez) + _def.Radius[i];
             if (reach > maxReach) { maxReach = reach; }
+            float va = float.Sqrt(_def.Vax[i] * _def.Vax[i] + _def.Vay[i] * _def.Vay[i] + _def.Vaz[i] * _def.Vaz[i]), vb = float.Sqrt(_def.Vbx[i] * _def.Vbx[i] + _def.Vby[i] * _def.Vby[i] + _def.Vbz[i] * _def.Vbz[i]);
+            float tr = float.Max(va, vb) * dt;
+            if (tr > maxTravel) { maxTravel = tr; }
             float mx = 0.5f * (_dax[i] + _dbx[i]), my = 0.5f * (_day[i] + _dby[i]), mz = 0.5f * (_daz[i] + _dbz[i]);
             if (mx < mnx) { mnx = mx; } if (my < mny) { mny = my; } if (mz < mnz) { mnz = mz; }
         }
 
-        _defCell = Math.Max(_k.H * 0.5f, 2f * maxReach + Spacing);
+        // The capsules move with their own velocity during the step (see SetDeformableFrames), so a particle may meet one that started up to the step's travel away.
+        _defCell = Math.Max(_k.H * 0.5f, 2f * (maxReach + maxTravel) + 2f * Spacing);
         _defMinX = mnx; _defMinY = mny; _defMinZ = mnz;
         if (_defStart.Length == 0) { _defStart = new int[DefBuckets + 1]; _defFill = new int[DefBuckets]; }
         Array.Clear(_defStart);
@@ -178,6 +183,17 @@ internal sealed partial class FluidStore
             uint h = (uint)ix * 73856093u ^ (uint)iy * 19349663u ^ (uint)iz * 83492791u;
             h ^= h >> 15; h *= 2246822519u; h ^= h >> 13;
             return (int)(h & (DefBuckets - 1));
+        }
+    }
+
+    /// <summary>Puts the capsules where their own velocities carry them by the end of the substep, relative to the step's origin, so a surface that moves into the fluid pushes it gradually instead of overlapping it at the next step.</summary>
+    private void SetDeformableFrames(int substep)
+    {
+        double t = _h * (substep + 1);
+        for (int i = 0; i < _def.Count; i++)
+        {
+            _dax[i] = (float)(_def.Ax[i] + _def.Vax[i] * t - _ox); _day[i] = (float)(_def.Ay[i] + _def.Vay[i] * t - _oy); _daz[i] = (float)(_def.Az[i] + _def.Vaz[i] * t - _oz);
+            _dbx[i] = (float)(_def.Bx[i] + _def.Vbx[i] * t - _ox); _dby[i] = (float)(_def.By[i] + _def.Vby[i] * t - _oy); _dbz[i] = (float)(_def.Bz[i] + _def.Vbz[i] * t - _oz);
         }
     }
 

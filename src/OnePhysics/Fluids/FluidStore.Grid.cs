@@ -183,7 +183,7 @@ internal sealed partial class FluidStore
         _invH = 1f / _k.H;
         double sx = (double)(mxx - mnx) * _invH, sy = (double)(mxy - mny) * _invH, sz = (double)(mxz - mnz) * _invH;
         double cells = (Math.Floor(sx) + 1.0) * (Math.Floor(sy) + 1.0) * (Math.Floor(sz) + 1.0);
-        _hashed = !(cells <= MaxDenseCells);
+        _hashed = !(cells >= 1.0 && cells <= MaxDenseCells);
         if (_hashed) { _gnx = _gny = _gnz = int.MaxValue; _cells = HashBuckets; }
         else { _gnx = (int)Math.Floor(sx) + 1; _gny = (int)Math.Floor(sy) + 1; _gnz = (int)Math.Floor(sz) + 1; _cells = _gnx * _gny * _gnz; }
         if (_cellStart.Length < _cells + 1) { _cellStart = new int[Math.Max(_cells + 1, _cellStart.Length * 2)]; }

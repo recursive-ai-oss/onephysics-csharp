@@ -78,7 +78,7 @@ internal static class FluidScenes
         w.FillFluidBox(ex.Fluid, new Vector2D(0, 0), new Vector2D(0.6, 0.6));
     }
 
-    // A 3 m wide channel, a rope pinned to both walls across it at 0.7 m, a pool below, a nozzle pouring from above, a drain in the pool's floor corner.
+    // A 3 m wide channel, a rope pinned a hand's breadth from the left wall that swings down into the pool from 0.9 m, a pool below, a nozzle pouring from above, a drain in the pool's floor corner.
     private static void RopeChannel(P2.PhysicsWorld2D w, Extras ex, float s)
     {
         w.AddBox(new Vector2F(4f, 0.2f), at: new Vector2D(0.5, -0.1), type: BodyType.Static);
@@ -86,8 +86,8 @@ internal static class FluidScenes
         w.AddBox(new Vector2F(0.2f, 5f), at: new Vector2D(2.1, 2.4), type: BodyType.Static);
         ex.Fluid = w.AddParticleFluid(ParticleFluidDef.Water(s));
         w.FillFluidBox(ex.Fluid, new Vector2D(-1.0, 0), new Vector2D(2.0, 0.45));
-        ex.Rope = w.AddRope(new Vector2D(-1.0, 0.7), new Vector2D(2.0, 0.7), 30, true, true);
-        ex.Fluid.AddEmitter(new FluidEmitterDef { Position = new Vector3D(0.5, 2.0, 0), Direction = new Vector3F(0, -1, 0), Kind = FluidVolumeKind.Box, Size = new Vector3F(0.2f, 0.1f, 0.1f), Speed = 2f, MaxEmitted = 2000 });
+        ex.Rope = w.AddRope(new Vector2D(-0.9, 0.9), new Vector2D(0.9, 0.9), 18, true, false);
+        ex.Fluid.AddEmitter(new FluidEmitterDef { Position = new Vector3D(0.5, 1.3, 0), Direction = new Vector3F(0, -1, 0), Kind = FluidVolumeKind.Box, Size = new Vector3F(0.2f, 0.1f, 0.1f), Speed = 1f, MaxEmitted = 1000 });
         ex.Fluid.AddDrain(new FluidDrainDef { Position = new Vector3D(1.9, 0.05, 0), Kind = FluidVolumeKind.Box, Size = new Vector3F(0.1f, 0.05f, 0.1f) });
     }
 

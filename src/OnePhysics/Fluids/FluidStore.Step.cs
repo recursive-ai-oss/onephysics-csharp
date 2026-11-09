@@ -110,6 +110,7 @@ internal sealed partial class FluidStore
         {
             _lastSubstep = sub == substeps - 1;
             AdvanceBodies();
+            if (_def.Count > 0) { SetDeformableFrames(sub); }
             ex.For((Count + Chunk - 1) / Chunk, new PredictTask { S = this });
             SortParticles();
             ex.For(_taskCount, new NeighbourTask { S = this });

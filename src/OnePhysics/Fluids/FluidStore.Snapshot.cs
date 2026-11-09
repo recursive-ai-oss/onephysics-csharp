@@ -221,7 +221,7 @@ internal sealed partial class FluidStore
             if (id[p] < 0 || id[p] >= nextId) { throw r.Error("invalid particle id"); }
             if (!fh.IsLive(fl[p])) { throw r.Error("particle of a missing fluid"); }
             if (!(Math.Abs(px[p]) <= 8388608.0 && Math.Abs(py[p]) <= 8388608.0 && Math.Abs(pz[p]) <= 8388608.0)) { throw r.Error("particle position is out of range or not finite"); }
-            if (!(float.IsFinite(vx[p]) && float.IsFinite(vy[p]) && float.IsFinite(vz[p]))) { throw r.Error("particle velocity is not finite"); }
+            if (!(Math.Abs(vx[p]) <= 1e6f && Math.Abs(vy[p]) <= 1e6f && Math.Abs(vz[p]) <= 1e6f)) { throw r.Error("particle velocity is out of range or not finite"); }
             if (planar && (pz[p] != 0.0 || vz[p] != 0f)) { throw r.Error("planar particle has a z component"); }
         }
 

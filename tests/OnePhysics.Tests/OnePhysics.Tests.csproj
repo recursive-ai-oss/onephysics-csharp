@@ -29,6 +29,7 @@
     <Compile Include="../Common/Vehicles3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/VehicleKinds3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Ragdolls3DScene.cs" LinkBase="Common" />
+    <Compile Include="../Common/FluidScenes.cs" LinkBase="Common" />
   </ItemGroup>
 
   <!-- Minimised inputs that once made a fuzz target fail; FuzzRegressionTests replays them. -->
