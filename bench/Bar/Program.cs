@@ -37,6 +37,7 @@ public static class Program
             case "soft2d-timing": return SoftStability2D.Time(args.Length > 1 ? int.Parse(args[1]) : 1);
             case "vehicles2d-stability": return Vehicles2DStability.Run(opts);
             case "active-stability": return ActiveStability.Run(opts);
+            case "walkers3d-stability": return WalkerStability3D.Run(opts);
             case "railbike-stability": return RailBikeStability.Run(opts);
             case "actuators-stability": return ActuatorStability.Run(opts);
             case "fluid-stability": return FluidStability.Run(opts);

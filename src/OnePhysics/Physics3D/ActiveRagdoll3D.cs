@@ -26,7 +26,7 @@ public readonly partial struct Ragdoll
     /// drive the legs, and a host can blend an animation in. Calling it again replaces the settings and resets the controller. Every bone starts with blend weight 0, the controller off (<see cref="ActiveMode.Pose"/>) and no animation
     /// pose, so the figure holds the bind pose with the definition's torque limits. It takes over the joint drive: <see cref="DriveToPose"/> throws while the ragdoll is active.
     /// </summary>
-    /// <param name="def">The settings; default <see cref="ActiveRagdollDef.Humanoid"/>. Copied.</param>
+    /// <param name="def">The settings; default <see cref="ActiveRagdollDef.Humanoid3D"/>. Copied.</param>
     /// <exception cref="ArgumentOutOfRangeException">A setting is out of range or a bone index is not a part; nothing changed.</exception>
     /// <exception cref="StaleHandleException">The ragdoll was removed.</exception>
     public void EnableActive(ActiveRagdollDef? def = null)
@@ -34,7 +34,7 @@ public readonly partial struct Ragdoll
         using var replayMutation = _world?.RecordMutation("Ragdoll.EnableActive");
         var s = Resolve();
         if (s.Powered) { StopDriving(); }
-        _world!.Engine.EnableActive(_index, def ?? ActiveRagdollDef.Humanoid);
+        _world!.Engine.EnableActive(_index, def ?? ActiveRagdollDef.Humanoid3D);
     }
 
     /// <summary>Removes the active layer: drives stop, pinned bones become ordinary simulated bodies. Does nothing when the ragdoll is not active.</summary>
@@ -67,7 +67,11 @@ public readonly partial struct Ragdoll
         if (!float.IsFinite(heading) || Math.Abs(heading) > 1e6f) { throw new ArgumentOutOfRangeException(nameof(heading), heading, "The heading must be finite and within +-1e6 radians."); }
     }
 
-    /// <summary>Walks: <see cref="ActiveMode.Walk"/> with a commanded horizontal velocity of the centre of mass and a heading. A zero velocity stands. Call it as often as you like; the gait follows the latest command.</summary>
+    /// <summary>
+    /// Walks: <see cref="ActiveMode.Walk"/> with a commanded horizontal velocity and a heading. The figure walks forward along its own heading and turns towards <paramref name="heading"/>: the speed it takes is the part of
+    /// <paramref name="velocity"/> that lies along the heading (a velocity that points away from the heading gives none; sideways walking is not supported), lowered while the figure is still turned away from the heading, and a zero
+    /// velocity stands (after a few more steps, if the figure is moving). Call it as often as you like; the gait follows the latest command. A heading that changes by a right angle is turned through over a few steps.
+    /// </summary>
     /// <param name="velocity">Commanded velocity in world X and Z, m/s; its length is clamped to <see cref="WalkerDef.MaxSpeed"/>.</param>
     /// <param name="heading">Yaw the figure turns to face, radians about +y (0 faces +z); finite.</param>
     /// <exception cref="ArgumentOutOfRangeException">A value is not finite.</exception>
@@ -80,6 +84,18 @@ public readonly partial struct Ragdoll
         CheckHeading(heading);
         a.CmdX = velocity.X; a.CmdZ = velocity.Y; a.Heading = heading;
         SetMode(a, ActiveMode.Walk);
+    }
+
+    /// <summary>Walks at <paramref name="speed"/> towards <paramref name="heading"/>: <c>Walk(speed · (sin heading, cos heading), heading)</c>. A speed of 0 stands.</summary>
+    /// <param name="heading">Yaw the figure faces and walks along, radians about +y (0 faces +z); finite.</param>
+    /// <param name="speed">Speed, m/s; finite, at least 0 (clamped to <see cref="WalkerDef.MaxSpeed"/>).</param>
+    /// <exception cref="ArgumentOutOfRangeException">A value is not finite, or the speed is negative.</exception>
+    /// <exception cref="InvalidOperationException">The ragdoll is not active.</exception>
+    public void Walk(float heading, float speed)
+    {
+        if (!float.IsFinite(speed) || speed < 0f) { throw new ArgumentOutOfRangeException(nameof(speed), speed, "The speed must be finite and at least 0."); }
+        CheckHeading(heading);
+        Walk(new Vector2F(speed * (float)Math64.Sin((double)heading), speed * (float)Math64.Cos((double)heading)), heading);
     }
 
     /// <summary>Turns the controller off: the bones follow the animation pose (or the bind pose) by their weights.</summary>
