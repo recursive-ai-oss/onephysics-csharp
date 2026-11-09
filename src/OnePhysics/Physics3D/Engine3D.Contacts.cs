@@ -506,7 +506,7 @@ internal sealed partial class Engine3D
             int lo = task * BodyInitChunk, hi = Math.Min(lo + BodyInitChunk, e._initCount);
             for (int b = lo; b < hi; b++)
             {
-                if (!bodies.IsLive(b)) { e._active[b] = 0; e._isSleeper[b] = 0; e.ReachLinear[b] = 0f; e.ReachTurn[b] = 0f; continue; }
+                if (!bodies.IsLive(b)) { e._active[b] = 0; e._isSleeper[b] = 0; e.ReachLinear[b] = 0f; e.ReachTurn[b] = 0f; e.ReachSum[b] = 0f; continue; }
                 e.SetReach(b);
                 e._active[b] = IsActive(bodies, b) ? (byte)1 : (byte)0;
                 e.StartPos[3 * b] = pos[3 * b]; e.StartPos[3 * b + 1] = pos[3 * b + 1]; e.StartPos[3 * b + 2] = pos[3 * b + 2];
@@ -692,11 +692,11 @@ internal sealed partial class Engine3D
             }
         }
 
-        ReachLinear[b] = linear; ReachTurn[b] = turn;
+        ReachLinear[b] = linear; ReachTurn[b] = turn; ReachSum[b] = linear + turn;
     }
 
     /// <summary>
-    /// Whether a body's centre can travel more than twice the speculative distance in the coming step; then <paramref name="tx"/>, <paramref name="ty"/>, <paramref name="tz"/> are that travel (velocity
+    /// Whether a body's centre can travel more than four times the speculative distance in the coming step; then <paramref name="tx"/>, <paramref name="ty"/>, <paramref name="tz"/> are that travel (velocity
     /// times the step). A NaN anywhere gives false: such a body is rejected elsewhere. The turn of a body is not part of this: a turning body's box changes every step anyway, and its swing into a
     /// surface is continuous collision's.
     /// </summary>
@@ -708,7 +708,7 @@ internal sealed partial class Engine3D
         if (bodies.TypeOf(b) == BodyType.Static) { return false; }
         var v = bodies.LinearVelocityOf(b);
         tx = v[0] * dt; ty = v[1] * dt; tz = v[2] * dt;
-        return Math.Sqrt((tx * tx) + (ty * ty) + (tz * tz)) > 2.0 * Opt.SpeculativeDistance;
+        return Math.Sqrt((tx * tx) + (ty * ty) + (tz * tz)) > FastFactor * Opt.SpeculativeDistance;
     }
 
     /// <summary>
@@ -721,18 +721,21 @@ internal sealed partial class Engine3D
     {
         float spec = Opt.SpeculativeDistance;
         // The two bodies' own reaches bound the closing distance, so a pair of slow bodies is settled without looking at the velocities.
-        if (!(ReachLinear[ba] + ReachLinear[bb] + ReachTurn[ba] + ReachTurn[bb] > 2f * spec)) { return spec; }
+        if (!(ReachSum[ba] + ReachSum[bb] > (float)FastFactor * spec)) { return spec; }
         var bodies = Core.Bodies;
+        if (bodies.TypeOf(ba) == BodyType.Dynamic && bodies.TypeOf(bb) == BodyType.Dynamic) { return spec; }
         var va = bodies.LinearVelocityOf(ba); var vb = bodies.LinearVelocityOf(bb);
         float dx = vb[0] - va[0], dy = vb[1] - va[1], dz = vb[2] - va[2];
         // The swing of a turning body counts against a static or kinematic partner only; between two dynamic bodies the relative linear speed decides, so a tumbling pile is not searched farther.
         float turn = (bodies.TypeOf(bb) != BodyType.Dynamic ? ReachTurn[ba] : 0f) + (bodies.TypeOf(ba) != BodyType.Dynamic ? ReachTurn[bb] : 0f);
         float sweep = (float.Sqrt(dx * dx + dy * dy + dz * dz) * Core.ContactStepDt) + turn;
-        if (!(sweep > 2f * spec)) { return spec; }
+        if (!(sweep > (float)FastFactor * spec)) { return spec; }
         return sweep < MaxPairSpeculation ? sweep : MaxPairSpeculation;
     }
 
     private const float MaxPairSpeculation = 0.25f;
+    // A body counts as fast when it can travel or swing more than this many times the speculative distance in a step (about 4.8 m/s at 60 Hz with the default distance).
+    private const double FastFactor = 4.0;
 
     private void Collide(int i, NarrowScratch sc)
     {
@@ -768,7 +771,7 @@ internal sealed partial class Engine3D
         var qA = RotationOfBody(ba); var qB = RotationOfBody(bb);
         // A pair without a constraint whose last query proved the shapes apart stays empty until their relative motion has used up the margin by which they were apart.
         int existingCons = PairCons[p];
-        if (existingCons < 0 && _skip[p].Clear > 0f && pairSpec == Opt.SpeculativeDistance && StillApart(in _skip[p], qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))) { return; }
+        if (existingCons < 0 && _skip[p].Clear > 0f && StillApart(in _skip[p], qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]), _skip[p].Spec - pairSpec)) { return; }
         // A touching convex pair that has barely moved reuses its manifold; this is tried before the shape frames are built, which the reuse does not need.
         if (!ContactModifications.Refresh && RecycleManifolds && existingCons >= 0 && ga.Soup == null && gb.Soup == null && ga.IsConvex && gb.IsConvex
             && !HalfSpace3D.HasPlane(ga.Convex, gb.Convex)
@@ -856,7 +859,7 @@ internal sealed partial class Engine3D
                 var qr = invA * qB;
                 float sg = qr.W < 0f ? -1f : 1f;
                 var axis = la.Rotation.Rotate(gen.ClearanceAxisOut);
-                _skip[p] = new SkipFrame3 { Nx = axis.X, Ny = axis.Y, Nz = axis.Z, X = d.X, Y = d.Y, Z = d.Z, Qx = sg * qr.X, Qy = sg * qr.Y, Qz = sg * qr.Z, Qw = sg * qr.W, Clear = gen.ClearanceOut, Reach = ReachOfShape(bb, sb) };
+                _skip[p] = new SkipFrame3 { Nx = axis.X, Ny = axis.Y, Nz = axis.Z, X = d.X, Y = d.Y, Z = d.Z, Qx = sg * qr.X, Qy = sg * qr.Y, Qz = sg * qr.Z, Qw = sg * qr.W, Clear = gen.ClearanceOut, Spec = spec, Reach = ReachOfShape(bb, sb) };
             }
             else { _skip[p].Clear = 0f; }
 
@@ -884,6 +887,8 @@ internal sealed partial class Engine3D
     internal struct SkipFrame3
     {
         public float X, Y, Z, Qx, Qy, Qz, Qw, Clear;
+        /// <summary>The search distance of the query that found the pair apart; <see cref="Clear"/> is the gap beyond it.</summary>
+        public float Spec;
         public float Nx, Ny, Nz; // optional separating direction in A's body frame
 
         /// <summary>Farthest point of B's shape from B's centre of mass; a kinematic or static body has no stored extent, so the bound comes from the shape.</summary>
@@ -903,7 +908,7 @@ internal sealed partial class Engine3D
 
     // Whether a pair recorded as apart still is. Every point of B's shape moves, relative to A, by at most the change of B's centre of mass in A's frame plus the chord of the relative turn times the point's distance
     // from that centre (chord = 2 sin(angle / 2) = twice the vector part of the relative rotation). The slack covers float rounding of the relative pose, which grows with its size.
-    internal static bool StillApart(in SkipFrame3 f, QuaternionF qA, QuaternionF qB, float dx, float dy, float dz)
+    internal static bool StillApart(in SkipFrame3 f, QuaternionF qA, QuaternionF qB, float dx, float dy, float dz, float searchChange = 0f)
     {
         var invA = qA.Conjugated();
         var d = invA.Rotate(new Vector3F(dx, dy, dz));
@@ -928,7 +933,8 @@ internal sealed partial class Engine3D
             used = closing + turn * f.Reach * float.Sqrt(axis2) + slack;
         }
         else { used = float.Sqrt(ex * ex + ey * ey + ez * ez) + turn * f.Reach + slack; }
-        return used <= f.Clear; // false for NaN
+        // The gap now needed is the one the pair is searched to now, so a longer search leaves less room (searchChange is the old distance minus the new one).
+        return used <= f.Clear + searchChange; // false for NaN
     }
 
     /// <summary>Contacts of a triangle soup (mesh or height field) with a convex shape or a compound. <paramref name="soupIsA"/> says which side of the pair the soup is.</summary>
