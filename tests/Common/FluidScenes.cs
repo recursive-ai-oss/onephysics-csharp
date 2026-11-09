@@ -254,6 +254,9 @@ internal static class FluidScenes
     {
         w.AddBox(new Vector3F(8f, 0.2f, 8f), at: new Vector3D(0, -0.1, 0), type: BodyType.Static);
         w.AddBox(new Vector3F(0.2f, 4f, 4f), at: new Vector3D(2.0, 2.0, 0), type: BodyType.Static);
+        // Side walls keep the splash on the floor (a ball that breaks at 20 m/s throws pieces sideways by metres, and which way depends on the grid).
+        w.AddBox(new Vector3F(4.2f, 4f, 0.2f), at: new Vector3D(0.9, 2.0, -1.95), type: BodyType.Static);
+        w.AddBox(new Vector3F(4.2f, 4f, 0.2f), at: new Vector3D(0.9, 2.0, 1.95), type: BodyType.Static);
         ex.Fluid = w.AddParticleFluid(ParticleFluidDef.Snow(s));
         w.FillFluidSphere(ex.Fluid, new Vector3D(0.0, 0.5, 0), 0.3, new Vector3F(20f, 0f, 0f));
     }
