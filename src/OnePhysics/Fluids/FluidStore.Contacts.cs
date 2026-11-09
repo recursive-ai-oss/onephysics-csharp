@@ -27,7 +27,7 @@ internal sealed partial class FluidStore
     // grid of the deformables' particles (hashed buckets), in local coordinates
     private const int DefBuckets = 1 << 14;
     private int[] _defStart = Array.Empty<int>(), _defList = new int[16];
-    private float[] _dfx = new float[16], _dfy = new float[16], _dfz = new float[16];
+    private float[] _dax = new float[16], _day = new float[16], _daz = new float[16], _dbx = new float[16], _dby = new float[16], _dbz = new float[16];
     private float _defCell, _defMinX, _defMinY, _defMinZ;
     private int[] _defFill = Array.Empty<int>();
 
@@ -132,22 +132,36 @@ internal sealed partial class FluidStore
     private void BuildDeformableGrid()
     {
         int n = _def.Count;
-        if (_dfx.Length < n) { _dfx = new float[Math.Max(n, _dfx.Length * 2)]; _dfy = new float[_dfx.Length]; _dfz = new float[_dfx.Length]; _defList = new int[_dfx.Length]; }
-        float maxR = 0f;
+        if (_dax.Length < n)
+        {
+            int c = Math.Max(n, _dax.Length * 2);
+            _dax = new float[c]; _day = new float[c]; _daz = new float[c]; _dbx = new float[c]; _dby = new float[c]; _dbz = new float[c]; _defList = new int[c];
+        }
+
+        float maxReach = 0f;
         float mnx = float.MaxValue, mny = float.MaxValue, mnz = float.MaxValue;
         for (int i = 0; i < n; i++)
         {
-            _dfx[i] = (float)(_def.X[i] - _ox); _dfy[i] = (float)(_def.Y[i] - _oy); _dfz[i] = (float)(_def.Z[i] - _oz);
-            if (_def.Radius[i] > maxR) { maxR = _def.Radius[i]; }
-            if (_dfx[i] < mnx) { mnx = _dfx[i]; } if (_dfy[i] < mny) { mny = _dfy[i]; } if (_dfz[i] < mnz) { mnz = _dfz[i]; }
+            _dax[i] = (float)(_def.Ax[i] - _ox); _day[i] = (float)(_def.Ay[i] - _oy); _daz[i] = (float)(_def.Az[i] - _oz);
+            _dbx[i] = (float)(_def.Bx[i] - _ox); _dby[i] = (float)(_def.By[i] - _oy); _dbz[i] = (float)(_def.Bz[i] - _oz);
+            float ex = _dbx[i] - _dax[i], ey = _dby[i] - _day[i], ez = _dbz[i] - _daz[i];
+            float reach = 0.5f * float.Sqrt(ex * ex + ey * ey + ez * ez) + _def.Radius[i];
+            if (reach > maxReach) { maxReach = reach; }
+            float mx = 0.5f * (_dax[i] + _dbx[i]), my = 0.5f * (_day[i] + _dby[i]), mz = 0.5f * (_daz[i] + _dbz[i]);
+            if (mx < mnx) { mnx = mx; } if (my < mny) { mny = my; } if (mz < mnz) { mnz = mz; }
         }
 
-        _defCell = Math.Max(_k.H * 0.5f, 2f * maxR + Spacing);
+        _defCell = Math.Max(_k.H * 0.5f, 2f * maxReach + Spacing);
         _defMinX = mnx; _defMinY = mny; _defMinZ = mnz;
         if (_defStart.Length == 0) { _defStart = new int[DefBuckets + 1]; _defFill = new int[DefBuckets]; }
         Array.Clear(_defStart);
         var bucket = _cursor.Length >= n ? _cursor : _cursor = new int[Math.Max(n, _cursor.Length * 2)];
-        for (int i = 0; i < n; i++) { int b = DefBucket(_dfx[i], _dfy[i], _dfz[i]); bucket[i] = b; _defStart[b + 1]++; }
+        for (int i = 0; i < n; i++)
+        {
+            int b = DefBucket(0.5f * (_dax[i] + _dbx[i]), 0.5f * (_day[i] + _dby[i]), 0.5f * (_daz[i] + _dbz[i]));
+            bucket[i] = b; _defStart[b + 1]++;
+        }
+
         for (int b = 0; b < DefBuckets; b++) { _defStart[b + 1] += _defStart[b]; }
         var fill = _defFill; Array.Clear(fill);
         for (int i = 0; i < n; i++) { int b = bucket[i]; _defList[_defStart[b] + fill[b]++] = i; }
@@ -295,7 +309,17 @@ internal sealed partial class FluidStore
                         int d = _defList[a];
                         bool rod = (_def.Owner[d] >> 24) == 1;
                         if (rod ? !fl.CollideWithRods : !fl.CollideWithSoftBodies) { continue; }
-                        float dx = x - _dfx[d], dy = y - _dfy[d], dz = z - _dfz[d];
+                        // The closest point of the capsule's axis, at parameter t from end A.
+                        float ex = _dbx[d] - _dax[d], ey = _dby[d] - _day[d], ez = _dbz[d] - _daz[d];
+                        float e2 = ex * ex + ey * ey + ez * ez;
+                        float t = 0f;
+                        if (e2 > 1e-12f)
+                        {
+                            t = ((x - _dax[d]) * ex + (y - _day[d]) * ey + (z - _daz[d]) * ez) / e2;
+                            if (t < 0f) { t = 0f; } else if (t > 1f) { t = 1f; }
+                        }
+
+                        float dx = x - (_dax[d] + t * ex), dy = y - (_day[d] + t * ey), dz = z - (_daz[d] + t * ez);
                         float rr = rc + _def.Radius[d];
                         float reach = rr + spec;
                         float d2 = dx * dx + dy * dy + dz * dz;
@@ -304,10 +328,13 @@ internal sealed partial class FluidStore
                         float nx, ny, nz;
                         if (dist > 1e-9f) { float inv = 1f / dist; nx = dx * inv; ny = dy * inv; nz = dz * inv; }
                         else { nx = 0f; ny = 1f; nz = 0f; }
+                        float s1 = 1f - t;
                         var k = new FluidContact
                         {
                             P = i, Body = -1, Def = d, Nx = nx, Ny = ny, Nz = Dim == 3 ? nz : 0f, C0 = dist - rr, X = x, Y = y, Z = z, Mu = float.Sqrt(fl.Friction * 0.5f),
-                            Coupled = _def.InvMass[d] > 0f, Sx = _def.Vx[d], Sy = _def.Vy[d], Sz = _def.Vz[d],
+                            Coupled = s1 * s1 * _def.InvA[d] + t * t * _def.InvB[d] > 0f,
+                            Sx = s1 * _def.Vax[d] + t * _def.Vbx[d], Sy = s1 * _def.Vay[d] + t * _def.Vby[d], Sz = s1 * _def.Vaz[d] + t * _def.Vbz[d],
+                            Rx = t,
                         };
                         AddContact(buf, first, in k);
                     }
@@ -400,7 +427,7 @@ internal sealed partial class FluidStore
                 iwx = b.Iw0 * rnx + b.Iw1 * rny + b.Iw2 * rnz; iwy = b.Iw1 * rnx + b.Iw3 * rny + b.Iw4 * rnz; iwz = b.Iw2 * rnx + b.Iw4 * rny + b.Iw5 * rnz;
                 wb = b.InvMass + rnx * iwx + rny * iwy + rnz * iwz;
             }
-            else { wb = _def.InvMass[c.Def]; }
+            else { float tt = c.Rx, s1 = 1f - tt; wb = s1 * s1 * _def.InvA[c.Def] + tt * tt * _def.InvB[c.Def]; }
 
             // The other side has already moved away by wb times what earlier passes applied, which opens the gap as well.
             float cv = c.C0 + nx * (_x[i] - c.X) + ny * (_y[i] - c.Y) + nz * (_z[i] - c.Z) + wb * c.Applied;
@@ -424,7 +451,9 @@ internal sealed partial class FluidStore
             else
             {
                 int d = c.Def;
-                _def.Jx[d] -= nx * li; _def.Jy[d] -= ny * li; _def.Jz[d] -= nz * li;
+                float tt = c.Rx, s1 = 1f - tt;
+                _def.JAx[d] -= s1 * nx * li; _def.JAy[d] -= s1 * ny * li; _def.JAz[d] -= s1 * nz * li;
+                _def.JBx[d] -= tt * nx * li; _def.JBy[d] -= tt * ny * li; _def.JBz[d] -= tt * nz * li;
             }
 
             if (c.Mu > 0f) { FrictionCoupled(ref c, i, wp, wb, lam, h, invH, rnx, rny, rnz); }
@@ -450,7 +479,7 @@ internal sealed partial class FluidStore
             float ix2 = b.Iw0 * qx + b.Iw1 * qy + b.Iw2 * qz, iy2 = b.Iw1 * qx + b.Iw3 * qy + b.Iw4 * qz, iz2 = b.Iw2 * qx + b.Iw4 * qy + b.Iw5 * qz;
             wbt = b.InvMass + qx * ix2 + qy * iy2 + qz * iz2;
         }
-        else { wbt = c.Def >= 0 ? _def.InvMass[c.Def] : 0f; }
+        else { float tt = c.Rx, s1 = 1f - tt; wbt = s1 * s1 * _def.InvA[c.Def] + tt * tt * _def.InvB[c.Def]; }
 
         float lim = c.Mu * (normalLambda * wp);
         float want = tl;
@@ -469,7 +498,9 @@ internal sealed partial class FluidStore
         else
         {
             int d = c.Def;
-            _def.Jx[d] += dx * li; _def.Jy[d] += dy * li; _def.Jz[d] += dz * li;
+            float tt = c.Rx, s1 = 1f - tt;
+            _def.JAx[d] += s1 * dx * li; _def.JAy[d] += s1 * dy * li; _def.JAz[d] += s1 * dz * li;
+            _def.JBx[d] += tt * dx * li; _def.JBy[d] += tt * dy * li; _def.JBz[d] += tt * dz * li;
         }
     }
 

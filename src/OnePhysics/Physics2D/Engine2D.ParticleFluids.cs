@@ -189,7 +189,5 @@ internal sealed partial class Engine2D : IFluidHost
 
     internal bool ParticleFluidsConsistent() => _particleFluids == null || _particleFluids.Consistent();
 
-    void IFluidHost.GatherDeformables(double minX, double minY, double minZ, double maxX, double maxY, double maxZ, FluidDeformables into) { }
 
-    void IFluidHost.ApplyDeformables(FluidDeformables from) { }
 }

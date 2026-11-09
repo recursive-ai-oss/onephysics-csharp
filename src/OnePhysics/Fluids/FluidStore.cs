@@ -6,33 +6,44 @@ using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Fluids;
 
-/// <summary>Soft-body and rod particles near the fluid, presented as spheres for one step. The host fills the positions and masses; the fluid step accumulates the momentum it gave each and the host applies it.</summary>
+/// <summary>
+/// Soft-body particles and rod segments near the fluid, presented as capsules for one step: a point (both ends the same particle) or a segment between two particles. The host fills the positions and masses; the fluid step accumulates the
+/// momentum it gave each end and the host applies it.
+/// </summary>
 internal sealed class FluidDeformables
 {
     public int Count;
-    public double[] X = new double[16], Y = new double[16], Z = new double[16];
-    public float[] Radius = new float[16], InvMass = new float[16];
-    public float[] Vx = new float[16], Vy = new float[16], Vz = new float[16];
-    /// <summary>What the host needs to find the particle again: a kind (0 soft, 1 rod) in the high byte and its owner slot, and the particle index.</summary>
-    public int[] Owner = new int[16], Particle = new int[16];
+    public double[] Ax = new double[16], Ay = new double[16], Az = new double[16], Bx = new double[16], By = new double[16], Bz = new double[16];
+    public float[] Radius = new float[16], InvA = new float[16], InvB = new float[16];
+    public float[] Vax = new float[16], Vay = new float[16], Vaz = new float[16], Vbx = new float[16], Vby = new float[16], Vbz = new float[16];
+    /// <summary>What the host needs to find the particles again: a kind (0 soft, 1 rod) in the high byte and the owner's slot, and the particle indices of the two ends.</summary>
+    public int[] Owner = new int[16], PA = new int[16], PB = new int[16];
     // Accumulated by the fluid step.
-    public float[] Jx = new float[16], Jy = new float[16], Jz = new float[16];
+    public float[] JAx = new float[16], JAy = new float[16], JAz = new float[16], JBx = new float[16], JBy = new float[16], JBz = new float[16];
 
     public void Clear() { Count = 0; }
 
-    public void Add(double x, double y, double z, float radius, float invMass, float vx, float vy, float vz, int owner, int particle)
+    private void Grow()
+    {
+        int c = Count * 2;
+        Array.Resize(ref Ax, c); Array.Resize(ref Ay, c); Array.Resize(ref Az, c); Array.Resize(ref Bx, c); Array.Resize(ref By, c); Array.Resize(ref Bz, c);
+        Array.Resize(ref Radius, c); Array.Resize(ref InvA, c); Array.Resize(ref InvB, c);
+        Array.Resize(ref Vax, c); Array.Resize(ref Vay, c); Array.Resize(ref Vaz, c); Array.Resize(ref Vbx, c); Array.Resize(ref Vby, c); Array.Resize(ref Vbz, c);
+        Array.Resize(ref Owner, c); Array.Resize(ref PA, c); Array.Resize(ref PB, c);
+        Array.Resize(ref JAx, c); Array.Resize(ref JAy, c); Array.Resize(ref JAz, c); Array.Resize(ref JBx, c); Array.Resize(ref JBy, c); Array.Resize(ref JBz, c);
+    }
+
+    /// <summary>Adds a capsule from end A to end B (the same particle for a point).</summary>
+    public void Add(double ax, double ay, double az, double bx, double by, double bz, float radius, float invA, float invB,
+        float vax, float vay, float vaz, float vbx, float vby, float vbz, int owner, int pa, int pb)
     {
         int n = Count;
-        if (n == X.Length)
-        {
-            int c = n * 2;
-            Array.Resize(ref X, c); Array.Resize(ref Y, c); Array.Resize(ref Z, c); Array.Resize(ref Radius, c); Array.Resize(ref InvMass, c);
-            Array.Resize(ref Vx, c); Array.Resize(ref Vy, c); Array.Resize(ref Vz, c); Array.Resize(ref Owner, c); Array.Resize(ref Particle, c);
-            Array.Resize(ref Jx, c); Array.Resize(ref Jy, c); Array.Resize(ref Jz, c);
-        }
-
-        X[n] = x; Y[n] = y; Z[n] = z; Radius[n] = radius; InvMass[n] = invMass; Vx[n] = vx; Vy[n] = vy; Vz[n] = vz; Owner[n] = owner; Particle[n] = particle;
-        Jx[n] = 0f; Jy[n] = 0f; Jz[n] = 0f;
+        if (n == Ax.Length) { Grow(); }
+        Ax[n] = ax; Ay[n] = ay; Az[n] = az; Bx[n] = bx; By[n] = by; Bz[n] = bz;
+        Radius[n] = radius; InvA[n] = invA; InvB[n] = invB;
+        Vax[n] = vax; Vay[n] = vay; Vaz[n] = vaz; Vbx[n] = vbx; Vby[n] = vby; Vbz[n] = vbz;
+        Owner[n] = owner; PA[n] = pa; PB[n] = pb;
+        JAx[n] = 0f; JAy[n] = 0f; JAz[n] = 0f; JBx[n] = 0f; JBy[n] = 0f; JBz[n] = 0f;
         Count = n + 1;
     }
 }
