@@ -61,7 +61,7 @@ internal sealed partial class DestructionStore
             {
                 var rec = Records[i];
                 if (!bodies.IsDynamic(rec.Body) && rec.Bonds == null) continue;
-                if (rec.Fracture is { } f && f.ImpulseThreshold > 0f && rec.Peak >= f.ImpulseThreshold && bodies.IsDynamic(rec.Body)) { _todo.Add(rec.Body); continue; }
+                if (rec.Fracture is { } f && f.ImpulseThreshold > 0f && rec.Peak >= f.ImpulseThreshold && bodies.IsDynamic(rec.Body) && bodies.IsAwake(rec.Body)) { _todo.Add(rec.Body); continue; }
                 // A bond broken earlier whose compound could not be split yet (the per-step limit below) is retried here.
                 if (rec.Bonds != null && (EvaluateStress(rec) || AnyDeadBond(rec))) _todo.Add(rec.Body);
             }
@@ -156,7 +156,7 @@ internal sealed partial class DestructionStore
     private static Vector3D D(Vector3F v) => new(v.X, v.Y, v.Z);
 
     /// <summary>
-    /// Resolves the loads on a breakable body into bond stresses and breaks the bonds over their strength. The model (support-graph flow, after the force balance of Bao, Hodgins and Müller 2007 on a bond network):
+    /// Resolves the loads on a breakable body into bond stresses and breaks the bonds over their strength. The model (a force-balance flow over the bond graph, in the spirit of the bond-network stress of published fracture work, written down in docs/spec/destruction.md):
     /// each part needs the bond force that makes its motion equal its loads (contact forces from the solver's impulses, weight, and for a free body the inertial force of the rigid motion); that demand flows
     /// from the part towards the anchored parts (or, with none, the most loaded part), splitting over the bonds that lead one step closer in proportion to their area; each bond then carries a force and a moment
     /// about its face centre. Stress = tension / A + shear factor * shear / A + bending moment / W, with W = A^1.5 / 6 (3D) or L^2 / 6 (2D, unit thickness). Returns true when any bond broke this step.
@@ -453,6 +453,8 @@ internal sealed partial class DestructionStore
         foreach (var s in infos) g.Add(s.Piece, s.Template, -1);
         var made = Materialize(f.Body, [g]);
         if (made.Count != 1) { foreach (var c in made) host.DestroyBody(c.Body); f.AsleepSteps = 0; return false; }
+        // Whatever rests on the fragment loses its contacts with the old body: wake it so the new static body supports it again.
+        WakeNeighbours(f.Body);
         var old = core.HandleOfBody(f.Body);
         host.DestroyBody(old);
         Remove(f.Body);

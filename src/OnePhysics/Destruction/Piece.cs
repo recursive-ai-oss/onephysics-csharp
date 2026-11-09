@@ -7,7 +7,7 @@ namespace RecursiveAI.OnePhysics.Destruction;
 /// <summary>
 /// A convex piece of a body, in the body's frame, in double precision: a polytope as outward counter-clockwise faces (3D) or a counter-clockwise polygon (2D, stored as a
 /// single face with z = 0). Pieces are cut by half-spaces with exact-order plane clipping (Sutherland and Hodgman 1974 on each face, the new face closed from the vertices
-/// that lie on the cutting plane), which is all Voronoi fracture and slicing need (Ericson, Real-Time Collision Detection, ch. 8).
+/// that lie on the cutting plane), which is all Voronoi fracture and slicing need (see Ericson, Real-Time Collision Detection, on polygon clipping).
 /// A piece is rebuilt from float points through the hull builder whenever it becomes shape geometry, so a world restored from a snapshot continues from the same pieces.
 /// </summary>
 internal sealed class Piece

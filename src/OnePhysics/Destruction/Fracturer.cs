@@ -36,7 +36,7 @@ internal struct SeedRng
     public double NextDouble() => (Next() >> 11) * (1.0 / 9007199254740992.0);
 }
 
-/// <summary>Voronoi fracture of a convex piece (Raghavan and Hughes style cell clipping; the cells are the piece cut by the bisector planes between seeds, so they tile it exactly).</summary>
+/// <summary>Voronoi fracture of a convex piece: each cell is the piece cut by the bisector planes between its seed and the others, so the cells tile the piece exactly.</summary>
 internal static class Fracturer
 {
     /// <summary>
