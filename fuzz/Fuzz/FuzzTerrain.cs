@@ -37,7 +37,7 @@ internal static class FuzzTerrain
             var soup = new SdfSoup3D(grid); for (int i = 0; i < Math.Min(soup.TriangleIdCount, 4000); i++) soup.TryGetTriangle(i, out _);
             _ = grid.ComputeMass(2);
         }
-        catch (Exception ex) when (ex is SdfBuildException or InvalidOperationException) { }
+        catch (Exception ex) when (ex is SdfBuildException or InvalidShapeException) { }
     }
 
     internal static void SdfGrid(byte[] input)
