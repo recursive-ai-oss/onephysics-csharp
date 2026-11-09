@@ -14,7 +14,7 @@ public sealed class HeightField2D
 
     /// <summary>Creates terrain with sample i at (i * spacing, heights[i]). Input is copied. A true hole removes that interval, not either neighbouring sample.</summary>
     /// <param name="heights">Between 2 and 2^20 finite heights, in metres within ±2^20.</param>
-    /// <param name="spacing">Positive spacing in metres, at least 2e-5; the full width must fit within 2^20.</param>
+    /// <param name="spacing">Positive spacing in metres, at least 1e-5; the full width must fit within 2^20.</param>
     /// <param name="holes">Empty, or one flag per interval. Default: no holes.</param>
     /// <exception cref="InvalidShapeException">A coordinate is invalid or a segment is too short.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The sample count, spacing or hole mask length is invalid.</exception>
@@ -23,7 +23,7 @@ public sealed class HeightField2D
         if (heights.Length < 2 || heights.Length > MaxSamples) { throw new ArgumentOutOfRangeException(nameof(heights), heights.Length, "Height field needs 2..1048576 samples."); }
         if (!float.IsFinite(spacing) || spacing < Constants2D.MinShapeExtent || (double)spacing * (heights.Length - 1) > Constants2D.MaxShapeCoordinate)
         {
-            throw new ArgumentOutOfRangeException(nameof(spacing), spacing, "Spacing must be finite, at least 2e-5 metres, with total width at most 1048576 metres.");
+            throw new ArgumentOutOfRangeException(nameof(spacing), spacing, "Spacing must be finite, at least 1e-5 metres, with total width at most 1048576 metres.");
         }
         if (holes.Length != 0 && holes.Length != heights.Length - 1) { throw new ArgumentOutOfRangeException(nameof(holes), holes.Length, "Hole mask must be empty or contain one flag per interval."); }
         for (int i = 0; i < heights.Length; i++) { Shape2D.CheckCoordinate(heights[i], "heights[" + i.ToString(System.Globalization.CultureInfo.InvariantCulture) + "]"); }
