@@ -14,6 +14,7 @@ internal static class GridStudy
     internal static int Run(Opts options)
     {
         bool timing=options.Has("timing");
+        if(timing)WarmCodePaths();
         bool pass=true;
         foreach(bool baseline in new[]{false,true})
         {
@@ -67,6 +68,21 @@ internal static class GridStudy
             Console.WriteLine(string.Create(CultureInfo.InvariantCulture,$"voxel-world-3d representation={variant} steps=600 maxSpeed={max3:R} floorPenetration={penetration3:R} escapes={escapes3} characterProgress={progress3:R} pass={p3} stepMicroseconds={(timing?ticks3*1e6/Stopwatch.Frequency/600:0):R}"));
         }
         return pass?0:1;
+    }
+    private static void WarmCodePaths()
+    {
+        // Settling does not exercise ramp crests or stair stepping. Traverse the
+        // complete scene first so the first representation does not pay their JIT cost.
+        foreach(bool baseline in new[]{false,true})
+        {
+            var(w2,c2)=Planar(baseline);var(w3,c3)=Spatial(baseline);
+            for(int step=0;step<600;step++)
+            {
+                c2.MoveVelocity(new(1.5f,c2.IsGrounded?0f:-2f),1f/60);w2.Step(1f/60);
+                c3.MoveVelocity(new(0.6f,-2,0),1f/60);w3.Step(1f/60);
+            }
+        }
+        GC.Collect();GC.WaitForPendingFinalizers();GC.Collect();
     }
     private static (P2.PhysicsWorld2D,P2.Character) Planar(bool baseline)
     {

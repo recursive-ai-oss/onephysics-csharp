@@ -436,7 +436,9 @@ progress must be at least 12 m in 2D and 4 m in 3D. The 3D character traverses
 input is horizontal while grounded, and includes -2 m/s vertically only
 while airborne; downward velocity must not cancel the requested uphill motion.
 
-`--timing` adds 120 untimed settling steps (including stationary character
+`--timing` first traverses both complete scenes without measurement to JIT
+ramp-crest and stair-step paths, then constructs fresh worlds and adds 120
+untimed settling steps (including stationary character
 moves) before the 600 measured steps. It reports mean microseconds per step,
 including character movement, without construction, I/O or metric reduction.
 These are indicative comparisons for choosing representations, not speed-bar
