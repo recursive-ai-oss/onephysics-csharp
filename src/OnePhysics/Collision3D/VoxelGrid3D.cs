@@ -129,8 +129,22 @@ public sealed class VoxelGrid3D : TriangleSoup3D
                 if (TryGetTriangle(first+k,out var tri) && TriangleTests3D.BoxTriangle(box,tri.V0,tri.V1,tri.V2)) ids.Add(tri.Id);
         }
     }
-    private int Low(float p,int n) => (int)Math.Clamp(Math.Ceiling((double)p / CellSize)-1,0,n);
-    private int High(float p,int n) => (int)Math.Clamp(Math.Floor((double)p / CellSize),-1,n-1);
+    private int Low(float p,int n)
+    {
+        int i=(int)Math.Clamp(Math.Floor((double)p/CellSize),0,n);
+        // Compare the rounded lattice planes used by the triangles. A quotient
+        // alone can round above an integer and lose the cell sharing that plane.
+        while(i>0 && Plane(i)>=p)i--;
+        while(i<n && Plane(i+1)<p)i++;
+        return i;
+    }
+    private int High(float p,int n)
+    {
+        int i=(int)Math.Clamp(Math.Floor((double)p/CellSize),-1,n-1);
+        while(i<n-1 && Plane(i+1)<=p)i++;
+        while(i>=0 && Plane(i)>p)i--;
+        return i;
+    }
 
     /// <summary>Sweeps a convex shape through the grid using a dilated centre-ray traversal. Large cross-sections fall back to swept-box enumeration. Fractions and ties are those of TriangleSoup3D.CastTriangles. Invalid placement or nonfinite motion throws ArgumentOutOfRangeException; scratch is optional and cleared.</summary>
     public override bool ShapeCast(in ConvexShape3D shape,in RigidTransformF shapeInSoup,Vector3F motion,out SoupCastHit3D hit,List<int>? scratch=null)
@@ -143,22 +157,33 @@ public sealed class VoxelGrid3D : TriangleSoup3D
         if(motion==default || !double.IsFinite(rx+ry+rz) || rx>16 || ry>16 || rz>16 || (2*rx+1)*(2*ry+1)*(2*rz+1)>4096)
             return base.ShapeCast(shape,shapeInSoup,motion,out hit,scratch);
         int ix=(int)rx, iy=(int)ry, iz=(int)rz;
-        var centre=(start.Min+start.Max)*0.5f;var ray=new RayD(centre,motion);
         var ids=scratch??new List<int>();ids.Clear();
+        var sweep=Grow(Bounds3F.Union(start,new(start.Min+motion,start.Max+motion)));
+        CheckFinite(sweep.Min,"sweep.Min");CheckFinite(sweep.Max,"sweep.Max");
+        int x0=Low(sweep.Min.X,SizeX),x1=High(sweep.Max.X,SizeX);
+        int y0=Low(sweep.Min.Y,SizeY),y1=High(sweep.Max.Y,SizeY);
+        int z0=Low(sweep.Min.Z,SizeZ),z1=High(sweep.Max.Z,SizeZ);
+        if(x0>x1 || y0>y1 || z0>z1)return false;
+        if((long)(x1-x0+1)*(y1-y0+1)*(z1-z0+1)<=4096)
+        {
+            // Local sweeps (including character probes) are cheaper as one exact
+            // cell range than as overlapping dilated DDA stencils and a bitset.
+            Overlap(sweep,ids);return CastTriangles(shape,shapeInSoup,motion,ids,out hit);
+        }
+        var centre=(start.Min+start.Max)*0.5f;var ray=new RayD(centre,motion);
         if(!ray.HitBox(-ix*CellSize,-iy*CellSize,-iz*CellSize,(SizeX+ix)*CellSize,(SizeY+iy)*CellSize,(SizeZ+iz)*CellSize,1,out double enter)) return false;
         int x=(int)Math.Clamp(Math.Floor((ray.Ox+ray.Dx*enter)/CellSize),-ix,SizeX+ix);
         int y=(int)Math.Clamp(Math.Floor((ray.Oy+ray.Dy*enter)/CellSize),-iy,SizeY+iy);
         int z=(int)Math.Clamp(Math.Floor((ray.Oz+ray.Dz*enter)/CellSize),-iz,SizeZ+iz);
         int sx=Math.Sign(ray.Dx),sy=Math.Sign(ray.Dy),sz=Math.Sign(ray.Dz);
-        var sweep=Grow(Bounds3F.Union(start,new(start.Min+motion,start.Max+motion)));
         int words=(_solid.Length+63)/64;var visited=ArrayPool<ulong>.Shared.Rent(words);visited.AsSpan(0,words).Clear();
         try
         {
             while(x>=-ix && x<=SizeX+ix && y>=-iy && y<=SizeY+iy && z>=-iz && z<=SizeZ+iz && enter<=1)
             {
-                for(int zz=Math.Max(0,z-iz);zz<=Math.Min(SizeZ-1,z+iz);zz++)
-                for(int yy=Math.Max(0,y-iy);yy<=Math.Min(SizeY-1,y+iy);yy++)
-                for(int xx=Math.Max(0,x-ix);xx<=Math.Min(SizeX-1,x+ix);xx++)
+                for(int zz=Math.Max(z0,z-iz);zz<=Math.Min(z1,z+iz);zz++)
+                for(int yy=Math.Max(y0,y-iy);yy<=Math.Min(y1,y+iy);yy++)
+                for(int xx=Math.Max(x0,x-ix);xx<=Math.Min(x1,x+ix);xx++)
                 {
                     int cell=(zz*SizeY+yy)*SizeX+xx;ulong bit=1UL<<(cell&63);int word=cell>>6;
                     if((visited[word]&bit)!=0)continue;visited[word]|=bit;

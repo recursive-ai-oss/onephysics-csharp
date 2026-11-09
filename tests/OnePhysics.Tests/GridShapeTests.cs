@@ -218,6 +218,20 @@ public sealed class GridShapeTests
     }
 
     [Fact]
+    public void VoxelClosedCellPlanesAndLongDilatedTraversalAreConservative()
+    {
+        bool[] cells=new bool[16];Array.Fill(cells,true);var grid=new VoxelGrid3D(16,1,1,cells,0.1f);
+        var p=new Vector3F(12*0.1f,0.1f,0.05f);var bounds=new Bounds3F(p,p);
+        var actual=new List<int>();var expected=new List<int>();grid.Overlap(bounds,actual);
+        for(int id=0;id<grid.TriangleIdCount;id++)if(grid.TryGetTriangle(id,out var t)&&TriangleTests3D.BoxTriangle(bounds,t.V0,t.V1,t.V2))expected.Add(id);
+        Assert.Equal(2,expected.Count);Assert.Equal(expected,actual);
+        cells=new bool[128*128];Array.Fill(cells,true);var large=new VoxelGrid3D(128,1,128,cells);
+        var pose=new RigidTransformF(QuaternionF.Identity,new(-1,2,-1));
+        Assert.True(large.ShapeCast(ConvexShape3D.Sphere(0.2f),pose,new(130,-3,130),out var hit));
+        Assert.InRange(hit.Fraction,0.2665f,0.2669f);Assert.InRange(hit.Normal.Y,0.999f,1.001f);
+    }
+
+    [Fact]
     public void IncrementalTileEditsEqualFreshConstruction()
     {
         var random=new Random(108);var tiles=new TileKind2D[64];var grid=new TileGrid2D(8,8,tiles);
