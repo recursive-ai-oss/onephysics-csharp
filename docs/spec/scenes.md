@@ -150,11 +150,11 @@ Metrics: `maxSpeed` (any particle, any step), `maxPenetration` (largest amount b
 
 | scene | maxSpeed | maxPenetration | areaError | maxSoftOverlap | finalSpeed99 | measured (x64, 1 thread) |
 |---|---|---|---|---|---|---|
-| `soft-pile-2d` | 25 | 0.08 | 0.05 | 0.15 | 1.5 | 15.6 / 0.049 / 0.0091 / 0.090 / 0.66 |
-| `soft-rigid-2d` | 15 | 0.05 | 0.02 | 0.10 | 1.5 | 10.1 / 0.031 / 0.0006 / 0.034 / 0.53 |
-| `balloon-2d` | 20 | 0.06 | 0.02 | 0.05 | 1.0 | 12.6 / 0.038 / 0.0013 / 0.001 / 0.16 |
+| `soft-pile-2d` | 25 | 0.08 | 0.05 | 0.15 | 1.5 | 12.6 / 0.049 / 0.0065 / 0.093 / 0.19 |
+| `soft-rigid-2d` | 15 | 0.05 | 0.02 | 0.10 | 1.5 | 9.8 / 0.031 / 0.0002 / 0.031 / 0.035 |
+| `balloon-2d` | 20 | 0.06 | 0.02 | 0.05 | 1.0 | 12.2 / 0.038 / 0.0015 / 0.0003 / 0.10 |
 
-Thresholds are about 1.5 times the measured values, rounded up. A pressure body resting on a floor rolls slowly because nothing resists rolling, so `finalSpeed99` stays above zero; the pile never fully sleeps for that reason (a ring settles into rolling from the rounding of its contact order).
+Thresholds are about 1.5 times the measured values (taken before the sweep-direction rule in `softbody.md`, which lowered `finalSpeed99`), rounded up. A symmetric drop of a balloon stays symmetric (the sum of angular momentum about its centre is under 0.05 after 100 steps, test `SymmetricBalloonDropStaysSymmetric`). With 120 bodies, 2 are asleep at 600 steps and 10 at 1200 (before the rule: 2 and 10 at the same steps, with 7 at 600 reported earlier); the pile's shape-matched blobs keep flowing slowly, so a full sleep is not a threshold.
 
 ## Step-state dump
 

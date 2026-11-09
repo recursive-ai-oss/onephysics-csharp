@@ -88,6 +88,8 @@ See `docs/spec/scenes.md` ("Soft bodies"). Reference: Jitter2's soft bodies (ver
 
 # Soft bodies (2D)
 
+**Sweep direction (2D).** The edge, bend and triangle-area constraints of a region are solved in index order in even passes and in reverse index order in odd ones, where the pass number is `substep + pass` counted from 0 (the pressure constraint, shape matching, contacts and pairs are unchanged). A Gauss–Seidel sweep that always goes the same way round a closed outline gives the particles at its start a different correction from those at its end; a balloon or ring dropped exactly symmetrically then picked up about 0.7 rad/s of spin from that alone and rolled for ever. Alternating cancels the bias. Measured on a 24-segment balloon dropped on a floor: sum of particle angular momentum about the centre 1.7 after 60 steps and 4.3 after 300 (never asleep), against 0.004 after 60 and 0.41 at 300, asleep before step 400 with the rule.
+
 `PhysicsWorld2D` has the same soft bodies as the 3D engine, with the same architecture and API shape: particles in their own store (not rigid bodies, not in the islands or the colouring), solved by extended position-based dynamics in small steps after the rigid step. The 2D code is a separate scalar implementation, not shared with 3D, so no 3D result depends on it. Public types are `[Experimental("OPHYS0003")]`: `SoftBody`, `SoftBodyDef`, `SoftBodyMesh`, `SoftMaterial`, `SoftBodyModel`, `SoftBodyException`, `SoftBodyOutOfBoundsException`.
 
 ## Meshes and masses
