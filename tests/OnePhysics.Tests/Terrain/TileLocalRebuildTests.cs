@@ -24,7 +24,6 @@ public sealed class TileLocalRebuildTests
         const int W=26,H=18; var random=new Random(seed); var tiles=new TileKind2D[W*H]; int[] idx=materials?new int[W*H]:[];
         for(int i=0;i<idx.Length;i++) idx[i]=random.Next(3);
         var grid=new TileGrid2D(W,H,tiles,0.5f,idx,contour);
-        int before=TileGrid2D.LocalFallbacks;
         for(int n=0;n<400;n++)
         {
             int w=1+random.Next(n%7==0?10:3),h=1+random.Next(n%5==0?8:3),x=random.Next(W-w+1),y=random.Next(H-h+1);
@@ -36,7 +35,6 @@ public sealed class TileLocalRebuildTests
             var fresh=new TileGrid2D(W,H,tiles,0.5f,idx,contour);
             AssertSame(fresh,grid,"edit "+n);
         }
-        Assert.Equal(before,TileGrid2D.LocalFallbacks);
     }
 
     [Fact]

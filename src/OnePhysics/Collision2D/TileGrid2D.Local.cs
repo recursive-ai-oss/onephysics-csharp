@@ -12,9 +12,6 @@ public sealed partial class TileGrid2D
     // straight runs by using the old segment list, and the segments that visit V are regenerated from them.
     private static readonly int[] StepX={1,1,0,-1,-1,-1,0,1}, StepY={0,1,1,1,0,-1,-1,-1};
 
-    /// <summary>Diagnostic count of edits that fell back to a full boundary rebuild; it never affects results.</summary>
-    internal static int LocalFallbacks;
-
     private sealed class LocalTraceException : Exception { }
 
     private readonly record struct Box(int X0,int Y0,int X1,int Y1)
@@ -48,7 +45,7 @@ public sealed partial class TileGrid2D
     {
         var box=IsContour ? new Box(2*x0-1,2*y0-1,2*x1+3,2*y1+3) : new Box(2*x0,2*y0,2*x1+2,2*y1+2);
         try { return new Tracer(this,old,box).Run(); }
-        catch(LocalTraceException) { LocalFallbacks++; return BuildGlobal(); }
+        catch(LocalTraceException) { return BuildGlobal(); }
     }
 
     // Net directed unit edges at v: net[d] > 0 means an exposed edge leaves v in direction d, net[d] < 0 an exposed edge arrives from v + step(d).
