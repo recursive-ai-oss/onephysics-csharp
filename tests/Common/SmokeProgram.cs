@@ -87,13 +87,41 @@ internal static class SmokeProgram
         Console.WriteLine((skSame ? "OK softskinned3d " : "FAIL softskinned3d ") + sk1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool bodyControls = BodyControls();
         Console.WriteLine(bodyControls ? "OK body-controls" : "FAIL body-controls");
+        bool repairs = HostRepairs();
+        Console.WriteLine(repairs ? "OK host-repairs" : "FAIL host-repairs");
         bool formats = FileFormats();
         Console.WriteLine(formats ? "OK formats" : "FAIL formats");
         bool inspection = InspectionSmoke.Run(out ulong inspectionHash);
         Console.WriteLine((inspection ? "OK inspection " : "FAIL inspection ") + inspectionHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool machines = JointMachineSmoke.Run();
         Console.WriteLine(machines ? "OK machines" : "FAIL machines");
-        return bodyControls && machines && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+        return repairs && bodyControls && machines && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+    }
+
+    private static bool HostRepairs()
+    {
+        var a = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D();
+        var b = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D();
+        float angle = 0.5625f; // A degree conversion round trip loses one float32 bit.
+        var c = a.AddCharacter(default, new() { SlopeLimitRadians = angle });
+        var d = b.AddCharacter(default, new() { SlopeLimitRadians = angle });
+        var sa = a.Snapshot(); var sb = b.Snapshot();
+        a.Restore(sa); b.Restore(sb);
+        bool good = c.SlopeLimitRadians == angle && d.SlopeLimitRadians == angle;
+        var ca = a.Fork(); var cb = b.Fork();
+        ca.RestoreRegion(a.CaptureRegion(new(-2, -2), new(2, 2)));
+        cb.RestoreRegion(b.CaptureRegion(new(-2, -2, -2), new(2, 2, 2)));
+        a.CanonicalizeBroadphase(); ca.CanonicalizeBroadphase();
+        b.CanonicalizeBroadphase(); cb.CanonicalizeBroadphase();
+        a.ShiftOrigin(new(1, 0)); ca.ShiftOrigin(new(1, 0));
+        b.ShiftOrigin(new(1, 0, 0)); cb.ShiftOrigin(new(1, 0, 0));
+        for (int i = 0; i < 3; i++)
+        {
+            a.Step(1f / 60); ca.Step(1f / 60); b.Step(1f / 60); cb.Step(1f / 60);
+            good &= a.ComputeHash() == ca.ComputeHash() && b.ComputeHash() == cb.ComputeHash();
+        }
+        return good;
+
     }
 
     private static bool BodyControls()

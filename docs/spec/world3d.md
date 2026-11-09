@@ -58,7 +58,7 @@ For each dynamic body after the substeps: `m` = centre-of-mass displacement over
 
 ## Snapshot section
 
-Section id `0x33445747` ("GW3D"), version 1 (version 2 adds the flagged blocks below), written by the engine after the core's sections in this order (little-endian, all through the core's state writer):
+Section id `0x33445747` ("GW3D"), version 1 (version 2 adds the flagged blocks below; version 3 adds exact-radian character slope records as specified in snapshots.md), written by the engine after the core's sections in this order (little-endian, all through the core's state writer):
 
 1. `uint32` version; floats `ContactHertz`, `ContactDampingRatio`, `PushOutVelocity`, `RestitutionThreshold`, `MaxLinearSpeed`, `MaxRotationPerSubstep`; bool `ContinuousEnabled`; floats `ContactSlop`, `SpeculativeDistance`.
 2. `int32` body slot count `nb`, then arrays over `nb`: local centre (3), mass, inertia (6), maxExtent, minExtent, linear damping, angular damping, gravity scale, force (3), torque (3), flags (bytes), first shape, last shape, `Δp` (3).
@@ -119,7 +119,7 @@ Twelve joint types (`JointType3D`): fixed, point, distance, hinge, slider, cone,
 
 **Islands.** A joint links its two bodies in the island graph like a contact, so a sleeping island holds its joints and a joint wakes both bodies. Destroying a body destroys its joints (their `Joint` handles go stale; a stale handle throws `StaleHandleException` and a default or foreign one `InvalidHandleException`, each naming it).
 
-**Snapshot.** The 3D section becomes version 2 when any joint or any non-default service state exists: after the version-1 body data comes a block flags word (bit 0 = joints, bit 1 = services; never 0), then the flagged blocks in that order. The joint block is `JointHertz` and `JointDampingRatio`, the joint slot count, and per slot a bool (live) and, if live, the joint record (type, flags, body-local frames, limits, springs, motors, break thresholds, the six-dof axis arrays, path points as a count and a list, pulley fixed points as doubles, the constraint payload with accumulated impulses). The reader accepts versions 1 and 2, checks every count against the remaining bytes, rejects non-finite values and values `JointData3D.Validate` refuses, and rebinds joints to constraints after the contacts section is read; a version-1 restore removes all joints. A world with neither joints nor service state writes exactly the version-1 bytes. The services block is described under Snapshot version 2: services. The world hash is the core's: the constraint payloads hold the accumulated joint impulses; joint definitions are not hashed separately.
+**Snapshot.** The 3D section becomes version 2 when any joint or any non-default service state exists: after the version-1 body data comes a block flags word (bit 0 = joints, bit 1 = services; never 0), then the flagged blocks in that order. The joint block is `JointHertz` and `JointDampingRatio`, the joint slot count, and per slot a bool (live) and, if live, the joint record (type, flags, body-local frames, limits, springs, motors, break thresholds, the six-dof axis arrays, path points as a count and a list, pulley fixed points as doubles, the constraint payload with accumulated impulses). The reader accepts versions 1, 2 and 3, checks every count against the remaining bytes, rejects non-finite values and values `JointData3D.Validate` refuses, and rebinds joints to constraints after the contacts section is read; a version-1 restore removes all joints. A world with neither joints nor service state writes exactly the version-1 bytes. The services block is described under Snapshot version 2: services. The world hash is the core's: the constraint payloads hold the accumulated joint impulses; joint definitions are not hashed separately.
 
 **Known limits.** A swing-twist joint has a pose drive (see Ragdolls) but no velocity motor. Reaction force and torque are those of the last step in which the joint was solved and are not state: they are not in the snapshot.
 
@@ -942,3 +942,6 @@ eight threads and with AVX2 disabled.
 
 Machine-joint additions, planar equivalents, whole-step breaking, lifetime and
 the additive snapshot section are specified in [joints.md](joints.md).
+
+Exact slope input storage and the compatible/versioned character wire encodings
+are specified in [snapshots](snapshots.md#exact-character-slope-inputs).

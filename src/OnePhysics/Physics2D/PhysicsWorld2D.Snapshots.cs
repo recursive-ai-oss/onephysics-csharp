@@ -69,7 +69,16 @@ public sealed partial class PhysicsWorld2D
     /// <exception cref="ArgumentOutOfRangeException">A bound is non-finite, unordered or outside ±2097152.</exception>
     public ulong ComputeRegionHash(Vector2D minimum, Vector2D maximum) => CaptureRegion(minimum, maximum).ComputeHash();
 
-    /// <summary>Atomically resynchronizes existing entities at the same tick/origin/options. Requires matching selected handles, generations, field topology and constraint closure; otherwise use a full snapshot. Does not create/delete entities or change subscriptions. Broadphase proxies are refreshed, not imported. No events are dispatched.</summary>
+    /// <summary>Rebuilds all broadphase proxies from current geometry in ascending shape-slot order, with zero predicted displacement. Allocates tooling buffers. Call between steps on both peers after regional repair to discard broadphase history before comparing full world hashes. Does not alter bodies, contacts, events or subscriptions. Worlds that never call this keep their existing bytes and hashes.</summary>
+    /// <exception cref="BodyOutOfBoundsException">A current shape's bounds cannot be represented by the broadphase.</exception>
+    public void CanonicalizeBroadphase()
+    {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.CanonicalizeBroadphase");
+        _engine.CanonicalizeBroadphase();
+        InvalidateQueryPad();
+    }
+
+    /// <summary>Atomically resynchronizes existing entities at the same tick/origin/options. Requires matching selected handles, generations, field topology and constraint closure; otherwise use a full snapshot. Does not create/delete entities or change subscriptions. Broadphase proxies are refreshed, not imported; call CanonicalizeBroadphase on both peers before comparing full hashes. No events are dispatched.</summary>
     /// <exception cref="ArgumentNullException">The archive is null.</exception>
     /// <exception cref="SnapshotFormatException">Archive topology/context differs or its state is invalid. World unchanged.</exception>
     public OptionChanges RestoreRegion(RegionSnapshot archive)

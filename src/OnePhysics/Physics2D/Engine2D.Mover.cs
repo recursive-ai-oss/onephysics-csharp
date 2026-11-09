@@ -324,11 +324,11 @@ internal sealed partial class Engine2D
         int ignoreBody = -1;
         if (ignore.World != null) { ignoreBody = Core.Resolve(ignore.Handle); }
         float halfLength = 0.5f * def.Height - def.Radius;
-        double cosDeg = Math64.SinCos((double)def.SlopeLimitDegrees * (Math.PI / 180.0)).Item2;
+        double cosSlope = Math64.SinCos(def.SolverSlopeRadians).Item2;
         var c = new MoverCtx
         {
             Capsule = Shape2D.CreateCapsule(new Vec2(0f, -halfLength), new Vec2(0f, halfLength), def.Radius),
-            Radius = def.Radius, HalfLength = halfLength, CosSlope = (float)cosDeg, Step = def.StepOffset, Skin = def.Skin, Range = 2f * def.Skin, MaxPush = 0.5f * def.Radius,
+            Radius = def.Radius, HalfLength = halfLength, CosSlope = (float)cosSlope, Step = def.StepOffset, Skin = def.Skin, Range = 2f * def.Skin, MaxPush = 0.5f * def.Radius,
             Mask = def.LayerMask, IgnoreBody = ignoreBody,
         };
 

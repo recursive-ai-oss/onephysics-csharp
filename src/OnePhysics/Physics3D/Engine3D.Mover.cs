@@ -405,11 +405,11 @@ internal sealed partial class Engine3D
     {
         var up = UnitUp(def.Up);
         float halfLength = 0.5f * def.Height - def.Radius;
-        double cosDeg = Math64.SinCos((double)def.SlopeLimitDegrees * (Math.PI / 180.0)).Item2;
+        double cosSlope = Math64.SinCos(def.SolverSlopeRadians).Item2;
         return new MoverCtx
         {
             Capsule = ConvexShape3D.Capsule(halfLength, def.Radius), Rot = AlignY(up), Up = up,
-            Radius = def.Radius, HalfLength = halfLength, CosSlope = (float)cosDeg, Step = def.StepOffset, Skin = def.Skin, Range = 2f * def.Skin, MaxPush = 0.5f * def.Radius,
+            Radius = def.Radius, HalfLength = halfLength, CosSlope = (float)cosSlope, Step = def.StepOffset, Skin = def.Skin, Range = 2f * def.Skin, MaxPush = 0.5f * def.Radius,
             Mask = def.LayerMask, IgnoreBody = ignoreBody,
         };
     }

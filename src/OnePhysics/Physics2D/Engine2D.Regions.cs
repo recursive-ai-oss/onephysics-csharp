@@ -34,6 +34,20 @@ internal sealed partial class Engine2D
         return s;
     }
 
+    internal void CanonicalizeBroadphase()
+    {
+        // Validate all tight/fat boxes before discarding any tree state.
+        ReadOnlySpan<double> zero = stackalloc double[2];
+        CheckShift(zero);
+        Bp.ResetForCanonicalization();
+        for (int shape = 0; shape < Core.Shapes.HighWater; shape++)
+        {
+            if (!Core.Shapes.Handles.IsLive(shape)) { continue; }
+            int b = Core.Shapes.Owner[shape];
+            Proxy[shape] = Bp.CreateProxy(Core.Bodies.TypeOf(b), TightBox(b, in Geom[shape]), shape);
+        }
+    }
+
     internal void RefreshRegionProxies(RegionSelection selection)
     {
         for (int b = 0; b < selection.Bodies.Length; b++)

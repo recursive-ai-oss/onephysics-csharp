@@ -13,6 +13,7 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// if <see cref="WorldOptions2D.ThreadCount"/> is above 1, with identical results). Create one with <c>new PhysicsWorld2D()</c>, add bodies with <c>AddBox</c> and friends or with
 /// <see cref="CreateBody(in BodyDef)"/> and the <c>Create*</c> shape methods, and call <see cref="Step"/> with a fixed time step.
 /// </summary>
+/// <remarks>Creation and teleport positions accept finite double components within inclusive ±2^21; invalid values throw ArgumentOutOfRangeException. Every Q31.32 position in this closed interval is exact in double, including the endpoints, although OneMath FixedBridge accepts only |v| &lt; 2^21. The wider ±2^22 simulation bound provides integration and shape headroom, not a wider creation range. Queries document their own bounds.</remarks>
 public sealed partial class PhysicsWorld2D
 {
     private readonly Engine2D _engine;
@@ -273,12 +274,14 @@ public sealed partial class PhysicsWorld2D
 
     /// <summary>
     /// Moves the world origin: every body position decreases by <paramref name="offset"/> and <see cref="Origin"/> grows by it, so a host position (origin + position) does not change.
-    /// Call it between steps on every peer at the same step. Components must be multiples of 2^-31 (every 31.32 fixed-point value is) within +-2^22, otherwise an exception names the value.
+    /// Call it between steps on every peer at the same step. Components must be multiples of 2^-31 (every other Q31.32 raw value is) within +-2^22, otherwise a typed exception names the value. Allocates nothing when mutation recording is disabled.
     /// </summary>
+    /// <exception cref="ArgumentException">A component is not on the 2^-31 grid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A component is non-finite or exceeds ±2^22, or shifted geometry cannot be represented.</exception>
     public void ShiftOrigin(Vector2D offset)
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.ShiftOrigin");
-        double[] d = [offset.X, offset.Y];
+        ReadOnlySpan<double> d = stackalloc double[2] { offset.X, offset.Y };
         _core.ValidateShift(d);
         _engine.CheckShift(d);
         _engine.CheckMachineShift(d);
