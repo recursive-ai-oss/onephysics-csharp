@@ -163,6 +163,14 @@ internal static class SmokeProgram
             Console.WriteLine((g1 == g3 && g1 == gr ? "OK softbodies2d " : "FAIL softbodies2d ") + scene + " " + g1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         }
 
+        // 3D surface contacts and tearing (a cloth folding on itself, a cloth and a bar torn by hooks): same state on one and three threads and after a restore.
+        foreach (string scene in SoftFracture3DScene.Names)
+        {
+            ulong g1 = SoftFracture3DScene.Run(scene, 1, false, null, 60), g3 = SoftFracture3DScene.Run(scene, 3, false, null, 60), gr = SoftFracture3DScene.Run(scene, 1, true, null, 60);
+            soft2d &= g1 == g3 && g1 == gr;
+            Console.WriteLine((g1 == g3 && g1 == gr ? "OK softfracture3d " : "FAIL softfracture3d ") + scene + " " + g1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
         bool missingShapes = MissingShapes();
         Console.WriteLine(missingShapes ? "OK shape-recipes" : "FAIL shape-recipes");
         bool surfaces = RecursiveAI.OnePhysics.Tests.Common.ContactSurfaceScene.Planar(1, restore: true) == RecursiveAI.OnePhysics.Tests.Common.ContactSurfaceScene.Planar(3)
