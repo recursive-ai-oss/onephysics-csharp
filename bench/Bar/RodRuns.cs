@@ -6,6 +6,18 @@ namespace Bar;
 
 internal static class RodRuns
 {
+    // Thresholds are ours (no managed engine runs rods): 1.5x the worst value measured on x64 and arm64, rounded up to a
+    // 1/1.5/2/3/5/7 step with a penetration floor of 1 mm. Speed is the larger of particle and rigid body speed, stretch the
+    // largest relative segment length error, penetration the deepest remaining rod contact after a step. Tunnelled counts
+    // the per-scene definitions in RodScene.Tunnelled and must be zero.
+    private static (double Speed,double Stretch,double Penetration) Limits(string scene)=>scene switch
+    {
+        "rope-whip-3d"=>(45,.005,.001),
+        "rope-2d"=>(5,.05,.001),
+        "rope-bridge-3d"=>(10,.05,.001),
+        "hair-3d"=>(5,.15,.001),
+        _=>(50,.25,.03)
+    };
     internal static int Run(Opts options)
     {
         string scene=options.Get("scene","rope-whip-3d");int threads=int.Parse(options.Get("threads","1"),CultureInfo.InvariantCulture);
@@ -20,8 +32,9 @@ internal static class RodRuns
             long before=timing?Stopwatch.GetTimestamp():0;fixture.Step(step);if(timing)samples[step]=Stopwatch.GetTimestamp()-before;
             var stats=fixture.Statistics;speed=Math.Max(speed,Math.Max(stats.MaximumSpeed,fixture.BodyMaxSpeed()));stretch=Math.Max(stretch,chain?fixture.ChainStretch():stats.MaximumStretch);penetration=Math.Max(penetration,stats.MaximumPenetration);tunnelled=Math.Max(tunnelled,fixture.Tunnelled());
         }
-        bool stable=double.IsFinite(speed)&&double.IsFinite(stretch)&&speed<=50&&stretch<=.25&&penetration<=.03&&tunnelled==0;
-        Console.WriteLine(string.Create(CultureInfo.InvariantCulture,$"metrics maxSpeed={speed:R} maxStretch={stretch:R} maxPenetration={penetration:R} tunnelled={tunnelled} stable={stable} hash={fixture.Hash():x16}"));
+        var limit=Limits(scene);
+        bool stable=double.IsFinite(speed)&&double.IsFinite(stretch)&&speed<=limit.Speed&&stretch<=limit.Stretch&&penetration<=limit.Penetration&&tunnelled==0;
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture,$"metrics maxSpeed={speed:R} maxStretch={stretch:R} maxPenetration={penetration:R} tunnelled={tunnelled} stable={stable} limits=(speed {limit.Speed:R}, stretch {limit.Stretch:R}, penetration {limit.Penetration:R}) hash={fixture.Hash():x16}"));
         if(timing)
         {
             var measured=samples.Skip(Math.Min(30,steps/2)).OrderBy(x=>x).ToArray();double ms=1000.0/Stopwatch.Frequency;
