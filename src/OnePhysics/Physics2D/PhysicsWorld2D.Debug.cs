@@ -111,6 +111,7 @@ public sealed partial class PhysicsWorld2D
         double ox = pos[0] - (double)w.X, oy = pos[1] - (double)w.Y;
         var kind = geom.Kind switch
         {
+            ShapeKind2D.Empty => DebugShapeKind.Empty,
             ShapeKind2D.Circle => DebugShapeKind.Circle,
             ShapeKind2D.Capsule => DebugShapeKind.Capsule,
             ShapeKind2D.Segment => DebugShapeKind.Segment,

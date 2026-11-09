@@ -392,3 +392,42 @@ an exact-state interchange extension understood by this library and viewers
 using it; reference benchmark drivers continue to consume version 1 authoring
 records. A viewer can load either form and inspect the resulting world without
 reflecting over scene or world types.
+
+### Additional authoring shape records
+
+The public scene v1 reader also accepts these additive shape kinds. The existing
+`shape kind material density radius parameters...` prefix is unchanged:
+
+- Both dimensions: `empty`, no parameters.
+- 3D `plane`: normal xyz, offset; static bodies only. The normal is normalized
+  with its offset, as in the collision specification.
+- 3D `triangle`: three xyz vertices; the radius field is spherical inflation.
+  Unit area density sets mass; inflation does not affect it.
+- 3D `frustum`: half height, top radius, bottom radius; radius field unused.
+- 2D `heightfield`: sample count n, spacing, n heights, n-1 hole flags (0 or 1).
+  Samples start at body-local x=0; translate the body to place the field.
+- `offset-<kind>`: the underlying kind's ordinary parameters followed by two
+  (2D) or three (3D) local mass-centre offset components. One prefix is accepted
+  in authoring text; arbitrary nested API decorators are preserved by exact-state
+  scene v2 instead. Zero-area 2D kinds ignore the validated offset.
+
+These records build through the same validated geometry constructors as the world
+APIs. A scene using them is a public-library authoring scene; reference-engine
+benchmark drivers need not accept these extension kinds. Existing benchmark
+records, scene generation and their checksums are unchanged.
+
+### Surface and indexed-material authoring records
+
+After a `shape` record, optional `surface` supplies twelve floats:
+`vx vy vz oneWayX oneWayY oneWayZ axisX axisY axisZ muLong muAcross spinning`.
+Vectors are in the owning body's frame; SI units, defaults, limits, one-way
+rules and dimension-specific exclusions are specified in `contacts.md`.
+All twelve values are required; omission means an ordinary stationary,
+two-sided isotropic surface. A record without a preceding shape is invalid.
+
+`material_indices i0 i1 ...` after a shape assigns indices into the scene's
+material table, one per mesh/height-field triangle or chain segment (one for
+other shapes). Indices are nonnegative and within the material table. Empty
+arrays are omitted by the writer. These two records are written immediately
+after their shape, leaving older scenes byte-identical. Full-state version 2
+scenes carry the optional runtime surface/material/motion sections unchanged.

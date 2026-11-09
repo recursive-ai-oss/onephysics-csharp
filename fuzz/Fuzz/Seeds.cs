@@ -39,6 +39,9 @@ internal static class Seeds
         File.WriteAllBytes(Path.Combine(root, "snapshot-region", "valid"), regionWorld.SnapshotRegion(new RecursiveAI.OneMath.Vector2D(-1, -1), new RecursiveAI.OneMath.Vector2D(1, 1)));
 
         File.WriteAllBytes(Path.Combine(root, "snapshot-desync", "valid"), regionWorld.Snapshot());
+        File.WriteAllBytes(Path.Combine(root, "contact-state", "planar"), FuzzContactState.Seed(2));
+        File.WriteAllBytes(Path.Combine(root, "contact-state", "spatial"), FuzzContactState.Seed(3));
+        File.WriteAllBytes(Path.Combine(root, "scene", "surfaces"), System.Text.Encoding.UTF8.GetBytes("scene 1\ndim 2\nmaterial 0 0.5 0\nbody static 0 0 0 0 0 0 -\nshape box 0 0 0 2 0.1 0 0 0\nsurface 1 0 0 0 1 0 0 0 0 0 0 0\nmaterial_indices 0\n"));
         File.WriteAllBytes(Path.Combine(root, "scene", "authoring"), FuzzScene.Authoring());
         File.WriteAllBytes(Path.Combine(root, "scene", "state"), FuzzScene.State());
         File.WriteAllBytes(Path.Combine(root, "replay", "planar"), FuzzReplay.Seed(2));

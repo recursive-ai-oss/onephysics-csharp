@@ -24,4 +24,7 @@ public enum ShapeKind2D : byte
 
     /// <summary>A segment of a chain, with the neighbouring vertices needed to avoid snagging on internal edges.</summary>
     ChainSegment = 5,
+
+    /// <summary>No geometry, including for sensor overlap. Mass can be supplied by a body override.</summary>
+    Empty = 6,
 }

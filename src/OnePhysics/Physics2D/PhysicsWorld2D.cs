@@ -34,6 +34,7 @@ public sealed partial class PhysicsWorld2D
         _core.AddSection(_engine.Rods);
         BindBodyControlOptions();
         _core.AddSection(_engine.MachineSnapshotSection);
+        _core.AddSection(new ShapeMassOffsets2D(_engine));
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -138,6 +139,7 @@ public sealed partial class PhysicsWorld2D
         _engine.ReconcileJoints();
         UpdateInspectionCounters();
         _recorder?.SimulationEnded();
+        if (ContactModifier != null || _core.ContactBatchModifier != null) { _recorder?.SimulationEffect("ContactModification"); }
         if (_suppressed == 0)
         {
             if (_handlers.Count > 0 || _jointHandlers.Count > 0) { DispatchEvents(); }

@@ -246,6 +246,11 @@ internal sealed partial class Engine2D
             float tx = ny, ty = -nx;
             Mem.At(w, W2D.NormalX * 8 + lane) = nx; Mem.At(w, W2D.NormalY * 8 + lane) = ny;
             Mem.At(w, W2D.Friction * 8 + lane) = Mem.At(pl, ManifoldLayout.Friction);
+            if (ContactModifications.Extended)
+            {
+                Mem.At(w, W2D.TangentSpeed * 8 + lane) = ContactModifications.TangentSpeed(c);
+                Mem.At(w, W2D.ImpulseLimit * 8 + lane) = ContactModifications.ImpulseLimit(c);
+            }
             float restitution = Mem.At(pl, ManifoldLayout.Restitution);
             Mem.At(w, W2D.Restitution * 8 + lane) = restitution;
             if (restitution > 0f) { anyRestitution = 1; }
@@ -372,6 +377,11 @@ internal sealed partial class Engine2D
             ref float wl = ref Mem.Lane(ref W, l);
             Mem.Field(ref wl, W2D.NormalX) = Mem.At(pl, ManifoldLayout.Normal); Mem.Field(ref wl, W2D.NormalY) = Mem.At(pl, ManifoldLayout.Normal + 1);
             Mem.Field(ref wl, W2D.Friction) = Mem.At(pl, ManifoldLayout.Friction);
+            if (ContactModifications.Extended)
+            {
+                Mem.Field(ref wl, W2D.TangentSpeed) = ContactModifications.TangentSpeed(c);
+                Mem.Field(ref wl, W2D.ImpulseLimit) = ContactModifications.ImpulseLimit(c);
+            }
             float restitution = Mem.At(pl, ManifoldLayout.Restitution);
             Mem.Field(ref wl, W2D.Restitution) = restitution;
             if (restitution > 0f) { anyRestitution = 1; }
@@ -404,6 +414,12 @@ internal sealed partial class Engine2D
             float vAx = 0f, vAy = 0f, wA = 0f, vBx = 0f, vBy = 0f, wB = 0f;
             if (wantRel) { vAx = Mem.At(lin, 2 * a); vAy = Mem.At(lin, 2 * a + 1); wA = Mem.At(ang, a); vBx = Mem.At(lin, 2 * b); vBy = Mem.At(lin, 2 * b + 1); wB = Mem.At(ang, b); }
             int count = Mem.At(points, c);
+            if (count == 0)
+            {
+                // A pre-solve modifier disabled this lane. No warm-start, rolling or point impulse may reach either body.
+                for (int f = 0; f < W2D.Fields; f++) { Mem.Field(ref wl, f) = 0f; }
+                continue;
+            }
             PreparePoint(0, pl, ref wl, nx, ny, mA, iA, mB, iB, wantRel, vAx, vAy, wA, vBx, vBy, wB);
             if (count > 1)
             {
@@ -751,6 +767,7 @@ internal sealed partial class Engine2D
             int other = userId;
             if (e.IsSensor(Shape) || e.IsSensor(other) || !e.CanCollide(Shape, other)) { return true; }
             int sb = core.Shapes.Owner[other];
+            if (core.Surfaces.IsPresent && !SurfaceContacts.SweepApproaches(core, Shape, other, new Vector3F(End.X, End.Y, 0))) return true;
             var bodies = core.Bodies;
             var p = bodies.PositionOf(sb);
             var r = bodies.RotationOf(sb);
@@ -784,6 +801,13 @@ internal sealed partial class Engine2D
             var toi = Distance2D.TimeOfImpact(in g, sweepStatic, in e.Geom[Shape], Sweep, Best, Constants2D.LinearSlop);
             if ((toi.State == ToiState.Hit || toi.State == ToiState.Failed) && toi.Fraction > 0f && toi.Fraction < Best)
             {
+                if (core.Surfaces.IsPresent)
+                {
+                    var otherTransform = sweepStatic.GetTransform(toi.Fraction); var moverTransform = Sweep.GetTransform(toi.Fraction); var cache = default(SimplexCache2D);
+                    var distance = Distance2D.Compute(in g, in e.Geom[Shape], Transform2.InvMul(otherTransform, moverTransform), ref cache, false);
+                    var outward = otherTransform.Q.Rotate(distance.PointB - distance.PointA);
+                    if (!SurfaceContacts.SweepNormalAllowed(core, Shape, other, new Vector3F(outward.X, outward.Y, 0))) return true;
+                }
                 Best = toi.Fraction;
                 Hit = true;
             }

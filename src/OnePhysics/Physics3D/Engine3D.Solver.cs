@@ -229,8 +229,24 @@ internal sealed partial class Engine3D
             idx[16 + lane] = mA > 0f ? a : -1; idx[24 + lane] = mB > 0f ? b : -1;
             var n = V(pl, ManifoldLayout.Normal);
             Tangents(n, out var t1, out var t2);
+            if (ContactModifications.Extended)
+            {
+                var extra = ContactModifications.ExtraOf(c);
+                if (extra[9] != 0) { t1 = new Vector3F(extra[4], extra[5], extra[6]); t2 = Vector3F.Cross(n, t1); }
+            }
             Put3(w, W3D.N, lane, n); Put3(w, W3D.T1, lane, t1); Put3(w, W3D.T2, lane, t2);
             w[W3D.Friction * 8 + lane] = pl[ManifoldLayout.Friction];
+            if (ContactModifications.Extended)
+            {
+                w[W3D.TangentSpeed * 8 + lane] = ContactModifications.TangentSpeed(c);
+                w[W3D.ImpulseLimit * 8 + lane] = ContactModifications.ImpulseLimit(c);
+                var extra = ContactModifications.ExtraOf(c);
+                w[W3D.TangentSpeed2 * 8 + lane] = extra[2];
+                w[W3D.Friction2 * 8 + lane] = extra[3];
+                w[W3D.Spin * 8 + lane] = extra[7];
+                w[W3D.SpinImpulse * 8 + lane] = 0;
+                w[W3D.Anisotropic * 8 + lane] = extra[9];
+            }
             float restitution = pl[ManifoldLayout.Restitution];
             w[W3D.Restitution * 8 + lane] = restitution;
             if (restitution != 0f) { anyRestitution = 1; }
@@ -465,6 +481,7 @@ internal sealed partial class Engine3D
             var e = E;
             if (e.IsSensor(MoverShape) || e.IsSensor(userId) || !e.CanCollide(MoverShape, userId)) { return true; }
             var core = e.Core;
+            if (core.Surfaces.IsPresent && !SurfaceContacts.SweepApproaches(core, MoverShape, userId, Motion)) return true;
             int sb = core.Shapes.Owner[userId];
             var bodies = core.Bodies;
             var p = bodies.PositionOf(sb);
@@ -481,25 +498,26 @@ internal sealed partial class Engine3D
             var motion = inv.Rotate(Motion);
             // The hit only matters if the body would end the step well inside the surface: shallower overlaps are the contact solver's job, and clamping them would pin a body that is resting on,
             // or rolling over, a surface (its centre of mass moves along the surface while the shape, held at its start orientation, brushes it).
-            float t, approach;
+            float t, approach; Vector3F outwardOther;
             if (other.IsConvex)
             {
                 if (!Gjk3D.ShapeCast(other.Convex, Shape, rel, -motion, out var hit) || hit.StartsOverlapping) { return true; }
-                t = hit.Fraction; approach = -Vector3F.Dot(motion, hit.Normal);
+                t = hit.Fraction; approach = -Vector3F.Dot(motion, hit.Normal); outwardOther = rs.Rotate(hit.Normal);
             }
             else if (other.Compound != null)
             {
                 // The compound refuses a sweep that leaves its coordinate range (a fast body far from the compound), so the sweep is cut to the range first, as the query path does.
                 if (!ClipToReach(rel.Translation, motion, out var co, out var cd, out float t0, out float t1)) { return true; }
                 if (!other.Compound.ShapeCast(Shape, new RigidTransformF(rel.Rotation, co), cd, out var hit) || hit.StartsOverlapping) { return true; }
-                t = t0 + (hit.Fraction * (t1 - t0)); approach = Vector3F.Dot(motion, hit.Normal);
+                t = t0 + (hit.Fraction * (t1 - t0)); approach = Vector3F.Dot(motion, hit.Normal); outwardOther = -rs.Rotate(hit.Normal);
             }
             else
             {
                 if (!other.Soup!.ShapeCast(Shape, rel, motion, out var hit, CastIds()) || hit.StartsOverlapping) { return true; }
-                t = hit.Fraction; approach = -Vector3F.Dot(motion, hit.Normal);
+                t = hit.Fraction; approach = -Vector3F.Dot(motion, hit.Normal); outwardOther = rs.Rotate(hit.Normal);
             }
 
+            if (core.Surfaces.IsPresent && !SurfaceContacts.SweepNormalAllowed(core, MoverShape, userId, outwardOther)) return true;
             if ((1f - t) * approach < DepthTolerance) { return true; }
             // A surface already within speculative range has a contact of its own; clamping against it would only pin the body at a place where no contact exists yet.
             if (t * float.Sqrt(Motion.X * Motion.X + Motion.Y * Motion.Y + Motion.Z * Motion.Z) < 2f * e.Opt.SpeculativeDistance) { return true; }

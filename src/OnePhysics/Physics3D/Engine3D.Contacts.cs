@@ -78,6 +78,9 @@ internal struct ContactOut
     public EdgeHint3D Hint;
     /// <summary>The manifold is the pair's previous one moved with the bodies (see TryRecycle), not a new narrowphase result.</summary>
     public bool Recycled;
+    public int OriginalSubA, OriginalSubB;
+    public bool FlatPatch;
+    public float FlatPlane;
     public float Nx, Ny, Nz;
     public PointBuffer P; // per point: rA (3), rB (3), separation
     public IdBuffer Id;
@@ -109,6 +112,7 @@ internal sealed class NarrowScratch
     public static TriangleShapeBuffer3D TriBuf => H.TriBuf;
     public ContactOut[] Out = new ContactOut[128];
     public int OutCount;
+    public Vector3F[] FlatLocalPoints = Array.Empty<Vector3F>();
     public int Recycled, RecycledPoints, FreshQueries;
     /// <summary>Pairs of this chunk that passed the tight-box test, and those among them that ran the narrowphase (not skipped as apart, not reusing a manifold); read by the work counters.</summary>
     public int Reached, Fresh;
@@ -122,6 +126,8 @@ internal sealed class NarrowScratch
 
 internal sealed partial class Engine3D
 {
+    internal ContactModificationPipeline ContactModifications => Core.ContactModifications;
+
     // ------------------------------------------------------------------ pair filter for the broadphase
 
     private readonly struct PairFilter : IPairFilter
@@ -336,6 +342,8 @@ internal sealed partial class Engine3D
         }
 
         if (_deferWrite) { world.Executor.For(chunks, new WriteTask(this, cs)); }
+        if (world.ContactMotionEnabled) world.ContactMotion.Capture(world);
+        if (ContactModifications.Refresh) { ContactModifications.Run(world); }
         // Bodies that were asleep when the stage began and have been woken by it start the step like any other.
         for (int i = 0; i < _sleeperCount; i++)
         {
@@ -565,7 +573,7 @@ internal sealed partial class Engine3D
             for (int p = lo; p < hi; p++)
             {
                 if (!e.PairLive[p]) { continue; }
-                if (active[owner[e.PairA[p]]] != 0 || active[owner[e.PairB[p]]] != 0 || (_anyFresh && p < fresh.Length && fresh[p])) { e._updateList[lo + n++] = p; }
+                if (e.ContactModifications.Refresh || active[owner[e.PairA[p]]] != 0 || active[owner[e.PairB[p]]] != 0 || (_anyFresh && p < fresh.Length && fresh[p])) { e._updateList[lo + n++] = p; }
             }
 
             e._pairChunkCount[task] = n;
@@ -664,6 +672,7 @@ internal sealed partial class Engine3D
 
         var ga = Geoms[GeomOf[sa]]!;
         var gb = Geoms[GeomOf[sb]]!;
+        if (ga.Convex.Kind == ConvexShapeKind3D.Empty || gb.Convex.Kind == ConvexShapeKind3D.Empty) { return; }
         if (ga.Soup != null && gb.Soup != null) { return; }
         sc.Reached++;
         var owner = Core.Shapes.Owner;
@@ -675,7 +684,8 @@ internal sealed partial class Engine3D
         int existingCons = PairCons[p];
         if (existingCons < 0 && _skip[p].Clear > 0f && StillApart(in _skip[p], qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))) { return; }
         // A touching convex pair that has barely moved reuses its manifold; this is tried before the shape frames are built, which the reuse does not need.
-        if (RecycleManifolds && existingCons >= 0 && ga.Soup == null && gb.Soup == null && ga.IsConvex && gb.IsConvex
+        if (!ContactModifications.Refresh && RecycleManifolds && existingCons >= 0 && ga.Soup == null && gb.Soup == null && ga.IsConvex && gb.IsConvex
+            && !HalfSpace3D.HasPlane(ga.Convex, gb.Convex)
             && TryRecycle(sc, existingCons, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))))
         {
             _resCount[i] = 1;
@@ -711,7 +721,7 @@ internal sealed partial class Engine3D
             var other = soupIsA ? gb : ga;
             // Temporal coherence for a convex shape on a triangle soup: while it has hardly moved relative to the soup, every triangle contact of the pair keeps its manifold (the pair's triangle set can only
             // change by a triangle coming within speculative range, which the next full query, at most a few millimetres of motion later, finds).
-            if (RecycleManifolds && other.IsConvex && PairCons[p] >= 0 && TryRecycleSoup(sc, p, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])), soupIsA ? 1 : 2))
+            if (!ContactModifications.Refresh && RecycleManifolds && other.IsConvex && PairCons[p] >= 0 && TryRecycleSoup(sc, p, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])), soupIsA ? 1 : 2))
             {
                 _resCount[i] = sc.OutCount - _resFirst[i];
                 return;
@@ -719,6 +729,17 @@ internal sealed partial class Engine3D
 
             if (soupIsA) { SoupAgainst(sc, in f, ga.Soup!, true, gb, in lb, in bInA, spec); }
             else { SoupAgainst(sc, in f, gb.Soup!, false, ga, in la, in bInA, spec); }
+            if (Core.ContactMaterials.IsPresent)
+            {
+                for (int entry = _resFirst[i]; entry < sc.OutCount; entry++)
+                {
+                    ref var output = ref sc.Out[entry];
+                    if (!output.FlatPatch) continue;
+                    if (soupIsA) output.SubA = Core.ContactMaterials.CanonicalId(sa, output.OriginalSubA, output.SubA);
+                    else output.SubB = Core.ContactMaterials.CanonicalId(sb, output.OriginalSubB, output.SubB);
+                }
+            }
+            MergeFlatPatches(sc, _resFirst[i], soupIsA, (soupIsA ? qB : qA).Conjugated());
         }
         else if (ga.IsConvex && gb.IsConvex)
         {
@@ -906,7 +927,17 @@ internal sealed partial class Engine3D
         }
 
         ref ContactOut o = ref sc.Next();
-        o.SubA = subA; o.SubB = subB; o.Hint = default; o.Recycled = false;
+        o.OriginalSubA = subA; o.OriginalSubB = subB; o.SubA = subA; o.SubB = subB; o.Hint = default; o.Recycled = false; o.FlatPatch = false; o.FlatPlane = 0;
+        if (filter && tri.SharedPatch)
+        {
+            Vector3F towards = soupIsA ? n : soupFromA.Rotation.Rotate(-n);
+            if (Vector3F.Dot(towards, triNormal) >= GhostCosine)
+            {
+                o.FlatPatch = true; o.FlatPlane = Vector3F.Dot(triNormal, tri.V0);
+                if (soupIsA) o.SubA = tri.CoplanarPatchId; else o.SubB = tri.CoplanarPatchId;
+                n = soupIsA ? triNormal : -soupFromA.Rotation.Conjugated().Rotate(triNormal);
+            }
+        }
         Vector3F nw = f.Rwa.Rotate(n);
         o.Nx = nw.X; o.Ny = nw.Y; o.Nz = nw.Z;
         for (int k = 0; k < count; k++)
@@ -1003,7 +1034,7 @@ internal sealed partial class Engine3D
         float r0 = 0f, r1 = 0f, r2 = 0f;
         if (oldCount > 0) { r0 = pl[ManifoldLayout.RollingImpulse]; r1 = pl[ManifoldLayout.RollingImpulse + 1]; r2 = pl[ManifoldLayout.RollingImpulse + 2]; }
         pl.Clear();
-        var mixed = Mix(sa, sb);
+        var mixed = Mix(sa, sb, cs.SubShapeA[c], cs.SubShapeB[c]);
         pl[ManifoldLayout.Normal] = res.Nx; pl[ManifoldLayout.Normal + 1] = res.Ny; pl[ManifoldLayout.Normal + 2] = res.Nz;
         pl[ManifoldLayout.Friction] = mixed.Friction;
         pl[ManifoldLayout.Restitution] = mixed.Restitution;
@@ -1057,6 +1088,7 @@ internal sealed partial class Engine3D
         {
             case ConvexShapeKind3D.Box:
                 return Math.Abs(n.X) > FaceParallel || Math.Abs(n.Y) > FaceParallel || Math.Abs(n.Z) > FaceParallel;
+            case ConvexShapeKind3D.TaperedCylinder:
             case ConvexShapeKind3D.Cylinder:
                 return Math.Abs(n.Y) > FaceParallel;
             case ConvexShapeKind3D.Hull:
@@ -1168,7 +1200,7 @@ internal sealed partial class Engine3D
     {
         var pl = cs.Payload(c);
         // A material can change between steps (a body's friction setter), and a fresh manifold would pick that up, so a reused one does too.
-        var mixed = Mix(sa, sb);
+        var mixed = Mix(sa, sb, cs.SubShapeA[c], cs.SubShapeB[c]);
         pl[ManifoldLayout.Normal] = res.Nx; pl[ManifoldLayout.Normal + 1] = res.Ny; pl[ManifoldLayout.Normal + 2] = res.Nz;
         pl[ManifoldLayout.Friction] = mixed.Friction;
         pl[ManifoldLayout.Restitution] = mixed.Restitution;
@@ -1183,18 +1215,28 @@ internal sealed partial class Engine3D
         }
     }
 
-    private Material3D Mix(int sa, int sb)
+    // Keep the ordinary contact path scalar: body-frame surface configuration is resolved separately.
+    private ContactMaterial Mix(int sa, int sb, int subA = 0, int subB = 0)
     {
+        float fa = Friction[sa], fb = Friction[sb], ra = Restitution[sa], rb = Restitution[sb], rra = Rolling[sa], rrb = Rolling[sb];
+        if (Core.ContactMaterials.IsPresent)
+        {
+            var a = Core.ContactMaterials.Resolve(sa, subA, new ContactMaterial(fa, ra, rra));
+            var b = Core.ContactMaterials.Resolve(sb, subB, new ContactMaterial(fb, rb, rrb));
+            fa = a.Friction; fb = b.Friction; ra = a.Restitution; rb = b.Restitution; rra = a.RollingResistance; rrb = b.RollingResistance;
+        }
+
         var mixer = Opt.MaterialMixer;
         if (mixer != null)
         {
-            return mixer(new Material3D(Friction[sa], Restitution[sa], Rolling[sa]), new Material3D(Friction[sb], Restitution[sb], Rolling[sb]));
+            var mixed = mixer(new Material3D(fa, ra, rra), new Material3D(fb, rb, rrb));
+            return new ContactMaterial(mixed.Friction, mixed.Restitution, mixed.RollingResistance);
         }
 
         // Friction: geometric mean (a slippery surface stays slippery); restitution and rolling resistance: the larger.
-        float fr = float.Sqrt(Friction[sa] * Friction[sb]);
-        float re = Restitution[sa] > Restitution[sb] ? Restitution[sa] : Restitution[sb];
-        float rr = Rolling[sa] > Rolling[sb] ? Rolling[sa] : Rolling[sb];
-        return new Material3D(fr, re, rr);
+        float fr = float.Sqrt(fa * fb);
+        float re = ra > rb ? ra : rb;
+        float rr = rra > rrb ? rra : rrb;
+        return new ContactMaterial(fr, re, rr);
     }
 }

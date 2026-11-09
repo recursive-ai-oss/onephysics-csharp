@@ -98,6 +98,8 @@ internal sealed partial class Engine2D : ISnapshotSection
 
     public Engine2D(WorldCore core, Broadphase2D bp, WorldOptions2D opt)
     {
+        core.ContactModifications.ShapeFriction = s => Friction[s];
+        core.ContactMaterials.SubshapeCount = _ => 1;
         Core = core;
         bp.Profile = core.Profile;
         Bp = bp;
@@ -219,6 +221,7 @@ internal sealed partial class Engine2D : ISnapshotSection
 
     public ShapeHandle AddShape(BodyHandle body, in Shape2D geometry, in ShapeDef def)
     {
+        def.Surface.Validate(Core.Layout.PositionLanes);
         Nonnegative(def.Density, "Density");
         Coefficient(def.Friction, "Friction");
         Coefficient(def.RollingResistance, "RollingResistance");
@@ -233,6 +236,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         EnsureShapes(s + 1);
         Geom[s] = geometry;
         Friction[s] = def.Friction; Restitution[s] = def.Restitution; Rolling[s] = def.RollingResistance; Density[s] = def.Density;
+        if (!def.Surface.IsDefault) Core.SetSurfaceProperties(sh, def.Surface);
         Category[s] = def.CategoryBits; Mask[s] = def.MaskBits; Group[s] = def.GroupIndex;
         ShapeFlags[s] = def.IsSensor ? FlagSensor : (byte)0; ShapeLayer[s] = (byte)def.Layer;
         NextShape[s] = -1;
@@ -668,15 +672,20 @@ internal sealed partial class Engine2D : ISnapshotSection
     {
         var g = default(Shape2D);
         byte kind = r.ReadByte();
-        if (kind < (byte)ShapeKind2D.Circle || kind > (byte)ShapeKind2D.ChainSegment) { throw r.Error("invalid 2D shape kind " + kind.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+        if (kind < (byte)ShapeKind2D.Circle || kind > (byte)ShapeKind2D.Empty) { throw r.Error("invalid 2D shape kind " + kind.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
         int count = r.ReadInt32();
-        if (count < 1 || count > Constants2D.MaxPolygonVertices) { throw r.Error("invalid 2D shape point count"); }
+        if (kind == (byte)ShapeKind2D.Empty ? count != 0 : count < 1 || count > Constants2D.MaxPolygonVertices) { throw r.Error("invalid 2D shape point count"); }
         float radius = r.ReadSingle();
         if (!float.IsFinite(radius) || radius < 0f) { throw r.Error("invalid 2D shape radius"); }
         byte flags = r.ReadByte();
         g._kind = (ShapeKind2D)kind; g._count = count; g._radius = radius; g._flags = flags;
         g._centroid = ReadVec(r); g._ghost1 = ReadVec(r); g._ghost2 = ReadVec(r);
         for (int i = 0; i < Constants2D.MaxPolygonVertices; i++) { g._v[i] = ReadVec(r); g._n[i] = ReadVec(r); }
+        if (g.Kind == ShapeKind2D.Empty)
+        {
+            if (radius != 0f || flags != 0 || (g._centroid.X != 0f || g._centroid.Y != 0f) || (g._ghost1.X != 0f || g._ghost1.Y != 0f) || (g._ghost2.X != 0f || g._ghost2.Y != 0f)) { throw r.Error("empty shape must have zero geometry"); }
+            for (int i = 0; i < Constants2D.MaxPolygonVertices; i++) { if ((g._v[i].X != 0f || g._v[i].Y != 0f) || (g._n[i].X != 0f || g._n[i].Y != 0f)) { throw r.Error("empty shape vertices must be zero"); } }
+        }
         return g;
     }
 
@@ -710,6 +719,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         r.ReadSingles(dp.AsSpan(0, 2 * nb), true, "displacements");
 
         int ns = r.ReadCount(1, "2D shapes");
+        RestoredShapeCount = ns;
         if (ns > 1 << 22) { throw r.Error("too many 2D shapes"); }
         var geom = Fit(ref _sGeom, ns); var proxy = Fit(ref _sProxy, ns); var fr = Fit(ref _sFr, ns); var re = Fit(ref _sRe, ns); var ro = Fit(ref _sRo, ns); var de = Fit(ref _sDe, ns);
         var cat = Fit(ref _sCat, ns); var mask = Fit(ref _sMask, ns); var grp = Fit(ref _sGrp, ns); var next = Fit(ref _sNext, ns); var live = Fit(ref _sLive, ns);
@@ -826,6 +836,8 @@ internal sealed partial class Engine2D : ISnapshotSection
     private int[] _sHead = new int[8], _sTail = new int[8], _sProxy = new int[8], _sGrp = new int[8], _sNext = new int[8], _sPa = new int[8], _sPb = new int[8], _sPc = new int[8], _sFree = new int[8];
     private Shape2D[] _sGeom = new Shape2D[8];
     private uint[] _sCat = new uint[8], _sMask = new uint[8];
+    internal int RestoredShapeCount { get; private set; }
+    internal bool RestoredShapeIsLive(int s) => s >= 0 && s < RestoredShapeCount && _sLive[s];
     private bool[] _sLive = new bool[8], _sPl = new bool[8];
     private JointData2D[] _sJoints = new JointData2D[16];
 

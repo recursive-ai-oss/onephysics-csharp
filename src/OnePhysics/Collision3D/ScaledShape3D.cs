@@ -38,9 +38,14 @@ public static class ScaledShape3D
         bool sharp = shape.ConvexRadius == 0f;
         switch (shape.Kind)
         {
+            case ConvexShapeKind3D.Plane:
+            case ConvexShapeKind3D.Empty:
+                return ScaleSupport3D.PerAxis;
             case ConvexShapeKind3D.Box:
+            case ConvexShapeKind3D.Triangle:
             case ConvexShapeKind3D.Hull:
                 return sharp ? ScaleSupport3D.PerAxis : ScaleSupport3D.Uniform;
+            case ConvexShapeKind3D.TaperedCylinder:
             case ConvexShapeKind3D.Cylinder:
                 return sharp ? ScaleSupport3D.AxisSymmetricY : ScaleSupport3D.Uniform;
             default:
@@ -93,7 +98,13 @@ public static class ScaledShape3D
 
         try
         {
-            return Build(shape, scale);
+            if (shape.Kind == ConvexShapeKind3D.Plane)
+            {
+                var n = shape.PlaneNormal;
+                var inverseNormal = new Vector3F(n.X / scale.X, n.Y / scale.Y, n.Z / scale.Z);
+                return ConvexShape3D.Plane(inverseNormal, shape.PlaneOffset).WithCenterOfMassOffset(shape.CenterOfMassOffset * scale);
+            }
+            return Build(shape, scale).WithCenterOfMassOffset(shape.CenterOfMassOffset * scale);
         }
         catch (ArgumentException e) when (e is ArgumentOutOfRangeException || e is HullBuildException)
         {
@@ -119,6 +130,8 @@ public static class ScaledShape3D
         Vector3F z = shape.CoreSize;
         switch (shape.Kind)
         {
+            case ConvexShapeKind3D.Empty:
+                return ConvexShape3D.Empty;
             case ConvexShapeKind3D.Sphere:
                 return ConvexShape3D.Sphere(r * s.X);
             case ConvexShapeKind3D.Box:
@@ -132,6 +145,11 @@ public static class ScaledShape3D
                 return ConvexShape3D.Capsule(z.Y * s.X, r * s.X);
             case ConvexShapeKind3D.TaperedCapsule:
                 return ConvexShape3D.TaperedCapsule(z.Z * s.X, z.X * s.X, z.Y * s.X);
+            case ConvexShapeKind3D.TaperedCylinder:
+                return ConvexShape3D.TaperedCylinder(z.Z * s.Y, z.X * s.X, z.Y * s.X);
+            case ConvexShapeKind3D.Triangle:
+                var points = shape.Hull!.Vertices;
+                return ConvexShape3D.Triangle(points[0] * s, points[1] * s, points[2] * s, r * s.X);
             case ConvexShapeKind3D.Cylinder:
                 {
                     float radius = (z.X + r) * s.X, half = (z.Y + r) * s.Y;

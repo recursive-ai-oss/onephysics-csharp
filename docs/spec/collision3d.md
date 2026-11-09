@@ -263,3 +263,114 @@ sort as the general insertion sort. Equal IDs keep candidate order. Larger sets
 retain the deepest/farthest/largest-area reduction and the existing final ordering.
 These paths introduce no persistent state and do not change snapshot bytes or
 world hashes.
+
+## Circular frusta and standalone triangles
+
+`ConvexShapeKind3D.TaperedCylinder` is additive (6); `Triangle` is 7.
+A frustum has its axis along Y, top at +halfHeight and bottom at
+-halfHeight. Half height is positive; radii are non-negative and not both
+zero. The support mapping compares the two rim circles, choosing the top
+on a tie. Equal radii return the existing cylinder representation, without
+changing cylinder arithmetic or results. The circular core has no skin.
+Mass properties integrate disks through the linear radius profile, using
+double intermediates in a fixed order; the reported inertia is about the
+computed centroid. One zero radius is an exact cone. Feature extraction
+uses the existing twelve rim samples for a cap (cap ids 0 and 1), side
+vertices 32/33 and edge 32; an isolated rim point uses vertex/edge 34+cap.
+Scaling accepts positive X=Z scale independently of Y.
+
+A standalone triangle is a double-sided lamina with an optional spherical
+inflation. Vertices keep their input order. Degenerate triangles and those
+with longest-edge-squared / twice-area above 2^20 are rejected. A two-face
+half-edge representation retains both windings for contact clipping and
+debug output; support ties choose the lowest input index. Mass is area
+at unit area density, with centroid the average of the vertices and inertia
+from their covariance divided by twelve. Inflation does not change these
+mass properties (the same convention as inflated hulls). Zero-radius
+triangles have no enclosed volume; their mass density has units kg/m².
+
+Geometry recipes extend the existing length-delimited recipe table without
+changing snapshot v1: kind 10 stores frustum half height, top radius and
+bottom radius as three little-endian float32 values; kind 11 stores the
+three triangle vertices (XYZ in input order), then inflation radius, as ten
+float32 values. Compound children accept both recipes. Old readers reject
+these unknown kinds cleanly. Forks, exact-state scenes and mutation replay
+retain the recipe bytes. Debug kind 11 carries a frustum's bottom and top
+axis ends, top radius in Radius and bottom radius in BottomRadius.
+
+## Empty placeholders
+
+Convex kind 8 and geometry recipe 12 (no payload) represent `Empty`, distinct
+from the zero-radius sphere used as a point in queries. Empty geometry
+contributes zero mass and inertia. Distance to it is positive infinity;
+contact, overlap, ray and cast queries miss it. An empty sensor has no volume
+and cannot generate overlap events. Compound mass combination ignores empty
+children; an all-empty compound has zero shape mass. Bodies use explicit
+mass and inertia overrides for physical placeholders (`AddEmpty` defaults
+to unit mass and principal inertia). Empty bounds are a point at the local
+origin, used only for broadphase storage. Debug kind 12 has zero points.
+
+### Infinite half-spaces and mass-centre decorators
+
+`ConvexShapeKind3D.Plane = 9` is the solid half-space `dot(n,x) <= d`.
+Construction normalizes the nonzero finite normal in double and divides the
+finite offset by the same length; normalized offset magnitude is at most 2^21 m.
+The local normal and offset are exposed independently of `ConvexRadius` (zero).
+It has zero mass and no finite support point (`CoreSupport`/`Support` throw
+`InvalidOperationException`). Only static bodies may own a plane; attachment to
+kinematic or dynamic bodies throws `StaticOnlyShapeException`. Compound children
+cannot be planes. Two half-spaces have no finite contact manifold and raw
+plane/plane contact queries throw `ArgumentException`.
+
+For a finite convex B in plane A's frame, choose B's surface support p in direction
+`-n`. Signed separation is `dot(n,p)-d`; A's witness is `p-n*separation`.
+Reverse pairs transform the normal and offset into A's frame and reverse the
+normal. Manifolds extract the finite shape's supporting feature using thickness
+`speculativeDistance + 1e-4*Extent(shape)`, project each point to the plane, and
+store the midpoint and its signed separation. Feature ids pack the plane's zero
+face code and the other shape's vertex code in the usual A/B order; the usual
+four-point reduction and id sorting apply. Plane contacts are not recycled.
+Compound children and soft particles use this same path, without tessellating
+the plane. Static/static pairs, including planes against static soups, are not
+simulated.
+
+A ray hits at `max(0, (dot(n,origin)-d)/-dot(n,direction))` when entering the
+half-space. Starts inside hit at zero with zero normal; parallel exterior rays
+miss. Shape casts use the initial support separation and constant closing speed.
+Overlap and closest queries use the same exact signed-plane distance, clamped to
+zero inside. All query collection modes use these leaves. Broadphase proxies
+cover the supported coordinate domain rather than storing infinities: plane
+bounds are the fixed cube ±2^22 m, independent of its pose, covering both the
+public creation domain (±2^21 m) and the wider query domain (±2^22 m). Static
+proxies have zero margin. Plane bounds bypass finite-body extent/fattening checks:
+they represent a query domain, not finite physical geometry. These bounds are
+culling proxies, never collision geometry.
+Debug kind `Plane = 13` emits a surface point `n*d` and that point plus n,
+transformed to world space.
+
+`WithCenterOfMassOffset(offset)` leaves collision geometry, bounds, feature ids
+and all query answers unchanged. Offsets are local metres, finite within ±2^21.
+Nested offsets add (including validation of their sum). At unit density, starting
+from `(m,c,Ic)`, the decorated mass is m, centre is `c+o` and inertia about that
+new centre is `Ic + m*(dot(o,o)*identity - outer(o,o))`. These artificial mass
+properties intentionally do not describe a redistribution of collision geometry.
+The normal compound and multi-shape body mass combination then operates on each
+part's decorated centre and tensor. Body-wide centre overrides are applied later.
+Scaling scales both geometry and the offset. Plane and empty geometry remain
+massless; offsets do not create mass. `ShapeSpec3D` accepts convex, compound,
+mesh and height-field recipes, so a whole compound or any individual convex child
+can be decorated independently. Massless mesh/terrain wrappers change no dynamics.
+
+Snapshot geometry recipes add kind 13 (three float32 offset components followed
+by an inner recipe) and kind 14 (plane normal xyz and offset, four float32).
+At most 16 consecutive decorators are accepted; readers iterate without input-
+dependent recursion. The snapshot v1 envelope and existing shape recipes do not
+change. Only worlds using these shapes acquire new bytes/hashes. Scene v2,
+recording, fork and restore retain the recipes. Triangle mass uses unit area
+density, independent of its optional spherical inflation (not a solid extrusion).
+
+An origin shift translates the actual plane pose like every static body's pose,
+but resets its proxy to the fixed domain cube after translating the other tree
+boxes. Plane proxy extents do not veto an otherwise valid shift. The reset
+preserves the proxy leaf id, refits the tree in fixed order and marks that leaf
+moved; it does not allocate or change any shape's collision geometry.

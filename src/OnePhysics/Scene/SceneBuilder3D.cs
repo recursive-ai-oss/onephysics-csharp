@@ -136,9 +136,11 @@ internal static partial class SceneBuilder3D
         var def = new P3.ShapeDef
         {
             Density = (float)sh.Density,
+            Surface = sh.Surface,
             Friction = (float)s.Materials[sh.Material].Friction,
             Restitution = (float)s.Materials[sh.Material].Restitution,
         };
+        if (AdditionalSceneShapes.Recognizes(3, sh.Kind)) { AdditionalSceneShapes.Create(world, body, sh, def); return; }
         var p = sh.P;
         float r = (float)sh.Radius;
         switch (sh.Kind)
@@ -180,6 +182,12 @@ internal static partial class SceneBuilder3D
                 world.CreateHeightField(body, h, nx, nz, new Vector3F(cell, 1f, cell), default, def); break;
             }
             default: throw new InvalidDataException("unknown shape " + sh.Kind);
+        }
+        if (sh.MaterialIndices.Length != 0)
+        {
+            var materials = new P3.Material3D[s.Materials.Count];
+            for (int i = 0; i < materials.Length; i++) materials[i] = new((float)s.Materials[i].Friction, (float)s.Materials[i].Restitution);
+            body.GetShapes()[^1].SetMaterials(materials, sh.MaterialIndices);
         }
     }
 

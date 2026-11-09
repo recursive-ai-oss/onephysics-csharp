@@ -91,6 +91,9 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     public Engine3D(WorldCore core, Broadphase3D bp, WorldOptions3D opt)
     {
+        core.ContactModifications.ShapeFriction = s => Friction[s];
+        core.ContactMaterials.SubshapeCount = s => (uint)s < (uint)GeomOf.Length && (uint)GeomOf[s] < (uint)Geoms.Count && Geoms[GeomOf[s]] is { } geometry ? geometry.Soup?.TriangleIdCount ?? 1 : -1;
+        core.ContactMaterials.PlaneId = (s, t) => Geoms[GeomOf[s]]!.Soup is { } soup && soup.TryGetTriangle(t, out var triangle) ? triangle.CoplanarPatchId : t;
         Core = core;
         bp.Profile = core.Profile;
         Bp = bp;
@@ -285,6 +288,7 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     public ShapeHandle AddShape(BodyHandle body, byte[] recipe, in ShapeDef def)
     {
+        def.Surface.Validate(Core.Layout.PositionLanes);
         Nonnegative(def.Density, "Density");
         Coefficient(def.Friction, "Friction");
         Coefficient(def.RollingResistance, "RollingResistance");
@@ -301,10 +305,10 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         int gid = AcquireGeom(recipe);
         var g = Geoms[gid]!;
-        if (g.Soup != null && type != BodyType.Static)
+        if ((g.Soup != null || (g.IsConvex && g.Convex.Kind == ConvexShapeKind3D.Plane)) && type != BodyType.Static)
         {
             ReleaseGeom(gid);
-            throw new StaticOnlyShapeException("Triangle meshes and height fields can only be attached to static bodies.");
+            throw new StaticOnlyShapeException("Triangle meshes, height fields and infinite planes can only be attached to static bodies.");
         }
 
         var sh = Core.CreateShape(body);
@@ -313,6 +317,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         GeomOf[s] = gid;
         Local[s] = new RigidTransformF(rot, def.LocalPosition);
         Friction[s] = def.Friction; Restitution[s] = def.Restitution; Rolling[s] = def.RollingResistance; Density[s] = def.Density;
+        if (!def.Surface.IsDefault) Core.SetSurfaceProperties(sh, def.Surface);
         Category[s] = def.CategoryBits; Mask[s] = def.MaskBits; Group[s] = def.GroupIndex;
         ShapeFlags[s] = def.IsSensor ? FlagSensor : (byte)0; ShapeLayer[s] = (byte)def.Layer;
         NextShape[s] = -1;
@@ -403,6 +408,8 @@ internal sealed partial class Engine3D : ISnapshotSection
             if (movingOnly && bodies.IsDynamic(b) && WellInsideRange(b)) { continue; }
             for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
             {
+                var geometry = Geoms[GeomOf[s]]!;
+                if (geometry.IsConvex && geometry.Convex.Kind == ConvexShapeKind3D.Plane) continue;
                 var box = TightBox(b, s);
                 // The box the broadphase would store: margin plus the last step's displacement stretched by its default multiplier (2).
                 _dp3[0] = Dp[3 * b]; _dp3[1] = Dp[3 * b + 1]; _dp3[2] = Dp[3 * b + 2];
@@ -464,6 +471,11 @@ internal sealed partial class Engine3D : ISnapshotSection
     /// <summary><see cref="TightBox"/> with the six bounds as outputs, read straight from the body arrays.</summary>
     internal void TightBoxCore(int b, int s, out double minX, out double minY, out double minZ, out double maxX, out double maxY, out double maxZ)
     {
+        if (Geoms[GeomOf[s]]!.Convex.Kind == ConvexShapeKind3D.Plane && Geoms[GeomOf[s]]!.IsConvex)
+        {
+            minX = minY = minZ = -4194304; maxX = maxY = maxZ = 4194304;
+            return;
+        }
         var bodies = Core.Bodies;
         var posA = bodies.Position;
         var rotA = bodies.Rotation;
@@ -595,8 +607,9 @@ internal sealed partial class Engine3D : ISnapshotSection
         {
             if (!(Density[s] > 0f) || IsSensor(s)) { continue; }
             var g = Geoms[GeomOf[s]]!;
-            if (g.Soup != null) { continue; }
+            if (g.Soup != null || (g.IsConvex && g.Convex.Kind == ConvexShapeKind3D.Empty)) { continue; }
             var m = g.UnitMass;
+            if (g.Compound != null && m.Mass == 0f) { continue; }
             float d = Density[s];
             var l = Local[s];
             _parts.Add(new MassPropertiesF(m.Mass * d, l.TransformPoint(m.Center), InertiaF.Rotate(m.Inertia, l.Rotation) * d));
@@ -760,6 +773,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         {
             if (!shapes.Handles.IsLive(s)) { continue; }
             int b = shapes.Owner[s];
+            if (Geoms[GeomOf[s]]!.IsConvex && Geoms[GeomOf[s]]!.Convex.Kind == ConvexShapeKind3D.Plane) continue;
             var t = TightBox(b, s);
             var moved = new Aabb3D(t.MinX - offset[0], t.MinY - offset[1], t.MinZ - offset[2], t.MaxX - offset[0], t.MaxY - offset[1], t.MaxZ - offset[2]);
             string reason = "";
@@ -771,7 +785,18 @@ internal sealed partial class Engine3D : ISnapshotSection
     }
 
     /// <summary>After the core shifted the origin: moves every stored broadphase box by the same offset, in place, so tree shape, stretched boxes and pair timing are those of the unshifted world.</summary>
-    public void ShiftProxies(ReadOnlySpan<double> offset) => Bp.Translate(offset);
+    public void ShiftProxies(ReadOnlySpan<double> offset)
+    {
+        Bp.Translate(offset);
+        var shapes = Core.Shapes;
+        for (int s = 0; s < shapes.HighWater; s++)
+        {
+            if (!shapes.Handles.IsLive(s)) continue;
+            var g = Geoms[GeomOf[s]]!;
+            if (g.IsConvex && g.Convex.Kind == ConvexShapeKind3D.Plane)
+                Bp.ResetProxyBounds(Proxy[s], TightBox(shapes.Owner[s], s));
+        }
+    }
 
     // ------------------------------------------------------------------ snapshot section
 
@@ -1155,7 +1180,7 @@ internal sealed partial class Engine3D : ISnapshotSection
             if (!shapes.Handles.IsLive(s)) { continue; }
             int owner = shapes.Owner[s];
             if (!bodies.IsLive(owner) || !Bp.IsProxy(Proxy[s]) || Bp.GetUserId(Proxy[s]) != s) { return false; }
-            if (Geoms[GeomOf[s]]!.Soup != null && bodies.TypeOf(owner) != BodyType.Static) { return false; }
+            if ((Geoms[GeomOf[s]]!.Soup != null || (Geoms[GeomOf[s]]!.IsConvex && Geoms[GeomOf[s]]!.Convex.Kind == ConvexShapeKind3D.Plane)) && bodies.TypeOf(owner) != BodyType.Static) { return false; }
         }
 
         for (int b = 0; b < bodies.HighWater; b++)
