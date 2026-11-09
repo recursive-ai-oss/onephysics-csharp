@@ -142,7 +142,7 @@ public static class HullSimplifier
             return c != 0 ? c : a.CompareTo(b);
         });
 
-        int tries = Math.Min(n, n > 64 ? 4 : ExactCandidates);
+        int tries = Math.Min(n, ExactCandidates);
         var rest = new Vector3F[n - 1];
         for (int oi = 0; oi < tries; oi++)
         {

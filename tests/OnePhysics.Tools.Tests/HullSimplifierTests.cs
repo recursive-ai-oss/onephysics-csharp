@@ -37,7 +37,7 @@ public class HullSimplifierTests
         foreach (var o in h.Vertices) { foreach (var f in s.Hull.Faces) { plane = Math.Max(plane, Vector3F.Dot(f.Normal, o) - f.Offset); } }
         Assert.True(plane <= s.Error + 1e-5);
         // Dropping 160 of 200 points from a unit sphere keeps the shape within a few percent.
-        Assert.True(s.Error < 0.1f);
+        Assert.True(s.Error < 0.1f, "error " + s.Error + " verts " + s.Hull.Vertices.Length);
         // Every simplified vertex is an original vertex.
         foreach (var v in s.Hull.Vertices)
         {

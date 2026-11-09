@@ -24,7 +24,7 @@ Closed means every directed edge occurs once and its reverse once. Volume, centr
 
 ## Hull simplification (`HullSimplifier`)
 
-Greedy vertex removal: rank vertices by distance from the centroid of their neighbours (ties by index), re-hull the rest for the first 12 candidates (4 when the hull has more than 64 vertices) and keep the removal with the smallest measured error (first wins ties). Error = the largest distance from any original vertex to the current hull (exact point to polyhedron distance over every face triangle). The simplified hull is the hull of a subset of the original vertices, so it lies inside the original and this equals the Hausdorff distance. Vertex and face targets are always pursued; beyond them removal continues while the error stays at most `MaxError`. `TargetsMet` is false if four vertices or a degenerate result stops it.
+Greedy vertex removal: rank vertices by distance from the centroid of their neighbours (ties by index), re-hull the rest for the first 12 candidates and keep the removal with the smallest measured error (first wins ties). Error = the largest distance from any original vertex to the current hull (exact point to polyhedron distance over every face triangle). The simplified hull is the hull of a subset of the original vertices, so it lies inside the original and this equals the Hausdorff distance. Vertex and face targets are always pursued; beyond them removal continues while the error stays at most `MaxError`. `TargetsMet` is false if four vertices or a degenerate result stops it.
 
 ## 3D convex decomposition (`ConvexDecomposer`)
 
