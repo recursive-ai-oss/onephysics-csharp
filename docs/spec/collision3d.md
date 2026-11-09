@@ -395,6 +395,12 @@ if the neighbouring cell along that face tangent is solid: this is either
 a coplanar join or a concave corner. Otherwise it is active. Convex, compound, soft-particle, and character
 contacts use the existing triangle-soup paths with those active-edge flags.
 
+Cell intervals are closed and are chosen against the float32-rounded lattice
+planes the triangles use, not against the quotient p/size, which can round just
+above an integer and lose the cell on the plane's negative side: the low index is
+the first cell whose upper plane is >= p, the high index the last cell whose lower
+plane is <= p.
+
 Box candidate queries enumerate the intersecting closed cell intervals in
 Z/Y/X order, test exposed triangles against the box, then return ascending ids.
 Ray traversal follows Amanatides and Woo, *A Fast Voxel Traversal Algorithm for
@@ -406,9 +412,14 @@ ascending XYZ bit-mask order, then advance all tied axes. A ray stationary on
 a grid plane also tests the cell on its negative side. Exact triangle tests,
 not stepping fractions, determine hit fractions; equal closest fractions take
 the lower triangle id. No mutable per-shape visit stamps are used. Single,
-Any and All ray forms share traversal. Convex casts traverse the ray of the start bounds' centre, visiting a cell
+Any and All ray forms share traversal. Convex casts first compute the grown swept bounds and their closed cell range
+(an empty range is a miss; nonfinite bounds throw). When the range holds at most
+4096 cells (local casts such as character probes) the cast skips traversal and
+the visit bitset: it enumerates the range like a box query and runs the ordinary
+soup cast. Longer casts traverse the ray of the start bounds' centre, visiting a cell
 stencil with radii ceil(half-extent/cell-size)+1 on each axis. A cleared pooled
-cell bitset removes duplicate visits; exposed triangles intersecting the full
+cell bitset removes duplicate visits, and each stencil is clipped to the
+swept cell range; exposed triangles intersecting the full
 swept bounds are collected and sorted by id before the ordinary soup cast.
 When any stencil radius exceeds 16 cells or its volume exceeds 4096 cells, or
 when motion is zero, use swept-box enumeration instead. This bounds work for
