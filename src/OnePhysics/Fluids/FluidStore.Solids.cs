@@ -46,7 +46,10 @@ internal sealed partial class FluidStore
 
     /// <summary>The inertial number at which the friction of flowing granular matter is half way to its fast-flow value (mu(I) rheology: Jop, Forterre, Pouliquen 2006), and the rise of the friction angle in fast flow, in degrees.</summary>
     private const float InertialI0 = 0.279f, FlowFrictionRise = 12f;
+    private const double PlanarConeCalibration = 1.2;
     private const float MaxHardening = 4f;
+    /// <summary>The most log-volume of expansion a granular particle keeps for later (a factor of about 20 in volume).</summary>
+    private const float MaxVolumeCorrection = 3f;
     private const int MaxSolidSubsteps = 64;
 
     internal void DeriveSolid(FluidState s)
@@ -60,23 +63,25 @@ internal sealed partial class FluidStore
         double e = d.ElasticModulus, nu = d.PoissonRatio;
         s.Lame2 = (float)(e / (2.0 * (1.0 + nu)));
         s.Lame1 = (float)(e * nu / ((1.0 + nu) * (1.0 - 2.0 * nu)));
-        double alpha = 0.0;
-        if (d.FrictionAngle > 0f)
-        {
-            // Drucker-Prager slope matched to Mohr-Coulomb in triaxial compression (Klár et al. 2016): |tau_dev| <= alpha d p with alpha d = 2 sqrt(6) sin(phi) / (3 - sin(phi)) in both dimensions, so one angle gives one strength.
-            double sin = Math64.Sin((double)d.FrictionAngle * (Math.PI / 180.0));
-            alpha = (Dim == 3 ? 2.0 * Math.Sqrt(2.0 / 3.0) : Math.Sqrt(6.0)) * sin / (3.0 - sin);
-        }
-
-        s.DpAlpha = (float)alpha;
+        // Drucker-Prager cone |tau_dev| <= slope (p + p0) matched to Mohr-Coulomb in plane strain, the state of the surface layer of a slope (2D exactly, 3D with the middle principal stress halfway between the others):
+        // slope = sqrt(2) sin(phi), p0 = c / tan(phi). The triaxial-compression match of Klár et al. 2016 is stronger by about a third at 30 degrees and holds piles at steeper angles than the friction angle.
+        double alpha = 0.0, apex = 0.0;
         s.FlowSin = 0f; s.FlowDSin = 0f;
         if (d.FrictionAngle > 0f)
         {
-            double sin0 = Math64.Sin((double)d.FrictionAngle * (Math.PI / 180.0));
-            double sin1 = Math64.Sin(Math.Min((double)d.FrictionAngle + FlowFrictionRise, 85.0) * (Math.PI / 180.0));
+            double rad = (double)d.FrictionAngle * (Math.PI / 180.0);
+            // Calibration of the cone to poured piles: the pile of a planar world stands about 5 degrees under the friction angle with the exact cone, a 3D pile on it (fits in docs/spec/fluids.md).
+            double cal = Dim == 2 ? PlanarConeCalibration : 1.0;
+            double sinTrue = Math64.Sin(rad);
+            double sin0 = Math.Min(sinTrue * cal, 0.95);
+            alpha = Math.Sqrt(2.0) * sin0;
+            if (d.Cohesion > 0f) { apex = d.Cohesion * Math64.Cos(rad) / sinTrue; }
+            double sin1 = Math.Max(sin0, Math.Min(Math64.Sin(Math.Min((double)d.FrictionAngle + FlowFrictionRise, 85.0) * (Math.PI / 180.0)) * cal, 0.95));
             s.FlowSin = (float)sin0; s.FlowDSin = (float)(sin1 - sin0);
         }
-        if (alpha > 0.0 && d.Cohesion > 0f) { s.DpApex = (float)(Math.Sqrt(2.0) * d.Cohesion / (alpha * Dim)); }
+
+        s.DpAlpha = (float)alpha;
+        s.DpApex = (float)apex;
         double vm = d.YieldStress > 0f ? Math.Sqrt(2.0 / 3.0) * d.YieldStress : 0.0;
         // Cohesion without friction is a pressure-independent shear strength: the largest shear stress equals it, which is a deviatoric norm of sqrt(2) times as much.
         if (alpha == 0.0 && d.Cohesion > 0f) { double c = Math.Sqrt(2.0) * d.Cohesion; vm = vm > 0.0 ? Math.Min(vm, c) : c; }
@@ -272,6 +277,17 @@ internal sealed partial class FluidStore
             // Drucker-Prager: the stress is brought back onto the cone |tau_dev| <= alpha d (p + p0), or to its tip when the pressure is below -p0.
             if (_sSin[f] > 0f)
             {
+                // Volume correction (Klár et al. 2016, section 4.4): returning an expanded state to the tip of the cone discards the expansion from the elastic strain, so the particles would stay loose for ever.
+                // The log-volume that was discarded is kept (aux holds one plus it) and added back to the strain, so a loose pile has no stress until it is compacted to its rest density again.
+                bool corrected = !(critC > 0f || critS > 0f);
+                float vcSaved = corrected ? aux[i] - 1f : 0f;
+                if (vcSaved != 0f)
+                {
+                    float share = vcSaved / d;
+                    ep0 += share; ep1 += share; if (d == 3) { ep2 += share; }
+                    tr += vcSaved; third = tr / d;
+                }
+
                 float lam2 = 2f * mu + d * lam;
                 float t0 = 2f * mu * ep0 + lam * tr, t1 = 2f * mu * ep1 + lam * tr, t2 = d == 3 ? 2f * mu * ep2 + lam * tr : 0f;
                 float p = -(d == 3 ? t0 + t1 + t2 : t0 + t1) / d;
@@ -282,18 +298,21 @@ internal sealed partial class FluidStore
                 float shear = float.Sqrt(2f * (rxx * rxx + ryy * ryy + rzz * rzz + 2f * (rxy * rxy + rxz * rxz + ryz * ryz)));
                 float inertial = p > 1e-3f ? shear * Spacing * float.Sqrt(_rhoRest[f] / p) : 1e3f;
                 float sinEff = _sSin[f] + _sDSin[f] * (inertial / (inertial + InertialI0));
-                float alpha = (d == 3 ? 1.6329932f : 2.4494897f) * sinEff / (3f - sinEff);
+                float slope = 1.4142135f * sinEff;
                 float apex = _sApex[f];
                 if (p + apex <= 0f)
                 {
                     float e = apex / lam2;
+                    // The strain left is the tip's; the expansion beyond it is the volume held back.
+                    if (corrected) { aux[i] = 1f + Math.Min(Math.Max(tr - d * e, 0f), MaxVolumeCorrection); }
                     ep0 = e; ep1 = e; ep2 = d == 3 ? e : 0f;
-                    }
+                }
                 else
                 {
+                    if (corrected) { aux[i] = 1f; }
                     float h0 = t0 + p, h1 = t1 + p, h2 = d == 3 ? t2 + p : 0f;
                     float norm = float.Sqrt(h0 * h0 + h1 * h1 + h2 * h2);
-                    float limit = alpha * d * (Math.Max(p, _gFloor * _rhoRest[f] * Spacing) + apex);
+                    float limit = slope * (Math.Max(p, _gFloor * _rhoRest[f] * Spacing) + apex);
                     if (norm > limit)
                     {
                         float k = limit / norm;
@@ -319,7 +338,9 @@ internal sealed partial class FluidStore
             float c00 = cm[c0 + 0], c01 = cm[c0 + 1], c02 = cm[c0 + 2], c10 = cm[c0 + 3], c11 = cm[c0 + 4], c12 = cm[c0 + 5], c20 = cm[c0 + 6], c21 = cm[c0 + 7], c22 = cm[c0 + 8];
             {
                 // Bulk viscosity (a Neumann-Richtmyer damping of the volumetric waves): the elastic compression of a stream that hits a pile would otherwise come back as a bounce, which grains do not do.
-                float bulk = _sBulk[f] * (d == 3 ? c00 + c11 + c22 : c00 + c11);
+                float divC = d == 3 ? c00 + c11 + c22 : c00 + c11;
+                // Compression only: a viscous resistance to expansion would hold a loose pile up like a tension.
+                float bulk = _sBulk[f] * (divC < 0f ? divC : 0f);
                 sxx += bulk; syy += bulk; szz += d == 3 ? bulk : 0f;
             }
 

@@ -194,8 +194,15 @@ internal sealed partial class FluidStore
         }
 
         _gMinX = mnx; _gMinY = mny; _gMinZ = mnz;
+        if (_anyMpm)
+        {
+            // Solid matter keeps its grid anchored to the world, in whole cell widths, so a floor sits at the same place among the nodes from one step to the next (a grid that follows the lowest particle slides the nodes under a resting pile).
+            double cw = _k.H;
+            _gMinX = (float)(Math.Floor((_ox + mnx) / cw) * cw - _ox); _gMinY = (float)(Math.Floor((_oy + mny) / cw) * cw - _oy);
+            if (Dim == 3) { _gMinZ = (float)(Math.Floor((_oz + mnz) / cw) * cw - _oz); }
+        }
         _invH = 1f / _k.H;
-        double sx = (double)(mxx - mnx) * _invH, sy = (double)(mxy - mny) * _invH, sz = (double)(mxz - mnz) * _invH;
+        double sx = (double)(mxx - _gMinX) * _invH, sy = (double)(mxy - _gMinY) * _invH, sz = (double)(mxz - _gMinZ) * _invH;
         double cells = (Math.Floor(sx) + 1.0) * (Math.Floor(sy) + 1.0) * (Math.Floor(sz) + 1.0);
         _hashed = !(cells >= 1.0 && cells <= MaxDenseCells);
         if (_hashed && _anyMpm) { throw new FluidBudgetException("The solid matter spans " + cells.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " grid cells; the material point grid is dense and holds at most " + MaxDenseCells.ToString(System.Globalization.CultureInfo.InvariantCulture) + " (bring the particles closer together or use a larger KernelRadiusScale)."); }
