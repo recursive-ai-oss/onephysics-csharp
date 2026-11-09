@@ -298,7 +298,7 @@ shifted world sees the same numbers). A span runs from the tangent point of its 
   step's (`Math64.Atan2`), plus `ExtraTurns` full turns at creation. A wrap just below 2π at creation is read as zero.
 - Out of plane (a fleet angle), the arc is still counted as the planar rim arc. That is exact for the straight length and
   the velocity law below only while the rope stays near the plane: at a fleet angle φ the length error is of order
-  `(1 - cos φ)` times the slip speed over the rim. The crane scene reaches about 25° (see Fixtures).
+  `(1 - cos φ)` times the slip speed over the rim. The crane scene reaches about 15° (see Fixtures).
 
 ### Material length and stretch
 
@@ -394,7 +394,7 @@ by a ±6 % force, plus a friction pulley whose weights stick and slide in turn),
 idler under a driver torque and a speed-dependent load, slipping at the peaks), **chain-drive-3d** (a bicycle: frame,
 two wheels and a crank on hinges, 44-tooth chainring to a 16-tooth sprocket on the rear wheel, driven by a pedal torque
 of 6 ± 3 N·m for 10 s, 13 m travelled) and **crane-3d** (a slewing kinematic boom carrying a winch drum and a sheave,
-a two-fall block with a 108 kg crate that is lifted, swung through ±1 m and lowered). 600 steps at 1/60 s. No managed
+a two-fall block with a 108 kg crate that is lifted, swung by the slewing boom and lowered). 600 steps at 1/60 s. No managed
 engine runs pulley systems, so the thresholds are ours: 1.5 times the worst of x64 and arm64 values (which agree), rounded up
 to a 1/1.5/2/3/5/7 step, floors 1 mm of stretch and penetration. Overstretch is the largest total path length minus rope of
 a loaded system; length drift is the largest change of the total material length; tunnelled counts bodies below the floor and
@@ -408,5 +408,5 @@ broken systems.
 | crane-3d | <= 2 | <= 0.007 | <= 0.001 | <= 1e-9 | 0 | 1.093 / 4.7e-3 / 0 / 7e-14 |
 
 Limits: rope mass, rope collision and bending are not modelled; fleet angles beyond about 25° give percent-level length
-errors; chain links are not individually simulated (no polygon effect, and a chain longer than the taut path sags only as a
+errors (the crane scene at a 0.25 rad slew amplitude, about 35° of swing, overstretches by 3.5 cm against 4.7 mm at 0.15); chain links are not individually simulated (no polygon effect, and a chain longer than the taut path sags only as a
 reported estimate); sprocket or wheel bodies must hang on hinges; a break emits no event, only the flag.
