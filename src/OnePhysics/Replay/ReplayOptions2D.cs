@@ -8,6 +8,13 @@ namespace RecursiveAI.OnePhysics.Replay;
 internal static class ReplayOptions2D
 {
     internal const int Size = 128;
+
+    /// <summary>The payload when the soft-body options differ from their defaults: the base payload followed by SoftSubsteps and SoftIterations. A world with default soft options writes the base payload, so existing recordings keep their bytes.</summary>
+    internal const int SizeWithSoft = 136;
+
+    internal static bool HasSoftOptions(WorldOptions2D o) => o.SoftSubsteps != 4 || o.SoftIterations != 3;
+
+    internal static int WrittenSize(WorldOptions2D o) => HasSoftOptions(o) ? SizeWithSoft : Size;
     internal static void Write(WorldOptions2D o, double creationMargin, int worldId, Span<byte> bytes)
     {
         BinaryPrimitives.WriteInt32LittleEndian(bytes, worldId);
@@ -40,10 +47,15 @@ internal static class ReplayOptions2D
         BinaryPrimitives.WriteInt32LittleEndian(bytes.Slice(112), o.ContinuousEnabled ? 1 : 0);
         BinaryPrimitives.WriteDoubleLittleEndian(bytes.Slice(116), o.BroadphaseMargin);
         BinaryPrimitives.WriteSingleLittleEndian(bytes.Slice(124), o.HitSpeedThreshold);
+        if (HasSoftOptions(o))
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.Slice(128), o.SoftSubsteps);
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.Slice(132), o.SoftIterations);
+        }
     }
     internal static double Read(ReadOnlySpan<byte> bytes, WorldOptions2D o, out int worldId)
     {
-        if (bytes.Length != Size) throw new ArgumentException("Invalid 2D live option payload length.", nameof(bytes));
+        if (bytes.Length != Size && bytes.Length != SizeWithSoft) throw new ArgumentException("Invalid 2D live option payload length.", nameof(bytes));
         worldId = BinaryPrimitives.ReadInt32LittleEndian(bytes);
         if (worldId < 1) throw new ArgumentException("Invalid world identity.", nameof(bytes));
         double margin = BinaryPrimitives.ReadDoubleLittleEndian(bytes.Slice(4));
@@ -77,6 +89,11 @@ internal static class ReplayOptions2D
         o.ContinuousEnabled = BinaryPrimitives.ReadInt32LittleEndian(bytes.Slice(112)) != 0;
         o.BroadphaseMargin = BinaryPrimitives.ReadDoubleLittleEndian(bytes.Slice(116));
         o.HitSpeedThreshold = BinaryPrimitives.ReadSingleLittleEndian(bytes.Slice(124));
+        if (bytes.Length == SizeWithSoft)
+        {
+            o.SoftSubsteps = BinaryPrimitives.ReadInt32LittleEndian(bytes.Slice(128));
+            o.SoftIterations = BinaryPrimitives.ReadInt32LittleEndian(bytes.Slice(132));
+        }
         o.Validate();
         return margin;
     }
@@ -119,5 +136,7 @@ internal static class ReplayOptions2D
         to.ContinuousEnabled = from.ContinuousEnabled;
         to.BroadphaseMargin = from.BroadphaseMargin;
         to.HitSpeedThreshold = from.HitSpeedThreshold;
+        to.SoftSubsteps = from.SoftSubsteps;
+        to.SoftIterations = from.SoftIterations;
     }
 }

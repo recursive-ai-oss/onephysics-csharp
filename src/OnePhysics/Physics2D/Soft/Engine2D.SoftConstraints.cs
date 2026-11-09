@@ -152,6 +152,8 @@ internal sealed partial class Engine2D
         float keep = 1f / (1f + alpha);
         float blend = def.MatchBlend;
         var x = d.X; var inv = d.InvMass; var mu = d.MatchMu;
+        Span<double> at = stackalloc double[10];
+        Span<double> apq = stackalloc double[10];
         for (int c = 0; c < d.ClusterCount; c++)
         {
             int m0 = d.ClusterStart[c], m1 = d.ClusterStart[c + 1];
@@ -180,10 +182,9 @@ internal sealed partial class Engine2D
             float scale = d.ClusterScale[c];
             bool quad = scale > 0f;
             // Ã (2 x 5): row 0 and row 1 of A_pq~ times A_qq~^-1, with offsets scaled by 1 / scale.
-            Span<double> at = stackalloc double[10];
+            at.Clear();
             if (quad)
             {
-                Span<double> apq = stackalloc double[10];
                 apq.Clear();
                 double inv5 = 1.0 / scale;
                 for (int m = m0; m < m1; m++)

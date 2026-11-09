@@ -68,6 +68,32 @@ internal sealed partial class Engine2D
         SoftHandles.Free(i);
     }
 
+    /// <summary>The soft bodies (by ascending slot) with a particle disc touching the shape at the given pose; see <see cref="PhysicsWorld2D.OverlapSoftBodies"/>.</summary>
+    public int OverlapSoft(in Shape2D shape, double px, double py, Rot2 q, Span<SoftBody> results, PhysicsWorld2D world)
+    {
+        int n = 0;
+        for (int i = 0; i < SoftHandles.HighWater && n < results.Length; i++)
+        {
+            if (!SoftHandles.IsLive(i)) { continue; }
+            var d = SoftData[i]!;
+            bool hit = false;
+            for (int k = 0; k < d.N && !hit; k++)
+            {
+                var rel = q.InverseRotate(new Vec2((float)(d.Pos[2 * k] - px), (float)(d.Pos[2 * k + 1] - py)));
+                if (!(Math.Abs(rel.X) < 4e6f && Math.Abs(rel.Y) < 4e6f)) { continue; }
+                var m = Collide2D.Collide(in shape, in d.ParticleShape, new Transform2(rel, Rot2.Identity), 0f);
+                for (int c = 0; c < m.PointCount; c++)
+                {
+                    if ((c == 0 ? m.Point0.Separation : m.Point1.Separation) <= 0f) { hit = true; break; }
+                }
+            }
+
+            if (hit) { results[n++] = new SoftBody(world, i, SoftHandles.GenerationOf(i)); }
+        }
+
+        return n;
+    }
+
     /// <summary>Moves every soft body with the world origin.</summary>
     public void ShiftSoft(double dx, double dy)
     {

@@ -34,6 +34,7 @@ public sealed partial class PhysicsWorld2D
         BindBodyControlOptions();
         _core.AddSection(_engine.MachineSnapshotSection);
         _core.AddSection(new ShapeMassOffsets2D(_engine));
+        _core.AddSection(_engine.SoftSnapshotSection);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -116,6 +117,7 @@ public sealed partial class PhysicsWorld2D
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.Opt.Validate();
         _engine.CheckBounds();
+        _engine.CheckSoftBounds();
         if (_core.Controls.Active) _engine.ValidateTargetMotion(dt);
         SyncCoreOptions();
         if (_recorder != null) { RecordPreparedStep(dt); return; }
@@ -128,8 +130,10 @@ public sealed partial class PhysicsWorld2D
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.BeginBodyControls(dt);
         if (_engine.Fields.Count != 0) _engine.Fields.Step(dt);
+        _engine.BeginSoftStep();
         _core.Step(new Stages2D(_engine), dt);
         _engine.EndFieldContacts();
+        _engine.StepSoft(dt);
         _engine.EndBodyControls();
         InvalidateQueryPad();
         _engine.ReconcileJoints();
@@ -295,6 +299,7 @@ public sealed partial class PhysicsWorld2D
         _engine.ShiftMachineJoints(d);
         _engine.Fields.Shift(new Vector3D(offset.X,offset.Y,0));
         _engine.ShiftProxies(d);
+        _engine.ShiftSoft(offset.X, offset.Y);
         InvalidateQueryPad();
     }
 

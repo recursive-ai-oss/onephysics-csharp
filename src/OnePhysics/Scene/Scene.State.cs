@@ -111,10 +111,10 @@ public sealed partial class Scene
         else if (tokens[0] == "world_id" && tokens.Length == 2 && !_idSeen && _state == null) { _worldId = I(tokens[1]); if (_worldId < 1) throw new FormatException("positive world id"); _idSeen = true; }
         else if (tokens[0] == "options" && tokens.Length == 2 && _liveOptions == null && _state == null && _dimSeen && _idSeen)
         {
-            int size = Dim == 2 ? Replay.ReplayOptions2D.Size : Replay.ReplayOptions3D.Size;
+            int size = Dim == 2 ? Replay.ReplayOptions2D.SizeWithSoft : Replay.ReplayOptions3D.Size;
             var bytes = new byte[size];
-            if (!Convert.TryFromBase64String(tokens[1], bytes, out int n) || n != size) throw new FormatException("complete live option payload");
-            _liveOptions = bytes;
+            if (!Convert.TryFromBase64String(tokens[1], bytes, out int n) || (n != size && !(Dim == 2 && n == Replay.ReplayOptions2D.Size))) throw new FormatException("complete live option payload");
+            _liveOptions = n == size ? bytes : bytes.AsSpan(0, n).ToArray();
         }
         else if (tokens[0] == "state" && tokens.Length == 2 && _state == null && _dimSeen && _idSeen)
         {
