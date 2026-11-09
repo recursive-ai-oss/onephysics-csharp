@@ -144,7 +144,7 @@ internal static class Vehicles2DScene
     internal sealed class Stability
     {
         internal required string Name;
-        internal required PhysicsWorld2D World;
+        internal required PhysicsWorld2D World { get; set; }
         internal Vehicle[] Vehicles = Array.Empty<Vehicle>();
         internal float[] Terrain = Array.Empty<float>();
         internal double TerrainX0;
@@ -154,6 +154,9 @@ internal static class Vehicles2DScene
         internal int Steps = 600;
         internal Ragdoll[] Ragdolls = Array.Empty<Ragdoll>();
         internal RagdollDef? RagdollDefinition;
+
+        /// <summary>Points the scene at a restored or forked copy of its world: the vehicles are looked up again in it and the script drives them.</summary>
+        internal void Rebind(PhysicsWorld2D w) { World = w; var v = w.GetVehicles(); for (int i = 0; i < Vehicles.Length; i++) { Vehicles[i] = v[i]; } }
     }
 
     private const double Stretch = 160.0;

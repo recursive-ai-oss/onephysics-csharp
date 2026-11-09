@@ -150,6 +150,10 @@ order are available through `destination.GetSnapshotSection(id)`. The default
 implementation throws `NotSupportedException`; custom state is never silently
 omitted. Built-in sections implement the same hook.
 
+## Optional 2D vehicle and ragdoll sections
+
+Two optional sections of the planar world, written only while used: "VEH2" (`0x32484556`, version 1: vehicles) and "RAG2" (`0x32474152`, version 1: ragdolls). Layouts are in `world2d.md` → Vehicles. They follow the section rules above (an older reader rejects them by id and length; worlds without vehicles or ragdolls keep their bytes).
+
 ## Named fields and desync reports
 
 `SnapshotDesync.Compare(fullA, fullB)` validates both full snapshots with the
