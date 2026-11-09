@@ -97,7 +97,7 @@ public sealed partial class SdfGrid3D
                 _edgeNormal[3 * (3 * f + e)] = edgeSum[3 * slot]; _edgeNormal[3 * (3 * f + e) + 1] = edgeSum[3 * slot + 1]; _edgeNormal[3 * (3 * f + e) + 2] = edgeSum[3 * slot + 2];
             }
             // Bucket grid over the triangles: about one triangle per bucket.
-            int target = Math.Max(1, (int)Math.Cbrt(_triangles / 2.0)); target = Math.Min(target, 64);
+            int target = 1; while (target < 64 && (long)(target + 1) * (target + 1) * (target + 1) <= _triangles / 2) target++;   // integer cube root of triangles/2, capped at 64
             _cell = Math.Max(scale / target, 1e-12); _bx = Min[0]; _by = Min[1]; _bz = Min[2];
             _gx = Math.Max(1, (int)Math.Ceiling((Max[0] - Min[0]) / _cell)); _gy = Math.Max(1, (int)Math.Ceiling((Max[1] - Min[1]) / _cell)); _gz = Math.Max(1, (int)Math.Ceiling((Max[2] - Min[2]) / _cell));
             var count = new int[_gx * _gy * _gz + 1];
