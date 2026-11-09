@@ -110,6 +110,13 @@ internal sealed partial class RodStore
         }
         return false;
     }
+    // A rod whose particles are non-finite, beyond the query domain or stretched far beyond its thickness is left out of collision (see Queryable).
+    private static bool Sane(RodParticles d)
+    {
+        var p=d.PositionData;
+        for(int i=0;i+1<p.Length;i++)if(!Queryable(p[i],p[i+1],d.Material.Radius))return false;
+        return true;
+    }
     private void EnsureGather()
     {
         if(GatherStale())Gather();
@@ -132,7 +139,7 @@ internal sealed partial class RodStore
         for(int r=0;r<Data.Length;r++)
         {
             var d=Data[r];
-            if(d==null||!d.CollisionEnabled){if(_gathers[r]!=null)_gathers[r]!.Active=false;continue;}
+            if(d==null||!d.CollisionEnabled||!Sane(d)){if(_gathers[r]!=null)_gathers[r]!.Active=false;continue;}
             (_gathers[r]??=new RodGather()).Active=true;
         }
         _gatherReach=reach;
@@ -249,7 +256,7 @@ internal sealed partial class RodStore
     private void GatherPairs()
     {
         int total=0;
-        for(int r=0;r<Data.Length;r++)if(Data[r] is {} rod&&rod.CollisionEnabled)total+=rod.Length.Length;
+        for(int r=0;r<Data.Length;r++)if(Data[r] is {} rod&&rod.CollisionEnabled&&Sane(rod))total+=rod.Length.Length;
         if(_pMinX.Length<total)
         {
             int n=Math.Max(total,_pMinX.Length*2);
@@ -260,7 +267,7 @@ internal sealed partial class RodStore
         double lowX=double.PositiveInfinity,lowY=double.PositiveInfinity,lowZ=double.PositiveInfinity,highX=double.NegativeInfinity,highY=double.NegativeInfinity,highZ=double.NegativeInfinity,width=0;
         for(int r=0;r<Data.Length;r++)
         {
-            var d=Data[r];if(d==null||!d.CollisionEnabled)continue;var g=_gathers[r]!;double radius=d.Material.Radius+Skin(d)+GatherMargin;
+            var d=Data[r];if(d==null||!d.CollisionEnabled||!Sane(d))continue;var g=_gathers[r]!;double radius=d.Material.Radius+Skin(d)+GatherMargin;
             for(int s=0;s<d.Length.Length;s++)
             {
                 int k=6*s;double x0=g.Box[k]-radius,y0=g.Box[k+1]-radius,z0=g.Box[k+2]-radius,x1=g.Box[k+3]+radius,y1=g.Box[k+4]+radius,z1=g.Box[k+5]+radius;

@@ -81,6 +81,17 @@ forces. An explosion explicitly wakes its impulse recipients like `ApplyImpulse`
   evaluation O(n log n), without a dense quadratic fallback. Untagged bodies do
   not participate. Generation checks prevent tags transferring to recycled bodies.
 
+## Results beyond the limit
+
+Definitions are validated when they are created (every scalar finite within ±1e12), but what a field
+produces at a body depends on distance, velocity, mass and host callbacks. An application whose
+acceleration, force or torque is not finite, or has a component beyond ±1e12, is dropped before anything
+changes: no force, no wake. The step carries on with the other bodies and fields, and
+`StepCounters.FieldApplicationsSkipped` counts the drops of the last step. This covers a gravity callback that
+returns NaN, infinity or a huge vector, and a valid definition whose terms multiply past the limit (for
+example strength 1e12 over a softening of 1e-30 at the centre). A field step therefore never throws from
+inside the step.
+
 ## Contact effectors
 
 A platform/surface region selects the static or kinematic **surface body** origin

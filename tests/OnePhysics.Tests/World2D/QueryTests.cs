@@ -441,16 +441,24 @@ public class QueryTests
 
         Round();
         Round();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 5; i++) { Round(); }
-        long after = GC.GetAllocatedBytesForCurrentThread();
-        Assert.Equal(0, after - before);
+        // On a busy machine the runtime's allocator can report a few KB on this thread in some window with the code under test allocating nothing
+        // (see AllocMeter.Settle). A real allocation repeats in every window, so the smallest of several windows after a collection is the measure.
+        Assert.Equal(0, SmallestWindow(() => { for (int i = 0; i < 5; i++) { Round(); } }));
         // The lazy per-step state is rebuilt after a step without allocating either.
         w.Step(Dt);
         Round();
-        before = GC.GetAllocatedBytesForCurrentThread();
-        Round();
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, SmallestWindow(Round));
+    }
+
+    private static long SmallestWindow(Action work)
+    {
+        long smallest = long.MaxValue;
+        for (int attempt = 0; attempt < 4 && smallest != 0; attempt++)
+        {
+            Core.AllocMeter.Settle();
+            smallest = Math.Min(smallest, Core.AllocMeter.Of(work));
+        }
+        return smallest;
     }
 
     [Fact]

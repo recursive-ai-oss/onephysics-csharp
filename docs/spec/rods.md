@@ -189,6 +189,20 @@ would exceed the threshold is not applied. Destroying the referenced generation
 also breaks the attachment, without binding a reused slot. Readback is the
 average force over the last whole step.
 
+## Contacts at pinned ends and damaged state
+
+A contact at parameter u on a segment moves the segment's end particles by penetration/u when the other end
+cannot move (pinned) or is much heavier, which is unbounded as u approaches 0: a rope pinned on a surface used
+to throw its free end kilometres away. Per pass no particle moves more than 4 penetration depths; when
+the contact point needs more than 16 penetration depths of motion (the contact is all but at the pin, and no
+motion of the rod can undo the penetration) the contact is left alone for that pass.
+
+A snapshot can hold finite but enormous velocities. A step must complete or raise a typed error before changing
+anything: a rod with a non-finite or out-of-range particle, or one whose segment is longer than 500000 radii or
+farther than 1e6 m from the origin, is left out of collision for the rest of the step (the shape queries cannot
+take such input), a rigid body whose accumulated rod push is non-finite or would leave ±4194304 m is not
+written, and the next step's bounds check raises `RodStateException` for the damaged rod.
+
 ## Contact search
 
 Candidates are gathered once per substep, not rediscovered every pass, and the cache never

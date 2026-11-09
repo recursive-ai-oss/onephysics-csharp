@@ -140,7 +140,8 @@ Thus:
 `CcdBodies` counts bodies whose motion passes the sweep threshold (including the
 coarse static-bounds query in 3D); `CcdHits` counts those stopped before the end of
 their sweep, once per body. `BulletBodies` is the selected bullet subset.
-`SoftParticles` and `SoftBlocks` count particles and interior blocks of awake
+`FieldApplicationsSkipped` counts field applications of the last step dropped because their result was
+not finite or beyond ±1e12 (see `fields.md`); zero when no field exists. `SoftParticles` and `SoftBlocks` count particles and interior blocks of awake
 soft bodies selected for the soft step; pinned particles are included, the
 serial boundary region is not another block. `Characters` and `Vehicles` are
 live controller counts before callbacks. Vehicles and soft bodies currently

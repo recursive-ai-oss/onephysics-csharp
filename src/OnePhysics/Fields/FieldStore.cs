@@ -131,6 +131,7 @@ internal sealed partial class FieldStore(IFieldHost host) : ISnapshotSection
     internal void Step(float dt)
     {
         if (Count == 0) return;
+        Skipped = 0;
         var core = Host.FieldCore; var bodies = core.Bodies;
         // Resolve gravity zones without changing the order of force accumulation.
         if (_zone.Length < bodies.HighWater) { Array.Resize(ref _zone, bodies.HighWater); Array.Resize(ref _zoneActive,bodies.HighWater); }
@@ -168,7 +169,9 @@ internal sealed partial class FieldStore(IFieldHost host) : ISnapshotSection
                 else if (d.Kind == FieldKind.CustomGravity)
                 {
                     if (!_callbacks.TryGetValue(d.CallbackId,out var callback)) throw new InvalidOperationException("A CustomGravity field has no host callback bound to its CallbackId.");
-                    a=callback(Position(b),core.StepCount); FieldDefinition.CheckVector(a,"gravity callback result");
+                    a=callback(Position(b),core.StepCount);
+                    // A callback result that is not finite or is beyond the field limit is dropped, as in Apply.
+                    if(!Usable(a)){Skipped++;continue;}
                     a=(a-Host.Gravity)*Host.GravityScaleOf(b);
                 }
                 else
@@ -192,14 +195,22 @@ internal sealed partial class FieldStore(IFieldHost host) : ISnapshotSection
             if (d.Kind == FieldKind.RegionalGravity) zonesApplied=true;
         }
     }
+    /// <summary>Applications dropped in the last field step because their result was non-finite or beyond ±1e12 (a callback that returned garbage, or a definition whose terms multiply past the limit).</summary>
+    internal int Skipped;
+    // Definitions are validated when they are created, but what a field produces at a body depends on distances, velocities, masses and host
+    // callbacks. A result outside the limit is dropped before anything changes (no force, no wake), so the step carries on with the other
+    // fields and bodies; the count says how often. Throwing here would leave a half-stepped world.
+    internal static bool Usable(Vector3F v)
+        => float.IsFinite(v.X)&&float.IsFinite(v.Y)&&float.IsFinite(v.Z)&&Math.Abs(v.X)<=1e12f&&Math.Abs(v.Y)<=1e12f&&Math.Abs(v.Z)<=1e12f;
     internal void Apply(int b, Vector3F value, Vector3F angularAcceleration, float dt, bool acceleration)
     {
-        FieldDefinition.CheckVector(value,"field force or acceleration");
-        FieldDefinition.CheckVector(angularAcceleration,"field angular acceleration");
+        if(!Usable(value)||!Usable(angularAcceleration)){Skipped++;return;}
         var core=Host.FieldCore; var bodies=core.Bodies;
         var a=acceleration?value:value*bodies.InverseMass[b];
+        var force=acceleration?value/bodies.InverseMass[b]:value;var torque=AngularTorque(b,angularAcceleration);
+        if(!float.IsFinite(force.X+force.Y+force.Z)||!float.IsFinite(torque.X+torque.Y+torque.Z)||!float.IsFinite(a.X+a.Y+a.Z)){Skipped++;return;}
         if(!Wake(b,a,angularAcceleration,dt))return;
-        Host.AddForce(b,acceleration?value/bodies.InverseMass[b]:value,AngularTorque(b,angularAcceleration));
+        Host.AddForce(b,force,torque);
     }
     internal bool Wake(int b,Vector3F acceleration,Vector3F angularAcceleration,float dt)
     {
