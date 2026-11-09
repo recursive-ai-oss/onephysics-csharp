@@ -143,8 +143,8 @@ internal sealed partial class Engine2D
     /// <summary>Id of the 2D soft-body snapshot section ("SF2D").</summary>
     public const int SoftSectionId = 0x53463244;
 
-    // Version 1 has no tearing, plasticity or surface switch. Version 2 (written only while a body uses one of them, so other worlds keep their bytes) adds per body the new definition fields and the broken edges after
-    // the definition, and after the targets a flag for the rest values plasticity changed, followed by them.
+    // Version 1 has no tearing, plasticity or surface switch and no net speed. Version 2 (always written) adds per body the new definition fields and the broken edges after the definition, the smoothed net speed after
+    // the sleep time, and after the targets a flag for the rest values plasticity changed, followed by them.
     private const int SoftSectionVersion = 2;
     private SoftSection? _softSection;
 
@@ -177,9 +177,9 @@ internal sealed partial class Engine2D
 
     private void WriteSoft(StateWriter w)
     {
-        bool v2 = false;
-        for (int i = 0; i < SoftHandles.HighWater && !v2; i++) { v2 = SoftHandles.IsLive(i) && (SoftData[i]!.Def.UsesNewState || SoftData[i]!.Broken.Length != 0 || SoftData[i]!.PlasticTouched); }
-        w.NamedInt32(v2 ? SoftSectionVersion : 1);
+        // Version 2 carries the smoothed net speed that decides sleep, so every world with a soft body writes it.
+        const bool v2 = true;
+        w.NamedInt32(SoftSectionVersion);
         w.NamedInt32(Opt.SoftSubsteps); w.NamedInt32(Opt.SoftIterations);
         w.DescribeTable("softbody");
         SoftHandles.Write(w);
@@ -213,6 +213,7 @@ internal sealed partial class Engine2D
             }
 
             w.NamedBool(d.Asleep); w.NamedSingle(d.SleepTime);
+            if (v2) { w.NamedSingle(d.StepSpeed2); }
             w.NamedDoubles(d.Pos); w.NamedDoubles(d.Prev); w.NamedSingles(d.Vel); w.NamedBytes(d.Pinned);
             w.NamedBool(d.HasTargets);
             if (d.HasTargets) { w.NamedBytes(d.TargetOn); w.NamedSingles(d.TargetMax); w.NamedDoubles(d.TargetPos); w.NamedDoubles(d.TargetPrev); }
@@ -289,6 +290,11 @@ internal sealed partial class Engine2D
             particles += d.N;
             if (particles > MaxSoftParticles) { throw r.Error("too many soft-body particles"); }
             d.Asleep = r.ReadBool(); d.SleepTime = r.ReadSingle();
+            if (version >= 2)
+            {
+                d.StepSpeed2 = r.ReadSingle();
+                if (!(d.StepSpeed2 >= 0f) || !float.IsFinite(d.StepSpeed2)) { throw r.Error("invalid soft-body net speed"); }
+            }
             if (!(d.SleepTime >= 0f) || !float.IsFinite(d.SleepTime)) { throw r.Error("invalid soft-body sleep time"); }
             r.ReadDoubles(d.Pos, true, "soft-body positions"); r.ReadDoubles(d.Prev, true, "soft-body previous positions"); r.ReadSingles(d.Vel, true, "soft-body velocities");
             r.ReadBytes(d.Pinned);

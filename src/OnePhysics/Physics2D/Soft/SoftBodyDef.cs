@@ -150,7 +150,6 @@ public sealed class SoftBodyDef
     /// <summary>Largest plastic strain: the rest length (area, offset) never leaves 1 ± this fraction of its original value. 0 to 10, default 0.5.</summary>
     public float PlasticMax { get; set; } = 0.5f;
 
-    internal bool UsesNewState => !SurfaceCollision || TearStrain != 0f || TearForce != 0f || PlasticYield != 0f || PlasticCreep != 0.5f || PlasticMax != 0.5f;
 
     /// <summary>Indices of particles held where they are (infinite mass) until released; see <see cref="SoftBody.SetPinned"/>. Default none. Indices must be valid and are de-duplicated.</summary>
     public IReadOnlyList<int>? PinnedParticles { get; set; }
