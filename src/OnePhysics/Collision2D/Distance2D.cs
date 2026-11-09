@@ -170,6 +170,7 @@ public static class Distance2D
     /// <param name="useRadii">When true the shapes' radii are included: the distance is between the rounded surfaces and the points lie on them (0 and a shared point when they overlap). When false the cores are compared.</param>
     public static DistanceOutput2D Compute(in Shape2D a, in Shape2D b, Transform2 xfBInA, ref SimplexCache2D cache, bool useRadii = true)
     {
+        if (a.Kind == ShapeKind2D.Empty || b.Kind == ShapeKind2D.Empty) { cache = default; return new DistanceOutput2D(default, default, float.PositiveInfinity, 0); }
         if (a._count == 0 || b._count == 0 || !xfBInA.IsFinite) { return default; }
         var vb = new Vec2x8();
         for (int i = 0; i < b._count; i++) { vb[i] = xfBInA.Apply(b._v[i]); }

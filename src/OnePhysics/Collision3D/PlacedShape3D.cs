@@ -23,6 +23,12 @@ public static class ShapeBounds3D
     /// <param name="max">Upper corner.</param>
     public static void Compute(in ConvexShape3D shape, in RigidTransformF pose, out Vector3F min, out Vector3F max)
     {
+        if (shape.Kind == ConvexShapeKind3D.Plane)
+        {
+            min = new Vector3F(-4194304f, -4194304f, -4194304f);
+            max = new Vector3F(4194304f, 4194304f, 4194304f);
+            return;
+        }
         Matrix3x3F m = pose.Rotation.ToMatrix();
         Vector3F t = pose.Translation;
         // The primitives are symmetric about their origin, so each half extent is the support function along a row of the rotation, in closed form (Ericson, Real-Time Collision Detection, 4.2.6:

@@ -154,6 +154,7 @@ internal sealed partial class Engine2D
     {
         h = default;
         h.Slot = s;
+        if (Geom[s].Kind == ShapeKind2D.Empty) { return false; }
         int b = Core.Shapes.Owner[s];
         FrameOf(b, out double ox, out double oy, out Rot2 bq);
         switch (q.Kind)

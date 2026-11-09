@@ -87,6 +87,9 @@ public sealed partial class ManifoldGenerator3D
             case ConvexShapeKind3D.TaperedCapsule:
                 ExtractAxis(f, z.Z, z.X, z.Y, u, thick);
                 return;
+            case ConvexShapeKind3D.TaperedCylinder:
+                ExtractFrustum(f, z.Z, z.X, z.Y, u, thick);
+                return;
             case ConvexShapeKind3D.Cylinder:
                 ExtractCylinder(f, z.X, z.Y, r, u, thick);
                 return;

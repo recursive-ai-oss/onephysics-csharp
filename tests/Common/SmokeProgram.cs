@@ -88,6 +88,8 @@ internal static class SmokeProgram
         ulong sk1 = SoftSkinned3DScene.Run(1, false), sk3 = SoftSkinned3DScene.Run(3, false), skr = SoftSkinned3DScene.Run(1, true);
         bool skSame = sk1 == sk3 && sk1 == skr;
         Console.WriteLine((skSame ? "OK softskinned3d " : "FAIL softskinned3d ") + sk1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        bool missingShapes = MissingShapes();
+        Console.WriteLine(missingShapes ? "OK shape-recipes" : "FAIL shape-recipes");
         bool bodyControls = BodyControls();
         Console.WriteLine(bodyControls ? "OK body-controls" : "FAIL body-controls");
         bool repairs = HostRepairs();
@@ -98,7 +100,32 @@ internal static class SmokeProgram
         Console.WriteLine((inspection ? "OK inspection " : "FAIL inspection ") + inspectionHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool machines = JointMachineSmoke.Run();
         Console.WriteLine(machines ? "OK machines" : "FAIL machines");
-        return repairs && bodyControls && machines && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+        return missingShapes && repairs && bodyControls && machines && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+    }
+
+    private static bool MissingShapes()
+    {
+        var a = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D();
+        a.AddHeightField([0,0,0,1,1,0]);
+        a.AddEmpty(at:new(5,4),mass:2,inertia:3);
+        a.AddCircle(0.3f,at:new(1,2));
+        var b = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D();
+        b.AddTriangle(new(-5,0,-5),new(0,0,5),new(5,0,-5));
+        b.AddTaperedCylinder(0.5f,0.2f,0.4f,at:new(0,2,0));
+        b.AddPlane(V3F.UnitY,at:new(0,-3,0));
+        var ma=a.CreateBody(new RecursiveAI.OnePhysics.Physics2D.BodyDef { Position=new(10,2) });
+        a.CreateShape(ma,Shape2D.CreateCircle(default,0.3f).WithCenterOfMassOffset(new(0,-0.1f)));
+        var mb=b.CreateBody(new RecursiveAI.OnePhysics.Physics3D.BodyDef { Position=new(10,2,0) });
+        b.CreateShape(mb,RecursiveAI.OnePhysics.Physics3D.ShapeSpec3D.Sphere(0.3f).WithCenterOfMassOffset(new(0,-0.1f,0)));
+        b.AddEmpty(at:new(5,4,0),mass:2,inertia:new V3F(3,4,5));
+        var ca=a.Fork(); var cb=b.Fork();
+        for(int i=0;i<60;i++)
+        {
+            a.Step(1f/60);b.Step(1f/60);ca.Step(1f/60);cb.Step(1f/60);
+            if(a.ComputeHash()!=ca.ComputeHash()||b.ComputeHash()!=cb.ComputeHash()) return false;
+        }
+        byte[] sa=a.Snapshot(),sb=b.Snapshot();a.Restore(sa);b.Restore(sb);
+        return sa.AsSpan().SequenceEqual(a.Snapshot()) && sb.AsSpan().SequenceEqual(b.Snapshot());
     }
 
     private static bool HostRepairs()
@@ -124,7 +151,6 @@ internal static class SmokeProgram
             good &= a.ComputeHash() == ca.ComputeHash() && b.ComputeHash() == cb.ComputeHash();
         }
         return good;
-
     }
 
     private static bool BodyControls()

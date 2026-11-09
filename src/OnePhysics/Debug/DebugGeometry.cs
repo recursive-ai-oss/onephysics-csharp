@@ -87,6 +87,15 @@ public enum DebugShapeKind : byte
 
     /// <summary>3D: like <see cref="Mesh"/> for a height field; holes have no triangles.</summary>
     HeightField = 10,
+
+    /// <summary>3D: bottom and top axis ends; Radius is the top radius and BottomRadius the bottom radius.</summary>
+    TaperedCylinder = 11,
+
+    /// <summary>No geometry or points; a placeholder shape.</summary>
+    Empty = 12,
+
+    /// <summary>3D infinite half-space: a surface point and that point plus the outward unit normal. Solid is opposite the normal.</summary>
+    Plane = 13,
 }
 
 /// <summary>How a body takes part right now.</summary>
