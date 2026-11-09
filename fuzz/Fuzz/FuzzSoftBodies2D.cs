@@ -270,6 +270,14 @@ internal static class FuzzSoftBodies2D
         def.PinnedParticles = new[] { 6, 7 };
         w.AddSoftBody(def);
         w.AddBox(new Vector2F(0.4f, 0.4f), new Vector2D(1.6, 2.4));
+        // A strip that tears and a plastic box with surface collision off, so the snapshot has the broken edges, split particles and plastic rest values of section version 2.
+        var strip = SoftBodyDef.Jelly(SoftBodyMesh.Box(new Vector2F(1.2f, 0.2f), 6, 1), new Vector2D(-4, 3));
+        strip.EdgeCompliance = 1e-4f; strip.TearStrain = 0.02f; strip.PlasticYield = 0.01f; strip.GravityScale = 0f; strip.Mass = 1f;
+        var torn = w.AddSoftBody(strip);
+        for (int i = 0; i < torn.ParticleCount; i++) { torn.ApplyImpulse(i, new Vector2F(torn.GetPosition(i).X < -4 ? -0.4f : 0.4f, 0f)); }
+        var plastic = SoftBodyDef.Jelly(SoftBodyMesh.Box(new Vector2F(0.5f, 0.5f), 2, 2), new Vector2D(7, 2));
+        plastic.PlasticYield = 0.02f; plastic.SurfaceCollision = false;
+        w.AddSoftBody(plastic);
         for (int s = 0; s < 30; s++) { w.StepChecked(1f / 60f); }
         return s_base = w.Snapshot();
     }

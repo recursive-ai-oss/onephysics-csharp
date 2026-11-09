@@ -57,6 +57,10 @@ internal sealed partial class SoftBodyData
         c.StepEnd = (int[])StepEnd.Clone();
         c.NbrStart = (int[])NbrStart.Clone();
         c.NbrList = (int[])NbrList.Clone();
+        c.EdgeOrder = (int[])EdgeOrder.Clone(); c.TetOrder = (int[])TetOrder.Clone();
+        c.EdgeRest0 = (float[])EdgeRest0.Clone(); c.TetRest0 = (float[])TetRest0.Clone();
+        c.Broken = (long[])Broken.Clone(); c.X0 = (float[])X0.Clone();
+        c.SurfTris = (int[])SurfTris.Clone(); c.SurfEdgeA = (int[])SurfEdgeA.Clone(); c.SurfEdgeB = (int[])SurfEdgeB.Clone(); c.SurfParticles = (int[])SurfParticles.Clone();
         c.Def = Def.Clone();
         return c;
     }

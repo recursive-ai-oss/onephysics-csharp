@@ -73,16 +73,19 @@ internal sealed partial class SoftBodyData
         var idx = new int[2 * ne];
         for (int i = 0; i < ne; i++) { idx[2 * i] = EdgeA[i]; idx[2 * i + 1] = EdgeB[i]; }
         var eo = Order(ne, 2, idx, out EdgeStart);
+        EdgeOrder = eo;
         SEdgeA = new int[ne]; SEdgeB = new int[ne]; SEdgeRest = new float[ne];
         for (int i = 0; i < ne; i++) { int s = eo[i]; SEdgeA[i] = EdgeA[s]; SEdgeB[i] = EdgeB[s]; SEdgeRest[i] = EdgeRest[s]; }
 
         idx = new int[2 * nb];
         for (int i = 0; i < nb; i++) { idx[2 * i] = BendA[i]; idx[2 * i + 1] = BendB[i]; }
         var bo = Order(nb, 2, idx, out BendStart);
+        BendOrder = bo;
         SBendA = new int[nb]; SBendB = new int[nb]; SBendRest = new float[nb];
         for (int i = 0; i < nb; i++) { int s = bo[i]; SBendA[i] = BendA[s]; SBendB[i] = BendB[s]; SBendRest[i] = BendRest[s]; }
 
         var to = Order(nt, 3, Tris, out TriStart);
+        TriOrder = to;
         STris = new int[3 * nt]; STriRest2 = new float[nt];
         for (int i = 0; i < nt; i++)
         {
@@ -265,6 +268,8 @@ internal sealed partial class SoftBodyData
             ClusterScale[c] = (float)reach;
             for (int k = 0; k < 25; k++) { ClusterAinv[25 * c + k] = (float)inv[k]; }
         }
+
+        ClusterQ0 = (float[])ClusterQ.Clone();
     }
 
     // Gauss-Jordan inverse of a 5 x 5 matrix with partial pivoting, in a fixed order. False when a pivot is too small relative to the matrix's largest entry (the cluster's rest shape has no quadratic fit).

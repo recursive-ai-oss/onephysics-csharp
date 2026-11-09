@@ -495,6 +495,27 @@ public readonly struct SoftBody : IEquatable<SoftBody>
         if (!float.IsFinite(v) || v < lo || v > hi) { throw new ArgumentOutOfRangeException(name, v, name + " is " + v.ToString("R", CultureInfo.InvariantCulture) + "; expected a finite value from " + lo.ToString("R", CultureInfo.InvariantCulture) + " to " + hi.ToString("R", CultureInfo.InvariantCulture) + "."); }
     }
 
+    /// <summary>Whether the body's surface stops other bodies' particles and edges (and its own, with self-collision); see <see cref="SoftBodyDef.SurfaceCollision"/>. Takes effect on the next step.</summary>
+    public bool SurfaceCollision { get => Resolve().Def.SurfaceCollision; set { using var replayMutation = _world?.RecordMutation("SoftBody.SurfaceCollision"); var d = Resolve(); d.Def.SurfaceCollision = value; WakeUp(); } }
+
+    /// <summary>Strain at which an edge tears (0 turns it off); see <see cref="SoftBodyDef.TearStrain"/>. Not available on a skinned body.</summary>
+    public float TearStrain { get => Resolve().Def.TearStrain; set { using var replayMutation = _world?.RecordMutation("SoftBody.TearStrain"); var d = Resolve(); Check(value, nameof(TearStrain), 0f, 100f); if (d.IsSkinned && value != 0f) { throw new SoftBodyException(SoftBodyError.InvalidDefinition, "a skinned body cannot tear", nameof(TearStrain)); } d.Def.TearStrain = value; WakeUp(); } }
+
+    /// <summary>Constraint force at which an edge tears, newtons (0 turns it off); see <see cref="SoftBodyDef.TearForce"/>. Not available on a skinned body.</summary>
+    public float TearForce { get => Resolve().Def.TearForce; set { using var replayMutation = _world?.RecordMutation("SoftBody.TearForce"); var d = Resolve(); Check(value, nameof(TearForce), 0f, 1e12f); if (d.IsSkinned && value != 0f) { throw new SoftBodyException(SoftBodyError.InvalidDefinition, "a skinned body cannot tear", nameof(TearForce)); } d.Def.TearForce = value; WakeUp(); } }
+
+    /// <summary>Plastic yield strain (0 turns plasticity off); see <see cref="SoftBodyDef.PlasticYield"/>.</summary>
+    public float PlasticYield { get => Resolve().Def.PlasticYield; set { using var replayMutation = _world?.RecordMutation("SoftBody.PlasticYield"); var d = Resolve(); Check(value, nameof(PlasticYield), 0f, 10f); d.Def.PlasticYield = value; WakeUp(); } }
+
+    /// <summary>Fraction of the strain beyond the yield strain the rest shape takes up each step, 0 to 1.</summary>
+    public float PlasticCreep { get => Resolve().Def.PlasticCreep; set { using var replayMutation = _world?.RecordMutation("SoftBody.PlasticCreep"); var d = Resolve(); Check(value, nameof(PlasticCreep), 0f, 1f); d.Def.PlasticCreep = value; } }
+
+    /// <summary>Largest plastic strain, 0 to 10.</summary>
+    public float PlasticMax { get => Resolve().Def.PlasticMax; set { using var replayMutation = _world?.RecordMutation("SoftBody.PlasticMax"); var d = Resolve(); Check(value, nameof(PlasticMax), 0f, 10f); d.Def.PlasticMax = value; } }
+
+    /// <summary>Number of edges that have torn and still hold two sides together without a constraint (edges whose two sides came apart are free edges again and are not counted).</summary>
+    public int BrokenEdgeCount => Resolve().Broken.Length;
+
     // ---- raw tier: the storage itself, valid until the next step, restore or destroy
 
     /// <summary>The raw particle positions: x, y, z doubles per particle, world coordinates. Read-only; use <see cref="SetPosition"/> to move a particle.</summary>
