@@ -250,12 +250,16 @@ internal sealed partial class Engine2D : ICharacterExtHost
     /// Sets the inverse masses of a rod's particles from its own mass plus the characters holding it: a holder's mass is split between the two particles of its grip by the grip's fraction.
     /// The rod then swings, stretches and bends as the combined system, with no extra force or constraint. Pinned particles stay pinned.
     /// </summary>
+    private float[] _gripAdded = new float[64];
+
     private void RefreshGripMasses(int rod)
     {
         var d = Rods.Data[rod]!;
         var ext = Extensions;
         int n = d.PositionData.Length;
-        var added = new float[n];
+        if (_gripAdded.Length < n) { _gripAdded = new float[Math.Max(n, 2 * _gripAdded.Length)]; }
+        var added = _gripAdded;
+        Array.Clear(added, 0, n);
         for (int c = 0; c < CharHandles.HighWater; c++)
         {
             if (!CharHandles.IsLive(c) || c >= ext.States.Length) { continue; }
