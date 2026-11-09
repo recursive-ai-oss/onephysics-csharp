@@ -117,6 +117,7 @@ internal sealed partial class ActuatorStore
             b.Throttle = r.ReadSingle(); b.Steer = r.ReadSingle(); b.Rudder = r.ReadSingle();
             b.Spec = BoatSpec.Read(r, planar);
             b.PropOutput = ReadOutputs(r, b.Spec.Propellers.Length);
+            b.FoilForce = new Vector3F[b.Spec.Foils.Length]; b.FoilChord = new Vector3F[b.Spec.Foils.Length]; b.FoilNormal = new Vector3F[b.Spec.Foils.Length]; b.PropForce = new Vector3F[b.Spec.Propellers.Length];
             if (!(Math.Abs(b.Throttle) <= 1f) || !(Math.Abs(b.Steer) <= 1f) || !(Math.Abs(b.Rudder) <= 1.2f)) { throw r.Error("invalid boat inputs"); }
             boats[i] = b;
         }
@@ -131,6 +132,7 @@ internal sealed partial class ActuatorStore
             h.Lift = r.ReadSingle(); h.Throttle = r.ReadSingle(); h.Steer = r.ReadSingle();
             h.Spec = HoverSpec.Read(r, planar);
             h.ThrusterOutput = ReadOutputs(r, h.Spec.Thrusters.Length);
+            h.ThrusterForce = new Vector3F[h.Spec.Thrusters.Length];
             if (!(h.Lift >= 0f && h.Lift <= 1f) || !(Math.Abs(h.Throttle) <= 1f) || !(Math.Abs(h.Steer) <= 1f)) { throw r.Error("invalid hovercraft inputs"); }
             h.FanHeight = new float[h.Spec.Fans.Length]; h.FanForce = new float[h.Spec.Fans.Length];
             for (int k = 0; k < h.FanHeight.Length; k++) { h.FanHeight[k] = h.Spec.Fans[k].Range; }
@@ -208,7 +210,7 @@ internal sealed partial class ActuatorStore
         for (int i = 0; i < Boats.Length; i++)
         {
             var b = src.Boats[i];
-            if (b != null) { Boats[i] = new BoatState { Body = b.Body, BodyGen = b.BodyGen, Spec = b.Spec.Clone(), Throttle = b.Throttle, Steer = b.Steer, Rudder = b.Rudder, PropOutput = (float[])b.PropOutput.Clone(), LastHullForce = b.LastHullForce }; }
+            if (b != null) { Boats[i] = new BoatState { Body = b.Body, BodyGen = b.BodyGen, Spec = b.Spec.Clone(), Throttle = b.Throttle, Steer = b.Steer, Rudder = b.Rudder, PropOutput = (float[])b.PropOutput.Clone(), LastHullForce = b.LastHullForce, FoilForce = (Vector3F[])b.FoilForce.Clone(), FoilChord = (Vector3F[])b.FoilChord.Clone(), FoilNormal = (Vector3F[])b.FoilNormal.Clone(), PropForce = (Vector3F[])b.PropForce.Clone() }; }
         }
 
         Hovers = new HoverState?[src.Hovers.Length];
@@ -220,7 +222,7 @@ internal sealed partial class ActuatorStore
                 Hovers[i] = new HoverState
                 {
                     Body = h.Body, BodyGen = h.BodyGen, Spec = h.Spec.Clone(), Lift = h.Lift, Throttle = h.Throttle, Steer = h.Steer,
-                    ThrusterOutput = (float[])h.ThrusterOutput.Clone(), FanHeight = (float[])h.FanHeight.Clone(), FanForce = (float[])h.FanForce.Clone(),
+                    ThrusterOutput = (float[])h.ThrusterOutput.Clone(), ThrusterForce = (Vector3F[])h.ThrusterForce.Clone(), FanHeight = (float[])h.FanHeight.Clone(), FanForce = (float[])h.FanForce.Clone(),
                 };
             }
         }
@@ -229,7 +231,7 @@ internal sealed partial class ActuatorStore
         for (int i = 0; i < Surfaces.Length; i++)
         {
             var st = src.Surfaces[i];
-            if (st != null) { Surfaces[i] = new SurfaceState { Spec = st.Spec.Clone(), ShapeGen = st.ShapeGen, AutoArea = st.AutoArea }; }
+            if (st != null) { Surfaces[i] = new SurfaceState { Spec = st.Spec.Clone(), ShapeGen = st.ShapeGen, AutoArea = st.AutoArea, LastForce = st.LastForce }; }
         }
 
         _surfaceCount = src._surfaceCount;

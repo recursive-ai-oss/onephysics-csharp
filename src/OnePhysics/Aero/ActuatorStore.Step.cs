@@ -124,7 +124,8 @@ internal sealed partial class ActuatorStore
             var spec = st.Spec;
             var centre = V3.Add(_host.ShapeOffset(s), _host.ShapeToBody(s, spec.Center));
             var arm = Arm(c, centre);
-            if (spec.Kind == AeroSurfaceKind.Bluff) { StepBluff(c, s, spec, arm, dt); continue; }
+            st.LastForce = default;
+            if (spec.Kind == AeroSurfaceKind.Bluff) { st.LastForce = StepBluff(c, s, spec, arm, dt); continue; }
             float area = spec.Area;
             if (!(area > 0f))
             {
@@ -135,7 +136,7 @@ internal sealed partial class ActuatorStore
             if (!(area > 0f)) { continue; }
             var chord = _host.Rotate(b, _host.ShapeToBody(s, spec.Chord));
             var normal = _host.Rotate(b, _host.ShapeToBody(s, spec.Normal));
-            ApplyLifting(c, spec, area, chord, normal, arm, dt);
+            st.LastForce = ApplyLifting(c, spec, area, chord, normal, arm, dt);
         }
     }
 
@@ -151,10 +152,10 @@ internal sealed partial class ActuatorStore
         return true;
     }
 
-    private void ApplyLifting(in BodyCtx c, SurfaceSpec spec, float area, Vector3F chordW, Vector3F normalW, Vector3F arm, float dt)
+    private Vector3F ApplyLifting(in BodyCtx c, SurfaceSpec spec, float area, Vector3F chordW, Vector3F normalW, Vector3F arm, float dt)
     {
         var at = At(c, arm);
-        if (!Medium(spec.Medium, at, float.Sqrt(area), out float rho, out var flow)) { return; }
+        if (!Medium(spec.Medium, at, float.Sqrt(area), out float rho, out var flow)) { return default; }
         var u = V3.Sub(flow, PointVelocity(c, arm));
         float uc = V3.Dot(u, chordW), un = V3.Dot(u, normalW);
         spec.Coef.Force(uc, un, area, rho, out float fc, out float fn);
@@ -162,28 +163,30 @@ internal sealed partial class ActuatorStore
         float speed = float.Sqrt(uc * uc + un * un);
         f = CapAt(c, f, arm, speed, dt);
         Apply(c, f, arm, default);
+        return f;
     }
 
-    private void StepBluff(in BodyCtx c, int shape, SurfaceSpec spec, Vector3F arm, float dt)
+    private Vector3F StepBluff(in BodyCtx c, int shape, SurfaceSpec spec, Vector3F arm, float dt)
     {
         var at = At(c, arm);
         float size = spec.Area > 0f ? float.Sqrt(spec.Area) : 1f;
-        if (!Medium(spec.Medium, at, size, out float rho, out var flow)) { return; }
+        if (!Medium(spec.Medium, at, size, out float rho, out var flow)) { return default; }
         var u = V3.Sub(flow, PointVelocity(c, arm));
         float speed = V3.Len(u);
-        if (!(speed > 1e-6f)) { return; }
+        if (!(speed > 1e-6f)) { return default; }
         float area = spec.Area;
         if (!(area > 0f))
         {
             // The silhouette seen along the flow, in the body's frame.
             var dir = _host.RotateInverse(c.B, V3.Mul(u, 1f / speed));
             area = _host.SilhouetteArea(shape, dir);
-            if (!(area > 0f)) { return; }
+            if (!(area > 0f)) { return default; }
         }
 
         float k = 0.5f * rho * spec.Coef.MinDrag * area * speed;
         var f = CapAt(c, V3.Mul(u, k), arm, speed, dt);
         Apply(c, f, arm, default);
+        return f;
     }
 
     /// <summary>
@@ -212,6 +215,7 @@ internal sealed partial class ActuatorStore
 
     private void StepThruster(ThrusterState t, float dt)
     {
+        t.LastForce = default;
         if (!Live(t.Body, t.BodyGen)) { return; }
         var bodies = _host.Core.Bodies;
         bool commanded = t.Throttle != 0f || t.Output != 0f;
@@ -303,6 +307,8 @@ internal sealed partial class ActuatorStore
 
     private void StepBoat(BoatState s, float dt)
     {
+        s.LastHullForce = default;
+        Array.Clear(s.FoilForce); Array.Clear(s.PropForce);
         if (!Live(s.Body, s.BodyGen)) { return; }
         var bodies = _host.Core.Bodies;
         bool commanded = s.Throttle != 0f || s.Steer != 0f;
@@ -364,13 +370,14 @@ internal sealed partial class ActuatorStore
                 normalB = V3.Rotate(normalB, steerAxis, sa, ca);
             }
 
-            ApplyLifting(c, foil, foil.Area, _host.Rotate(s.Body, chordB), _host.Rotate(s.Body, normalB), Arm(c, foil.Center), dt);
+            s.FoilForce[i] = ApplyLifting(c, foil, foil.Area, _host.Rotate(s.Body, chordB), _host.Rotate(s.Body, normalB), Arm(c, foil.Center), dt);
+            s.FoilChord[i] = chordB; s.FoilNormal[i] = normalB;
         }
 
         for (int i = 0; i < spec.Propellers.Length; i++)
         {
             float o = s.PropOutput[i];
-            Drive(c, spec.Propellers[i], ref o, s.Throttle, s.Steer, 0f, dt);
+            s.PropForce[i] = Drive(c, spec.Propellers[i], ref o, s.Throttle, s.Steer, 0f, dt);
             s.PropOutput[i] = o;
         }
     }
@@ -387,6 +394,7 @@ internal sealed partial class ActuatorStore
 
     private void StepHover(HoverState s, float dt)
     {
+        Array.Clear(s.FanForce); Array.Clear(s.ThrusterForce);
         if (!Live(s.Body, s.BodyGen)) { return; }
         var bodies = _host.Core.Bodies;
         bool commanded = s.Lift > 0f || s.Throttle != 0f;
@@ -487,7 +495,7 @@ internal sealed partial class ActuatorStore
         for (int i = 0; i < spec.Thrusters.Length; i++)
         {
             float o = s.ThrusterOutput[i];
-            Drive(c, spec.Thrusters[i], ref o, s.Throttle, s.Steer, 0f, dt);
+            s.ThrusterForce[i] = Drive(c, spec.Thrusters[i], ref o, s.Throttle, s.Steer, 0f, dt);
             s.ThrusterOutput[i] = o;
         }
     }

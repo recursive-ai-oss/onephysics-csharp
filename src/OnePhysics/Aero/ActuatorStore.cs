@@ -83,6 +83,7 @@ internal sealed class BoatState
     public float Throttle, Steer, Rudder;
     public float[] PropOutput = Array.Empty<float>();
     public Vector3F LastHullForce;   // not saved
+    public Vector3F[] FoilForce = Array.Empty<Vector3F>(), FoilChord = Array.Empty<Vector3F>(), FoilNormal = Array.Empty<Vector3F>(), PropForce = Array.Empty<Vector3F>();   // not saved
 }
 
 internal sealed class HoverState
@@ -93,6 +94,7 @@ internal sealed class HoverState
     public float[] ThrusterOutput = Array.Empty<float>();
     public float[] FanHeight = Array.Empty<float>();   // distance to the surface along each fan's axis as of the last step, or the range when none; not saved
     public float[] FanForce = Array.Empty<float>();    // not saved
+    public Vector3F[] ThrusterForce = Array.Empty<Vector3F>();   // not saved
 }
 
 internal sealed class SurfaceState
@@ -100,6 +102,7 @@ internal sealed class SurfaceState
     public SurfaceSpec Spec = new();
     public int ShapeGen;
     public float AutoArea = float.NaN;   // planform area derived from the shape; not saved
+    public Vector3F LastForce;           // not saved
 }
 
 /// <summary>
@@ -191,10 +194,16 @@ internal sealed partial class ActuatorStore : ISnapshotSection
         if (!_host.Planar) { BindSteerAxis(spec.Propellers, spec.Up); }
         int i = BoatHandles.Allocate();
         if (i >= Boats.Length) { Array.Resize(ref Boats, Math.Max(i + 1, Boats.Length * 2)); }
-        Boats[i] = new BoatState { Body = body.Index, BodyGen = body.Generation, Spec = spec, PropOutput = new float[spec.Propellers.Length] };
+        Boats[i] = NewBoat(body, spec, new float[spec.Propellers.Length]);
         Index(ref _boatOfBody, b, i);
         return i;
     }
+
+    private static BoatState NewBoat(BodyHandle body, BoatSpec spec, float[] outputs) => new()
+    {
+        Body = body.Index, BodyGen = body.Generation, Spec = spec, PropOutput = outputs,
+        FoilForce = new Vector3F[spec.Foils.Length], FoilChord = new Vector3F[spec.Foils.Length], FoilNormal = new Vector3F[spec.Foils.Length], PropForce = new Vector3F[spec.Propellers.Length],
+    };
 
     public void DestroyBoat(int i)
     {
@@ -212,7 +221,7 @@ internal sealed partial class ActuatorStore : ISnapshotSection
         int i = HoverHandles.Allocate();
         if (i >= Hovers.Length) { Array.Resize(ref Hovers, Math.Max(i + 1, Hovers.Length * 2)); }
         var h = new HoverState { Body = body.Index, BodyGen = body.Generation, Spec = spec };
-        h.ThrusterOutput = new float[spec.Thrusters.Length]; h.FanHeight = new float[spec.Fans.Length]; h.FanForce = new float[spec.Fans.Length];
+        h.ThrusterOutput = new float[spec.Thrusters.Length]; h.ThrusterForce = new Vector3F[spec.Thrusters.Length]; h.FanHeight = new float[spec.Fans.Length]; h.FanForce = new float[spec.Fans.Length];
         for (int k = 0; k < h.FanHeight.Length; k++) { h.FanHeight[k] = spec.Fans[k].Range; }
         Hovers[i] = h;
         Index(ref _hoverOfBody, b, i);
