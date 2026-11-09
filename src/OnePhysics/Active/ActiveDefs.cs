@@ -142,22 +142,22 @@ public sealed class BalanceDef
 public sealed class WalkerDef
 {
     /// <summary>Duration of one step (one leg's swing), s. Default 0.42.</summary>
-    public float StepTime { get; set; } = 0.42f;
+    public float StepTime { get; set; } = 0.47f;
 
     /// <summary>Peak swing-foot clearance above the straight line from lift-off to landing, m. Default 0.08.</summary>
-    public float StepHeight { get; set; } = 0.081f;
+    public float StepHeight { get; set; } = 0.0867f;
 
     /// <summary>Distance between the two feet sideways at touchdown, m (3D only; 2D ignores it). Default 0.2.</summary>
     public float StepWidth { get; set; } = 0.2f;
 
     /// <summary>Hip height as a fraction of the straight leg length. Within (0.5, 1). Default 0.95.</summary>
-    public float HipHeight { get; set; } = 0.885f;
+    public float HipHeight { get; set; } = 0.8785f;
 
     /// <summary>The fastest commanded speed, m/s; a command above it is clamped. Default 2.5.</summary>
     public float MaxSpeed { get; set; } = 2.5f;
 
     /// <summary>Speed feedback on the foot placement: the landing point moves by this times (speed − commanded speed) / ω₀ (1 is the capture point). At least 0. Default 1.2.</summary>
-    public float SpeedFeedback { get; set; } = 1.41f;
+    public float SpeedFeedback { get; set; } = 0.625f;
 
     /// <summary>How much of the capture point's error at the end of the swing the foot placement corrects: 1 puts the foot where the fall would stop exactly (and so passes every measurement error on at the pendulum's growth rate), less is gentler. Within 0..2. Default 1.</summary>
     public float PlacementGain { get; set; } = 1f;
@@ -167,6 +167,9 @@ public sealed class WalkerDef
 
     /// <summary>Natural frequency, Hz, of the torso, head and arms while walking. Within 0..1000. Default 8.</summary>
     public float UpperBodyHertz { get; set; } = 8f;
+
+    /// <summary>The fastest a walking target may move, rad/s (replaces <see cref="ActiveRagdollDef.TargetSlew"/> while walking). Within 0.1..1000. Default 17.2.</summary>
+    public float TargetSlew { get; set; } = 17.2f;
 
     /// <summary>Multiplier on every joint's torque limit while walking (on top of <see cref="ActiveRagdollDef.TorqueScale"/>): a walker needs more than a standing figure. Within 0..1000. Default 1.74.</summary>
     public float TorqueScale { get; set; } = 1.74f;
@@ -202,6 +205,7 @@ public sealed class WalkerDef
         BalanceDef.Check(LateralFeedback, 0f, 20f, nameof(LateralFeedback));
         BalanceDef.Check(PlacementGain, 0f, 2f, nameof(PlacementGain));
         BalanceDef.Check(SwingLegHertz, 0f, 1000f, nameof(SwingLegHertz));
+        BalanceDef.Check(TargetSlew, 0.1f, 1000f, nameof(TargetSlew));
         BalanceDef.Check(TorqueScale, 0f, 1000f, nameof(TorqueScale));
         BalanceDef.Check(UpperBodyHertz, 0f, 1000f, nameof(UpperBodyHertz));
         BalanceDef.Check(TorsoLean, -1f, 1f, nameof(TorsoLean));

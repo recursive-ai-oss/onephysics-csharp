@@ -257,15 +257,22 @@ internal sealed partial class Engine3D
                 {
                     // Rate-limit the controller's target; start from where the joint is.
                     if (a.Driven[i] != 1) { a.Cur[i] = ActualRelative(a, rg, i); }
-                    a.Cur[i] = Approach(a.Cur[i], target, a.Def.TargetSlew * dt);
+                    a.Cur[i] = Approach(a.Cur[i], target, (a.Mode == (byte)ActiveMode.Walk ? a.Def.Walker.TargetSlew : a.Def.TargetSlew) * dt);
                     target = a.Cur[i];
                 }
 
                 bool leg = i == b0.LeftThigh || i == b0.LeftShin || i == b0.LeftFoot || i == b0.RightThigh || i == b0.RightShin || i == b0.RightFoot;
                 bool load = (i == b0.LeftFoot || i == b0.RightFoot) && a.TorqueMode[i];
                 float torqueScale = 1f;
-                if (a.SwingLeg >= 0 && (i == b0.Leg(a.SwingLeg, 0) || i == b0.Leg(a.SwingLeg, 1) || i == b0.Leg(a.SwingLeg, 2))) { torqueScale = a.Def.SwingTorqueScale; }
-                DrivePose(a, rg, i, target, strength, leg ? a.Def.LegPdHertz : a.Def.PdHertz, a.ISub[i], torqueScale, load);
+                bool swingLegPart = a.SwingLeg >= 0 && (i == b0.Leg(a.SwingLeg, 0) || i == b0.Leg(a.SwingLeg, 1) || i == b0.Leg(a.SwingLeg, 2));
+                if (swingLegPart) { torqueScale = a.Def.SwingTorqueScale; }
+                // While walking the legs that carry the body are driven softly, the swinging leg and the upper body have their own gains (see the 2D engine).
+                bool walkingNow = a.Mode == (byte)ActiveMode.Walk;
+                float hz = !leg ? (walkingNow ? a.Def.Walker.UpperBodyHertz : a.Def.PdHertz)
+                    : walkingNow ? ((a.SwingLeg >= 0 && !swingLegPart) ? a.Def.LoadPdHertz : a.Def.Walker.SwingLegHertz) : a.Def.LegPdHertz;
+                // A leg that carries the body is stiff against the whole weight it holds: the drive is designed for the inertia of everything else about the joint (the planted ankle turns the whole body above it).
+                float inertia = (walkingNow && leg && !swingLegPart) ? a.ILoad[i] : a.ISub[i];
+                DrivePose(a, rg, i, target, strength, hz, inertia, torqueScale * (walkingNow ? a.Def.Walker.TorqueScale : 1f), load);
                 a.Driven[i] = 1;
             }
             else { ReleaseJoint(rg, i); a.Driven[i] = 0; }
@@ -312,6 +319,7 @@ internal sealed partial class Engine3D
         float kp = inertia * w * w * strength, kd = 2f * a.Def.PdDampingRatio * inertia * w * strength;
         if (torqueSource) { kp = TorqueSourceStiffness * strength; kd = TorqueSourceDamping * strength; }
         float cap = rg.Def.Parts[part].MaxTorque * a.Def.TorqueScale * strength * torqueScale;
+        if (BipedGait.Dbg && part == a.Def.Bones.LeftFoot || BipedGait.Dbg && part == a.Def.Bones.LeftShin || BipedGait.Dbg && part == a.Def.Bones.LeftThigh) { Console.Error.WriteLine($"   drive part{part} inertia={inertia:F2} hz={hertz:F2} kp={kp:F0} kd={kd:F0} cap={cap:F0} strength={strength:F2}"); }
         if (!(cap > 0f) || !float.IsFinite(kp) || !float.IsFinite(kd)) { ReleaseJoint(rg, part); return; }
         jd.Flags |= JointData3D.FlagDrive;
         jd.DriveTarget = target; jd.Length = kp; jd.Ratio = kd; jd.MaxMotor = cap;
@@ -526,7 +534,7 @@ internal sealed partial class Engine3D
             ref var lg = ref (k == 0 ? ref inp.Left : ref inp.Right);
             lg.HipF = Fo(hip.X - px, hip.Z - pz); lg.HipL = Le(hip.X - px, hip.Z - pz); lg.HipU = (float)(hip.Y - py);
             lg.AnkleF = Fo(ankle.X - px, ankle.Z - pz); lg.AnkleL = Le(ankle.X - px, ankle.Z - pz); lg.AnkleU = (float)(ankle.Y - py);
-            lg.ThighRho = partRho[th]; lg.ThighPhi = partPhi[th]; lg.FootRho = partRho[ft]; lg.FootPhi = partPhi[ft];
+            lg.ThighRho = partRho[th]; lg.ThighPhi = partPhi[th]; lg.FootRho = partRho[ft]; lg.FootPhi = partPhi[ft]; lg.ShinRho = partRho[sh]; lg.ShinPhi = partPhi[sh];
             bool hit = GroundRay(a, r, ankle.X, ankle.Y + 0.05, ankle.Z, a.AnkleHeight + 0.45f, out double gy, out Vector3F n);
             lg.Grounded = hit && ankle.Y - gy <= a.AnkleHeight + 0.04f;
             lg.GroundU = (float)((hit ? gy : ankle.Y - a.AnkleHeight) - py);

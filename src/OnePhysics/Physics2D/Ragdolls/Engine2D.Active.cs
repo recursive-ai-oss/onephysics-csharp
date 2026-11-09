@@ -244,7 +244,7 @@ internal sealed partial class Engine2D
                 {
                     // Rate-limit the controller's target; start from where the joint is.
                     if (a.Driven[i] != 1) { a.Cur[i] = RagdollJointAngle(rg.Joint[i]); }
-                    float step = a.Def.TargetSlew * dt;
+                    float step = (a.Mode == (byte)ActiveMode.Walk ? a.Def.Walker.TargetSlew : a.Def.TargetSlew) * dt;
                     float dlt = WrapPi(target - a.Cur[i]);
                     a.Cur[i] += dlt > step ? step : dlt < -step ? -step : dlt;
                     target = a.Cur[i];

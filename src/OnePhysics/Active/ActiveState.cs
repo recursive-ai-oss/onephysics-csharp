@@ -31,13 +31,13 @@ internal abstract class ActiveCommon
         w.NamedSingle(b.CaptureGain); w.NamedSingle(b.StepTrigger); w.NamedSingle(b.StepTime); w.NamedSingle(b.StepHeight); w.NamedSingle(b.StandHeight); w.NamedSingle(b.MaxStepReach);
         var k = d.Walker;
         w.NamedSingle(k.StepTime); w.NamedSingle(k.StepHeight); w.NamedSingle(k.StepWidth); w.NamedSingle(k.HipHeight); w.NamedSingle(k.MaxSpeed); w.NamedSingle(k.SpeedFeedback);
-        w.NamedSingle(k.LateralFeedback); w.NamedSingle(k.PlacementGain); w.NamedSingle(k.SwingLegHertz); w.NamedSingle(k.UpperBodyHertz); w.NamedSingle(k.TorqueScale); w.NamedSingle(k.TorsoLean); w.NamedSingle(k.ArmSwing); w.NamedSingle(k.StepTimeout); w.NamedSingle(k.ShiftTime);
+        w.NamedSingle(k.LateralFeedback); w.NamedSingle(k.PlacementGain); w.NamedSingle(k.SwingLegHertz); w.NamedSingle(k.UpperBodyHertz); w.NamedSingle(k.TorqueScale); w.NamedSingle(k.TargetSlew); w.NamedSingle(k.TorsoLean); w.NamedSingle(k.ArmSwing); w.NamedSingle(k.StepTimeout); w.NamedSingle(k.ShiftTime);
         var o = d.Bones;
         w.NamedInt32(o.Pelvis); w.NamedInt32(o.Torso); w.NamedInt32(o.Head); w.NamedInt32(o.LeftThigh); w.NamedInt32(o.LeftShin); w.NamedInt32(o.LeftFoot);
         w.NamedInt32(o.RightThigh); w.NamedInt32(o.RightShin); w.NamedInt32(o.RightFoot);
     }
 
-    public const int DefBytes = 7 * 4 + 1 + 4 * 4 + 6 * 4 + 15 * 4 + 9 * 4;
+    public const int DefBytes = 7 * 4 + 1 + 4 * 4 + 6 * 4 + 16 * 4 + 9 * 4;
 
     public static ActiveRagdollDef ReadDef(StateReader r, int parts)
     {
@@ -49,7 +49,7 @@ internal abstract class ActiveCommon
         var k = new WalkerDef
         {
             StepTime = r.ReadSingle(), StepHeight = r.ReadSingle(), StepWidth = r.ReadSingle(), HipHeight = r.ReadSingle(), MaxSpeed = r.ReadSingle(), SpeedFeedback = r.ReadSingle(),
-            LateralFeedback = r.ReadSingle(), PlacementGain = r.ReadSingle(), SwingLegHertz = r.ReadSingle(), UpperBodyHertz = r.ReadSingle(), TorqueScale = r.ReadSingle(), TorsoLean = r.ReadSingle(), ArmSwing = r.ReadSingle(), StepTimeout = r.ReadSingle(), ShiftTime = r.ReadSingle(),
+            LateralFeedback = r.ReadSingle(), PlacementGain = r.ReadSingle(), SwingLegHertz = r.ReadSingle(), UpperBodyHertz = r.ReadSingle(), TorqueScale = r.ReadSingle(), TargetSlew = r.ReadSingle(), TorsoLean = r.ReadSingle(), ArmSwing = r.ReadSingle(), StepTimeout = r.ReadSingle(), ShiftTime = r.ReadSingle(),
         };
         var o = new BipedBones
         {
@@ -71,7 +71,7 @@ internal abstract class ActiveCommon
         w.NamedBool(HasPose); w.NamedBool(RootDriven);
         w.NamedByte(Gait.Phase); w.NamedByte(Gait.LastSwing); w.NamedInt32(Gait.Steps); w.NamedSingle(Gait.Time);
         w.NamedSingle(Gait.LiftF); w.NamedSingle(Gait.LiftL); w.NamedSingle(Gait.LiftU); w.NamedSingle(Gait.PlaceF); w.NamedSingle(Gait.PlaceL);
-        w.NamedSingle(Gait.FVelF); w.NamedSingle(Gait.FVelL); w.NamedSingle(Gait.Height); w.NamedByte(Gait.Primed);
+        w.NamedSingle(Gait.FVelF); w.NamedSingle(Gait.FVelL); w.NamedSingle(Gait.Height); w.NamedSingle(Gait.BiasF); w.NamedSingle(Gait.BiasL); w.NamedSingle(Gait.SumF); w.NamedSingle(Gait.SumL); w.NamedSingle(Gait.SumT); w.NamedByte(Gait.Primed);
     }
 
     public void ReadCommon(StateReader r, int parts)
@@ -93,9 +93,9 @@ internal abstract class ActiveCommon
         HasPose = r.ReadBool(); RootDriven = r.ReadBool();
         Gait.Phase = r.ReadByte(); Gait.LastSwing = r.ReadByte(); Gait.Steps = r.ReadInt32(); Gait.Time = r.ReadSingle();
         Gait.LiftF = r.ReadSingle(); Gait.LiftL = r.ReadSingle(); Gait.LiftU = r.ReadSingle(); Gait.PlaceF = r.ReadSingle(); Gait.PlaceL = r.ReadSingle();
-        Gait.FVelF = r.ReadSingle(); Gait.FVelL = r.ReadSingle(); Gait.Height = r.ReadSingle(); Gait.Primed = r.ReadByte();
+        Gait.FVelF = r.ReadSingle(); Gait.FVelL = r.ReadSingle(); Gait.Height = r.ReadSingle(); Gait.BiasF = r.ReadSingle(); Gait.BiasL = r.ReadSingle(); Gait.SumF = r.ReadSingle(); Gait.SumL = r.ReadSingle(); Gait.SumT = r.ReadSingle(); Gait.Primed = r.ReadByte();
         if (Gait.Phase > (byte)GaitPhase.SwingRight || Gait.LastSwing > 1 || Gait.Steps < 0 || !float.IsFinite(Gait.Time) || !float.IsFinite(Gait.LiftF) || !float.IsFinite(Gait.LiftL) || !float.IsFinite(Gait.LiftU)
-            || !float.IsFinite(Gait.PlaceF) || !float.IsFinite(Gait.PlaceL) || !float.IsFinite(Gait.FVelF) || !float.IsFinite(Gait.FVelL) || !(Gait.Height >= 0f && Gait.Height < 1f) || Gait.Primed > 1 || Gait.Time < 0f) { throw r.Error("invalid active ragdoll gait state"); }
+            || !float.IsFinite(Gait.PlaceF) || !float.IsFinite(Gait.PlaceL) || !float.IsFinite(Gait.FVelF) || !float.IsFinite(Gait.FVelL) || !(Gait.Height >= 0f && Gait.Height < 1f) || !float.IsFinite(Gait.BiasF) || !float.IsFinite(Gait.BiasL) || !float.IsFinite(Gait.SumF) || !float.IsFinite(Gait.SumL) || !(Gait.SumT >= 0f) || !float.IsFinite(Gait.SumT) || Gait.Primed > 1 || Gait.Time < 0f) { throw r.Error("invalid active ragdoll gait state"); }
     }
 
     public void CloneCommonInto(ActiveCommon c)
