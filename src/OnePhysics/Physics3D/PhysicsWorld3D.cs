@@ -176,6 +176,7 @@ public sealed partial class PhysicsWorld3D
         _engine.EndBodyControls();
         _engine.EndActive();
         _engine.StepCharacterAbilities();
+        _engine.StepCharacterWater();
         _engine.ReconcileJoints();
         UpdateInspectionCounters();
         InvalidateQueryPad();
@@ -187,6 +188,7 @@ public sealed partial class PhysicsWorld3D
             if (_handlers.Count > 0 || _jointHandlers.Count > 0) { DispatchEvents(); }
             if (_engine.SoftTearEvents.Length > 0) { DispatchSoftTears(); }
             if (_engine.Water.Events.Count > 0) { DispatchWaterEvents(); }
+            if (_engine.CharacterWaterEvents.Count > 0) { DispatchCharacterWaterEvents(); }
         }
         else if (_jointHandlers.Count > 0) { RetireBrokenJointHandlers(); }
         EndDestruction(dt);

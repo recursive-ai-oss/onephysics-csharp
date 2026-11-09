@@ -146,6 +146,7 @@ internal sealed partial class Engine3D
         var def = CharDef[ch];
         int b = CharBody[ch];
         var bodies = Core.Bodies;
+        if (SwimRigid(ch, ref displacement, dt)) { return new MoveResult3D(CharacterContact.None, new Vector3F(CharVx[ch], CharVy[ch], CharVz[ch]) * dt, 0); }
         var pp = bodies.PositionOf(b);
         var c = MakeMoverCtx(in def, b);
         var pos = new Vector3D(pp[0], pp[1], pp[2]);

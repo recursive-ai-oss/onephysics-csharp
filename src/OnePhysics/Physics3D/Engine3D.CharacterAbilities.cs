@@ -160,7 +160,7 @@ internal sealed partial class Engine3D : ICharacterExtHost
     {
         bool roped = st.Mode == CharacterMode.Roped;
         int rod = st.Rod, gen = st.RodGen;
-        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry };
+        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, NoSwim = st.NoSwim, SwimDensity = st.SwimDensity, SwimDamping = st.SwimDamping, Water = st.Water, Immersion = st.Immersion };
         _charExt!.Set(c, in keep);
         MarkInAir(c);
         if (roped && Rods.Alive(rod, gen)) { RefreshGripMasses(rod); }
@@ -174,7 +174,7 @@ internal sealed partial class Engine3D : ICharacterExtHost
         RequireVirtual(c);
         ref var st = ref Extensions.At(c);
         if (st.Mode == CharacterMode.Roped) { ReleaseCharacter(c); }
-        var next = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, Mode = CharacterMode.Seated, Body = seatBody, BodyGen = Core.Bodies.Handles.GenerationOf(seatBody), Local = local, LocalRotation = localRotation.LengthSquared() == 0f ? QuaternionF.Identity : Normalize(localRotation, nameof(localRotation)) };
+        var next = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, NoSwim = st.NoSwim, SwimDensity = st.SwimDensity, SwimDamping = st.SwimDamping, Water = st.Water, Immersion = st.Immersion, Mode = CharacterMode.Seated, Body = seatBody, BodyGen = Core.Bodies.Handles.GenerationOf(seatBody), Local = local, LocalRotation = localRotation.LengthSquared() == 0f ? QuaternionF.Identity : Normalize(localRotation, nameof(localRotation)) };
         _charExt!.Set(c, in next);
         SyncAnchored(c, ref _charExt.States[c]);
         MarkInAir(c);
@@ -196,7 +196,7 @@ internal sealed partial class Engine3D : ICharacterExtHost
         int rod = st.Rod, gen = st.RodGen;
         bool roped = st.Mode == CharacterMode.Roped;
         if (st.Mode == CharacterMode.Seated || st.Mode == CharacterMode.Roped) { vel = new Vector3F(CharVx[c], CharVy[c], CharVz[c]); }
-        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry };
+        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, NoSwim = st.NoSwim, SwimDensity = st.SwimDensity, SwimDamping = st.SwimDamping, Water = st.Water, Immersion = st.Immersion };
         ext.Set(c, in keep);
         MarkInAir(c);
         if (roped && Rods.Alive(rod, gen)) { RefreshGripMasses(rod); }
@@ -265,7 +265,7 @@ internal sealed partial class Engine3D : ICharacterExtHost
         ref var cur = ref Extensions.At(c);
         int prevRod = cur.Mode == CharacterMode.Roped ? cur.Rod : -1, prevGen = cur.RodGen;
         int i = Math.Min((int)position, n - 2);
-        var st = new CharacterExtState { CanClimb = cur.CanClimb, ExactCarry = cur.ExactCarry, Mode = CharacterMode.Roped, Rod = rod, RodGen = generation, Particle = i, Fraction = position - i, LocalRotation = QuaternionF.Identity };
+        var st = new CharacterExtState { CanClimb = cur.CanClimb, ExactCarry = cur.ExactCarry, NoSwim = cur.NoSwim, SwimDensity = cur.SwimDensity, SwimDamping = cur.SwimDamping, Water = cur.Water, Immersion = cur.Immersion, Mode = CharacterMode.Roped, Rod = rod, RodGen = generation, Particle = i, Fraction = position - i, LocalRotation = QuaternionF.Identity };
         _charExt!.Set(c, in st);
         RefreshGripMasses(rod);
         if (prevRod >= 0 && (prevRod != rod) && Rods.Alive(prevRod, prevGen)) { RefreshGripMasses(prevRod); }
@@ -475,7 +475,7 @@ internal sealed partial class Engine3D : ICharacterExtHost
         var target = new Vector3D(ledge.Top.X + (double)(f.X * inward + up.X * lift), ledge.Top.Y + (double)(f.Y * inward + up.Y * lift), ledge.Top.Z + (double)(f.Z * inward + up.Z * lift));
         if (!CapsuleFitsAt(c, target)) { return false; }
         ref var st = ref Extensions.At(c);
-        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry };
+        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, NoSwim = st.NoSwim, SwimDensity = st.SwimDensity, SwimDamping = st.SwimDamping, Water = st.Water, Immersion = st.Immersion };
         _charExt!.Set(c, in keep);
         MarkInAir(c);
         PlaceCharacter(c, target, UprightOf(c), default);
@@ -665,7 +665,7 @@ internal sealed partial class Engine3D
         if (st.Mode == CharacterMode.Free && !st.Riding) { return; }
         int rod = st.Rod, gen = st.RodGen;
         bool roped = st.Mode == CharacterMode.Roped;
-        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, LocalRotation = QuaternionF.Identity };
+        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, NoSwim = st.NoSwim, SwimDensity = st.SwimDensity, SwimDamping = st.SwimDamping, Water = st.Water, Immersion = st.Immersion, LocalRotation = QuaternionF.Identity };
         _charExt.Set(c, in keep);
         if (roped && Rods.Alive(rod, gen)) { RefreshGripMasses(rod); }
         CharVx[c] = 0f; CharVy[c] = 0f; CharVz[c] = 0f;
@@ -689,7 +689,7 @@ internal sealed partial class Engine3D
             pos = new Vector3D(pos.X + (double)o.X, pos.Y + (double)o.Y, pos.Z + (double)o.Z);
         }
 
-        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, LocalRotation = QuaternionF.Identity };
+        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, NoSwim = st.NoSwim, SwimDensity = st.SwimDensity, SwimDamping = st.SwimDamping, Water = st.Water, Immersion = st.Immersion, LocalRotation = QuaternionF.Identity };
         _charExt!.Set(c, in keep);
         MarkInAir(c);
         PlaceCharacter(c, pos, UprightOf(c), vel);

@@ -346,6 +346,50 @@ internal sealed partial class FluidStore
         return (float)sum;
     }
 
+    /// <summary>
+    /// The SPH density at a world point and the density-weighted mean velocity of the particles around it, with the rest density of the first fluid among them (0 when no particle is near). Needs the query grid
+    /// (<see cref="PrepareQueries"/>). Used to ask what a swimmer is in.
+    /// </summary>
+    internal float SampleFlow(double x, double y, double z, out Vector3F velocity, out float restDensity)
+    {
+        velocity = default; restDensity = 0f;
+        if (_qBuckets == 0) { return 0f; }
+        var k = _kq;
+        double sum = 0.0, sx = 0.0, sy = 0.0, sz = 0.0;
+        int first = -1;
+        long ix = QCoord(x, _qMinX), iy = QCoord(y, _qMinY), iz = Dim == 3 ? QCoord(z, _qMinZ) : 0;
+        Span<int> seen = stackalloc int[27];
+        int ns = 0;
+        for (long cz = Dim == 3 ? iz - 1 : 0; cz <= (Dim == 3 ? iz + 1 : 0); cz++)
+        {
+            for (long cy = iy - 1; cy <= iy + 1; cy++)
+            {
+                for (long cx = ix - 1; cx <= ix + 1; cx++)
+                {
+                    int bk = QBucket(cx, cy, cz, _qBucketMask);
+                    bool dup = false;
+                    for (int q = 0; q < ns; q++) { if (seen[q] == bk) { dup = true; break; } }
+                    if (dup) { continue; }
+                    seen[ns++] = bk;
+                    for (int a = _qStart[bk]; a < _qStart[bk + 1]; a++)
+                    {
+                        int p = _qList[a];
+                        double dx = PX[p] - x, dy = PY[p] - y, dz = Dim == 3 ? PZ[p] - z : 0.0;
+                        float r2 = (float)(dx * dx + dy * dy + dz * dz);
+                        double w = Fluids[PFluid[p]]!.Mass * (double)k.W(r2);
+                        sum += w; sx += w * PVx[p]; sy += w * PVy[p]; sz += w * PVz[p];
+                        if (first < 0 || PFluid[p] < first) { first = PFluid[p]; }
+                    }
+                }
+            }
+        }
+
+        if (!(sum > 0.0)) { return 0f; }
+        velocity = new Vector3F((float)(sx / sum), (float)(sy / sum), (float)(sz / sum));
+        restDensity = Fluids[first]!.Def.RestDensity;
+        return (float)sum;
+    }
+
     // ------------------------------------------------------------------ submerged fraction, events
 
     private readonly Vector3F[] _samples = new Vector3F[64];

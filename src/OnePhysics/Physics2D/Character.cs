@@ -202,6 +202,7 @@ public readonly partial struct Character : IEquatable<Character>
         var e = Resolve(out int c);
         var w = _world!;
         if (e.CharacterIsBusy(c)) { return e.MoveBusy(c, displacement, dt); }
+        displacement = e.SwimAdjust(c, displacement, dt, out bool swimming);
         var body = Body;
         var def = e.CharDef[c];
         var state = new MoverState2D { Position = body.Position, Ground = e.CharGround[c], GroundNormal = new Vector2F(e.CharNx[c], e.CharNy[c]), NoCarry = e.CharacterCarriesByPose(c) };
@@ -213,6 +214,7 @@ public readonly partial struct Character : IEquatable<Character>
 
         MoverHit2D[]? buffer = w.HasControllerHandler(_index, _generation) ? new MoverHit2D[16] : null;
         var result = Mover2D.Move(w, in def, ref state, displacement, dt, body, buffer);
+        if (swimming) { e.SwimCommit(c, result.Displacement, dt); }
         var v = new Vector2F(result.Displacement.X / dt, result.Displacement.Y / dt);
         var lin = w.Core.Bodies.LinearVelocityOf(body.RawHandle.Index);
         lin[0] = v.X; lin[1] = v.Y;
@@ -308,9 +310,9 @@ public sealed partial class PhysicsWorld2D
         }
 
         int c = _engine.CreateCharacter(body.RawHandle, in def);
-        if (def.CanClimb || def.ExactPlatformCarry)
+        if (def.CanClimb || def.ExactPlatformCarry || !def.CanSwim || def.SwimDensity != 0f || def.SwimDamping != 0f)
         {
-            _engine.Extensions.Set(c, new Characters.CharacterExtState { CanClimb = def.CanClimb, ExactCarry = def.ExactPlatformCarry, LocalRotation = QuaternionF.Identity });
+            _engine.Extensions.Set(c, new Characters.CharacterExtState { CanClimb = def.CanClimb, ExactCarry = def.ExactPlatformCarry, NoSwim = !def.CanSwim, SwimDensity = def.SwimDensity, SwimDamping = def.SwimDamping, LocalRotation = QuaternionF.Identity });
         }
 
         return new Character(this, c, _engine.CharHandles.GenerationOf(c));

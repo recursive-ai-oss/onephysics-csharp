@@ -62,6 +62,24 @@ internal struct CharacterExtState
 
     /// <summary>Set when a record is read: the generation of the character the snapshot says it belongs to, checked once against the restored characters (0: nothing to check).</summary>
     public int SavedGeneration;
+
+    /// <summary>The character may not swim (<c>CharacterDef.CanSwim</c> false): water changes nothing about its moves.</summary>
+    public bool NoSwim;
+
+    /// <summary>Where the character is relative to water: dry, wading or swimming (see <see cref="CharacterWaterState"/>).</summary>
+    public CharacterWaterState Water;
+
+    /// <summary>Density the character swims with, kg/m³; 0 means the default.</summary>
+    public float SwimDensity;
+
+    /// <summary>Rate, per second, at which a swimmer's velocity relaxes towards the water's velocity plus its own swim intent; 0 means the default.</summary>
+    public float SwimDamping;
+
+    /// <summary>A virtual swimmer's velocity, metres per second (a rigid character's body holds its own).</summary>
+    public Vector3F SwimVelocity;
+
+    /// <summary>Fraction of the character's height under water at the last look (0 to 1).</summary>
+    public float Immersion;
 }
 
 /// <summary>
@@ -74,6 +92,9 @@ internal sealed class CharacterExtStore : ISnapshotSection
     public const int Id = 0x43455854;
 
     private const int SectionVersion = 1;
+
+    /// <summary>Section version written while any character swims or has swim settings; records then carry the swim fields after the ability fields.</summary>
+    private const int SwimSectionVersion = 2;
     private readonly ICharacterExtHost _host;
 
     public CharacterExtState[] States = new CharacterExtState[8];
@@ -136,7 +157,19 @@ internal sealed class CharacterExtStore : ISnapshotSection
         States[c] = default;
     }
 
-    private static bool IsActive(in CharacterExtState s) => s.CanClimb || s.ExactCarry || s.Riding || s.Mode != CharacterMode.Free;
+    private static bool IsActive(in CharacterExtState s) => s.CanClimb || s.ExactCarry || s.Riding || s.Mode != CharacterMode.Free || UsesSwim(in s);
+
+    private static bool UsesSwim(in CharacterExtState s) => s.NoSwim || s.Water != CharacterWaterState.Dry || s.SwimDensity != 0f || s.SwimDamping != 0f;
+
+    private bool AnySwim()
+    {
+        for (int c = 0; c < _host.CharacterHighWater && c < States.Length; c++)
+        {
+            if (_host.CharacterLive(c) && UsesSwim(in States[c])) { return true; }
+        }
+
+        return false;
+    }
 
     public bool IsClimbable(int shape, int generation) => (uint)shape < (uint)ClimbableGen.Length && ClimbableGen[shape] == generation && generation != 0;
 
@@ -172,7 +205,8 @@ internal sealed class CharacterExtStore : ISnapshotSection
 
     void ISnapshotSection.Write(StateWriter w)
     {
-        w.NamedInt32(SectionVersion);
+        bool swim = AnySwim();
+        w.NamedInt32(swim ? SwimSectionVersion : SectionVersion);
         int n = 0;
         for (int c = 0; c < _host.CharacterHighWater && c < States.Length; c++)
         {
@@ -193,6 +227,11 @@ internal sealed class CharacterExtStore : ISnapshotSection
             w.NamedSingle(s.LocalRotation.X); w.NamedSingle(s.LocalRotation.Y); w.NamedSingle(s.LocalRotation.Z); w.NamedSingle(s.LocalRotation.W);
             WriteVec(w, s.Normal); WriteVec(w, s.Along);
             w.NamedInt32(s.Rod); w.NamedInt32(s.RodGen); w.NamedInt32(s.Particle); w.NamedSingle(s.Fraction);
+            if (swim)
+            {
+                w.NamedByte((byte)(s.NoSwim ? 1 : 0)); w.NamedByte((byte)s.Water);
+                w.NamedSingle(s.SwimDensity); w.NamedSingle(s.SwimDamping); WriteVec(w, s.SwimVelocity); w.NamedSingle(s.Immersion);
+            }
         }
 
         w.DescribeEntity("world", -1);
@@ -216,9 +255,9 @@ internal sealed class CharacterExtStore : ISnapshotSection
     void ISnapshotSection.Read(StateReader r)
     {
         int version = r.ReadInt32();
-        if (version != SectionVersion) { throw r.Error("unsupported character-ability section version " + version.ToString(CultureInfo.InvariantCulture)); }
+        if (version != SectionVersion && version != SwimSectionVersion) { throw r.Error("unsupported character-ability section version " + version.ToString(CultureInfo.InvariantCulture)); }
         bool planar = _host.Planar;
-        int n = r.ReadCount(86, "character abilities");
+        int n = r.ReadCount(version == SwimSectionVersion ? 112 : 86, "character abilities");
         var states = new CharacterExtState[Math.Max(8, 0)];
         // Every character has a body of its own, so a character slot is below the body count of the snapshot being restored; that also bounds what the arrays below grow to.
         int slotLimit = (_host.Core.RestoringBodies ?? _host.Core.Bodies).HighWater;
@@ -240,6 +279,16 @@ internal sealed class CharacterExtStore : ISnapshotSection
             s.LocalRotation = new QuaternionF(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
             s.Normal = ReadVec(r); s.Along = ReadVec(r);
             s.Rod = r.ReadInt32(); s.RodGen = r.ReadInt32(); s.Particle = r.ReadInt32(); s.Fraction = r.ReadSingle();
+            if (version == SwimSectionVersion)
+            {
+                byte sf = r.ReadByte(), ws = r.ReadByte();
+                if (sf > 1 || ws > (byte)CharacterWaterState.Swimming) { throw r.Error("invalid character swim state"); }
+                s.NoSwim = sf != 0; s.Water = (CharacterWaterState)ws;
+                s.SwimDensity = r.ReadSingle(); s.SwimDamping = r.ReadSingle(); s.SwimVelocity = ReadVec(r); s.Immersion = r.ReadSingle();
+                if (!(s.SwimDensity >= 0f && s.SwimDensity <= 1e5f) || !(s.SwimDamping >= 0f && s.SwimDamping <= 1e3f) || !Finite(s.SwimVelocity) || !(s.Immersion >= 0f && s.Immersion <= 1f)
+                    || Math.Abs(s.SwimVelocity.X) > 1e5f || Math.Abs(s.SwimVelocity.Y) > 1e5f || Math.Abs(s.SwimVelocity.Z) > 1e5f || (planar && s.SwimVelocity.Z != 0f)) { throw r.Error("invalid character swim values"); }
+            }
+
             if (s.Mode != CharacterMode.Free && s.Riding) { throw r.Error("a held character cannot also be carried"); }
             bool bodyUsed = s.Riding || s.Mode == CharacterMode.Seated || s.Mode == CharacterMode.Hanging || s.Mode == CharacterMode.Climbing;
             if (bodyUsed)

@@ -12,6 +12,7 @@ internal sealed partial class WaterStore
     {
         public int Grid;
         public float X0, X1, Z0, Z1, Volume;
+        public int Cell;    // >= 0: the volume goes to this one cell (what deformables displace); -1: spread over the footprint
     }
 
     private Pending[] _pending = new Pending[16];
@@ -23,7 +24,7 @@ internal sealed partial class WaterStore
     private void Queue(int grid, float x0, float x1, float z0, float z1, float volume)
     {
         if (_pendingCount == _pending.Length) { Array.Resize(ref _pending, _pending.Length * 2); }
-        _pending[_pendingCount++] = new Pending { Grid = grid, X0 = x0, X1 = x1, Z0 = z0, Z1 = z1, Volume = volume };
+        _pending[_pendingCount++] = new Pending { Grid = grid, X0 = x0, X1 = x1, Z0 = z0, Z1 = z1, Volume = volume, Cell = -1 };
     }
 
     /// <summary>
@@ -45,9 +46,10 @@ internal sealed partial class WaterStore
             double w = g.Width, d = g.Depth;
             for (int b = 0; b < bodies.HighWater; b++)
             {
-                if (!bodies.IsLive(b) || !bodies.IsDynamic(b)) { continue; }
+                if (!bodies.IsLive(b) || !(bodies.IsDynamic(b) || bodies.TypeOf(b) == BodyType.Kinematic)) { continue; }
                 int r = FindRecord(g, b);
-                bool awake = bodies.IsAwake(b);
+                bool kinematic = bodies.TypeOf(b) == BodyType.Kinematic;
+                bool awake = kinematic || bodies.IsAwake(b);
                 if (!_host.BodyBounds(b, out double minX, out double minY, out double minZ, out double maxX, out double maxY, out double maxZ)) { continue; }
                 double lx0 = minX - g.OriginX, lx1 = maxX - g.OriginX, lz0 = g.Planar ? 0.0 : minZ - g.OriginZ, lz1 = g.Planar ? 1.0 : maxZ - g.OriginZ;
                 bool over = lx1 >= 0 && lx0 <= w && lz1 >= 0 && lz0 <= d;
@@ -58,7 +60,7 @@ internal sealed partial class WaterStore
                 }
 
                 float vg = 0f;
-                if (over) { vg = Displace(g, b, minX, minY, minZ, maxX, maxY, maxZ, dt); }
+                if (over) { vg = Displace(g, b, minX, minY, minZ, maxX, maxY, maxZ, dt, kinematic); }
                 bool inWater = vg > 0f, wasIn = r >= 0;
                 if (!inWater && !wasIn) { continue; }
                 float oldSubmerged = wasIn ? g.Records[r].Submerged : 0f;
@@ -82,6 +84,8 @@ internal sealed partial class WaterStore
                     Events.Add(new WaterEventRecord { Entered = inWater, Body = b, BodyGeneration = bodies.Handles.GenerationOf(b), Water = gi, WaterGeneration = Handles.GenerationOf(gi), Volume = inWater ? vg : oldSubmerged });
                 }
             }
+
+            StepDeformables(gi, g, dt);
         }
     }
 
@@ -92,7 +96,7 @@ internal sealed partial class WaterStore
         for (int r = g.RecordCount - 1; r >= 0; r--)
         {
             var rec = g.Records[r];
-            if (bodies.Handles.IsAlive(rec.Slot, rec.Generation) && bodies.TypeOf(rec.Slot) == BodyType.Dynamic) { continue; }
+            if (bodies.Handles.IsAlive(rec.Slot, rec.Generation) && (bodies.TypeOf(rec.Slot) == BodyType.Dynamic || bodies.TypeOf(rec.Slot) == BodyType.Kinematic)) { continue; }
             g.AddVolume(rec.X0, rec.X1, rec.Z0, rec.Z1, -rec.Volume);
             RemoveRecord(g, r);
         }
@@ -104,7 +108,7 @@ internal sealed partial class WaterStore
     /// makes the pair an undamped oscillator (the body pushes water up, the raised water pushes the body up). Read around the body, the level answers to the body only as waves that have travelled out and back.
     /// Returns false when there is no water around the body.
     /// </summary>
-    private static bool Reference(WaterGrid g, double minX, double minZ, double maxX, double maxZ, out double surface, out float sx, out float sz, out float u, out float v)
+    internal static bool Reference(WaterGrid g, double minX, double minZ, double maxX, double maxZ, out double surface, out float sx, out float sz, out float u, out float v)
     {
         double d = 0.5 * g.Dx;
         double xc = 0.5 * (minX + maxX), zc = g.Planar ? 0.0 : 0.5 * (minZ + maxZ);
@@ -143,7 +147,7 @@ internal sealed partial class WaterStore
         if (Math.Abs(u) > WakeSpeed || Math.Abs(v) > WakeSpeed || Math.Abs(sx) > WakeSlope || Math.Abs(sz) > WakeSlope) { _host.WakeBody(b); }
     }
 
-    private float Displace(WaterGrid g, int b, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, float dt)
+    private float Displace(WaterGrid g, int b, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, float dt, bool kinematic)
     {
         if (!Reference(g, minX, minZ, maxX, maxZ, out double surface, out float sx, out float sz, out float u, out float v)) { return 0f; }
         float reach = _host.ReachOf(b);
@@ -153,7 +157,8 @@ internal sealed partial class WaterStore
         float inv = 1f / float.Sqrt(1f + sx * sx + sz * sz);
         var n = new Vector3F(-sx * inv, inv, -sz * inv);
         double offset = n.X * cx + n.Y * surface + n.Z * cz;
-        return _host.ApplyWater(b, n, offset, new Vector3F(u, 0f, g.Planar ? 0f : v), g, dt);
+        var flow = new Vector3F(u, 0f, g.Planar ? 0f : v);
+        return kinematic ? _host.SubmergedVolume(b, n, offset, flow, g, dt) : _host.ApplyWater(b, n, offset, flow, g, dt);
     }
 
     /// <summary>
@@ -166,7 +171,7 @@ internal sealed partial class WaterStore
         for (int p = 0; p < _pendingCount; p++)
         {
             ref readonly var q = ref _pending[p];
-            Grids[q.Grid]!.AddVolume(q.X0, q.X1, q.Z0, q.Z1, q.Volume);
+            if (q.Cell >= 0) { Grids[q.Grid]!.AddToCell(q.Cell, q.Volume); } else { Grids[q.Grid]!.AddVolume(q.X0, q.X1, q.Z0, q.Z1, q.Volume); }
         }
 
         _pendingCount = 0;
