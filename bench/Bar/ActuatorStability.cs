@@ -118,15 +118,15 @@ internal static class ActuatorStability
         {
             case "boats-3d":
                 r["maxPenetration"] = maxPen; r["capsized"] = capsized.Count; r["sunk"] = sunk.Count;
-                ok &= maxSpeed <= 16 && maxPen <= 0.3 && capsized.Count == 0 && sunk.Count == 0;
+                ok &= maxSpeed <= 12 && maxPen <= 0.1 && capsized.Count == 0 && sunk.Count == 0;
                 break;
             case "hovercraft-3d":
                 r["maxPenetration"] = maxPen; r["flipped"] = flipped.Count; r["minGap"] = minGap;
-                ok &= maxSpeed <= 25 && maxPen <= 0.1 && flipped.Count == 0 && minGap >= 0.03;
+                ok &= maxSpeed <= 10 && maxPen <= 0.07 && flipped.Count == 0 && minGap >= 0.07;
                 break;
             default:
                 r["tumbled"] = tumbled.Count; r["maxSpin"] = maxSpin;
-                ok &= maxSpeed <= 35 && tumbled.Count == 0 && maxSpin <= 6;
+                ok &= maxSpeed <= 27 && tumbled.Count == 0 && maxSpin <= 3.5;
                 break;
         }
 
@@ -186,14 +186,14 @@ internal static class ActuatorStability
         if (name == "boats-2d")
         {
             r["capsized"] = capsized.Count; r["sunk"] = sunk.Count;
-            ok &= maxSpeed <= 16 && maxPen <= 0.3 && capsized.Count == 0 && sunk.Count == 0;
+            ok &= maxSpeed <= 6 && maxPen <= 0.05 && capsized.Count == 0 && sunk.Count == 0;
         }
         else
         {
             double heightError = Math.Sqrt(heightSq / Math.Max(1, heightN));
             double tilt = Math.Abs(sc.Craft[0].Angle);
             r["heightError"] = heightError; r["landingSpeed"] = lastLandingSpeed; r["toppled"] = tilt > 0.3 ? 1 : 0; r["finalHeight"] = sc.Craft[0].Position.Y;
-            ok &= maxSpeed <= 20 && maxPen <= 0.2 && heightError <= 0.6 && lastLandingSpeed <= 1.0 && tilt <= 0.3;
+            ok &= maxSpeed <= 20 && maxPen <= 0.2 && heightError <= 0.5 && lastLandingSpeed <= 1.0 && tilt <= 0.3;
         }
 
         Report(name, sc.Steps, threads, r, ok, timing, times);
