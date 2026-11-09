@@ -366,4 +366,20 @@ public class ShallowWater3DTests
         Assert.InRange(hit.Distance, 7f, 8.5f);
         Assert.InRange(crate.Position.Y, 1.8, 2.3);
     }
+
+    [Fact]
+    public void SteadyStateStepsAllocateNothing()
+    {
+        var w = Tank(out var water, id: 201);
+        w.AddBox(new Vector3F(1f, 1f, 1f), at: new Vector3D(10, 3, 10), density: 500f);
+        w.AddSphere(0.4f, at: new Vector3D(6, 3, 6), density: 300f);
+        w.Warmup();
+        Run(w, 200);
+        water.AddVolume(0, 0, 2, 20, 10f);
+        Run(w, 20);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Run(w, 120);
+        long after = GC.GetAllocatedBytesForCurrentThread();
+        Assert.True(after - before == 0, "allocated " + (after - before) + " bytes in 120 steps");
+    }
 }

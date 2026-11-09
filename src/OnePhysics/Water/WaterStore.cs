@@ -55,7 +55,7 @@ internal sealed partial class WaterStore : ISnapshotSection
     /// <summary>Section id: "SWTR" read as a little-endian integer.</summary>
     public const int Id = 0x52545753;
 
-    public const double MaxCoordinate = 2097152.0;   // 2^21: every Q31.32 value inside is exact in double
+    public const double MaxCoordinate = 2097152.0;   // 2^21: every position on the 2^-32 grid inside is exact in double
     private const double Grid32 = 1.0 / 4294967296.0;
 
     private readonly IWaterHost _host;

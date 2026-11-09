@@ -53,7 +53,7 @@ public readonly struct WaterBoundary : IEquatable<WaterBoundary>
     public override bool Equals(object? obj) => obj is WaterBoundary b && Equals(b);
 
     /// <inheritdoc/>
-    public override int GetHashCode() => HashCode.Combine(Kind, Level, Speed);
+    public override int GetHashCode() => unchecked((int)Kind * 73856093 ^ Level.GetHashCode() * 19349663 ^ Speed.GetHashCode() * 83492791);
 
     /// <summary>Equality of all parts.</summary>
     public static bool operator ==(WaterBoundary a, WaterBoundary b) => a.Equals(b);
@@ -106,7 +106,7 @@ public readonly struct WaterHandle : IEquatable<WaterHandle>
     public override bool Equals(object? obj) => obj is WaterHandle h && Equals(h);
 
     /// <inheritdoc/>
-    public override int GetHashCode() => HashCode.Combine(World, Index, Generation);
+    public override int GetHashCode() => unchecked(World * 73856093 ^ Index * 19349663 ^ Generation * 83492791);
 
     /// <inheritdoc/>
     public override string ToString() => "Water(world " + World.ToString(CultureInfo.InvariantCulture) + ", #" + Index.ToString(CultureInfo.InvariantCulture) + ", gen " + Generation.ToString(CultureInfo.InvariantCulture) + ")";

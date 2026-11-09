@@ -2,6 +2,7 @@ using System;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.Physics2D;
+using RecursiveAI.OnePhysics.Debug;
 using Xunit;
 
 namespace RecursiveAI.OnePhysics.Tests.Water;
@@ -110,5 +111,45 @@ public class ShallowWater2DTests
         b.Position = new Vector2D(30, 7.0);
         Run(w, 300);
         Assert.InRange(water.Volume / v0, 1 - 1e-5, 1 + 1e-5);
+    }
+
+    [Fact]
+    public void OriginShiftLeavesTheWaterSteppingTheSame()
+    {
+        var a = Tank(out var wa, id: 202);
+        var ba = a.AddBox(new Vector2F(1f, 1f), new Vector2D(10, 3.0), density: 500f);
+        var b = Tank(out var wb, id: 203);
+        var bb = b.AddBox(new Vector2F(1f, 1f), new Vector2D(10, 3.0), density: 500f);
+        Run(a, 60); Run(b, 60);
+        b.ShiftOrigin(new Vector2D(4096, 8));
+        Run(a, 120); Run(b, 120);
+        Assert.Equal(ba.Position.X - 4096, bb.Position.X);
+        Assert.Equal(ba.Position.Y - 8, bb.Position.Y);
+        for (int i = 0; i < 160; i += 11) { Assert.Equal(wa.CellSurface(i) - 8, wb.CellSurface(i)); }
+    }
+
+    [Fact]
+    public void DebugGeometryCarriesTheSurface()
+    {
+        var w = Tank(out _);
+        Run(w, 30);
+        var g = new DebugGeometry();
+        w.GetDebugGeometry(DebugContent.ShallowWater, g);
+        Assert.Equal(1, g.WaterSurfaces.Length);
+        Assert.Equal(160, g.WaterSurfaces[0].CellsX); Assert.Equal(1, g.WaterSurfaces[0].CellsZ);
+        Assert.Equal(160, g.WaterHeights.Length);
+    }
+
+    [Fact]
+    public void ACurrentCarriesAFloatingBox()
+    {
+        var w = new PhysicsWorld2D(new WorldOptions2D { ThreadCount = 1, WorldId = 204 });
+        w.AddBox(new Vector2F(60f, 1f), new Vector2D(20, -0.5), type: BodyType.Static);
+        var water = w.CreateShallowWater(new ShallowWaterDef { Cells = 160, CellSize = 0.25f, Level = 1.0, FloorHeight = -1.0, West = WaterBoundary.Inflow(1.0, 1.5f), East = WaterBoundary.Open });
+        var box = w.AddBox(new Vector2F(0.5f, 0.5f), new Vector2D(10, 1.0), density: 300f);
+        Run(w, 600);
+        Assert.True(box.Position.X > 14, "the current must carry the box: x = " + box.Position.X);
+        Assert.True(water.TryGetSample(5, out var s));
+        Assert.InRange(s.Velocity, 0.8f, 2.2f);
     }
 }

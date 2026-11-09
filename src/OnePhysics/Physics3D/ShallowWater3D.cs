@@ -334,7 +334,7 @@ public readonly struct ShallowWater : IEquatable<ShallowWater>
     public override bool Equals(object? obj) => obj is ShallowWater w && Equals(w);
 
     /// <inheritdoc/>
-    public override int GetHashCode() => HashCode.Combine(_world?.Id ?? 0, _index, _generation);
+    public override int GetHashCode() => unchecked((_world?.Id ?? 0) * 73856093 ^ _index * 19349663 ^ _generation * 83492791);
 
     /// <summary>Equality of world, slot and generation.</summary>
     public static bool operator ==(ShallowWater a, ShallowWater b) => a.Equals(b);
