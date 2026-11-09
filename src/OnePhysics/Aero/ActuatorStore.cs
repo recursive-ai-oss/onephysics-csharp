@@ -188,7 +188,7 @@ internal sealed partial class ActuatorStore : ISnapshotSection
         CheckDynamic(body, out int b);
         if (BoatOfBody(b) >= 0) { throw new PhysicsException("The body already is a boat."); }
         spec.Prepare(_host.Planar);
-        BindSteerAxis(spec.Propellers, spec.Up);
+        if (!_host.Planar) { BindSteerAxis(spec.Propellers, spec.Up); }
         int i = BoatHandles.Allocate();
         if (i >= Boats.Length) { Array.Resize(ref Boats, Math.Max(i + 1, Boats.Length * 2)); }
         Boats[i] = new BoatState { Body = body.Index, BodyGen = body.Generation, Spec = spec, PropOutput = new float[spec.Propellers.Length] };
@@ -208,7 +208,7 @@ internal sealed partial class ActuatorStore : ISnapshotSection
         CheckDynamic(body, out int b);
         if (HoverOfBody(b) >= 0) { throw new PhysicsException("The body already is a hovercraft."); }
         spec.Prepare(_host.Planar);
-        BindSteerAxis(spec.Thrusters, spec.Up);
+        if (!_host.Planar) { BindSteerAxis(spec.Thrusters, spec.Up); }
         int i = HoverHandles.Allocate();
         if (i >= Hovers.Length) { Array.Resize(ref Hovers, Math.Max(i + 1, Hovers.Length * 2)); }
         var h = new HoverState { Body = body.Index, BodyGen = body.Generation, Spec = spec };
@@ -226,7 +226,7 @@ internal sealed partial class ActuatorStore : ISnapshotSection
         Hovers[i] = null; HoverHandles.Free(i);
     }
 
-    /// <summary>Steering gimbals of a boat's or hovercraft's thrusters turn about the craft's up axis unless the definition names another.</summary>
+    /// <summary>Steering gimbals of a boat's or hovercraft's thrusters turn about the craft's up axis unless the definition names another (a planar world turns them about z on its own).</summary>
     private void BindSteerAxis(ThrusterSpec[] thrusters, Vector3F up)
     {
         foreach (var t in thrusters)

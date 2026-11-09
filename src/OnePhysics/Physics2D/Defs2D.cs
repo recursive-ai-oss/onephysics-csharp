@@ -350,6 +350,9 @@ public struct ShapeDef
     /// <summary>Optional body-frame conveyor, one-way and directional-friction properties. Default is an ordinary surface. Validated at shape creation; planar worlds reject 3D-only settings.</summary>
     public SurfaceProperties Surface { get; set; }
 
+    /// <summary>Optional aerodynamic surface: lift and drag from the shape's orientation to the airflow or water. Null (default) for none. Copied when the shape is created and checked then; see <see cref="AeroSurface"/>.</summary>
+    public RecursiveAI.OnePhysics.Physics2D.AeroSurface? Aero { get; set; }
+
     /// <summary>Mass per area, kg/m². At least 0; a body whose shapes all have density 0 gets unit mass and inertia. Default 1. A dynamic body's total mass, and its inertia when not zero, must lie within 1e-18..1e30 so every inverse stays finite; a shape that would take the body outside that range is refused with an <see cref="ArgumentOutOfRangeException"/> naming the mass and inertia, and the body is unchanged.</summary>
     public float Density { readonly get => ZeroDefault.Get(_density, 1f); set => _density = ZeroDefault.Set(value, 1f); }
 

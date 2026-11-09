@@ -40,6 +40,7 @@ public sealed partial class PhysicsWorld2D
         _core.AddSection(_engine.SoftSnapshotSection);
         _core.AddSection(_engine.VehicleSnapshotSection);
         _core.AddSection(_engine.RagdollSnapshotSection);
+        _core.AddSection(_engine.Actuators);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -136,9 +137,11 @@ public sealed partial class PhysicsWorld2D
     {
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.BeginBodyControls(dt);
+        _engine.Actuators.BeginStep();
         if (_engine.Fields.Count != 0) _engine.Fields.Step(dt);
         _engine.StepRagdolls();
         _engine.StepVehicles(this, dt);
+        _engine.Actuators.Step(dt);
         if (_engine.Rods.Count != 0) _engine.Rods.BeginStep();
         _engine.BeginSoftStep();
         _core.Step(new Stages2D(_engine), dt);

@@ -207,8 +207,10 @@ internal sealed partial class Engine2D : ISnapshotSection
         {
             DropShapePairs(s);
             Bp.DestroyProxy(Proxy[s]);
+            _actuators?.DropShape(s);
         }
 
+        _actuators?.DropBody(b);
         DropCharacterOfBody(b);
         DropVehicleOfBody(b);
         DropRagdollOfBody(b);
@@ -224,6 +226,8 @@ internal sealed partial class Engine2D : ISnapshotSection
     public ShapeHandle AddShape(BodyHandle body, in Shape2D geometry, in ShapeDef def)
     {
         def.Surface.Validate(Core.Layout.PositionLanes);
+        var aero = def.Aero?.ToSpec();
+        aero?.Prepare(planar: true, areaRequired: false);
         Nonnegative(def.Density, "Density");
         Coefficient(def.Friction, "Friction");
         Coefficient(def.RollingResistance, "RollingResistance");
@@ -244,6 +248,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         NextShape[s] = -1;
         if (ShapeTail[b] >= 0) { NextShape[ShapeTail[b]] = s; } else { ShapeHead[b] = s; }
         ShapeTail[b] = s;
+        if (aero != null) { Actuators.SetSurface(sh, aero, prepared: true); }
         Proxy[s] = Bp.CreateProxy(type, tight, s);
         if (type == BodyType.Dynamic)
         {
@@ -275,6 +280,7 @@ internal sealed partial class Engine2D : ISnapshotSection
             break;
         }
 
+        _actuators?.DropShape(s);
         Core.DestroyShape(handle);
         if (Core.Bodies.TypeOf(b) == BodyType.Dynamic) { UpdateMass(b); }
     }
@@ -862,7 +868,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         var bodies = Core.Bodies;
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || Geom.Length < shapes.HighWater) { return false; }
-        if (!CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent()) { return false; }
+        if (!CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent() || !ActuatorsConsistent()) { return false; }
         var cons = Core.Constraints;
         if (!JointsConsistentWithCore()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)
