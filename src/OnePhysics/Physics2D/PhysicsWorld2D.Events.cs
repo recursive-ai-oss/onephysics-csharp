@@ -228,7 +228,7 @@ public sealed partial class PhysicsWorld2D : ICallbackGate
             }
         }
 
-        return new Collision(new Body(this, self), new Body(this, other), new Shape(this, selfShape), new Shape(this, otherShape), normal, count, in p0, in p1, e.Kind == EventKind.ContactHit ? e.Value : 0f);
+        return new Collision(new Body(this, self), new Body(this, other), new Shape(this, selfShape), new Shape(this, otherShape), normal, count, in p0, in p1, e.Kind == EventKind.ContactHit ? e.Value : 0f, e.Motion);
     }
 
     private void FireTrigger(in PhysicsEvent e, BodyHandle self, BodyHandle other, ShapeHandle selfShape, ShapeHandle otherShape)

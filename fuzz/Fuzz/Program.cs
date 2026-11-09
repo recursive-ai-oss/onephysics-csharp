@@ -27,6 +27,7 @@ internal static class Program
         ["frustum3d"] = FuzzMissingShapes.Frustum,
         ["triangle3d"] = FuzzMissingShapes.Triangle,
         ["heightfield2d"] = FuzzMissingShapes.HeightField,
+        ["contact-state"] = FuzzContactState.Run,
         ["mesh"] = FuzzMesh.MeshTarget,
         ["heightfield"] = FuzzMesh.HeightFieldTarget,
         ["meshquery"] = FuzzMesh.QueryTarget,

@@ -97,6 +97,7 @@ public sealed class ReplayRecorder : IDisposable
 
     internal bool IsInStep => _stepActive;
     internal void SimulationEnded() => _simulating = false;
+    internal void SimulationEffect(string operation) { if (_stepActive && !_simulating && !_stopped) Capture(operation); }
 
     internal void EndStep()
     {

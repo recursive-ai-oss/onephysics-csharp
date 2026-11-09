@@ -77,6 +77,11 @@ public sealed partial class EventCollector
         (_deliveredCount, other._deliveredCount) = (other._deliveredCount, _deliveredCount);
     }
 
+    internal void EnrichContactMotion(ContactMotionStore motion)
+    {
+        for (int i = 0; i < _deliveredCount; i++) _delivered[i] = _delivered[i].WithMotion(motion.ForEvent(_delivered[i]));
+    }
+
     internal void ClearDelivered() => _deliveredCount = 0;
 
     /// <summary>Moves everything collected into the delivered list, sorted.</summary>

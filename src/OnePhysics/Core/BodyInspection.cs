@@ -115,6 +115,8 @@ public readonly ref struct ConstraintInspection
     public int PointCount => IsContact ? World.Constraints.PointCount[_slot] : 0;
     /// <summary>World-space normal components (two in 2D, three in 3D). Empty for joints.</summary>
     public ReadOnlySpan<float> Normal => IsContact ? Payload.Slice(ManifoldLayout.Normal, World.Layout.LinearLanes) : ReadOnlySpan<float>.Empty;
+    /// <summary>The shared contact view, including indexed materials and optional motion data. Throws InvalidOperationException for a joint.</summary>
+    public ContactView Contact => IsContact ? new(World, _slot) : throw new InvalidOperationException("A joint has no contact manifold.");
     /// <summary>Reads one contact point. Throws ArgumentOutOfRangeException unless index is in [0, PointCount).</summary>
     public ContactPointInspection Point(int index)
     {

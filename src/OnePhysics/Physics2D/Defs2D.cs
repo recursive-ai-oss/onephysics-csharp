@@ -10,15 +10,20 @@ public readonly struct Material2D : IEquatable<Material2D>
 {
     /// <summary>Creates a material. Friction and rolling resistance must be at least 0, restitution within 0..1.</summary>
     /// <exception cref="ArgumentOutOfRangeException">A value is not finite or outside its range.</exception>
-    public Material2D(float friction, float restitution = 0f, float rollingResistance = 0f)
+    public Material2D(float friction, float restitution = 0f, float rollingResistance = 0f, SurfaceProperties surface = default)
     {
         if (!(friction >= 0f && friction <= MaterialLimits.MaxCoefficient)) { throw new ArgumentOutOfRangeException(nameof(friction), friction, "Friction must be within 0..1e15."); }
         if (!(restitution >= 0f && restitution <= 1f)) { throw new ArgumentOutOfRangeException(nameof(restitution), restitution, "Restitution must be within 0..1."); }
         if (!(rollingResistance >= 0f && rollingResistance <= MaterialLimits.MaxCoefficient)) { throw new ArgumentOutOfRangeException(nameof(rollingResistance), rollingResistance, "Rolling resistance must be within 0..1e15."); }
+        surface.Validate(2);
+        Surface = surface;
         Friction = friction;
         Restitution = restitution;
         RollingResistance = rollingResistance;
     }
+
+    /// <summary>Optional conveyor, one-way and directional-friction settings copied to a shape by WithMaterial. Default ordinary surface.</summary>
+    public SurfaceProperties Surface { get; }
 
     /// <summary>Coulomb friction coefficient. Default for <see cref="ShapeDef"/> is 0.6.</summary>
     public float Friction { get; }
@@ -42,7 +47,7 @@ public readonly struct Material2D : IEquatable<Material2D>
     public static Material2D Metal => new(0.4f, 0.05f);
 
     /// <summary>Equal in every field.</summary>
-    public bool Equals(Material2D other) => Friction == other.Friction && Restitution == other.Restitution && RollingResistance == other.RollingResistance;
+    public bool Equals(Material2D other) => Friction == other.Friction && Restitution == other.Restitution && RollingResistance == other.RollingResistance && Surface == other.Surface;
 
     /// <inheritdoc/>
     public override bool Equals(object? obj) => obj is Material2D m && Equals(m);
@@ -332,6 +337,9 @@ public struct BodyDef
 /// <summary>Creation parameters of a shape. Defaults: density 1 kg/m², friction 0.6, restitution 0, collides with everything.</summary>
 public struct ShapeDef
 {
+    /// <summary>Optional body-frame conveyor, one-way and directional-friction properties. Default is an ordinary surface. Validated at shape creation; planar worlds reject 3D-only settings.</summary>
+    public SurfaceProperties Surface { get; set; }
+
     /// <summary>Mass per area, kg/m². At least 0; a body whose shapes all have density 0 gets unit mass and inertia. Default 1. A dynamic body's total mass, and its inertia when not zero, must lie within 1e-18..1e30 so every inverse stays finite; a shape that would take the body outside that range is refused with an <see cref="ArgumentOutOfRangeException"/> naming the mass and inertia, and the body is unchanged.</summary>
     public float Density { readonly get => ZeroDefault.Get(_density, 1f); set => _density = ZeroDefault.Set(value, 1f); }
 
@@ -377,6 +385,7 @@ public struct ShapeDef
         d.Friction = m.Friction;
         d.Restitution = m.Restitution;
         d.RollingResistance = m.RollingResistance;
+        d.Surface = m.Surface;
         return d;
     }
 }
@@ -411,7 +420,7 @@ public readonly struct Collision
 {
     private readonly ContactPoint2D _p0, _p1;
 
-    internal Collision(Body self, Body other, Shape selfShape, Shape otherShape, Vector2F normal, int pointCount, in ContactPoint2D p0, in ContactPoint2D p1, float approachSpeed)
+    internal Collision(Body self, Body other, Shape selfShape, Shape otherShape, Vector2F normal, int pointCount, in ContactPoint2D p0, in ContactPoint2D p1, float approachSpeed, ContactMotion motion = default)
     {
         Body = self;
         Other = other;
@@ -422,7 +431,17 @@ public readonly struct Collision
         _p0 = p0;
         _p1 = p1;
         ApproachSpeed = approachSpeed;
+        Motion = motion;
     }
+
+    /// <summary>Optional audio/haptic contact speeds; zero unless world.ContactMotionEnabled is true.</summary>
+    public ContactMotion Motion { get; }
+    /// <summary>Pre-solve impact speed at manifold birth, metres/second.</summary>
+    public float ImpactSpeed => Motion.ImpactSpeed;
+    /// <summary>Residual sliding speed at the end of the step, metres/second.</summary>
+    public float SlidingSpeed => Motion.SlidingSpeed;
+    /// <summary>Relative rolling surface speed at the end of the step, metres/second.</summary>
+    public float RollingSpeed => Motion.RollingSpeed;
 
     /// <summary>The body the callback belongs to.</summary>
     public readonly Body Body;

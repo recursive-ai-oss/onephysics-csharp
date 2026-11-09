@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <Compile Include="../../tests/Common/FieldScenes.cs" LinkBase="Common" />
+    <Compile Include="../../tests/Common/ContactSurfaceScene.cs" LinkBase="Common" />
     <EmbeddedResource Include="../../testdata/replay/*.oppr" LogicalName="replay.%(Filename)" />
     <ProjectReference Include="../../src/OnePhysics/OnePhysics.csproj" />
     <!-- The batching experiment's simulation code (not its command-line program) is hashed here. -->

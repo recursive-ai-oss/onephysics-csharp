@@ -21,7 +21,10 @@ internal static class W3D
     public const int NormalImpulse = 11, Tangent1Impulse = 12, Tangent2Impulse = 13, MaxNormalImpulse = 14, Mask = 15;
 
     public const int MaxPoints = 4;
-    public const int Fields = Point0 + MaxPoints * PointStride;
+    public const int TangentSpeed = Point0 + MaxPoints * PointStride, ImpulseLimit = TangentSpeed + 1;
+    public const int TangentSpeed2 = ImpulseLimit + 1, Friction2 = TangentSpeed2 + 1, Spin = Friction2 + 1, SpinImpulse = Spin + 1, Anisotropic = SpinImpulse + 1;
+    // One padding row keeps group strides and velocity-output rows on the same 64-byte boundaries as ordinary contacts.
+    public const int Fields = Anisotropic + 2;
     public const int MassAY = Fields + 12, MassAZ = MassAY + 1, MassBY = MassAY + 2, MassBZ = MassAY + 3, PushLimit = MassAY + 4;
     public const int ControlGroupFloats = (MassAY + 5) * Lanes;
     public const int Lanes = 8;
@@ -232,15 +235,28 @@ internal static class ContactKernel3D
         return T.Select(T.GreaterThan(k, zero), one / k, zero);
     }
 
+    private interface IContactMode { static abstract bool Extended { get; } }
+    private readonly struct OrdinaryMode : IContactMode { public static bool Extended => false; }
+    private readonly struct SurfaceMode : IContactMode { public static bool Extended => true; }
+
     /// <summary>
     /// Runs lanes <paramref name="lane0"/> to <paramref name="lane0"/> + <paramref name="n"/> - 1 of a group, <c>T.Count</c> at a time. Lanes past the end of the batch compute on whatever the group holds and are never written back.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Run<T>(Engine3D e, int group, int lane0, int n, SolvePhase phase, in KernelParams kp) where T : struct, ILane<T>
     {
-        if (e.Core.Controls.Active) RunCore<T, DiagonalMass<T>>(e, group, lane0, n, phase, kp);
-        else RunCore<T, ScalarMass<T>>(e, group, lane0, n, phase, kp);
+        // Specialize both optional paths before entering the point loops.
+        if (e.ContactModifications.Extended) RunMode<T, SurfaceMode>(e, group, lane0, n, phase, in kp);
+        else RunMode<T, OrdinaryMode>(e, group, lane0, n, phase, in kp);
     }
-    private static void RunCore<T, TMass>(Engine3D e, int group, int lane0, int n, SolvePhase phase, in KernelParams kp) where T : struct, ILane<T> where TMass : struct, ILinearMass<T, TMass>
+
+    private static void RunMode<T, TMode>(Engine3D e, int group, int lane0, int n, SolvePhase phase, in KernelParams kp) where T : struct, ILane<T> where TMode : struct, IContactMode
+    {
+        if (e.Core.Controls.Active) RunCore<T, DiagonalMass<T>, TMode>(e, group, lane0, n, phase, in kp);
+        else RunCore<T, ScalarMass<T>, TMode>(e, group, lane0, n, phase, in kp);
+    }
+
+    private static void RunCore<T, TMass, TMode>(Engine3D e, int group, int lane0, int n, SolvePhase phase, in KernelParams kp) where T : struct, ILane<T> where TMass : struct, ILinearMass<T, TMass> where TMode : struct, IContactMode
     {
         int stride = TMass.Enabled ? W3D.ControlGroupFloats : W3D.GroupFloats;
         int width = T.Count;
@@ -276,7 +292,7 @@ internal static class ContactKernel3D
                 T e0 = Field<T>(wide, W3D.Restitution, l0);
                 T lane = Lane.Or(T.GreaterThan(e0, zero), T.GreaterThan(zero, e0));
                 T negThr = T.Broadcast(-kp.RestitutionThreshold);
-                for (int i = 0; i < maxPts; i++) { Restitute(ref a, ref b2, wide, i, l0, nrm, e0, lane, negThr, zero); }
+                for (int i = 0; i < maxPts; i++) { Restitute<T, TMass, TMode>(ref a, ref b2, wide, i, l0, nrm, e0, lane, negThr, zero); }
             }
             else
             {
@@ -288,10 +304,12 @@ internal static class ContactKernel3D
                 // A group with no rolling resistance in any lane would leave every lane unchanged (the selects keep the old bits), so it skips the work.
                 if (idx[W3D.AnyRollingSlot] != 0) { RollingResistance(ref a, ref b2, nrm, ref roll, wide, l0, rolling, maxPts); }
 
-                for (int i = 0; i < maxPts; i++) { FrictionPoint(ref a, ref b2, wide, i, l0, t1, t2, friction); }
+                if (TMode.Extended) { SpinningResistance(ref a, ref b2, nrm, wide, l0, maxPts); }
+
+                for (int i = 0; i < maxPts; i++) { FrictionPoint<T, TMass, TMode>(ref a, ref b2, wide, i, l0, t1, t2, friction); }
 
                 T invH = T.Broadcast(kp.InverseSubstepDt), slop = T.Broadcast(kp.LinearSlop), negPush = TMass.Enabled ? T.Negate(Field<T>(wide, W3D.PushLimit, l0)) : T.Broadcast(-kp.PushOutVelocity);
-                for (int i = 0; i < maxPts; i++) { NormalPoint(ref a, ref b2, wide, i, l0, nrm, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, zero, two); }
+                for (int i = 0; i < maxPts; i++) { NormalPoint<T, TMass, TMode>(ref a, ref b2, wide, i, l0, nrm, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, zero, two); }
             }
 
             // Velocities back out.
@@ -315,6 +333,24 @@ internal static class ContactKernel3D
                 roll.X.StoreAt(wide, (W3D.RollImpulse + 0) * 8 + l0); roll.Y.StoreAt(wide, (W3D.RollImpulse + 1) * 8 + l0); roll.Z.StoreAt(wide, (W3D.RollImpulse + 2) * 8 + l0);
             }
         }
+    }
+
+    private static void SpinningResistance<T, TMass>(ref BodyLanes<T, TMass> a, ref BodyLanes<T, TMass> b, V3<T> n, Span<float> wide, int l0, int points) where T : struct, ILane<T> where TMass : struct, ILinearMass<T, TMass>
+    {
+        T zero = T.Zero, total = zero;
+        for (int p = 0; p < points; p++) total = total + Field<T>(wide, W3D.Point0 + p * W3D.PointStride + W3D.NormalImpulse, l0);
+        T mu = Field<T>(wide, W3D.Spin, l0), old = Field<T>(wide, W3D.SpinImpulse, l0);
+        T effective = V3<T>.Dot(n, a.I.Apply(n) + b.I.Apply(n));
+        T velocity = V3<T>.Dot(b.W - a.W, n);
+        T limit = mu * total;
+        T candidate = old - velocity / effective;
+        T next = Lane.Max(T.Negate(limit), Lane.Min(limit, candidate));
+        T mask = Lane.And(T.GreaterThan(mu, zero), T.GreaterThan(effective, zero));
+        next = T.Select(mask, next, old);
+        var impulse = n * (next - old);
+        a.W = V3<T>.Select(mask, a.W - a.I.Apply(impulse), a.W);
+        b.W = V3<T>.Select(mask, b.W + b.I.Apply(impulse), b.W);
+        next.StoreAt(wide, W3D.SpinImpulse * 8 + l0);
     }
 
     /// <summary>Applies the rolling impulse carried over from the last step to both bodies' angular velocity.</summary>
@@ -372,7 +408,7 @@ internal static class ContactKernel3D
 
     // The point methods below read the fields they need straight from the group's rows and write the impulses straight back, so no per-point vector structs pass through the frame.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void Restitute<T, TMass>(ref BodyLanes<T, TMass> a, ref BodyLanes<T, TMass> b, Span<float> wide, int i, int l0, V3<T> n, T e, T laneMask, T negThreshold, T zero) where T : struct, ILane<T> where TMass : struct, ILinearMass<T, TMass>
+    private static void Restitute<T, TMass, TMode>(ref BodyLanes<T, TMass> a, ref BodyLanes<T, TMass> b, Span<float> wide, int i, int l0, V3<T> n, T e, T laneMask, T negThreshold, T zero) where T : struct, ILane<T> where TMode : struct, IContactMode where TMass : struct, ILinearMass<T, TMass>
     {
         int f = W3D.Point0 + i * W3D.PointStride;
         V3<T> rA = Vec<T>(wide, f + W3D.ArmA, l0), rB = Vec<T>(wide, f + W3D.ArmB, l0);
@@ -384,6 +420,7 @@ internal static class ContactKernel3D
         T notFast = T.Select(T.GreaterThan(relVel, negThreshold), zero, pm); // relVel <= -threshold, and the point exists
         T mask = Lane.And(Lane.And(Lane.And(notFast, T.GreaterThan(maxN, zero)), laneMask), pm);
         T nw = Clamp0(nImp + lambda);
+        if (TMode.Extended) { nw = Lane.Min(nw, Field<T>(wide, W3D.ImpulseLimit, l0)); }
         lambda = nw - nImp;
         T.Select(mask, nw, nImp).StoreAt(wide, (f + W3D.NormalImpulse) * 8 + l0);
         T.Select(Lane.And(mask, T.GreaterThan(nw, maxN)), nw, maxN).StoreAt(wide, (f + W3D.MaxNormalImpulse) * 8 + l0);
@@ -392,27 +429,42 @@ internal static class ContactKernel3D
 
     /// <summary>Accumulates a point's two tangent impulses, clamped to the friction cone, and applies the change.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void FrictionPoint<T, TMass>(ref BodyLanes<T, TMass> a, ref BodyLanes<T, TMass> b, Span<float> wide, int i, int l0, V3<T> t1, V3<T> t2, T friction) where T : struct, ILane<T> where TMass : struct, ILinearMass<T, TMass>
+    private static void FrictionPoint<T, TMass, TMode>(ref BodyLanes<T, TMass> a, ref BodyLanes<T, TMass> b, Span<float> wide, int i, int l0, V3<T> t1, V3<T> t2, T friction) where T : struct, ILane<T> where TMode : struct, IContactMode where TMass : struct, ILinearMass<T, TMass>
     {
         int f = W3D.Point0 + i * W3D.PointStride;
-        var imp = FrictionImpulse(in a, in b, wide, f, l0, t1, t2, friction);
+        var imp = FrictionImpulse<T, TMass, TMode>(in a, in b, wide, f, l0, t1, t2, friction);
         ApplyImpulse(ref a, ref b, Vec<T>(wide, f + W3D.ArmA, l0), Vec<T>(wide, f + W3D.ArmB, l0), imp, Field<T>(wide, f + W3D.Mask, l0));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static V3<T> FrictionImpulse<T, TMass>(in BodyLanes<T, TMass> a, in BodyLanes<T, TMass> b, Span<float> wide, int f, int l0, V3<T> t1, V3<T> t2, T friction) where T : struct, ILane<T> where TMass : struct, ILinearMass<T, TMass>
+    private static V3<T> FrictionImpulse<T, TMass, TMode>(in BodyLanes<T, TMass> a, in BodyLanes<T, TMass> b, Span<float> wide, int f, int l0, V3<T> t1, V3<T> t2, T friction) where T : struct, ILane<T> where TMode : struct, IContactMode where TMass : struct, ILinearMass<T, TMass>
     {
         V3<T> rA = Vec<T>(wide, f + W3D.ArmA, l0), rB = Vec<T>(wide, f + W3D.ArmB, l0);
         var dv = RelativeVelocity(in a, in b, rA, rB);
         T l1 = Field<T>(wide, f + W3D.Tangent1Impulse, l0), l2 = Field<T>(wide, f + W3D.Tangent2Impulse, l0), pm = Field<T>(wide, f + W3D.Mask, l0);
-        T n1 = l1 - Field<T>(wide, f + W3D.Tangent1Mass, l0) * V3<T>.Dot(dv, t1);
-        T n2 = l2 - Field<T>(wide, f + W3D.Tangent2Mass, l0) * V3<T>.Dot(dv, t2);
+        T velocity1 = V3<T>.Dot(dv, t1);
+        if (TMode.Extended) { velocity1 = velocity1 - Field<T>(wide, W3D.TangentSpeed, l0); }
+        T n1 = l1 - Field<T>(wide, f + W3D.Tangent1Mass, l0) * velocity1;
+        T velocity2 = V3<T>.Dot(dv, t2);
+        if (TMode.Extended) { velocity2 = velocity2 - Field<T>(wide, W3D.TangentSpeed2, l0); }
+        T n2 = l2 - Field<T>(wide, f + W3D.Tangent2Mass, l0) * velocity2;
         T maxF = friction * Field<T>(wide, f + W3D.NormalImpulse, l0);
         T m2 = n1 * n1 + n2 * n2;
         T clamp = T.GreaterThan(m2, maxF * maxF);
         T k = maxF / T.Sqrt(m2);
-        n1 = T.Select(clamp, n1 * k, n1);
-        n2 = T.Select(clamp, n2 * k, n2);
+        T c1 = T.Select(clamp, n1 * k, n1), c2 = T.Select(clamp, n2 * k, n2);
+        if (TMode.Extended)
+        {
+            T max2 = Field<T>(wide, W3D.Friction2, l0) * Field<T>(wide, f + W3D.NormalImpulse, l0);
+            T zero = T.Zero, one = T.Broadcast(1f);
+            T x = T.Select(T.GreaterThan(maxF, zero), n1 / maxF, zero), y = T.Select(T.GreaterThan(max2, zero), n2 / max2, zero);
+            T length = T.Sqrt(x * x + y * y);
+            T scale = T.Select(T.GreaterThan(length, one), one / length, one);
+            T e1 = T.Select(T.GreaterThan(maxF, zero), n1 * scale, zero), e2 = T.Select(T.GreaterThan(max2, zero), n2 * scale, zero);
+            T anisotropic = T.GreaterThan(Field<T>(wide, W3D.Anisotropic, l0), zero);
+            c1 = T.Select(anisotropic, e1, c1); c2 = T.Select(anisotropic, e2, c2);
+        }
+        n1 = c1; n2 = c2;
         n1 = T.Select(pm, n1, l1); n2 = T.Select(pm, n2, l2);
         n1.StoreAt(wide, (f + W3D.Tangent1Impulse) * 8 + l0); n2.StoreAt(wide, (f + W3D.Tangent2Impulse) * 8 + l0);
         return t1 * (n1 - l1) + t2 * (n2 - l2);
@@ -430,15 +482,15 @@ internal static class ContactKernel3D
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void NormalPoint<T, TMass>(ref BodyLanes<T, TMass> a, ref BodyLanes<T, TMass> b, Span<float> wide, int i, int l0, V3<T> n, bool useBias, T biasRate, T massScale, T impulseScale, T invH, T slop, T negPush, T zero, T two) where T : struct, ILane<T> where TMass : struct, ILinearMass<T, TMass>
+    private static void NormalPoint<T, TMass, TMode>(ref BodyLanes<T, TMass> a, ref BodyLanes<T, TMass> b, Span<float> wide, int i, int l0, V3<T> n, bool useBias, T biasRate, T massScale, T impulseScale, T invH, T slop, T negPush, T zero, T two) where T : struct, ILane<T> where TMode : struct, IContactMode where TMass : struct, ILinearMass<T, TMass>
     {
         int f = W3D.Point0 + i * W3D.PointStride;
-        T lambda = NormalImpulse(in a, in b, wide, f, l0, n, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, zero, two);
+        T lambda = NormalImpulse<T, TMass, TMode>(in a, in b, wide, f, l0, n, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, zero, two);
         ApplyImpulse(ref a, ref b, Vec<T>(wide, f + W3D.ArmA, l0), Vec<T>(wide, f + W3D.ArmB, l0), n * lambda, Field<T>(wide, f + W3D.Mask, l0));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static T NormalImpulse<T, TMass>(in BodyLanes<T, TMass> a, in BodyLanes<T, TMass> b, Span<float> wide, int f, int l0, V3<T> n, bool useBias, T biasRate, T massScale, T impulseScale, T invH, T slop, T negPush, T zero, T two) where T : struct, ILane<T> where TMass : struct, ILinearMass<T, TMass>
+    private static T NormalImpulse<T, TMass, TMode>(in BodyLanes<T, TMass> a, in BodyLanes<T, TMass> b, Span<float> wide, int f, int l0, V3<T> n, bool useBias, T biasRate, T massScale, T impulseScale, T invH, T slop, T negPush, T zero, T two) where T : struct, ILane<T> where TMode : struct, IContactMode where TMass : struct, ILinearMass<T, TMass>
     {
         V3<T> rA = Vec<T>(wide, f + W3D.ArmA, l0), rB = Vec<T>(wide, f + W3D.ArmB, l0);
         T pm = Field<T>(wide, f + W3D.Mask, l0);
@@ -469,6 +521,7 @@ internal static class ContactKernel3D
         T old = Field<T>(wide, f + W3D.NormalImpulse, l0);
         T lambda = T.Negate(Field<T>(wide, f + W3D.NormalMass, l0)) * ms * (vn + bias) - isc * old;
         T nw = Clamp0(old + lambda);
+        if (TMode.Extended) { nw = Lane.Min(nw, Field<T>(wide, W3D.ImpulseLimit, l0)); }
         lambda = nw - old;
         T.Select(pm, nw, old).StoreAt(wide, (f + W3D.NormalImpulse) * 8 + l0);
         T maxN = Field<T>(wide, f + W3D.MaxNormalImpulse, l0);
