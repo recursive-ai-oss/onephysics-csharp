@@ -39,6 +39,7 @@ internal sealed class RodScene
         }
         return scene;
     }
+    // The joint-chain stand-in uses spheres of at least 1 cm (thinner ones have inertia below the rigid-body limit); its mass is set explicitly from the rod material.
     private int AddLine(Vector3D from,Vector3D to,int segments,RodMaterial material,bool pinStart,bool pinEnd,int substeps=8,int iterations=4,float damping=1,bool collideAttached=false)
     {
         var w=Spatial!;var points=new Vector3D[segments+1];for(int i=0;i<=segments;i++)points[i]=from+(to-from)*((double)i/segments);
@@ -51,7 +52,7 @@ internal sealed class RodScene
         for(int i=0;i<=segments;i++)
         {
             bool pinned=(i==0&&pinStart)||(i==segments&&pinEnd);
-            bodies[i]=w.AddSphere(material.Radius,at:points[i],type:pinned?BodyType.Static:BodyType.Dynamic);
+            bodies[i]=w.AddSphere(Math.Max(material.Radius,.01f),at:points[i],type:pinned?BodyType.Static:BodyType.Dynamic);
             if(!pinned)bodies[i].Mass=(float)(Math.PI*material.Radius*material.Radius*material.Density*length*(i==0||i==segments?.5:1));
             if(i>0){w.AddDistance(bodies[i-1],bodies[i],points[i-1],points[i]);lengths[i-1]=length;}
         }
