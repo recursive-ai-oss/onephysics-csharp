@@ -142,7 +142,7 @@ public class SnapshotBoundTests
         var chassis = w.AddBox(new Vector3F(1.8f, 0.5f, 4.2f), new Vector3D(-10, 1.0, 0), density: 1500f / (1.8f * 0.5f * 4.2f));
         w.AddVehicle(chassis, VehicleDef.Car);
         w.AddRagdoll(RagdollDef.Humanoid, new Vector3D(0, 1.5, 6));
-        w.AddFluid(new FluidDef { SurfaceOffset = 0.3, LimitToRegion = false });
+        w.AddFluid(new RecursiveAI.OnePhysics.Physics3D.FluidDef { SurfaceOffset = 0.3, LimitToRegion = false });
         Body3? prev = null;
         for (int i = 0; i < 30; i++)
         {

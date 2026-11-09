@@ -14,7 +14,7 @@ internal readonly struct Stages3D : IWorldStages
 
     public Stages3D(Engine3D e) => _e = e;
 
-    public void UpdateContacts(WorldCore world) => _e.UpdateContacts(world);
+    public void UpdateContacts(WorldCore world) { _e.UpdateContacts(world); _e.ApplyFieldContacts(); }
 
     public void Prepare(WorldCore world, ReadOnlySpan<int> constraints, in StepContext context) {
         // Contacts are prepared per batch (PrepareBatch); nothing else needs chunk-wise preparation yet.
