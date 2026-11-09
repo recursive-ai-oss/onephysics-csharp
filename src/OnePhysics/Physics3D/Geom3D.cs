@@ -14,7 +14,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct ShapeSpec3D
 {
-    internal const byte KSphere = 1, KBox = 2, KCapsule = 3, KTapered = 4, KCylinder = 5, KHull = 6, KTaperedCylinder = 10, KTriangle = 11, KEmpty = 12, KMassOffset = 13, KPlane = 14;
+    internal const byte KSphere = 1, KBox = 2, KCapsule = 3, KTapered = 4, KCylinder = 5, KHull = 6, KTaperedCylinder = 10, KTriangle = 11, KEmpty = 12, KMassOffset = 13, KPlane = 14, KVoxelGrid = 15;
 
     private readonly byte[]? _recipe;
 
@@ -51,6 +51,16 @@ public readonly struct ShapeSpec3D
 
     /// <summary>A static sampled height field. Heights, scale, sample counts and optional cell holes are validated on attachment.</summary>
     public static ShapeSpec3D HeightField(ReadOnlySpan<float> heights, int nx, int nz, Vector3F scale, ReadOnlySpan<bool> holes = default, double flatTolerance = 0.01) => new(Geom3D.HeightFieldRecipe(heights, nx, nz, scale, holes, flatTolerance));
+
+    /// <summary>An immutable static occupancy grid. Cell order is x-fastest then y then z. Dimensions, count and cell size have VoxelGrid3D's limits; validated immediately. Throws ArgumentOutOfRangeException for invalid input.</summary>
+    public static ShapeSpec3D VoxelGrid(int sizeX, int sizeY, int sizeZ, ReadOnlySpan<bool> occupancy, float cellSize = 1f)
+    {
+        VoxelGrid3D.Validate(sizeX, sizeY, sizeZ, occupancy.Length, cellSize);
+        var w = StateWriter.ToBuffer();
+        w.NamedByte(KVoxelGrid); w.NamedInt32(sizeX); w.NamedInt32(sizeY); w.NamedInt32(sizeZ); w.NamedSingle(cellSize);
+        foreach (bool solid in occupancy) w.NamedBool(solid);
+        return new ShapeSpec3D(w.ToArray());
+    }
 
     /// <summary>No collision geometry or mass contribution, even when used as a sensor. Use body mass/inertia overrides for a physical placeholder.</summary>
     public static ShapeSpec3D Empty => Make(KEmpty);
@@ -208,6 +218,17 @@ internal sealed partial class Geom3D
             var m = TriangleMesh3D.Create(v, idx, new MeshBuildOptions { FlatEdgeTolerance = tol });
             g.Soup = m;
             g.LocalBounds = m.Bounds;
+        }
+        else if (kind == ShapeSpec3D.KVoxelGrid)
+        {
+            g.Kind = GeomKind.Mesh;
+            int nx = r.ReadInt32(), ny = r.ReadInt32(), nz = r.ReadInt32(); float size = r.ReadSingle();
+            long count = (long)nx * ny * nz;
+            if (nx < 1 || nx > 1024 || ny < 1 || ny > 1024 || nz < 1 || nz > 1024 || count > VoxelGrid3D.MaxCells || count > r.Remaining) throw r.Error("invalid voxel grid dimensions or truncated occupancy");
+            var solid = new bool[(int)count];
+            for (int i = 0; i < solid.Length; i++) solid[i] = r.ReadBool();
+            var grid = new VoxelGrid3D(nx, ny, nz, solid, size);
+            g.Soup = grid; g.LocalBounds = grid.Bounds;
         }
         else if (kind == KHeightField)
         {

@@ -37,8 +37,37 @@ internal static class SmokeProgram
         return good;
     }
 
+    private static ulong Grid2(int threads,bool restore)
+    {
+        var w=new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D(new(){WorldId=991,ThreadCount=threads});
+        var terrain=w.AddTileGrid(3,1,[TileKind2D.Solid,TileKind2D.Solid,TileKind2D.Solid]);
+        w.AddCircle(0.2f,new(1,3));
+        var character=w.AddCharacter(new(0.4,2.2));
+        for(int i=0;i<60;i++)
+        {
+            if(i==20)w.SetTile(terrain,0,0,TileKind2D.SlopeUpRight);
+            character.MoveVelocity(new(0.2f,character.IsGrounded?0:-2),1f/60);
+            w.Step(1f/60);
+            if(i==30 && restore) {var bytes=w.Snapshot();w=w.Fork();w.Restore(bytes);character=w.GetCharacter(new(w.Id,character.RawHandle.Index,character.RawHandle.Generation));}
+        }
+        return w.ComputeHash();
+    }
+    private static ulong Grid3(int threads,bool restore)
+    {
+        var w=new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D(new(){WorldId=992,ThreadCount=threads});
+        w.AddVoxelGrid(3,1,3,[true,true,true,true,true,true,true,true,true]);w.AddSphere(0.2f,new(1,3,1));
+        for(int i=0;i<60;i++)
+        {
+            w.Step(1f/60);
+            if(i==30 && restore) {var bytes=w.Snapshot();w=w.Fork();w.Restore(bytes);}
+        }
+        return w.ComputeHash();
+    }
     private static int Main()
     {
+        ulong grids2=Grid2(1,false),grids3=Grid3(1,false);
+        if(grids2!=Grid2(3,true)||grids3!=Grid3(3,true))throw new InvalidOperationException("Grid smoke hashes differ.");
+        Console.WriteLine("OK grids "+grids2.ToString("x16",System.Globalization.CultureInfo.InvariantCulture)+" "+grids3.ToString("x16",System.Globalization.CultureInfo.InvariantCulture));
         ulong fields2=FieldScenes.Run2(1,false),fields3=FieldScenes.Run3(1,false);
         if(fields2!=FieldScenes.Run2(3,true)||fields3!=FieldScenes.Run3(3,true))throw new InvalidOperationException("Field smoke hashes differ.");
         Console.WriteLine("OK fields "+fields2.ToString("x16",System.Globalization.CultureInfo.InvariantCulture)+" "+fields3.ToString("x16",System.Globalization.CultureInfo.InvariantCulture));

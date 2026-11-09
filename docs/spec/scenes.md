@@ -416,6 +416,34 @@ APIs. A scene using them is a public-library authoring scene; reference-engine
 benchmark drivers need not accept these extension kinds. Existing benchmark
 records, scene generation and their checksums are unchanged.
 
+### Grid terrain study
+
+`bar grid-study` builds `tile-world-2d` (64×2 half-metre tiles, a floor and
+45-degree ramp, 20 boxes dropping at most 0.2 m and a moving character) and `voxel-world-3d`
+(32×5×16 quarter-metre voxels, a floor and quarter-metre stairs, 8 boxes,
+8 capsules and a moving character). Each runs 600 steps at 1/60 second, one
+thread. The same run is repeated using the tile grid's already merged boundary
+as chains, and the voxel grid's exposed faces as a triangle mesh. These are
+representation comparisons within the library, not external engine rows.
+
+Bounds: max body speed ≤20 m/s; no nonfinite poses or body-frame escapes
+(2D X [-1,33], Y [0,10]; 3D X [-1,9], Y [0,10], Z [-1,5]); penetration of the
+base horizontal floor by each rigid body's rotated support extent ≤0.03 m.
+The floor metric is not a full terrain-pair penetration metric. Character X
+progress must be at least 12 m in 2D and 4 m in 3D. The 3D character traverses
+25 cm risers; the 2D one traverses the sloped tile surface with an explicit
+50-degree slope limit (not the rounding boundary at 45 degrees). Its move
+input is horizontal while grounded, and includes -2 m/s vertically only
+while airborne; downward velocity must not cancel the requested uphill motion.
+
+`--timing` first traverses both complete scenes without measurement to JIT
+ramp-crest and stair-step paths, then constructs fresh worlds and adds 120
+untimed settling steps (including stationary character
+moves) before the 600 measured steps. It reports mean microseconds per step,
+including character movement, without construction, I/O or metric reduction.
+These are indicative comparisons for choosing representations, not speed-bar
+rows; record machine, runtime, thread count and load with the output.
+
 ### Surface and indexed-material authoring records
 
 After a `shape` record, optional `surface` supplies twelve floats:

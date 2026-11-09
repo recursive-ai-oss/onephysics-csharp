@@ -374,3 +374,74 @@ but resets its proxy to the fixed domain cube after translating the other tree
 boxes. Plane proxy extents do not veto an otherwise valid shift. The reset
 preserves the proxy leaf id, refits the tree in fixed order and marks that leaf
 moved; it does not allocate or change any shape's collision geometry.
+
+## Voxel grids
+
+`VoxelGrid3D` is immutable, static-only dense occupancy: dimensions 1..1024,
+at most 1048576 cells. Cell size is finite, at least 1e-5 metres, with the full
+extent on every axis at most 1048576 metres. Occupancy order is X fastest,
+then Y, then Z. The body origin is the minimum corner; an empty grid is valid.
+Cell (x,y,z) occupies [x,x+1] × [y,y+1] × [z,z+1] times cell size.
+
+Only faces adjacent to empty space (including outside the grid) have triangles.
+Triangle id is `12*((z*sizeY+y)*sizeX+x) + 2*face + half`. Face order is
+-X,+X,-Y,+Y,-Z,+Z. For face axis a use U=(a+1)%3, V=(a+2)%3; exchange U,V
+on negative faces. The triangles are (p,p+U,p+U+V) and (p,p+U+V,p+V), where
+p is the minimum corner on that face and U,V have cell-size length. Evaluate
+every vertex from integer lattice coordinates times cell size, rounding once
+per component (never add cell size to an already rounded vertex). Normals
+point out of solid space. Diagonals are inactive. A perimeter edge is inactive
+if the neighbouring cell along that face tangent is solid: this is either
+a coplanar join or a concave corner. Otherwise it is active. Convex, compound, soft-particle, and character
+contacts use the existing triangle-soup paths with those active-edge flags.
+
+Box candidate queries enumerate the intersecting closed cell intervals in
+Z/Y/X order, test exposed triangles against the box, then return ascending ids.
+Ray traversal follows Amanatides and Woo, *A Fast Voxel Traversal Algorithm for
+Ray Tracing* (1987): enter the grid box and track the next plane fraction per axis. Recompute
+fractions from float32-rounded lattice planes on each crossing, rather than
+accumulating a constant delta: this keeps traversal consistent with triangle
+vertices when cell size is not a power of two. Plane ties visit all side-cell subsets in
+ascending XYZ bit-mask order, then advance all tied axes. A ray stationary on
+a grid plane also tests the cell on its negative side. Exact triangle tests,
+not stepping fractions, determine hit fractions; equal closest fractions take
+the lower triangle id. No mutable per-shape visit stamps are used. Single,
+Any and All ray forms share traversal. Convex casts traverse the ray of the start bounds' centre, visiting a cell
+stencil with radii ceil(half-extent/cell-size)+1 on each axis. A cleared pooled
+cell bitset removes duplicate visits; exposed triangles intersecting the full
+swept bounds are collected and sorted by id before the ordinary soup cast.
+When any stencil radius exceeds 16 cells or its volume exceeds 4096 cells, or
+when motion is zero, use swept-box enumeration instead. This bounds work for
+broad movers while retaining exactly the same narrowphase and tie rules.
+
+`AddVoxelGrid` creates a static body. `CreateVoxelGrid` and `ShapeSpec3D.VoxelGrid`
+provide definition-based attachment. Geometry recipe kind 15 consists of one
+kind byte, three int32 dimensions, float32 cell size, and one canonical bool
+byte per cell. This is an additive recipe in the existing engine section, not
+a change to any fixed snapshot record or core format. Occupancy is immutable,
+so no additional mutable state section is needed. Fork, regional archives,
+scene state, replay and world hashing retain that recipe. Debug kind VoxelGrid
+uses the mesh-triangle flag and emits only exposed triangles.
+
+Authoring scene kind `voxelgrid` has parameters sizeX, sizeY, sizeZ, cell size,
+then sizeX*sizeY*sizeZ flags (0 empty, 1 solid). Voxel stairs are discrete steps,
+not a smooth ramp: characters can negotiate risers no greater than their
+configured step height; larger voxel stairs are walls. Runtime voxel edits and
+carving are not part of this shape.
+
+Voxel faces also carry coherent coplanar patches. Union exposed faces with their
+negative-axis tangential neighbours of the same orientation. The face parent
+array is indexed by `6*cell+face`; lower-root joins and path compression choose
+the lowest face id. Both triangles of a face share patch id `2*faceRoot`, and
+each patch is shared (a face always has two exactly coplanar triangles). This
+feeds the same persistent-plane normal and four-point reduction as meshes and
+height fields; query triangle ids are unchanged. The patch array is rebuilt,
+not serialized.
+
+Voxel creation and `Shape.SetVoxelMaterials` accept a scalar table and one
+index per voxel, including empty cells. Expand index i into triangle slots
+12*i through 12*i+11 and pass the result to the existing indexed material store.
+That store partitions coherent planes by material index before contact
+reduction. Empty spans remove overrides; nondefault per-entry Surface settings
+are rejected because surfaces are shape-wide. Indexed voxel state lives in the
+existing optional material section, not in the immutable occupancy recipe.

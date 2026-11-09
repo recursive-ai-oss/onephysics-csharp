@@ -324,7 +324,7 @@ public abstract class TriangleSoup3D
         }
     }
 
-    private static void CheckFinite(Vector3F v, string name)
+    internal static void CheckFinite(Vector3F v, string name)
     {
         if (!float.IsFinite(v.X) || !float.IsFinite(v.Y) || !float.IsFinite(v.Z))
         {
@@ -452,7 +452,7 @@ public abstract class TriangleSoup3D
     }
 
     // The box of a convex shape placed in the soup's frame, from six support points.
-    private static Bounds3F ShapeBounds(in ConvexShape3D shape, in RigidTransformF placement)
+    internal static Bounds3F ShapeBounds(in ConvexShape3D shape, in RigidTransformF placement)
     {
         QuaternionF inv = placement.Rotation.Conjugated();
         Vector3F px = placement.TransformPoint(shape.Support(inv.Rotate(Vector3F.UnitX)));
@@ -476,7 +476,7 @@ public abstract class TriangleSoup3D
         return new Bounds3F(new Vector3F(x0, y0, z0), new Vector3F(x1, y1, z1));
     }
 
-    private static void CheckPlacement(in RigidTransformF t)
+    internal static void CheckPlacement(in RigidTransformF t)
     {
         CheckFinite(t.Translation, "shapeInSoup.Translation");
         QuaternionF q = t.Rotation;
@@ -487,7 +487,7 @@ public abstract class TriangleSoup3D
         }
     }
 
-    private static Bounds3F Grow(Bounds3F b)
+    internal static Bounds3F Grow(Bounds3F b)
     {
         float m = Math.Max(Math.Max(Math.Abs(b.Min.X), Math.Abs(b.Max.X)), Math.Max(Math.Max(Math.Abs(b.Min.Y), Math.Abs(b.Max.Y)), Math.Max(Math.Abs(b.Min.Z), Math.Abs(b.Max.Z))));
         return b.Inflate(1e-5f * (m + 1e-3f));
@@ -552,7 +552,7 @@ public abstract class TriangleSoup3D
     /// <param name="scratch">Optional reusable id list, to avoid an allocation.</param>
     /// <returns>True when the shape touches a triangle within the motion.</returns>
     /// <exception cref="ArgumentOutOfRangeException">The placement or the motion is invalid.</exception>
-    public bool ShapeCast(in ConvexShape3D shape, in RigidTransformF shapeInSoup, Vector3F motion, out SoupCastHit3D hit, List<int>? scratch = null)
+    public virtual bool ShapeCast(in ConvexShape3D shape, in RigidTransformF shapeInSoup, Vector3F motion, out SoupCastHit3D hit, List<int>? scratch = null)
     {
         CheckPlacement(shapeInSoup);
         CheckFinite(motion, nameof(motion));

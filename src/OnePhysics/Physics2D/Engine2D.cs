@@ -705,7 +705,8 @@ internal sealed partial class Engine2D : ISnapshotSection
         float slop = r.ReadSingle();
         if (!float.IsFinite(hertz + zeta + push + thr + maxSpeed + maxRot + slop) || slop < 0f || hertz < 0f || zeta < 0f || push < 0f || thr < 0f || !(maxSpeed > 0f) || !(maxRot > 0f)) { throw r.Error("invalid 2D engine tunables"); }
 
-        int nb = r.ReadCount(65, "2D bodies"); // 65 bytes of per-body arrays follow
+        int nb = r.ReadCount(65, "2D bodies");
+        RestoredBodyCount = nb; // 65 bytes of per-body arrays follow
         if (nb > 1 << 22) { throw r.Error("too many 2D bodies"); }
         // Everything is read into staging arrays that the engine keeps between restores and swapped in at the end, so a restore allocates nothing once they have grown.
         var lc = Fit(ref _sLc, 2 * nb); var mass = Fit(ref _sMass, nb); var inertia = Fit(ref _sInertia, nb); var maxE = Fit(ref _sMaxE, nb); var minE = Fit(ref _sMinE, nb);
@@ -836,6 +837,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     private int[] _sHead = new int[8], _sTail = new int[8], _sProxy = new int[8], _sGrp = new int[8], _sNext = new int[8], _sPa = new int[8], _sPb = new int[8], _sPc = new int[8], _sFree = new int[8];
     private Shape2D[] _sGeom = new Shape2D[8];
     private uint[] _sCat = new uint[8], _sMask = new uint[8];
+    internal int RestoredBodyCount { get; private set; }
     internal int RestoredShapeCount { get; private set; }
     internal bool RestoredShapeIsLive(int s) => s >= 0 && s < RestoredShapeCount && _sLive[s];
     private bool[] _sLive = new bool[8], _sPl = new bool[8];
@@ -854,6 +856,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     public bool IsConsistentWithCore()
     {
         ConsistencyProblem = "";
+        if (!Tiles.Consistent()) { ConsistencyProblem = "invalid tile-grid body or shape ownership"; return false; }
         var bodies = Core.Bodies;
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || Geom.Length < shapes.HighWater) { return false; }

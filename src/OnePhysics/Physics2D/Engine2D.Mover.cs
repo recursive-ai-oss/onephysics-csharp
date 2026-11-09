@@ -134,6 +134,14 @@ internal sealed partial class Engine2D
             Vec2 lt = bq.InverseRotate(new Vec2(dx, dy));
             var o = Distance2D.ShapeCast(in Geom[s], in c.Capsule, xf, lt, any ? fraction : 1f);
             if (!o.Hit) { continue; }
+            if (Geom[s].Kind == ShapeKind2D.ChainSegment && !Geom[s].IsTwoSided)
+            {
+                // A convex sweep sees the segment's endpoint even when its ghost
+                // neighbour owns that feature. Such a hit can pin a capsule just
+                // before a ramp's crest. Apply the same ownership test as contacts.
+                var atHit = new Transform2(xf.P + lt * o.Fraction, xf.Q);
+                if (Collide2D.Collide(in Geom[s], in c.Capsule, atHit, 2e-3f).PointCount == 0) { continue; }
+            }
             Vec2 wn = bq.Rotate(o.Normal);
             if (wn.X == 0f && wn.Y == 0f) { continue; }
             if (-(dx * wn.X + dy * wn.Y) < 0.01f * len) { continue; }

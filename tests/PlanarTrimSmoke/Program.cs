@@ -5,6 +5,8 @@ using RecursiveAI.OnePhysics.Replay;
 
 var world=new PhysicsWorld2D(new WorldOptions2D { WorldId=106 });
 world.AddCircle(0.5f,at:new(0,3));
+var terrain=world.AddTileGrid(2,1,[RecursiveAI.OnePhysics.TileKind2D.Solid,RecursiveAI.OnePhysics.TileKind2D.Solid]);
+world.SetTile(terrain,0,0,RecursiveAI.OnePhysics.TileKind2D.HalfBottom);
 using var stream=new MemoryStream();
 using(var recorder=world.StartRecording(stream))world.Step(1f/60);
 stream.Position=0;var player=new ReplayPlayer(stream);var copy=player.CreateWorld2D();
