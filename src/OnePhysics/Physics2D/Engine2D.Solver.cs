@@ -61,10 +61,10 @@ internal sealed partial class Engine2D
         int nb = bodies.HighWater;
         GroupSinglePointFirst();
         if (BodyState.Length < (nb + 1) * BS2D.Stride) { BodyState = new float[Math.Max(nb + 1, BodyState.Length / BS2D.Stride * 2) * BS2D.Stride]; }
-        if (Wide.Length < batches * W2D.GroupFloats)
+        if (Wide.Length < batches * ContactGroupFloats)
         {
-            int cap = Math.Max(batches, Wide.Length / W2D.GroupFloats * 2);
-            Wide = new float[cap * W2D.GroupFloats]; WideIdx = new int[cap * W2D.IdxPerGroup]; WideCons = new int[cap * W2D.Lanes]; GroupRestitution = new byte[cap]; GroupRolling = new byte[cap]; GroupPoints = new byte[cap];
+            int cap = Math.Max(batches, Wide.Length / ContactGroupFloats * 2);
+            Wide = new float[cap * ContactGroupFloats]; WideIdx = new int[cap * W2D.IdxPerGroup]; WideCons = new int[cap * W2D.Lanes]; GroupRestitution = new byte[cap]; GroupRolling = new byte[cap]; GroupPoints = new byte[cap];
         }
 
         if (JWide.Length < batches * J2D.GroupFloats && LiveJointCount() > 0)
@@ -179,6 +179,11 @@ internal sealed partial class Engine2D
     /// <summary>Once per step: effective masses, adjusted separations, relative velocities for restitution and soft coefficients of the contacts of one batch, from the manifolds stored in the payloads, into one wide group.</summary>
     public void PrepareBatch(ReadOnlySpan<int> constraints, int group, in StepContext ctx)
     {
+        PrepareBatchCore(constraints, group, ctx);
+        if (Core.Controls.Active) PrepareControlledContacts(constraints);
+    }
+    private void PrepareBatchCore(ReadOnlySpan<int> constraints, int group, in StepContext ctx)
+    {
         // A batch of contacts alone (nearly every batch) takes the lean path below; a batch holding a joint takes the general one.
         {
             var kinds = Core.Constraints.Kind;
@@ -197,7 +202,7 @@ internal sealed partial class Engine2D
         float dynBias = _dynBias, dynMass = _dynMass, dynImpulse = _dynImpulse, stBias = _stBias, stMass = _stMass, stImpulse = _stImpulse;
         if (ctx.Schedule != 0) { dynBias = _liteDynBias; dynMass = _liteDynMass; dynImpulse = _liteDynImpulse; stBias = _liteStBias; stMass = _liteStMass; stImpulse = _liteStImpulse; }
 
-        var w = Wide.AsSpan(group * W2D.GroupFloats, W2D.GroupFloats);
+        var w = Wide.AsSpan(group * ContactGroupFloats, ContactGroupFloats);
         var idx = WideIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup);
         var ids = WideCons.AsSpan(group * W2D.Lanes, W2D.Lanes);
         for (int l = 0; l < W2D.Lanes; l++) { idx[l] = 0; idx[8 + l] = 0; idx[16 + l] = -1; idx[24 + l] = -1; ids[l] = -1; }
@@ -330,7 +335,7 @@ internal sealed partial class Engine2D
         ReadOnlySpan<int> bodyA = cs.BodyA, bodyB = cs.BodyB;
         ReadOnlySpan<byte> type = bodies.Type;
         ReadOnlySpan<byte> points = cs.PointCount;
-        ref float W = ref Mem.Base(Wide.AsSpan(group * W2D.GroupFloats, W2D.GroupFloats), W2D.GroupFloats);
+        ref float W = ref Mem.Base(Wide.AsSpan(group * ContactGroupFloats, ContactGroupFloats), ContactGroupFloats);
         ref int I = ref Mem.Base(WideIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup), W2D.IdxPerGroup);
         ref int ids = ref Mem.Base(WideCons.AsSpan(group * W2D.Lanes, W2D.Lanes), W2D.Lanes);
         var jidx = JIdx.Length >= (group + 1) * W2D.IdxPerGroup ? JIdx.AsSpan(group * W2D.IdxPerGroup, W2D.IdxPerGroup) : default;
@@ -498,7 +503,7 @@ internal sealed partial class Engine2D
 
     private bool IsPlainRevolute(int c, ConstraintStore cs)
     {
-        if (!WideRevoluteJoints) { return false; }
+        if (!WideRevoluteJoints || (Core.Controls.HasLocks && (Core.Controls.ConstraintsOf(cs.BodyA[c]) | Core.Controls.ConstraintsOf(cs.BodyB[c])) != 0)) { return false; }
         ref JointData2D d = ref Joints[c];
         if (d.Type != (byte)JointType2D.Revolute || (cs.Color[c] == ConstraintStore.Overflow) || d.Motor || d.Limit || (d.Spring && d.Hertz > 0f)) { return false; }
         var p = cs.Payload(c);
@@ -552,7 +557,7 @@ internal sealed partial class Engine2D
             }
 
             int slot = SlotOf[c];
-            int wb = (slot >> 3) * W2D.GroupFloats + (slot & 7);
+            int wb = (slot >> 3) * ContactGroupFloats + (slot & 7);
             int pb = c * pf;
             payload[pb + ManifoldLayout.RollingImpulse] = wide[wb + W2D.Roll * 8];
             payload[pb + ManifoldLayout.NormalImpulse(0)] = wide[wb + W2D.Impulse0 * 8];
@@ -674,6 +679,7 @@ internal sealed partial class Engine2D
             if (w > maxSpin) { w = maxSpin; }
             else if (w < -maxSpin) { w = -maxSpin; }
             st[o + BS2D.Vx] = vx; st[o + BS2D.Vy] = vy; st[o + BS2D.W] = w;
+            if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) LimitBodyControls(b);
         }
     }
 
@@ -687,6 +693,7 @@ internal sealed partial class Engine2D
         foreach (int b in list)
         {
             int o = (b + 1) * BS2D.Stride;
+            if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) LimitBodyControls(b);
             float dx = h * st[o + BS2D.Vx], dy = h * st[o + BS2D.Vy];
             st[o + BS2D.Dpx] += dx; st[o + BS2D.Dpy] += dy;
             pos[2 * b] += WorldCore.Grid(dx); pos[2 * b + 1] += WorldCore.Grid(dy);
@@ -717,6 +724,7 @@ internal sealed partial class Engine2D
             int o = (b + 1) * BS2D.Stride;
             Dp[2 * b] = BodyState[o + BS2D.Dpx]; Dp[2 * b + 1] = BodyState[o + BS2D.Dpy];
             if (bodies.TypeOf(b) != BodyType.Dynamic) { continue; }
+            if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) LimitBodyControls(b);
             lin[2 * b] = BodyState[o + BS2D.Vx]; lin[2 * b + 1] = BodyState[o + BS2D.Vy]; ang[b] = BodyState[o + BS2D.W];
             if (TInspection.Enabled) { Core.BodyReadback.Inputs(b, bodies.InverseMass[b], GravityScale[b], new(Force[2 * b], Force[2 * b + 1], 0), new(0, 0, Torque[b]), Core.IntegratedTimeOfBody(b)); }
             Force[2 * b] = 0f; Force[2 * b + 1] = 0f; Torque[b] = 0f;

@@ -15,7 +15,7 @@ internal sealed partial class Engine2D
     /// <summary>Velocities, masses, rotated anchors and motion of one joint's two bodies, loaded once per solve call.</summary>
     private struct JS
     {
-        public float VAx, VAy, WA, VBx, VBy, WB, MA, IA, MB, IB;
+        public float VAx, VAy, WA, VBx, VBy, WB, MA, MAY, IA, MB, MBY, IB;
         public JointReadback Readback;
         public int Constraint;
         public float RAx, RAy, RBx, RBy;   // anchors from the centres of mass at the current rotation
@@ -26,8 +26,8 @@ internal sealed partial class Engine2D
         public void Lin(float px, float py)
         {
             if (Readback.Enabled) { Readback.AddPoint(Constraint, new(px, py, 0f), new(0f, 0f, RAx * py - RAy * px), new(0f, 0f, RBx * py - RBy * px)); }
-            VAx -= MA * px; VAy -= MA * py; WA -= IA * (RAx * py - RAy * px);
-            VBx += MB * px; VBy += MB * py; WB += IB * (RBx * py - RBy * px);
+            VAx -= MA * px; VAy -= MAY * py; WA -= IA * (RAx * py - RAy * px);
+            VBx += MB * px; VBy += MBY * py; WB += IB * (RBx * py - RBy * px);
         }
 
         /// <summary>Angular impulse: pushes B's rotation up and A's down.</summary>
@@ -38,10 +38,11 @@ internal sealed partial class Engine2D
         {
             if (Readback.Enabled) { Readback.Add(Constraint, new(-ax, -ay, 0f), new(0f, 0f, -a1), new(ax, ay, 0f), new(0f, 0f, a2), imp); }
             float px = imp * ax, py = imp * ay;
-            VAx -= MA * px; VAy -= MA * py; WA -= IA * a1 * imp;
-            VBx += MB * px; VBy += MB * py; WB += IB * a2 * imp;
+            VAx -= MA * px; VAy -= MAY * py; WA -= IA * a1 * imp;
+            VBx += MB * px; VBy += MBY * py; WB += IB * a2 * imp;
         }
 
+        public readonly float LinearK(float x, float y) => MA == MAY && MB == MBY ? MA + MB : (MA + MB)*x*x + (MAY + MBY)*y*y;
         public readonly float AxialVelocity(float ax, float ay, float a1, float a2) => (ax * (VBx - VAx) + ay * (VBy - VAy)) + a2 * WB - a1 * WA;
 
         public readonly void RelativePointVelocity(out float x, out float y)
@@ -61,6 +62,8 @@ internal sealed partial class Engine2D
         j.VAx = st[oa + BS2D.Vx]; j.VAy = st[oa + BS2D.Vy]; j.WA = st[oa + BS2D.W];
         j.VBx = st[ob + BS2D.Vx]; j.VBy = st[ob + BS2D.Vy]; j.WB = st[ob + BS2D.W];
         j.MA = s[JRow.MA]; j.IA = s[JRow.IA]; j.MB = s[JRow.MB]; j.IB = s[JRow.IB];
+        j.MAY = j.MA; j.MBY = j.MB;
+        if (Core.Controls.HasLocks) { j.MA = Core.AxisMass(a, 0); j.MAY = Core.AxisMass(a, 1); j.MB = Core.AxisMass(b, 0); j.MBY = Core.AxisMass(b, 1); if (((int)Core.Controls.Get(a).Settings.Constraints & 32) != 0) j.IA = 0; if (((int)Core.Controls.Get(b).Settings.Constraints & 32) != 0) j.IB = 0; }
         float dAc = st[oa + BS2D.DqC], dAs = st[oa + BS2D.DqS], dBc = st[ob + BS2D.DqC], dBs = st[ob + BS2D.DqS];
         j.DAc = dAc; j.DAs = dAs; j.DBc = dBc; j.DBs = dBs;
         float rx = s[JRow.RAx], ry = s[JRow.RAy];
@@ -127,6 +130,12 @@ internal sealed partial class Engine2D
     private static void Solve22(float k11, float k12, float k22, float rx, float ry, out float x, out float y)
     {
         float det = k11 * k22 - k12 * k12;
+        if (det == 0f)
+        {
+            if (k12 == 0) { x = k11 > 0 ? rx/k11 : 0; y = k22 > 0 ? ry/k22 : 0; return; }
+            double trace = (double)k11 + k22; double scale = trace > 0 ? 1 / (trace*trace) : 0;
+            x = (float)(((double)k11*rx + (double)k12*ry)*scale); y = (float)(((double)k12*rx + (double)k22*ry)*scale); return;
+        }
         if (det != 0f) { det = 1f / det; }
         x = det * (k22 * rx - k12 * ry);
         y = det * (k11 * ry - k12 * rx);
@@ -138,7 +147,7 @@ internal sealed partial class Engine2D
         j.RelativePointVelocity(out float dvx, out float dvy);
         float k11 = j.MA + j.MB + j.IA * j.RAy * j.RAy + j.IB * j.RBy * j.RBy;
         float k12 = -j.IA * j.RAx * j.RAy - j.IB * j.RBx * j.RBy;
-        float k22 = j.MA + j.MB + j.IA * j.RAx * j.RAx + j.IB * j.RBx * j.RBx;
+        float k22 = j.MAY + j.MBY + j.IA * j.RAx * j.RAx + j.IB * j.RBx * j.RBx;
         Solve22(k11, k12, k22, ms * dvx + k * cx, ms * dvy + k * cy, out float bx, out float by);
         float ix = -bx - isc * lx, iy = -by - isc * ly;
         lx += ix; ly += iy;
@@ -249,7 +258,7 @@ internal sealed partial class Engine2D
 
     private static void AxialRows(ref JS j, ref JointData2D d, ReadOnlySpan<float> s, Span<float> p, in Axes ax, bool useBias, float invH, bool spring, bool limits)
     {
-        float k = j.MA + j.MB + j.IA * ax.A1 * ax.A1 + j.IB * ax.A2 * ax.A2;
+        float k = j.LinearK(ax.Ax, ax.Ay) + j.IA * ax.A1 * ax.A1 + j.IB * ax.A2 * ax.A2;
         float mass = k > 0f ? 1f / k : 0f;
         if (spring && useBias)
         {
@@ -299,7 +308,7 @@ internal sealed partial class Engine2D
         float cPerp = ax.Nx * (j.Dx + j.RBx - j.RAx) + ax.Ny * (j.Dy + j.RBy - j.RAy);
         float cAng = SmallAngle(in j, s);
         float dPerp = j.AxialVelocity(ax.Nx, ax.Ny, ax.S1, ax.S2), dAng = j.WB - j.WA;
-        float k11 = j.MA + j.MB + j.IA * ax.S1 * ax.S1 + j.IB * ax.S2 * ax.S2;
+        float k11 = j.LinearK(ax.Nx, ax.Ny) + j.IA * ax.S1 * ax.S1 + j.IB * ax.S2 * ax.S2;
         float k12 = j.IA * ax.S1 + j.IB * ax.S2;
         float k22 = j.IA + j.IB;
         if (k22 == 0f) { k22 = 1f; }
@@ -337,7 +346,7 @@ internal sealed partial class Engine2D
 
         // The line constraint: B's anchor stays on the axis through A's anchor.
         float cPerp = ax.Nx * (j.Dx + j.RBx - j.RAx) + ax.Ny * (j.Dy + j.RBy - j.RAy);
-        float k = j.MA + j.MB + j.IA * ax.S1 * ax.S1 + j.IB * ax.S2 * ax.S2;
+        float k = j.LinearK(ax.Nx, ax.Ny) + j.IA * ax.S1 * ax.S1 + j.IB * ax.S2 * ax.S2;
         float mass = k > 0f ? 1f / k : 0f;
         float bias = 0f, ms = 1f, isc = 0f;
         if (useBias) { bias = s[JRow.JBias]; ms = s[JRow.JMass]; isc = s[JRow.JImp]; }
@@ -394,7 +403,7 @@ internal sealed partial class Engine2D
             return;
         }
 
-        float k = j.MA + j.MB + j.IA * a1 * a1 + j.IB * a2 * a2;
+        float k = j.LinearK(ax, ay) + j.IA * a1 * a1 + j.IB * a2 * a2;
         float mass = k > 0f ? 1f / k : 0f;
         bool range = d.Lower < d.Upper;
         if (d.Spring && range)
@@ -465,7 +474,7 @@ internal sealed partial class Engine2D
         j.RelativePointVelocity(out float dvx, out float dvy);
         float k11 = j.MA + j.MB + j.IA * j.RAy * j.RAy + j.IB * j.RBy * j.RBy;
         float k12 = -j.IA * j.RAx * j.RAy - j.IB * j.RBx * j.RBy;
-        float k22 = j.MA + j.MB + j.IA * j.RAx * j.RAx + j.IB * j.RBx * j.RBx;
+        float k22 = j.MAY + j.MBY + j.IA * j.RAx * j.RAx + j.IB * j.RBx * j.RBx;
         Solve22(k11, k12, k22, dvx + corr * ex, dvy + corr * ey, out float bx, out float by);
         float nx = p[JPay.P0] - bx, ny = p[JPay.P1] - by;
         float max = s[JRow.MaxMotorImp];
@@ -481,7 +490,7 @@ internal sealed partial class Engine2D
     private void SolveMouse(ref JS j, ReadOnlySpan<float> s, Span<float> p, bool warm, bool useBias, int b)
     {
         // Only B moves: A is in the constraint graph to give the joint a place, nothing more.
-        j.MA = 0f; j.IA = 0f;
+        j.MA = 0f; j.MAY = 0f; j.IA = 0f;
         if (warm)
         {
             j.Lin(p[JPay.P0], p[JPay.P1]);
@@ -493,7 +502,7 @@ internal sealed partial class Engine2D
         j.RelativePointVelocity(out float dvx, out float dvy);
         float k11 = j.MB + j.IB * j.RBy * j.RBy;
         float k12 = -j.IB * j.RBx * j.RBy;
-        float k22 = j.MB + j.IB * j.RBx * j.RBx;
+        float k22 = j.MBY + j.IB * j.RBx * j.RBx;
         Solve22(k11, k12, k22, s[JRow.SMass] * dvx + s[JRow.SBias] * cx, s[JRow.SMass] * dvy + s[JRow.SBias] * cy, out float bx, out float by);
         float nx = p[JPay.P0] - bx - s[JRow.SImp] * p[JPay.P0];
         float ny = p[JPay.P1] - by - s[JRow.SImp] * p[JPay.P1];

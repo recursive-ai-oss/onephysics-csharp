@@ -4,6 +4,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using RecursiveAI.OneMath;
 
 namespace RecursiveAI.OnePhysics.Scene;
 
@@ -93,6 +94,27 @@ public sealed class VehicleScript
 /// <summary>Mutable BodyDef authoring record, using the dimensional scene units and field order.</summary>
 public sealed class BodyDef
 {
+    /// <summary>Optional rigid-body locks and caps. Defaults inherit world limits.</summary>
+    public BodyControlSettings Controls { get; set; }
+    /// <summary>Optional separate sleep thresholds and duration; default inherits the world policy.</summary>
+    public BodySleepSettings SleepSettings { get; set; }
+    /// <summary>Prevents automatic island sleep; default false.</summary>
+    public bool NeverSleep { get; set; }
+    /// <summary>Optional dynamic mass override in kg.</summary>
+    public float? MassOverride { get; set; }
+    /// <summary>Optional local center override in metres. Planar records use X/Y with Z zero.</summary>
+    public Vector3F? CenterOverride { get; set; }
+    /// <summary>Optional principal inertia override in kg m². Planar records use X only.</summary>
+    public Vector3F? InertiaOverride { get; set; }
+    /// <summary>Principal inertia frame in 3D. Default identity; not used in 2D.</summary>
+    public QuaternionF InertiaRotation { get; set; } = QuaternionF.Identity;
+    /// <summary>Optional target body-origin position for a kinematic body's next step; planar Z is zero.</summary>
+    public Vector3D? TargetPosition { get; set; }
+    /// <summary>Target orientation in 3D, normalized when building the world.</summary>
+    public QuaternionF TargetRotation { get; set; } = QuaternionF.Identity;
+    /// <summary>Target planar angle, radians; used with TargetPosition in 2D.</summary>
+    public float TargetAngle { get; set; }
+
     internal int SourceLine { get; set; }
     /// <summary>Scene Vehicle field; defaults and SI units follow the scene record specification. Invalid values are rejected when loading a world.</summary>
     public VehicleScript? Vehicle { get; set; }    // set on a dynamic box body that a vehicle-aware driver turns into a car; other drivers see a plain box
@@ -248,7 +270,9 @@ public sealed partial class Scene
     public Dictionary<string, string[]> Params { get; set; } = new();
     /// <summary>Scene Materials field; defaults and SI units follow the scene record specification. Invalid values are rejected when loading a world.</summary>
     public List<(double Friction, double Restitution)> Materials { get; set; } = [];
-    /// <summary>Scene Bodies field; defaults and SI units follow the scene record specification. Invalid values are rejected when loading a world.</summary>
+    /// <summary>Optional world linear/angular/push-out caps. Constraints must be None. Null uses engine defaults.</summary>
+    public BodyControlSettings? WorldLimits { get; set; }
+    /// <summary>Authoring bodies in stable insertion order. Null entries are rejected.</summary>
     public List<BodyDef> Bodies { get; set; } = [];
     /// <summary>Scene Joints field; defaults and SI units follow the scene record specification. Invalid values are rejected when loading a world.</summary>
     public List<JointDef> Joints { get; set; } = [];
@@ -318,6 +342,27 @@ public sealed partial class Scene
                     cur = new BodyDef { SourceLine = number, Type = t[1], X = D(t[2]), Y = D(t[3]), Angle = D(t[4]), Vx = D(t[5]), Vy = D(t[6]), W = D(t[7]) };
                     foreach (var f in t[8].Split(',')) { if (f == "bullet") cur.Bullet = true; else if (f == "asleep") cur.Asleep = true; else if (f != "-") throw new FormatException("expected bullet, asleep or - flag"); }
                     s.Bodies.Add(cur); break;
+                case "world_limits": s.WorldLimits = new(RigidbodyConstraints.None, (float)D(t[1]), (float)D(t[2]), (float)D(t[3])); break;
+                case "controls":
+                    if (cur == null) throw new FormatException("controls after body");
+                    cur.Controls = new((RigidbodyConstraints)I(t[1]), (float)D(t[2]), (float)D(t[3]), (float)D(t[4])); break;
+                case "sleep":
+                    if (cur == null || (t[1] != "0" && t[1] != "1")) throw new FormatException("sleep after body with 0/1 never-sleep flag");
+                    cur.NeverSleep = t[1] == "1";
+                    if (D(t[4]) == 0) { if (D(t[2]) != 0 || D(t[3]) != 0) throw new FormatException("zero thresholds when inheriting sleep time"); cur.SleepSettings = default; }
+                    else cur.SleepSettings = new((float)D(t[2]), (float)D(t[3]), (float)D(t[4])); break;
+                case "mass":
+                    if (cur == null) throw new FormatException("mass after body"); cur.MassOverride = (float)D(t[1]); break;
+                case "center":
+                    if (cur == null) throw new FormatException("center after body"); cur.CenterOverride = new((float)D(t[1]), (float)D(t[2]), s.Dim == 3 ? (float)D(t[3]) : 0); break;
+                case "inertia":
+                    if (cur == null) throw new FormatException("inertia after body");
+                    cur.InertiaOverride = s.Dim == 2 ? new Vector3F((float)D(t[1]),0,0) : new Vector3F((float)D(t[1]),(float)D(t[2]),(float)D(t[3]));
+                    if (s.Dim == 3) cur.InertiaRotation = new((float)D(t[4]),(float)D(t[5]),(float)D(t[6]),(float)D(t[7])); break;
+                case "target":
+                    if (cur == null) throw new FormatException("target after body");
+                    cur.TargetPosition = new(D(t[1]),D(t[2]),s.Dim == 3 ? D(t[3]) : 0);
+                    if (s.Dim == 2) cur.TargetAngle = (float)D(t[3]); else cur.TargetRotation = new((float)D(t[4]),(float)D(t[5]),(float)D(t[6]),(float)D(t[7])); break;
                 case "shape":
                     if (cur == null) throw new InvalidDataException("shape before body");
                     cur.Shapes.Add(new ShapeDef { SourceLine = number, Kind = t[1], Material = I(t[2]), Density = D(t[3]), Radius = D(t[4]), P = t.Skip(5).Select(D).ToArray() });
@@ -387,6 +432,7 @@ public sealed partial class Scene
         sb.Append("dt ").Append(F(Dt)).Append("\nsteps ").Append(Steps).Append('\n');
         sb.Append("gravity ").Append(F(Gx)).Append(' ').Append(F(Gy)); if (Dim == 3) sb.Append(' ').Append(F(Gz)); sb.Append('\n');
         if (Substeps > 0) sb.Append("substeps ").Append(Substeps).Append('\n');
+        if (WorldLimits is BodyControlSettings limits) sb.Append("world_limits ").Append(F(limits.MaxLinearSpeed)).Append(' ').Append(F(limits.MaxAngularSpeed)).Append(' ').Append(F(limits.MaxDepenetrationSpeed)).Append('\n');
         sb.Append("dump_every ").Append(DumpEvery).Append("\nwarmup ").Append(Warmup).Append('\n');
         if (Settle > 0) sb.Append("settle ").Append(Settle).Append("\nquery_reps ").Append(QueryReps).Append('\n');
         sb.Append("metrics ").Append(string.Join(' ', Metrics)).Append('\n');
@@ -403,6 +449,12 @@ public sealed partial class Scene
             else
             sb.Append("body ").Append(b.Type).Append(' ').Append(F(b.X)).Append(' ').Append(F(b.Y)).Append(' ').Append(F(b.Angle)).Append(' ')
               .Append(F(b.Vx)).Append(' ').Append(F(b.Vy)).Append(' ').Append(F(b.W)).Append(' ').Append(fl.Count == 0 ? "-" : string.Join(',', fl)).Append('\n');
+            if (!b.Controls.IsDefault) sb.Append("controls ").Append((int)b.Controls.Constraints).Append(' ').Append(F(b.Controls.MaxLinearSpeed)).Append(' ').Append(F(b.Controls.MaxAngularSpeed)).Append(' ').Append(F(b.Controls.MaxDepenetrationSpeed)).Append('\n');
+            if (b.SleepSettings.IsOverride || b.NeverSleep) sb.Append("sleep ").Append(b.NeverSleep ? 1 : 0).Append(' ').Append(F(b.SleepSettings.LinearThreshold)).Append(' ').Append(F(b.SleepSettings.AngularThreshold)).Append(' ').Append(F(b.SleepSettings.TimeToSleep)).Append('\n');
+            if (b.MassOverride.HasValue) sb.Append("mass ").Append(F(b.MassOverride.Value)).Append('\n');
+            if (b.CenterOverride is Vector3F center) { sb.Append("center ").Append(F(center.X)).Append(' ').Append(F(center.Y)); if (Dim == 3) sb.Append(' ').Append(F(center.Z)); sb.Append('\n'); }
+            if (b.InertiaOverride is Vector3F inertia) { sb.Append("inertia ").Append(F(inertia.X)); if (Dim == 3) sb.Append(' ').Append(F(inertia.Y)).Append(' ').Append(F(inertia.Z)).Append(' ').Append(F(b.InertiaRotation.X)).Append(' ').Append(F(b.InertiaRotation.Y)).Append(' ').Append(F(b.InertiaRotation.Z)).Append(' ').Append(F(b.InertiaRotation.W)); sb.Append('\n'); }
+            if (b.TargetPosition is Vector3D target) { sb.Append("target ").Append(F(target.X)).Append(' ').Append(F(target.Y)); if (Dim == 3) sb.Append(' ').Append(F(target.Z)).Append(' ').Append(F(b.TargetRotation.X)).Append(' ').Append(F(b.TargetRotation.Y)).Append(' ').Append(F(b.TargetRotation.Z)).Append(' ').Append(F(b.TargetRotation.W)); else sb.Append(' ').Append(F(b.TargetAngle)); sb.Append('\n'); }
             foreach (var sh in b.Shapes)
             {
                 sb.Append("shape ").Append(sh.Kind).Append(' ').Append(sh.Material).Append(' ').Append(F(sh.Density)).Append(' ').Append(F(sh.Radius));

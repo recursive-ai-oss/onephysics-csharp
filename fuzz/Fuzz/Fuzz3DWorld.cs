@@ -30,6 +30,12 @@ internal static class Fuzz3DWorld
 
         w.AddSphere(0.5f, at: new Vector3D(3, 2, 0));
         w.AddCapsule(0.5f, 0.25f, at: new Vector3D(-3, 2, 0));
+        foreach (var body in w.Bodies)
+        {
+            if (body.Type == BodyType.Dynamic) { body.SleepSettings = new(0.02f, 0.03f, 0.25f);
+                body.Mass = 2; body.Controls = new(RigidbodyConstraints.FreezeRotationZ, 10, 5, 0.5f);
+                body.CenterOfMass = new(0.1f, 0, 0); body.SetInertia(new(2,3,4), QuaternionF.Identity); break; }
+        }
         for (int i = 0; i < 40; i++) { w.StepChecked(1f / 60f); }
         return w;
     }

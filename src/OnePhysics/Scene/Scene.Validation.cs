@@ -13,6 +13,7 @@ public sealed partial class Scene
         {
             "name" or "dim" or "dt" or "steps" or "substeps" or "dump_every" or "warmup" or "settle" or "query_reps" => 2,
             "gravity" => Dim + 1, "material" => 4, "body" => Dim == 2 ? 9 : 16,
+            "controls" or "sleep" => 5, "mass" => 2, "center" => Dim + 1, "inertia" => Dim == 2 ? 2 : 8, "target" => Dim == 2 ? 4 : 8, "world_limits" => 4,
             "character" => 6, "vehicle" => 7, "event" => 3, _ => -1
         };
         if (exact >= 0 && t.Length != exact) throw new FormatException($"{exact} tokens for {t[0]}");
@@ -47,11 +48,23 @@ public sealed partial class Scene
         }
         Finite([Gx, Gy, Gz]);
         foreach (var m in Materials) if (!(m.Friction >= 0 && m.Friction <= 1e15 && m.Restitution >= 0 && m.Restitution <= 1)) throw Error("friction in [0,1e15] and restitution in [0,1]");
+        if (WorldLimits is BodyControlSettings limits && (limits.Constraints != 0 || limits.MaxLinearSpeed <= 0)) throw Error("world limits with no locks and positive linear speed");
         foreach (var b in Bodies)
         {
             if (b == null) throw Error("non-null body");
             ActiveLine = b.SourceLine;
             Position(b.X, b.Y, b.Z);
+            try { BodyControlStore.ValidateAxes(b.Controls, Dim); } catch (ArgumentException e) { throw Error(e.Message); }
+            if (b.Type != "dynamic" && (b.MassOverride.HasValue || b.CenterOverride.HasValue || b.InertiaOverride.HasValue || b.NeverSleep || b.SleepSettings.IsOverride)) throw Error("dynamic body for mass and sleep overrides");
+            if (b.MassOverride.HasValue && !BodyControlStore.ValidMass(b.MassOverride.Value)) throw Error("mass within 1e-18..1e30");
+            if (b.CenterOverride is Vector3F center) { Position(center.X,center.Y,center.Z); if (Dim == 2 && center.Z != 0) throw Error("zero planar center Z"); }
+            if (b.InertiaOverride is Vector3F inertia) { if (!BodyControlStore.ValidMass(inertia.X) || (Dim == 3 && (!BodyControlStore.ValidMass(inertia.Y) || !BodyControlStore.ValidMass(inertia.Z)))) throw Error("positive principal inertia within 1e-18..1e30"); }
+            if (b.TargetPosition is Vector3D target) { if (b.Type != "kinematic") throw Error("kinematic body for target"); Position(target.X,target.Y,target.Z); }
+            Finite([b.InertiaRotation.X,b.InertiaRotation.Y,b.InertiaRotation.Z,b.InertiaRotation.W,b.TargetRotation.X,b.TargetRotation.Y,b.TargetRotation.Z,b.TargetRotation.W,b.TargetAngle]);
+            if (Dim == 3 && b.InertiaOverride.HasValue && (!(b.InertiaRotation.LengthSquared()>1e-30f) || !float.IsFinite(b.InertiaRotation.LengthSquared()))) throw Error("finite nonzero inertia frame quaternion");
+            if (Dim == 3 && b.TargetPosition.HasValue && (!(b.TargetRotation.LengthSquared()>1e-30f) || !float.IsFinite(b.TargetRotation.LengthSquared()))) throw Error("finite nonzero target quaternion");
+            if (b.Script != null && (!b.Controls.IsDefault || b.SleepSettings.IsOverride || b.NeverSleep || b.MassOverride.HasValue || b.CenterOverride.HasValue || b.InertiaOverride.HasValue || b.TargetPosition.HasValue)) throw Error("rigid body without character script for body controls");
+
             Finite([b.Angle, b.Vx, b.Vy, b.Vz, b.W, b.Wx, b.Wy, b.Qx, b.Qy, b.Qz, b.Qw]);
             if (b.Type is not ("static" or "kinematic" or "dynamic") || b.Shapes == null) throw Error("static, kinematic or dynamic body with shape list");
             if (Dim == 3 && b.Qx * b.Qx + b.Qy * b.Qy + b.Qz * b.Qz + b.Qw * b.Qw == 0) throw Error("nonzero rotation quaternion");

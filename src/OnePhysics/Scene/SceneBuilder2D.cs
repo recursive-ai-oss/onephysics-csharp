@@ -23,6 +23,7 @@ internal static class SceneBuilder2D
     {
         var opt = new WorldOptions2D { Gravity = new Vector2F((float)s.Gx, (float)s.Gy), ThreadCount = threads };
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
+        if (s.WorldLimits is BodyControlSettings worldLimits) { opt.MaxLinearSpeed = worldLimits.MaxLinearSpeed; opt.MaxAngularSpeed = worldLimits.MaxAngularSpeed; opt.PushOutVelocity = worldLimits.MaxDepenetrationSpeed; }
         var world = new PhysicsWorld2D(opt);
 
         if (s.Bodies.Exists(b => b.Script != null)) world.SetLayerCollision(1, 1, false); // characters pass through each other (layer 1); the world and the crates are layer 0
@@ -50,9 +51,14 @@ internal static class SceneBuilder2D
                 LinearVelocity = new Vector2F((float)ob.Vx, (float)ob.Vy),
                 AngularVelocity = (float)ob.W,
                 IsBullet = ob.Bullet,
+                Controls = ob.Controls, SleepSettings = ob.SleepSettings, AllowSleep = !ob.NeverSleep, MassOverride = ob.MassOverride,
+                CenterOfMassOverride = ob.CenterOverride.HasValue ? new Vector2F(ob.CenterOverride.Value.X, ob.CenterOverride.Value.Y) : null,
+                InertiaOverride = ob.InertiaOverride.HasValue ? ob.InertiaOverride.Value.X : null,
+
             };
             bodies[i] = world.CreateBody(in bd);
             foreach (var sh in ob.Shapes) { s.ActiveLine = sh.SourceLine; CreateShape(world, bodies[i], sh, s); }
+            if (ob.TargetPosition is Vector3D target) bodies[i].MoveKinematic(new(target.X,target.Y), ob.TargetAngle);
         }
         foreach (var j in s.Joints)
         {

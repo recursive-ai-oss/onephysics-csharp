@@ -80,6 +80,7 @@ public readonly partial struct Body : IEquatable<Body>
             var (w, b) = Resolve();
             RequireMovable(w, b);
             if (!float.IsFinite(value.X) || !float.IsFinite(value.Y)) { throw new ArgumentOutOfRangeException(nameof(value), value, "Velocity must be finite."); }
+            w.Engine.CancelKinematicDrive(b);
             var v = w.Core.Bodies.LinearVelocityOf(b);
             v[0] = value.X; v[1] = value.Y;
             WakeBody(w, b);
@@ -96,6 +97,7 @@ public readonly partial struct Body : IEquatable<Body>
             var (w, b) = Resolve();
             RequireMovable(w, b);
             if (!float.IsFinite(value)) { throw new ArgumentOutOfRangeException(nameof(value), value, "Angular velocity must be finite."); }
+            w.Engine.CancelKinematicDrive(b);
             w.Core.Bodies.AngularVelocityOf(b)[0] = value;
             WakeBody(w, b);
         }
@@ -115,11 +117,11 @@ public readonly partial struct Body : IEquatable<Body>
     /// <exception cref="ArgumentOutOfRangeException">The position is not finite or is beyond +-2^21.</exception>
     public void SetPosition(Vector2D position) { using var replayMutation = _world?.RecordMutation("Body.SetPosition"); Position = position; }
 
-    /// <summary>Mass in kilograms (0 for static and kinematic bodies).</summary>
-    public float Mass { get { var (w, b) = Resolve(); return w.Core.Bodies.TypeOf(b) == BodyType.Dynamic ? w.Engine.Mass[b] : 0f; } }
+    /// <summary>Mass in kg (0 for static and kinematic bodies). Setting overrides dynamic mass within 1e-18..1e30 without rescaling inertia; ResetMass restores shape-derived mass. Invalid setters throw ArgumentOutOfRangeException or BodyTypeException.</summary>
+    public float Mass { set => SetMass(value); get { var (w, b) = Resolve(); return w.Core.Bodies.TypeOf(b) == BodyType.Dynamic ? w.Engine.Mass[b] : 0f; } }
 
-    /// <summary>Rotational inertia about the centre of mass (0 for static and kinematic bodies).</summary>
-    public float Inertia { get { var (w, b) = Resolve(); return w.Core.Bodies.TypeOf(b) == BodyType.Dynamic ? w.Engine.Inertia[b] : 0f; } }
+    /// <summary>Rotational inertia about the centre of mass in kg m² (0 for static and kinematic bodies). Setting overrides dynamic inertia within 1e-18..1e30; ResetInertia restores the shape-derived value. Invalid setters throw ArgumentOutOfRangeException or BodyTypeException.</summary>
+    public float Inertia { set => SetInertia(value); get { var (w, b) = Resolve(); return w.Core.Bodies.TypeOf(b) == BodyType.Dynamic ? w.Engine.Inertia[b] : 0f; } }
 
     /// <summary>The centre of mass in world coordinates.</summary>
     public Vector2D WorldCenterOfMass { get { var (w, b) = Resolve(); var p = w.Core.Bodies.PositionOf(b); return new Vector2D(p[0], p[1]); } }
@@ -150,6 +152,7 @@ public readonly partial struct Body : IEquatable<Body>
         var e = w.Engine;
         var bodies = w.Core.Bodies;
         var (s, c) = RecursiveAI.OneMath.Math64.SinCos(angleRadians);
+        e.CancelKinematicDrive(b);
         var r = bodies.RotationOf(b);
         r[0] = (float)c; r[1] = (float)s;
         float lx = e.LocalCenter[2 * b], ly = e.LocalCenter[2 * b + 1];

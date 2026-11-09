@@ -203,7 +203,19 @@ public sealed class WorldOptions2D
     public PairPredicate? PairFilter { get => _replayPairFilter; set { _replayPairFilter = value; ReplayChanged?.Invoke("WorldOptions2D.PairFilter"); } }
     private PairPredicate? _replayPairFilter;
 
-    internal WorldOptions2D Clone() { var copy = (WorldOptions2D)MemberwiseClone(); copy.ReplayChanged = null; return copy; }
+    private float _angularSpeed = float.MaxValue;
+    internal Func<float>? ReadAngularSpeed;
+    internal Action<float>? WriteAngularSpeed;
+    /// <summary>Maximum angular speed in rad/s. Default float.MaxValue leaves only MaxRotationPerSubstep. Finite and nonnegative; persisted in an optional control section without changing default snapshot bytes.</summary>
+    public float MaxAngularSpeed
+    {
+        get => ReadAngularSpeed?.Invoke() ?? _angularSpeed;
+        set { BodyControlSettings.ValidateSpeed(value, nameof(value)); _angularSpeed = value; WriteAngularSpeed?.Invoke(value); }
+    }
+    /// <summary>Alias for PushOutVelocity, in m/s. Default and validation are identical.</summary>
+    public float MaxDepenetrationSpeed { get => PushOutVelocity; set => PushOutVelocity = value; }
+
+    internal WorldOptions2D Clone() { float speed = MaxAngularSpeed; var copy = (WorldOptions2D)MemberwiseClone(); copy.ReplayChanged = null; copy.ReadAngularSpeed = null; copy.WriteAngularSpeed = null; copy._angularSpeed = speed; return copy; }
 
     /// <summary>Checks every value; throws <see cref="ArgumentOutOfRangeException"/> naming the first bad one.</summary>
     internal void Validate()
@@ -298,6 +310,20 @@ public struct BodyDef
     public bool AllowSleep { readonly get => !_allowSleepOff; set => _allowSleepOff = !value; }
 
     private bool _allowSleepOff;
+
+    /// <summary>Separate linear/angular sleep thresholds and rest duration. Default inherits the world policy. Only dynamic bodies accept overrides.</summary>
+    public BodySleepSettings SleepSettings { get; set; }
+
+    /// <summary>Axis locks and per-body speed limits. Default inherits world limits.</summary>
+    public BodyControlSettings Controls { get; set; }
+    /// <summary>Optional mass override in kg, within 1e-18..1e30; dynamic bodies only.</summary>
+    public float? MassOverride { get; set; }
+    /// <summary>Optional local center override in metres; finite within ±2097152; dynamic bodies only.</summary>
+    public Vector2F? CenterOfMassOverride { get; set; }
+    /// <summary>Optional scalar inertia override in kg m², positive within 1e-18..1e30; dynamic bodies only.</summary>
+    public float? InertiaOverride { get; set; }
+
+
 
     /// <summary>Create the body asleep; it wakes when touched or woken. Ignored for static and kinematic bodies. Default false.</summary>
     public bool StartAsleep { get; set; }
