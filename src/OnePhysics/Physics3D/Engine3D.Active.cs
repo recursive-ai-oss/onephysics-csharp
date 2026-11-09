@@ -94,6 +94,7 @@ internal sealed partial class Engine3D
         var rg = Ragdolls[r]!;
         var d = def.Clone();
         d.Validate(rg.Parts);
+        BipedSkeleton.Check(d.Bones, i => rg.Def.Parts[i].Parent);
         var a = new ActiveState3D { Def = d };
         a.Allocate(rg.Parts);
         DeriveActiveGeometry(a, rg);
@@ -460,6 +461,7 @@ internal sealed partial class Engine3D
         for (int i = 0; i < n; i++)
         {
             if (i == 0) { var p0 = bodies.PositionOf(rg.Body[0]); jx[0] = p0[0]; jy[0] = p0[1]; jz[0] = p0[2]; continue; }
+            if (!RagdollJointAlive(rg, i)) { var pb = bodies.PositionOf(rg.Body[i]); jx[i] = pb[0]; jy[i] = pb[1]; jz[i] = pb[2]; continue; }   // a part that came off turns about its own centre
             ref var j = ref Joints[rg.Joint[i]];
             var w = AnchorOf(rg.Body[i], j.LBx, j.LBy, j.LBz);
             jx[i] = w.X; jy[i] = w.Y; jz[i] = w.Z;
@@ -492,6 +494,10 @@ internal sealed partial class Engine3D
 
     private void RunController(int r, ActiveState3D a, RagdollState rg, float dt)
     {
+        // A figure that has lost a limb (a broken joint, a destroyed body) has nothing for the controller to drive: it is left to the pose drive.
+        var bz = a.Def.Bones;
+        if (!RagdollJointAlive(rg, bz.Torso) || !RagdollJointAlive(rg, bz.LeftThigh) || !RagdollJointAlive(rg, bz.LeftShin) || !RagdollJointAlive(rg, bz.LeftFoot)
+            || !RagdollJointAlive(rg, bz.RightThigh) || !RagdollJointAlive(rg, bz.RightShin) || !RagdollJointAlive(rg, bz.RightFoot) || (bz.Head >= 0 && !RagdollJointAlive(rg, bz.Head))) { a.HasLanding = false; return; }
         var bodies = Core.Bodies;
         var bn = a.Def.Bones;
         var parts = rg.Def.Parts;
@@ -684,6 +690,8 @@ internal sealed partial class Engine3D
             if (n != rg.Parts) { throw rd.Error("an active ragdoll with " + n.ToString(CultureInfo.InvariantCulture) + " parts for a ragdoll of " + rg.Parts.ToString(CultureInfo.InvariantCulture)); }
             var a = new ActiveState3D();
             a.ReadCommon(rd, n);
+            try { BipedSkeleton.Check(a.Def.Bones, i => rg.Def.Parts[i].Parent); }
+            catch (ArgumentException e) { throw rd.Error("invalid active ragdoll bones: " + e.Message); }
             a.Pose = new QuaternionF[n]; a.Cur = new QuaternionF[n];
             for (int i = 0; i < n; i++) { a.Pose[i] = ReadUnit(rd, "active ragdoll pose"); }
             for (int i = 0; i < n; i++) { a.Cur[i] = ReadUnit(rd, "active ragdoll target"); }

@@ -310,6 +310,25 @@ public sealed class ActiveRagdollDef
     }
 }
 
+/// <summary>The skeleton shape the controllers rely on (checked against the ragdoll's parent indices).</summary>
+internal static class BipedSkeleton
+{
+    /// <summary>Throws when the bones are not wired like a biped: the pelvis is the root, the torso and both thighs hang from it, the head from the torso, each shin from its thigh and each foot from its shin.</summary>
+    internal static void Check(BipedBones b, Func<int, int> parentOf)
+    {
+        void Need(string name, int part, int parent, string parentName)
+        {
+            if (parentOf(part) != parent) { throw BalanceDef.Bad("Bones." + name, part, "Bones." + name + " = " + part.ToString(CultureInfo.InvariantCulture) + " must be a child of Bones." + parentName + " (part " + parent.ToString(CultureInfo.InvariantCulture) + ") in the ragdoll's skeleton."); }
+        }
+
+        if (parentOf(b.Pelvis) != -1) { throw BalanceDef.Bad("Bones.Pelvis", b.Pelvis, "Bones.Pelvis = " + b.Pelvis.ToString(CultureInfo.InvariantCulture) + " must be the ragdoll's root part."); }
+        Need("Torso", b.Torso, b.Pelvis, "Pelvis");
+        if (b.Head >= 0) { Need("Head", b.Head, b.Torso, "Torso"); }
+        Need("LeftThigh", b.LeftThigh, b.Pelvis, "Pelvis"); Need("LeftShin", b.LeftShin, b.LeftThigh, "LeftThigh"); Need("LeftFoot", b.LeftFoot, b.LeftShin, "LeftShin");
+        Need("RightThigh", b.RightThigh, b.Pelvis, "Pelvis"); Need("RightShin", b.RightShin, b.RightThigh, "RightThigh"); Need("RightFoot", b.RightFoot, b.RightShin, "RightShin");
+    }
+}
+
 /// <summary>A read-only view of an active ragdoll's controller, from <c>Ragdoll.GetActiveInfo</c>: for hosts, tests and debug drawing.</summary>
 [Experimental("OPHYS0003")]
 public readonly struct ActiveRagdollInfo

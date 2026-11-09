@@ -85,6 +85,7 @@ internal sealed partial class Engine2D
         var rg = Ragdolls[r]!;
         var d = def.Clone();
         d.Validate(rg.Parts);
+        BipedSkeleton.Check(d.Bones, i => rg.Def.Parts[i].Parent);
         var a = new ActiveState2D { Def = d };
         a.Allocate(rg.Parts);
         a.HasPose = false;
@@ -410,6 +411,10 @@ internal sealed partial class Engine2D
 
     private void RunController(int r, ActiveState2D a, RagdollState rg, float dt)
     {
+        // A figure that has lost a limb (a broken joint, a destroyed body) has nothing for the controller to drive: it is left to the pose drive.
+        var bz = a.Def.Bones;
+        if (!RagdollJointAlive(rg, bz.Torso) || !RagdollJointAlive(rg, bz.LeftThigh) || !RagdollJointAlive(rg, bz.LeftShin) || !RagdollJointAlive(rg, bz.LeftFoot)
+            || !RagdollJointAlive(rg, bz.RightThigh) || !RagdollJointAlive(rg, bz.RightShin) || !RagdollJointAlive(rg, bz.RightFoot) || (bz.Head >= 0 && !RagdollJointAlive(rg, bz.Head))) { a.HasLanding = false; return; }
         var bodies = Core.Bodies;
         var bn = a.Def.Bones;
         var parts = rg.Def.Parts;
@@ -543,6 +548,8 @@ internal sealed partial class Engine2D
             if (n != rg.Parts) { throw rd.Error("an active ragdoll with " + n.ToString(CultureInfo.InvariantCulture) + " parts for a ragdoll of " + rg.Parts.ToString(CultureInfo.InvariantCulture)); }
             var a = new ActiveState2D();
             a.ReadCommon(rd, n);
+            try { BipedSkeleton.Check(a.Def.Bones, i => rg.Def.Parts[i].Parent); }
+            catch (ArgumentException e) { throw rd.Error("invalid active ragdoll bones: " + e.Message); }
             a.Pose = new float[n];
             rd.ReadSingles(a.Pose, true, "active ragdoll pose");
             for (int i = 0; i < n; i++) { if (Math.Abs(a.Pose[i]) > 1e6f) { throw rd.Error("invalid active ragdoll pose"); } }
