@@ -428,3 +428,20 @@ then sizeX*sizeY*sizeZ flags (0 empty, 1 solid). Voxel stairs are discrete steps
 not a smooth ramp: characters can negotiate risers no greater than their
 configured step height; larger voxel stairs are walls. Runtime voxel edits and
 carving are not part of this shape.
+
+Voxel faces also carry coherent coplanar patches. Union exposed faces with their
+negative-axis tangential neighbours of the same orientation. The face parent
+array is indexed by `6*cell+face`; lower-root joins and path compression choose
+the lowest face id. Both triangles of a face share patch id `2*faceRoot`, and
+each patch is shared (a face always has two exactly coplanar triangles). This
+feeds the same persistent-plane normal and four-point reduction as meshes and
+height fields; query triangle ids are unchanged. The patch array is rebuilt,
+not serialized.
+
+Voxel creation and `Shape.SetVoxelMaterials` accept a scalar table and one
+index per voxel, including empty cells. Expand index i into triangle slots
+12*i through 12*i+11 and pass the result to the existing indexed material store.
+That store partitions coherent planes by material index before contact
+reduction. Empty spans remove overrides; nondefault per-entry Surface settings
+are rejected because surfaces are shape-wide. Indexed voxel state lives in the
+existing optional material section, not in the immutable occupancy recipe.

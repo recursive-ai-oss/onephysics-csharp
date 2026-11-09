@@ -166,3 +166,35 @@ grid data may be shared. Tile edits use the ordinary named-mutation recorder.
 Authoring scene kind `tilegrid` has parameters width, height, tile size, then
 width*height integer tile kinds (0 empty, 1 solid, 2 bottom half, 3 rising right,
 4 rising left). Exact-state scenes retain all grid metadata through snapshots.
+
+### Indexed terrain materials
+
+Height-field creation accepts a copied scalar table and an index per original
+interval, holes included. Validate every index before creating any segment;
+each emitted segment uses its selected entry through the indexed material
+store. Tile grids similarly accept one index per tile, empty tiles included.
+`TileGrid2D.MaterialIndices` is immutable; `WithMaterialIndices` returns a new
+boundary. `GetSegmentMaterialIndex` maps its segments back to the authored
+table. Collinear edges merge only while their material indices agree; material
+transitions retain collinear ghost vertices, not disconnected endpoints.
+
+The owner of a boundary edge is sampled just inside its left side, in integer
+eighth-tile coordinates. Only the first half-cell of a merged edge is sampled,
+so it never crosses a material transition. `SetTileMaterials` replaces the
+copied table and indices, regenerates the material partitions, and updates
+unchanged shapes' indexed coefficients. Each planar segment stores only its
+selected scalar triple in the common material section; the complete tile table
+is stored once in grid metadata, preventing table-size × segment-count storage.
+Indexed entries must have default Surface properties. Shape-wide surfaces come
+from the creation definition and persist when tiles are edited.
+
+The tile metadata section writes version 1 when every grid uses default surface
+properties and has no indexed table. Otherwise it writes version 2: after each
+entry's layer, append Surface properties (velocity, one-way direction and
+friction axis as three float32 components each, then longitudinal, transverse
+and spinning friction as float32), int32 material count, coefficient triples
+as float32, int32 tile-index count and int32 indices. The index count is zero
+without a table, otherwise width*height. The segment count/handles follow.
+Readers accept both versions and reject version 2 with no extra state. Core
+snapshot format v1 is unchanged. Material-bearing grids round-trip, fork and
+record exactly as ordinary grids.

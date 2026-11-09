@@ -36,13 +36,20 @@ internal static class FuzzGrids
         catch(ArgumentException) { }
     }
     private static byte[]? s_snapshot;
+    private static byte[]? s_materialSnapshot;
     internal static void Snapshot(byte[] input)
     {
         if(s_snapshot==null)
         {
             var w=new P2.PhysicsWorld2D(new(){WorldId=36});w.AddTileGrid(3,2,[TileKind2D.Solid,TileKind2D.Solid,TileKind2D.SlopeUpLeft,TileKind2D.Empty,TileKind2D.HalfBottom,TileKind2D.Empty]);s_snapshot=w.Snapshot();
         }
-        var bytes=(byte[])s_snapshot.Clone();
+        if(s_materialSnapshot==null)
+        {
+            var w=new P2.PhysicsWorld2D(new(){WorldId=36});
+            w.AddTileGrid(3,2,[TileKind2D.Solid,TileKind2D.Solid,TileKind2D.SlopeUpLeft,TileKind2D.Empty,TileKind2D.HalfBottom,TileKind2D.Empty],materials:[new(0),new(1)],materialIndices:[0,1,0,1,0,1]);
+            s_materialSnapshot=w.Snapshot();
+        }
+        var bytes=(byte[])(input.Length!=0&&(input[0]&1)==0?s_materialSnapshot:s_snapshot).Clone();
         for(int i=0;i+2<input.Length;i+=3) { int offset=bytes.Length-1-(((input[i]<<8)|input[i+1])%Math.Min(500,bytes.Length));bytes[offset]^=input[i+2]; }
         var world=new P2.PhysicsWorld2D(new(){WorldId=36});var before=world.Snapshot();
         try {world.Restore(bytes);}

@@ -7,27 +7,29 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 
 public sealed partial class PhysicsWorld2D
 {
-    /// <summary>Adds editable static tile terrain. Origin is the bottom-left corner. Tiles are x-fastest; dimensions are 1..1024 with at most 65536 tiles. Size is at least 4e-5 metres, full extent at most 2^20. Throws ArgumentOutOfRangeException for invalid input. Default material is Material2D.Default; default angle is zero radians.</summary>
-    public Body AddTileGrid(int width,int height,ReadOnlySpan<TileKind2D> tiles,float tileSize=1f,Vector2D at=default,float angleRadians=0f,Material2D? material=null)
+    /// <summary>Adds editable static tile terrain. Origin is the bottom-left corner. Tiles are x-fastest; dimensions are 1..1024 with at most 65536 tiles. Size is at least 4e-5 metres, full extent at most 2^20. Throws ArgumentOutOfRangeException for invalid input. Default material is Material2D.Default; default angle is zero radians. Optional scalar materials are copied with one index per tile, empty cells included; indexed entries require default Surface properties.</summary>
+    public Body AddTileGrid(int width,int height,ReadOnlySpan<TileKind2D> tiles,float tileSize=1f,Vector2D at=default,float angleRadians=0f,Material2D? material=null,ReadOnlySpan<Material2D> materials=default,ReadOnlySpan<int> materialIndices=default)
     {
         using var replayMutation=RecordMutation("PhysicsWorld2D.AddTileGrid");
-        var grid=new TileGrid2D(width,height,tiles,tileSize);
+        var grid=new TileGrid2D(width,height,tiles,tileSize,materialIndices);
         var body=CreateBody(BodyType.Static,at,angleRadians);
-        try { CreateTileGrid(body,grid,ShapeFor(material,0f)); }
+        try { CreateTileGrid(body,grid,ShapeFor(material,0f),materials); }
         catch(Exception) { body.Destroy(); throw; }
         return body;
     }
-    /// <summary>Attaches one tile grid to a static body, returning its first segment (default for empty terrain). Throws ArgumentNullException for null, ArgumentException for a foreign body or duplicate grid, StaticOnlyShapeException for a moving body and standard shape-definition errors. Unchanged boundary segments retain handles across edits.</summary>
-    public Shape CreateTileGrid(Body body,TileGrid2D grid,ShapeDef? def=null)
+    /// <summary>Attaches one tile grid to a static body, returning its first segment (default for empty terrain). Throws ArgumentNullException for null, ArgumentException for a foreign body or duplicate grid, StaticOnlyShapeException for a moving body and standard shape-definition errors. Unchanged boundary segments retain handles across edits. Optional scalar materials are copied; the grid must contain one index per tile when a table is supplied.</summary>
+    public Shape CreateTileGrid(Body body,TileGrid2D grid,ShapeDef? def=null,ReadOnlySpan<Material2D> materials=default)
     {
         using var replayMutation=RecordMutation("PhysicsWorld2D.CreateTileGrid");
         ArgumentNullException.ThrowIfNull(grid);
         if(body.World!=this) throw new ArgumentException("The body belongs to another world.",nameof(body));
         if(body.Type!=BodyType.Static) throw new StaticOnlyShapeException("Tile grids require a static body.");
         TileGridState2D.ValidateDefinition(def??new ShapeDef());
+        var table=GridMaterials.Convert(materials);
+        if(table.Length!=0 || grid.MaterialIndices.Length!=0)GridMaterials.Check(grid.MaterialIndices,grid.Tiles.Length,table.Length);
         int b=body.RawHandle.Index;
         if(_engine.Tiles.Entries.TryGetValue(b,out var old) && old.Generation==body.RawHandle.Generation) throw new ArgumentException("The body already has a tile grid.",nameof(body));
-        var entry=new TileGridState2D.Entry { Body=b,Generation=body.RawHandle.Generation,Grid=new TileGrid2D(grid.Width,grid.Height,new TileKind2D[grid.Tiles.Length],grid.TileSize),Definition=def??new ShapeDef() };
+        var entry=new TileGridState2D.Entry { Body=b,Generation=body.RawHandle.Generation,Grid=new TileGrid2D(grid.Width,grid.Height,new TileKind2D[grid.Tiles.Length],grid.TileSize),Definition=def??new ShapeDef(),Materials=table };
         ReplaceTileBoundary(body,entry,grid);
         _engine.Tiles.Set(entry);
         return entry.Shapes.Length==0?default:new Shape(this,entry.Shapes[0]);
@@ -42,6 +44,15 @@ public sealed partial class PhysicsWorld2D
         using var replayMutation=RecordMutation("PhysicsWorld2D.SetTiles");
         var entry=TileEntry(body); var grid=entry.Grid.WithRectangle(x,y,width,height,kind);
         ReplaceTileBoundary(body,entry,grid);
+    }
+    /// <summary>Sets copied scalar materials and one table index per tile, empty tiles included. Empty spans remove overrides. Material boundaries split collinear segments while retaining ghost vertices. Invalid lengths, indices or material Surface settings throw ArgumentException before mutation; stale bodies throw StaleHandleException.</summary>
+    public void SetTileMaterials(Body body,ReadOnlySpan<Material2D> materials,ReadOnlySpan<int> indices)
+    {
+        using var mutation=RecordMutation("PhysicsWorld2D.SetTileMaterials");
+        var entry=TileEntry(body);var table=GridMaterials.Convert(materials);
+        if(table.Length!=0 || indices.Length!=0)GridMaterials.Check(indices,entry.Grid.Tiles.Length,table.Length);
+        var copy=entry.Copy();copy.Materials=table;
+        ReplaceTileBoundary(body,copy,entry.Grid.WithMaterialIndices(indices));_engine.Tiles.Set(copy);
     }
     private TileGridState2D.Entry TileEntry(Body body)
     {
@@ -69,6 +80,12 @@ public sealed partial class PhysicsWorld2D
             }
         }
         catch(Exception) { foreach(var shape in added) _engine.DestroyShape(shape); throw; }
+        var index=new int[1];
+        for(int i=0;i<shapes.Length;i++)
+        {
+            if(entry.Materials.Length==0) _core.SetContactMaterials(shapes[i],[],[]);
+            else {index[0]=0;_core.SetContactMaterials(shapes[i],[entry.Materials[grid.GetSegmentMaterialIndex(i)]],index);}
+        }
         foreach(var shape in removed) if(_core.Shapes.Handles.IsAlive(shape.Index,shape.Generation)) _engine.DestroyShape(shape);
         entry.Grid=grid; entry.Shapes=shapes;
     }

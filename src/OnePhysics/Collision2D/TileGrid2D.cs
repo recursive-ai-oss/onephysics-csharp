@@ -24,21 +24,25 @@ public sealed class TileGrid2D
     /// <summary>Maximum tile count, 65536; dimensions must be in 1..1024.</summary>
     public const int MaxTiles = 65536;
     private readonly TileKind2D[] _tiles;
+    private readonly int[] _materialIndices;
+    private readonly int[] _segmentMaterials;
     private readonly Shape2D[] _segments;
     private readonly SortedSet<Edge> _edges;
 
-    /// <summary>Copies tiles in x-fastest order. Dimensions are 1..1024, count exactly width*height and at most 65536. Tile size must be finite, at least 4e-5 metres, and total extent at most 2^20 metres. Throws ArgumentOutOfRangeException for invalid dimensions, count, size or tile kind.</summary>
-    public TileGrid2D(int width, int height, ReadOnlySpan<TileKind2D> tiles, float tileSize = 1f)
+    /// <summary>Copies tiles in x-fastest order. Dimensions are 1..1024, count exactly width*height and at most 65536. Tile size must be finite, at least 4e-5 metres, and total extent at most 2^20 metres. Optional nonnegative material indices contain one entry per tile; empty means zero throughout. Throws ArgumentOutOfRangeException for invalid dimensions, count, size, tile kind or indices.</summary>
+    public TileGrid2D(int width, int height, ReadOnlySpan<TileKind2D> tiles, float tileSize = 1f, ReadOnlySpan<int> materialIndices = default)
     {
         if(width<1 || width>1024) throw new ArgumentOutOfRangeException(nameof(width),width,"Tile dimension must be in 1..1024.");
         if(height<1 || height>1024) throw new ArgumentOutOfRangeException(nameof(height),height,"Tile dimension must be in 1..1024.");
         if((long)width*height>MaxTiles || tiles.Length != width*height) throw new ArgumentOutOfRangeException(nameof(tiles),tiles.Length,"Tile count must equal width * height and be at most 65536.");
         if(!float.IsFinite(tileSize) || tileSize<4e-5f || (double)Math.Max(width,height)*tileSize>1048576) throw new ArgumentOutOfRangeException(nameof(tileSize),tileSize,"Tile size must be finite, at least 4e-5 metres, with extent at most 1048576 metres.");
         for(int i=0;i<tiles.Length;i++) CheckKind(tiles[i]);
+        ValidateIndices(materialIndices,tiles.Length);
+        _materialIndices=materialIndices.ToArray();
         Width=width; Height=height; TileSize=tileSize; _tiles=tiles.ToArray();
         _edges=new SortedSet<Edge>();
         for(int y=0;y<Height;y++) for(int x=0;x<Width;x++) ChangeEdges(_edges,x,y,_tiles[y*Width+x],false);
-        _segments=Build();
+        (_segments,_segmentMaterials)=Build();
     }
     /// <summary>Number of columns.</summary>
     public int Width { get; }
@@ -48,6 +52,21 @@ public sealed class TileGrid2D
     public float TileSize { get; }
     /// <summary>Copied tiles in x-fastest order.</summary>
     public ReadOnlySpan<TileKind2D> Tiles => _tiles;
+    /// <summary>Optional per-tile material indices, x-fastest; empty means index zero throughout. Indices are nonnegative; a world validates them against its material table.</summary>
+    public ReadOnlySpan<int> MaterialIndices => _materialIndices;
+    /// <summary>Returns the table index on a boundary segment; throws ArgumentOutOfRangeException outside the segment range.</summary>
+    public int GetSegmentMaterialIndex(int index) { _=GetSegment(index);return _segmentMaterials[index]; }
+    /// <summary>Returns immutable geometry partitioned at material boundaries. Empty indices restore a single default region. Invalid length or negative indices throw ArgumentOutOfRangeException.</summary>
+    public TileGrid2D WithMaterialIndices(ReadOnlySpan<int> indices)
+    {
+        ValidateIndices(indices,_tiles.Length);
+        return new TileGrid2D(this,(TileKind2D[])_tiles.Clone(),new SortedSet<Edge>(_edges),indices.ToArray());
+    }
+    private static void ValidateIndices(ReadOnlySpan<int> indices,int count)
+    {
+        if(indices.Length!=0 && indices.Length!=count)throw new ArgumentOutOfRangeException(nameof(indices),"Material indices must be empty or contain one index per tile.");
+        foreach(int index in indices)if(index<0)throw new ArgumentOutOfRangeException(nameof(indices),index,"Material indices must be nonnegative.");
+    }
     /// <summary>Number of merged exposed chain segments; zero for empty terrain.</summary>
     public int SegmentCount => _segments.Length;
     /// <summary>Returns a one-sided outer segment and its two ghosts. Throws ArgumentOutOfRangeException outside [0, SegmentCount).</summary>
@@ -70,7 +89,7 @@ public sealed class TileGrid2D
             if(tiles[slot]==kind) continue;
             ChangeEdges(edges,i,j,tiles[slot],true); ChangeEdges(edges,i,j,kind,false); tiles[slot]=kind;
         }
-        return new TileGrid2D(this,tiles,edges);
+        return new TileGrid2D(this,tiles,edges,_materialIndices);
     }
     private static void CheckKind(TileKind2D kind) { if(kind>TileKind2D.SlopeUpLeft) throw new ArgumentOutOfRangeException(nameof(kind),kind,"Unknown tile kind; expected Empty, Solid, HalfBottom, SlopeUpRight or SlopeUpLeft."); }
     private void CheckRectangle(int x,int y,int width,int height)
@@ -85,9 +104,9 @@ public sealed class TileGrid2D
     {
         public int CompareTo(Edge other) { int c=A.CompareTo(other.A); return c!=0?c:B.CompareTo(other.B); }
     }
-    private TileGrid2D(TileGrid2D source,TileKind2D[] tiles,SortedSet<Edge> edges)
+    private TileGrid2D(TileGrid2D source,TileKind2D[] tiles,SortedSet<Edge> edges,int[] materialIndices)
     {
-        Width=source.Width; Height=source.Height; TileSize=source.TileSize; _tiles=tiles; _edges=edges; _segments=Build();
+        Width=source.Width; Height=source.Height; TileSize=source.TileSize; _tiles=tiles; _edges=edges; _materialIndices=materialIndices; (_segments,_segmentMaterials)=Build();
     }
     private static void ChangeEdges(SortedSet<Edge> edges,int x,int y,TileKind2D kind,bool remove)
     {
@@ -111,10 +130,10 @@ public sealed class TileGrid2D
             }
         }
     }
-    private Shape2D[] Build()
+    private (Shape2D[],int[]) Build()
     {
         var edges=new SortedSet<Edge>(_edges);
-        var segments=new List<Shape2D>();
+        var segments=new List<(Shape2D Shape,int Material)>();
         while(edges.Count!=0)
         {
             Edge start=edges.Min, current=start;
@@ -139,13 +158,24 @@ public sealed class TileGrid2D
             for(int i=0;i<loop.Count;i++)
             {
                 var a=loop[(i+loop.Count-1)%loop.Count]; var b=loop[i]; var c=loop[(i+1)%loop.Count];
-                if((b.X-a.X)*(c.Y-b.Y)!=(b.Y-a.Y)*(c.X-b.X)) corners.Add(b);
+                if((b.X-a.X)*(c.Y-b.Y)!=(b.Y-a.Y)*(c.X-b.X) || Material(new(a,b))!=Material(new(b,c))) corners.Add(b);
             }
             for(int i=0;i<corners.Count;i++)
-                segments.Add(Shape2D.CreateChainSegment(Vec(corners[(i+corners.Count-1)%corners.Count]),Vec(corners[i]),Vec(corners[(i+1)%corners.Count]),Vec(corners[(i+2)%corners.Count]),false));
+                segments.Add((Shape2D.CreateChainSegment(Vec(corners[(i+corners.Count-1)%corners.Count]),Vec(corners[i]),Vec(corners[(i+1)%corners.Count]),Vec(corners[(i+2)%corners.Count]),false),Material(new(corners[i],corners[(i+1)%corners.Count]))));
         }
-        segments.Sort(SegmentComparer.Instance);
-        return segments.ToArray();
+        segments.Sort(static(a,b)=>SegmentComparer.Instance.Compare(a.Shape,b.Shape));
+        var shapes=new Shape2D[segments.Count];var materials=new int[segments.Count];
+        for(int i=0;i<shapes.Length;i++){shapes[i]=segments[i].Shape;materials[i]=segments[i].Material;}
+        return(shapes,materials);
+    }
+    private int Material(Edge edge)
+    {
+        if(_materialIndices.Length==0)return 0;
+        // Sample just inside the solid (the left side) on the eighth-tile lattice.
+        // Use only the first half-cell of a merged edge, which cannot cross a material boundary.
+        int dx=Math.Sign(edge.B.X-edge.A.X),dy=Math.Sign(edge.B.Y-edge.A.Y);
+        int x=(4*edge.A.X+2*dx-dy)/8,y=(4*edge.A.Y+2*dy+dx)/8;
+        return _materialIndices[y*Width+x];
     }
     private Vec2 Vec(Point p) => new(p.X*(0.5f*TileSize),p.Y*(0.5f*TileSize));
     private static int Direction(Edge e)

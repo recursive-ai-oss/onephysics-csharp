@@ -260,6 +260,7 @@ public sealed class GridShapeTests
             w2.Step(1f/60); w3.Step(1f/60);wm.Step(1f/60);
             max2=Math.Max(max2,float.Abs(box2.LinearVelocity.Y)); max3=Math.Max(max3,float.Abs(box3.LinearVelocity.Y));maxm=Math.Max(maxm,float.Abs(boxm.LinearVelocity.Y));
         }
+        Console.WriteLine(FormattableString.Invariant($"flat-floor maxAbsVy tile={max2:R} voxel={max3:R} equivalentMesh={maxm:R}"));
         Assert.True(max2<=1e-4f && max3<=1e-4f,$"tile={max2:R}, voxel={max3:R}, equivalentMesh={maxm:R}");
         Assert.InRange(box2.Position.X,60,62); Assert.InRange(box3.Position.X,20,22);
     }
@@ -277,6 +278,33 @@ public sealed class GridShapeTests
         var s2=a.Snapshot();var s3=x.Snapshot();
         a.Step(1f/60); x.Step(1f/60); var after2=a.Snapshot();var after3=x.Snapshot();
         a.Restore(s2); x.Restore(s3); a.Step(1f/60); x.Step(1f/60); Assert.Equal(after2,a.Snapshot()); Assert.Equal(after3,x.Snapshot());
+    }
+
+    [Fact]
+    public void IndexedHeightTileAndVoxelMaterialsResolveAndSurviveEdits()
+    {
+        P2.Material2D[] materials2=[new(0),new(1)];P3.Material3D[] materials3=[new(0),new(1)];
+        var h=new P2.PhysicsWorld2D(new(){SleepEnabled=false});
+        h.AddHeightField([0,0,0],spacing:2,materials:materials2,materialIndices:[0,1]);
+        var ha=h.AddBox(new(0.5f,0.5f),new(1,0.25),material:new P2.Material2D(1));var hb=h.AddBox(new(0.5f,0.5f),new(3,0.25),material:new P2.Material2D(1));h.Step(1f/60);
+        int count=0;foreach(var contact in ha.Contacts){count++;Assert.Equal(0,contact.Friction);}Assert.True(count>0);
+        count=0;foreach(var contact in hb.Contacts){count++;Assert.Equal(1,contact.Friction);}Assert.True(count>0);
+        var w=new P2.PhysicsWorld2D(new(){SleepEnabled=false});var terrain=w.AddTileGrid(2,1,[TileKind2D.Solid,TileKind2D.Solid],materials:materials2,materialIndices:[0,1]);
+        Assert.Equal(6,w.GetTileGrid(terrain).SegmentCount);
+        var a=w.AddBox(new(0.5f,0.5f),new(0.5,1.25),material:new P2.Material2D(1));var b=w.AddBox(new(0.5f,0.5f),new(1.5,1.25),material:new P2.Material2D(1));w.Step(1f/60);
+        count=0;foreach(var contact in a.Contacts){count++;Assert.Equal(0,contact.Friction);}Assert.True(count>0);
+        count=0;foreach(var contact in b.Contacts){count++;Assert.Equal(1,contact.Friction);}Assert.True(count>0);
+        var snapshot=w.Snapshot();var fresh=new P2.PhysicsWorld2D();fresh.Restore(snapshot);Assert.Equal(snapshot,fresh.Snapshot());Assert.Equal(snapshot,w.Fork().Snapshot());
+        w.SetTile(terrain,1,0,TileKind2D.Empty);w.SetTile(terrain,1,0,TileKind2D.Solid);Assert.Equal(1,w.GetTileGrid(terrain).MaterialIndices[1]);
+        w.SetTileMaterials(terrain,materials2,[1,0]);w.Step(1f/60);foreach(var contact in a.Contacts)Assert.Equal(1,contact.Friction);
+        var v=new P3.PhysicsWorld3D(new(){SleepEnabled=false});var vg=v.AddVoxelGrid(2,1,1,[true,true],materials:materials3,materialIndices:[0,1]);
+        var va=v.AddBox(new(0.5f,0.5f,0.5f),new(0.5,1.25,0.5),material:new P3.Material3D(1));var vb=v.AddBox(new(0.5f,0.5f,0.5f),new(1.5,1.25,0.5),material:new P3.Material3D(1));v.Step(1f/60);
+        count=0;foreach(var contact in va.Contacts){count++;Assert.Equal(0,contact.Friction);}Assert.True(count>0);
+        count=0;foreach(var contact in vb.Contacts){count++;Assert.Equal(1,contact.Friction);}Assert.True(count>0);
+        snapshot=v.Snapshot();var vf=new P3.PhysicsWorld3D();vf.Restore(snapshot);Assert.Equal(snapshot,vf.Snapshot());Assert.Equal(snapshot,v.Fork().Snapshot());
+        vg.GetShapes()[0].SetVoxelMaterials(materials3,[1,0]);v.Step(1f/60);foreach(var contact in va.Contacts)Assert.Equal(1,contact.Friction);
+        Assert.Throws<ArgumentOutOfRangeException>(()=>w.SetTileMaterials(terrain,materials2,[0,2]));
+        Assert.Throws<ArgumentException>(()=>vg.GetShapes()[0].SetVoxelMaterials(materials3,[0]));
     }
 
     [Fact]

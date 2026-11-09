@@ -14,6 +14,7 @@ public sealed class VoxelGrid3D : TriangleSoup3D
     public const int MaxCells = 1 << 20;
     private readonly bool[] _solid;
     private readonly int _triangleCount;
+    private readonly int[] _patches;
     private readonly Bounds3F _bounds;
 
     /// <summary>Copies occupancy in x-fastest, then y, then z order. Empty grids are allowed. Dimensions are 1..1024, total cells at most 2^20, cell size finite and at least 1e-5 metres, total extent at most 2^20 metres. Throws ArgumentOutOfRangeException for invalid dimensions, count or size.</summary>
@@ -27,6 +28,19 @@ public sealed class VoxelGrid3D : TriangleSoup3D
         for (int z = 0; z < sizeZ; z++) for (int y = 0; y < sizeY; y++) for (int x = 0; x < sizeX; x++)
             if (Solid(x,y,z)) for (int f = 0; f < 6; f++) if (Exposed(x,y,z,f)) count += 2;
         _triangleCount = count;
+        _patches=CoplanarPatchIds.Create(6*_solid.Length);
+        for(int z=0;z<SizeZ;z++)for(int y=0;y<SizeY;y++)for(int x=0;x<SizeX;x++)
+        {
+            if(!Solid(x,y,z))continue;
+            int cell=(z*SizeY+y)*SizeX+x;
+            for(int f=0;f<6;f++)if(Exposed(x,y,z,f))
+            {
+                if(f/2!=0 && x>0 && Solid(x-1,y,z) && Exposed(x-1,y,z,f))CoplanarPatchIds.Join(_patches,cell*6+f,(cell-1)*6+f);
+                if(f/2!=1 && y>0 && Solid(x,y-1,z) && Exposed(x,y-1,z,f))CoplanarPatchIds.Join(_patches,cell*6+f,(cell-SizeX)*6+f);
+                if(f/2!=2 && z>0 && Solid(x,y,z-1) && Exposed(x,y,z-1,f))CoplanarPatchIds.Join(_patches,cell*6+f,(cell-SizeX*SizeY)*6+f);
+            }
+        }
+        CoplanarPatchIds.Finish(_patches);
     }
 
     internal static void Validate(int x, int y, int z, int count, float size)
@@ -98,8 +112,8 @@ public sealed class VoxelGrid3D : TriangleSoup3D
         bool lowV = EdgeActive(x,y,z,v,-1), highU = EdgeActive(x,y,z,u,1);
         bool highV = EdgeActive(x,y,z,v,1), lowU = EdgeActive(x,y,z,u,-1);
         triangle = (id & 1) == 0
-            ? new(id,p,pu,puv,(byte)((lowV?1:0)|(highU?2:0)))
-            : new(id,p,puv,pv,(byte)((highV?2:0)|(lowU?4:0)));
+            ? new(id,p,pu,puv,(byte)((lowV?1:0)|(highU?2:0)),2*_patches[cell*6+f],true)
+            : new(id,p,puv,pv,(byte)((highV?2:0)|(lowU?4:0)),2*_patches[cell*6+f],true);
         return true;
     }
 
