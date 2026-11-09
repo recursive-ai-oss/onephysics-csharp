@@ -23,4 +23,27 @@ internal static class SoftStability2D
 
         return bad == 0 ? 0 : 1;
     }
+
+    // soft2d-timing <threads>: median and mean step time over 300 steps after 60 warm-up steps, per scene (indicative; there is no managed 2D reference with soft bodies).
+    internal static int Time(int threads)
+    {
+        foreach (var scene in SoftBodies2DScene.Names)
+        {
+            var w = SoftBodies2DScene.Build(scene, threads);
+            for (int i = 0; i < 60; i++) { w.Step(SoftBodies2DScene.Dt); }
+            var ms = new double[300];
+            for (int i = 0; i < ms.Length; i++)
+            {
+                long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                w.Step(SoftBodies2DScene.Dt);
+                ms[i] = System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
+            }
+
+            double mean = 0; foreach (var v in ms) { mean += v; }
+            Array.Sort(ms);
+            Console.WriteLine($"{scene} threads={threads} median={ms[150]:F3} ms mean={mean / ms.Length:F3} ms p99={ms[297]:F3} ms");
+        }
+
+        return 0;
+    }
 }
