@@ -18,6 +18,9 @@
 
   <ItemGroup><Compile Include="../../tests/Common/RodScenes.cs" LinkBase="Common" /><Compile Include="../../tests/Common/PulleyScenes.cs" LinkBase="Common" /></ItemGroup>
   <ItemGroup>
+    <Compile Include="../../tests/Common/ToolsMeshes.cs" LinkBase="Common" />
+    <Compile Include="../../tests/Common/DecomposedPileScene.cs" LinkBase="Common" />
+    <ProjectReference Include="../../src/OnePhysics.Tools/OnePhysics.Tools.csproj" />
     <Compile Include="../../tests/Common/FieldScenes.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/SoftBodies2DScene.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/Vehicles2DScene.cs" LinkBase="Common" />

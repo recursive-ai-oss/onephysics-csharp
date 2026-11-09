@@ -81,6 +81,12 @@ internal static class Program
         ["world3d-softbody-snapshot"] = FuzzSoftBodies3D.SnapshotTarget,
         ["world2d-softbodies"] = FuzzSoftBodies2D.Run,
         ["world2d-softbody-snapshot"] = FuzzSoftBodies2D.SnapshotTarget,
+        ["tools-mesh-clean"] = FuzzTools.MeshClean,
+        ["tools-mesh-mass"] = FuzzTools.MeshMassTarget,
+        ["tools-hull-simplify"] = FuzzTools.HullSimplify,
+        ["tools-decompose3d"] = FuzzTools.Decompose3D,
+        ["tools-polygon"] = FuzzTools.Polygon,
+        ["tools-sprite"] = FuzzTools.Sprite,
     };
 
     private static int Main(string[] args)

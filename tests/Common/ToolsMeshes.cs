@@ -56,7 +56,7 @@ public static class TestMeshes
             for (int j = 0; j < segments; j++)
             {
                 double th = 2 * Math.PI * j / segments;
-                m.Add((float)(r * Math.Sin(phi) * Math.Cos(th)), (float)(r * Math.Cos(phi)), (float)(r * Math.Sin(phi) * Math.Sin(th)));
+                m.Add((float)(r * Math64.Sin(phi) * Math64.Cos(th)), (float)(r * Math64.Cos(phi)), (float)(r * Math64.Sin(phi) * Math64.Sin(th)));
             }
         }
 
@@ -82,8 +82,8 @@ public static class TestMeshes
         for (int j = 0; j < segments; j++)
         {
             double th = 2 * Math.PI * j / segments;
-            m.Add((float)(r * Math.Cos(th)), -halfHeight, (float)(r * Math.Sin(th)));
-            m.Add((float)(r * Math.Cos(th)), halfHeight, (float)(r * Math.Sin(th)));
+            m.Add((float)(r * Math64.Cos(th)), -halfHeight, (float)(r * Math64.Sin(th)));
+            m.Add((float)(r * Math64.Cos(th)), halfHeight, (float)(r * Math64.Sin(th)));
         }
 
         int cb = m.Add(0, -halfHeight, 0), ct = m.Add(0, halfHeight, 0);
@@ -108,8 +108,8 @@ public static class TestMeshes
             for (int j = 0; j < tubeSegments; j++)
             {
                 double v = 2 * Math.PI * j / tubeSegments;
-                double rr = major + minor * Math.Cos(v);
-                m.Add((float)(rr * Math.Cos(u)), (float)(minor * Math.Sin(v)), (float)(rr * Math.Sin(u)));
+                double rr = major + minor * Math64.Cos(v);
+                m.Add((float)(rr * Math64.Cos(u)), (float)(minor * Math64.Sin(v)), (float)(rr * Math64.Sin(u)));
             }
         }
 
@@ -174,7 +174,7 @@ public static class TestMeshes
             double th = 2 * Math.PI * j / n;
             for (int p = 0; p < rings; p++)
             {
-                m.Add((float)(profile[p].Item1 * Math.Cos(th)), profile[p].Item2, (float)(profile[p].Item1 * Math.Sin(th)));
+                m.Add((float)(profile[p].Item1 * Math64.Cos(th)), profile[p].Item2, (float)(profile[p].Item1 * Math64.Sin(th)));
             }
         }
 

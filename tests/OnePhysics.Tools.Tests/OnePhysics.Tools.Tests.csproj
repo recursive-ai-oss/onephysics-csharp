@@ -17,6 +17,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="../Common/ToolsMeshes.cs" LinkBase="Common" />
+    <Compile Include="../Common/DecomposedPileScene.cs" LinkBase="Common" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../../src/OnePhysics.Tools/OnePhysics.Tools.csproj" />
   </ItemGroup>
 
