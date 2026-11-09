@@ -249,6 +249,18 @@ internal static class SmokeProgram
             Console.WriteLine((g1 == g3 && g1 == gr ? "OK strip2d " : "FAIL strip2d ") + g1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         }
 
+        // Particle fluids in both dimensions: same state on one and three threads and after a restore.
+        foreach (string scene in FluidScenes.Names)
+        {
+            bool d3 = FluidScenes.Is3D(scene);
+            float sp = scene switch { "dam-break-2d" => 0.06f, "fluid-rope-2d" => 0.08f, _ => 0.1f };
+            ulong g1 = d3 ? FluidScenes.Run3D(scene, 1, 40, sp) : FluidScenes.Run2D(scene, 1, 40, sp);
+            ulong g3 = d3 ? FluidScenes.Run3D(scene, 3, 40, sp) : FluidScenes.Run2D(scene, 3, 40, sp);
+            ulong gr = d3 ? FluidScenes.Run3D(scene, 1, 40, sp, true) : FluidScenes.Run2D(scene, 1, 40, sp, true);
+            soft2d &= g1 == g3 && g1 == gr;
+            Console.WriteLine((g1 == g3 && g1 == gr ? "OK fluids " : "FAIL fluids ") + scene + " " + g1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
         bool missingShapes = MissingShapes();
         Console.WriteLine(missingShapes ? "OK shape-recipes" : "FAIL shape-recipes");
         bool surfaces = RecursiveAI.OnePhysics.Tests.Common.ContactSurfaceScene.Planar(1, restore: true) == RecursiveAI.OnePhysics.Tests.Common.ContactSurfaceScene.Planar(3)

@@ -28,6 +28,7 @@
     <Compile Include="../Common/SoftBodies2DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/SoftFracture3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Cloth3DScene.cs" LinkBase="Common" />
+    <Compile Include="../Common/FluidScenes.cs" LinkBase="Common" />
     <Compile Include="../Common/Strip2DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/SoftSkinned3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Characters3DScene.cs" LinkBase="Common" />
