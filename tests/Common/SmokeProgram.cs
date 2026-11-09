@@ -252,11 +252,11 @@ internal static class SmokeProgram
         // Particle fluids in both dimensions: same state on one and three threads and after a restore.
         foreach (string scene in FluidScenes.Names)
         {
-            bool d3 = FluidScenes.Is3D(scene);
+            bool fluid3 = FluidScenes.Is3D(scene);
             float sp = scene switch { "dam-break-2d" => 0.06f, "fluid-rope-2d" => 0.08f, _ => 0.1f };
-            ulong g1 = d3 ? FluidScenes.Run3D(scene, 1, 40, sp) : FluidScenes.Run2D(scene, 1, 40, sp);
-            ulong g3 = d3 ? FluidScenes.Run3D(scene, 3, 40, sp) : FluidScenes.Run2D(scene, 3, 40, sp);
-            ulong gr = d3 ? FluidScenes.Run3D(scene, 1, 40, sp, true) : FluidScenes.Run2D(scene, 1, 40, sp, true);
+            ulong g1 = fluid3 ? FluidScenes.Run3D(scene, 1, 40, sp) : FluidScenes.Run2D(scene, 1, 40, sp);
+            ulong g3 = fluid3 ? FluidScenes.Run3D(scene, 3, 40, sp) : FluidScenes.Run2D(scene, 3, 40, sp);
+            ulong gr = fluid3 ? FluidScenes.Run3D(scene, 1, 40, sp, true) : FluidScenes.Run2D(scene, 1, 40, sp, true);
             soft2d &= g1 == g3 && g1 == gr;
             Console.WriteLine((g1 == g3 && g1 == gr ? "OK fluids " : "FAIL fluids ") + scene + " " + g1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         }

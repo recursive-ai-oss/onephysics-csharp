@@ -557,6 +557,63 @@ public sealed class FluidTests
         }
     }
 
+    [Fact]
+    public void ARecordedFluidSessionReplaysWithEveryHash()
+    {
+        var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { WorldId = 61 });
+        w.AddBox(new Vector3F(4, 0.2f, 4), at: new Vector3D(0, -0.1, 0), type: BodyType.Static);
+        w.AddBox(new Vector3F(0.2f, 3, 4), at: new Vector3D(-0.6, 1.4, 0), type: BodyType.Static);
+        w.AddBox(new Vector3F(0.2f, 3, 4), at: new Vector3D(0.6, 1.4, 0), type: BodyType.Static);
+        w.AddBox(new Vector3F(4, 3, 0.2f), at: new Vector3D(0, 1.4, -0.6), type: BodyType.Static);
+        w.AddBox(new Vector3F(4, 3, 0.2f), at: new Vector3D(0, 1.4, 0.6), type: BodyType.Static);
+        var hashes = new ulong[40];
+        using var stream = new System.IO.MemoryStream();
+        using (var recorder = w.StartRecording(stream))
+        {
+            var f = w.AddParticleWater(0.1f);
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                if (i == 0) { w.FillFluidBox(f, new Vector3D(-0.5, 0, -0.5), new Vector3D(0.5, 0.3, 0.5)); }
+                if (i == 5) { f.AddEmitter(new FluidEmitterDef { Position = new Vector3D(0, 1.5, 0), Direction = new Vector3F(0, -1, 0), Size = new Vector3F(0.1f, 0.1f, 0.1f), Speed = 2f }); }
+                if (i == 10) { w.AddBox(new Vector3F(0.2f, 0.2f, 0.2f), at: new Vector3D(0, 0.8, 0), density: 400f); }
+                if (i == 20) { w.FluidSettings = new FluidSettings { Substeps = 3, Iterations = 3, MaxParticles = 5000, SleepSpeed = 0.02f, TimeToSleep = 1f, WakeBodySpeed = 0.05f }; }
+                if (i == 30) { w.ShiftOrigin(new Vector3D(2, 0, 0)); }
+                w.Step(Dt);
+                hashes[i] = w.ComputeHash();
+            }
+        }
+
+        stream.Position = 0;
+        var player = new RecursiveAI.OnePhysics.Replay.ReplayPlayer(stream);
+        var copy = player.CreateWorld3D();
+        int n = 0;
+        while (player.ReadNextStep(copy)) { Assert.Equal(hashes[n++], copy.ComputeHash()); }
+        Assert.Equal(hashes.Length, n);
+        Assert.Equal(w.Snapshot(), copy.Snapshot());
+    }
+
+    [Fact]
+    public void TheDesyncFinderNamesAParticleAndRegionsCoverParticles()
+    {
+        var a = new P3.PhysicsWorld3D(new P3.WorldOptions3D { WorldId = 62 });
+        var f = a.AddParticleWater(0.1f);
+        a.FillFluidBox(f, new Vector3D(0, 1, 0), new Vector3D(0.5, 1.5, 0.5));
+        a.Step(Dt);
+        var b = a.Fork();
+        Assert.Equal(0, a.FindDifferences(b).Count);
+        var c = new P3.PhysicsWorld3D(new P3.WorldOptions3D { WorldId = 62 });
+        var f2 = c.AddParticleWater(0.1f);
+        c.FillFluidBox(f2, new Vector3D(0, 1, 0), new Vector3D(0.5, 1.5, 0.5), new Vector3F(0, 0, 0.5f));
+        c.Step(Dt);
+        var report = a.FindDifferences(c);
+        Assert.True(report.Count > 0);
+        Assert.Equal("fluidparticle", report.First!.Entity);
+        // A region over everything carries the particles and restores into an identical world.
+        var region = a.CaptureRegion(new Vector3D(-10, -10, -10), new Vector3D(10, 10, 10));
+        b.RestoreRegion(region);
+        Assert.Equal(a.ComputeHash(), b.ComputeHash());
+    }
+
     // ------------------------------------------------------------------ debug
 
     [Fact]
