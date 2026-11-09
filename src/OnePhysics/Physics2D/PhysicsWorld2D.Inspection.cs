@@ -8,7 +8,11 @@ public sealed partial class PhysicsWorld2D
     }
 
     /// <summary>Reads body diagnostics. Throws for a default, stale or foreign body. Read between steps.</summary>
-    public BodyInspection InspectBody(Body body) => new(_core.InspectBody(body.RawHandle));
+    public BodyInspection InspectBody(Body body)
+    {
+        if (!ReferenceEquals(body.World, this)) throw new InvalidHandleException("Body belongs to another world or is default.");
+        return new(_core.InspectBody(body.RawHandle));
+    }
 
     /// <summary>Always-on counters of the last step; reused on the next step. Not simulation or snapshot state.</summary>
     public StepCounters Counters => _core.Counters;

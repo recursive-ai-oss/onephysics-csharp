@@ -49,8 +49,10 @@ internal static class SurfaceContacts
     {
         bool Faces(Vector3F direction, Vector3F normal)
         {
-            float product = Vector3F.Dot(direction, direction) * Vector3F.Dot(normal, normal);
-            return Vector3F.Dot(direction, normal) >= 0.5f * float.Sqrt(product);
+            // Normalize separately: squaring the product can overflow for valid large directions.
+            direction *= 1f / float.Sqrt(Vector3F.Dot(direction, direction));
+            normal *= 1f / float.Sqrt(Vector3F.Dot(normal, normal));
+            return Vector3F.Dot(direction, normal) >= 0.5f;
         }
         var own = world.Surfaces.Get(movingShape); var other = world.Surfaces.Get(otherShape);
         if (other.OneWayDirection != default && !Faces(Rotate(world, world.Shapes.Owner[otherShape], other.OneWayDirection), outwardOther)) return false;

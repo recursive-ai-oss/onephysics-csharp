@@ -10,6 +10,50 @@ namespace RecursiveAI.OnePhysics.Tests;
 public class SurfaceTests
 {
     [Fact]
+    public void ContactIterationIsTheContactProjectionOfInspection()
+    {
+        var w = new P2.PhysicsWorld2D();
+        w.AddBox(new(10, 1), at: new(0, -0.5), type: BodyType.Static);
+        var b = w.AddBox(new(1, 1), at: new(0, 0.5)); w.Step(1f / 60);
+        var contacts = b.Contacts.GetEnumerator(); int count = 0;
+        foreach (var constraint in b.Inspect().Constraints)
+        {
+            if (!constraint.IsContact || constraint.PointCount == 0) continue;
+            Assert.True(contacts.MoveNext()); count++;
+            Assert.Equal(constraint.Slot, contacts.Current.Slot);
+            Assert.Equal(constraint.Contact.Point(0), contacts.Current.Point(0));
+            Assert.Equal(constraint.Point(0).NormalImpulse, contacts.Current.NormalImpulse(0));
+        }
+        Assert.True(count > 0); Assert.False(contacts.MoveNext());
+    }
+
+    [Fact]
+    public void SameNumericWorldIdDoesNotAcceptForeignBodies()
+    {
+        var a = new P2.PhysicsWorld2D(new() { WorldId = 501 });
+        var b = new P2.PhysicsWorld2D(new() { WorldId = 501 });
+        var local = a.AddCircle(1); var foreign = b.AddCircle(1);
+        Assert.Throws<InvalidHandleException>(() => a.GetContacts(foreign));
+        Assert.Throws<InvalidHandleException>(() => a.InspectBody(foreign));
+        foreach (var c in a.GetContacts(local)) Assert.True(c.PointCount > 0);
+        var x = new P3.PhysicsWorld3D(new() { WorldId = 502 });
+        var y = new P3.PhysicsWorld3D(new() { WorldId = 502 });
+        x.AddSphere(1); var other = y.AddSphere(1);
+        Assert.Throws<InvalidHandleException>(() => x.GetContacts(other));
+        Assert.Throws<InvalidHandleException>(() => x.InspectBody(other));
+    }
+
+    [Fact]
+    public void SweepNormalTestIsInvariantToLargeDirectionScale()
+    {
+        var w = new P2.PhysicsWorld2D();
+        var a = w.AddCircle(1); var b = w.AddCircle(1);
+        b.GetShapes()[0].Surface = new() { OneWayDirection = new(0, 1e15f, 0) };
+        Assert.True(SurfaceContacts.SweepNormalAllowed(w.Core, a.GetShapes()[0].RawHandle.Index, b.GetShapes()[0].RawHandle.Index, new(0, 1e10f, 0)));
+        Assert.False(SurfaceContacts.SweepNormalAllowed(w.Core, a.GetShapes()[0].RawHandle.Index, b.GetShapes()[0].RawHandle.Index, new(0, -1e10f, 0)));
+    }
+
+    [Fact]
     public void FastJumpDoesNotGetClampedByContinuousCollision()
     {
         var w = new P2.PhysicsWorld2D(new() { Gravity = default });

@@ -210,3 +210,9 @@ below the 1e-4 m/s limit. An ordinary box floor measures 2.7939677e-8 m/s. These
 are deterministic physical error metrics, not timing rows. Mesh/height-field
 contact keys and resulting hashes intentionally change; core snapshot v1 does
 not change, and geometry patch ids are derived on construction/restore.
+
+### Inspection integration
+
+Body contact iteration is a filtered projection of the same ascending-slot constraint enumeration exposed by body inspection: joints and zero-point response-disabled manifolds are omitted. `ConstraintInspection.Contact` returns the same `ContactView` used by `Body.Contacts`, `world.GetContacts(body)` and raw `Core.GetContacts(handle)`; there is no second contact representation for inspection. Typed world overloads reject foreign body objects even when the worlds were assigned the same numeric id. Raw handles retain their numeric world-id semantics.
+
+The continuous-collision one-way normal test normalizes each vector separately before its cosine comparison, so large permitted direction magnitudes cannot overflow a product of squared lengths.

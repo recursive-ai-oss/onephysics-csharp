@@ -17,17 +17,21 @@ public readonly struct BodyContactEnumerable
 public struct BodyContactEnumerator
 {
     private readonly WorldCore _world;
-    private readonly BodyHandle _body;
+    private BodyConstraintEnumerator _constraints;
     private int _slot;
-    internal BodyContactEnumerator(WorldCore world, BodyHandle body) { _world = world; _body = body; _slot = -1; if (world == null) throw new InvalidHandleException("The default contact enumeration has no world."); world.Resolve(body); }
-    /// <summary>Advances in ascending constraint slot order. Disabled response contacts with zero points and sensors are excluded.</summary>
+    internal BodyContactEnumerator(WorldCore world, BodyHandle body)
+    {
+        _world = world; _slot = -1; _constraints = new(world, body);
+    }
+    /// <summary>Advances through inspection's constraint enumeration, excluding joints and disabled zero-point contacts.</summary>
     public bool MoveNext()
     {
-        if (_world == null) throw new InvalidHandleException("The default contact enumeration has no world.");
-        int b = _world.Resolve(_body); var cs = _world.Constraints;
-        while (++_slot < cs.HighWater)
-            if (cs.IsLive(_slot) && cs.KindOf(_slot) == ConstraintKind.Contact && cs.PointCount[_slot] != 0 && (cs.BodyA[_slot] == b || cs.BodyB[_slot] == b)) return true;
-        return false;
+        while (_constraints.MoveNext())
+        {
+            var c = _constraints.Current;
+            if (c.IsContact && c.PointCount != 0) { _slot = c.Slot; return true; }
+        }
+        _slot = -1; return false;
     }
     /// <summary>Current read-only manifold. Throws InvalidOperationException when not positioned on a live contact.</summary>
     public ContactView Current
@@ -35,7 +39,7 @@ public struct BodyContactEnumerator
         get
         {
             if (_world == null || (uint)_slot >= (uint)_world.Constraints.HighWater || !_world.Constraints.IsLive(_slot) || _world.Constraints.KindOf(_slot) != ConstraintKind.Contact) throw new InvalidOperationException("Contact enumeration is not positioned on a live contact.");
-            _world.Resolve(_body); return new(_world, _slot);
+            _ = _constraints.Current; return new(_world, _slot);
         }
     }
 }
