@@ -111,7 +111,10 @@ rods are unused. Little-endian fields:
 Floats, bools, doubles and counts use the existing primitive encodings. The
 reader checks counts against remaining bytes and the world limits, positive
 generations, finite state, bounds, unit frames and planar components before
-replacing state. A rejected whole-world restore is atomic. Previous positions,
+replacing state. Attachment body indices are checked against the body store being
+restored (the snapshot's own bodies), so a snapshot restores into a freshly created world
+with the same world id; a generation that no longer matches a live body at step time
+breaks the attachment rather than rebinding a reused slot. A rejected whole-world restore is atomic. Previous positions,
 old frames, contact candidates, attachment substep multipliers and solver factors
 are scratch, rebuilt before use. A fork copies all
 state and owns independent scratch. Region membership selects a whole rod if
@@ -210,8 +213,43 @@ numerically dissipated, not a hidden velocity-damping parameter.
 planks and six dropped boxes), rope-whip-3d (30 m/s against a 1 cm wall),
 hair-3d (1000 six-segment strands attached to a moving spherical head) and
 rope-2d (driven swinging rope, attached weight and an obstacle field). The bar's
-`rod-run` command reports speed, relative stretch, remaining capsule penetration,
-scene-defined tunnelling and a final hash. Joint-chain comparison uses matching
-particle locations/masses and distance joints, but has no Cosserat bend/twist.
-Current fixture checks are experimental; indicative timing is not a managed
-reference performance verdict.
+`rod-run` command runs 600 steps at 1/60 s and reports speed, relative stretch,
+remaining capsule penetration, tunnelled count and a final hash.
+
+No managed engine runs rods, so the thresholds are our own: 1.5 times the worst of the
+x64 and arm64 values, rounded up to a 1/1.5/2/3/5/7 step, with a 1 mm penetration floor.
+
+| scene | maxSpeed | max relative stretch | rod penetration | tunnelled | measured (speed / stretch / penetration) |
+|---|---|---|---|---|---|
+| rope-whip-3d | <= 45 | <= 0.005 | <= 0.001 | 0 | 30.0 / 0.0031 / 9e-10 |
+| rope-2d | <= 5 | <= 0.05 | <= 0.001 | 0 | 2.62 / 0.0294 / 0.00033 |
+| rope-bridge-3d | <= 10 | <= 0.05 | <= 0.001 | 0 | 6.64 / 0.0215 / 0 |
+| hair-3d | <= 5 | <= 0.15 | <= 0.001 | 0 | 2.91 / 0.0944 / 0.00049 |
+
+Speed is the larger of any rod particle's and any rigid body's speed. Penetration is the
+deepest remaining overlap between a rod capsule and a shape, after the last pass of a
+substep; it does not include the rigid plank and box contacts of the bridge. Tunnelled is
+defined per scene, not as a general topology test: whip counts particles whose centre
+is past the wall's centre plane; hair counts particles whose centre is inside the head
+sphere (radius 0.34 against a 0.35 head); bridge and swing count dynamic bodies and rod
+particles whose centre is below the floor slab's centre plane.
+
+x64 (1 and 8 threads) and arm64 (1 thread) end hashes agree: whip 789d15b9ede1a341,
+rope-2d 513399b7bc8a8863, bridge 193ca0ba3e8809ce, hair 9cbe099fa3ddd754.
+
+Joint-chain comparison uses matching particle locations/masses and distance joints, but
+has no Cosserat bend/twist, collides as spheres (at least 1 cm radius) instead of swept
+capsules, and reports no penetration. Indicative timings (Apple M2, 8 cores, load about 2,
+120 steps, first 30 dropped, median step; not a managed-engine verdict):
+
+| scene | model | t1 ms | t8 ms | peak RSS |
+|---|---|---|---|---|
+| hair-3d (1000 strands) | rods | 344 | 303 | 77 MB |
+| hair-3d | joint chain | 71 | 25.5 | 1.53 GB |
+| rope-bridge-3d | rods | 5.05 | 4.39 | 57 MB |
+| rope-bridge-3d | joint chain | 0.15 | 0.17 | 59 MB |
+
+The bridge's joint chain stretches 0.158 (limit 0.05), so it is unstable at the same
+scene definition. Removing contact handling takes the rod bridge from 6.7 to 2.8 ms and
+300-strand hair from 149 to 23 ms (x64, loaded host, one thread): world contact search,
+which is serial and repeats every pass, dominates; the solve itself scales with threads.
