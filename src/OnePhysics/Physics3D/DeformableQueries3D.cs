@@ -118,7 +118,7 @@ internal static class DeformableScan3D
             if (!e.SoftHandles.IsLive(slot)) { continue; }
             var d = e.SoftData[slot]!;
             // Cloth: fabric, or a surface with no volume (no tetrahedra and no enclosed volume held by pressure).
-            bool cloth = d.Def.Fabric != null || (d.Tets.Length == 0 && d.PressureRest <= 0f);
+            bool cloth = Engine3D.IsClothLike(d);
             if ((kinds & (cloth ? DeformableKinds.Cloth : DeformableKinds.SoftBodies)) == 0) { continue; }
             if ((layers & (1u << d.Def.Layer)) == 0 || (cat & d.Def.MaskBits) == 0 || (d.Def.CategoryBits & mask) == 0) { continue; }
             int n = d.N;
@@ -356,6 +356,10 @@ internal struct DeformableVisitor3 : IDeformVisitor3
 internal sealed partial class Engine3D
 {
     internal RodStore? RodsOrNull => _rods;
+
+    internal static bool IsClothLike(SoftBodyData d) => d.Def.Fabric != null || (d.Tets.Length == 0 && d.PressureRest <= 0f);
+
+    internal static DeformableKind SoftKindOf(SoftBodyData d) => IsClothLike(d) ? DeformableKind.Cloth : DeformableKind.SoftBody;
 
     [ThreadStatic]
     private static DeformableHit3D[]? t_deformHits;

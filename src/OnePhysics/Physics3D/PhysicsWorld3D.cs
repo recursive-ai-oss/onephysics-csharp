@@ -149,6 +149,7 @@ public sealed partial class PhysicsWorld3D
     private void StepPrepared(float dt)
     {
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
+        _engine.DeformableContacts.Begin(_engine, _engine);
         BeginDestruction();
         _engine.BeginBodyControls(dt);
         _engine.Actuators.BeginStep();
@@ -177,6 +178,7 @@ public sealed partial class PhysicsWorld3D
         _engine.EndActive();
         _engine.StepCharacterAbilities();
         _engine.StepCharacterWater();
+        _engine.DeformableContacts.End(_engine, _engine);
         _engine.ReconcileJoints();
         UpdateInspectionCounters();
         InvalidateQueryPad();
@@ -189,6 +191,7 @@ public sealed partial class PhysicsWorld3D
             if (_engine.SoftTearEvents.Length > 0) { DispatchSoftTears(); }
             if (_engine.Water.Events.Count > 0) { DispatchWaterEvents(); }
             if (_engine.CharacterWaterEvents.Count > 0) { DispatchCharacterWaterEvents(); }
+            if (_engine.DeformableContacts.Events.Count > 0) { DispatchDeformableContactEvents(); }
         }
         else if (_jointHandlers.Count > 0) { RetireBrokenJointHandlers(); }
         EndDestruction(dt);

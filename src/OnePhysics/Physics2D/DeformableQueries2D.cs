@@ -104,7 +104,7 @@ internal static class DeformableScan2D
             if (!e.SoftHandles.IsLive(slot)) { continue; }
             var d = e.SoftData[slot]!;
             // Cloth: a strip or membrane, or a mesh with no area (no triangles and no enclosed area held by pressure).
-            bool cloth = d.Def.Strip != null || (d.Tris.Length == 0 && d.PressureRest <= 0f);
+            bool cloth = Engine2D.IsClothLike(d);
             if ((kinds & (cloth ? DeformableKinds.Cloth : DeformableKinds.SoftBodies)) == 0) { continue; }
             if ((layers & (1u << d.Def.Layer)) == 0 || (cat & d.Def.MaskBits) == 0 || (d.Def.CategoryBits & mask) == 0) { continue; }
             int n = d.N;
@@ -276,6 +276,10 @@ internal struct DeformableVisitor2 : IDeformVisitor2
 internal sealed partial class Engine2D
 {
     internal RodStore? RodsOrNull => _rods;
+
+    internal static bool IsClothLike(SoftBodyData d) => d.Def.Strip != null || (d.Tris.Length == 0 && d.PressureRest <= 0f);
+
+    internal static DeformableKind SoftKindOf(SoftBodyData d) => IsClothLike(d) ? DeformableKind.Cloth : DeformableKind.SoftBody;
 
     [ThreadStatic]
     private static DeformableHit2D[]? t_deformHits;

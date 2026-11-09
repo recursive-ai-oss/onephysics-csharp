@@ -166,14 +166,14 @@ public class DeformableQueryTests
         w.AddRod(Line3(new Vector3D(-2, 1, 0), new Vector3D(2, 1, 0), 8, 0.02f));
         w.AddCloth(2f, 2f, 4, new Vector3D(0, 2, 0));
         var down = new Vector3F(0, -1, 0);
-        Assert.True(w.RaycastDeformables(new Vector3D(0.1, 5, 0.0), down, out var any));
+        Assert.True(w.RaycastDeformables(new Vector3D(0.1, 5, 0.013), down, out var any));
         Assert.Equal(DeformableKind.Cloth, any.Kind);
-        Assert.True(w.RaycastDeformables(new Vector3D(0.1, 5, 0.0), down, out var rod, filter: DeformableFilter3D.Of(DeformableKinds.Rods)));
+        Assert.True(w.RaycastDeformables(new Vector3D(0.1, 5, 0.013), down, out var rod, filter: DeformableFilter3D.Of(DeformableKinds.Rods)));
         Assert.Equal(DeformableKind.Rod, rod.Kind);
-        Assert.False(w.RaycastDeformables(new Vector3D(0.1, 5, 0.0), down, out _, filter: DeformableFilter3D.Of(DeformableKinds.SoftBodies)));
-        Assert.False(w.RaycastDeformables(new Vector3D(0.1, 5, 0.0), down, out _, filter: new DeformableFilter3D { LayerMask = 1u << 5 }));
+        Assert.False(w.RaycastDeformables(new Vector3D(0.1, 5, 0.013), down, out _, filter: DeformableFilter3D.Of(DeformableKinds.SoftBodies)));
+        Assert.False(w.RaycastDeformables(new Vector3D(0.1, 5, 0.013), down, out _, filter: new DeformableFilter3D { LayerMask = 1u << 5 }));
         var all = new DeformableHit3D[4];
-        int n = w.RaycastDeformablesAll(new Vector3D(0.1, 5, 0.0), down, all);
+        int n = w.RaycastDeformablesAll(new Vector3D(0.1, 5, 0.013), down, all);
         Assert.Equal(2, n);
         Assert.Equal(DeformableKind.Cloth, all[0].Kind); Assert.Equal(DeformableKind.Rod, all[1].Kind);
     }
@@ -280,5 +280,52 @@ public class DeformableQueryTests
         Assert.Equal(2, w.OverlapCircleDeformablesAll(new Vector2D(1.0, 1.2), 0.3f, buf));
         Assert.Equal(0, w.OverlapCircleDeformablesAll(new Vector2D(1.0, 1.6), 0.3f, buf));
         Assert.False(w.RaycastDeformables(new Vector2D(0.75, 3), new Vector2F(0, -1), out _, filter: DeformableFilter2D.Of(DeformableKinds.SoftBodies)));
+    }
+}
+
+/// <summary>Contact begin and end events of soft bodies, cloth and rods against rigid bodies.</summary>
+public class DeformableContactEventTests
+{
+    private const float Dt = 1f / 60f;
+
+    [Fact]
+    public void ASoftBallDroppedOnAFloorBeginsAndLaterEndsItsContactAndEventsAreOptIn()
+    {
+        var w = new PhysicsWorld3D(new WorldOptions3D { ThreadCount = 1, WorldId = 371 });
+        var floor = w.AddBox(new Vector3F(20f, 1f, 20f), at: new Vector3D(0, -0.5, 0), type: BodyType.Static);
+        var ball = w.AddSoftBall(0.4f, new Vector3D(0, 1.0, 0), segments: 4);
+        var seen = new List<DeformableContactEvent>();
+        w.DeformableContactChanged += seen.Add;
+        // Off by default: the ball lands and nothing is reported.
+        for (int i = 0; i < 90; i++) { w.Step(Dt); }
+        Assert.Empty(seen);
+        Assert.Equal(0, w.DeformableContactEvents.Length);
+        w.TrackDeformableContacts = true;
+        var polled = new List<DeformableContactEvent>();
+        ball.AddVelocity(new Vector3F(0f, 8f, 0f));
+        for (int i = 0; i < 400; i++) { w.Step(Dt); polled.AddRange(w.DeformableContactEvents.ToArray()); }
+        // The ball leaves the floor, comes back and begins touching it again; the events alternate for the one pair and both delivery forms agree.
+        Assert.Equal(seen.Count, polled.Count);
+        Assert.Contains(seen, e => e.Kind == DeformableContactEventKind.Ended && e.Body == floor.RawHandle && e.Slot == ball.Slot && e.Deformable == DeformableKind.SoftBody);
+        Assert.Contains(seen, e => e.Kind == DeformableContactEventKind.Began && e.Body == floor.RawHandle);
+        for (int i = 1; i < seen.Count; i++) { Assert.NotEqual(seen[i - 1].Kind, seen[i].Kind); }
+    }
+
+    [Fact]
+    public void ARopeLandingOnABoxBeginsAContactWithIt2D()
+    {
+        var w = new PhysicsWorld2D(new WorldOptions2D { ThreadCount = 1, WorldId = 372 });
+        var box = w.AddBox(new Vector2F(4f, 1f), new Vector2D(0, 0), type: BodyType.Static);
+        var pts = new Vector2D[9];
+        for (int i = 0; i < pts.Length; i++) { pts[i] = new Vector2D(-1 + 0.25 * i, 1.5); }
+        var rod = w.AddRod(new RecursiveAI.OnePhysics.Physics2D.RodDef { Points = pts, Material = new RecursiveAI.OnePhysics.Rods.RodMaterial(1e7f, 4e6f, 0.02f, 800f) });
+        w.TrackDeformableContacts = true;
+        var seen = new List<DeformableContactEvent>();
+        for (int i = 0; i < 240; i++) { w.Step(Dt); seen.AddRange(w.DeformableContactEvents.ToArray()); }
+        Assert.Single(seen);
+        Assert.Equal(DeformableContactEventKind.Began, seen[0].Kind);
+        Assert.Equal(DeformableKind.Rod, seen[0].Deformable);
+        Assert.Equal(rod.Index, seen[0].Slot);
+        Assert.Equal(box.RawHandle, seen[0].Body);
     }
 }
