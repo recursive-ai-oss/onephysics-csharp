@@ -93,7 +93,15 @@ public sealed class VoxelGrid3D : TriangleSoup3D
         if ((uint)id >= (uint)TriangleIdCount) return false;
         int cell = id / 12, f = id % 12 / 2;
         int x = cell % SizeX, y = cell / SizeX % SizeY, z = cell / (SizeX * SizeY);
-        if (!Solid(x,y,z) || !Exposed(x,y,z,f)) return false;
+        if (!Solid(x,y,z)) return false;
+        return TryBuild(id,cell,x,y,z,f,out triangle);
+    }
+
+    // Builds the triangle of a solid cell's face; hidden faces return false.
+    private bool TryBuild(int id,int cell,int x,int y,int z,int f,out SoupTriangle3D triangle)
+    {
+        triangle = default;
+        if (!Exposed(x,y,z,f)) return false;
         int axis = f / 2, u = (axis + 1) % 3, v = (axis + 2) % 3;
         // Evaluate each lattice vertex from its integer coordinates once. Adding CellSize
         // to a rounded neighbour can leave one-ulp cracks when CellSize is not a power of two.
@@ -125,8 +133,13 @@ public sealed class VoxelGrid3D : TriangleSoup3D
         {
             if (!Solid(x,y,z)) continue;
             int first = ((z*SizeY+y)*SizeX+x)*12;
-            for (int k = 0; k < 12; k++)
-                if (TryGetTriangle(first+k,out var tri) && TriangleTests3D.BoxTriangle(box,tri.V0,tri.V1,tri.V2)) ids.Add(tri.Id);
+            int cell = first/12;
+            for (int f = 0; f < 6; f++)
+            {
+                if (!Exposed(x,y,z,f)) continue;
+                for (int h = 0; h < 2; h++)
+                    if (TryBuild(first+2*f+h,cell,x,y,z,f,out var tri) && TriangleTests3D.BoxTriangle(box,tri.V0,tri.V1,tri.V2)) ids.Add(tri.Id);
+            }
         }
     }
     private int Low(float p,int n)
@@ -146,7 +159,7 @@ public sealed class VoxelGrid3D : TriangleSoup3D
         return i;
     }
 
-    /// <summary>Sweeps a convex shape through the grid using a dilated centre-ray traversal. Large cross-sections fall back to swept-box enumeration. Fractions and ties are those of TriangleSoup3D.CastTriangles. Invalid placement or nonfinite motion throws ArgumentOutOfRangeException; scratch is optional and cleared.</summary>
+    /// <summary>Sweeps a convex shape through the grid. A swept cell range of at most 4096 cells (local casts) is enumerated directly with no traversal; longer casts use a dilated centre-ray traversal whose stencils are clipped to the swept cell range. Large cross-sections fall back to swept-box enumeration. Fractions and ties are those of TriangleSoup3D.CastTriangles. Invalid placement or nonfinite motion throws ArgumentOutOfRangeException; scratch is optional and cleared.</summary>
     public override bool ShapeCast(in ConvexShape3D shape,in RigidTransformF shapeInSoup,Vector3F motion,out SoupCastHit3D hit,List<int>? scratch=null)
     {
         CheckPlacement(shapeInSoup); CheckFinite(motion,nameof(motion)); hit=default;
