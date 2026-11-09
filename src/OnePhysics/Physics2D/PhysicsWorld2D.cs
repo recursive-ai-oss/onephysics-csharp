@@ -29,6 +29,7 @@ public sealed partial class PhysicsWorld2D
         _engine = new Engine2D(_core, bp, o) { World = this };
         _core.AddSection(bp);
         _core.AddSection(_engine);
+        _core.AddSection(_engine.MachineSnapshotSection);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -274,7 +275,9 @@ public sealed partial class PhysicsWorld2D
         double[] d = [offset.X, offset.Y];
         _core.ValidateShift(d);
         _engine.CheckShift(d);
+        _engine.CheckMachineShift(d);
         _core.ShiftOrigin(d);
+        _engine.ShiftMachineJoints(d);
         _engine.ShiftProxies(d);
         InvalidateQueryPad();
     }

@@ -274,6 +274,9 @@ internal sealed partial class Engine3D
         var rigid = useBias ? new Soft(s[JRow3.JMass], s[JRow3.JMass] * s[JRow3.JBias], s[JRow3.JImp]) : new Soft(1f, 0f, 0f);
         switch ((JointType3D)d.Type)
         {
+            case JointType3D.Wheel: SolveWheel(ref j, g, ref d, s, p, rigid, useBias, invH, warm); break;
+            case JointType3D.Motor: SolveMotor(ref j, g, d, p, warm, invH); break;
+            case JointType3D.Mouse: SolveMouse(ref j, g, s, p, warm, useBias); break;
             case JointType3D.Fixed: SolveFixed(ref j, in g, p, rigid, warm); break;
             case JointType3D.Point: break; // solved by JointKernel3D
             case JointType3D.Distance: SolveDistance(ref j, in g, ref d, s, p, useBias, invH, warm); break;

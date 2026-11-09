@@ -73,7 +73,7 @@ internal sealed partial class Engine2D
             JWide = new float[cap * J2D.GroupFloats]; JIdx = new int[cap * W2D.IdxPerGroup];
         }
 
-        if (Opt.DetailedInspection && LiveJointCount() != 0) { Core.JointReadback.ReserveWide(batches); }
+        if (Core.JointReadback.Enabled && LiveJointCount() != 0) { Core.JointReadback.ReserveWide(batches); }
         int nc = core.Constraints.HighWater;
         if (SlotOf.Length < nc) { SlotOf = new int[Math.Max(nc, SlotOf.Length * 2)]; JSlotOf = new int[SlotOf.Length]; BatchSimple = new byte[SlotOf.Length]; }
         // Every live body's velocity goes into its solver row. Blocks write their own rows and their own flag, so they run on several threads.
@@ -513,7 +513,7 @@ internal sealed partial class Engine2D
         var p = cs.Payload(c);
         int a = cs.BodyA[c], b = cs.BodyB[c];
         JSlotOf[c] = group * J2D.Lanes + lane;
-        if (Opt.DetailedInspection) { Core.JointReadback.WideSlots[group * 8 + lane] = c; }
+        if (Core.JointReadback.Enabled) { Core.JointReadback.WideSlots[group * 8 + lane] = c; }
         idx[lane] = (a + 1) * BS2D.Stride; idx[8 + lane] = (b + 1) * BS2D.Stride;
         idx[16 + lane] = bodies.TypeOf(a) == BodyType.Dynamic ? (a + 1) * BS2D.Stride : -1;
         idx[24 + lane] = bodies.TypeOf(b) == BodyType.Dynamic ? (b + 1) * BS2D.Stride : -1;

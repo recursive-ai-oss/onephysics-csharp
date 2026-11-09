@@ -157,11 +157,17 @@ internal sealed partial class Engine2D
         var p = cs.Payload(c);
         LoadJoint(a, b, s, out JS j);
         j.Readback = Core.JointReadback; j.Constraint = c;
-        if (Opt.DetailedInspection) { InspectJointRows(c, in j, in d, s, p); }
+        if (Opt.DetailedInspection)
+        {
+            if (d.Type >= (byte)JointType2D.Filter) { Core.JointReadback.ClearRows(c); }
+            else { InspectJointRows(c, in j, in d, s, p); }
+        }
         bool warm = phase == SolvePhase.WarmStart, useBias = phase == SolvePhase.Solve;
         float invH = ctx.InverseSubstepDt;
         switch ((JointType2D)d.Type)
         {
+            case JointType2D.Gear: case JointType2D.RackAndPinion: case JointType2D.Pulley: case JointType2D.Path: case JointType2D.Configurable:
+                SolveMachine(c, ref j, d, s, p, warm, useBias, invH); break;
             case JointType2D.Revolute: SolveRevolute(ref j, ref d, s, p, warm, useBias, invH); break;
             case JointType2D.Prismatic: SolvePrismatic(ref j, ref d, s, p, warm, useBias, invH); break;
             case JointType2D.Weld: SolveWeld(ref j, ref d, s, p, warm, useBias); break;

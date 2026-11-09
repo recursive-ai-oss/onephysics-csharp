@@ -147,7 +147,7 @@ internal sealed partial class Engine3D
             WideJ = new float[jcap * J3D.GroupFloats]; WideJIdx = new int[jcap * J3D.IdxPerGroup];
         }
 
-        if (Opt.DetailedInspection && _trackedJoints > 0) { Core.JointReadback.ReserveWide(batches); }
+        if (Core.JointReadback.Enabled && _trackedJoints > 0) { Core.JointReadback.ReserveWide(batches); }
         float jh = Opt.JointHertz > cap2 ? cap2 : Opt.JointHertz;
         MakeSoft(jh, Opt.JointDampingRatio, ctx.SubstepDt, out float jbias, out float jmass, out float jimp);
         _jointParams = new JointKernelParams(jmass, jmass * jbias, jimp);

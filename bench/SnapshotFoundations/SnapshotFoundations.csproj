@@ -10,6 +10,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/OnePhysics/OnePhysics.csproj" />
-    <Compile Include="../Bar/Scene.cs;../Bar/Gen.cs;../Bar/Gen3.cs;../Bar/SceneBuilder2D.cs;../Bar/SceneBuilder3D.cs;../Bar/SoftGen.cs;../Bar/SleeveRig.cs" LinkBase="Scenes" />
+    <Compile Include="../Bar/Scene.cs;../Bar/Gen.cs;../Bar/Gen3.cs;../Bar/GenMachines.cs;../Bar/SceneBuilder2D.cs;../Bar/SceneBuilder3D.cs;../Bar/SoftGen.cs;../Bar/SleeveRig.cs" LinkBase="Scenes" />
   </ItemGroup>
 </Project>

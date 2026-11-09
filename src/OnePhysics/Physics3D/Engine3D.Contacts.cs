@@ -348,6 +348,7 @@ internal sealed partial class Engine3D
         int ch = cs.HighWater;
         Grow(ref ConsNext, ch);
         SizeJointStorage();
+        ConfigureJointBreaking();
     }
 
     private void ApplyPair(WorldCore world, int p, NarrowScratch sc, int first, int count, ReadOnlySpan<int> owner)

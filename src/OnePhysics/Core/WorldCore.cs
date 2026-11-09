@@ -1199,6 +1199,17 @@ public sealed partial class WorldCore
         var flags = _constraints.Flags;
         for (int c = 0; c < _constraints.HighWater; c++)
         {
+            // The flag keeps immortal joints out of the cold, strided payload column.
+            if ((flags[c] & (byte)ConstraintBits.HasLifetime) != 0 && _constraints.IsLive(c) && _constraints.KindOf(c) == ConstraintKind.Joint)
+            {
+                int remaining = JointLifetime.Get(_constraints, c);
+                if (remaining > 0)
+                {
+                    JointLifetime.Set(_constraints, c, remaining - 1);
+                    if (remaining == 1 && (flags[c] & (byte)ConstraintBits.BreakRequested) == 0)
+                    { flags[c] |= (byte)ConstraintBits.BreakRequested; _constraints.BreakValue[c] = 0f; }
+                }
+            }
             if ((flags[c] & (byte)ConstraintBits.BreakRequested) == 0) { continue; }
             if (_constraints.IsLive(c) && _constraints.KindOf(c) == ConstraintKind.Joint) { _scratch.Add(c); }
             else { flags[c] &= unchecked((byte)~(byte)ConstraintBits.BreakRequested); }

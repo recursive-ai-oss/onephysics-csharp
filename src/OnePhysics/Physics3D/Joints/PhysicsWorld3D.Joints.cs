@@ -101,11 +101,11 @@ public sealed partial class PhysicsWorld3D
     private static byte Flags(bool limit, bool motor, bool spring, bool collide) =>
         (byte)((limit ? JointData3D.FlagLimit : 0) | (motor ? JointData3D.FlagMotor : 0) | (spring ? JointData3D.FlagSpring : 0) | (collide ? JointData3D.FlagCollide : 0));
 
-    private static JointData3D Base(JointType3D type, byte flags, JointFrame3D fa, JointFrame3D fb, float breakForce, float breakTorque) => new()
+    private static JointData3D Base(JointType3D type, byte flags, JointFrame3D fa, JointFrame3D fb, float breakForce, float breakTorque, int lifetimeSteps = 0) => new()
     {
         Type = (byte)type, Flags = flags,
         LAx = fa.Position.X, LAy = fa.Position.Y, LAz = fa.Position.Z, LBx = fb.Position.X, LBy = fb.Position.Y, LBz = fb.Position.Z,
-        QA = fa.Rotation, QB = fb.Rotation, BreakForce = breakForce, BreakTorque = breakTorque,
+        QA = fa.Rotation, QB = fb.Rotation, BreakForce = breakForce, BreakTorque = breakTorque, LifetimeSteps = lifetimeSteps,
     };
 
     /// <summary>Creates a fixed joint.</summary>
@@ -114,19 +114,19 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="InvalidHandleException">A body is the default value, destroyed (<see cref="StaleHandleException"/>) or from another world.</exception>
     public FixedJoint CreateJoint(in FixedJointDef def) { using var replayMutation = RecordMutation("PhysicsWorld3D.CreateJoint"); return new(CreateFixedJointDef(in def)); }
 
-    private Joint CreateFixedJointDef(in FixedJointDef def) => Make(def.BodyA, def.BodyB, Base(JointType3D.Fixed, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque));
+    private Joint CreateFixedJointDef(in FixedJointDef def) => Make(def.BodyA, def.BodyB, Base(JointType3D.Fixed, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque, def.LifetimeSteps));
 
     /// <summary>Creates a point (ball-and-socket) joint. Throws as <see cref="CreateJoint(in FixedJointDef)"/>.</summary>
     public PointJoint CreateJoint(in PointJointDef def) { using var replayMutation = RecordMutation("PhysicsWorld3D.CreateJoint"); return new(CreatePointJointDef(in def)); }
 
-    private Joint CreatePointJointDef(in PointJointDef def) => Make(def.BodyA, def.BodyB, Base(JointType3D.Point, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque));
+    private Joint CreatePointJointDef(in PointJointDef def) => Make(def.BodyA, def.BodyB, Base(JointType3D.Point, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque, def.LifetimeSteps));
 
     /// <summary>Creates a distance joint. Throws as <see cref="CreateJoint(in FixedJointDef)"/>.</summary>
     public DistanceJoint CreateJoint(in DistanceJointDef def) { using var replayMutation = RecordMutation("PhysicsWorld3D.CreateJoint"); return new(CreateDistanceJointDef(in def)); }
 
     private Joint CreateDistanceJointDef(in DistanceJointDef def)
     {
-        var d = Base(JointType3D.Distance, Flags(def.EnableLimit, false, def.EnableSpring, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
+        var d = Base(JointType3D.Distance, Flags(def.EnableLimit, false, def.EnableSpring, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
         d.Length = def.Length; d.Lower = def.MinLength; d.Upper = def.MaxLength; d.Hertz = def.SpringHertz; d.Damping = def.SpringDampingRatio;
         return Make(def.BodyA, def.BodyB, d);
     }
@@ -136,7 +136,7 @@ public sealed partial class PhysicsWorld3D
 
     private Joint CreateHingeJointDef(in HingeJointDef def)
     {
-        var d = Base(JointType3D.Hinge, Flags(def.EnableLimit, def.EnableMotor, def.EnableSpring, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
+        var d = Base(JointType3D.Hinge, Flags(def.EnableLimit, def.EnableMotor, def.EnableSpring, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
         d.Lower = def.LowerAngle; d.Upper = def.UpperAngle; d.MotorSpeed = def.MotorSpeed; d.MaxMotor = def.MaxMotorTorque; d.Hertz = def.SpringHertz; d.Damping = def.SpringDampingRatio;
         return Make(def.BodyA, def.BodyB, d);
     }
@@ -146,7 +146,7 @@ public sealed partial class PhysicsWorld3D
 
     private Joint CreateSliderJointDef(in SliderJointDef def)
     {
-        var d = Base(JointType3D.Slider, Flags(def.EnableLimit, def.EnableMotor, def.EnableSpring, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
+        var d = Base(JointType3D.Slider, Flags(def.EnableLimit, def.EnableMotor, def.EnableSpring, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
         d.Lower = def.LowerTranslation; d.Upper = def.UpperTranslation; d.MotorSpeed = def.MotorSpeed; d.MaxMotor = def.MaxMotorForce; d.Hertz = def.SpringHertz; d.Damping = def.SpringDampingRatio;
         return Make(def.BodyA, def.BodyB, d);
     }
@@ -156,7 +156,7 @@ public sealed partial class PhysicsWorld3D
 
     private Joint CreateConeJointDef(in ConeJointDef def)
     {
-        var d = Base(JointType3D.Cone, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
+        var d = Base(JointType3D.Cone, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
         d.Swing1 = def.HalfConeAngle;
         return Make(def.BodyA, def.BodyB, d);
     }
@@ -166,7 +166,7 @@ public sealed partial class PhysicsWorld3D
 
     private Joint CreateSwingTwistJointDef(in SwingTwistJointDef def)
     {
-        var d = Base(JointType3D.SwingTwist, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
+        var d = Base(JointType3D.SwingTwist, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
         d.Lower = def.LowerTwist; d.Upper = def.UpperTwist; d.Swing1 = def.SwingYHalfAngle; d.Swing2 = def.SwingZHalfAngle;
         return Make(def.BodyA, def.BodyB, d);
     }
@@ -176,7 +176,7 @@ public sealed partial class PhysicsWorld3D
 
     private Joint CreateSixDofJointDef(in SixDofJointDef def)
     {
-        var d = Base(JointType3D.SixDof, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
+        var d = Base(JointType3D.SixDof, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
         ref var s = ref d.Six;
         s.Mode[0] = (byte)def.LinearX; s.Mode[1] = (byte)def.LinearY; s.Mode[2] = (byte)def.LinearZ;
         s.Mode[3] = (byte)def.AngularX; s.Mode[4] = (byte)def.AngularY; s.Mode[5] = (byte)def.AngularZ;
@@ -194,7 +194,7 @@ public sealed partial class PhysicsWorld3D
 
     private Joint CreatePathJointDef(in PathJointDef def)
     {
-        var d = Base(JointType3D.Path, (byte)(Flags(false, def.EnableMotor, false, def.CollideConnected) | (def.Loop ? JointData3D.FlagLoop : 0)), JointFrame3D.Identity, def.LocalFrameB, def.BreakForce, def.BreakTorque);
+        var d = Base(JointType3D.Path, (byte)(Flags(false, def.EnableMotor, false, def.CollideConnected) | (def.Loop ? JointData3D.FlagLoop : 0)), JointFrame3D.Identity, def.LocalFrameB, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
         d.Path = def.Points == null ? null : (Vector3F[])def.Points.Clone();
         d.UpX = def.Up.X; d.UpY = def.Up.Y; d.UpZ = def.Up.Z; d.Aux = (byte)def.Rotation; d.MotorSpeed = def.MotorSpeed; d.MaxMotor = def.MaxMotorForce;
         return Make(def.BodyA, def.BodyB, d);
@@ -205,7 +205,7 @@ public sealed partial class PhysicsWorld3D
 
     private Joint CreateGearJointDef(in GearJointDef def)
     {
-        var d = Base(JointType3D.Gear, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
+        var d = Base(JointType3D.Gear, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
         d.Ratio = def.Ratio;
         return Make(def.BodyA, def.BodyB, d);
     }
@@ -215,7 +215,7 @@ public sealed partial class PhysicsWorld3D
 
     private Joint CreateRackAndPinionJointDef(in RackAndPinionJointDef def)
     {
-        var d = Base(JointType3D.RackAndPinion, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
+        var d = Base(JointType3D.RackAndPinion, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
         d.Ratio = def.Ratio;
         return Make(def.BodyA, def.BodyB, d);
     }
@@ -225,7 +225,7 @@ public sealed partial class PhysicsWorld3D
 
     private Joint CreatePulleyJointDef(in PulleyJointDef def)
     {
-        var d = Base(JointType3D.Pulley, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque);
+        var d = Base(JointType3D.Pulley, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
         d.Ratio = def.Ratio;
         d.FxA = def.FixedPointA.X; d.FyA = def.FixedPointA.Y; d.FzA = def.FixedPointA.Z; d.FxB = def.FixedPointB.X; d.FyB = def.FixedPointB.Y; d.FzB = def.FixedPointB.Z;
         d.Lower = def.MinLength; d.Upper = def.MaxLength;

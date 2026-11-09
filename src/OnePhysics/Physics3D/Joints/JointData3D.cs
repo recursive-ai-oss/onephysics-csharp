@@ -57,6 +57,9 @@ internal struct JointData3D
     public SixDofData Six;
     public float BreakForce, BreakTorque;
 
+    // Creation-only; remaining lifetime is kept in the constraint payload.
+    public int LifetimeSteps;
+
     // Runtime only.
     public int BodyA, BodyB, GenA, GenB, Gen;
 
@@ -113,8 +116,9 @@ internal struct JointData3D
     /// <summary>Checks every value the type uses. Throws <see cref="ArgumentOutOfRangeException"/> for non-finite or out-of-range numbers and <see cref="InvalidJointException"/> for limits the wrong way round and similar.</summary>
     public readonly void Validate()
     {
+        if (LifetimeSteps < 0) { throw new ArgumentOutOfRangeException(nameof(LifetimeSteps), LifetimeSteps, "LifetimeSteps must be at least zero."); }
         var t = (JointType3D)Type;
-        if (t < JointType3D.Fixed || t > JointType3D.Pulley) { throw new InvalidJointException("Unknown joint type " + Type.ToString(CultureInfo.InvariantCulture) + "."); }
+        if (t < JointType3D.Fixed || t > JointType3D.Mouse) { throw new InvalidJointException("Unknown joint type " + Type.ToString(CultureInfo.InvariantCulture) + "."); }
         if (float.IsNaN(BreakForce) || BreakForce < 0f) { throw new ArgumentOutOfRangeException(nameof(BreakForce), BreakForce, Name(t) + " joint: BreakForce must be at least 0 (infinity means never)."); }
         if (float.IsNaN(BreakTorque) || BreakTorque < 0f) { throw new ArgumentOutOfRangeException(nameof(BreakTorque), BreakTorque, Name(t) + " joint: BreakTorque must be at least 0 (infinity means never)."); }
         Local(LAx, LAy, LAz, "LocalFrameA.Position", t);
@@ -187,6 +191,19 @@ internal struct JointData3D
             case JointType3D.Gear:
             case JointType3D.RackAndPinion:
                 if (!float.IsFinite(Ratio) || Math.Abs(Ratio) < 1e-6f || Math.Abs(Ratio) > 1e6f) { throw new ArgumentOutOfRangeException("Ratio", Ratio, Name(t) + " joint: Ratio = " + Num(Ratio) + " must be finite with an absolute value within 1e-6..1e6."); }
+                break;
+            case JointType3D.Wheel:
+                Finite(Lower, "LowerTranslation", t); Finite(Upper, "UpperTranslation", t);
+                if (Limit && Lower > Upper) { throw new InvalidJointException("wheel joint: lower travel exceeds upper travel."); }
+                MotorSpring(t, "MaxMotorTorque");
+                break;
+            case JointType3D.Motor:
+                AtLeastZero(MaxMotor, "MaxForce", t); AtLeastZero(Ratio, "MaxTorque", t);
+                if (!(Length >= 0f && Length <= 1f)) { throw new ArgumentOutOfRangeException("CorrectionFactor", Length, "CorrectionFactor must be in [0,1]."); }
+                break;
+            case JointType3D.Mouse:
+                Fixed(FxA, FyA, FzA, "Target", t);
+                AtLeastZero(MaxMotor, "MaxForce", t); AtLeastZero(Hertz, "Hertz", t); AtLeastZero(Damping, "DampingRatio", t);
                 break;
             case JointType3D.Pulley:
                 if (!float.IsFinite(Ratio) || !(Ratio >= 1e-6f) || Ratio > 1e6f) { throw new ArgumentOutOfRangeException("Ratio", Ratio, "pulley joint: Ratio = " + Num(Ratio) + " must be within 1e-6..1e6."); }

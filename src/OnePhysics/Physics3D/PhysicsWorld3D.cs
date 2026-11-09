@@ -289,6 +289,7 @@ public sealed partial class PhysicsWorld3D
         double[] d = [offset.X, offset.Y, offset.Z];
         _core.ValidateShift(d);
         _engine.CheckShift(d);
+        _engine.CheckMouseJointShift(d);
         _core.ShiftOrigin(d);
         _engine.ShiftJoints(d);
         _engine.ShiftFluids(offset.X, offset.Y, offset.Z);

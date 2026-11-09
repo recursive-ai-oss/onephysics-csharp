@@ -26,6 +26,8 @@ static class Verdict
         ["pyramid-100"] = [("maxSpeed", 3), ("maxPenetration", 0.05), ("jitter", 0.2), ("restKE", 0.005), ("finalPenetration", 0.03)],
         ["large-pile"] = [("maxSpeed", 35), ("maxPenetration", 0.75), ("jitter", 0.15), ("restKE", 0.015), ("finalPenetration", 0.1)],
         ["tumbler"] = [("maxSpeed", 25), ("maxPenetration", 0.3), ("finalPenetration", 0.07)],
+        ["joint-machines-2d"] = [("maxSpeed", 4)],
+        ["joint-machines-3d"] = [("maxSpeed", 4)],
         ["joint-grid"] = [("maxSpeed", 5), ("jointError", 0.1)],
         ["chain"] = [("maxSpeed", 55), ("jointError", 0.4)],
         ["sleep-wake"] = [("maxSpeed", 25), ("maxPenetration", 0.4), ("finalPenetration", 0.1)],
