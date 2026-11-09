@@ -71,6 +71,10 @@ internal static class FuzzActuators
         }
 
         public Vector2F V2F() => new(Float(), Float());
+
+        /// <summary>A box size within 0.05 to 20 m (NaN included: it becomes 0.05): the targets are about the actuators, and a body of mass up to 1e30 in a 2D buoyancy field is refused by that field's own limit on the torque it would add.</summary>
+        public float Side() { float f = Math.Abs(Float()); return f >= 0.05f && f <= 20f ? f : 0.05f + (Byte() % 100) * 0.1f; }
+        public float Density() { float f = Math.Abs(Float()); return f <= 50f ? f : 1f; }
         public Vector3F V3F() => new(Float(), Float(), Float());
         public bool Bool() => (Byte() & 1) != 0;
         public T Pick<T>(List<T> l) => l.Count == 0 ? default! : l[Byte() % l.Count];
@@ -148,6 +152,8 @@ internal static class FuzzActuators
     {
         try { w.StepChecked(1f / 60f); s_steps++; }
         catch (RecursiveAI.OnePhysics.Physics2D.BodyOutOfBoundsException e) { e.Body.Destroy(); }
+        // A 2D buoyancy field refuses, at the step, a force or torque beyond 1e12 (a body of enormous mass or inertia spinning in water; an accepted hostile snapshot can hold one). That limit is the field's, not the actuators': not a finding here.
+        catch (ArgumentOutOfRangeException e) when (e.ParamName != null && e.ParamName.StartsWith("buoyancy", StringComparison.Ordinal)) { s_refused++; }
     }
 
     private static PhysicsWorld3D NewWorld3() => new(new WorldOptions3D { WorldId = 9, Substeps = 4 });
@@ -172,7 +178,7 @@ internal static class FuzzActuators
     {
         switch (r.Byte() % 18)
         {
-            case 0: bodies.Add(w.AddBox(r.V3F(), new Vector3D(r.Float() % 40f, r.Float() % 6f, r.Float() % 40f), density: r.Float())); break;
+            case 0: bodies.Add(w.AddBox(new Vector3F(r.Side(), r.Side(), r.Side()), new Vector3D(r.Float() % 40f, r.Float() % 6f, r.Float() % 40f), density: r.Density())); break;
             case 1: { var b = w.CreateBody(BodyType.Dynamic, new Vector3D(r.Float() % 30f, r.Float() % 5f, r.Float() % 30f)); bodies.Add(b); shapes.Add(w.CreateBox(b, new Vector3F(1f + r.Byte() / 32f, 0.3f + r.Byte() / 64f, 2f), 0f, new ShapeDef3 { Aero = r.Bool() ? Surface3(r) : null })); break; }
             case 2: { var s = r.Pick(shapes); if (s.IsValid) { s.Aero = r.Bool() ? Surface3(r) : null; _ = s.Aero; } break; }
             case 3: { var b = r.Pick(bodies); if (b.IsValid) { ts.Add(b.AddThruster(Thruster3(r))); s_made++; } break; }
@@ -278,7 +284,7 @@ internal static class FuzzActuators
     {
         switch (r.Byte() % 18)
         {
-            case 0: bodies.Add(w.AddBox(r.V2F(), new Vector2D(r.Float() % 40f, r.Float() % 6f), r.Float(), density: r.Float())); break;
+            case 0: bodies.Add(w.AddBox(new Vector2F(r.Side(), r.Side()), new Vector2D(r.Float() % 40f, r.Float() % 6f), r.Float(), density: r.Density())); break;
             case 1: { var b = w.CreateBody(BodyType.Dynamic, new Vector2D(r.Float() % 30f, r.Float() % 5f)); bodies.Add(b); shapes.Add(w.CreateBox(b, new Vector2F(1f + r.Byte() / 32f, 0.3f + r.Byte() / 64f), default, 0f, 0f, new ShapeDef2 { Aero = r.Bool() ? Surface2(r) : null })); break; }
             case 2: { var s = r.Pick(shapes); if (s.IsValid) { s.Aero = r.Bool() ? Surface2(r) : null; _ = s.Aero; } break; }
             case 3: { var b = r.Pick(bodies); if (b.IsValid) { ts.Add(b.AddThruster(Thruster2(r))); s_made++; } break; }
