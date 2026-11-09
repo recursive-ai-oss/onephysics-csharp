@@ -7,13 +7,13 @@ namespace RecursiveAI.OnePhysics.Tools.Tests;
 /// <summary>A generated person: a bone hierarchy with Mixamo-style names in a standing pose (arms hanging), and a skinned mesh of capsule-like limbs, a box torso and pelvis, a sphere head, box hands and feet.</summary>
 public sealed class TestSkeleton
 {
-    public string[] Names = Array.Empty<string>();
-    public int[] Parents = Array.Empty<int>();
-    public Vector3F[] Positions = Array.Empty<Vector3F>();
-    public Vector3F[] Points = Array.Empty<Vector3F>();
-    public int[] PointBone = Array.Empty<int>();     // the dominant bone of each point
-    public int[] BoneIndices = Array.Empty<int>();   // two influences per point
-    public float[] BoneWeights = Array.Empty<float>();
+    public string[] Names { get; set; } = Array.Empty<string>();
+    public int[] Parents { get; set; } = Array.Empty<int>();
+    public Vector3F[] Positions { get; set; } = Array.Empty<Vector3F>();
+    public Vector3F[] Points { get; set; } = Array.Empty<Vector3F>();
+    public int[] PointBone { get; set; } = Array.Empty<int>();     // the dominant bone of each point
+    public int[] BoneIndices { get; set; } = Array.Empty<int>();   // two influences per point
+    public float[] BoneWeights { get; set; } = Array.Empty<float>();
 
     public SkinnedPoints3D Skin => new(Points, BoneIndices, BoneWeights, 2);
 
