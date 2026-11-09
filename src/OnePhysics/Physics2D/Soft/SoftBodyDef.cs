@@ -132,6 +132,26 @@ public sealed class SoftBodyDef
     /// <summary>Whether the body may fall asleep when every particle has been slow for <see cref="WorldOptions2D.TimeToSleep"/>. Default true.</summary>
     public bool AllowSleep { get; set; } = true;
 
+    /// <summary>Whether the boundary of the body (the outline segments, or the edges that belong to one triangle) is a surface that particles of other bodies cannot cross, and, with <see cref="SelfCollision"/>, particles of this body. Without it only the particle discs collide, and a body is porous between its boundary particles. Costs a search each step while two awake bodies with surface collision exist or a body has <see cref="SelfCollision"/>. Default true.</summary>
+    public bool SurfaceCollision { get; set; } = true;
+
+    /// <summary>Tearing by strain: an edge whose length exceeds its rest length by this fraction at the end of a step breaks (see <see cref="SoftBody.BrokenEdgeCount"/>). The strain is measured after the solve, so edges with zero <see cref="EdgeCompliance"/> never reach it; use <see cref="TearForce"/> for those. 0 (default) turns it off. Finite, 0 to 100.</summary>
+    public float TearStrain { get; set; }
+
+    /// <summary>Tearing by force: an edge breaks when the constraint force of the last substep of a step, the XPBD multiplier over the squared substep, exceeds this many newtons. 0 (default) turns it off. Finite, 0 to 10^12.</summary>
+    public float TearForce { get; set; }
+
+    /// <summary>Plastic yield strain: past this strain (edge length against rest length, triangle area against rest area, or shape-matching offsets against rest offsets) the rest shape follows the deformation (Müller et al. 2004; O'Brien et al. 2002). 0 (default) turns plasticity off. Finite, 0 to 10.</summary>
+    public float PlasticYield { get; set; }
+
+    /// <summary>Plastic creep: the fraction of the strain beyond the yield strain that the rest shape takes up each step. 0 to 1, default 0.5.</summary>
+    public float PlasticCreep { get; set; } = 0.5f;
+
+    /// <summary>Largest plastic strain: the rest length (area, offset) never leaves 1 ± this fraction of its original value. 0 to 10, default 0.5.</summary>
+    public float PlasticMax { get; set; } = 0.5f;
+
+    internal bool UsesNewState => !SurfaceCollision || TearStrain != 0f || TearForce != 0f || PlasticYield != 0f || PlasticCreep != 0.5f || PlasticMax != 0.5f;
+
     /// <summary>Indices of particles held where they are (infinite mass) until released; see <see cref="SoftBody.SetPinned"/>. Default none. Indices must be valid and are de-duplicated.</summary>
     public IReadOnlyList<int>? PinnedParticles { get; set; }
 
@@ -220,6 +240,11 @@ public sealed class SoftBodyDef
         Range(BendDamping, nameof(BendDamping), 0f, 1f);
         Range(AreaDamping, nameof(AreaDamping), 0f, 1f);
         Range(InternalPressure, nameof(InternalPressure), 0f, 100f);
+        Range(TearStrain, nameof(TearStrain), 0f, 100f);
+        Range(TearForce, nameof(TearForce), 0f, 1e12f);
+        Range(PlasticYield, nameof(PlasticYield), 0f, 10f);
+        Range(PlasticCreep, nameof(PlasticCreep), 0f, 1f);
+        Range(PlasticMax, nameof(PlasticMax), 0f, 10f);
         Range(Friction, nameof(Friction), 0f, 100f);
         Range(LinearDamping, nameof(LinearDamping), 0f, 1000f);
         Range(GravityScale, nameof(GravityScale), -1e6f, 1e6f);

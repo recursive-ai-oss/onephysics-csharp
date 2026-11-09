@@ -143,7 +143,9 @@ internal sealed partial class Engine2D
     /// <summary>Id of the 2D soft-body snapshot section ("SF2D").</summary>
     public const int SoftSectionId = 0x53463244;
 
-    private const int SoftSectionVersion = 1;
+    // Version 1 has no tearing, plasticity or surface switch. Version 2 (written only while a body uses one of them, so other worlds keep their bytes) adds per body the new definition fields and the broken edges after
+    // the definition, and after the targets a flag for the rest values plasticity changed, followed by them.
+    private const int SoftSectionVersion = 2;
     private SoftSection? _softSection;
 
     public ISnapshotSection SoftSnapshotSection => _softSection ??= new SoftSection(this);
@@ -175,7 +177,9 @@ internal sealed partial class Engine2D
 
     private void WriteSoft(StateWriter w)
     {
-        w.NamedInt32(SoftSectionVersion);
+        bool v2 = false;
+        for (int i = 0; i < SoftHandles.HighWater && !v2; i++) { v2 = SoftHandles.IsLive(i) && (SoftData[i]!.Def.UsesNewState || SoftData[i]!.Broken.Length != 0 || SoftData[i]!.PlasticTouched); }
+        w.NamedInt32(v2 ? SoftSectionVersion : 1);
         w.NamedInt32(Opt.SoftSubsteps); w.NamedInt32(Opt.SoftIterations);
         w.DescribeTable("softbody");
         SoftHandles.Write(w);
@@ -200,22 +204,36 @@ internal sealed partial class Engine2D
             w.NamedSingle(def.Friction); w.NamedSingle(def.LinearDamping); w.NamedSingle(def.GravityScale);
             w.NamedBool(def.SelfCollision); w.NamedBool(def.AllowSleep);
             w.NamedUInt32(def.CategoryBits); w.NamedUInt32(def.MaskBits); w.NamedInt32(def.GroupIndex); w.NamedInt32(def.Layer);
+            if (v2)
+            {
+                w.NamedBool(def.SurfaceCollision); w.NamedSingle(def.TearStrain); w.NamedSingle(def.TearForce);
+                w.NamedSingle(def.PlasticYield); w.NamedSingle(def.PlasticCreep); w.NamedSingle(def.PlasticMax);
+                w.NamedInt32(d.Broken.Length);
+                foreach (long k in d.Broken) { w.NamedInt64(k, "def.BrokenEdge"); }
+            }
+
             w.NamedBool(d.Asleep); w.NamedSingle(d.SleepTime);
             w.NamedDoubles(d.Pos); w.NamedDoubles(d.Prev); w.NamedSingles(d.Vel); w.NamedBytes(d.Pinned);
             w.NamedBool(d.HasTargets);
             if (d.HasTargets) { w.NamedBytes(d.TargetOn); w.NamedSingles(d.TargetMax); w.NamedDoubles(d.TargetPos); w.NamedDoubles(d.TargetPrev); }
+            if (v2)
+            {
+                w.NamedBool(d.PlasticTouched);
+                if (d.PlasticTouched) { w.NamedSingles(d.EdgeRest); w.NamedSingles(d.TriRest2); w.NamedSingles(d.ClusterQ); }
+            }
         }
     }
 
     private void ReadSoft(StateReader r)
     {
         int version = r.ReadInt32();
-        if (version != SoftSectionVersion) { throw r.Error("unsupported 2D soft-body section version " + version.ToString(CultureInfo.InvariantCulture)); }
+        if (version != 1 && version != SoftSectionVersion) { throw r.Error("unsupported 2D soft-body section version " + version.ToString(CultureInfo.InvariantCulture)); }
         int substeps = r.ReadInt32(), iterations = r.ReadInt32();
         if (substeps < 1 || substeps > 64 || iterations < 1 || iterations > 32) { throw r.Error("invalid soft-body options"); }
         var handles = HandleTable.Read(r, "soft bodies");
         var data = new SoftBodyData?[Math.Max(4, handles.HighWater)];
         long particles = 0;
+        long[] broken = Array.Empty<long>();
         for (int i = 0; i < handles.HighWater; i++)
         {
             if (!handles.IsLive(i)) { continue; }
@@ -227,6 +245,7 @@ internal sealed partial class Engine2D
             var idx = new int[ne * 3];
             r.ReadInt32s(idx);
             var def = new SoftBodyDef();
+            broken = Array.Empty<long>();
             try
             {
                 def.Mesh = ne == 0 ? SoftBodyMesh.FromOutline(verts) : SoftBodyMesh.FromTriangles(verts, idx);
@@ -245,11 +264,26 @@ internal sealed partial class Engine2D
                 def.Friction = r.ReadSingle(); def.LinearDamping = r.ReadSingle(); def.GravityScale = r.ReadSingle();
                 def.SelfCollision = r.ReadBool(); def.AllowSleep = r.ReadBool();
                 def.CategoryBits = r.ReadUInt32(); def.MaskBits = r.ReadUInt32(); def.GroupIndex = r.ReadInt32(); def.Layer = r.ReadInt32();
+                if (version >= 2)
+                {
+                    def.SurfaceCollision = r.ReadBool(); def.TearStrain = r.ReadSingle(); def.TearForce = r.ReadSingle();
+                    def.PlasticYield = r.ReadSingle(); def.PlasticCreep = r.ReadSingle(); def.PlasticMax = r.ReadSingle();
+                    int nb = r.ReadCount(8, "soft-body broken edges");
+                    broken = new long[nb];
+                    for (int k = 0; k < nb; k++)
+                    {
+                        long key = r.ReadInt64();
+                        int ea = (int)(key >> 20), eb = (int)(key & 0xFFFFF);
+                        if (key < 0 || ea >= eb || eb >= nv || (k > 0 && key <= broken[k - 1])) { throw r.Error("invalid soft-body broken edge"); }
+                        broken[k] = key;
+                    }
+                }
+
                 def.Validate();
             }
             catch (SoftBodyException ex) { throw r.Error("invalid soft body: " + ex.Message); }
 
-            var d = new SoftBodyData { Def = def, BlockSize = SoftBlockSizeForTests };
+            var d = new SoftBodyData { Def = def, BlockSize = SoftBlockSizeForTests, Broken = broken };
             try { d.Build(); }
             catch (SoftBodyException ex) { throw r.Error("invalid soft body: " + ex.Message); }
             particles += d.N;
@@ -269,6 +303,16 @@ internal sealed partial class Engine2D
                     if (!(d.TargetMax[k] >= 0f && d.TargetMax[k] <= 1e6f)) { throw r.Error("soft-body target distance out of range"); }
                     if (!(Math.Abs(d.TargetPos[2 * k]) <= 4194304.0 && Math.Abs(d.TargetPos[2 * k + 1]) <= 4194304.0 && Math.Abs(d.TargetPrev[2 * k]) <= 4194304.0 && Math.Abs(d.TargetPrev[2 * k + 1]) <= 4194304.0)) { throw r.Error("soft-body target out of range"); }
                 }
+            }
+
+            if (version >= 2 && r.ReadBool())
+            {
+                r.ReadSingles(d.EdgeRest, true, "soft-body rest lengths"); r.ReadSingles(d.TriRest2, true, "soft-body rest areas"); r.ReadSingles(d.ClusterQ, true, "soft-body rest offsets");
+                for (int k = 0; k < d.EdgeRest.Length; k++) { if (!(d.EdgeRest[k] > 0f)) { throw r.Error("soft-body rest length is not positive"); } }
+                for (int k = 0; k < d.TriRest2.Length; k++) { if (!(d.TriRest2[k] > 0f)) { throw r.Error("soft-body rest area is not positive"); } }
+                d.PlasticTouched = true;
+                d.SyncSolverRests();
+                for (int c = 0; c < d.ClusterCount; c++) { d.RefitQuadratic(c); }
             }
 
             const double Limit = 4194304.0;

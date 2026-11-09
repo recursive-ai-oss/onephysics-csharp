@@ -483,6 +483,12 @@ internal sealed partial class Engine2D
 
     private void SolvePairs()
     {
+        SolveDiscPairs();
+        if (_seCount > 0) { SolveSurfacePairs(); }
+    }
+
+    private void SolveDiscPairs()
+    {
         for (int p = 0; p < _pairCount; p++)
         {
             int gi = _pairA[p], gj = _pairB[p];

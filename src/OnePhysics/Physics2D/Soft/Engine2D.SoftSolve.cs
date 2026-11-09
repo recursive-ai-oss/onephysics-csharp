@@ -144,7 +144,7 @@ internal sealed partial class Engine2D
         {
             if (k < _e._stStages) { return _e._stStart[k + 1] - _e._stStart[k]; }
             if (k == _e._stStages) { return _e._ctTasks; }
-            if (k == _e._stStages + 1) { return _e._pairCount > 0 ? 1 : 0; }
+            if (k == _e._stStages + 1) { return _e._pairCount > 0 || _e._seCount > 0 ? 1 : 0; }
             return _e._targetCount;
         }
 

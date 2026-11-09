@@ -28,6 +28,7 @@ internal sealed partial class Engine2D
     private int[] _spAwakeStamp = Array.Empty<int>();      // per body slot: the step stamp when the body is in the awake list
     private SoftBodyData[] _awakeSoft = new SoftBodyData[4];
     private int _awakeSoftCount;
+    private byte[] _wakeFlag = new byte[4];
 
     private int[] _cShape = new int[16], _cBody = new int[16];
     private bool[] _cMoving = new bool[16];
@@ -82,6 +83,7 @@ internal sealed partial class Engine2D
     /// </summary>
     public void StepSoft(float dt)
     {
+        _softTears.Clear();
         if (SoftHandles.Count == 0) { return; }
         Core.Profile.BeginSoft();
         Core.Profile.Mark(StepStage.SoftSetup);
@@ -95,20 +97,46 @@ internal sealed partial class Engine2D
         _rbTouchedCount = 0;
         foreach (int b in Core.AwakeBodies) { _spAwakeStamp[b] = _softStamp; }
 
-        // Which bodies are awake: a sleeping one wakes when an awake rigid body comes near it.
+        // Which bodies are awake: a sleeping one wakes when an awake rigid body comes near it, or an awake soft body touches it.
         _awakeSoftCount = 0;
         float maxTravel = 0f;
+        GrowTo(ref _wakeFlag, SoftHandles.HighWater);
         for (int i = 0; i < SoftHandles.HighWater; i++)
         {
+            _wakeFlag[i] = 0;
             if (!SoftHandles.IsLive(i)) { continue; }
             var d = SoftData[i]!;
             ComputeSoftBounds(d);
-            if (d.Asleep)
-            {
-                if (!RigidNear(d)) { continue; }
-                d.Asleep = false; d.SleepTime = 0f;
-            }
+            if (d.Asleep && !RigidNear(d)) { _wakeFlag[i] = 1; continue; }
+            _wakeFlag[i] = 2;
+        }
 
+        // A soft body that is asleep but touched by an awake one is woken too (repeated until nothing changes, in slot order), so an awake body never passes through a sleeping one.
+        for (bool woke = true; woke;)
+        {
+            woke = false;
+            for (int i = 0; i < SoftHandles.HighWater; i++)
+            {
+                if (_wakeFlag[i] != 1) { continue; }
+                var d = SoftData[i]!;
+                for (int j = 0; j < SoftHandles.HighWater; j++)
+                {
+                    if (_wakeFlag[j] != 2) { continue; }
+                    var o = SoftData[j]!;
+                    double pad = d.Radius + o.Radius + Constants2D.SpeculativeDistance + 0.02;
+                    if (d.MinX - pad > o.MaxX || d.MaxX + pad < o.MinX || d.MinY - pad > o.MaxY || d.MaxY + pad < o.MinY) { continue; }
+                    if (!SoftPairAllowed(d.Def, o.Def)) { continue; }
+                    _wakeFlag[i] = 2; woke = true;
+                    break;
+                }
+            }
+        }
+
+        for (int i = 0; i < SoftHandles.HighWater; i++)
+        {
+            if (_wakeFlag[i] != 2) { continue; }
+            var d = SoftData[i]!;
+            if (d.Asleep) { d.Asleep = false; d.SleepTime = 0f; }
             GrowTo(ref _awakeSoft, _awakeSoftCount + 1);
             _awakeSoft[_awakeSoftCount++] = d;
             if (d.MaxSpeed * dt > maxTravel) { maxTravel = d.MaxSpeed * dt; }
@@ -139,6 +167,7 @@ internal sealed partial class Engine2D
         Core.Profile.Mark(StepStage.SoftPairs);
         BuildDetectTasks();
         BuildPairs(margin);
+        BuildSurfacePairs(margin);
         for (int k = 0; k < substeps; k++)
         {
             float t1 = (float)(k + 1) / substeps;
@@ -171,8 +200,10 @@ internal sealed partial class Engine2D
             Array.Copy(_cBoxNow, _cBoxEnd, 4 * _candCount);
         }
 
+        DetectSoftTears(h);
         for (int a = 0; a < _awakeSoftCount; a++) { EndSoftBody(_awakeSoft[a]); }
         ApplyRigidReactions();
+        ApplySoftTears();
         UpdateSoftSleep(dt);
         Core.Profile.Mark(StepStage.SoftEnd);
         for (int a = 0; a < _awakeSoftCount; a++) { if (_awakeSoft[a].HasTargets) { EndTargets(_awakeSoft[a]); } }
