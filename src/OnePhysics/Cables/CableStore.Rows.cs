@@ -302,6 +302,10 @@ internal sealed partial class CableStore
     private void Finish(Scratch sc, CableData m, float dt)
     {
         int n = m.Nodes.Length, spans = m.Spans;
+        // A degenerate configuration (a geometry that produced a non-finite row) stops the system rather than hands non-finite loads to the bodies or poisons its own state.
+        for (int r = 0; r < sc.RowCount; r++) if (!double.IsFinite(sc.Lambda[r])) { Break(m); return; }
+        for (int e = 0; e < sc.NB; e++) if (!(double.IsFinite(sc.B[e].V.X + sc.B[e].V.Y + sc.B[e].V.Z + sc.B[e].W.X + sc.B[e].W.Y + sc.B[e].W.Z))) { Break(m); return; }
+        for (int i = 0; i < n; i++) if (m.Nodes[i].IsWheel && !double.IsFinite(sc.Spin[i].S)) { Break(m); return; }
         // Material flow through slipping wheels, with the run's flow summing to exactly zero so the rope's length is conserved.
         for (int run = 0; run < sc.Runs; run++)
         {
@@ -332,7 +336,8 @@ internal sealed partial class CableStore
         double tmax = 0;
         for (int k = 0; k < spans; k++)
         {
-            double l = sc.Valid[k] ? sc.Lambda[k] : 0; m.Impulse[k] = l;
+            double l = sc.Valid[k] ? sc.Lambda[k] : 0;
+            m.Impulse[k] = l;
             double t = l / dt; if (t > tmax) tmax = t;
         }
         if (tmax > m.BreakForce) { Break(m); return; }
