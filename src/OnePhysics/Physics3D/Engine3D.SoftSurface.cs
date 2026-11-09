@@ -45,21 +45,20 @@ internal sealed partial class Engine3D
     private bool[] _tgNeedTri = new bool[4], _tgNeedEdge = new bool[4];
 
     // Candidates (valid while _cbValid): global particle number and global triangle number as numbered by the build, the owners' indices in the awake list, the distance when listed.
-    private int[] _vtP = new int[64], _vtT = new int[64], _vtBA = new int[64], _vtBT = new int[64];
-    private float[] _vtD0 = new float[64];
+    private int[] _vtP = new int[4096], _vtT = new int[4096], _vtBA = new int[4096], _vtBT = new int[4096];
+    private float[] _vtD0 = new float[4096];
     private int _vtCount;
-    private int[] _eeA = new int[64], _eeB = new int[64], _eeBA = new int[64], _eeBB = new int[64];
-    private float[] _eeD0 = new float[64];
+    private int[] _eeA = new int[4096], _eeB = new int[4096], _eeBA = new int[4096], _eeBB = new int[4096];
+    private float[] _eeD0 = new float[4096];
     private int _eeCount;
 
     // The active set of the substep: candidate numbers and the side each pair started on.
-    private int[] _avK = new int[64], _aeK = new int[64];
-    private float[] _avS = new float[64], _aeS = new float[64];
+    private int[] _avK = new int[2048], _aeK = new int[2048];
+    private float[] _avS = new float[2048], _aeS = new float[2048];
     private int _avCount, _aeCount;
-    private long[] _avKey = new long[64];
-    private int[] _avPos = new int[64];
-    private int[] _avTmpK = new int[64];
-    private float[] _avTmpS = new float[64];
+    private long[] _scKey = new long[4096];
+    private int[] _scPos = new int[4096], _scTmpI = new int[4096];
+    private float[] _scTmpF = new float[4096];
 
     private SoftBodyData[] _gtBody = new SoftBodyData[64];
     private int[] _gtLocal = new int[64];
@@ -79,8 +78,15 @@ internal sealed partial class Engine3D
     private ulong _cbLayers;
     private bool _cbValid;
     private double[]?[] _bpos = new double[]?[4];
-    private double[] _bBudget = new double[4], _bTr = new double[4], _bDisp = new double[4];
+    private double[] _bBudget = new double[4], _bTr = new double[4];
+    // Motion of each body since the lists were built, relative to its own mean motion: mean displacement and its largest deviation from it, mean velocity and its largest deviation.
+    private double[] _bMd = new double[12], _bDev = new double[4];
+    private float[] _bMv = new float[12], _bVdev = new float[4];
+    // With more bodies than this, motion is bounded per body in absolute terms instead of per pair of bodies in relative terms.
+    private const int RelativeBodyLimit = 64;
+    private double _gScaleBase;
     private bool[] _bPart = new bool[4];
+    private double[] _bExtT = new double[4], _bExtE = new double[4];
 
     private SurfBuf[] _sbuf = new SurfBuf[8];
     private int[] _skB = new int[16], _skKind = new int[16], _skA = new int[16], _skFrom = new int[16], _skTo = new int[16];
@@ -103,8 +109,8 @@ internal sealed partial class Engine3D
 
     private sealed class SurfBuf
     {
-        public int[] A = new int[64], B = new int[64], C = new int[64], D = new int[64];
-        public float[] D0 = new float[64];
+        public int[] A = new int[512], B = new int[512], C = new int[512], D = new int[512];
+        public float[] D0 = new float[512];
         public int Count;
 
         public void Add(int a, int b, int c, int d, float d0)
@@ -148,7 +154,7 @@ internal sealed partial class Engine3D
         }
 
         if (parts == 0 || (parts < 2 && !self)) { _cbValid = false; _vtCount = 0; _eeCount = 0; return; }
-        GrowTo(ref _bTr, _pairSoftCount); GrowTo(ref _bDisp, _pairSoftCount); GrowTo(ref _bBudget, _pairSoftCount); GrowTo(ref _bPart, _pairSoftCount); GrowTo(ref _bpos, _pairSoftCount);
+        GrowTo(ref _bTr, _pairSoftCount); GrowTo(ref _bBudget, _pairSoftCount); GrowTo(ref _bPart, _pairSoftCount); GrowTo(ref _bpos, _pairSoftCount);
         for (int a = 0; a < _pairSoftCount; a++)
         {
             var d = _awakeSoft[a];
@@ -157,24 +163,22 @@ internal sealed partial class Engine3D
         }
 
         PM(StepStage.Init);
+        GrowTo(ref _bMd, 3 * _pairSoftCount); GrowTo(ref _bDev, _pairSoftCount); GrowTo(ref _bMv, 3 * _pairSoftCount); GrowTo(ref _bVdev, _pairSoftCount);
         bool rebuild = !_cbValid || !SameBodies();
         if (!rebuild)
         {
-            for (int a = 0; a < _pairSoftCount; a++)
-            {
-                if (!_bPart[a]) { continue; }
-                _bDisp[a] = a < _awakeSoftCount ? MaxDisplacement(_awakeSoft[a], _bpos[a]!) : 0.0;
-                if (!(_bDisp[a] + _bTr[a] < _bBudget[a])) { rebuild = true; }
-            }
+            for (int a = 0; a < _pairSoftCount; a++) { ComputeMotion(a, true, parts <= RelativeBodyLimit); }
+            rebuild = !MotionWithinBudget(h, gmag, parts <= RelativeBodyLimit);
         }
 
         if (rebuild)
         {
             RebuildCandidates();
-            for (int a = 0; a < _pairSoftCount; a++) { _bDisp[a] = 0.0; }
+            for (int a = 0; a < _pairSoftCount; a++) { ComputeMotion(a, false, parts <= RelativeBodyLimit); }
         }
 
         PM(StepStage.Pairs);
+        _selH = h; _gScaleBase = gmag;
         SelectActive();
         PM(StepStage.SoftPredict);
         if (SurfProf) { ProfCounts[0]++; if (rebuild) { ProfCounts[1]++; } ProfCounts[2] += _vtCount + _eeCount; ProfCounts[3] += _avCount + _aeCount; }
@@ -204,20 +208,100 @@ internal sealed partial class Engine3D
         return true;
     }
 
-    // The largest distance a surface particle of the body is from where it was listed.
-    private static double MaxDisplacement(SoftBodyData d, double[] listed)
+    // The motion of a body's surface particles since they were listed (when withDisp) and the spread of their velocities. Two features of one body cannot close on each other faster than the spread of their motion, however fast
+    // the body as a whole travels: a falling cloth keeps its lists. With relative false the mean is taken as zero, so the bounds are absolute (many bodies).
+    private void ComputeMotion(int a, bool withDisp, bool relative)
     {
-        double m2 = 0.0;
-        var sp = d.SurfParticles; var x = d.X;
-        for (int i = 0; i < sp.Length; i++)
+        int k3 = 3 * a;
+        _bMd[k3] = _bMd[k3 + 1] = _bMd[k3 + 2] = 0.0; _bMv[k3] = _bMv[k3 + 1] = _bMv[k3 + 2] = 0f; _bDev[a] = 0.0; _bVdev[a] = 0f;
+        if (!_bPart[a] || a >= _awakeSoftCount) { return; }
+        var d = _awakeSoft[a];
+        var sp = d.SurfParticles; var x = d.X; var vel = d.Vel;
+        int n = sp.Length;
+        if (n == 0) { return; }
+        double mx = 0.0, my = 0.0, mz = 0.0;
+        float vx = 0f, vy = 0f, vz = 0f;
+        if (relative)
         {
-            int k = 3 * sp[i];
-            double dx = d.Ox + x[k] - listed[3 * i], dy = d.Oy + x[k + 1] - listed[3 * i + 1], dz = d.Oz + x[k + 2] - listed[3 * i + 2];
-            double e2 = dx * dx + dy * dy + dz * dz;
-            if (e2 > m2) { m2 = e2; }
+            double sx = 0.0, sy = 0.0, sz = 0.0, tx = 0.0, ty = 0.0, tz = 0.0;
+            var bp = _bpos[a];
+            for (int i = 0; i < n; i++)
+            {
+                int k = 3 * sp[i];
+                if (withDisp) { sx += d.Ox + x[k] - bp![3 * i]; sy += d.Oy + x[k + 1] - bp[3 * i + 1]; sz += d.Oz + x[k + 2] - bp[3 * i + 2]; }
+                tx += vel[k]; ty += vel[k + 1]; tz += vel[k + 2];
+            }
+
+            double inv = 1.0 / n;
+            mx = sx * inv; my = sy * inv; mz = sz * inv;
+            vx = (float)(tx * inv); vy = (float)(ty * inv); vz = (float)(tz * inv);
         }
 
-        return Math.Sqrt(m2);
+        double dev2 = 0.0; float vdev2 = 0f;
+        {
+            var bp = _bpos[a];
+            for (int i = 0; i < n; i++)
+            {
+                int k = 3 * sp[i];
+                if (withDisp)
+                {
+                    double dx = d.Ox + x[k] - bp![3 * i] - mx, dy = d.Oy + x[k + 1] - bp[3 * i + 1] - my, dz = d.Oz + x[k + 2] - bp[3 * i + 2] - mz;
+                    double e2 = dx * dx + dy * dy + dz * dz;
+                    if (e2 > dev2) { dev2 = e2; }
+                }
+
+                float ux = vel[k] - vx, uy = vel[k + 1] - vy, uz = vel[k + 2] - vz;
+                float u2 = ux * ux + uy * uy + uz * uz;
+                if (u2 > vdev2) { vdev2 = u2; }
+            }
+        }
+
+        _bMd[k3] = mx; _bMd[k3 + 1] = my; _bMd[k3 + 2] = mz;
+        _bMv[k3] = vx; _bMv[k3 + 1] = vy; _bMv[k3 + 2] = vz;
+        _bDev[a] = Math.Sqrt(dev2); _bVdev[a] = float.Sqrt(vdev2);
+    }
+
+    // How far two bodies' features can have moved towards each other since the lists were built.
+    private double RelDisp(int a, int b)
+    {
+        if (a == b) { return 2.0 * _bDev[a]; }
+        double dx = _bMd[3 * a] - _bMd[3 * b], dy = _bMd[3 * a + 1] - _bMd[3 * b + 1], dz = _bMd[3 * a + 2] - _bMd[3 * b + 2];
+        return Math.Sqrt(dx * dx + dy * dy + dz * dz) + _bDev[a] + _bDev[b];
+    }
+
+    // How far they can close on each other in a substep of length h: the difference of their mean velocities plus the spread of each, with the difference of the fall under gravity.
+    private double RelTrav(int a, int b, double h)
+    {
+        double dv;
+        if (a == b) { dv = 0.0; }
+        else
+        {
+            double dx = (double)_bMv[3 * a] - _bMv[3 * b], dy = (double)_bMv[3 * a + 1] - _bMv[3 * b + 1], dz = (double)_bMv[3 * a + 2] - _bMv[3 * b + 2];
+            dv = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+        }
+
+        double gs = a == b ? 0.0 : Math.Abs((double)_awakeSoft[a].Def.GravityScale - _awakeSoft[b].Def.GravityScale) * _gScaleBase;
+        return TravelFactor * (h * (dv + _bVdev[a] + _bVdev[b]) + 0.5 * gs * h * h);
+    }
+
+    // No unlisted pair can have come into contact while this holds for every pair of bodies (or, with many bodies, for every body against its own budget).
+    private bool MotionWithinBudget(double h, float gmag, bool relative)
+    {
+        _gScaleBase = gmag;
+        int n = _pairSoftCount;
+        for (int a = 0; a < n; a++)
+        {
+            if (!_bPart[a]) { continue; }
+            if (!(RelDisp(a, a) + RelTrav(a, a, h) < 2.0 * _bBudget[a])) { return false; }
+            if (!relative) { continue; }
+            for (int b = a + 1; b < n; b++)
+            {
+                if (!_bPart[b]) { continue; }
+                if (!(RelDisp(a, b) + RelTrav(a, b, h) < _bBudget[a] + _bBudget[b])) { return false; }
+            }
+        }
+
+        return true;
     }
 
     private void RebuildCandidates()
@@ -260,7 +344,8 @@ internal sealed partial class Engine3D
         GrowTo(ref _tgTri, _pairSoftCount); GrowTo(ref _tgEdge, _pairSoftCount); GrowTo(ref _tgIcT, _pairSoftCount); GrowTo(ref _tgMxT, _pairSoftCount); GrowTo(ref _tgIcE, _pairSoftCount); GrowTo(ref _tgMxE, _pairSoftCount);
         GrowTo(ref _tgNeedTri, _pairSoftCount); GrowTo(ref _tgNeedEdge, _pairSoftCount);
         // A feature's box is grown by its body's radius and budget: two features can come within the sum of their radii while both stay inside their budgets only if their grown boxes overlap.
-        var extT = new double[_pairSoftCount]; var extE = new double[_pairSoftCount];
+        GrowTo(ref _bExtT, _pairSoftCount); GrowTo(ref _bExtE, _pairSoftCount);
+        var extT = _bExtT; var extE = _bExtE;
         for (int a = 0; a < _pairSoftCount; a++)
         {
             var d = _awakeSoft[a];
@@ -342,6 +427,34 @@ internal sealed partial class Engine3D
                 }
             }
         }
+
+        SortCandidates();
+    }
+
+    // The candidates are kept in the order of their feature numbers, so the active pairs a substep selects from them come out in that order whatever order the search happened to find them in
+    // (which depends on when the lists were last built).
+    private void SortCandidates()
+    {
+        int n = Math.Max(_vtCount, _eeCount);
+        GrowTo(ref _scKey, n); GrowTo(ref _scPos, n); GrowTo(ref _scTmpI, n); GrowTo(ref _scTmpF, n);
+        for (int i = 0; i < _vtCount; i++) { _scKey[i] = ((long)_vtP[i] << 32) | (long)_vtT[i]; _scPos[i] = i; }
+        Array.Sort(_scKey, _scPos, 0, _vtCount);
+        Permute(_vtP, _vtCount); Permute(_vtT, _vtCount); Permute(_vtBA, _vtCount); Permute(_vtBT, _vtCount); PermuteF(_vtD0, _vtCount);
+        for (int i = 0; i < _eeCount; i++) { _scKey[i] = ((long)_eeA[i] << 32) | (long)_eeB[i]; _scPos[i] = i; }
+        Array.Sort(_scKey, _scPos, 0, _eeCount);
+        Permute(_eeA, _eeCount); Permute(_eeB, _eeCount); Permute(_eeBA, _eeCount); Permute(_eeBB, _eeCount); PermuteF(_eeD0, _eeCount);
+    }
+
+    private void Permute(int[] a, int n)
+    {
+        for (int i = 0; i < n; i++) { _scTmpI[i] = a[_scPos[i]]; }
+        Array.Copy(_scTmpI, a, n);
+    }
+
+    private void PermuteF(float[] a, int n)
+    {
+        for (int i = 0; i < n; i++) { _scTmpF[i] = a[_scPos[i]]; }
+        Array.Copy(_scTmpF, a, n);
     }
 
     private void AddSkTask(int b, int kind, int a, int from, int to)
@@ -697,18 +810,18 @@ internal sealed partial class Engine3D
 
     // The pairs that can touch in this substep: the exact distance at its start is below the two spheres' radii plus what the two bodies can move in it. A pair stores the side it starts on (0 when the feature is
     // not inside the triangle or the two edges); the first pass that finds it inside sets it from where it is then.
+    private double _selH;
+
     private void SelectActive()
     {
         GrowTo(ref _avK, _vtCount); GrowTo(ref _avS, _vtCount); GrowTo(ref _aeK, _eeCount); GrowTo(ref _aeS, _eeCount);
-        int most = _vtCount + _eeCount;
-        GrowTo(ref _avKey, most); GrowTo(ref _avPos, most); GrowTo(ref _avTmpK, most); GrowTo(ref _avTmpS, most);
         for (int k = 0; k < _vtCount; k++)
         {
             int ba = _vtBA[k], bt = _vtBT[k];
             var dp = _awakeSoft[ba]; var dt = _awakeSoft[bt];
             float thick = dp.Radius + dt.Radius;
-            double reach = thick + _bTr[ba] + _bTr[bt];
-            if (_vtD0[k] - _bDisp[ba] - _bDisp[bt] - 1e-5 >= reach) { continue; }
+            double reach = thick + RelTrav(ba, bt, _selH);
+            if (_vtD0[k] - RelDisp(ba, bt) - 1e-5 >= reach) { continue; }
             int g = _vtP[k];
             int p = g - dp.Base;
             int el = _gtLocal[_vtT[k]];
@@ -720,7 +833,7 @@ internal sealed partial class Engine3D
             double cx = dt.Ox + dt.X[3 * c], cy = dt.Oy + dt.X[3 * c + 1], cz = dt.Oz + dt.X[3 * c + 2];
             if (SoftGeometry.PointTriangleSq(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz) >= reach * reach) { continue; }
             bool inside = VertexTriangle(dp, p, dt, a, b, c, out _, out _, out _, out float dist, out _, out _, out _);
-            _avTmpK[_avCount] = k; _avTmpS[_avCount] = inside ? (dist >= 0f ? 1f : -1f) : 0f; _avKey[_avCount] = ((long)g << 32) | (long)_vtT[k]; _avCount++;
+            _avK[_avCount] = k; _avS[_avCount] = inside ? (dist >= 0f ? 1f : -1f) : 0f; _avCount++;
         }
 
         for (int k = 0; k < _eeCount; k++)
@@ -728,8 +841,8 @@ internal sealed partial class Engine3D
             int ba = _eeBA[k], bb = _eeBB[k];
             var d1 = _awakeSoft[ba]; var d2 = _awakeSoft[bb];
             float thick = d1.Radius + d2.Radius;
-            double reach = thick + _bTr[ba] + _bTr[bb];
-            if (_eeD0[k] - _bDisp[ba] - _bDisp[bb] - 1e-5 >= reach) { continue; }
+            double reach = thick + RelTrav(ba, bb, _selH);
+            if (_eeD0[k] - RelDisp(ba, bb) - 1e-5 >= reach) { continue; }
             int g1 = _eeA[k], g2 = _eeB[k];
             int l1 = _geLocal[g1], l2 = _geLocal[g2];
             int a = d1.SurfEdgeA[l1], b = d1.SurfEdgeB[l1], c = d2.SurfEdgeA[l2], d = d2.SurfEdgeB[l2];
@@ -740,15 +853,8 @@ internal sealed partial class Engine3D
             double dx = d2.Ox + d2.X[3 * d], dy = d2.Oy + d2.X[3 * d + 1], dz = d2.Oz + d2.X[3 * d + 2];
             if (SoftGeometry.SegmentSegmentSq(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz) >= reach * reach) { continue; }
             bool inside = EdgeEdge(d1, a, b, d2, c, d, out _, out _, out _, out float dist, out _, out _);
-            _avTmpK[_avCount + _aeCount] = k; _avTmpS[_avCount + _aeCount] = inside ? (dist >= 0f ? 1f : -1f) : 0f; _avKey[_avCount + _aeCount] = ((long)g1 << 32) | (long)g2; _aeCount++;
+            _aeK[_aeCount] = k; _aeS[_aeCount] = inside ? (dist >= 0f ? 1f : -1f) : 0f; _aeCount++;
         }
-
-        // The active pairs are solved in the order of their feature numbers, so the result does not depend on the order the candidate list happened to be built in (the list depends on when it was last rebuilt).
-        for (int i = 0; i < _avCount + _aeCount; i++) { _avPos[i] = i; }
-        Array.Sort(_avKey, _avPos, 0, _avCount);
-        Array.Sort(_avKey, _avPos, _avCount, _aeCount);
-        for (int i = 0; i < _avCount; i++) { _avK[i] = _avTmpK[_avPos[i]]; _avS[i] = _avTmpS[_avPos[i]]; }
-        for (int i = 0; i < _aeCount; i++) { _aeK[i] = _avTmpK[_avPos[_avCount + i]]; _aeS[i] = _avTmpS[_avPos[_avCount + i]]; }
     }
 
     // The particle's projection on the triangle's plane: unit normal (right-handed around the triangle), signed distance of the particle along it, barycentric coordinates of the projection.

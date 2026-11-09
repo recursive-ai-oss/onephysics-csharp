@@ -6,6 +6,7 @@ using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.Aero;
 using RecursiveAI.OnePhysics.Fields;
 using RecursiveAI.OnePhysics.Physics3D;
+using RecursiveAI.OnePhysics.LowLevel;
 using Xunit;
 
 namespace RecursiveAI.OnePhysics.Tests.World3D;
@@ -425,5 +426,56 @@ public class Cloth3DTests
         box1.Destroy();
         w1.Step(Dt);
         Assert.Equal(7, w1.ClothLinkCount);
+    }
+
+    [Fact]
+    public void DebugGeometryShowsSeamsAttachmentsTethersAndWind()
+    {
+        var w = NewWorld();
+        w.AddField(new FieldDefinition { Kind = FieldKind.Area, Direction = default, Minimum = new Vector3D(-50, -50, -50), Maximum = new Vector3D(50, 50, 50), Flow = new Vector3F(0f, 0f, 4f) });
+        var box = w.AddBox(new Vector3F(0.2f, 0.2f, 0.2f), at: new Vector3D(0, 3.2, 0), type: BodyType.Static);
+        var a = w.AddCloth(new ClothDef { Width = 0.5f, Depth = 0.5f, SegmentsX = 4, SegmentsZ = 4, Position = new Vector3D(0, 3, 0), PinnedParticles = ClothDef.PinEdge(4, 4, 0), Tethers = true });
+        var b = w.AddCloth(new ClothDef { Width = 0.5f, Depth = 0.5f, SegmentsX = 4, SegmentsZ = 4, Position = new Vector3D(0.5, 3, 0) });
+        w.AddSeam(a, ClothDef.PinEdge(4, 4, 1), b, ClothDef.PinEdge(4, 4, 3));
+        w.AttachCloth(a, 12, box);
+        Run(w, 5);
+        var g = new RecursiveAI.OnePhysics.Debug.DebugGeometry();
+        w.GetDebugGeometry(RecursiveAI.OnePhysics.Debug.DebugContent.Cloth, g);
+        int seams = 0, attach = 0, tethers = 0;
+        foreach (var l in g.ClothLinks)
+        {
+            if (l.Kind == RecursiveAI.OnePhysics.Debug.DebugClothLinkKind.Seam) { seams++; }
+            else if (l.Kind == RecursiveAI.OnePhysics.Debug.DebugClothLinkKind.Attachment) { attach++; }
+            else { tethers++; Assert.True(l.Length > 0f); }
+        }
+
+        Assert.Equal(5, seams);
+        Assert.Equal(1, attach);
+        Assert.Equal(25 - 5, tethers);
+        // wind: every triangle of the two cloths with drag (the default cotton)
+        Assert.Equal(2 * 4 * 4 * 2, g.ClothWind.Length);
+        Assert.True(g.ClothWind[0].Force.Z > 0f);
+    }
+
+    [Fact]
+    public void TheSkinOfTheContactSearchDoesNotChangeTheResult()
+    {
+        ulong Hash(double skin)
+        {
+            double was = Engine3D.SkinFactor;
+            Engine3D.SkinFactor = skin;
+            try
+            {
+                var w = Cloth3DScene.Build("cloth-throw-3d", 1);
+                ulong h = 14695981039346656037UL;
+                for (int i = 0; i < 90; i++) { w.Step(Dt); h = (h ^ w.ComputeHash()) * 1099511628211UL; }
+                return h;
+            }
+            finally { Engine3D.SkinFactor = was; }
+        }
+
+        ulong a = Hash(0.25);
+        Assert.Equal(a, Hash(1.0));
+        Assert.Equal(a, Hash(4.0));
     }
 }
