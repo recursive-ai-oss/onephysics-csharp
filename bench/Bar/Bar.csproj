@@ -21,6 +21,8 @@
     <Compile Include="../../tests/Common/FieldScenes.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/SoftBodies2DScene.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/Vehicles2DScene.cs" LinkBase="Common" />
+    <Compile Include="../../tests/Common/RailBikeScenes2D.cs" LinkBase="Common" />
+    <Compile Include="../../tests/Common/RailBikeScenes3D.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/Actuators3DScene.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/Actuators2DScene.cs" LinkBase="Common" />
     <PackageReference Include="Box2D.NET" Version="3.1.654" />

@@ -34,6 +34,8 @@
     <Compile Include="../../tests/Common/Characters3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Vehicles3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Vehicles2DScene.cs" LinkBase="Checks" />
+    <Compile Include="../../tests/Common/RailBikeScenes2D.cs" LinkBase="Checks" />
+    <Compile Include="../../tests/Common/RailBikeScenes3D.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Actuators3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Actuators2DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/VehicleKinds3DScene.cs" LinkBase="Checks" />
