@@ -242,6 +242,8 @@ internal sealed partial class ActuatorStore
         float lo = -t.ReverseFraction;
         float target = throttle < lo ? lo : throttle > 1f ? 1f : throttle;
         output += (target - output) * (dt / (t.ResponseTime + dt));
+        // A closed throttle lets the thrust die away to exactly zero (so the body can sleep), not to a denormal.
+        if (target == 0f && Math.Abs(output) < 1e-4f) { output = 0f; }
         if (output == 0f || t.MaxThrust == 0f) { return default; }
         var dirB = t.Direction;
         if (t.MaxGimbal > 0f && (gimbal1 != 0f || gimbal2 != 0f)) { dirB = Gimbal(t, gimbal1, gimbal2); }

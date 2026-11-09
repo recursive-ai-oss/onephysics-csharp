@@ -108,7 +108,7 @@ internal static class Actuators2DScene
             // Height: a PD on the vertical error with gravity feed-forward, tilted thrust corrected by 1/cos.
             float mass = l.Mass;
             float a = step < 300 ? 3f * (float)(target - l.Position.Y) + 2.5f * (float)(targetV - v.Y) : 2.5f * (float)(targetV - v.Y);
-            float cos = MathF.Max(0.5f, MathF.Cos(angle));
+            float cos = MathF.Max(0.5f, Math32.Cos(angle));
             float thrust = mass * (9.81f + a) / cos;
             s.Thrusters[0].Throttle = Math.Clamp(thrust / (2.2f * 400f * 9.81f), 0f, 1f);
             // Attitude and sideways drift: command the tilt that pushes against the drift, then the torque that makes it.

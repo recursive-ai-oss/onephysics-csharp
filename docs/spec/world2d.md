@@ -244,6 +244,10 @@ Side-view vehicles: `world.AddVehicle(chassis, VehicleDef | TrackedVehicleDef | 
 - RAG2 entry: part count, self-collision (u8), angular damping, category and mask bits, then per part parent (i32), shape kind (u8), half size, position, angle, mass, friction, joint position, limits, drive hertz, max drive speed, max torque, break force and torque, body index and generation, joint slot and generation (i32), target angle (f32); then the powered flag and strength.
 Restore validates every field (finite, ranges, body and joint references live, the definition by `Validate`) and leaves the world unchanged on failure. Origin shifting moves the stored contact points. Debug geometry: `DebugContent.Vehicles` adds one wheel record per wheel.
 
+## Aerodynamics, thrusters, boats and hovercraft
+
+The same four parts in the plane (`Physics2D.AeroSurface`, `ThrusterDef`, `BoatDef`, `HovercraftDef` with `Vector2F` members; `ThrusterRig.Lander`): `ShapeDef.Aero`, `body.AddThruster`, `world.AddBoat`, `world.AddHovercraft`, `world.AirDensity`, `world.AddWind`. They run as one serial stage after the fields, ragdoll drive and vehicles and before the core step, adding forces and torque about z; areas and forces are per metre of depth and a planar surface's reference point is its shape's centroid. Water is a buoyancy field (`AddBuoyancyEffector`); a boat takes over that field's linear drag for its hull, as in 3D, and a side-view boat has no leeway axis (foils are horizontal, steering turns them counter-clockwise for a positive command). Models, ordering and layouts are in `actuators.md`; the section is the same "AERO" (`0x4F524541`), registered after "RAG2".
+
 ## Core additions this relies on
 
 `IWorldStages.FinalizeBodies` (default no-op, called over chunks of awake bodies after the restitution pass and before `StoreResults`) and `WorldCore.Sleep(BodyHandle)`. Neither changes snapshot format version 1. `IWorldStages.AfterFinalize` (default no-op) runs once, serially, after `FinalizeBodies` and before `StoreResults`; bullets use it.
