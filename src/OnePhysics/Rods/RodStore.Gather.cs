@@ -31,6 +31,7 @@ internal sealed partial class RodStore
         internal int[] OldCand=[],OldCandStart=[],OldCapStart=[];
         internal int CandCount,OldCandCount;
         internal bool Built;
+        internal int BuiltSegments,BuiltEpoch;
         internal readonly List<int> Shapes=new();
         internal Vector3D[] NearMin=[],NearMax=[];
         internal WorldHit[] Hits=new WorldHit[8];
@@ -113,8 +114,11 @@ internal sealed partial class RodStore
     {
         if(GatherStale())Gather();
     }
+    // Number of candidate rebuilds so far (a diagnostic for tests).
+    internal int GatherCount;
     private void Gather()
     {
+        GatherCount++;
         foreach(int b in _pushed)_pushedMark[b]=false;
         _pushed.Clear();
         var bodies=Host.RodCore.Bodies;double reach=0;
@@ -149,7 +153,7 @@ internal sealed partial class RodStore
         int segments=d.Length.Length,particles=segments+1;
         (g.Cand,g.OldCand)=(g.OldCand,g.Cand);(g.CandStart,g.OldCandStart)=(g.OldCandStart,g.CandStart);(g.CapStart,g.OldCapStart)=(g.OldCapStart,g.CapStart);
         (g.SegCert,g.OldSegCert)=(g.OldSegCert,g.SegCert);(g.CapCert,g.OldCapCert)=(g.OldCapCert,g.CapCert);
-        g.OldCandCount=g.CandCount;bool carry=g.Built;
+        g.OldCandCount=g.CandCount;bool carry=g.Built&&g.BuiltSegments==segments&&g.BuiltEpoch==_gatherEpoch;
         if(g.Box.Length<6*segments){g.Box=new double[6*segments];}
         if(g.CandStart.Length<segments+1){g.CandStart=new int[segments+1];g.CapStart=new int[particles+1];}
         Vector3D lo=new(double.PositiveInfinity,double.PositiveInfinity,double.PositiveInfinity),hi=new(double.NegativeInfinity,double.NegativeInfinity,double.NegativeInfinity);
@@ -223,7 +227,7 @@ internal sealed partial class RodStore
                 }
             }
         }
-        g.Built=true;
+        g.Built=true;g.BuiltSegments=segments;g.BuiltEpoch=_gatherEpoch;
     }
     // The box the exact test (Near) compares a segment's swept bounds with, grown by a margin.
     private void NearBox(int shape,double radius,double margin,out Vector3D min,out Vector3D max)
