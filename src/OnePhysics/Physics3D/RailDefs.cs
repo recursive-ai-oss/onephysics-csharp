@@ -106,7 +106,7 @@ public sealed class RailDef
     /// <summary>Bit mask of the driven wheelsets in order (bit 0 the first wheelset of the first bogie ...). Default 0 (none).</summary>
     public uint DrivenWheelsets { get; set; }
 
-    /// <summary>Largest braking force at the rails over all wheelsets, N. Default 100000.</summary>
+    /// <summary>Largest braking force at the rails over all wheelsets, N. Keep it below the adhesion limit (friction times the weight): a brake that locks the wheels takes the lateral guidance away. Default 100000.</summary>
     public float MaxBrakeForce { get; set; } = 100000f;
 
     // ---- couplers
@@ -193,14 +193,14 @@ public sealed class RailDef
         CarMass = 20000f, CarSize = new Vector3F(2.4f, 3f, 12f), CarCenterHeight = 1.7f, CarFloorHeight = 0.7f, Bogies = 2, AxlesPerBogie = 2, BogieSpacing = 7.5f, AxleSpacing = 1.8f, BogieMass = 2500f,
         BogieInertia = new Vector3F(1500f, 2200f, 2200f), WheelRadius = 0.34f, WheelsetMass = 900f, WheelsetSpinInertia = 45f, WheelsetTransverseInertia = 300f,
         PrimaryHertz = new Vector3F(9f, 7f, 12f), PrimaryAngularHertz = new Vector3F(0f, 7f, 9f), SecondaryHertz = new Vector3F(1.1f, 1.3f, 4f),
-        MaxTractionForce = 60000f, MaxPower = 400000f, DrivenWheelsets = 0xF, MaxBrakeForce = 100000f, CouplerReach = 6.25f, CouplerHeight = 0.9f,
+        MaxTractionForce = 60000f, MaxPower = 400000f, DrivenWheelsets = 0xF, MaxBrakeForce = 60000f, CouplerReach = 6.25f, CouplerHeight = 0.9f,
     };
 
     /// <summary>A four-wheel freight wagon: a 40 t car of 9 m directly on two wheelsets 5.5 m apart, firm primary suspension, no traction.</summary>
     public static RailDef Freight => new()
     {
         CarMass = 36000f, CarSize = new Vector3F(2.9f, 2.6f, 9.5f), CarCenterHeight = 1.9f, Bogies = 0, AxlesPerBogie = 2, AxleSpacing = 5.5f, WheelsetMass = 1300f,
-        PrimaryHertz = new Vector3F(5f, 4f, 7f), PrimaryAngularHertz = new Vector3F(0f, 5f, 6f), PrimaryDamping = 0.4f, MaxBrakeForce = 150000f, CouplerReach = 5.25f,
+        PrimaryHertz = new Vector3F(5f, 4f, 7f), PrimaryAngularHertz = new Vector3F(0f, 5f, 6f), PrimaryDamping = 0.4f, MaxBrakeForce = 60000f, CouplerReach = 5.25f,
     };
 
     /// <summary>A bogie locomotive: an 80 t, 18 m body on two two-axle bogies, driven on all four wheelsets (300 kN, 3 MW).</summary>

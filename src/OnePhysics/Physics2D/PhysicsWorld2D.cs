@@ -41,6 +41,7 @@ public sealed partial class PhysicsWorld2D
         _core.AddSection(_engine.VehicleSnapshotSection);
         _core.AddSection(_engine.RagdollSnapshotSection);
         _core.AddSection(_engine.BicycleSnapshotSection);
+        _core.AddSection(_engine.RailSnapshotSection);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -139,6 +140,7 @@ public sealed partial class PhysicsWorld2D
         _engine.BeginBodyControls(dt);
         if (_engine.Fields.Count != 0) _engine.Fields.Step(dt);
         _engine.StepRagdolls();
+        _engine.StepRail(dt);
         _engine.StepBicycles();
         _engine.StepVehicles(this, dt);
         if (_engine.Rods.Count != 0) _engine.Rods.BeginStep();
@@ -312,6 +314,7 @@ public sealed partial class PhysicsWorld2D
         _core.ShiftOrigin(d);
         _engine.ShiftMachineJoints(d);
         _engine.ShiftVehicles(d);
+        _engine.ShiftRail(offset.X, offset.Y);
         _engine.Fields.Shift(new Vector3D(offset.X,offset.Y,0));
         _engine.Rods.Shift(new Vector3D(offset.X,offset.Y,0));
         _engine.ShiftProxies(d);

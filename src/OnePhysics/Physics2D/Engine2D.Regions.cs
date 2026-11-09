@@ -78,6 +78,14 @@ internal sealed partial class Engine2D
                 s.Add("vehicle", i); changed |= s.AddBody(d.Body);
                 foreach (int b in d.GroundBody) { if (b >= 0) { changed |= s.AddBody(b); } }
             }
+            for (int i = 0; i < RailHandles.HighWater; i++)
+            {
+                if (!RailHandles.IsLive(i)) { continue; }
+                var d = Rails[i]!;
+                if (!s.Bodies[d.Car] && !s.Contains("railvehicle", i)) { continue; }
+                s.Add("railvehicle", i); changed |= s.AddBody(d.Car);
+                if (d.Track >= 0 && TrackHandles.IsAlive(d.Track, d.TrackGen)) { s.Add("track", d.Track); changed |= s.AddBody(Tracks[d.Track]!.Body); }
+            }
             for (int i = 0; i < BikeHandles.HighWater; i++)
             {
                 if (!BikeHandles.IsLive(i)) { continue; }

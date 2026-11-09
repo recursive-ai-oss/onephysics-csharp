@@ -351,12 +351,17 @@ internal sealed class TrackGeometry
         grade = (d00 * z0 + d10 * dx * m0 + d01 * z1 + d11 * dx * m1) / dx;
     }
 
+    // Slope of the height curve at point i: the monotone-preserving choice of Fritsch and Carlson (SIAM J. Numer. Anal. 17, 1980), so a profile never overshoots its points: zero at a crest or a flat, the harmonic mean of the neighbouring chord slopes elsewhere.
     private static double Slope(Vector2F[] p, int i)
     {
         int n = p.Length;
         if (i == 0) { return ((double)p[1].Y - p[0].Y) / ((double)p[1].X - p[0].X); }
         if (i == n - 1) { return ((double)p[n - 1].Y - p[n - 2].Y) / ((double)p[n - 1].X - p[n - 2].X); }
-        return ((double)p[i + 1].Y - p[i - 1].Y) / ((double)p[i + 1].X - p[i - 1].X);
+        double h0 = (double)p[i].X - p[i - 1].X, h1 = (double)p[i + 1].X - p[i].X;
+        double d0 = ((double)p[i].Y - p[i - 1].Y) / h0, d1 = ((double)p[i + 1].Y - p[i].Y) / h1;
+        if (d0 * d1 <= 0.0) { return 0.0; }
+        double w1 = 2.0 * h1 + h0, w2 = h1 + 2.0 * h0;
+        return (w1 + w2) / (w1 / d0 + w2 / d1);
     }
 
     /// <summary>Cant (m, the right rail lower) at chainage s.</summary>

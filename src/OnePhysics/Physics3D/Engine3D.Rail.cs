@@ -46,6 +46,8 @@ internal sealed class RailState
     // Last step's contact readback per wheelset: normal and creep forces (left wheel, right wheel), flange normal forces, the larger lateral-to-vertical force ratio, contact flags.
     public float[] NormalL = Array.Empty<float>(), NormalR = Array.Empty<float>(), FxL = Array.Empty<float>(), FxR = Array.Empty<float>(), FyL = Array.Empty<float>(), FyR = Array.Empty<float>();
     public float[] FlangeL = Array.Empty<float>(), FlangeR = Array.Empty<float>(), Climb = Array.Empty<float>();
+    // All wheel-rail force on each wheel (tread and flange, normal and creep) along the track's up and right axes: the wheel's vertical load Q and lateral force Y.
+    public float[] QL = Array.Empty<float>(), QR = Array.Empty<float>(), YL = Array.Empty<float>(), YR = Array.Empty<float>();
     public byte[] Flags = Array.Empty<byte>();
     public float Throttle, Brake;
     // Couplers: index 0 the front (+Z) end, 1 the rear end.
@@ -59,7 +61,7 @@ internal sealed class RailState
     {
         Ws = new int[n]; WsGen = new int[n]; Trk = new int[n]; TrkGen = new int[n]; S = new double[n]; Spin = new float[n];
         NormalL = new float[n]; NormalR = new float[n]; FxL = new float[n]; FxR = new float[n]; FyL = new float[n]; FyR = new float[n];
-        FlangeL = new float[n]; FlangeR = new float[n]; Climb = new float[n]; Flags = new byte[n];
+        FlangeL = new float[n]; FlangeR = new float[n]; Climb = new float[n]; Flags = new byte[n]; QL = new float[n]; QR = new float[n]; YL = new float[n]; YR = new float[n];
         Array.Fill(Trk, -1);
     }
 
@@ -70,7 +72,7 @@ internal sealed class RailState
         c.Bogie = (int[])Bogie.Clone(); c.BogieGen = (int[])BogieGen.Clone(); c.Ws = (int[])Ws.Clone(); c.WsGen = (int[])WsGen.Clone(); c.Trk = (int[])Trk.Clone(); c.TrkGen = (int[])TrkGen.Clone();
         c.S = (double[])S.Clone(); c.Spin = (float[])Spin.Clone();
         c.NormalL = (float[])NormalL.Clone(); c.NormalR = (float[])NormalR.Clone(); c.FxL = (float[])FxL.Clone(); c.FxR = (float[])FxR.Clone(); c.FyL = (float[])FyL.Clone(); c.FyR = (float[])FyR.Clone();
-        c.FlangeL = (float[])FlangeL.Clone(); c.FlangeR = (float[])FlangeR.Clone(); c.Climb = (float[])Climb.Clone(); c.Flags = (byte[])Flags.Clone();
+        c.FlangeL = (float[])FlangeL.Clone(); c.FlangeR = (float[])FlangeR.Clone(); c.Climb = (float[])Climb.Clone(); c.Flags = (byte[])Flags.Clone(); c.QL = (float[])QL.Clone(); c.QR = (float[])QR.Clone(); c.YL = (float[])YL.Clone(); c.YR = (float[])YR.Clone();
         c.CoupleVeh = (int[])CoupleVeh.Clone(); c.CoupleGen = (int[])CoupleGen.Clone(); c.CoupleEnd = (int[])CoupleEnd.Clone(); c.Broken = (byte[])Broken.Clone(); c.CouplerForce = (float[])CouplerForce.Clone();
         return c;
     }
@@ -344,7 +346,7 @@ internal sealed partial class Engine3D
             var axle = q.Rotate(new Vector3F(1f, 0f, 0f));
             float spin = r.Spin[k];
 
-            r.NormalL[k] = 0f; r.NormalR[k] = 0f; r.FxL[k] = 0f; r.FxR[k] = 0f; r.FyL[k] = 0f; r.FyR[k] = 0f; r.FlangeL[k] = 0f; r.FlangeR[k] = 0f; r.Climb[k] = 0f; r.Flags[k] = 0;
+            r.QL[k] = 0f; r.QR[k] = 0f; r.YL[k] = 0f; r.YR[k] = 0f; r.NormalL[k] = 0f; r.NormalR[k] = 0f; r.FxL[k] = 0f; r.FxR[k] = 0f; r.FyL[k] = 0f; r.FyR[k] = 0f; r.FlangeL[k] = 0f; r.FlangeR[k] = 0f; r.Climb[k] = 0f; r.Flags[k] = 0;
             int ti = r.Trk[k];
             if (ti < 0 || !TrackHandles.IsAlive(ti, r.TrkGen[k])) { r.Spin[k] = spin; return; }
             var tr = Tracks[ti]!;
@@ -490,6 +492,7 @@ internal sealed partial class Engine3D
             float ratioL = (r.Flags[k] & 4) != 0 && qLeft > 1f ? Math.Abs(yLeft) / qLeft : 0f;
             float ratioR = (r.Flags[k] & 8) != 0 && qRight > 1f ? Math.Abs(yRight) / qRight : 0f;
             r.Climb[k] = Math.Max(ratioL, ratioR);
+            r.QL[k] = qLeft; r.QR[k] = qRight; r.YL[k] = yLeft; r.YR[k] = yRight;
 
             // Gyroscopic coupling of the spinning wheelset with its frame.
             if (spin != 0f)
@@ -628,47 +631,6 @@ internal sealed partial class Engine3D
     /// <summary>Id of the rail snapshot section ("RAIL"), shared with the 2D engine (a world is one or the other).</summary>
     public const int RailSectionId = 0x4C494152;
 
-    private static void WriteTrackDef(StateWriter w, TrackDef d)
-    {
-        w.NamedDouble(d.Start.X); w.NamedDouble(d.Start.Y); w.NamedDouble(d.Start.Z); w.NamedSingle(d.StartHeading);
-        w.NamedInt32(d.Elements.Length);
-        foreach (var e in d.Elements) { w.NamedByte((byte)e.Kind); w.NamedSingle(e.Length); w.NamedSingle(e.StartCurvature); w.NamedSingle(e.EndCurvature); }
-        int ne = d.Elevation?.Length ?? 0;
-        w.NamedInt32(ne);
-        for (int i = 0; i < ne; i++) { w.NamedSingle(d.Elevation![i].X); w.NamedSingle(d.Elevation![i].Y); }
-        int nc = d.Cant?.Length ?? 0;
-        w.NamedInt32(nc);
-        for (int i = 0; i < nc; i++) { w.NamedSingle(d.Cant![i].X); w.NamedSingle(d.Cant![i].Y); }
-        w.NamedSingle(d.Gauge); w.NamedSingle(d.Friction); w.NamedBool(d.Collide);
-    }
-
-    private static TrackDef ReadTrackDef(StateReader r)
-    {
-        var d = new TrackDef { Start = new Vector3D(r.ReadDouble(), r.ReadDouble(), r.ReadDouble()), StartHeading = r.ReadSingle() };
-        int n = r.ReadCount(13, "track elements");
-        if (n > TrackDef.MaxElements) { throw r.Error("a track with more than " + TrackDef.MaxElements.ToString(CultureInfo.InvariantCulture) + " elements"); }
-        var els = new TrackElement[n];
-        for (int i = 0; i < n; i++)
-        {
-            byte kind = r.ReadByte(); float len = r.ReadSingle(), k0 = r.ReadSingle(), k1 = r.ReadSingle();
-            if (kind > (byte)TrackElementKind.Transition) { throw r.Error("unknown track element kind"); }
-            els[i] = kind == 0 ? TrackElement.Straight(len) : kind == 1 ? TrackElement.Arc(len, 1f / k0) : TrackElement.Transition(len, k0, k1);
-            if (kind == 1 && !(k0 != 0f)) { throw r.Error("an arc without curvature"); }
-        }
-
-        d.Elements = els;
-        int ne = r.ReadCount(8, "track elevation points");
-        if (ne > TrackDef.MaxProfilePoints) { throw r.Error("too many elevation points"); }
-        if (ne > 0) { var p = new Vector2F[ne]; for (int i = 0; i < ne; i++) { p[i] = new Vector2F(r.ReadSingle(), r.ReadSingle()); } d.Elevation = p; }
-        int nc = r.ReadCount(8, "track cant points");
-        if (nc > TrackDef.MaxProfilePoints) { throw r.Error("too many cant points"); }
-        if (nc > 0) { var p = new Vector2F[nc]; for (int i = 0; i < nc; i++) { p[i] = new Vector2F(r.ReadSingle(), r.ReadSingle()); } d.Cant = p; }
-        d.Gauge = r.ReadSingle(); d.Friction = r.ReadSingle(); d.Collide = r.ReadBool();
-        try { d.Validate(); }
-        catch (ArgumentException e) { throw r.Error("invalid track: " + e.Message); }
-        return d;
-    }
-
     private static void WriteVec3(StateWriter w, Vector3F v) { w.NamedSingle(v.X); w.NamedSingle(v.Y); w.NamedSingle(v.Z); }
 
     private static Vector3F ReadVec3(StateReader r) => new(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
@@ -713,7 +675,7 @@ internal sealed partial class Engine3D
             w.DescribeEntity("track", i, TrackHandles.GenerationOf(i));
             if (!TrackHandles.IsLive(i)) { continue; }
             var t = Tracks[i]!;
-            WriteTrackDef(w, t.Def);
+            TrackDefIo.Write(w, t.Def);
             w.NamedInt32(t.Ballast); w.NamedInt32(t.BallastGen); w.NamedInt32(t.Rails); w.NamedInt32(t.RailsGen);
             w.NamedInt32(t.Parent); w.NamedInt32(t.ParentGen); w.NamedDouble(t.ParentS);
             w.NamedInt32(t.Switches.Length);
@@ -737,6 +699,7 @@ internal sealed partial class Engine3D
                 w.NamedInt32(r.Ws[k]); w.NamedInt32(r.WsGen[k]); w.NamedInt32(r.Trk[k]); w.NamedInt32(r.TrkGen[k]); w.NamedDouble(r.S[k]); w.NamedSingle(r.Spin[k]);
                 w.NamedSingle(r.NormalL[k]); w.NamedSingle(r.NormalR[k]); w.NamedSingle(r.FxL[k]); w.NamedSingle(r.FxR[k]); w.NamedSingle(r.FyL[k]); w.NamedSingle(r.FyR[k]);
                 w.NamedSingle(r.FlangeL[k]); w.NamedSingle(r.FlangeR[k]); w.NamedSingle(r.Climb[k]); w.NamedByte(r.Flags[k]);
+                w.NamedSingle(r.QL[k]); w.NamedSingle(r.QR[k]); w.NamedSingle(r.YL[k]); w.NamedSingle(r.YR[k]);
             }
 
             w.NamedSingle(r.Throttle); w.NamedSingle(r.Brake);
@@ -760,7 +723,7 @@ internal sealed partial class Engine3D
         for (int i = 0; i < b.Tracks.HighWater; i++)
         {
             if (!b.Tracks.IsLive(i)) { continue; }
-            var t = new TrackState { Def = ReadTrackDef(r) };
+            var t = new TrackState { Def = TrackDefIo.Read(r) };
             t.Ballast = r.ReadInt32(); t.BallastGen = r.ReadInt32(); t.Rails = r.ReadInt32(); t.RailsGen = r.ReadInt32();
             t.Parent = r.ReadInt32(); t.ParentGen = r.ReadInt32(); t.ParentS = r.ReadDouble();
             if (t.Ballast >= bodyCount || t.Rails >= bodyCount || t.Ballast < -1 || t.Rails < -1) { throw r.Error("invalid track body"); }
@@ -791,7 +754,7 @@ internal sealed partial class Engine3D
             if (nb != (s.Def.Bogies == 0 ? 0 : s.Def.Bogies)) { throw r.Error("rail vehicle bogie count disagrees with its definition"); }
             s.Bogie = new int[nb]; s.BogieGen = new int[nb];
             for (int k = 0; k < nb; k++) { s.Bogie[k] = r.ReadInt32(); s.BogieGen[k] = r.ReadInt32(); if (s.Bogie[k] < 0 || s.Bogie[k] >= bodyCount) { throw r.Error("invalid bogie"); } }
-            int nw = r.ReadCount(70, "wheelsets");
+            int nw = r.ReadCount(86, "wheelsets");
             if (nw != s.Def.WheelsetCount) { throw r.Error("rail vehicle wheelset count disagrees with its definition"); }
             s.Allocate(nw);
             for (int k = 0; k < nw; k++)
@@ -799,9 +762,10 @@ internal sealed partial class Engine3D
                 s.Ws[k] = r.ReadInt32(); s.WsGen[k] = r.ReadInt32(); s.Trk[k] = r.ReadInt32(); s.TrkGen[k] = r.ReadInt32(); s.S[k] = r.ReadDouble(); s.Spin[k] = r.ReadSingle();
                 s.NormalL[k] = r.ReadSingle(); s.NormalR[k] = r.ReadSingle(); s.FxL[k] = r.ReadSingle(); s.FxR[k] = r.ReadSingle(); s.FyL[k] = r.ReadSingle(); s.FyR[k] = r.ReadSingle();
                 s.FlangeL[k] = r.ReadSingle(); s.FlangeR[k] = r.ReadSingle(); s.Climb[k] = r.ReadSingle(); s.Flags[k] = r.ReadByte();
+                s.QL[k] = r.ReadSingle(); s.QR[k] = r.ReadSingle(); s.YL[k] = r.ReadSingle(); s.YR[k] = r.ReadSingle();
                 if (s.Ws[k] < 0 || s.Ws[k] >= bodyCount || s.WsGen[k] < 1) { throw r.Error("invalid wheelset body"); }
                 if (s.Trk[k] < -1 || s.Trk[k] >= b.Tracks.HighWater) { throw r.Error("invalid wheelset track"); }
-                float sum = s.Spin[k] + s.NormalL[k] + s.NormalR[k] + s.FxL[k] + s.FxR[k] + s.FyL[k] + s.FyR[k] + s.FlangeL[k] + s.FlangeR[k] + s.Climb[k];
+                float sum = s.Spin[k] + s.NormalL[k] + s.NormalR[k] + s.FxL[k] + s.FxR[k] + s.FyL[k] + s.FyR[k] + s.FlangeL[k] + s.FlangeR[k] + s.Climb[k] + s.QL[k] + s.QR[k] + s.YL[k] + s.YR[k];
                 if (!float.IsFinite(sum) || !double.IsFinite(s.S[k]) || !(Math.Abs(s.Spin[k]) <= 1e9f) || s.Flags[k] > 15) { throw r.Error("invalid wheelset state"); }
             }
 

@@ -140,8 +140,9 @@ public readonly struct Switch
 [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct WheelsetState
 {
-    internal WheelsetState(Body body, Track track, double chainage, float spin, float radius, float normalLeft, float normalRight, float longitudinalLeft, float longitudinalRight, float lateralLeft, float lateralRight, float flangeLeft, float flangeRight, float climb, byte flags)
+    internal WheelsetState(Body body, Track track, double chainage, float spin, float radius, float normalLeft, float normalRight, float longitudinalLeft, float longitudinalRight, float lateralLeft, float lateralRight, float flangeLeft, float flangeRight, float climb, byte flags, float qLeft, float qRight, float yLeft, float yRight)
     {
+        VerticalLoadLeft = qLeft; VerticalLoadRight = qRight; LateralLoadLeft = yLeft; LateralLoadRight = yRight;
         Body = body; Track = track; Chainage = chainage; SpinSpeed = spin; Radius = radius; NormalForceLeft = normalLeft; NormalForceRight = normalRight;
         LongitudinalForceLeft = longitudinalLeft; LongitudinalForceRight = longitudinalRight; LateralForceLeft = lateralLeft; LateralForceRight = lateralRight;
         FlangeForceLeft = flangeLeft; FlangeForceRight = flangeRight; ClimbRatio = climb; _flags = flags;
@@ -190,6 +191,18 @@ public readonly struct WheelsetState
 
     /// <summary>The larger ratio of lateral to vertical force on a wheel whose flange touches (Y/Q), 0 without flange contact. Compare it with <see cref="PhysicsWorld3D.NadalLimit"/>: above it the wheel climbs.</summary>
     public float ClimbRatio { get; }
+
+    /// <summary>Everything the left rail does to the left wheel (tread and flange, normal and creep forces) along the track's up axis, N: the wheel's vertical load Q.</summary>
+    public float VerticalLoadLeft { get; }
+
+    /// <summary>The same for the right wheel, N.</summary>
+    public float VerticalLoadRight { get; }
+
+    /// <summary>Everything the left rail does to the left wheel along the track's right axis, N: the wheel's lateral force Y (positive to the right).</summary>
+    public float LateralLoadLeft { get; }
+
+    /// <summary>The same for the right wheel, N.</summary>
+    public float LateralLoadRight { get; }
 
     /// <summary>True while the left tread touches its rail.</summary>
     public bool LeftTreadContact => (_flags & 1) != 0;
@@ -296,7 +309,7 @@ public readonly struct RailVehicle : IEquatable<RailVehicle>
         var w = _world!;
         Track track = s.Trk[index] >= 0 && w.Engine.TrackHandles.IsAlive(s.Trk[index], s.TrkGen[index]) ? new Track(w, s.Trk[index], s.TrkGen[index]) : default;
         return new WheelsetState(new Body(w, new BodyHandle(w.Id, s.Ws[index], s.WsGen[index])), track, s.S[index], s.Spin[index], s.Def.WheelRadius, s.NormalL[index], s.NormalR[index], s.FxL[index], s.FxR[index],
-            s.FyL[index], s.FyR[index], s.FlangeL[index], s.FlangeR[index], s.Climb[index], s.Flags[index]);
+            s.FyL[index], s.FyR[index], s.FlangeL[index], s.FlangeR[index], s.Climb[index], s.Flags[index], s.QL[index], s.QR[index], s.YL[index], s.YR[index]);
     }
 
     /// <summary>
@@ -588,6 +601,7 @@ public sealed partial class PhysicsWorld3D
                 created.Add(car);
                 float dy = def.CarFloorHeight + 0.5f * def.CarSize.Y - def.CarCenterHeight;   // the box's centre relative to the centre of mass
                 CreateBox(car, def.CarSize, 0f, new ShapeDef { Density = def.CarMass / vol, Friction = 0.5f, GroupIndex = group, LocalPosition = new Vector3F(0f, dy, 0f) });
+                car.CenterOfMass = new Vector3F(0f, 0f, 0f);   // the body's origin is its centre of mass, whatever the box's offset
                 car.Mass = def.CarMass;
                 float sx = def.CarSize.X, sy = def.CarSize.Y, sz = def.CarSize.Z, m = def.CarMass;
                 carRoll = m * (sx * sx + sy * sy) / 12f + m * dy * dy;
