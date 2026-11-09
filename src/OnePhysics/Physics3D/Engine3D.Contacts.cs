@@ -205,14 +205,13 @@ internal sealed partial class Engine3D
                 if (_boxInside[s] != 0) { continue; }
                 int o = 6 * s;
                 var tight = new Aabb3D(_boxes[o], _boxes[o + 1], _boxes[o + 2], _boxes[o + 3], _boxes[o + 4], _boxes[o + 5]);
-                double reach = FastReach(b);
-                if (reach > 0.0)
+                if (FastTravel(b, out double tx, out double ty, out double tz))
                 {
-                    // The stored box is made around the box grown by the body's travel, so the test above holds for the whole of the next step. It never shrinks the box and stays far enough inside the range
-                    // the broadphase accepts for the margin the broadphase adds.
+                    // The stored box is made around the box grown by the body's travel on the side it moves towards, so the test above holds for the whole of the next step. It never shrinks the box and
+                    // stays far enough inside the range the broadphase accepts for the margin the broadphase adds.
                     double lim = BoxLimits.MaxCoordinate - Opt.BroadphaseMargin - 1.0;
-                    tight = new Aabb3D(Math.Min(tight.MinX, Math.Max(-lim, tight.MinX - reach)), Math.Min(tight.MinY, Math.Max(-lim, tight.MinY - reach)), Math.Min(tight.MinZ, Math.Max(-lim, tight.MinZ - reach)),
-                        Math.Max(tight.MaxX, Math.Min(lim, tight.MaxX + reach)), Math.Max(tight.MaxY, Math.Min(lim, tight.MaxY + reach)), Math.Max(tight.MaxZ, Math.Min(lim, tight.MaxZ + reach)));
+                    tight = new Aabb3D(Math.Min(tight.MinX, Math.Max(-lim, tight.MinX - Math.Max(0.0, -tx))), Math.Min(tight.MinY, Math.Max(-lim, tight.MinY - Math.Max(0.0, -ty))), Math.Min(tight.MinZ, Math.Max(-lim, tight.MinZ - Math.Max(0.0, -tz))),
+                        Math.Max(tight.MaxX, Math.Min(lim, tight.MaxX + Math.Max(0.0, tx))), Math.Max(tight.MaxY, Math.Min(lim, tight.MaxY + Math.Max(0.0, ty))), Math.Max(tight.MaxZ, Math.Min(lim, tight.MaxZ + Math.Max(0.0, tz))));
                 }
 
                 Bp.MoveProxy(Proxy[s], tight, WorldCore.Grid(Dp[3 * b]), WorldCore.Grid(Dp[3 * b + 1]), WorldCore.Grid(Dp[3 * b + 2]));
@@ -507,7 +506,8 @@ internal sealed partial class Engine3D
             int lo = task * BodyInitChunk, hi = Math.Min(lo + BodyInitChunk, e._initCount);
             for (int b = lo; b < hi; b++)
             {
-                if (!bodies.IsLive(b)) { e._active[b] = 0; e._isSleeper[b] = 0; continue; }
+                if (!bodies.IsLive(b)) { e._active[b] = 0; e._isSleeper[b] = 0; e.ReachLinear[b] = 0f; e.ReachTurn[b] = 0f; continue; }
+                e.SetReach(b);
                 e._active[b] = IsActive(bodies, b) ? (byte)1 : (byte)0;
                 e.StartPos[3 * b] = pos[3 * b]; e.StartPos[3 * b + 1] = pos[3 * b + 1]; e.StartPos[3 * b + 2] = pos[3 * b + 2];
                 for (int k = 0; k < 4; k++) { e.StartRot[4 * b + k] = rot[4 * b + k]; }
@@ -557,8 +557,13 @@ internal sealed partial class Engine3D
                         ref readonly var fat = ref e.Bp.FatBoundsOfLive(e.Proxy[s]);
                         // A body that can travel farther than the speculative distance in one step needs room in its stored box for that travel. Otherwise a body that has used up its slack since the box was
                         // made can cross the last gap to a surface inside one step with no pair made for it yet, and meets the surface with no contact. Slow bodies keep the plain test.
-                        double r = e.FastReach(b);
-                        if (fat.MinX <= x0 - r && fat.MinY <= y0 - r && fat.MinZ <= z0 - r && z1 + r <= fat.MaxZ && y1 + r <= fat.MaxY && x1 + r <= fat.MaxX) { inside = 1; }
+                        if (e.FastTravel(b, out double tx, out double ty, out double tz))
+                        {
+                            // Room for the travel on the side it moves towards.
+                            if (fat.MinX <= x0 - Math.Max(0.0, -tx) && fat.MinY <= y0 - Math.Max(0.0, -ty) && fat.MinZ <= z0 - Math.Max(0.0, -tz)
+                                && z1 + Math.Max(0.0, tz) <= fat.MaxZ && y1 + Math.Max(0.0, ty) <= fat.MaxY && x1 + Math.Max(0.0, tx) <= fat.MaxX) { inside = 1; }
+                        }
+                        else if (fat.MinX <= x0 && fat.MinY <= y0 && fat.MinZ <= z0 && z1 <= fat.MaxZ && y1 <= fat.MaxY && x1 <= fat.MaxX) { inside = 1; }
                     }
 
                     e._boxInside[s] = inside;
@@ -670,28 +675,40 @@ internal sealed partial class Engine3D
         public float Spec, Dt;
     }
 
-    /// <summary>How far, over the coming step, one body's surface can move relative to its centre: linear travel (if <paramref name="linear"/>) plus the swing of its farthest point.</summary>
-    private float StepReach(int b, bool linear)
+    /// <summary>Fills <see cref="ReachLinear"/> and <see cref="ReachTurn"/> of a body from its velocities and the step (nothing for a static body, no swing for a kinematic one).</summary>
+    private void SetReach(int b)
     {
         var bodies = Core.Bodies;
         var type = bodies.TypeOf(b);
-        if (type == BodyType.Static) { return 0f; }
-        var v = bodies.LinearVelocityOf(b);
-        float reach = linear ? float.Sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) : 0f;
-        if (type == BodyType.Dynamic)
+        float dt = Core.ContactStepDt, linear = 0f, turn = 0f;
+        if (type != BodyType.Static)
         {
-            var w = bodies.AngularVelocityOf(b);
-            reach += float.Sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]) * MaxExtent[b];
+            var v = bodies.LinearVelocityOf(b);
+            linear = float.Sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) * dt;
+            if (type == BodyType.Dynamic)
+            {
+                var w = bodies.AngularVelocityOf(b);
+                turn = float.Sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]) * MaxExtent[b] * dt;
+            }
         }
 
-        return reach;
+        ReachLinear[b] = linear; ReachTurn[b] = turn;
     }
 
-    /// <summary>How far a body's surface can travel in the coming step when that is more than the speculative distance, else 0 (NaN also gives 0: such a body is rejected elsewhere).</summary>
-    private double FastReach(int b)
+    /// <summary>
+    /// Whether a body's centre can travel more than twice the speculative distance in the coming step; then <paramref name="tx"/>, <paramref name="ty"/>, <paramref name="tz"/> are that travel (velocity
+    /// times the step). A NaN anywhere gives false: such a body is rejected elsewhere. The turn of a body is not part of this: a turning body's box changes every step anyway, and its swing into a
+    /// surface is continuous collision's.
+    /// </summary>
+    private bool FastTravel(int b, out double tx, out double ty, out double tz)
     {
-        double r = StepReach(b, true) * Core.ContactStepDt;
-        return r > 2.0 * Opt.SpeculativeDistance ? r : 0.0;
+        double dt = Core.ContactStepDt;
+        var bodies = Core.Bodies;
+        tx = ty = tz = 0.0;
+        if (bodies.TypeOf(b) == BodyType.Static) { return false; }
+        var v = bodies.LinearVelocityOf(b);
+        tx = v[0] * dt; ty = v[1] * dt; tz = v[2] * dt;
+        return Math.Sqrt((tx * tx) + (ty * ty) + (tz * tz)) > 2.0 * Opt.SpeculativeDistance;
     }
 
     /// <summary>
@@ -703,10 +720,14 @@ internal sealed partial class Engine3D
     private float PairSpeculativeDistance(int ba, int bb)
     {
         float spec = Opt.SpeculativeDistance;
+        // The two bodies' own reaches bound the closing distance, so a pair of slow bodies is settled without looking at the velocities.
+        if (!(ReachLinear[ba] + ReachLinear[bb] + ReachTurn[ba] + ReachTurn[bb] > 2f * spec)) { return spec; }
         var bodies = Core.Bodies;
         var va = bodies.LinearVelocityOf(ba); var vb = bodies.LinearVelocityOf(bb);
         float dx = vb[0] - va[0], dy = vb[1] - va[1], dz = vb[2] - va[2];
-        float sweep = (float.Sqrt(dx * dx + dy * dy + dz * dz) + StepReach(ba, false) + StepReach(bb, false)) * Core.ContactStepDt;
+        // The swing of a turning body counts against a static or kinematic partner only; between two dynamic bodies the relative linear speed decides, so a tumbling pile is not searched farther.
+        float turn = (bodies.TypeOf(bb) != BodyType.Dynamic ? ReachTurn[ba] : 0f) + (bodies.TypeOf(ba) != BodyType.Dynamic ? ReachTurn[bb] : 0f);
+        float sweep = (float.Sqrt(dx * dx + dy * dy + dz * dz) * Core.ContactStepDt) + turn;
         if (!(sweep > 2f * spec)) { return spec; }
         return sweep < MaxPairSpeculation ? sweep : MaxPairSpeculation;
     }
