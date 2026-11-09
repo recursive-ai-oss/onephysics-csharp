@@ -129,4 +129,22 @@ public sealed class Breakable3DTests
         Assert.Empty(world.GetBonds(cut.Negative));
         Assert.Equal(3, world.GetBonds(cut.Positive).Length);
     }
+
+    [Fact]
+    public void SnapshotOfBondedAndFracturableBodiesRestoresIntoAFreshWorld()
+    {
+        var w = new P3.PhysicsWorld3D(new() { WorldId = 65 });
+        w.AddBox(new(30, 1, 30), new Vector3D(0, -0.5, 0), type: BodyType.Static);
+        var asset = P3.FractureAsset.FromHull([new(-1, -1, -1), new(1, -1, -1), new(-1, 1, -1), new(1, 1, -1), new(-1, -1, 1), new(1, -1, 1), new(-1, 1, 1), new(1, 1, 1)], new P3.FractureDef { CellCount = 6, Seed = 3 });
+        w.AddBreakable(asset, new Vector3D(-3, 4, 0), def: new BreakableDef { Strength = 1e3f, AnchorParts = [0] });
+        w.AddBox(new(1, 1, 1), new Vector3D(3, 3, 0)).SetFracturable(new P3.FractureDef { CellCount = 5, ImpulseThreshold = 2f, Depth = 1 });
+        w.AddBox(new(1, 1, 1), new Vector3D(0, 3, 0)).Fracture(new P3.FractureDef { CellCount = 5 });
+        w.Debris = new() { MaxFragments = 20, LifetimeSteps = 300, SleepToStaticSteps = 50 };
+        for (int i = 0; i < 20; i++) w.Step(1f / 60);
+        var snap = w.Snapshot();
+        var fresh = new P3.PhysicsWorld3D(new() { WorldId = 65 });
+        fresh.Restore(snap);
+        Assert.Equal(snap, fresh.Snapshot());
+        Assert.Equal(w.ComputeHash(), fresh.ComputeHash());
+    }
 }

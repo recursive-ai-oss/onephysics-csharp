@@ -62,10 +62,14 @@ internal sealed partial class DestructionStore
                 var rec = Records[i];
                 if (!bodies.IsDynamic(rec.Body) && rec.Bonds == null) continue;
                 if (rec.Fracture is { } f && f.ImpulseThreshold > 0f && rec.Peak >= f.ImpulseThreshold && bodies.IsDynamic(rec.Body)) { _todo.Add(rec.Body); continue; }
-                if (rec.Bonds != null && EvaluateStress(rec)) _todo.Add(rec.Body);
+                // A bond broken earlier whose compound could not be split yet (the per-step limit below) is retried here.
+                if (rec.Bonds != null && (EvaluateStress(rec) || AnyDeadBond(rec))) _todo.Add(rec.Body);
             }
+            long createdAtStart = _created;
             foreach (int body in _todo)
             {
+                // A cascade of fractures (children that break at once, again and again) is spread over steps instead of exhausting memory in one.
+                if (_created - createdAtStart >= MaxCreatedPerStep || Fragments.Count >= HardFragmentCap) break;
                 int ri = FindRecord(body);
                 if (ri < 0) continue;
                 var rec = Records[ri];
@@ -79,6 +83,18 @@ internal sealed partial class DestructionStore
             }
         }
         ManageDebris();
+    }
+
+    /// <summary>The most bodies automatic fractures and bond breaks create in one step; what is left waits for the next step.</summary>
+    internal const int MaxCreatedPerStep = 512;
+
+    /// <summary>Automatic fracture and bond breaks stop while this many fragments are tracked (set <see cref="DebrisOptions.MaxFragments"/> lower to cull sooner); the bodies stay whole until the count falls.</summary>
+    internal const int HardFragmentCap = 2048;
+
+    private static bool AnyDeadBond(Record rec)
+    {
+        foreach (var b in rec.BondList) if (!b.Alive) return true;
+        return false;
     }
 
     private void GatherLoads(WorldCore core, ConstraintStore cs, float dt)

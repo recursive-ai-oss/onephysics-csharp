@@ -198,6 +198,8 @@ internal sealed partial class DestructionStore(IDestructionHost host) : ISnapsho
         if (maxFragments < 0 || freeze < 0 || lifetime < 0) throw r.Error("invalid debris options");
         long fractures = r.ReadInt64(), slices = r.ReadInt64(), bondBreaks = r.ReadInt64(), created = r.ReadInt64(), culled = r.ReadInt64(), frozen = r.ReadInt64(), expired = r.ReadInt64(), dropped = r.ReadInt64(), merged = r.ReadInt64(), next = r.ReadInt64();
         if (fractures < 0 || slices < 0 || bondBreaks < 0 || created < 0 || culled < 0 || frozen < 0 || expired < 0 || dropped < 0 || merged < 0 || next < 0) throw r.Error("invalid destruction counter");
+        // Bodies the snapshot restores (the staged store while a restore is running): a record or fragment of a body that does not exist would not survive writing again.
+        var staged = Host.DestructionCore.RestoringBodies ?? Host.DestructionCore.Bodies;
         int n = r.ReadCount(10, "breakable records");
         var records = new List<Record>(n);
         int lastBody = -1;
@@ -205,6 +207,7 @@ internal sealed partial class DestructionStore(IDestructionHost host) : ISnapsho
         {
             var rec = new Record { Body = r.ReadInt32(), Generation = r.ReadInt32() };
             if (rec.Body <= lastBody || rec.Generation <= 0) throw r.Error("breakable records are not in body order");
+            if (!staged.Handles.IsAlive(rec.Body, rec.Generation)) throw r.Error("breakable record refers to a body that does not exist");
             lastBody = rec.Body;
             if (r.ReadBool()) rec.Fracture = ReadFracture(r);
             if (r.ReadBool())
@@ -240,6 +243,7 @@ internal sealed partial class DestructionStore(IDestructionHost host) : ISnapsho
         for (int i = 0; i < nf; i++)
         {
             var f = new Fragment { Body = r.ReadInt32(), Generation = r.ReadInt32(), Sequence = r.ReadInt64(), BirthStep = r.ReadInt64(), Measure = r.ReadSingle(), AsleepSteps = r.ReadInt32(), Frozen = r.ReadBool() };
+            if (!staged.Handles.IsAlive(f.Body, f.Generation)) throw r.Error("fragment refers to a body that does not exist");
             if (f.Body < 0 || f.Generation <= 0 || f.Sequence <= lastSeq || f.Sequence >= next || f.BirthStep < 0 || !float.IsFinite(f.Measure) || f.AsleepSteps < 0) throw r.Error("invalid fragment");
             lastSeq = f.Sequence;
             fragments.Add(f);
