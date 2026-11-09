@@ -113,7 +113,7 @@ public sealed class GridShapeTests
     public void VoxelContactsCoverEveryConvexCoreAndSoftParticles()
     {
         var grid=new VoxelGrid3D(1,1,1,[true],8);var generator=new ManifoldGenerator3D();var buffer=new TriangleShapeBuffer3D();
-        ConvexShape3D[] shapes=[ConvexShape3D.Sphere(0.3f),ConvexShape3D.Box(new(0.3f,0.3f,0.3f)),ConvexShape3D.Capsule(0.2f,0.2f),ConvexShape3D.TaperedCapsule(0.3f,0.2f,0.3f),ConvexShape3D.Cylinder(0.3f,0.3f),ConvexShape3D.TaperedCylinder(0.3f,0.2f,0.3f),ConvexShape3D.Triangle(new(-0.3f,0,-0.3f),new(0,0,0.3f),new(0.3f,0,-0.3f),0.1f),ConvexShape3D.FromHull(ConvexHull3D.Build([new(-0.3f,-0.3f,-0.3f),new(0.3f,-0.3f,-0.3f),new(0,-0.3f,0.3f),new(0,0.3f,0)]))];
+        ConvexShape3D[] shapes=[ConvexShape3D.Sphere(0.3f),ConvexShape3D.Box(new(0.3f,0.3f,0.3f)),ConvexShape3D.Capsule(0.2f,0.2f),ConvexShape3D.TaperedCapsule(0.3f,0.2f,0.3f),ConvexShape3D.Cylinder(0.3f,0.3f),ConvexShape3D.TaperedCylinder(0.3f,0.2f,0.3f),ConvexShape3D.TaperedCylinder(0.3f,0,0.3f),ScaledShape3D.Create(ConvexShape3D.Box(new(0.2f,0.3f,0.2f)),new Vector3F(1.5f,0.7f,2)),ConvexShape3D.Box(new(0.2f,0.2f,0.2f)).WithCenterOfMassOffset(new(0.5f,0,0)),ConvexShape3D.Triangle(new(-0.3f,0,-0.3f),new(0,0,0.3f),new(0.3f,0,-0.3f),0.1f),ConvexShape3D.FromHull(ConvexHull3D.Build([new(-0.3f,-0.3f,-0.3f),new(0.3f,-0.3f,-0.3f),new(0,-0.3f,0.3f),new(0,0.3f,0)]))];
         foreach(var shape in shapes)
         {
             var pose=new RigidTransformF(QuaternionF.Identity,new(4,8-shape.Support(-Vector3F.UnitY).Y-0.02f,4));
@@ -127,10 +127,12 @@ public sealed class GridShapeTests
             Assert.True(found,shape.Kind.ToString());
         }
         var w=new P3.PhysicsWorld3D();w.AddVoxelGrid(2,1,2,[true,true,true,true]);
+        var compound=w.AddCompound([new(P3.ShapeSpec3D.Box(new(0.2f,0.2f,0.2f)),default)],at:new(1.3,2.2,1.3));
         var mesh=P3.SoftBodyMesh.FromTriangles([new(0,0,0),new(0.5f,0,0),new(0,0,0.5f)],[0,1,2]);
         var def=P3.SoftBodyDef.Cloth(mesh,new(0.2,2,0.2));def.ParticleRadius=0.02f;var cloth=w.AddSoftBody(def);
         for(int i=0;i<120;i++)w.Step(1f/60);
         for(int i=0;i<3;i++)Assert.InRange(cloth.GetPosition(i).Y,0.98,1.1);
+        Assert.InRange(compound.Position.Y,1.09,1.11);
     }
 
     [Fact]
