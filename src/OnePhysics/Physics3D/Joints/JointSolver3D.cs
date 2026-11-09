@@ -525,13 +525,18 @@ internal sealed partial class Engine3D
         // The row is the exact gradient of the ellipse function with respect to the relative angular velocity, so it keeps working when the twist is large.
         float ly = s[JRow3.SwingLimit], lz = s[JRow3.SwingLimit + 1];
         bool outside = SwingRow(in g, rel, swing, ly, lz, out var swingRow, out float cval);
+        // The swing impulse is not warm-started: the row turns with the swing and a tumbling limb turns it by tenths of a radian per substep, so last substep's impulse along this substep's row pushes a light limb off
+        // (in 40 random drops of a limp humanoid, 3 to 14 of the figures flew apart with it, none without it). The limit is re-found each substep from its speculative slack instead.
+        if (warm) { p[JP.Swing] = 0f; }
         if (outside) { LimitRow(ref j, p, JP.Swing, swingRow, cval, useBias, jb, jm, ji, invH, warm); }
         else if (!warm) { p[JP.Swing] = 0f; }
     }
 
     /// <summary>
     /// The swing limit's row and slack. With the swing's (y, z) components s(q) = (y w − z x, z w + y x)/n, n = √(x² + w²), and q' = ½ ω q, the rate of every component is linear in ω;
-    /// the slack is (1 − ρ)·L with ρ the ellipse function and L the swing angle at which this direction reaches the ellipse, so the row is −L ∇ρ (about the axis of the swing when it is small).
+    /// the slack is (1 − ρ)·L with ρ the ellipse function and L the swing angle at which this direction reaches the ellipse. The row is the direction of the ellipse function's gradient with unit length,
+    /// not the gradient itself: the gradient's length runs from about 0.02 to over 1000 as the swing passes through its poles (n → 0) or the twist is large, and an impulse accumulated along a row of one length
+    /// is a very different torque along the next substep's row. A unit row makes the impulse an angular impulse in N·m·s whatever the pose, and a unit-length row is the natural rate of a swing angle.
     /// Returns false when the swing is too small to have a direction.
     /// </summary>
     private static bool SwingRow(in JGeo g, QuaternionF q, QuaternionF swing, float ly, float lz, out JointRow row, out float cval)
@@ -543,7 +548,6 @@ internal sealed partial class Engine3D
         if (!(rho > 1e-6f) || !(n > 1e-3f)) { return false; }
         float mag = 2f * float.Sqrt(sy * sy + sz * sz);
         cval = mag * (1f - rho) / rho;
-        float lref = mag / rho;
         var gx = new Vector3F(q.W, q.Z, -q.Y) * 0.5f;
         var gy = new Vector3F(-q.Z, q.W, q.X) * 0.5f;
         var gz = new Vector3F(q.Y, -q.X, q.W) * 0.5f;
@@ -553,7 +557,9 @@ internal sealed partial class Engine3D
         var dsy = (gy * q.W + gw * q.Y - gz * q.X - gx * q.Z) * inv - dn * (sy * inv);
         var dsz = (gz * q.W + gw * q.Z + gy * q.X + gx * q.Y) * inv - dn * (sz * inv);
         var drho = (dsy * (sy / (ly * ly)) + dsz * (sz / (lz * lz))) * (1f / rho);
-        row = JointRow.Ang(g.FA.Rotate(drho * -lref));
+        float gl = drho.Length();
+        if (!(gl > 1e-12f)) { return false; }
+        row = JointRow.Ang(g.FA.Rotate(drho * (-1f / gl)));
         return true;
     }
 
