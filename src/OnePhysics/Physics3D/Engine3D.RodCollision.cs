@@ -15,12 +15,25 @@ internal sealed partial class Engine3D
         int owner=Core.Shapes.Owner[shape];Rods.BodyCollisionPose(owner,time,out var body,out var bodyRotation);
         var local=Local[shape];var rotation=bodyRotation*local.Rotation;
         var origin=body+RodGeometry.Double(RodParticles.Rotate(bodyRotation,local.Translation-LocalCenterOf(owner)));
+        var g=Geoms[GeomOf[shape]]!;
+        // A sphere is far the commonest shape a rod meets (heads, balls, pulleys), and while apart its distance to a segment is closed-form: the segment point nearest the centre.
+        if(g.IsConvex&&g.Convex.Kind==ConvexShapeKind3D.Sphere)
+        {
+            var axis=b-a;double axisSquared=RodGeometry.Dot(axis,axis);
+            double along=axisSquared>1e-24?Math.Clamp(RodGeometry.Dot(origin-a,axis)/axisSquared,0,1):0;
+            var offset=a+axis*along-origin;double distance=RodGeometry.Length(offset);
+            double gap=distance-g.Convex.ConvexRadius-radius;
+            if(gap>1e-7&&distance>1e-12)
+            {
+                var unit=offset/distance;var normal=RodGeometry.Float(unit);
+                return new RodWitness{Separation=(float)gap,Normal=normal,Surface=origin+unit*g.Convex.ConvexRadius,Fraction=(float)along,Convex=true};
+            }
+        }
         var delta=b-a;float length=(float)RodGeometry.Length(delta);
         var tangent=length>1e-10f?RodGeometry.Float(delta/length):new Vector3F(0,1,0);
         var capsuleRotation=tangent.Y<-.999999f?new QuaternionF(1,0,0,0):RodParticles.Unit(new(tangent.Z,0,-tangent.X,1+tangent.Y));
         var capsule=length>1e-10f?ConvexShape3D.Capsule(length*.5f,radius):ConvexShape3D.Sphere(radius);
         var center=(a+b)*.5;
-        var g=Geoms[GeomOf[shape]]!;
         RodWitness best=new(){Separation=float.PositiveInfinity};
         if(g.IsConvex){var single=RodLeaf(g.Convex,origin,rotation,capsule,center,capsuleRotation,a,b,radius,0);single.Convex=true;return single;}
         if(g.Compound!=null)

@@ -302,20 +302,16 @@ internal sealed partial class RodStore
             }
             for(int c=cells;c>0;c--)_cellStart[c]=_cellStart[c-1];
             _cellStart[0]=0;
-            for(int k=0;k<nz;k++)for(int j=0;j<ny;j++)for(int i=0;i<nx;i++)
+            _gridX=nx;_gridY=ny;_gridCells=cells;
+            int blocks=(cells+CellBlock-1)/CellBlock;
+            if(_blockKeys.Length<blocks)Array.Resize(ref _blockKeys,Math.Max(blocks,_blockKeys.Length*2));
+            Host.RodCore.Executor.For(blocks,new CellPairsTask(this));
+            for(int b=0;b<blocks;b++)
             {
-                int c=i+nx*(j+ny*k);int from=_cellStart[c],to=_cellStart[c+1];
-                for(int p=from;p<to;p++)
-                {
-                    int oa=_cellItems[p];
-                    for(int q=p+1;q<to;q++)
-                    {
-                        int ob=_cellItems[q];
-                        // Reported by the lowest cell both boxes occupy, so each pair appears once.
-                        if(Math.Max(_cellLow[3*oa],_cellLow[3*ob])!=i||Math.Max(_cellLow[3*oa+1],_cellLow[3*ob+1])!=j||Math.Max(_cellLow[3*oa+2],_cellLow[3*ob+2])!=k)continue;
-                        AddPair(oa,ob,ref pairs);
-                    }
-                }
+                var found=_blockKeys[b]!;
+                if(pairs+found.Count>1048576)throw new InvalidOperationException("Rod candidate pair limit 1048576 exceeded.");
+                if(_pairKeys.Length<pairs+found.Count)Array.Resize(ref _pairKeys,Math.Max(pairs+found.Count,_pairKeys.Length*2));
+                found.CopyTo(_pairKeys,pairs);pairs+=found.Count;
             }
             for(int b=0;b<bigCount;b++)
             {
@@ -339,23 +335,58 @@ internal sealed partial class RodStore
         _pairCount=pairs;
         if(_pairHits.Length<pairs)_pairHits=new PairHit[Math.Max(pairs,_pairHits.Length*2)];
     }
-    // Adds the pair of boxes oa and ob (known to overlap in the grid cell) when the rods' filters allow them to touch.
+    private int _gridX,_gridY,_gridCells;
+    private List<ulong>?[] _blockKeys=new List<ulong>?[16];
+    private const int CellBlock=256;
+    private readonly struct CellPairsTask(RodStore store):IParallelBody
+    {
+        public void Run(int task)=>store.CellPairs(task);
+    }
+    // Pairs found in the cells of one block; only reads shared state, writes the block's own list.
+    private void CellPairs(int block)
+    {
+        var found=_blockKeys[block]??=new List<ulong>();found.Clear();
+        int nx=_gridX,ny=_gridY;int end=Math.Min(_gridCells,(block+1)*CellBlock);
+        for(int c=block*CellBlock;c<end;c++)
+        {
+            int i=c%nx,j=c/nx%ny,k=c/nx/ny;int from=_cellStart[c],to=_cellStart[c+1];
+            for(int p=from;p<to;p++)
+            {
+                int oa=_cellItems[p];
+                for(int q=p+1;q<to;q++)
+                {
+                    int ob=_cellItems[q];
+                    // Reported by the lowest cell both boxes occupy, so each pair appears once.
+                    if(Math.Max(_cellLow[3*oa],_cellLow[3*ob])!=i||Math.Max(_cellLow[3*oa+1],_cellLow[3*ob+1])!=j||Math.Max(_cellLow[3*oa+2],_cellLow[3*ob+2])!=k)continue;
+                    if(PairKey(oa,ob,out ulong key))found.Add(key);
+                }
+            }
+        }
+    }
     private void AddPair(int oa,int ob,ref int pairs)
     {
-        if(_pMinX[oa]>_pMaxX[ob]||_pMinX[ob]>_pMaxX[oa]||_pMinY[oa]>_pMaxY[ob]||_pMinY[ob]>_pMaxY[oa]||_pMinZ[oa]>_pMaxZ[ob]||_pMinZ[ob]>_pMaxZ[oa])return;
-        int ra=_pRod[oa],sa=_pSeg[oa],rb=_pRod[ob],sb=_pSeg[ob];var da=Data[ra]!;var db=Data[rb]!;
-        if(ra==rb){if(!da.SelfCollision||MaterialNeighbours(da,sa,sb))return;}
-        else
-        {
-            if(!Host.Layers(da.Layer,db.Layer))return;
-            if(da.Group==db.Group&&da.Group!=0){if(da.Group<0)return;}
-            else if((da.Category&db.Mask)==0||(db.Category&da.Mask)==0)return;
-        }
+        if(!PairKey(oa,ob,out ulong key))return;
         if(pairs>=1048576)throw new InvalidOperationException("Rod candidate pair limit 1048576 exceeded.");
         if(pairs==_pairKeys.Length)Array.Resize(ref _pairKeys,pairs*2);
+        _pairKeys[pairs++]=key;
+    }
+    // The sort key of the pair of boxes oa and ob when they overlap and the rods' filters allow them to touch.
+    private bool PairKey(int oa,int ob,out ulong key)
+    {
+        key=0;
+        if(_pMinX[oa]>_pMaxX[ob]||_pMinX[ob]>_pMaxX[oa]||_pMinY[oa]>_pMaxY[ob]||_pMinY[ob]>_pMaxY[oa]||_pMinZ[oa]>_pMaxZ[ob]||_pMinZ[ob]>_pMaxZ[oa])return false;
+        int ra=_pRod[oa],sa=_pSeg[oa],rb=_pRod[ob],sb=_pSeg[ob];var da=Data[ra]!;var db=Data[rb]!;
+        if(ra==rb){if(!da.SelfCollision||MaterialNeighbours(da,sa,sb))return false;}
+        else
+        {
+            if(!Host.Layers(da.Layer,db.Layer))return false;
+            if(da.Group==db.Group&&da.Group!=0){if(da.Group<0)return false;}
+            else if((da.Category&db.Mask)==0||(db.Category&da.Mask)==0)return false;
+        }
         bool swap=ra>rb||(ra==rb&&sa>sb);
         // 16 bits of rod slot and 13 of segment (a rod has at most 4096 segments) per end.
-        _pairKeys[pairs++]=swap?((ulong)rb<<42)|((ulong)sb<<29)|((ulong)ra<<13)|(uint)sa:((ulong)ra<<42)|((ulong)sa<<29)|((ulong)rb<<13)|(uint)sb;
+        key=swap?((ulong)rb<<42)|((ulong)sb<<29)|((ulong)ra<<13)|(uint)sa:((ulong)ra<<42)|((ulong)sa<<29)|((ulong)rb<<13)|(uint)sb;
+        return true;
     }
 
     private void SumStops(int count)
