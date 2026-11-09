@@ -111,7 +111,8 @@ Polygon cores clip against the plane edge by edge. Cross products give twice the
 area and the first moments give the centroid (the shoelace integral). Circles use
 analytic circular-segment area and centroid. Capsules and rounded polygons use
 128 fixed support directions, sine/cosine from OneMath, stable vertex-index ties;
-this approximates their curved boundaries (a full circle would have about 0.04%
+the directions are cached on first use as pure derived data, not saved state.
+This approximates their curved boundaries (a full circle would have about 0.04%
 area error, although circles themselves use the analytic path). Segments have
 zero area. Duplicate outline support points are harmless in the moment integral.
 

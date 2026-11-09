@@ -28,6 +28,16 @@ internal sealed class AreaCutter2D
 {
     private readonly Vector2F[] _boundary=new Vector2F[256];
     private readonly Vector2F[] _clipped=new Vector2F[258];
+    private Vector2F[]? _directions;
+    private static Vector2F[] BuildDirections()
+    {
+        var directions=new Vector2F[128];
+        for(int i=0;i<directions.Length;i++)
+        {
+            var (sin,cos)=Math32.SinCos(i*(6.283185307179586f/128));directions[i]=new(cos,sin);
+        }
+        return directions;
+    }
     internal SubmergedArea2D Cut(in Shape2D shape,Vector2F normal,float offset)
     {
         if(shape.Count==0)throw new ArgumentException("The shape is empty.",nameof(shape));
@@ -51,10 +61,11 @@ internal sealed class AreaCutter2D
         }
         else
         {
+            var directions=_directions??=BuildDirections();
             count=128;
             for(int i=0;i<count;i++)
             {
-                var (sin,cos)=Math32.SinCos(i*(6.283185307179586f/128));
+                float cos=directions[i].X,sin=directions[i].Y;
                 float best=float.NegativeInfinity;int winner=0;
                 for(int j=0;j<shape.Count;j++) {var v=shape.Vertices[j];float dot=v.X*cos+v.Y*sin;if(dot>best){best=dot;winner=j;}}
                 var p=shape.Vertices[winner];_boundary[i]=new(p.X+shape.Radius*cos,p.Y+shape.Radius*sin);

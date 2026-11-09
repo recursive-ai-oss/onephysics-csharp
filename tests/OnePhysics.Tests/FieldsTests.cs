@@ -166,4 +166,15 @@ public sealed class FieldsTests
         sensors.Step(0.01f);Assert.True(subject.LinearVelocity.X>0);sensor.Destroy();subject.LinearVelocity=default;sensors.Step(0.01f);Assert.Equal(0,subject.LinearVelocity.X);
         Assert.True(selected.Definition.SensorGeneration>0);
     }
+
+    [Fact]
+    public void RoundedBuoyancyMatchesCapsuleAreaAndReusesItsDirectionTable()
+    {
+        var shape=Shape2D.CreateCapsule(new(-1,0),new(1,0),0.5f);
+        var clipped=P2.Buoyancy2D.ComputeSubmergedArea(in shape,new(0,1),0);
+        float analytic=(2+3.141592653589793f*0.25f)*0.5f;Assert.InRange(clipped.Area,analytic-0.001f,analytic+0.001f);
+        var world=new P2.PhysicsWorld2D(new(){Gravity=default,SleepEnabled=false});world.AddCapsule(1,0.5f);
+        world.AddBuoyancyEffector(10,flow:new(1,0));for(int i=0;i<30;i++)world.Step(0.001f);
+        long before=GC.GetAllocatedBytesForCurrentThread();for(int i=0;i<30;i++)world.Step(0.001f);Assert.Equal(before,GC.GetAllocatedBytesForCurrentThread());
+    }
 }
