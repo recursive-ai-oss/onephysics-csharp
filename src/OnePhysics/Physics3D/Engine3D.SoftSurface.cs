@@ -138,6 +138,20 @@ internal sealed partial class Engine3D
         }
     }
 
+    // True when no surface body can carry a feature in a whole step farther than half its particle radius.
+    private bool SurfaceListingOncePerStep(float dt, float gmag)
+    {
+        for (int a = 0; a < _awakeSoftCount; a++)
+        {
+            var d = _awakeSoft[a];
+            if (!d.Def.SurfaceCollision || d.SurfTris.Length == 0) { continue; }
+            double travel = TravelFactor * (MaxParticleSpeed(d) * dt + 0.5f * gmag * dt * dt);
+            if (!(travel <= 0.5 * d.Radius)) { return false; }
+        }
+
+        return true;
+    }
+
     private bool BodiesMeet(int a, int b)
     {
         var da = _awakeSoft[a]; var db = _awakeSoft[b];
