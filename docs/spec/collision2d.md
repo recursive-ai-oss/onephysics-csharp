@@ -274,4 +274,12 @@ corner sum), which keeps the inside on the left even where samples are exactly z
 the lowest edge id, repeated points are dropped, and Douglas-Peucker simplification (split at the farthest point
 from the first) removes points within the tolerance of the chord. `PhysicsWorld2D.AddSdf` adds a static body
 with the contour as closed one-sided chains with ghost vertices (default tolerance a quarter of a cell). Only the contour
-collides, and a 2D field is not a dynamic shape.
+collides. A dynamic or kinematic body made by `AddSdf(type:)` is instead covered with convex polygons (`ConvexCover2D`): the
+loops are split into outer loops (positive signed area) and holes (negative), each hole goes to the smallest outer loop containing its first
+vertex, holes are bridged in order of decreasing rightmost x from that vertex to the visible loop vertex (Eberly, ear clipping: nearest
+crossing of a +x ray, then the reflex vertex in the triangle with the smallest angle), the weakly simple polygon is ear-clipped
+(lowest valid ear index first, collinear vertices dropped), and triangles are merged in ascending piece and edge order across a shared directed
+edge while the union stays convex with at most `MaxPolygonVertices` vertices (Hertel and Mehlhorn). The pieces tile the contour area exactly, so the body's
+mass is the contour's inside area times density; collisions use the ordinary polygon routines (not field samples), so a 2D dynamic field is
+as accurate as its contour (within half a cell of the field) and costs one shape per piece. More than 8192 contour vertices is an
+`ArgumentOutOfRangeException`; a piece below the minimum shape extent is dropped.

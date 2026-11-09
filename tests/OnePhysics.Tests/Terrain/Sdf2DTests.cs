@@ -74,4 +74,48 @@ public sealed class Sdf2DTests
         Assert.Throws<ArgumentOutOfRangeException>(() => field.ExtractContours(-1));
         Assert.Throws<ArgumentOutOfRangeException>(() => SdfGrid2D.FromFunction(new(0, 0), new(1e6f, 1e6f), 0.1f, _ => 1f));
     }
+
+    private static double Area(Vec2[] p) { double a = 0; for (int i = 0; i < p.Length; i++) { var u = p[i]; var v = p[(i + 1) % p.Length]; a += (double)u.X * v.Y - (double)v.X * u.Y; } return a / 2; }
+
+    [Fact]
+    public void ConvexCoverTilesTheContourExactly()
+    {
+        // Two blobs, one with a hole, an L-shaped notch: the pieces must be convex, counter-clockwise, at most 8 vertices, and add up to the signed area of the loops.
+        var f = SdfGrid2D.FromFunction(new(-6, -4), new(6, 4), 0.1f, SdfGrid2D.Union(
+            SdfGrid2D.Difference(SdfGrid2D.Union(SdfGrid2D.Circle(new(-3, 0), 1.5f), SdfGrid2D.Box(new(3, 0), new(1.5f, 1.5f))), SdfGrid2D.Circle(new(3, 0), 0.6f)),
+            SdfGrid2D.Box(new(-3, -3), new(1, 0.4f))));
+        var loops = f.ExtractContours(0.02f); double expected = loops.Sum(Area);
+        var pieces = ConvexCover2D.Cover(loops);
+        Assert.NotEmpty(pieces); Assert.Equal(expected, pieces.Sum(Area), 3);
+        foreach (var piece in pieces)
+        {
+            Assert.InRange(piece.Length, 3, 8);
+            for (int k = 0; k < piece.Length; k++)
+            {
+                var a = piece[k]; var b = piece[(k + 1) % piece.Length]; var c = piece[(k + 2) % piece.Length];
+                Assert.True(((double)b.X - a.X) * ((double)c.Y - b.Y) - ((double)b.Y - a.Y) * ((double)c.X - b.X) >= 0, "piece is not convex");
+            }
+        }
+        // The hole stays empty: no piece contains its centre.
+        Assert.DoesNotContain(pieces, piece => { double x = 3, y = 0; bool inside = true; for (int k = 0; k < piece.Length; k++) { var a = piece[k]; var b = piece[(k + 1) % piece.Length]; if (((double)b.X - a.X) * (y - a.Y) - ((double)b.Y - a.Y) * (x - a.X) < 0) inside = false; } return inside; });
+        Assert.Throws<ArgumentOutOfRangeException>(() => ConvexCover2D.Cover(loops, 10));
+    }
+
+    [Fact]
+    public void DynamicFieldBodyHasTheContourAreaAsMassAndRestsOnTerrain()
+    {
+        var w = new P2.PhysicsWorld2D(new() { SleepEnabled = false });
+        w.AddBox(new(30, 2), new(0, -1), type: BodyType.Static);
+        // A ring (annulus): outer radius 1, inner 0.5, area 3pi/4.
+        var ring = SdfGrid2D.FromFunction(new(-1.5f, -1.5f), new(1.5f, 1.5f), 0.05f, SdfGrid2D.Difference(SdfGrid2D.Circle(default, 1f), SdfGrid2D.Circle(default, 0.5f)));
+        var body = w.AddSdf(ring, new(0, 3), type: BodyType.Dynamic, density: 2f);
+        double area = 3 * Math.PI / 4; Assert.InRange(body.Mass, 2 * area * 0.98, 2 * area * 1.02);
+        for (int i = 0; i < 400; i++) w.Step(1f / 60);
+        // It rolls or rests on its outer circle: the centre sits one radius above the ground (within the half-cell contour bound).
+        Assert.InRange(body.Position.Y, 0.9, 1.1);
+        var again = new P2.PhysicsWorld2D(); again.Restore(w.Snapshot()); Assert.Equal(w.Snapshot(), again.Snapshot());
+        // A static field still builds chains and no polygon shapes; an empty field gives a body with no shapes.
+        var empty = w.AddSdf(SdfGrid2D.FromFunction(new(0, 0), new(2, 2), 0.1f, SdfGrid2D.Circle(new(1, 1), -1f)), type: BodyType.Dynamic);
+        Assert.True(empty.IsValid); w.Step(1f / 60);
+    }
 }

@@ -186,6 +186,10 @@ internal static class FuzzTerrain
             var w = new P2.PhysicsWorld2D(new() { WorldId = 145 }); w.AddSdf(grid); w.AddBox(new Vector2F(0.3f, 0.3f), new Vector2D(0.5, 3));
             for (int i = 0; i < 4; i++) { try { w.Step(1f / 60); } catch (PhysicsException) { break; } }
             _ = loops.Count;
+            // The convex cover of the same loops and a dynamic body made from it (random fields: holes, slivers, touching corners).
+            var wd = new P2.PhysicsWorld2D(new() { WorldId = 146 }); wd.AddBox(new Vector2F(20, 1), new Vector2D(0, -3), type: BodyType.Static);
+            wd.AddSdf(grid, new Vector2D(0, 2), type: BodyType.Dynamic);
+            for (int i = 0; i < 4; i++) { try { wd.Step(1f / 60); } catch (PhysicsException) { break; } }
         }
         catch (Exception ex) when (ex is ArgumentException or PhysicsException or InvalidShapeException) { }
     }
