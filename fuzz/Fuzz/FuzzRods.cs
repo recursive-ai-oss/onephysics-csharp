@@ -24,6 +24,17 @@ internal static class FuzzRods
         }
         catch (ArgumentException) { }
     }
+    // An accepted snapshot must step to completion or fail with a typed error before changing anything.
+    private static void StepChecked(Action<float> step,Func<ulong> hash)
+    {
+        for (int i=0;i<3;i++)
+        {
+            var before=hash();
+            try { step(1f/60); }
+            catch (Exception e) when (e is PhysicsException or ArgumentOutOfRangeException)
+            { if (before!=hash()) throw new InvalidOperationException("A rod step failed after changing the world: "+e.Message); return; }
+        }
+    }
     private static byte[]? s_planar, s_spatial;
     private static byte[] Baseline(bool planar)
     {
@@ -50,6 +61,7 @@ internal static class FuzzRods
             try { world.Restore(bytes); }
             catch (SnapshotFormatException) { if (!before.AsSpan().SequenceEqual(world.Snapshot())) throw new InvalidOperationException("Rejected rod snapshot changed world."); return; }
             if (!bytes.AsSpan().SequenceEqual(world.Snapshot())) throw new InvalidOperationException("Accepted rod snapshot changed bytes.");
+            StepChecked(world.Step,world.ComputeHash);
         }
         else
         {
@@ -57,6 +69,7 @@ internal static class FuzzRods
             try { world.Restore(bytes); }
             catch (SnapshotFormatException) { if (!before.AsSpan().SequenceEqual(world.Snapshot())) throw new InvalidOperationException("Rejected rod snapshot changed world."); return; }
             if (!bytes.AsSpan().SequenceEqual(world.Snapshot())) throw new InvalidOperationException("Accepted rod snapshot changed bytes.");
+            StepChecked(world.Step,world.ComputeHash);
         }
     }
 }

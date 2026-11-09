@@ -79,6 +79,8 @@ public sealed class StepCounters
     public int Characters { get; internal set; }
     /// <summary>Live vehicle controllers after the step.</summary>
     public int Vehicles { get; internal set; }
+    /// <summary>Field applications dropped in the last step because their result was not finite or was beyond ±1e12 (for example a gravity callback returning NaN). Dropped applications change nothing.</summary>
+    public int FieldApplicationsSkipped { get; internal set; }
     internal Span<int> Colors => _colors;
     internal void Reset()
     {
