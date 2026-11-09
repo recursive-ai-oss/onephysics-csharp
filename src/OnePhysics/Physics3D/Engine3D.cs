@@ -272,6 +272,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         }
 
         DropCharacterOfBody(b);
+        DropBicycleOfBody(b);
         DropVehicleOfBody(b);
         DropRagdollOfBody(b);
         ResetBuoyancy(b);
@@ -917,6 +918,7 @@ internal sealed partial class Engine3D : ISnapshotSection
 
         int nb = r.ReadCount(105, "3D bodies") /* bytes written per body: 12+4+24+4+4+4+4+4+12+12+1+4+4+12 */;
         if (nb > 1 << 22) { throw r.Error("too many 3D bodies"); }
+        RestoredBodyCount = nb;
         // Everything is read into staging arrays that the engine keeps between restores and swapped in at the end, so a restore allocates nothing once they have grown.
         var lc = Fit(ref _sLc, 3 * nb); var mass = Fit(ref _sMass, nb); var inertia = Fit(ref _sInertia, 6 * nb); var maxE = Fit(ref _sMaxE, nb); var minE = Fit(ref _sMinE, nb);
         var ld = Fit(ref _sLd, nb); var ad = Fit(ref _sAd, nb); var gs = Fit(ref _sGs, nb); var force = Fit(ref _sForce, 3 * nb); var torque = Fit(ref _sTorque, 3 * nb);
@@ -1167,6 +1169,9 @@ internal sealed partial class Engine3D : ISnapshotSection
     }
 
     /// <summary>Checks the section against the core after a restore; false when the two disagree (a damaged snapshot that parsed).</summary>
+    /// <summary>The body count of the engine section last read, for the optional sections that follow it in a snapshot.</summary>
+    internal int RestoredBodyCount { get; private set; }
+
     public bool IsConsistentWithCore()
     {
         ConsistencyProblem = "";
@@ -1174,7 +1179,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || GeomOf.Length < shapes.HighWater) { return false; }
         var cons = Core.Constraints;
-        if (!JointsConsistentWithCore() || !CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent() || !FluidsConsistent()) { return false; }
+        if (!JointsConsistentWithCore() || !CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent() || !FluidsConsistent() || !BicyclesConsistent()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)
         {
             if (!shapes.Handles.IsLive(s)) { continue; }

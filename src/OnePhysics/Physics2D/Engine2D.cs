@@ -210,6 +210,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         }
 
         DropCharacterOfBody(b);
+        DropBicycleOfBody(b);
         DropVehicleOfBody(b);
         DropRagdollOfBody(b);
         Core.DestroyBody(handle);
@@ -862,7 +863,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         var bodies = Core.Bodies;
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || Geom.Length < shapes.HighWater) { return false; }
-        if (!CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent()) { return false; }
+        if (!CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent() || !BicyclesConsistent()) { return false; }
         var cons = Core.Constraints;
         if (!JointsConsistentWithCore()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)

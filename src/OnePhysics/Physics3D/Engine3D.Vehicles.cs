@@ -43,6 +43,9 @@ internal sealed partial class VehicleState
     public int[] GroundShape = Array.Empty<int>();
     public float[] Torque = Array.Empty<float>(), Coef = Array.Empty<float>(), Compression = Array.Empty<float>(), Stop = Array.Empty<float>();
 
+    /// <summary>Torque a rider or another stage adds to each wheel for the coming step, N·m. Set again every step by whoever owns it, so it is not saved.</summary>
+    public float[] ExtraTorque = Array.Empty<float>();
+
     public int Wheels => Def.Wheels.Length;
 
     public void Allocate()
@@ -74,7 +77,7 @@ internal sealed partial class VehicleState
             }
         }
 
-        GroundShape = new int[n]; Torque = new float[n]; Coef = new float[n]; Compression = new float[n]; Stop = new float[n];
+        GroundShape = new int[n]; Torque = new float[n]; Coef = new float[n]; Compression = new float[n]; Stop = new float[n]; ExtraTorque = new float[n];
     }
 }
 
@@ -315,7 +318,9 @@ internal sealed partial class Engine3D
             float omega = s.Omega[i];
             float inv = 1f / wd.Inertia;
             // Wheel speed after the drive torque and the brakes; the tyre then acts on this speed (a split step that stays stable for any torque).
-            float ws = omega + h * s.Torque[i] * inv;
+            float driveTorque = s.Torque[i];
+            if (s.ExtraTorque[i] != 0f) { driveTorque += s.ExtraTorque[i]; }
+            float ws = omega + h * driveTorque * inv;
             float bi = s.Kind == VehicleKind.Tracked ? (i < s.TrackLeft ? s.BrakeLeft : s.BrakeRight) : brakeInput;
             float brakeT = bi * wd.MaxBrakeTorque + s.Handbrake * wd.MaxHandbrakeTorque;
             if (brakeT > 0f)

@@ -44,6 +44,7 @@ public sealed partial class PhysicsWorld3D
         _core.AddSection(_engine.Rods);
         BindBodyControlOptions();
         _core.AddSection(_engine.SoftSnapshotSection);
+        _core.AddSection(_engine.BicycleSnapshotSection);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -141,6 +142,7 @@ public sealed partial class PhysicsWorld3D
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.BeginBodyControls(dt);
         if (_engine.Fields.Count != 0) _engine.Fields.Step(dt);
+        _engine.StepBicycles(dt);
         _engine.StepVehicles(this, dt);
         _engine.StepFluids(dt);
         bool soft = _engine.SoftHandles.Count > 0;
