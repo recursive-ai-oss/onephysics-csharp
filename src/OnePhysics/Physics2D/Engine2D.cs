@@ -210,6 +210,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         }
 
         DropCharacterOfBody(b);
+        DropVehicleOfBody(b);
         Core.DestroyBody(handle);
         ShapeHead[b] = -1; ShapeTail[b] = -1;
         Mass[b] = 0f; Inertia[b] = 0f;
@@ -707,6 +708,7 @@ internal sealed partial class Engine2D : ISnapshotSection
 
         int nb = r.ReadCount(65, "2D bodies"); // 65 bytes of per-body arrays follow
         if (nb > 1 << 22) { throw r.Error("too many 2D bodies"); }
+        RestoredBodyCount = nb;
         // Everything is read into staging arrays that the engine keeps between restores and swapped in at the end, so a restore allocates nothing once they have grown.
         var lc = Fit(ref _sLc, 2 * nb); var mass = Fit(ref _sMass, nb); var inertia = Fit(ref _sInertia, nb); var maxE = Fit(ref _sMaxE, nb); var minE = Fit(ref _sMinE, nb);
         var ld = Fit(ref _sLd, nb); var ad = Fit(ref _sAd, nb); var gs = Fit(ref _sGs, nb); var force = Fit(ref _sForce, 2 * nb); var torque = Fit(ref _sTorque, nb);
@@ -837,6 +839,7 @@ internal sealed partial class Engine2D : ISnapshotSection
     private Shape2D[] _sGeom = new Shape2D[8];
     private uint[] _sCat = new uint[8], _sMask = new uint[8];
     internal int RestoredShapeCount { get; private set; }
+    internal int RestoredBodyCount { get; private set; }
     internal bool RestoredShapeIsLive(int s) => s >= 0 && s < RestoredShapeCount && _sLive[s];
     private bool[] _sLive = new bool[8], _sPl = new bool[8];
     private JointData2D[] _sJoints = new JointData2D[16];
@@ -857,7 +860,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         var bodies = Core.Bodies;
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || Geom.Length < shapes.HighWater) { return false; }
-        if (!CharactersConsistent()) { return false; }
+        if (!CharactersConsistent() || !VehiclesConsistent()) { return false; }
         var cons = Core.Constraints;
         if (!JointsConsistentWithCore()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)
