@@ -37,43 +37,6 @@ internal sealed partial class RodStore
             &&Math.Min(Math.Min(a0.Y,b0.Y),Math.Min(a1.Y,b1.Y))<=max.Y&&Math.Max(Math.Max(a0.Y,b0.Y),Math.Max(a1.Y,b1.Y))>=min.Y
             &&(Host.Planar||(Math.Min(Math.Min(a0.Z,b0.Z),Math.Min(a1.Z,b1.Z))<=max.Z&&Math.Max(Math.Max(a0.Z,b0.Z),Math.Max(a1.Z,b1.Z))>=min.Z));
     }
-    private void WorldContacts(float h)
-    {
-        var shapes=Host.RodCore.Shapes;
-        for(int r=0;r<Data.Length;r++)
-        {
-            var d=Data[r];if(d==null||!d.CollisionEnabled)continue;
-            for(int segment=0;segment<d.Length.Length;segment++)
-            {
-                if(d.InverseMass[segment]+d.InverseMass[segment+1]==0)continue;
-                for(int s=0;s<shapes.HighWater;s++)
-                {
-                    if(!shapes.Handles.IsLive(s)||!Host.Matches(d,s))continue;
-                    int body=shapes.Owner[s];if(!d.CollideWithAttachedBodies&&AttachedTo(d,body))continue;
-                    var a0=d.Previous[segment];var b0=d.Previous[segment+1];var a1=d.PositionData[segment];var b1=d.PositionData[segment+1];
-                    if(!Near(s,a0,b0,a1,b1,d.Material.Radius))continue;
-                    if(!SweepWorld(s,a0,b0,a1,b1,d.Material.Radius,Skin(d),out var witness,out float fraction))continue;
-                    WorldWitness(r,d,segment,segment,s,witness,fraction,h);
-                }
-            }
-            // End-cap sweeps complement the interior segment witness. A face can constrain
-            // both ends even when GJK deterministically returns only one closest feature.
-            for(int p=0;p<d.PositionData.Length;p++)
-            {
-                if(d.InverseMass[p]==0)continue;
-                int segment=Math.Min(p,d.Length.Length-1);float u=p==d.Length.Length?1:0;
-                for(int s=0;s<shapes.HighWater;s++)
-                {
-                    if(!shapes.Handles.IsLive(s)||!Host.Matches(d,s))continue;
-                    if(!d.CollideWithAttachedBodies&&AttachedTo(d,shapes.Owner[s]))continue;
-                    var start=d.Previous[p];var end=d.PositionData[p];
-                    if(!Near(s,start,start,end,end,d.Material.Radius))continue;
-                    if(!SweepWorld(s,start,start,end,end,d.Material.Radius,Skin(d),out var witness,out float fraction))continue;
-                    witness.Fraction=u;WorldWitness(r,d,segment,-p-1,s,witness,fraction,h);
-                }
-            }
-        }
-    }
     private void WorldWitness(int r,RodParticles d,int segment,int keySegment,int s,RodWitness witness,float fraction,float h)
     {
         int body=Host.RodCore.Shapes.Owner[s];var key=(r,keySegment,s,witness.Subshape);
@@ -99,10 +62,15 @@ internal sealed partial class RodStore
         if(_contactCount==_contacts.Length)Array.Resize(ref _contacts,_contacts.Length*2);
         int index=_contactCount++;_contactKeys.Add(key,index);return index;
     }
-    private bool SweepWorld(int shape,Vector3D a0,Vector3D b0,Vector3D a1,Vector3D b1,float radius,float skin,out RodWitness witness,out float fraction)
+    // Conservative advancement (Catto, GDC 2013). When the sweep proves no contact it also reports a clearance: the sweep's smallest
+    // separation above the skin, from the advancement bound (each step leaves at least a fifth of the gap it measured). A later pass
+    // whose endpoints moved by less than that cannot touch either, so the caller may skip it.
+    private bool SweepWorld(int shape,Vector3D a0,Vector3D b0,Vector3D a1,Vector3D b1,float radius,float skin,ref int stops,out float clearance,out float endGap,out RodWitness witness,out float fraction)
     {
-        double speed=Math.Max(RodGeometry.Length(a1-a0),RodGeometry.Length(b1-b0))+BodyMotionBound(Host.RodCore.Shapes.Owner[shape],_time1-_time0);
-        fraction=0;witness=default;
+        // The shape's translation is subtracted from the endpoints' own: a rod riding on its body does not close in on it.
+        BodyMotion(Host.RodCore.Shapes.Owner[shape],out var shift,out double turn);
+        var va=a1-a0-shift;var vb=b1-b0-shift;double speed=Math.Max(RodGeometry.Length(va),RodGeometry.Length(vb))+turn;
+        fraction=0;witness=default;clearance=0;endGap=0;double clear=double.PositiveInfinity;
         // Conservative advancement uses a Lipschitz speed bound for both endpoints and the rigid shape, including rotation.
         for(int i=0;i<64;i++)
         {
@@ -110,14 +78,30 @@ internal sealed partial class RodStore
             witness=Host.Distance(shape,a,b,radius,_time0+(_time1-_time0)*fraction);
             if(!float.IsFinite(witness.Separation))return false;
             if(witness.Separation<=skin)return witness.Normal.LengthSquared()>0;
-            if(!(speed>1e-15))return false;
-            double advance=.8*(witness.Separation-skin)/speed;
-            if(fraction+advance>1)return false;
+            clear=Math.Min(clear,.2*(witness.Separation-skin));
+            double advance,end;
+            if(witness.Convex)
+            {
+                // The witness plane of one convex piece lies below the whole segment (Gilbert, Johnson and Keerthi: the closest pair's separating plane),
+                // so each endpoint closes the gap only as fast as it moves along the plane normal: a sliding rod, or one end far from the shape, does not
+                // slow the advance. Plane distance and closing speed are per endpoint; the earlier crossing decides.
+                var n=RodGeometry.Double(witness.Normal);
+                double da=Math.Max(RodGeometry.Dot(a-witness.Surface,n)-radius,witness.Separation),db=Math.Max(RodGeometry.Dot(b-witness.Surface,n)-radius,witness.Separation);
+                double ca=Math.Max(0,-RodGeometry.Dot(va,n))+turn,cb=Math.Max(0,-RodGeometry.Dot(vb,n))+turn;
+                advance=Math.Min(ca>1e-15?(da-skin)/ca:double.PositiveInfinity,cb>1e-15?(db-skin)/cb:double.PositiveInfinity)*.8;
+                end=Math.Min(da-ca*(1-fraction),db-cb*(1-fraction))-skin;
+            }
+            else
+            {
+                advance=speed>1e-15?.8*(witness.Separation-skin)/speed:double.PositiveInfinity;
+                end=witness.Separation-skin-speed*(1-fraction);
+            }
+            if(fraction+advance>1){clearance=(float)clear;endGap=(float)end;return false;}
             if(advance<1e-8)return true;
             fraction+=(float)advance;
         }
         // Exhausting the bound is a conservative contact, never permission to step through a thin object.
-        _conservativeStops++;return witness.Normal.LengthSquared()>0;
+        stops++;return witness.Normal.LengthSquared()>0;
     }
     private void Configure(ref Contact c,RodParticles d,RodWitness witness,float h)
     {

@@ -6,22 +6,7 @@ namespace RecursiveAI.OnePhysics.Rods;
 
 internal sealed partial class RodStore
 {
-    private struct SegmentBox
-    {
-        internal int Rod,Segment;
-        internal double MinX,MinY,MinZ,MaxX,MaxY,MaxZ;
-    }
     private struct SegmentPair { internal int A,SA,B,SB; }
-    private readonly struct BoxOrder:IComparer<SegmentBox>
-    {
-        public int Compare(SegmentBox a,SegmentBox b)
-        {int c=a.MinX.CompareTo(b.MinX);if(c!=0)return c;c=a.Rod.CompareTo(b.Rod);return c!=0?c:a.Segment.CompareTo(b.Segment);}
-    }
-    private readonly struct PairOrder:IComparer<SegmentPair>
-    {
-        public int Compare(SegmentPair a,SegmentPair b)
-        {int c=a.A.CompareTo(b.A);if(c!=0)return c;c=a.SA.CompareTo(b.SA);if(c!=0)return c;c=a.B.CompareTo(b.B);return c!=0?c:a.SB.CompareTo(b.SB);}
-    }
     private static bool MaterialNeighbours(RodParticles d,int a,int b)
     {
         if(a>b)(a,b)=(b,a);if(b-a<=1)return true;
@@ -29,82 +14,7 @@ internal sealed partial class RodStore
         for(int i=a+1;i<b;i++){gap+=d.Length[i];if(gap>2*d.Material.Radius+1e-7)return false;}
         return true;
     }
-    private static void HeapSort<T,TOrder>(Span<T> values,TOrder order) where TOrder:struct,IComparer<T>
-    {
-        for(int root=values.Length/2-1;root>=0;root--)Sift(values,root,values.Length,order);
-        for(int end=values.Length-1;end>0;end--){(values[0],values[end])=(values[end],values[0]);Sift(values,0,end,order);}
-    }
-    private static void Sift<T,TOrder>(Span<T> values,int root,int count,TOrder order) where TOrder:struct,IComparer<T>
-    {
-        while(root<count/2)
-        {
-            int child=2*root+1;if(child+1<count&&order.Compare(values[child],values[child+1])<0)child++;
-            if(order.Compare(values[root],values[child])>=0)return;
-            (values[root],values[child])=(values[child],values[root]);root=child;
-        }
-    }
-    private SegmentBox[] _segmentBoxes=new SegmentBox[16];
     private SegmentPair[] _segmentPairs=new SegmentPair[16];
-    private void PairContacts(float h)
-    {
-        int count=0,pairs=0;
-        for(int r=0;r<Data.Length;r++)
-        {
-            var d=Data[r];if(d==null||!d.CollisionEnabled)continue;
-            for(int s=0;s<d.Length.Length;s++)
-            {
-                if(count==_segmentBoxes.Length)Array.Resize(ref _segmentBoxes,_segmentBoxes.Length*2);
-                var a=d.Previous[s];var b=d.Previous[s+1];var c=d.PositionData[s];var e=d.PositionData[s+1];double radius=d.Material.Radius+Skin(d);
-                _segmentBoxes[count++]=new SegmentBox{Rod=r,Segment=s,MinX=Math.Min(Math.Min(a.X,b.X),Math.Min(c.X,e.X))-radius,MaxX=Math.Max(Math.Max(a.X,b.X),Math.Max(c.X,e.X))+radius,
-                    MinY=Math.Min(Math.Min(a.Y,b.Y),Math.Min(c.Y,e.Y))-radius,MaxY=Math.Max(Math.Max(a.Y,b.Y),Math.Max(c.Y,e.Y))+radius,MinZ=Math.Min(Math.Min(a.Z,b.Z),Math.Min(c.Z,e.Z))-radius,MaxZ=Math.Max(Math.Max(a.Z,b.Z),Math.Max(c.Z,e.Z))+radius};
-            }
-        }
-        HeapSort(_segmentBoxes.AsSpan(0,count),new BoxOrder());
-        for(int i=0;i<count;i++)
-        {
-            var a=_segmentBoxes[i];var da=Data[a.Rod]!;
-            for(int j=i+1;j<count&&_segmentBoxes[j].MinX<=a.MaxX;j++)
-            {
-                var b=_segmentBoxes[j];if(a.MinY>b.MaxY||b.MinY>a.MaxY||a.MinZ>b.MaxZ||b.MinZ>a.MaxZ)continue;
-                var db=Data[b.Rod]!;
-                if(a.Rod==b.Rod){if(!da.SelfCollision||MaterialNeighbours(da,a.Segment,b.Segment))continue;}
-                else
-                {
-                    if(!Host.Layers(da.Layer,db.Layer))continue;
-                    if(da.Group==db.Group&&da.Group!=0){if(da.Group<0)continue;}
-                    else if((da.Category&db.Mask)==0||(db.Category&da.Mask)==0)continue;
-                }
-                if(pairs>=1048576)throw new InvalidOperationException("Rod candidate pair limit 1048576 exceeded.");
-                if(pairs==_segmentPairs.Length)Array.Resize(ref _segmentPairs,_segmentPairs.Length*2);
-                bool swap=a.Rod>b.Rod||(a.Rod==b.Rod&&a.Segment>b.Segment);
-                _segmentPairs[pairs++]=swap?new(){A=b.Rod,SA=b.Segment,B=a.Rod,SB=a.Segment}:new(){A=a.Rod,SA=a.Segment,B=b.Rod,SB=b.Segment};
-            }
-        }
-        HeapSort(_segmentPairs.AsSpan(0,pairs),new PairOrder());
-        for(int i=0;i<pairs;i++)
-        {
-            var pair=_segmentPairs[i];var a=Data[pair.A]!;var b=Data[pair.B]!;
-            if(!SweepPair(a,pair.SA,b,pair.SB,out float u,out float v,out var normal))continue;
-            var key=(pair.A,pair.SA,-pair.B-1,pair.SB);
-            if(!_contactKeys.TryGetValue(key,out int index))
-            {
-                index=AddContact(key);_contacts[index]=new Contact{Rod=pair.A,Segment=pair.SA,Other=pair.B,OtherSegment=pair.SB,Shape=-1,Body=-1,Enabled=true,NormalLimit=float.MaxValue,Friction=(float)Math.Sqrt(a.Friction*b.Friction),Friction2=(float)Math.Sqrt(a.Friction*b.Friction),Restitution=Math.Max(a.Restitution,b.Restitution)};
-            }
-            ref var contact=ref _contacts[index];
-            if(contact.Pass==0 && contact.Normal==default)ConfigurePair(ref contact,a,b,u,v,normal);
-            contact.Pass=_contactPass;contact.U=u;contact.V=v;contact.Normal=normal;
-            if(!contact.Enabled)continue;
-            var point=a.PositionData[pair.SA]*(1-u)+a.PositionData[pair.SA+1]*u;
-            var other=b.PositionData[pair.SB]*(1-v)+b.PositionData[pair.SB+1]*v;
-            double separation=RodGeometry.Dot(point-other,RodGeometry.Double(normal))-a.Material.Radius-b.Material.Radius+contact.SeparationOffset;
-            double wa=(1-u)*(1-u)*a.InverseMass[pair.SA]+u*u*a.InverseMass[pair.SA+1];
-            double wb=(1-v)*(1-v)*b.InverseMass[pair.SB]+v*v*b.InverseMass[pair.SB+1];
-            if(separation>=0||wa+wb<=0)continue;
-            float lambda=Math.Min((float)(-separation/(wa+wb)),Math.Max(0,contact.NormalLimit*h-contact.NormalLambda));contact.NormalLambda+=lambda;var impulse=normal*lambda;
-            Move(a,pair.SA,impulse*((1-u)*a.InverseMass[pair.SA]));Move(a,pair.SA+1,impulse*(u*a.InverseMass[pair.SA+1]));
-            Move(b,pair.SB,-impulse*((1-v)*b.InverseMass[pair.SB]));Move(b,pair.SB+1,-impulse*(v*b.InverseMass[pair.SB+1]));
-        }
-    }
     private void ConfigurePair(ref Contact c,RodParticles a,RodParticles b,float u,float v,Vector3F normal)
     {
         var velocity=a.VelocityData[c.Segment]*(1-u)+a.VelocityData[c.Segment+1]*u-b.VelocityData[c.OtherSegment]*(1-v)-b.VelocityData[c.OtherSegment+1]*v;
@@ -119,7 +29,7 @@ internal sealed partial class RodStore
         var view=new ContactModification(Host.RodCore,c.Rod,c.Segment,c.Other,c.OtherSegment,true,_contactPayload,_contactPoints,_contactExtra);
         modifier(ref view);c.Enabled=view.Enabled;c.Friction=view.Friction;c.Friction2=_contactExtra[3];c.Restitution=view.Restitution;c.SeparationOffset=view.GetSeparation(0)-separation;c.NormalLimit=view.NormalImpulseLimit;c.TangentSpeed=view.TangentSpeed;
     }
-    private bool SweepPair(RodParticles a,int sa,RodParticles b,int sb,out float u,out float v,out Vector3F normal)
+    private bool SweepPair(RodParticles a,int sa,RodParticles b,int sb,ref int stops,out float u,out float v,out Vector3F normal)
     {
         var a0=a.Previous[sa];var a1=a.Previous[sa+1];var b0=b.Previous[sb];var b1=b.Previous[sb+1];
         var da0=a.PositionData[sa]-a0;var da1=a.PositionData[sa+1]-a1;var db0=b.PositionData[sb]-b0;var db1=b.PositionData[sb+1]-b1;
@@ -149,7 +59,7 @@ internal sealed partial class RodStore
             double advance=.8*(distance-radius-skin)/speed;if(time+advance>1)return false;
             if(advance<1e-8)return true;time+=(float)advance;
         }
-        _conservativeStops++;return normal!=default;
+        stops++;return normal!=default;
     }
     private void PairVelocity(ref Contact c,float h)
     {

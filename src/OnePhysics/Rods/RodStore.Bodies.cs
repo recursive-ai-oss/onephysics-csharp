@@ -75,6 +75,7 @@ internal sealed partial class RodStore
     private void BodyPush(int b,Vector3F impulse,Vector3F arm,float h,float time,bool positional)
     {
         float weight=BodyWeight(b);if(weight==0)return;
+        NoteBodyPush(b);
         BodyPose(b,time,out _,out var rotation);
         var angle=Inertia(b,rotation,RodParticles.Cross(arm,impulse));
         if(positional)

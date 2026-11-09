@@ -81,7 +81,8 @@ and apply once. The default is 8 requested substeps and 4 nonlinear iterations.
 All live rods share the maximum requested substep count. A rod's own iteration
 count is retained, within the maximum iteration count's passes. Independent rod
 predictions/projections/finalizations run in parallel by slot; every pass then
-solves attachments, world contacts and rod pairs serially. This replaces
+solves attachments serially and searches world contacts and rod pairs (parallel
+sweeps, serial solves; see Contact search). This replaces
 whole-rod-at-a-time stepping: interacting strands must share the same time slice.
 The phase runs after existing rigid/soft phases. No scratch allocation occurs
 after storage and the executor have been warmed.
@@ -141,10 +142,15 @@ Sensors, layers, category/mask and signed groups retain their ordinary meaning.
 Contacts with attached bodies are excluded by default; the definition can enable
 them (as in the hair fixture).
 
-Conservative advancement bounds relative speed by the larger endpoint travel
-plus rigid translation and a quaternion-interpolation angular bound times body
-extent. It advances by 0.8*(separation-skin)/speed, with skin=max(1e-6,0.002*radius),
-at most 64 advances. Exhaustion retains a conservative contact, never a miss.
+Conservative advancement bounds the closing speed by the larger endpoint travel
+relative to the rigid shape's translation over the substep, plus a quaternion-interpolation
+angular bound times body extent. It advances by 0.8*(separation-skin)/speed, with
+skin=max(1e-6,0.002*radius), at most 64 advances. For a shape that is one convex piece
+the witness plane (the closest pair's separating plane) lies below the whole segment, so
+each endpoint's own plane distance and its closing speed along the plane normal
+(plus the angular bound) replace the isotropic speed, and the earlier of the two endpoints'
+crossings decides: a rod sliding along a surface, or with one end far from it, no longer
+creeps toward the skin in many small steps. Exhaustion retains a conservative contact, never a miss.
 Rigid collision poses interpolate the rigid step's poses and the rod substep's
 coupling corrections; they use the shortest normalized quaternion interpolation.
 A witness supplies a unilateral plane constraint at a barycentric segment point.
@@ -153,9 +159,9 @@ speed, not the clipped displacement. Coulomb friction has anisotropic tangent
 limits and surface velocities; spin/rolling torques act on segment frames and
 rigid bodies with opposite impulses.
 
-World features are encountered in rod/segment/shape order, followed by endpoint
-caps. Rod pairs come from swept AABB sweep-and-prune, heap-sorted by rod and
-segment identities before solving. Self contacts exclude material neighbours:
+World features are applied in rod/segment/shape order, followed by endpoint
+caps. Rod pairs are applied in (rod, segment, rod, segment) order, the smaller
+(rod, segment) first. Self contacts exclude material neighbours:
 the rest arc gap between their non-shared ends is at most twice the radius.
 Lookup dictionaries are never enumerated; encounter order alone assigns contact
 slots. Segment–segment witnesses use finite-segment closest points and the same
@@ -182,6 +188,50 @@ attachment multiplier divided by h² is the break force; the correction that
 would exceed the threshold is not applied. Destroying the referenced generation
 also breaks the attachment, without binding a reused slot. Readback is the
 average force over the last whole step.
+
+## Contact search
+
+Candidates are gathered once per substep, not rediscovered every pass, and the cache never
+decides a contact: each pass re-runs the exact tests on the cached candidates and a pass
+that finds the cache possibly short rebuilds it. Margin G = 0.004 m. A sphere's distance to a
+segment, while they are apart, is computed in closed form (the segment point nearest the centre);
+every other shape goes through the general distance routines.
+
+- **Shapes.** Per rod, the broadphase is asked for the rod's swept bounds (every segment's
+  box over its previous and current particles) grown by radius+0.001+G in the static tree, and
+  by that plus the largest, over moving bodies, of the larger absolute component of the body's
+  pose shift plus its motion bound in the kinematic and dynamic trees. The union is sorted by
+  shape slot, filtered by layers, category/mask, groups and sensors, then per segment kept when
+  the segment's bounds meet the shape's near box grown by G. The near box is the shape's tight
+  box shifted to the pose at the end of the substep and grown by the motion bound, the rod radius
+  and 0.001, which is the exact per-pass test with G added. An endpoint cap uses the list of its
+  segment (the last segment for the last particle).
+- **Pairs.** Each segment's bounds grown by radius, skin and G go into a uniform grid
+  (cell: twice the mean largest box edge, grown until there are at most 4n+64 cells; a box over
+  64 cells is tested against every box instead). A pair is reported by the lowest cell the two
+  boxes share; pairs between rods pass the layer matrix, groups and category/mask, pairs within one
+  rod need self collision and non-neighbouring segments. Pairs are sorted by the key
+  rod<<42|segment<<29|rod<<13|segment with the smaller (rod, segment) first, which is unique,
+  so the grid's order is irrelevant.
+- **Validity.** Before each pass every segment's current bounds must lie within G/2 of the
+  bounds at the gather, and every rigid body a solve has pushed since the gather must have kept
+  its pose shift plus motion bound within G/2 of the gathered value; otherwise the gather is
+  redone. A body that was not pushed has not moved (its near box is a function of the
+  substep alone).
+- **Proofs of no contact.** A sweep that finds no contact records its clearance (a fifth of the
+  smallest gap above the skin it measured, which bounds the gap over the whole sweep), the gap
+  bound at the end of the sweep, the endpoints and the body's push count. The next pass skips the
+  sweep while the endpoints have moved by at most half the clearance and the body was not pushed
+  since. The next substep skips it when the end gap, less the drift between the recorded
+  endpoints and the new start, exceeds the new substep's speed bound over 0.8, for a rigid body
+  that has not been pushed this step; the proof then moves on with the reduced gap. Proofs are
+  dropped at the start of every step and for shapes that leave the candidate list.
+- **Sweeps and solves.** Sweeps read the rod and rigid poses as they stand at the start of the
+  pass and run as one task per rod (world) or per block of 32 pairs, writing to per-rod and
+  per-pair slots; the contact bookkeeping, contact modifiers and solves then run serially in the
+  order above. A sweep therefore no longer sees corrections made by earlier contacts of the same
+  pass (it did when search and solve alternated): results do not depend on the thread count.
+  The count of conservative stops is summed in slot order.
 
 ## Analytic checks and numerical dissipation
 
@@ -221,10 +271,10 @@ x64 and arm64 values, rounded up to a 1/1.5/2/3/5/7 step, with a 1 mm penetratio
 
 | scene | maxSpeed | max relative stretch | rod penetration | tunnelled | measured (speed / stretch / penetration) |
 |---|---|---|---|---|---|
-| rope-whip-3d | <= 45 | <= 0.005 | <= 0.001 | 0 | 30.0 / 0.0031 / 9e-10 |
-| rope-2d | <= 5 | <= 0.05 | <= 0.001 | 0 | 2.62 / 0.0294 / 0.00033 |
+| rope-whip-3d | <= 45 | <= 0.005 | <= 0.001 | 0 | 30.0 / 0.0016 / 0 |
+| rope-2d | <= 5 | <= 0.05 | <= 0.001 | 0 | 2.62 / 0.0294 / 0.00025 |
 | rope-bridge-3d | <= 10 | <= 0.05 | <= 0.001 | 0 | 6.64 / 0.0215 / 0 |
-| hair-3d | <= 5 | <= 0.15 | <= 0.001 | 0 | 2.91 / 0.0944 / 0.00049 |
+| hair-3d | <= 5 | <= 0.15 | <= 0.001 | 0 | 2.91 / 0.0931 / 0.00043 |
 
 Speed is the larger of any rod particle's and any rigid body's speed. Penetration is the
 deepest remaining overlap between a rod capsule and a shape, after the last pass of a
@@ -234,13 +284,14 @@ is past the wall's centre plane; hair counts particles whose centre is inside th
 sphere (radius 0.34 against a 0.35 head); bridge and swing count dynamic bodies and rod
 particles whose centre is below the floor slab's centre plane.
 
-x64 (1 and 8 threads) and arm64 (1 thread) end hashes agree: whip 789d15b9ede1a341,
-rope-2d 513399b7bc8a8863, bridge 193ca0ba3e8809ce, hair 9cbe099fa3ddd754.
+x64 (1, 3 and 8 threads) end hashes after 600 steps: whip 32bfdfb01bd5cec5,
+rope-2d d10ad261d31ad6de, bridge 193ca0ba3e8809ce, hair 35e60c339911ff26.
 
 Joint-chain comparison uses matching particle locations/masses and distance joints, but
 has no Cosserat bend/twist, collides as spheres (at least 1 cm radius) instead of swept
 capsules, and reports no penetration. Indicative timings (Apple M2, 8 cores, load about 2,
-120 steps, first 30 dropped, median step; not a managed-engine verdict):
+120 steps, first 30 dropped, median step; not a managed-engine verdict). The rod rows are
+from before the contact search was reworked (Contact search above); the next table is after it.
 
 | scene | model | t1 ms | t8 ms | peak RSS |
 |---|---|---|---|---|
@@ -250,6 +301,17 @@ capsules, and reports no penetration. Indicative timings (Apple M2, 8 cores, loa
 | rope-bridge-3d | joint chain | 0.15 | 0.17 | 59 MB |
 
 The bridge's joint chain stretches 0.158 (limit 0.05), so it is unstable at the same
-scene definition. Removing contact handling takes the rod bridge from 6.7 to 2.8 ms and
-300-strand hair from 149 to 23 ms (x64, loaded host, one thread): world contact search,
-which is serial and repeats every pass, dominates; the solve itself scales with threads.
+scene definition.
+
+After the contact search rework (same machine and method, 150 steps, 3-6 loaded cores; the
+branch's table row against the same-day run of the previous code):
+
+| scene | before t1 / t8 ms | after t1 / t8 ms |
+|---|---|---|
+| hair-3d (1000 strands) | 309.8 / 268.3 | 102.7 / 32.1 |
+| rope-bridge-3d | 5.06 / 4.40 | 2.16 / 1.25 |
+
+What remains in hair-3d at one thread is mostly the rod solve (about 75 of 165 ms on x64, which the
+contact search does not touch), the capsule distance queries of the sweeps near the head, and the candidate
+gather (about 10 ms a step at one thread). The bridge touches no shape, so its cost was
+all search.
