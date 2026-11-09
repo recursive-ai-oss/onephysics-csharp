@@ -183,21 +183,38 @@ internal sealed partial class WaterGrid
             return Math.Abs(uIn) + float.Sqrt(g * hIn);
         }
 
-        float hOut, uOut, vOut;
-        if (kind == WaterEdge.Open) { hOut = hIn; uOut = uIn; vOut = vIn; }
-        else
+        if (kind == WaterEdge.Open)
         {
-            float d = EdgeLevel[lowEdge ? lowSide : highSide] - Bed[inside];
-            hOut = d > 0f ? d : 0f;
-            float speed = EdgeSpeed[lowEdge ? lowSide : highSide];
-            uOut = lowEdge ? speed : -speed; vOut = 0f;
+            // Zero gradient: the outside is a copy of the inside, so the flux is the inside's own.
+            CentralUpwind(hIn, uIn, vIn, hIn, uIn, vIn, g, out fh, out float fn0, out fr, out a);
+            fqLow = fqHigh = fn0;
+            return a;
         }
 
-        float fq1, fr1;
-        if (lowEdge) { CentralUpwind(hOut, uOut, vOut, hIn, uIn, vIn, g, out fh, out fq1, out fr1, out a); }
-        else { CentralUpwind(hIn, uIn, vIn, hOut, uOut, vOut, g, out fh, out fq1, out fr1, out a); }
-        fqLow = fqHigh = fq1; fr = fr1;
-        return a;
+        float level = EdgeLevel[lowEdge ? lowSide : highSide];
+        float bedIn = Bed[inside];
+        if (kind == WaterEdge.Inflow)
+        {
+            // A reservoir pushing water in: the state at the face is the imposed level over the bed there, moving at the imposed speed. Waves that reach it reflect, as from a wall that gives way only at that discharge.
+            float speed = EdgeSpeed[lowEdge ? lowSide : highSide];
+            float us = lowEdge ? speed : -speed;
+            float d = level - bedIn;
+            float hs = d > 0f ? d : 0f;
+            fh = hs * us; fr = 0f;
+            fqLow = fqHigh = hs * us * us + Pressure(hs, g);
+            return Math.Abs(us) + float.Sqrt(g * hs);
+        }
+
+        // A held level fixes the depth at the face and takes the speed from the Riemann invariant the water just inside sends out (u - 2c is carried toward a low edge, u + 2c toward a high one),
+        // so waves coming from the inside leave through the edge without reflecting what they carry.
+        float cIn = float.Sqrt(g * hIn);
+        float dl = level - bedIn;
+        float hf = dl > 0f ? dl : 0f;
+        float cf = float.Sqrt(g * hf);
+        float uf = lowEdge ? uIn - 2f * cIn + 2f * cf : uIn + 2f * cIn - 2f * cf;
+        fh = hf * uf; fr = 0f;
+        fqLow = fqHigh = hf * uf * uf + Pressure(hf, g);
+        return Math.Abs(uf) + cf;
     }
 
     // ---------------------------------------------------------------- update

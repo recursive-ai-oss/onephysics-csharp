@@ -12,8 +12,11 @@ public enum WaterBoundaryKind : byte
     /// <summary>Open: waves leave without reflecting much and the water level is not held (zero-gradient outflow, and inflow of whatever is just inside).</summary>
     Open = 1,
 
-    /// <summary>Inflow: water enters at a fixed surface level and speed.</summary>
+    /// <summary>Inflow: water enters at a fixed level and speed, like a reservoir pushing in at a fixed discharge (depth over the bed times speed). Waves that reach it reflect; use <see cref="Level"/> for an edge waves leave through.</summary>
     Inflow = 2,
+
+    /// <summary>A held water level, such as the sea or a reservoir: the surface at the side stays at the boundary's level and the flow through it follows from the water just inside, in or out.</summary>
+    Level = 3,
 }
 
 /// <summary>One side of a shallow-water grid and what happens there.</summary>
@@ -25,7 +28,7 @@ public readonly struct WaterBoundary : IEquatable<WaterBoundary>
     /// <summary>The kind.</summary>
     public WaterBoundaryKind Kind { get; }
 
-    /// <summary>For <see cref="WaterBoundaryKind.Inflow"/>: the surface height of the incoming water, metres (world y).</summary>
+    /// <summary>The surface height held (<see cref="WaterBoundaryKind.Level"/>) or fed in (<see cref="WaterBoundaryKind.Inflow"/>), metres (world y).</summary>
     public double Level { get; }
 
     /// <summary>For <see cref="WaterBoundaryKind.Inflow"/>: the speed of the incoming water into the grid, m/s (negative flows out). Within ±1000.</summary>
@@ -37,8 +40,11 @@ public readonly struct WaterBoundary : IEquatable<WaterBoundary>
     /// <summary>An open edge.</summary>
     public static WaterBoundary Open => new(WaterBoundaryKind.Open);
 
-    /// <summary>An inflow edge holding the given surface height and speed.</summary>
+    /// <summary>An inflow edge: water of surface height <paramref name="level"/> enters at <paramref name="speed"/> (m/s into the grid), a discharge of the depth over the bed there times the speed.</summary>
     public static WaterBoundary Inflow(double level, float speed) => new(WaterBoundaryKind.Inflow, level, speed);
+
+    /// <summary>An edge that holds the water surface at <paramref name="level"/> (metres, world y), letting the flow through it follow.</summary>
+    public static WaterBoundary HeldLevel(double level) => new(WaterBoundaryKind.Level, level);
 
     /// <inheritdoc/>
     public bool Equals(WaterBoundary other) => Kind == other.Kind && Level.Equals(other.Level) && Speed.Equals(other.Speed);

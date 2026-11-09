@@ -174,12 +174,35 @@ public class ShallowWaterSolverTests
     }
 
     [Fact]
+    public void AnOpenEdgeLetsAPulseLeaveWithoutReflecting()
+    {
+        var g = Planar(400, 0.1f, _ => 0.0, x => 1.0 + (x > 10 && x < 12 ? 0.1 : 0.0), WaterEdge.Open, WaterEdge.Open);
+        Run(g, 20);
+        float worst = 0f;
+        for (int i = 0; i < 400; i++) { worst = Math.Max(worst, Math.Abs(g.H[i] - 1f)); }
+        Assert.True(worst < 0.004f, "the pulse (0.1 m) must have left: " + worst);
+    }
+
+    [Fact]
+    public void AHeldLevelKeepsTheSurfaceAtTheEdge()
+    {
+        var g = Planar(400, 0.1f, _ => 0.0, x => 1.0 + (x > 30 && x < 33 ? 0.1 : 0.0), WaterEdge.Wall, WaterEdge.Level);
+        g.EdgeLevel[1] = 1.0f;
+        var ex = new TaskExecutor(1);
+        float worst = 0f;
+        for (int s = 0; s < 600; s++) { g.Advance(1f / 60f, G, ex); worst = Math.Max(worst, Math.Abs(g.H[399] - 1f)); }
+        // A held level reflects a wave upside down: the pulse is 0.1 m high and the edge cell hardly moves while it passes.
+        Assert.True(worst < 0.02f, "the edge cell moved by " + worst);
+    }
+
+    [Fact]
     public void InflowFillsTheGrid()
     {
         var g = Planar(100, 0.1f, _ => 0.0, _ => 0.0, WaterEdge.Inflow, WaterEdge.Wall);
         g.EdgeLevel[0] = 0.5f; g.EdgeSpeed[0] = 1f;
         Run(g, 4);
-        Assert.True(g.Volume() > 0.5);
-        Assert.True(g.H[0] > 0.3f);
+        // 0.5 m of depth entering at 1 m/s for 4 s brings 2 m² of water.
+        Assert.InRange(g.Volume(), 1.98, 2.02);
+        Assert.True(g.H[0] > 0.1f);
     }
 }

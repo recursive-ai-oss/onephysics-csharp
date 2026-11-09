@@ -2,6 +2,8 @@ using System;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.Physics3D;
+using RecursiveAI.OnePhysics.Debug;
+using RecursiveAI.OnePhysics.Replay;
 using Xunit;
 
 namespace RecursiveAI.OnePhysics.Tests.Water;
@@ -234,5 +236,111 @@ public class ShallowWater3DTests
         for (int i = 0; i < 600; i++) { w.Step(Dt); peak = Math.Max(peak, box.Position.Y); }
         Assert.True(peak > y0 + 0.01, "the wave must lift the box: " + (peak - y0));
         Assert.True(box.Position.Y < 3.5);
+    }
+
+    [Fact]
+    public void DebugGeometryCarriesTheSurfaceAsPlainData()
+    {
+        var w = Tank(out _);
+        w.AddBox(new Vector3F(1f, 1f, 1f), at: new Vector3D(10, 3, 10), density: 500f);
+        Run(w, 60);
+        var g = new DebugGeometry();
+        w.GetDebugGeometry(DebugContent.ShallowWater, g);
+        Assert.Equal(1, g.WaterSurfaces.Length);
+        var s = g.WaterSurfaces[0];
+        Assert.Equal(40, s.CellsX); Assert.Equal(40, s.CellsZ);
+        Assert.Equal(40 * 40, g.WaterHeights.Length);
+        Assert.Equal(g.WaterHeights.Length, g.WaterDepths.Length);
+        Assert.Equal(-1.0, s.Origin.Y);
+        Assert.InRange(g.WaterHeights[0] + s.Origin.Y, 1.9, 2.1);
+        w.GetDebugGeometry(DebugContent.Shapes, g);
+        Assert.Equal(0, g.WaterSurfaces.Length);
+    }
+
+    [Fact]
+    public void RecordedMutationsReplayToTheSameWorld()
+    {
+        var w = new PhysicsWorld3D(new WorldOptions3D { ThreadCount = 1, WorldId = 197 });
+        w.AddBox(new Vector3F(60f, 1f, 60f), new Vector3D(10, -0.5, 10), type: BodyType.Static);
+        using var stream = new System.IO.MemoryStream();
+        var expected = new System.Collections.Generic.List<ulong>();
+        using (var recorder = w.StartRecording(stream))
+        {
+            ShallowWater water = default;
+            for (int i = 0; i < 40; i++)
+            {
+                if (i == 2) { water = w.AddShallowWater(0, 0, 20, 20, 2.0, 0.5f, floor: -1.0); }
+                if (i == 3) { w.AddBox(new Vector3F(1f, 1f, 1f), new Vector3D(10, 3, 10), density: 500f); }
+                if (i == 10) { water.AddVolume(0, 0, 2, 20, 10f); }
+                if (i == 20) { water.SetBoundary(1, WaterBoundary.Open); }
+                w.Step(Dt); expected.Add(w.ComputeHash());
+            }
+        }
+
+        stream.Position = 0;
+        var player = new ReplayPlayer(stream);
+        var copy = new PhysicsWorld3D(new WorldOptions3D { ThreadCount = 1, WorldId = 197 });
+        int step = 0;
+        while (player.ReadNextStep(copy)) { Assert.Equal(expected[step++], copy.ComputeHash()); }
+        Assert.Equal(expected.Count, step);
+        Assert.Equal(w.Snapshot(), copy.Snapshot());
+    }
+
+    [Fact]
+    public void RegionSnapshotsKeepTheWholeWater()
+    {
+        var w = Tank(out var water, id: 198);
+        var inside = w.AddBox(new Vector3F(1f, 1f, 1f), new Vector3D(10, 3, 10), density: 500f);
+        var outside = w.AddBox(new Vector3F(1f, 1f, 1f), new Vector3D(15, 3, 15), density: 500f);
+        Run(w, 90);
+        var min = new Vector3D(8, -2, 8); var max = new Vector3D(12, 10, 12);
+        var region = w.CaptureRegion(min, max);
+        Assert.Contains(region.Fields, f => f.Entity == "shallow water");
+        var hash = region.ComputeHash();
+        Assert.Equal(hash, w.ComputeRegionHash(min, max));
+        outside.Position = new Vector3D(15, 9, 15);
+        Assert.Equal(hash, w.ComputeRegionHash(min, max));
+        inside.LinearVelocity = new Vector3F(0, 3, 0);
+        Assert.NotEqual(hash, w.ComputeRegionHash(min, max));
+        w.RestoreRegion(region.ToArray());
+        Assert.Equal(hash, w.ComputeRegionHash(min, max));
+        _ = inside; _ = water;
+    }
+
+    [Fact]
+    public void ABoatRidesTheWavesAndStaysUpright()
+    {
+        var w = Tank(out var water, id: 199);
+        var hull = w.CreateBody(BodyType.Dynamic, new Vector3D(6, 2.0, 10));
+        w.CreateBox(hull, new Vector3F(1.2f, 0.5f, 3f), 0f, new ShapeDef { Density = 150f / (1.2f * 0.5f * 3f), LocalPosition = new Vector3F(0f, 0.25f - 150f / (1000f * 3f * 1.2f), 0f) });
+        var boat = w.AddBoat(hull, BoatDef.Dinghy);
+        boat.Throttle = 0f;
+        double lowest = 9, highest = -9;
+        for (int i = 0; i < 900; i++)
+        {
+            if (i % 150 == 30) { water.AddVolume(0, 0, 2, 20, 30f); }
+            w.Step(Dt);
+            if (i > 60) { lowest = Math.Min(lowest, hull.Position.Y); highest = Math.Max(highest, hull.Position.Y); }
+            Assert.True(hull.Rotation.Rotate(new Vector3F(0, 1, 0)).Y > 0.3f, "capsized at step " + i);
+            if (hull.Position.Y < 1.0) { Assert.Fail("sank at step " + i + " p=" + hull.Position + " v=" + hull.LinearVelocity); }
+        }
+
+        Assert.True(highest - lowest > 0.02, "the boat must move with the waves: " + (highest - lowest));
+        Assert.InRange(hull.Position.Y, 1.5, 2.8);
+    }
+
+    [Fact]
+    public void ABodyOnTheBedOfShallowWaterIsPushedByACurrent()
+    {
+        // A current of 1.5 m/s from an inflow side drags a light box along.
+        var w = new PhysicsWorld3D(new WorldOptions3D { ThreadCount = 1, WorldId = 200 });
+        w.AddBox(new Vector3F(60f, 1f, 30f), new Vector3D(20, -0.5, 5), type: BodyType.Static);
+        var water = w.CreateShallowWater(new ShallowWaterDef { CellsX = 80, CellsZ = 20, CellSize = 0.5f, Level = 1.0, FloorHeight = -1.0, West = WaterBoundary.Inflow(1.0, 1.5f), East = WaterBoundary.Open });
+        var box = w.AddBox(new Vector3F(0.5f, 0.5f, 0.5f), new Vector3D(10, 1.0, 5), density: 300f);
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < 600; i++) { w.Step(Dt); if (i % 60 == 0) { water.TryGetSample(box.Position.X, 5, out var q); sb.Append("x" + box.Position.X.ToString("F2") + " vb" + box.LinearVelocity.X.ToString("F2") + " u" + q.Velocity.X.ToString("F2") + " d" + q.Depth.ToString("F2") + "; "); } }
+        Assert.True(box.Position.X > 14, sb.ToString() + "the current must carry the box: x = " + box.Position.X);
+        Assert.True(water.TryGetSample(5, 5, out var s));
+        Assert.InRange(s.Velocity.X, 0.8f, 2.2f);
     }
 }

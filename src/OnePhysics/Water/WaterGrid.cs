@@ -12,8 +12,11 @@ internal enum WaterEdge : byte
     /// <summary>Open: waves leave, nothing is held back (zero gradient).</summary>
     Open = 1,
 
-    /// <summary>Inflow: water enters at a fixed surface level and speed.</summary>
+    /// <summary>Inflow at a fixed speed.</summary>
     Inflow = 2,
+
+    /// <summary>A held water level.</summary>
+    Level = 3,
 }
 
 /// <summary>A source (positive rate) or drain (negative rate) of water at a point of the grid, in cubic metres per second (square metres per second in a planar world).</summary>
