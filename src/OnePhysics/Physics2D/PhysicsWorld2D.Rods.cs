@@ -7,6 +7,9 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 
 public sealed partial class PhysicsWorld2D
 {
+    /// <summary>Deterministic diagnostics of the last rod phase, initially zero. Units and sampling are documented by RodStepStatistics.</summary>
+    [Experimental("OPHYS0001")]
+    public RodStepStatistics RodStatistics => _engine.Rods.Statistics;
     /// <summary>Number of live rods, ropes, cables and hair strands; initially zero.</summary>
     [Experimental("OPHYS0001")]
     public int RodCount => _engine.Rods.Count;
@@ -25,8 +28,12 @@ public sealed partial class PhysicsWorld2D
         ArgumentNullException.ThrowIfNull(definition); definition.Validate();
         var points = new Vector3D[definition.Points.Length];
         for (int i = 0; i < points.Length; i++) { var p = definition.Points[i]; points[i] = new Vector3D(p.X,p.Y,0); }
+        foreach (var a in definition.Attachments) _engine.Rods.ValidateAttachment(a.Body,new Vector3F(a.LocalAnchor.X,a.LocalAnchor.Y,0),a.BreakForce);
         var v = definition.Velocity;
         var data = new RodParticles(points,definition.Material,true,definition.PinnedParticles,definition.ClampedSegments,new Vector3F(v.X,v.Y,0),definition.Substeps,definition.Iterations,definition.Damping,definition.GravityScale,definition.ClampStart);
+        data.Friction=definition.Friction; data.Restitution=definition.Restitution; data.CollisionEnabled=definition.CollisionEnabled; data.SelfCollision=definition.SelfCollision; data.CollideWithAttachedBodies=definition.CollideWithAttachedBodies;
+        data.Category=definition.CategoryBits; data.Mask=definition.MaskBits; data.Group=definition.GroupIndex; data.Layer=definition.Layer;
+        foreach (var a in definition.Attachments) _engine.Rods.Bind(data,a.Particle,a.Body,new Vector3F(a.LocalAnchor.X,a.LocalAnchor.Y,0),a.BreakForce);
         var h = _engine.Rods.Add(data); return new Rod(_engine.Rods,h.Slot,h.Generation);
     }
     /// <summary>Adds a straight flexible rope, default 32 segments, first end pinned, last end free. Throws ArgumentOutOfRangeException for invalid coordinates or segment count 1..4096.</summary>

@@ -16,6 +16,7 @@
     <TieredCompilation>false</TieredCompilation>
   </PropertyGroup>
 
+  <ItemGroup><Compile Include="../../tests/Common/RodScenes.cs" LinkBase="Common" /></ItemGroup>
   <ItemGroup>
     <Compile Include="../../tests/Common/FieldScenes.cs" LinkBase="Common" />
     <PackageReference Include="Box2D.NET" Version="3.1.654" />

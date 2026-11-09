@@ -144,6 +144,7 @@ public sealed partial class PhysicsWorld3D
         _engine.StepFluids(dt);
         bool soft = _engine.SoftHandles.Count > 0;
         if (soft) { _engine.BeginSoftStep(); }
+        if (_engine.Rods.Count != 0) _engine.Rods.BeginStep();
         _core.Step(new Stages3D(_engine), dt);
         _engine.EndFieldContacts();
 

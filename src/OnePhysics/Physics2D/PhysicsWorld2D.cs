@@ -131,6 +131,7 @@ public sealed partial class PhysicsWorld2D
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.BeginBodyControls(dt);
         if (_engine.Fields.Count != 0) _engine.Fields.Step(dt);
+        if (_engine.Rods.Count != 0) _engine.Rods.BeginStep();
         _core.Step(new Stages2D(_engine), dt);
         _engine.EndFieldContacts();
         if (_engine.Rods.Count != 0) _engine.Rods.Step(dt);

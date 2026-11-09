@@ -49,14 +49,15 @@ public sealed class RodsTests(ITestOutputHelper output)
         double expected = 1000*9.81/(2*1e9*0.05*0.05);
         foreach (int segments in new[] {8,16})
         foreach (int substeps in new[] {2,4,8})
+        foreach (int iterations in new[] {1,4})
         {
             var world = new P2.PhysicsWorld2D(); var points = new Vector2D[segments+1];
             for (int i = 0; i <= segments; i++) points[i] = new((double)i/segments,0);
-            var rod = world.AddRod(new() { Points=points, Material=material, PinnedParticles=[0], ClampStart=true, Damping=10, Substeps=substeps });
+            var rod = world.AddRod(new() { Points=points, Material=material, PinnedParticles=[0], ClampStart=true, Damping=10, Substeps=substeps, Iterations=iterations });
             for (int i = 0; i < 300; i++) world.Step(1f/60);
             double actual = -rod.GetPosition(segments).Y;
-            output.WriteLine($"beam segments={segments} substeps={substeps} deflection={actual:R} expected={expected:R} stretch={rod.MaximumStretch:R}");
-            Assert.True(Math.Abs(actual-expected)/expected < 0.08,$"n={segments}, actual={actual:R}, expected={expected:R}, stretch={rod.MaximumStretch:R}");
+            output.WriteLine($"beam segments={segments} substeps={substeps} iterations={iterations} deflection={actual:R} expected={expected:R} stretch={rod.MaximumStretch:R}");
+            Assert.True(Math.Abs(actual-expected)/expected < 0.03,$"n={segments}, actual={actual:R}, expected={expected:R}, stretch={rod.MaximumStretch:R}");
         }
     }
 
@@ -110,11 +111,11 @@ public sealed class RodsTests(ITestOutputHelper output)
         double a=(low+high)*0.5, expected=a*(Math.Cosh(span/(2*a))-1);
         var points=new Vector2D[n+1]; double initialSag=Math.Sqrt(length*length/4-span*span/4);
         for (int i=0;i<=n;i++) points[i]=new(-1+2.0*i/n,-initialSag*(1-Math.Abs(2.0*i/n-1)));
-        var world=new P2.PhysicsWorld2D(); var rod=world.AddRod(new() { Points=points, Material=new(1e8f,4e7f,0.001f,1000), PinnedParticles=[0,n], Damping=10, Substeps=8 });
-        for (int i=0;i<300;i++) world.Step(1f/60);
+        var world=new P2.PhysicsWorld2D(); var rod=world.AddRod(new() { Points=points, Material=new(1e8f,4e7f,0.0002f,1000), PinnedParticles=[0,n], Damping=10, Substeps=8 });
+        for (int i=0;i<1200;i++) world.Step(1f/60);
         double actual=-rod.GetPosition(n/2).Y;
         output.WriteLine($"catenary sag={actual:R} expected={expected:R} relativeError={Math.Abs(actual/expected-1):R} maxStretch={rod.MaximumStretch:R}");
-        Assert.InRange(Math.Abs(actual/expected-1),0,0.05); Assert.InRange(rod.MaximumStretch,0,0.01);
+        Assert.InRange(Math.Abs(actual/expected-1),0,0.01); Assert.InRange(rod.MaximumStretch,0,0.01);
     }
 
     [Fact]
@@ -129,7 +130,7 @@ public sealed class RodsTests(ITestOutputHelper output)
         var data=rod.Particles;
         for (int step=0;step<10000;step++)
         {
-            world.Step(1f/60); double energy=0;
+            world.Step(1f/60); double energy=data.ElasticEnergy;
             for (int i=0;i<=segments;i++)
             {
                 double mass=(i==0||i==segments?0.5:1)*Math.PI*0.01*0.01*1000/segments;
@@ -152,6 +153,25 @@ public sealed class RodsTests(ITestOutputHelper output)
         Assert.Throws<RodStateException>(()=>world.Step(1f/60)); Assert.Equal(invalid,world.Snapshot());
         world.Restore(before); var current=world.GetRod(rod.Index); current.SetPinned(2,true); current.SetTarget(2,new(1,2,3));
         world.Step(1f/60); Assert.Equal(new Vector3D(1,2,3),current.GetPosition(2));
+    }
+
+    [Fact]
+    public void ImplicitProjectionDissipationDecreasesWithSmallerSubsteps()
+    {
+        double previousLoss=double.PositiveInfinity;
+        foreach(int substeps in new[]{1,4,16})
+        {
+            var world=new P2.PhysicsWorld2D();var rod=world.AddRod(new(){Points=[default,new(Math.Sin(.1),-Math.Cos(.1))],PinnedParticles=[0],Damping=0,Substeps=substeps,Iterations=4,Material=new(1e9f,4e8f,.01f,1000)});
+            var data=rod.Particles;double mass=1/data.InverseMass[1];double minimum=-mass*9.81;
+            double Energy()
+            {
+                var velocity=rod.GetVelocity(1);double omega=data.AngularVelocity[0].Z;
+                return data.ElasticEnergy+mass*(.5*(velocity.X*velocity.X+velocity.Y*velocity.Y)+9.81*rod.GetPosition(1).Y)+.5*omega*omega/data.InverseBendInertia[0]-minimum;
+            }
+            double initial=Energy();for(int i=0;i<120;i++)world.Step(1f/60);double final=Energy();double loss=initial-final;
+            output.WriteLine($"projection damping substeps={substeps} initialExcessEnergy={initial:R} finalExcessEnergy={final:R} loss={loss:R}");
+            Assert.True(loss>=-1e-5&&loss<previousLoss,$"Expected decreasing projection loss, got {loss:R} versus {previousLoss:R}.");previousLoss=loss;
+        }
     }
 
 }

@@ -1,10 +1,11 @@
 # Circular Cosserat rods
 
-The experimental rod solver is shared by both dimensions. It currently provides
-stretch, shear, bend and spatial twist, world pins, driven particle targets and
-material frames. **Collision, rod/self contacts, rigid-body attachments and force
-breaking are not implemented yet.** Do not use this version where ropes must
-remain outside obstacles. All rod APIs carry the raw-tier experimental marker.
+The experimental rod solver is shared by both dimensions. It provides stretch,
+shear, bend and spatial twist, pins and driven particle/material-frame targets,
+generation-checked rigid attachments, force breaking, frictional capsule contacts
+with the world, rod–rod contacts and self contacts. The rod APIs remain experimental.
+The strain solver and contact geometry use physical SI parameters; they are not a
+joint-chain wrapper. Production performance has not yet been established.
 
 ## Representation and units
 
@@ -65,29 +66,44 @@ velocities are 2*sign*Im(qNew*conjugate(qOld))/h with sign chosen by W.
 Targets of pinned particles interpolate from their step-start position to the
 new target over substeps; the last substep uses the target exactly.
 
-Each nonlinear iteration assembles J*M^-1*J^T+compliance/h² and right-hand side
+Implicit drag also scales the constraint response: use W=M^-1/(1+Damping*h)
+for both positional and angular response. Damping only the prediction but not W
+would incorrectly reduce static deflection by 1/(1+Damping*h). Each nonlinear
+iteration assembles J*W*J^T+compliance/h² and right-hand side
 -C-(compliance/h²)*lambda. Groups have six rows: boundary first, then each
 segment's XYZ stretch and XYZ bend/twist. Only adjacent groups share degrees
 of freedom, giving lower bandwidth 11. Lower-band Cholesky, forward and back
 substitution use ascending row/column indices (back substitution descending).
 A pivot is bounded below by 1e-30 against roundoff. Reductions and multiplier
 updates use double. Corrections accumulate in row order per particle/frame
-and apply once. The default is 8 substeps and 4 nonlinear iterations. Rods solve
-in ascending slot order after existing rigid/soft phases, serially and
-independently of thread count. No scratch allocation occurs during a step.
+and apply once. The default is 8 requested substeps and 4 nonlinear iterations.
+
+All live rods share the maximum requested substep count. A rod's own iteration
+count is retained, within the maximum iteration count's passes. Independent rod
+predictions/projections/finalizations run in parallel by slot; every pass then
+solves attachments, world contacts and rod pairs serially. This replaces
+whole-rod-at-a-time stepping: interacting strands must share the same time slice.
+The phase runs after existing rigid/soft phases. No scratch allocation occurs
+after storage and the executor have been warmed.
 
 ## State and tooling
 
-The optional snapshot section `0x524F4453` (RODS), version 1, is absent until
+The optional snapshot section `0x524F4453` (RODS), version 2 (also reading version 1), is absent until
 rod slots exist. No existing section layout, hash or phase order changes when
 rods are unused. Little-endian fields:
 
-- version, slot count;
+- version; version 2 diagnostics: float32 maximum speed, float64 maximum relative
+  stretch, float32 maximum penetration, int32 contact count, int32 conservative
+  advancement limit count; slot count;
 - per slot: generation, live flag;
 - per live rod: E, G, radius, density; substeps, iterations, damping, gravity
-  multiplier; ClampStart flag and root-frame XYZW; particle count;
+  multiplier; ClampStart flag and root-frame XYZW; version 2 adds friction,
+  restitution, collision/self-collision/collide-with-attached-bodies bools,
+  category/mask uint32 and layer/group int32; particle count;
 - per particle: XYZ double position, XYZ double pin target, XYZ float velocity,
-  pinned bool, inverse mass;
+  pinned bool, inverse mass; version 2 then has attachment body index (-1 for
+  none), generation, local anchor XYZ, break force, last average force XYZ and
+  broken bool. World identity is rebound to the destination world, not saved;
 - per segment: XYZW frame, XYZ angular velocity, rest length, XYZ rest Darboux
   vector, clamped bool, transverse and axial inverse inertia;
 - six double multipliers per group, including the leading boundary group.
@@ -96,9 +112,11 @@ Floats, bools, doubles and counts use the existing primitive encodings. The
 reader checks counts against remaining bytes and the world limits, positive
 generations, finite state, bounds, unit frames and planar components before
 replacing state. A rejected whole-world restore is atomic. Previous positions,
-old frames and solver factors are scratch, rebuilt before use. A fork copies all
+old frames, contact candidates, attachment substep multipliers and solver factors
+are scratch, rebuilt before use. A fork copies all
 state and owns independent scratch. Region membership selects a whole rod if
-any particle lies in the inclusive region; restore requires compatible selected
+any particle lies in the inclusive region; attachment closure includes selected
+rods' bodies and selected dynamic bodies' attached rods. Restore requires compatible selected
 slots/generations and field topology. Desync labels identify the rod slot;
 repeated particle/segment fields use deterministic occurrence indices.
 
@@ -108,13 +126,92 @@ segment with its endpoints, radius and material quaternion, in slot/segment
 order. Raw span writes bypass recording and validation; invalid raw state is
 rejected at the start of Step with RodStateException before rigid stepping.
 
-## Analytic checks
+## Swept contacts and rigid coupling
 
-The targeted tests compare a 32-segment rope against the catenary with span 2 m
-and arc length 2.4 m (sag tolerance 5%, relative stretch below 1%). A clamped
-1 m beam under its own weight uses the small-deflection result q*L^4/(8*E*I),
-8 and 16 segments and 2/4/8 substeps (tip tolerance 8%). The finite-element
-model includes shear, unlike Euler–Bernoulli theory. A free planar pendulum
-runs 10000 steps without explicit damping; maximum total mechanical energy
-may not exceed its initial value by 0.001 J. These checks do not establish
-collision stability, rigid coupling, plectonemes or production performance.
+A rod segment is a capsule, not just two colliding particles. Existing 2D
+Distance2D/Collide2D and 3D GJK/manifold routines provide signed separation,
+normal and witnesses against ordinary shapes, compound children and triangle
+soup leaves. End-cap sweeps supplement the interior witness: a face can constrain
+both ends even when the closest-feature tie chooses only one endpoint. Shape
+and indexed triangle materials use the world's ordinary/custom material mixing.
+Sensors, layers, category/mask and signed groups retain their ordinary meaning.
+Contacts with attached bodies are excluded by default; the definition can enable
+them (as in the hair fixture).
+
+Conservative advancement bounds relative speed by the larger endpoint travel
+plus rigid translation and a quaternion-interpolation angular bound times body
+extent. It advances by 0.8*(separation-skin)/speed, with skin=max(1e-6,0.002*radius),
+at most 64 advances. Exhaustion retains a conservative contact, never a miss.
+Rigid collision poses interpolate the rigid step's poses and the rod substep's
+coupling corrections; they use the shortest normalized quaternion interpolation.
+A witness supplies a unilateral plane constraint at a barycentric segment point.
+Positions and terminal velocities are solved; restitution targets the incoming
+speed, not the clipped displacement. Coulomb friction has anisotropic tangent
+limits and surface velocities; spin/rolling torques act on segment frames and
+rigid bodies with opposite impulses.
+
+World features are encountered in rod/segment/shape order, followed by endpoint
+caps. Rod pairs come from swept AABB sweep-and-prune, heap-sorted by rod and
+segment identities before solving. Self contacts exclude material neighbours:
+the rest arc gap between their non-shared ends is at most twice the radius.
+Lookup dictionaries are never enumerated; encounter order alone assigns contact
+slots. Segment–segment witnesses use finite-segment closest points and the same
+conservative advancement bound, with both strands' endpoint speeds.
+
+The individual ContactModifier also sees rod contacts. Shape A is the rigid
+shape, B is null for a world contact; RodIndex/RodSegment identify the rod. For
+rod–rod contacts both bodies/shapes are null and OtherRodIndex identifies the
+other strand. The normal is A-to-B as usual. A callback runs once per feature
+per rod substep, after built-in one-way and material rules; it may disable
+response or edit coefficients, separation, tangent speed and normal impulse
+limit. Batch callbacks still address rigid constraint batches, not the separate
+rod store. Callback subscriptions are not state; recorder step effects preserve
+the modified simulation result without requiring callback code on playback.
+
+A body attachment joins any particle to a body-authoring-frame anchor (the
+centre-of-mass offset is accounted for). A symmetric 3x3 point effective mass
+includes rod inverse mass, rigid inverse mass and the rigid lever-arm inertia.
+Opposite position impulses and terminal velocity impulses are accumulated in
+fixed order. Rigid velocity corrections advance the virtual rigid pose during
+later rod substeps; omitting this feed-forward creates unstable repeated impulses.
+The final corrected rigid poses refresh their broadphase proxies. The net
+attachment multiplier divided by h² is the break force; the correction that
+would exceed the threshold is not applied. Destroying the referenced generation
+also breaks the attachment, without binding a reused slot. Readback is the
+average force over the last whole step.
+
+## Analytic checks and numerical dissipation
+
+The catenary check uses a 32-segment, 0.2 mm-radius rope of span 2 m and arc
+length 2.4 m, settled for 1200 steps (sag tolerance 1%, relative stretch below
+1%). A clamped 1 m beam under its own weight uses q*L^4/(8*E*I), 8/16 segments,
+2/4/8 requested substeps and 1/4 nonlinear iterations (tip tolerance 3%). The
+model includes shear, unlike Euler–Bernoulli theory. A held straight rod retains
+pi/2 material twist within 1e-4 radians. Prescribed over-twist with endpoint
+compression produces measured spatial writhe; self contacts prevent a free
+crossing of the folded strands.
+
+The zero-explicit-damping pendulum check includes kinetic, gravitational and
+elastic strain energy. Over 10000 steps its maximum may not exceed its initial
+energy by 0.001 J. This is a no-energy-growth test, **not energy conservation**.
+Prediction, position projection and velocity reconstruction form an implicit,
+dissipative integrator. Finite substeps and incomplete nonlinear convergence
+produce numerical damping even when Damping=0. Near a linear mode of frequency
+omega, implicit-Euler energy scales approximately as 1/(1+omega²*h²) per substep;
+smaller h reduces that loss. A separate two-second small-angle test at 1/4/16
+substeps measures decreasing excess-energy loss (about 1.891/0.527/0.123 mJ from
+7.698 mJ initially). The long pendulum's roughly -1.54 J final energy is close
+to the hanging rope's minimum gravitational potential; the removed energy was
+numerically dissipated, not a hidden velocity-damping parameter.
+
+## Shared fixtures
+
+`tests/Common/RodScenes.cs` defines rope-bridge-3d (two ropes, twelve attached
+planks and six dropped boxes), rope-whip-3d (30 m/s against a 1 cm wall),
+hair-3d (1000 six-segment strands attached to a moving spherical head) and
+rope-2d (driven swinging rope, attached weight and an obstacle field). The bar's
+`rod-run` command reports speed, relative stretch, remaining capsule penetration,
+scene-defined tunnelling and a final hash. Joint-chain comparison uses matching
+particle locations/masses and distance joints, but has no Cosserat bend/twist.
+Current fixture checks are experimental; indicative timing is not a managed
+reference performance verdict.

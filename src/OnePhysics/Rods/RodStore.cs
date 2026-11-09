@@ -12,6 +12,15 @@ internal interface IRodHost
     RodStore Rods { get; }
     bool Planar { get; }
     Vector3F Gravity { get; }
+    Vector3F LocalCenter(int body);
+    float BodyExtent(int body);
+    void MovedBody(int body);
+    bool Matches(RodParticles rod,int shape);
+    bool Layers(int a,int b);
+    void Bounds(int shape,out Vector3D minimum,out Vector3D maximum);
+    RodWitness Distance(int shape,Vector3D a,Vector3D b,float radius,float time);
+    ContactMaterial Mix(int shape,int subshape,float friction,float restitution);
+
     ReplayMutationScope RodMutation(string operation);
 }
 
@@ -90,18 +99,54 @@ internal sealed partial class RodStore(IRodHost host) : ISnapshotSection
     }
     internal void Step(float dt)
     {
-        // Stable slot order. A rod's direct solve does not depend on worker count.
-        foreach (var d in Data)
+        _stepDt=dt;_maximumSpeed=0;_maximumPenetration=0;_maximumStretch=0;_maximumContacts=0;_conservativeStops=0;
+        int substeps=1,iterations=1;
+        foreach(var d in Data)if(d!=null)
         {
-            if (d == null) continue;
-            Array.Copy(d.PositionData,d.PinStart,d.PositionData.Length);
-            float h = dt/d.Substeps;
-            for (int s = 0; s < d.Substeps; s++)
+            substeps=Math.Max(substeps,d.Substeps);iterations=Math.Max(iterations,d.Iterations);
+            Array.Copy(d.PositionData,d.PinStart,d.PositionData.Length);Array.Clear(d.AttachmentForce);
+        }
+        for(int b=0;b<Host.RodCore.Bodies.HighWater;b++)
+        {
+            if(!Host.RodCore.Bodies.IsLive(b))continue;
+            _bodyEnd[b]=BodyPosition(b);_rotationEnd[b]=BodyRotation(b);_bodyDelta[b]=default;_rotationDelta[b]=QuaternionF.Identity;_bodyChanged[b]=false;_bodyVelocityDelta[b]=default;_bodyAngularDelta[b]=default;
+        }
+        float h=dt/substeps;
+        for(int step=0;step<substeps;step++)
+        {
+            float t=(float)(step+1)/substeps;
+            _time0=(float)step/substeps;_time1=t;
+            for(int b=0;b<Host.RodCore.Bodies.HighWater;b++)if(Host.RodCore.Bodies.IsLive(b))BodyPose(b,_time0,out _bodySubStart[b],out _rotationSubStart[b]);
+            _contactKeys.Clear();_contactCount=0;
+            if(step>0)
+                for(int b=0;b<Host.RodCore.Bodies.HighWater;b++)
+                {
+                    if(!Host.RodCore.Bodies.IsLive(b))continue;
+                    var dv=_bodyVelocityDelta[b];_bodyDelta[b]+=new Vector3D((double)dv.X*h,(double)dv.Y*h,(double)dv.Z*h);
+                    _rotationDelta[b]=RodParticles.Turn(_rotationDelta[b],_bodyAngularDelta[b]*h);
+                }
+            Host.RodCore.Executor.For(Data.Length,new RodTask(this,h,t,-1));
+            for(int pass=0;pass<iterations;pass++)
             {
-                d.Predict(h,Host.Gravity,(float)(s+1)/d.Substeps);
-                for (int k = 0; k < d.Iterations; k++) d.Project(h);
-                d.Finish(h);
+                Host.RodCore.Executor.For(Data.Length,new RodTask(this,h,t,pass));
+                Attachments(h,t);
+                _contactPass=pass;
+                WorldContacts(h);
+                PairContacts(h);
             }
+            Host.RodCore.Executor.For(Data.Length,new RodTask(this,h,t,-2));
+            ContactVelocities(h,iterations-1);Measure(iterations-1);
+        }
+        FinishBodies();Statistics=new(_maximumSpeed,_maximumStretch,_maximumPenetration,_maximumContacts,_conservativeStops);
+    }
+    private readonly struct RodTask(RodStore store,float h,float time,int phase):IParallelBody
+    {
+        public void Run(int task)
+        {
+            var d=store.Data[task];if(d==null)return;
+            if(phase==-1)d.Predict(h,store.Host.Gravity,time);
+            else if(phase==-2)d.Finish(h);
+            else if(phase<d.Iterations)d.Project(h);
         }
     }
     internal void Shift(Vector3D offset)
@@ -123,11 +168,26 @@ internal sealed partial class RodStore(IRodHost host) : ISnapshotSection
                 { selection.Add("rod",i); break; }
         }
     }
-    public void Reset() { Data = []; Generations = []; Count = 0; }
+    internal bool CloseRegion(RegionSelection selection)
+    {
+        bool changed=false;
+        for(int r=0;r<Data.Length;r++)
+        {
+            if(Data[r] is not {} d)continue;
+            for(int p=0;p<d.AttachmentBody.Length;p++)
+            {
+                int b=d.AttachmentBody[p];if(b<0||!Host.RodCore.Bodies.Handles.IsAlive(b,d.AttachmentGeneration[p]))continue;
+                if(selection.Contains("rod",r))changed|=selection.AddBody(b);
+                if(selection.Bodies[b]&&Host.RodCore.Bodies.IsDynamic(b))changed|=selection.Add("rod",r);
+            }
+        }
+        return changed;
+    }
+    public void Reset() { Data = []; Generations = []; Count = 0; Statistics=default; }
     public ISnapshotSection Fork(WorldCore destination)
     {
         var copy = ((IRodHost)destination.GetSnapshotSection(Host.EngineSectionId)).Rods;
-        copy.Data = new RodParticles?[Data.Length]; copy.Generations = (int[])Generations.Clone(); copy.Count = Count;
+        copy.Data = new RodParticles?[Data.Length]; copy.Generations = (int[])Generations.Clone(); copy.Count = Count;copy.Statistics=Statistics;
         for (int i = 0; i < Data.Length; i++) copy.Data[i] = Data[i]?.Copy();
         return copy;
     }

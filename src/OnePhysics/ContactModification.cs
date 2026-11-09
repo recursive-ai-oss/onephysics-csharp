@@ -27,6 +27,7 @@ public ref struct ContactModification
     private readonly int _dimension;
     internal ContactModification(WorldCore world, int constraint, Span<float> extra, int originalCount = -1)
     {
+        RodIndex=-1;RodSegment=-1;OtherRodIndex=-1;
         _extra = extra;
         _dimension = world.Layout.PositionLanes;
         var store = world.Constraints;
@@ -40,6 +41,25 @@ public ref struct ContactModification
         SubShapeA = store.SubShapeA[constraint];
         SubShapeB = store.SubShapeB[constraint];
     }
+    internal ContactModification(WorldCore world,int shape,int subshape,int rod,int segment,Span<float> payload,Span<byte> points,Span<float> extra)
+    {
+        _payload=payload;_pointCount=points;_extra=extra;_count=1;_dimension=world.Layout.PositionLanes;
+        BodyA=world.HandleOfBody(world.Shapes.Owner[shape]);BodyB=default;ShapeA=world.HandleOfShape(shape);ShapeB=default;
+        SubShapeA=subshape;SubShapeB=segment;RodIndex=rod;RodSegment=segment;OtherRodIndex=-1;
+    }
+    internal ContactModification(WorldCore world,int rod,int segment,int otherRod,int otherSegment,bool rodsOnly,Span<float> payload,Span<byte> points,Span<float> extra)
+    {
+        _payload=payload;_pointCount=points;_extra=extra;_count=1;_dimension=world.Layout.PositionLanes;
+        BodyA=default;BodyB=default;ShapeA=default;ShapeB=default;SubShapeA=segment;SubShapeB=otherSegment;RodIndex=rod;RodSegment=segment;OtherRodIndex=otherRod;
+    }
+    /// <summary>The other rod slot for rod–rod contacts, otherwise -1. Both shapes and bodies are null for rod–rod contacts; the view normal points from RodIndex to OtherRodIndex.</summary>
+    public int OtherRodIndex { get; }
+    /// <summary>Whether B is a rod segment rather than a rigid shape. BodyB and ShapeB are null for these contacts.</summary>
+    public bool IsRodContact => !_payload.IsEmpty && RodIndex>=0;
+    /// <summary>Rod slot for a rod contact, otherwise -1. The rod belongs to the same world as ShapeA.</summary>
+    public int RodIndex { get; }
+    /// <summary>Segment index for a rod contact, otherwise -1.</summary>
+    public int RodSegment { get; }
     /// <summary>First body, ordered by shape index rather than body index.</summary>
     public BodyHandle BodyA { get; }
     /// <summary>Second body.</summary>

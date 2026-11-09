@@ -15,6 +15,14 @@ public sealed partial class RodParticles
     internal float[] Length, InverseMass, InverseBendInertia, InverseTwistInertia;
     internal Vector3F[] RestBend;
     internal bool[] Pinned, Clamped;
+    internal int[] AttachmentBody, AttachmentGeneration;
+    internal Vector3F[] AttachmentLocal, AttachmentForce, AttachmentLambda;
+    internal float[] AttachmentBreak;
+    internal bool[] AttachmentBroken;
+    internal float Friction = 0.4f, Restitution;
+    internal bool CollisionEnabled = true, SelfCollision = true, CollideWithAttachedBodies;
+    internal uint Category = 1, Mask = uint.MaxValue;
+    internal int Layer, Group;
     internal readonly RodMaterial Material;
     internal readonly bool Planar;
     internal readonly bool ClampStart;
@@ -40,6 +48,16 @@ public sealed partial class RodParticles
     public ReadOnlySpan<Vector3F> RestDarbouxVectors => RestBend;
     /// <summary>Last substep's XPBD multipliers, in six-row groups (boundary first, then segment stretch XYZ, twist X, bend YZ). Read-only.</summary>
     public ReadOnlySpan<double> Multipliers => LambdaData;
+    /// <summary>Current elastic strain energy in joules, including stretch, shear, bend, twist and the half-cell root clamp. Derived in fixed constraint-row order; hard pins/clamps store no spring energy. Single-writer access only.</summary>
+    public double ElasticEnergy
+    {
+        get
+        {
+            BuildRows(1);double energy=0;
+            foreach(var row in _rows)energy+=.5*row.C*row.C/row.Alpha;
+            return energy;
+        }
+    }
     /// <summary>Maximum absolute relative length error, dimensionless; zero for an undeformed straight rod.</summary>
     public double MaximumStretch
     {
@@ -66,6 +84,8 @@ public sealed partial class RodParticles
         Array.Copy(PositionData,Previous,PositionData.Length);
         PinTarget = (Vector3D[])PositionData.Clone(); PinStart = (Vector3D[])PositionData.Clone();
         int n = points.Length, m = n-1;
+        AttachmentBody = new int[n]; Array.Fill(AttachmentBody,-1); AttachmentGeneration = new int[n];
+        AttachmentLocal = new Vector3F[n]; AttachmentForce = new Vector3F[n]; AttachmentLambda = new Vector3F[n]; AttachmentBreak = new float[n]; Array.Fill(AttachmentBreak,float.MaxValue); AttachmentBroken = new bool[n];
         VelocityData = new Vector3F[n]; Array.Fill(VelocityData, velocity);
         AngularVelocity = new Vector3F[m]; FrameData = new QuaternionF[m]; OldFrame = new QuaternionF[m];
         Length = new float[m]; InverseMass = new float[n]; InverseBendInertia = new float[m]; InverseTwistInertia = new float[m];
@@ -128,6 +148,8 @@ public sealed partial class RodParticles
         double axial = Dot(tangent,v)*((double)InverseTwistInertia[i]-transverse);
         return new Vector3D(v.X*transverse+tangent.X*axial,v.Y*transverse+tangent.Y*axial,v.Z*transverse+tangent.Z*axial);
     }
+    internal Vector3F InverseAngularImpulse(int segment,Vector3F impulse)
+    {var x=AngularMass(segment,impulse);return new((float)x.X,(float)x.Y,(float)x.Z);}
     internal static QuaternionF Turn(QuaternionF q, Vector3F theta)
     {
         var d = new QuaternionF(theta.X*0.5f,theta.Y*0.5f,theta.Z*0.5f,0)*q;
@@ -195,6 +217,9 @@ public sealed partial class RodParticles
     private void Solve(float h)
     {
         BuildRows(h); Array.Clear(_matrix);
+        // Implicit drag scales the response to constraint forces as well as gravity.
+        // Scaling only the prediction would bias static compliance by 1/(1+damping*h).
+        double response=1/(1+(double)Damping*h);
         int groups = Length.Length+1, n = groups*6;
         for (int g = 0; g < groups; g++)
         {
@@ -205,13 +230,13 @@ public sealed partial class RodParticles
                 for (int b = 0; b <= a; b++)
                 {
                     int j = g*6+b; ref var y = ref _rows[j];
-                    _matrix[i*Width+i-j] = (g > 0 ? InverseMass[g-1]*Dot(x.PA,y.PA)+InverseMass[g]*Dot(x.PB,y.PB) : 0)+Dot(x.QA,y.WQA)+Dot(x.QB,y.WQB)+(a == b ? x.Alpha : 0);
+                    _matrix[i*Width+i-j] = ((g > 0 ? InverseMass[g-1]*Dot(x.PA,y.PA)+InverseMass[g]*Dot(x.PB,y.PB) : 0)+Dot(x.QA,y.WQA)+Dot(x.QB,y.WQB))*response+(a == b ? x.Alpha : 0);
                 }
                 if (g == 0) continue;
                 for (int b = 0; b < 6; b++)
                 {
                     int j = (g-1)*6+b; ref var y = ref _rows[j];
-                    _matrix[i*Width+i-j] = (g > 1 ? InverseMass[g-1]*Dot(x.PA,y.PB) : 0)+Dot(x.QA,y.WQB);
+                    _matrix[i*Width+i-j] = ((g > 1 ? InverseMass[g-1]*Dot(x.PA,y.PB) : 0)+Dot(x.QA,y.WQB))*response;
                 }
             }
         }
@@ -240,7 +265,7 @@ public sealed partial class RodParticles
             for (int g = Math.Max(1,p); g <= Math.Min(p+1,groups-1); g++)
                 for (int k = 0; k < 6; k++)
                 {
-                    int j = g*6+k; var grad = g == p+1 ? _rows[j].PA : _rows[j].PB; double s = InverseMass[p]*_rhs[j];
+                    int j = g*6+k; var grad = g == p+1 ? _rows[j].PA : _rows[j].PB; double s = InverseMass[p]*response*_rhs[j];
                     dx += new Vector3D(grad.X*s,grad.Y*s,grad.Z*s);
                 }
             PositionData[p] += new Vector3D(WorldCore.Grid(dx.X),WorldCore.Grid(dx.Y),WorldCore.Grid(dx.Z));
@@ -251,7 +276,7 @@ public sealed partial class RodParticles
             for (int g = p; g <= p+1; g++)
                 for (int k = 0; k < 6; k++)
                 {
-                    int j = g*6+k; var grad = g == p+1 ? _rows[j].WQA : _rows[j].WQB; double s = _rhs[j];
+                    int j = g*6+k; var grad = g == p+1 ? _rows[j].WQA : _rows[j].WQB; double s = response*_rhs[j];
                     dt += new Vector3D(grad.X*s,grad.Y*s,grad.Z*s);
                 }
             FrameData[p] = Turn(FrameData[p],new Vector3F((float)dt.X,(float)dt.Y,(float)dt.Z));
@@ -260,6 +285,7 @@ public sealed partial class RodParticles
 
     internal void SetPinned(int particle, bool pinned)
     {
+        AttachmentBody[particle]=-1;AttachmentGeneration[particle]=0;AttachmentBroken[particle]=false;AttachmentForce[particle]=default;
         Pinned[particle] = pinned; PinTarget[particle] = PositionData[particle]; PinStart[particle] = PositionData[particle];
         double area = Math.PI*Material.Radius*Material.Radius;
         float mass = 0;
@@ -270,7 +296,7 @@ public sealed partial class RodParticles
 
     internal void Predict(float h, Vector3F gravity, float fraction)
     {
-        Array.Clear(LambdaData);
+        Array.Clear(LambdaData);Array.Clear(AttachmentLambda);
         for (int i = 0; i < PositionData.Length; i++)
         {
             Previous[i] = PositionData[i];

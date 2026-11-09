@@ -55,6 +55,35 @@ public readonly struct Rod
         using var mutation = store.Host.RodMutation("Rod.SetVelocity");
         data.VelocityData[particle] = new Vector3F(velocity.X,velocity.Y,velocity.Z);
     }
+    /// <summary>Attaches a particle to a live body, replacing any pin/attachment. Local anchor is in metres in the body's authoring frame. Invalid identity or parameters throw before mutation.</summary>
+    public void Attach(int particle, Body body, Vector3F localAnchor = default, float breakForce = float.MaxValue)
+    {
+        var store=Store; var d=Data; Check(particle,d.PositionData.Length);
+        var anchor=new Vector3F(localAnchor.X,localAnchor.Y,localAnchor.Z);
+        store.ValidateAttachment(body.RawHandle,anchor,breakForce);
+        using var mutation=store.Host.RodMutation("Rod.Attach"); store.Bind(d,particle,body.RawHandle,anchor,breakForce);
+    }
+    /// <summary>Releases a body attachment; no effect on a world pin. Clears the broken flag and force readback.</summary>
+    public void Detach(int particle)
+    {
+        var store=Store; var d=Data; Check(particle,d.PositionData.Length);
+        using var mutation=store.Host.RodMutation("Rod.Detach"); d.AttachmentBody[particle]=-1; d.AttachmentBroken[particle]=false; d.AttachmentForce[particle]=default;
+    }
+    /// <summary>Average force on the particle from its body attachment during the last step, newtons; zero if never attached.</summary>
+    public Vector3F GetAttachmentForce(int particle)
+    { var d=Data; Check(particle,d.PositionData.Length); var f=d.AttachmentForce[particle]; return new(f.X,f.Y,f.Z); }
+    /// <summary>True if the attachment broke by force or loss of the bound body's generation. Rebinding or Detach clears it.</summary>
+    public bool IsAttachmentBroken(int particle) { var d=Data; Check(particle,d.PositionData.Length); return d.AttachmentBroken[particle]; }
+    /// <summary>Prescribes a clamped segment's material orientation at the step boundary. Any finite nonzero quaternion is normalized. Throws InvalidOperationException unless this segment was clamped in the definition.</summary>
+    public void SetFrameTarget(int segment,QuaternionF rotation)
+    {
+        var store=Store;var d=Data;Check(segment,d.FrameData.Length);
+        if(!d.Clamped[segment])throw new InvalidOperationException("A frame target requires a clamped segment.");
+        double norm=(double)rotation.X*rotation.X+(double)rotation.Y*rotation.Y+(double)rotation.Z*rotation.Z+(double)rotation.W*rotation.W;
+        if(!(norm>1e-24&&norm<1e24))throw new ArgumentOutOfRangeException(nameof(rotation),rotation,"Expected a finite nonzero quaternion with squared length 1e-24..1e24.");
+        var q=RodParticles.Unit(rotation);
+        using var mutation=store.Host.RodMutation("Rod.SetFrameTarget");d.FrameData[segment]=q;d.AngularVelocity[segment]=default;
+    }
     /// <summary>Maximum absolute relative length error over all segments, dimensionless.</summary>
     public double MaximumStretch => Data.MaximumStretch;
     /// <summary>Raw particle and segment arrays; experimental, single-writer access bypasses validation and recording.</summary>
