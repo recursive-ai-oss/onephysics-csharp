@@ -1028,3 +1028,122 @@ leaves and clipping remain a material limitation. A future fully wide design
 must price the queue, type partition, frame gather, divergent geometric cases,
 scalar completion and scatter together, and preserve cheap face rejection and
 edge-hint reuse rather than eagerly evaluating every edge axis.
+
+
+### One-substep contact schedule evaluation
+
+The contact-only schedule was swept over one substep, 4/6/8/10 biased
+velocity iterations and 0/1/2 relaxation iterations, with 2/1/1 as a cheaper
+two-substep comparison and the unchanged 2/1/2 default as a control.
+The joint-island schedule stayed 4/1/1. As with the default, islands containing
+only mild joints also take the contact-only schedule; this is not a sweep that
+excludes ragdoll joints. No frequency or damping settings, contact rules,
+sleeping options, scene definitions or stability thresholds were changed.
+
+**Result: none of the thirteen alternatives passes every scene.** Every one
+fails `pyramid-3d-30`. The closest one-substep result, 1/10/2, settles and sleeps,
+but its robust final penetration is 0.005159484 m against the unchanged 0.005 m
+limit. Relaxation cannot be dropped from two passes to one either: 2/1/1 has
+rest energy 0.001155 against 0.0001. The default remains 2/1/2; the joint and
+2D defaults also remain unchanged. This rejects these option combinations, not
+every possible one-substep solver formulation.
+
+#### Stability sweep
+
+All 22 generated 3D scenes were run for their full defined step counts at one
+thread for each of the fourteen schedules (308 runs). The control passes all 22.
+The table groups identical columns: **each** of the other 21 scenes passes
+**each** schedule, not just one representative scene. Those scenes are:
+`buoyancy-3d`, `characters-3d`, `cloth-drape-3d`, `heightfield-terrain-3d`,
+`joint-chains-3d`, `joint-grid-3d`, `joint-machines-3d`, `large-pile-3d`,
+`mesh-terrain-3d`, `motorcycle-3d`, `pyramid-3d-10`, `queries-3d`,
+`ragdoll-pile-3d`, `ragdoll-powered-3d`, `sleep-wake-3d`, `soft-mesh-3d`,
+`soft-pile-3d`, `soft-rigid-3d`, `soft-skinned-3d`, `tracked-3d`, `vehicles-3d`.
+
+Schedule notation is substeps / velocity iterations / relaxation iterations.
+For `pyramid-3d-30`, limits are finalPenetration ≤ 0.005 m, jitter ≤ 0.01 m/s,
+maxPenetration ≤ 0.05 m, maxSpeed ≤ 1 m/s, restKE ≤ 0.0001,
+topLateral ≤ 0.25 m and topDrop ≤ 0.1 m. Only violated metrics appear below;
+finalPenetration, jitter and restKE use the existing robust definitions.
+
+| schedule | pyramid-3d-30 | violated metric values | each other scene |
+|---|---|---|---|
+| 1/4/0 | FAIL | finalPenetration=0.010238722; jitter=0.10096208; maxPenetration=0.48676635; maxSpeed=1.3255772; restKE=0.21026728; topLateral=1.2903519 | PASS |
+| 1/4/1 | FAIL | finalPenetration=0.0060668201; jitter=0.078226416; maxPenetration=0.4766001; restKE=0.11040438; topLateral=1.0810449 | PASS |
+| 1/4/2 | FAIL | finalPenetration=0.0071620505; jitter=0.010448146; restKE=0.0036225961; topDrop=0.11390475 | PASS |
+| 1/6/0 | FAIL | finalPenetration=0.005528865; jitter=0.064488377; maxPenetration=0.46013436; restKE=0.03277959; topLateral=1.5065256 | PASS |
+| 1/6/1 | FAIL | finalPenetration=0.0058301555; jitter=0.038574833; restKE=0.041318878; topLateral=0.52521109 | PASS |
+| 1/6/2 | FAIL | finalPenetration=0.0058714344 | PASS |
+| 1/8/0 | FAIL | finalPenetration=0.0059200399; restKE=0.0061619854 | PASS |
+| 1/8/1 | FAIL | finalPenetration=0.0057229896; restKE=0.0015489465 | PASS |
+| 1/8/2 | FAIL | finalPenetration=0.0054517451 | PASS |
+| 1/10/0 | FAIL | finalPenetration=0.0052892452 | PASS |
+| 1/10/1 | FAIL | finalPenetration=0.0053107431 | PASS |
+| 1/10/2 | FAIL | finalPenetration=0.005159484 | PASS |
+| 2/1/1 | FAIL | restKE=0.0011549998 | PASS |
+| 2/1/2 | PASS | none | PASS |
+
+All reported nonfinite, escape and tunnelling counts were zero, including the
+mesh and height-field terrain scenes, for every schedule. Separate thin-surface
+crossing probes used a radius-0.1 m sphere starting at y=4.5 m with velocity
+−300 m/s, no gravity, dt=1/60 s, 20 steps and a dump every step. Without collision
+response its first step would end below the surface. Each probe was run both
+with and without the bullet flag, against a 0.02 m thick static box (top at y=0),
+an upward-facing two-triangle square mesh at y=0 and a flat 2×2 height field at
+y=0. Surfaces span x,z from −10 to 10 m. All six probes at every schedule had
+zero nonfinite and tunnelled counts (84 runs); tunnelling means the sphere
+centre drops below −0.2 m. These are bounded checks, not a general CCD proof.
+
+#### Indicative one-thread timing
+
+These measurements are **not performance-gate rows** and establish no speed
+win. They ran on a Ryzen 9 7950X3D (32 logical processors), Linux, SDK 10.0.403,
+runtime 10.0.14, tiered compilation disabled, pinned to logical CPUs 0–7, with
+an eight-core reservation. Other work overlapped. One-minute load was 16.36
+before, 16.13–34.55 during, and 29.50 after timing; the stability sweeps saw
+7.77–37.53. The severe spread, especially on large-pile, prevents a useful
+performance comparison. The stability rejection does not depend on these times.
+
+Values are median step milliseconds, excluding each scene's defined warmup,
+with no dump generation. Default 2/1/2, 1/8/2, 1/10/2, 2/1/1 and the reference
+were interleaved for three repetitions, reversing order on the second repetition;
+the table gives their best per-run median. All other schedules have one timing
+repetition. The reference is BepuPhysics 2.5.0-beta.33 at the existing harness
+defaults (`SolveDescription(8, 1)`). No eight-thread finalist measurement was
+needed because no alternative survived stability.
+
+| schedule | sleep-wake-3d ms | ragdoll-pile-3d ms | large-pile-3d ms | queries-3d ms |
+|---|---:|---:|---:|---:|
+| 1/4/0 | 3.54876 | 1.93164 | 15.82584 | 10.49891 |
+| 1/4/1 | 4.11919 | 1.90953 | 23.32411 | 11.57205 |
+| 1/4/2 | 3.80649 | 2.27148 | 14.10920 | 10.22307 |
+| 1/6/0 | 3.65481 | 2.91495 | 12.39987 | 9.36163 |
+| 1/6/1 | 3.58198 | 3.23955 | 33.01977 | 10.55485 |
+| 1/6/2 | 3.51232 | 2.96808 | 12.43288 | 10.65610 |
+| 1/8/0 | 4.27525 | 2.38084 | 27.81487 | 10.58096 |
+| 1/8/1 | 3.37652 | 2.44274 | 23.33808 | 11.88238 |
+| 1/8/2 | 3.33288 | 2.54160 | 22.71374 | 11.41544 |
+| 1/10/0 | 3.04458 | 2.77957 | 28.62696 | 12.12393 |
+| 1/10/1 | 3.06475 | 2.54216 | 14.89813 | 11.59028 |
+| 1/10/2 | 3.66564 | 2.74347 | 22.05705 | 11.94510 |
+| 2/1/1 | 3.26425 | 1.90162 | 7.54396 | 9.27553 |
+| 2/1/2 | 3.01375 | 2.43565 | 14.69681 | 9.06662 |
+| bepu | 1.23283 | 1.00475 | 7.27127 | 7.22413 |
+
+Peak resident memory was collected with `/usr/bin/time -v`. For the best-time
+repetitions, default / 1/10/2 / reference MiB were: sleep-wake 87.3 / 87.9 / 53.9;
+ragdoll 82.8 / 90.0 / 56.0; large-pile 141.6 / 146.2 / 80.7; queries 143.1 /
+149.2 / 89.2. Query throughput was not the selection criterion: the queries row
+above measures settling-step time, as elsewhere in this document.
+
+To reproduce a stability cell, generate the scenes with `Bar gen`, set
+`BAR_CONTACT_SUBSTEPS`, `BAR_CONTACT_VELITERS`, `BAR_CONTACT_RELAX` to the three
+schedule values, then run `Bar onephysics-driver --scene <scene> --threads 1
+--mode stability --result <result> --dump <dump>` followed by
+`Bar metrics <scene> <dump>`. Judge the emitted metrics with the unchanged limits
+in `scenes.md` and `tools/bench/judge3d.py` (joint-machines additionally requires
+maxSpeed ≤ 4 m/s). For timing, use `--mode timing` without `--dump`. The driver’s
+legacy config label does not report these overrides; the three environment
+values specify the actual schedule. No runtime, snapshot, hash, test golden or
+public API change is retained, so this experiment does not change any existing
+world-hash manifest.

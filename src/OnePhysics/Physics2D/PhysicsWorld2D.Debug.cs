@@ -18,6 +18,11 @@ public sealed partial class PhysicsWorld2D
     {
         ArgumentNullException.ThrowIfNull(geometry);
         geometry.Clear();
+        if ((flags & DebugContent.Fields) != 0)
+        {
+            for (int i=0;i<_engine.Fields.Definitions.Length;i++)
+                if (_engine.Fields.Definitions[i] is {} definition) geometry.Add(new DebugField(i,definition));
+        }
         var shapes = _core.Shapes;
         var bodies = _core.Bodies;
         var e = _engine;
@@ -97,6 +102,7 @@ public sealed partial class PhysicsWorld2D
         double ox = pos[0] - (double)w.X, oy = pos[1] - (double)w.Y;
         var kind = geom.Kind switch
         {
+            ShapeKind2D.Empty => DebugShapeKind.Empty,
             ShapeKind2D.Circle => DebugShapeKind.Circle,
             ShapeKind2D.Capsule => DebugShapeKind.Capsule,
             ShapeKind2D.Segment => DebugShapeKind.Segment,

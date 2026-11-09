@@ -12,7 +12,7 @@ internal readonly struct Stages2D : IWorldStages
 
     public Stages2D(Engine2D e) => _e = e;
 
-    public void UpdateContacts(WorldCore world) => _e.UpdateContacts(world);
+    public void UpdateContacts(WorldCore world) { _e.UpdateContacts(world); _e.ApplyFieldContacts(); }
 
     public void BeginSolve(WorldCore world, int batches, in StepContext context) => _e.BeginSolve(batches, in context);
 

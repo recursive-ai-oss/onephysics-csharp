@@ -14,12 +14,19 @@ internal static class Program
 {
     internal static readonly Dictionary<string, Action<byte[]>> Targets = new(StringComparer.Ordinal)
     {
+        ["field-snapshot"] = FuzzFields.Snapshot,
         ["snapshot-desync"] = FuzzSnapshotEncoding.Desync,
         ["snapshot-region"] = FuzzSnapshotEncoding.Region,
         ["snapshot-delta"] = FuzzSnapshotEncoding.Delta,
         ["snapshot-compressed"] = FuzzSnapshotEncoding.Compressed,
         ["replay"] = FuzzReplay.Run,
         ["scene"] = FuzzScene.Run,
+        ["plane3d"] = FuzzMissingShapes.Plane,
+        ["massoffset2d"] = FuzzMissingShapes.MassOffset2D,
+        ["massoffset3d"] = FuzzMissingShapes.MassOffset3D,
+        ["frustum3d"] = FuzzMissingShapes.Frustum,
+        ["triangle3d"] = FuzzMissingShapes.Triangle,
+        ["heightfield2d"] = FuzzMissingShapes.HeightField,
         ["mesh"] = FuzzMesh.MeshTarget,
         ["heightfield"] = FuzzMesh.HeightFieldTarget,
         ["meshquery"] = FuzzMesh.QueryTarget,

@@ -360,6 +360,7 @@ internal sealed partial class Engine3D
         ShapeFrame(s, out double ox, out double oy, out double oz, out QuaternionF rs);
         var inv = rs.Conjugated();
         var g = Geoms[GeomOf[s]]!;
+        if (g.IsConvex && g.Convex.Kind == ConvexShapeKind3D.Empty) { return false; }
         var lo = inv.Rotate(new Vector3F((float)(q.X - ox), (float)(q.Y - oy), (float)(q.Z - oz)));
         switch (q.Kind)
         {

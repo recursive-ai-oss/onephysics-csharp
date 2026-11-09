@@ -26,6 +26,18 @@ public enum ConvexShapeKind3D : byte
 
     /// <summary>A convex hull, optionally inflated by a radius.</summary>
     Hull,
+
+    /// <summary>A circular frustum along Y, including a cone when one radius is zero.</summary>
+    TaperedCylinder,
+
+    /// <summary>A double-sided triangular lamina, optionally inflated.</summary>
+    Triangle,
+
+    /// <summary>No geometry, distinct from a point shape. Always misses collision and queries.</summary>
+    Empty,
+
+    /// <summary>An infinite static half-space, dot(normal, point) ≤ offset.</summary>
+    Plane,
 }
 
 /// <summary>
@@ -33,17 +45,19 @@ public enum ConvexShapeKind3D : byte
 /// van den Bergen 2003, ch. 4). Every shape is a <em>core</em> shape inflated by a <see cref="ConvexRadius"/>: queries run on the cores and add the radii back,
 /// which keeps GJK well conditioned for rounded shapes and thin ones. Create shapes with the static factory methods.
 /// </summary>
-public readonly struct ConvexShape3D
+public readonly partial struct ConvexShape3D
 {
     /// <summary>Largest dimension accepted for any shape, 2^21.</summary>
     public const float MaxDimension = 2097152f;
 
     private readonly Vector3F _size;
     private readonly float _radius;
+    private readonly Vector3F _massOffset;
     private readonly ConvexHull3D? _hull;
 
     private ConvexShape3D(ConvexShapeKind3D kind, Vector3F size, float radius, ConvexHull3D? hull)
     {
+        _massOffset = default;
         Kind = kind;
         _size = size;
         _radius = radius;
@@ -54,17 +68,20 @@ public readonly struct ConvexShape3D
     public ConvexShapeKind3D Kind { get; }
 
     /// <summary>The radius the core is inflated by, 0 for a sharp shape. For a sphere or capsule it is the whole radius; for a tapered capsule it is 0 because the support mapping carries both radii.</summary>
-    public float ConvexRadius => _radius;
+    public float ConvexRadius => Kind == ConvexShapeKind3D.Plane ? 0f : _radius;
 
     // The shape's core dimensions as the factories store them: box half extents of the core; capsule (0, half height, 0); tapered capsule (top radius, bottom radius, half height);
     // cylinder (core radius, core half height, 0).
     internal Vector3F CoreSize => _size;
 
-    /// <summary>The hull of a <see cref="ConvexShapeKind3D.Hull"/> shape, otherwise null.</summary>
+    /// <summary>The topology of a hull or standalone triangle; otherwise null. Triangles have two opposite faces rather than enclosed volume.</summary>
     public ConvexHull3D? Hull => _hull;
 
     /// <summary>A zero-size shape: a point. Useful as the moving side of a ray cast.</summary>
     public static ConvexShape3D Point => default;
+
+    /// <summary>No geometry or mass. Contacts and overlaps are empty, distance is positive infinity, and casts miss. Body mass and inertia overrides can supply a physical placeholder.</summary>
+    public static ConvexShape3D Empty => new(ConvexShapeKind3D.Empty, default, 0f, null);
 
     /// <summary>Largest ratio of a shape's longest outer dimension to its shortest, 2^20. The cast and distance routines work in float32 with tolerances relative to the largest coordinate they see, so a shape much thinner than that is not resolved.</summary>
     public const float MaxAspectRatio = 1048576f;
@@ -177,10 +194,13 @@ public readonly struct ConvexShape3D
 
     /// <summary>The farthest point of the core (without the convex radius) along a direction. Ties resolve the same way on every platform.</summary>
     /// <param name="direction">Any direction; its length does not matter. A zero direction gives a valid but unspecified point.</param>
+    /// <exception cref="InvalidOperationException">This is an infinite plane, which has no finite support point.</exception>
     public Vector3F CoreSupport(Vector3F direction)
     {
         switch (Kind)
         {
+            case ConvexShapeKind3D.Plane:
+                throw new InvalidOperationException("An infinite half-space has no finite support point; use distance, contact or cast queries.");
             case ConvexShapeKind3D.Box:
                 return new Vector3F(direction.X < 0 ? -_size.X : _size.X, direction.Y < 0 ? -_size.Y : _size.Y, direction.Z < 0 ? -_size.Z : _size.Z);
             case ConvexShapeKind3D.Capsule:
@@ -219,6 +239,9 @@ public readonly struct ConvexShape3D
                     return new Vector3F(px, direction.Y < 0 ? -_size.Y : _size.Y, pz);
                 }
 
+            case ConvexShapeKind3D.TaperedCylinder:
+                return FrustumSupport(direction);
+            case ConvexShapeKind3D.Triangle:
             case ConvexShapeKind3D.Hull:
                 return _hull!.Support(direction);
             default:
@@ -228,6 +251,7 @@ public readonly struct ConvexShape3D
 
     /// <summary>The farthest point of the shape (core plus convex radius) along a direction.</summary>
     /// <param name="direction">Any non-zero direction.</param>
+    /// <exception cref="InvalidOperationException">This is an infinite plane, which has no finite support point.</exception>
     public Vector3F Support(Vector3F direction)
     {
         Vector3F core = CoreSupport(direction);
@@ -242,6 +266,7 @@ public readonly struct ConvexShape3D
     }
 
     /// <summary>The axis-aligned half extents of the shape in its own frame.</summary>
+    /// <exception cref="InvalidOperationException">This is an infinite plane, which has no finite half extents.</exception>
     public Vector3F HalfExtents => new(
         Support(Vector3F.UnitX).X,
         Support(Vector3F.UnitY).Y,
@@ -250,6 +275,13 @@ public readonly struct ConvexShape3D
     /// <summary>Volume, centre of mass and inertia tensor about the centre of mass, for unit density, in the shape's frame.
     /// Box and cylinder with a convex radius report the unrounded outer shape; a hull reports the hull without its inflation radius; a tapered capsule is the exact hull of its two spheres.</summary>
     public MassPropertiesF GetMassProperties()
+    {
+        var m = GeometryMass();
+        if (_massOffset.X == 0 && _massOffset.Y == 0 && _massOffset.Z == 0) return m;
+        return new MassPropertiesF(m.Mass, m.Center + _massOffset, InertiaF.ShiftToPoint(m.Inertia, m.Mass, _massOffset));
+    }
+
+    private MassPropertiesF GeometryMass()
     {
         switch (Kind)
         {
@@ -277,6 +309,9 @@ public readonly struct ConvexShape3D
                 return Revolution(_size.Y, _radius, _radius);
             case ConvexShapeKind3D.TaperedCapsule:
                 return Revolution(_size.Z, _size.X, _size.Y);
+            case ConvexShapeKind3D.TaperedCylinder:
+                return FrustumMass();
+            case ConvexShapeKind3D.Triangle:
             case ConvexShapeKind3D.Hull:
                 return _hull!.MassProperties;
             default:

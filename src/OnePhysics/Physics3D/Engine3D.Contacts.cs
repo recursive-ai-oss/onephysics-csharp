@@ -14,7 +14,7 @@ internal readonly struct Stages3D : IWorldStages
 
     public Stages3D(Engine3D e) => _e = e;
 
-    public void UpdateContacts(WorldCore world) => _e.UpdateContacts(world);
+    public void UpdateContacts(WorldCore world) { _e.UpdateContacts(world); _e.ApplyFieldContacts(); }
 
     public void Prepare(WorldCore world, ReadOnlySpan<int> constraints, in StepContext context) {
         // Contacts are prepared per batch (PrepareBatch); nothing else needs chunk-wise preparation yet.
@@ -664,6 +664,7 @@ internal sealed partial class Engine3D
 
         var ga = Geoms[GeomOf[sa]]!;
         var gb = Geoms[GeomOf[sb]]!;
+        if (ga.Convex.Kind == ConvexShapeKind3D.Empty || gb.Convex.Kind == ConvexShapeKind3D.Empty) { return; }
         if (ga.Soup != null && gb.Soup != null) { return; }
         sc.Reached++;
         var owner = Core.Shapes.Owner;
@@ -676,6 +677,7 @@ internal sealed partial class Engine3D
         if (existingCons < 0 && _skip[p].Clear > 0f && StillApart(in _skip[p], qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))) { return; }
         // A touching convex pair that has barely moved reuses its manifold; this is tried before the shape frames are built, which the reuse does not need.
         if (RecycleManifolds && existingCons >= 0 && ga.Soup == null && gb.Soup == null && ga.IsConvex && gb.IsConvex
+            && !HalfSpace3D.HasPlane(ga.Convex, gb.Convex)
             && TryRecycle(sc, existingCons, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]))))
         {
             _resCount[i] = 1;
@@ -1057,6 +1059,7 @@ internal sealed partial class Engine3D
         {
             case ConvexShapeKind3D.Box:
                 return Math.Abs(n.X) > FaceParallel || Math.Abs(n.Y) > FaceParallel || Math.Abs(n.Z) > FaceParallel;
+            case ConvexShapeKind3D.TaperedCylinder:
             case ConvexShapeKind3D.Cylinder:
                 return Math.Abs(n.Y) > FaceParallel;
             case ConvexShapeKind3D.Hull:

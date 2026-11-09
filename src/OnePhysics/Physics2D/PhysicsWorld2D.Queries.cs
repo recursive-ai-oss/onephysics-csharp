@@ -53,7 +53,7 @@ public sealed partial class PhysicsWorld2D
 
     private static void CheckShape(in Shape2D shape)
     {
-        if (shape.Count == 0) { throw new ArgumentException("The shape is empty (the default Shape2D); create one with Shape2D.Create*.", nameof(shape)); }
+        if (shape.Count == 0 && shape.Kind != ShapeKind2D.Empty) { throw new ArgumentException("The shape is empty (the default Shape2D); create one with Shape2D.Create*.", nameof(shape)); }
     }
 
     private static Rot2 RotationOf(float angleRadians)

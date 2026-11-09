@@ -137,6 +137,12 @@ public sealed partial class Scene
         var p = sh.P;
         if (p == null || p.Length > 1000000) throw Error("non-null bounded shape parameters");
         Finite(p);
+        if (AdditionalSceneShapes.Recognizes(Dim, sh.Kind))
+        {
+            try { AdditionalSceneShapes.Validate(Dim, sh); }
+            catch (Exception e) when (e is ArgumentException or PhysicsException) { throw Error("valid " + sh.Kind + " geometry: " + e.Message); }
+            return;
+        }
         int expected = (Dim, sh.Kind) switch
         {
             (2,"circle") => 2, (2,"capsule" or "segment") => 4, (2,"box") => 5,

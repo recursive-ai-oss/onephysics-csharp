@@ -45,8 +45,11 @@ public enum DebugContent
     /// <summary>Body/island states, constraint colours, joint row errors and force/impulse arrows as plain data.</summary>
     Inspection = 1024,
 
+    /// <summary>Field and effector bounds, axes and magnitudes as plain data.</summary>
+    Fields = 2048,
+
     /// <summary>Everything.</summary>
-    All = 2047,
+    All = 4095,
 }
 
 /// <summary>The kind of a <see cref="DebugShape"/>. The same enum serves 2D and 3D worlds; a 2D world emits the first five.</summary>
@@ -84,6 +87,15 @@ public enum DebugShapeKind : byte
 
     /// <summary>3D: like <see cref="Mesh"/> for a height field; holes have no triangles.</summary>
     HeightField = 10,
+
+    /// <summary>3D: bottom and top axis ends; Radius is the top radius and BottomRadius the bottom radius.</summary>
+    TaperedCylinder = 11,
+
+    /// <summary>No geometry or points; a placeholder shape.</summary>
+    Empty = 12,
+
+    /// <summary>3D infinite half-space: a surface point and that point plus the outward unit normal. Solid is opposite the normal.</summary>
+    Plane = 13,
 }
 
 /// <summary>How a body takes part right now.</summary>
@@ -456,7 +468,7 @@ public sealed partial class DebugGeometry
     public ReadOnlySpan<DebugSoftBody> SoftBodies => _soft.AsSpan(0, _nSoft);
 
     /// <summary>Empties every list (capacity is kept).</summary>
-    public void Clear() { ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; }
+    public void Clear() { _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; }
 
     private static void Push<T>(ref T[] a, ref int n, in T v)
     {

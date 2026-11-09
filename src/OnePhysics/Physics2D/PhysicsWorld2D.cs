@@ -31,8 +31,10 @@ public sealed partial class PhysicsWorld2D
         _mixedQueries = new PhysicsQuery2D(this);
         _core.AddSection(bp);
         _core.AddSection(_engine);
+        _core.AddSection(_engine.Fields);
         BindBodyControlOptions();
         _core.AddSection(_engine.MachineSnapshotSection);
+        _core.AddSection(new ShapeMassOffsets2D(_engine));
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -126,7 +128,9 @@ public sealed partial class PhysicsWorld2D
     {
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.BeginBodyControls(dt);
+        if (_engine.Fields.Count != 0) _engine.Fields.Step(dt);
         _core.Step(new Stages2D(_engine), dt);
+        _engine.EndFieldContacts();
         _engine.EndBodyControls();
         InvalidateQueryPad();
         _engine.ReconcileJoints();
@@ -286,8 +290,10 @@ public sealed partial class PhysicsWorld2D
         _core.ValidateShift(d);
         _engine.CheckShift(d);
         _engine.CheckMachineShift(d);
+        _engine.Fields.CheckShift(new Vector3D(offset.X,offset.Y,0));
         _core.ShiftOrigin(d);
         _engine.ShiftMachineJoints(d);
+        _engine.Fields.Shift(new Vector3D(offset.X,offset.Y,0));
         _engine.ShiftProxies(d);
         InvalidateQueryPad();
     }

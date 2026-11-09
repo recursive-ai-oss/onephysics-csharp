@@ -66,6 +66,15 @@ public readonly struct MassData2D
 
     internal static MassData2D Compute(in Shape2D s)
     {
+        if (s._massOffset.X != 0 || s._massOffset.Y != 0)
+        {
+            var geometry = s;
+            geometry._massOffset = default;
+            var m = Compute(in geometry);
+            var d = s.CenterOfMassOffset;
+            return new MassData2D(m.Area, m.CentroidX + d.X, m.CentroidY + d.Y,
+                m.InertiaAtCentroid + m.Area * ((double)d.X * d.X + (double)d.Y * d.Y));
+        }
         if (s._count == 0) { return default; }
         double r = s._radius;
         switch (s._kind)

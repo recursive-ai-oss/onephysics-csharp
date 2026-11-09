@@ -91,6 +91,7 @@ internal static partial class SceneBuilder2D
             Friction = (float)s.Materials[sh.Material].Friction,
             Restitution = (float)s.Materials[sh.Material].Restitution,
         };
+        if (AdditionalSceneShapes.Recognizes(2, sh.Kind)) { AdditionalSceneShapes.Create(world, body, sh, def); return; }
         var p = sh.P;
         switch (sh.Kind)
         {

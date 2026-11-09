@@ -26,7 +26,7 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>Number of fluids in the world.</summary>
-    public int FluidCount => _engine.FluidHandles.Count;
+    public int FluidCount { get { int count=_engine.FluidHandles.Count; foreach(var definition in _engine.Fields.Definitions) if(definition?.Kind==RecursiveAI.OnePhysics.Fields.FieldKind.Buoyancy)count++; return count; } }
 
     /// <summary>
     /// Raw tier, for hosts with their own water: adds the buoyancy and drag a body would get from the fluid described by <paramref name="fluid"/> to its force and torque for the next step, whether or not the fluid is

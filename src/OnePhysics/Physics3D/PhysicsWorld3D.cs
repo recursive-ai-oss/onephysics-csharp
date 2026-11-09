@@ -40,6 +40,7 @@ public sealed partial class PhysicsWorld3D
         _mixedQueries = new PhysicsQuery3D(this);
         _core.AddSection(bp);
         _core.AddSection(_engine);
+        _core.AddSection(_engine.Fields);
         BindBodyControlOptions();
         _core.AddSection(_engine.SoftSnapshotSection);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
@@ -136,11 +137,13 @@ public sealed partial class PhysicsWorld3D
     {
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.BeginBodyControls(dt);
+        if (_engine.Fields.Count != 0) _engine.Fields.Step(dt);
         _engine.StepVehicles(this, dt);
         _engine.StepFluids(dt);
         bool soft = _engine.SoftHandles.Count > 0;
         if (soft) { _engine.BeginSoftStep(); }
         _core.Step(new Stages3D(_engine), dt);
+        _engine.EndFieldContacts();
 
         if (soft) { _engine.StepSoft(dt); }
         _engine.EndBodyControls();
@@ -301,9 +304,11 @@ public sealed partial class PhysicsWorld3D
         _core.ValidateShift(d);
         _engine.CheckShift(d);
         _engine.CheckMouseJointShift(d);
+        _engine.Fields.CheckShift(offset);
         _core.ShiftOrigin(d);
         _engine.ShiftJoints(d);
         _engine.ShiftFluids(offset.X, offset.Y, offset.Z);
+        _engine.Fields.Shift(offset);
         _engine.ShiftSoft(offset.X, offset.Y, offset.Z);
         _engine.ShiftProxies(d);
         InvalidateQueryPad();

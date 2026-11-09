@@ -139,6 +139,7 @@ internal static partial class SceneBuilder3D
             Friction = (float)s.Materials[sh.Material].Friction,
             Restitution = (float)s.Materials[sh.Material].Restitution,
         };
+        if (AdditionalSceneShapes.Recognizes(3, sh.Kind)) { AdditionalSceneShapes.Create(world, body, sh, def); return; }
         var p = sh.P;
         float r = (float)sh.Radius;
         switch (sh.Kind)

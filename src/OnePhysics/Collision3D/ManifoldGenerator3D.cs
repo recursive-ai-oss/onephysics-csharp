@@ -87,6 +87,8 @@ public sealed partial class ManifoldGenerator3D
         _edgeHint = HintIn; HintIn = default; // a hint applies to one call only, so a leftover cannot reach another pair that happens to run on this thread next
         ClearanceOut = 0f; ClearanceAxisOut = default;
         HintOut = default; // nothing to keep unless the polyhedron test sets it; a value left by the previous pair would depend on which thread ran it
+        if (a.Kind == ConvexShapeKind3D.Empty || b.Kind == ConvexShapeKind3D.Empty) { return Empty; }
+        if (HalfSpace3D.HasPlane(a, b)) return PlaneManifold(a, b, bInA, speculativeDistance);
         ConvexShapeKind3D ka = a.Kind, kb = b.Kind;
         bool segA = IsSegmentLike(ka), segB = IsSegmentLike(kb);
         bool polyA = IsPoly(ka), polyB = IsPoly(kb);
@@ -341,6 +343,7 @@ public sealed partial class ManifoldGenerator3D
             case ConvexShapeKind3D.Box: return ConvexShape3D.Sqrt(z.LengthSquared()) + r;
             case ConvexShapeKind3D.Capsule: return z.Y + r;
             case ConvexShapeKind3D.TaperedCapsule: return z.Z + Math.Max(z.X, z.Y);
+            case ConvexShapeKind3D.TaperedCylinder: return ConvexShape3D.Sqrt(z.Z * z.Z + Math.Max(z.X, z.Y) * Math.Max(z.X, z.Y));
             case ConvexShapeKind3D.Cylinder: return ConvexShape3D.Sqrt((z.X * z.X) + (z.Y * z.Y)) + r;
             default:
                 {
