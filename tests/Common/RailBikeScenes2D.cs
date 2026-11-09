@@ -76,6 +76,26 @@ internal static class RailBikeScenes2D
         }
     }
 
+    /// <summary>Runs both scenes (shortened) and mixes their per-step world hashes; with <paramref name="restoreHalfway"/> the world is snapshotted and restored into a fork half-way, which must not change a bit.</summary>
+    internal static ulong Run(int threads, bool restoreHalfway)
+    {
+        ulong hash = 0xCBF29CE484222325UL;
+        foreach (var name in Names)
+        {
+            var s = Build(name, threads);
+            var w = s.World;
+            for (int i = 0; i < 150; i++)
+            {
+                if (i == 70 && restoreHalfway) { var snap = w.Snapshot(); w = w.Fork(); w.Restore(snap); s.Rebind(w); }
+                s.Script(i);
+                w.Step(Dt);
+                hash = (hash ^ w.ComputeHash()) * 0x100000001B3UL; hash ^= hash >> 29;
+            }
+        }
+
+        return hash;
+    }
+
     internal static Scene Build(string name, int threads) => name switch
     {
         "rail-2d" => RailScene(threads),

@@ -27,6 +27,8 @@
     <Compile Include="../Common/Characters3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Vehicles3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Vehicles2DScene.cs" LinkBase="Common" />
+    <Compile Include="../Common/RailBikeScenes2D.cs" LinkBase="Common" />
+    <Compile Include="../Common/RailBikeScenes3D.cs" LinkBase="Common" />
     <Compile Include="../Common/Actuators3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Actuators2DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/VehicleKinds3DScene.cs" LinkBase="Common" />
