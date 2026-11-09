@@ -17,7 +17,7 @@ internal sealed partial class Engine2D
         var capsule=RodGeometry.Length(b-a)<1e-5?Shape2D.CreateCircle(new(p.X,p.Y),radius):Shape2D.CreateCapsule(new(p.X,p.Y),new(q.X,q.Y),radius);
         SimplexCache2D cache=default;
         var distance=Distance2D.Compute(Geom[shape],capsule,Transform2.Identity,ref cache);
-        var result=new RodWitness{Separation=distance.Distance};
+        var result=new RodWitness{Separation=distance.Distance,Convex=Geom[shape].Kind is ShapeKind2D.Circle or ShapeKind2D.Capsule or ShapeKind2D.Segment or ShapeKind2D.Polygon};
         if(distance.Distance>1e-7f)
         {
             var delta=distance.PointB-distance.PointA;float l=(float)Math.Sqrt(delta.X*delta.X+delta.Y*delta.Y);

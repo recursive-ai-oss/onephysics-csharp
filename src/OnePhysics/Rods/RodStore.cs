@@ -18,6 +18,8 @@ internal interface IRodHost
     bool Matches(RodParticles rod,int shape);
     bool Layers(int a,int b);
     void Bounds(int shape,out Vector3D minimum,out Vector3D maximum);
+    // Appends the user ids (shape slots) of proxies whose stored box overlaps the box: the static tree, or the kinematic and dynamic trees.
+    void CollectShapes(Vector3D minimum,Vector3D maximum,bool moving,System.Collections.Generic.List<int> output);
     RodWitness Distance(int shape,Vector3D a,Vector3D b,float radius,float time);
     ContactMaterial Mix(int shape,int subshape,float friction,float restitution);
 
@@ -117,7 +119,7 @@ internal sealed partial class RodStore(IRodHost host) : ISnapshotSection
             float t=(float)(step+1)/substeps;
             _time0=(float)step/substeps;_time1=t;
             for(int b=0;b<Host.RodCore.Bodies.HighWater;b++)if(Host.RodCore.Bodies.IsLive(b))BodyPose(b,_time0,out _bodySubStart[b],out _rotationSubStart[b]);
-            _contactKeys.Clear();_contactCount=0;
+            _contactKeys.Clear();_contactCount=0;PrepareGather(step);
             if(step>0)
                 for(int b=0;b<Host.RodCore.Bodies.HighWater;b++)
                 {
