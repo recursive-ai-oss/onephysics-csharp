@@ -22,6 +22,8 @@ internal interface ICharacterExtHost
     bool CharacterLive(int character);
 
     int CharacterGeneration(int character);
+
+    int CharacterBody(int character);
 }
 
 /// <summary>Everything a character can be doing besides walking, one record per character slot.</summary>
@@ -117,6 +119,8 @@ internal sealed class CharacterExtStore : ISnapshotSection
         Ensure(c + 1);
         bool was = IsActive(in States[c]);
         States[c] = state;
+        // An unused rotation is the identity, so every record writes a unit quaternion.
+        if (state.LocalRotation.X == 0f && state.LocalRotation.Y == 0f && state.LocalRotation.Z == 0f && state.LocalRotation.W == 0f) { States[c].LocalRotation = QuaternionF.Identity; }
         bool now = IsActive(in state);
         if (now && !was) { _active++; } else if (!now && was) { _active--; }
     }
@@ -177,30 +181,15 @@ internal sealed class CharacterExtStore : ISnapshotSection
         {
             if (!_host.CharacterLive(c) || !IsActive(in States[c])) { continue; }
             ref readonly var s = ref States[c];
-            w.DescribeEntity("characterAbility", c, _host.CharacterGeneration(c));
+            w.DescribeEntity("character", c, _host.CharacterGeneration(c));
             w.NamedInt32(c); w.NamedInt32(_host.CharacterGeneration(c));
+            // Every record has every field whatever the mode, so the layout of a world does not change when a character sits down or lets go (regional restores need a stable field set).
             w.NamedByte((byte)((s.CanClimb ? 1 : 0) | (s.ExactCarry ? 2 : 0) | (s.Riding ? 4 : 0))); w.NamedByte((byte)s.Mode);
-            if (s.Mode == CharacterMode.Free)
-            {
-                if (s.Riding) { w.NamedInt32(s.Body); w.NamedInt32(s.BodyGen); WriteVec(w, s.Local); }
-                continue;
-            }
-            if (s.Mode == CharacterMode.Roped)
-            {
-                w.NamedInt32(s.Rod); w.NamedInt32(s.RodGen); w.NamedInt32(s.Particle); w.NamedSingle(s.Fraction);
-                continue;
-            }
-
             w.NamedInt32(s.Body); w.NamedInt32(s.BodyGen);
             WriteVec(w, s.Local);
-            if (s.Mode == CharacterMode.Seated)
-            {
-                w.NamedSingle(s.LocalRotation.X); w.NamedSingle(s.LocalRotation.Y); w.NamedSingle(s.LocalRotation.Z); w.NamedSingle(s.LocalRotation.W);
-                continue;
-            }
-
-            WriteVec(w, s.Normal);
-            if (s.Mode == CharacterMode.Hanging) { WriteVec(w, s.Along); }
+            w.NamedSingle(s.LocalRotation.X); w.NamedSingle(s.LocalRotation.Y); w.NamedSingle(s.LocalRotation.Z); w.NamedSingle(s.LocalRotation.W);
+            WriteVec(w, s.Normal); WriteVec(w, s.Along);
+            w.NamedInt32(s.Rod); w.NamedInt32(s.RodGen); w.NamedInt32(s.Particle); w.NamedSingle(s.Fraction);
         }
 
         w.DescribeEntity("world", -1);
@@ -208,6 +197,7 @@ internal sealed class CharacterExtStore : ISnapshotSection
         for (int sh = 0; sh < ClimbableGen.Length; sh++)
         {
             if (ClimbableGen[sh] == 0) { continue; }
+            w.DescribeEntity("shape", sh, ClimbableGen[sh]);
             w.NamedInt32(sh); w.NamedInt32(ClimbableGen[sh]);
         }
     }
@@ -225,7 +215,7 @@ internal sealed class CharacterExtStore : ISnapshotSection
         int version = r.ReadInt32();
         if (version != SectionVersion) { throw r.Error("unsupported character-ability section version " + version.ToString(CultureInfo.InvariantCulture)); }
         bool planar = _host.Planar;
-        int n = r.ReadCount(10, "character abilities");
+        int n = r.ReadCount(86, "character abilities");
         var states = new CharacterExtState[Math.Max(8, 0)];
         int last = -1, active = 0;
         for (int k = 0; k < n; k++)
@@ -240,44 +230,33 @@ internal sealed class CharacterExtStore : ISnapshotSection
             byte mode = r.ReadByte();
             if (mode > (byte)CharacterMode.Roped) { throw r.Error("invalid character mode " + mode.ToString(CultureInfo.InvariantCulture)); }
             s.Mode = (CharacterMode)mode;
-            s.LocalRotation = QuaternionF.Identity;
+            s.Body = r.ReadInt32(); s.BodyGen = r.ReadInt32();
+            s.Local = ReadVec(r);
+            s.LocalRotation = new QuaternionF(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+            s.Normal = ReadVec(r); s.Along = ReadVec(r);
+            s.Rod = r.ReadInt32(); s.RodGen = r.ReadInt32(); s.Particle = r.ReadInt32(); s.Fraction = r.ReadSingle();
             if (s.Mode != CharacterMode.Free && s.Riding) { throw r.Error("a held character cannot also be carried"); }
-            if (s.Mode == CharacterMode.Free && s.Riding)
+            bool bodyUsed = s.Riding || s.Mode == CharacterMode.Seated || s.Mode == CharacterMode.Hanging || s.Mode == CharacterMode.Climbing;
+            if (bodyUsed)
             {
-                s.Body = r.ReadInt32(); s.BodyGen = r.ReadInt32();
                 if (s.Body < 0 || s.Body > 1 << 26 || s.BodyGen < 1) { throw r.Error("invalid body reference in a character ability"); }
-                s.Local = ReadVec(r);
                 if (!Finite(s.Local) || Math.Abs(s.Local.X) > 4194304f || Math.Abs(s.Local.Y) > 4194304f || Math.Abs(s.Local.Z) > 4194304f || (planar && s.Local.Z != 0f)) { throw r.Error("invalid character anchor"); }
-            }
-            else if (s.Mode == CharacterMode.Roped)
-            {
-                s.Rod = r.ReadInt32(); s.RodGen = r.ReadInt32(); s.Particle = r.ReadInt32(); s.Fraction = r.ReadSingle();
-                if (s.Rod < 0 || s.Rod > 65536 || s.RodGen < 1 || s.Particle < 0 || s.Particle > 4096 || !(s.Fraction >= 0f && s.Fraction <= 1f)) { throw r.Error("invalid rope grip"); }
-            }
-            else if (s.Mode != CharacterMode.Free)
-            {
-                s.Body = r.ReadInt32(); s.BodyGen = r.ReadInt32();
-                if (s.Body < 0 || s.Body > 1 << 26 || s.BodyGen < 1) { throw r.Error("invalid body reference in a character ability"); }
-                s.Local = ReadVec(r);
-                if (!Finite(s.Local) || Math.Abs(s.Local.X) > 4194304f || Math.Abs(s.Local.Y) > 4194304f || Math.Abs(s.Local.Z) > 4194304f || (planar && s.Local.Z != 0f)) { throw r.Error("invalid character anchor"); }
-                if (s.Mode == CharacterMode.Seated)
-                {
-                    s.LocalRotation = new QuaternionF(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
-                    var q = s.LocalRotation;
-                    if (!(Math.Abs(q.X * q.X + q.Y * q.Y + q.Z * q.Z + q.W * q.W - 1f) <= 1e-3f) || (planar && (q.X != 0f || q.Y != 0f))) { throw r.Error("invalid seat rotation"); }
-                }
-                else
-                {
-                    s.Normal = ReadVec(r);
-                    if (!Unit(s.Normal) || (planar && s.Normal.Z != 0f)) { throw r.Error("invalid surface normal"); }
-                    if (s.Mode == CharacterMode.Hanging)
-                    {
-                        s.Along = ReadVec(r);
-                        if (!Unit(s.Along) || (planar && s.Along.Z != 0f)) { throw r.Error("invalid ledge direction"); }
-                    }
-                }
             }
 
+            var q = s.LocalRotation;
+            if (!(Math.Abs(q.X * q.X + q.Y * q.Y + q.Z * q.Z + q.W * q.W - 1f) <= 1e-3f) || (planar && (q.X != 0f || q.Y != 0f))) { throw r.Error("invalid seat rotation"); }
+            if (s.Mode == CharacterMode.Roped)
+            {
+                if (s.Rod < 0 || s.Rod > 65536 || s.RodGen < 1 || s.Particle < 0 || s.Particle > 4096 || !(s.Fraction >= 0f && s.Fraction <= 1f)) { throw r.Error("invalid rope grip"); }
+            }
+
+            if (s.Mode == CharacterMode.Hanging || s.Mode == CharacterMode.Climbing)
+            {
+                if (!Unit(s.Normal) || (planar && s.Normal.Z != 0f)) { throw r.Error("invalid surface normal"); }
+                if (s.Mode == CharacterMode.Hanging && (!Unit(s.Along) || (planar && s.Along.Z != 0f))) { throw r.Error("invalid ledge direction"); }
+            }
+
+            if (!Finite(s.Normal) || !Finite(s.Along)) { throw r.Error("non-finite character ability"); }
             if (IsActive(in s)) { active++; }
             states[c] = s;
         }
@@ -308,6 +287,34 @@ internal sealed class CharacterExtStore : ISnapshotSection
         dst._active = _active;
         dst._climbableCount = _climbableCount;
         return dst;
+    }
+
+    /// <summary>
+    /// Region closure: a character that is held by a body, or carried by one, goes into a region with it, and a gripped rod goes with whoever holds it. Returns whether the selection grew.
+    /// </summary>
+    internal bool CloseRegion(RegionSelection s)
+    {
+        bool changed = false;
+        for (int c = 0; c < _host.CharacterHighWater && c < States.Length; c++)
+        {
+            if (!_host.CharacterLive(c)) { continue; }
+            ref readonly var st = ref States[c];
+            bool anchored = st.Mode == CharacterMode.Seated || st.Mode == CharacterMode.Hanging || st.Mode == CharacterMode.Climbing || st.Riding;
+            int body = _host.CharacterBody(c);
+            if (anchored)
+            {
+                bool heldMoves = (uint)st.Body < (uint)s.Bodies.Length && s.Bodies[st.Body] && _host.Core.Bodies.IsDynamic(st.Body);
+                if (s.Contains("character", c) || s.Bodies[body]) { changed |= s.Add("character", c); changed |= s.AddBody(body); changed |= s.AddBody(st.Body); }
+                else if (heldMoves) { changed |= s.Add("character", c); changed |= s.AddBody(body); }
+            }
+            else if (st.Mode == CharacterMode.Roped)
+            {
+                if (s.Contains("character", c) || s.Bodies[body]) { changed |= s.Add("character", c); changed |= s.AddBody(body); changed |= s.Add("rod", st.Rod); }
+                else if (s.Contains("rod", st.Rod)) { changed |= s.Add("character", c); changed |= s.AddBody(body); }
+            }
+        }
+
+        return changed;
     }
 
     /// <summary>After a restore: every record belongs to a live character of the generation it names.</summary>

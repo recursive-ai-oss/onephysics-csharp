@@ -20,6 +20,7 @@ internal sealed partial class Engine2D : ICharacterExtHost
     int ICharacterExtHost.CharacterHighWater => CharHandles.HighWater;
     bool ICharacterExtHost.CharacterLive(int character) => CharHandles.IsLive(character);
     int ICharacterExtHost.CharacterGeneration(int character) => CharHandles.GenerationOf(character);
+    int ICharacterExtHost.CharacterBody(int character) => CharBody[character];
 
     internal bool CharacterExtensionsConsistent() => _charExt == null || _charExt.Consistent();
 

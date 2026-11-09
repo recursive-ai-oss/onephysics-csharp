@@ -213,6 +213,59 @@ public sealed class CharacterAbilityHostTests
     }
 
     [Fact]
+    public void RegionsKeepRidersWithTheirSeatsAndHoldersWithTheirRopes3D()
+    {
+        var s = Scene3D.Build(47);
+        for (int i = 0; i < 20; i++) { s.Tick(i); }
+        // A box around the car only: the rider belongs with it, the rope holder does not.
+        var min = new Vector3D(-14, -1, -4); var max = new Vector3D(-6, 5, 8);
+        var region = s.World.CaptureRegion(min, max);
+        var hash = region.ComputeHash();
+        s.Rider.Dismount();
+        s.Car.LinearVelocity = new Vector3F(5, 0, 0);
+        Assert.NotEqual(hash, s.World.ComputeRegionHash(min, max));
+        Assert.Equal(CharacterMode.Free, s.Rider.Mode);
+        s.World.RestoreRegion(RegionSnapshot.Read(region.ToArray()));
+        Assert.Equal(hash, s.World.ComputeRegionHash(min, max));
+        Assert.Equal(CharacterMode.Seated, s.Rider.Mode);
+    }
+
+    [Fact]
+    public void ShiftingTheOriginKeepsHoldsAndCarriesWhereTheyWere3D()
+    {
+        var s = Scene3D.Build(48);
+        for (int i = 0; i < 20; i++) { s.Tick(i); }
+        var before = new[] { s.Rider.Position, s.Hanger.Position, s.Climber.Position, s.Roper.Position, s.Deck.Position };
+        var shift = new Vector3D(64, 0, -32);
+        s.World.ShiftOrigin(shift);
+        var after = new[] { s.Rider.Position, s.Hanger.Position, s.Climber.Position, s.Roper.Position, s.Deck.Position };
+        for (int i = 0; i < before.Length; i++)
+        {
+            Assert.Equal(before[i].X - shift.X, after[i].X, 9);
+            Assert.Equal(before[i].Z - shift.Z, after[i].Z, 9);
+        }
+
+        for (int i = 20; i < 40; i++) { s.Tick(i); }
+        Assert.Equal(CharacterMode.Hanging, s.Hanger.Mode);
+        Assert.Equal(CharacterMode.Roped, s.Roper.Mode);
+    }
+
+    [Fact]
+    public void DebugGeometryShowsTheHolds3D()
+    {
+        var s = Scene3D.Build(49);
+        for (int i = 0; i < 5; i++) { s.Tick(i); }
+        var g = new RecursiveAI.OnePhysics.Debug.DebugGeometry();
+        s.World.GetDebugGeometry(RecursiveAI.OnePhysics.Debug.DebugContent.CharacterHolds, g);
+        Assert.Equal(4, g.CharacterHolds.Length);
+        Assert.Equal(CharacterMode.Seated, g.CharacterHolds[0].Mode);
+        Assert.Equal(CharacterMode.Hanging, g.CharacterHolds[1].Mode);
+        Assert.Equal(CharacterMode.Climbing, g.CharacterHolds[2].Mode);
+        Assert.Equal(CharacterMode.Roped, g.CharacterHolds[3].Mode);
+        Assert.True(g.CharacterHolds[1].Normal.Z < -0.9f);
+    }
+
+    [Fact]
     public void ASnapshotWithDamagedAbilityStateIsRefusedCleanly()
     {
         var s = Scene3D.Build(46);
