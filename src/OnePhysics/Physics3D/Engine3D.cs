@@ -595,8 +595,9 @@ internal sealed partial class Engine3D : ISnapshotSection
         {
             if (!(Density[s] > 0f) || IsSensor(s)) { continue; }
             var g = Geoms[GeomOf[s]]!;
-            if (g.Soup != null) { continue; }
+            if (g.Soup != null || (g.IsConvex && g.Convex.Kind == ConvexShapeKind3D.Empty)) { continue; }
             var m = g.UnitMass;
+            if (g.Compound != null && m.Mass == 0f) { continue; }
             float d = Density[s];
             var l = Local[s];
             _parts.Add(new MassPropertiesF(m.Mass * d, l.TransformPoint(m.Center), InertiaF.Rotate(m.Inertia, l.Rotation) * d));

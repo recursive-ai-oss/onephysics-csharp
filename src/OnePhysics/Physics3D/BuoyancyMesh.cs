@@ -34,6 +34,8 @@ internal sealed class BuoyancyMesh
                     return Box(h);
                 }
 
+            case ConvexShapeKind3D.TaperedCylinder:
+                return Revolution([(0f, shape.CoreSize.Z), (shape.CoreSize.X, shape.CoreSize.Z), (shape.CoreSize.Y, -shape.CoreSize.Z), (0f, -shape.CoreSize.Z)]);
             case ConvexShapeKind3D.Cylinder:
                 {
                     float r = shape.CoreSize.X + shape.ConvexRadius, hh = shape.CoreSize.Y + shape.ConvexRadius;
@@ -44,6 +46,7 @@ internal sealed class BuoyancyMesh
                 return Tapered(shape.CoreSize.Y, shape.ConvexRadius, shape.ConvexRadius);
             case ConvexShapeKind3D.TaperedCapsule:
                 return Tapered(shape.CoreSize.Z, shape.CoreSize.X, shape.CoreSize.Y);
+            case ConvexShapeKind3D.Triangle:
             case ConvexShapeKind3D.Hull:
                 return Hull(shape.Hull!);
             default:

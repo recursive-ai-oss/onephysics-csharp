@@ -26,6 +26,15 @@ public enum ConvexShapeKind3D : byte
 
     /// <summary>A convex hull, optionally inflated by a radius.</summary>
     Hull,
+
+    /// <summary>A circular frustum along Y, including a cone when one radius is zero.</summary>
+    TaperedCylinder,
+
+    /// <summary>A double-sided triangular lamina, optionally inflated.</summary>
+    Triangle,
+
+    /// <summary>No geometry, distinct from a point shape. Always misses collision and queries.</summary>
+    Empty,
 }
 
 /// <summary>
@@ -33,7 +42,7 @@ public enum ConvexShapeKind3D : byte
 /// van den Bergen 2003, ch. 4). Every shape is a <em>core</em> shape inflated by a <see cref="ConvexRadius"/>: queries run on the cores and add the radii back,
 /// which keeps GJK well conditioned for rounded shapes and thin ones. Create shapes with the static factory methods.
 /// </summary>
-public readonly struct ConvexShape3D
+public readonly partial struct ConvexShape3D
 {
     /// <summary>Largest dimension accepted for any shape, 2^21.</summary>
     public const float MaxDimension = 2097152f;
@@ -60,11 +69,14 @@ public readonly struct ConvexShape3D
     // cylinder (core radius, core half height, 0).
     internal Vector3F CoreSize => _size;
 
-    /// <summary>The hull of a <see cref="ConvexShapeKind3D.Hull"/> shape, otherwise null.</summary>
+    /// <summary>The topology of a hull or standalone triangle; otherwise null. Triangles have two opposite faces rather than enclosed volume.</summary>
     public ConvexHull3D? Hull => _hull;
 
     /// <summary>A zero-size shape: a point. Useful as the moving side of a ray cast.</summary>
     public static ConvexShape3D Point => default;
+
+    /// <summary>No geometry or mass. Contacts and overlaps are empty, distance is positive infinity, and casts miss. Body mass and inertia overrides can supply a physical placeholder.</summary>
+    public static ConvexShape3D Empty => new(ConvexShapeKind3D.Empty, default, 0f, null);
 
     /// <summary>Largest ratio of a shape's longest outer dimension to its shortest, 2^20. The cast and distance routines work in float32 with tolerances relative to the largest coordinate they see, so a shape much thinner than that is not resolved.</summary>
     public const float MaxAspectRatio = 1048576f;
@@ -219,6 +231,9 @@ public readonly struct ConvexShape3D
                     return new Vector3F(px, direction.Y < 0 ? -_size.Y : _size.Y, pz);
                 }
 
+            case ConvexShapeKind3D.TaperedCylinder:
+                return FrustumSupport(direction);
+            case ConvexShapeKind3D.Triangle:
             case ConvexShapeKind3D.Hull:
                 return _hull!.Support(direction);
             default:
@@ -277,6 +292,9 @@ public readonly struct ConvexShape3D
                 return Revolution(_size.Y, _radius, _radius);
             case ConvexShapeKind3D.TaperedCapsule:
                 return Revolution(_size.Z, _size.X, _size.Y);
+            case ConvexShapeKind3D.TaperedCylinder:
+                return FrustumMass();
+            case ConvexShapeKind3D.Triangle:
             case ConvexShapeKind3D.Hull:
                 return _hull!.MassProperties;
             default:

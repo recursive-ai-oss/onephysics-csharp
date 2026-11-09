@@ -95,6 +95,9 @@ public struct Shape2D
         }
     }
 
+    /// <summary>No geometry, area or inertia; rays and casts miss and contacts are empty. Unlike a zero-radius circle, this is not a point. Use body mass/inertia overrides for a physical placeholder.</summary>
+    public static Shape2D Empty => new() { _kind = ShapeKind2D.Empty };
+
     // ---------------------------------------------------------------- factories
 
     /// <summary>A circle.</summary>

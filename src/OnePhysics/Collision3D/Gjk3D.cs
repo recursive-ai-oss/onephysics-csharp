@@ -122,6 +122,7 @@ public static class Gjk3D
     /// <returns>The distance between the surfaces and the closest points in A's frame. Accuracy is about 1e-6 of the shapes' size plus their separation.</returns>
     public static ConvexDistance3D Distance(in ConvexShape3D a, in ConvexShape3D b, in RigidTransformF bInA)
     {
+        if (a.Kind == ConvexShapeKind3D.Empty || b.Kind == ConvexShapeKind3D.Empty) { return new ConvexDistance3D(float.PositiveInfinity, false, default, default, default, 0); }
         var pair = new ConvexPair(a, b, bInA);
         Simplex s = default;
         Run(pair, ref s, out Vector3F v, out bool coresOverlap, out int iterations, out _);
@@ -244,6 +245,7 @@ public static class Gjk3D
     public static bool ShapeCast(in ConvexShape3D a, in ConvexShape3D b, in RigidTransformF bInA, Vector3F motionOfA, out ConvexCastHit3D hit)
     {
         hit = default;
+        if (a.Kind == ConvexShapeKind3D.Empty || b.Kind == ConvexShapeKind3D.Empty) { return false; }
         if (!float.IsFinite(motionOfA.X) || !float.IsFinite(motionOfA.Y) || !float.IsFinite(motionOfA.Z))
         {
             throw new ArgumentOutOfRangeException(nameof(motionOfA), motionOfA, $"motionOfA is {motionOfA}; finite components are expected.");
@@ -395,6 +397,7 @@ public static class Gjk3D
     /// <returns>True when the ray enters the shape. A ray starting inside hits at fraction 0 with a zero normal.</returns>
     public static bool RayCast(in ConvexShape3D shape, in RigidTransformF shapeInRay, Vector3F origin, Vector3F direction, float maxFraction, out ConvexCastHit3D hit)
     {
+        if (shape.Kind == ConvexShapeKind3D.Empty) { hit = default; return false; }
         if (!(maxFraction > 0f) || !float.IsFinite(maxFraction))
         {
             throw new ArgumentOutOfRangeException(nameof(maxFraction), maxFraction, $"maxFraction is {maxFraction}; a finite positive value is expected.");

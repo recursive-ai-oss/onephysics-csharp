@@ -79,6 +79,7 @@ public sealed class Epa3D
     /// <returns>For separated shapes, the distance and closest points; for overlapping shapes, minus the penetration depth, the direction of least penetration and the deepest points. Accuracy is about 1e-5 of the shapes' size.</returns>
     public ConvexContact3D Collide(in ConvexShape3D a, in ConvexShape3D b, in RigidTransformF bInA)
     {
+        if (a.Kind == ConvexShapeKind3D.Empty || b.Kind == ConvexShapeKind3D.Empty) { return new ConvexContact3D(float.PositiveInfinity, default, default, default); }
         var pair = new ConvexPair(a, b, bInA);
         Simplex s = default;
         Gjk3D.Run(pair, ref s, out Vector3F v, out bool coresOverlap, out _, out float scale2);

@@ -213,6 +213,16 @@ public sealed partial class PhysicsWorld3D
                 break;
             }
 
+            case ConvexShapeKind3D.Empty:
+                g.Add(new DebugShape(bh, sh, DebugShapeKind.Empty, sensor, 0f, first, 0));
+                break;
+            case ConvexShapeKind3D.TaperedCylinder:
+            {
+                var z = shape.CoreSize;
+                AddPoint(new Vector3F(0f, -z.Z, 0f)); AddPoint(new Vector3F(0f, z.Z, 0f));
+                g.Add(new DebugShape(bh, sh, DebugShapeKind.TaperedCylinder, sensor, z.X, first, 2, z.Y, firstIndex, 0));
+                break;
+            }
             case ConvexShapeKind3D.TaperedCapsule:
             case ConvexShapeKind3D.Cylinder:
             {

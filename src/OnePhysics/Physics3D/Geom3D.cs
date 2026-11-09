@@ -14,7 +14,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct ShapeSpec3D
 {
-    internal const byte KSphere = 1, KBox = 2, KCapsule = 3, KTapered = 4, KCylinder = 5, KHull = 6;
+    internal const byte KSphere = 1, KBox = 2, KCapsule = 3, KTapered = 4, KCylinder = 5, KHull = 6, KTaperedCylinder = 10, KTriangle = 11, KEmpty = 12;
 
     private readonly byte[]? _recipe;
 
@@ -29,6 +29,9 @@ public readonly struct ShapeSpec3D
         foreach (float f in v) { w.NamedSingle(f); }
         return new ShapeSpec3D(w.ToArray());
     }
+
+    /// <summary>No collision geometry or mass contribution, even when used as a sensor. Use body mass/inertia overrides for a physical placeholder.</summary>
+    public static ShapeSpec3D Empty => Make(KEmpty);
 
     /// <summary>A sphere centred on the shape origin.</summary>
     public static ShapeSpec3D Sphere(float radius) => Make(KSphere, radius);
@@ -48,6 +51,12 @@ public readonly struct ShapeSpec3D
 
     /// <summary>A cylinder along the y axis.</summary>
     public static ShapeSpec3D Cylinder(float halfHeight, float radius, float convexRadius = 0f) => Make(KCylinder, halfHeight, radius, convexRadius);
+
+    /// <summary>A circular frustum along Y. Half height is positive, radii are non-negative and not both zero; all dimensions are finite and at most 2^21. Validated when attached to a body.</summary>
+    public static ShapeSpec3D TaperedCylinder(float halfHeight, float topRadius, float bottomRadius) => Make(KTaperedCylinder, halfHeight, topRadius, bottomRadius);
+
+    /// <summary>A double-sided triangular lamina with optional spherical inflation. Vertices are finite within ±2^21 metres and must form nonzero area. Inflation is non-negative, default zero. Validated on attachment.</summary>
+    public static ShapeSpec3D Triangle(Vector3F a, Vector3F b, Vector3F c, float convexRadius = 0f) => Make(KTriangle, a.X, a.Y, a.Z, b.X, b.Y, b.Z, c.X, c.Y, c.Z, convexRadius);
 
     /// <summary>The convex hull of a point set (4 to 2^22 points).</summary>
     /// <param name="points">Points in the shape's frame; duplicates and interior points are fine.</param>
@@ -120,7 +129,7 @@ internal sealed partial class Geom3D
         var r = new StateReader(recipe);
         var g = new Geom3D { Recipe = recipe };
         byte kind = r.ReadByte();
-        if (kind >= ShapeSpec3D.KSphere && kind <= ShapeSpec3D.KHull)
+        if (kind >= ShapeSpec3D.KSphere && kind <= ShapeSpec3D.KHull || kind == ShapeSpec3D.KTaperedCylinder || kind == ShapeSpec3D.KTriangle || kind == ShapeSpec3D.KEmpty)
         {
             g.Kind = GeomKind.Convex;
             g.Convex = ReadConvex(r, kind);
@@ -216,6 +225,7 @@ internal sealed partial class Geom3D
     {
         switch (kind)
         {
+            case ShapeSpec3D.KEmpty: return ConvexShape3D.Empty;
             case ShapeSpec3D.KSphere: return ConvexShape3D.Sphere(r.ReadSingle());
             case ShapeSpec3D.KBox:
             {
@@ -225,6 +235,14 @@ internal sealed partial class Geom3D
             case ShapeSpec3D.KCapsule: { float hh = r.ReadSingle(); return ConvexShape3D.Capsule(hh, r.ReadSingle()); }
             case ShapeSpec3D.KTapered: { float hh = r.ReadSingle(), t = r.ReadSingle(); return ConvexShape3D.TaperedCapsule(hh, t, r.ReadSingle()); }
             case ShapeSpec3D.KCylinder: { float hh = r.ReadSingle(), rad = r.ReadSingle(); return ConvexShape3D.Cylinder(hh, rad, r.ReadSingle()); }
+            case ShapeSpec3D.KTaperedCylinder: { float hh = r.ReadSingle(), top = r.ReadSingle(); return ConvexShape3D.TaperedCylinder(hh, top, r.ReadSingle()); }
+            case ShapeSpec3D.KTriangle:
+            {
+                var a = new Vector3F(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+                var b = new Vector3F(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+                var c = new Vector3F(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+                return ConvexShape3D.Triangle(a, b, c, r.ReadSingle());
+            }
             case ShapeSpec3D.KHull:
             {
                 float cr = r.ReadSingle();

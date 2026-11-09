@@ -417,13 +417,13 @@ public abstract class CompoundShape3D
         int k = 0;
         for (int i = 0; i < _slots; i++)
         {
-            if (_alive[i])
+            if (_alive[i] && _placed[i].Shape.Kind != ConvexShapeKind3D.Empty)
             {
                 parts[k++] = _placed[i].GetMassProperties();
             }
         }
 
-        return InertiaF.Combine(parts);
+        return k == 0 ? default : InertiaF.Combine(parts.AsSpan(0, k));
     }
 
     // ---- queries ---------------------------------------------------------------------------------------------------------------------------------

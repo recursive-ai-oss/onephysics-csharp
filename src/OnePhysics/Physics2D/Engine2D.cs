@@ -668,15 +668,20 @@ internal sealed partial class Engine2D : ISnapshotSection
     {
         var g = default(Shape2D);
         byte kind = r.ReadByte();
-        if (kind < (byte)ShapeKind2D.Circle || kind > (byte)ShapeKind2D.ChainSegment) { throw r.Error("invalid 2D shape kind " + kind.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+        if (kind < (byte)ShapeKind2D.Circle || kind > (byte)ShapeKind2D.Empty) { throw r.Error("invalid 2D shape kind " + kind.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
         int count = r.ReadInt32();
-        if (count < 1 || count > Constants2D.MaxPolygonVertices) { throw r.Error("invalid 2D shape point count"); }
+        if (kind == (byte)ShapeKind2D.Empty ? count != 0 : count < 1 || count > Constants2D.MaxPolygonVertices) { throw r.Error("invalid 2D shape point count"); }
         float radius = r.ReadSingle();
         if (!float.IsFinite(radius) || radius < 0f) { throw r.Error("invalid 2D shape radius"); }
         byte flags = r.ReadByte();
         g._kind = (ShapeKind2D)kind; g._count = count; g._radius = radius; g._flags = flags;
         g._centroid = ReadVec(r); g._ghost1 = ReadVec(r); g._ghost2 = ReadVec(r);
         for (int i = 0; i < Constants2D.MaxPolygonVertices; i++) { g._v[i] = ReadVec(r); g._n[i] = ReadVec(r); }
+        if (g.Kind == ShapeKind2D.Empty)
+        {
+            if (radius != 0f || flags != 0 || (g._centroid.X != 0f || g._centroid.Y != 0f) || (g._ghost1.X != 0f || g._ghost1.Y != 0f) || (g._ghost2.X != 0f || g._ghost2.Y != 0f)) { throw r.Error("empty shape must have zero geometry"); }
+            for (int i = 0; i < Constants2D.MaxPolygonVertices; i++) { if ((g._v[i].X != 0f || g._v[i].Y != 0f) || (g._n[i].X != 0f || g._n[i].Y != 0f)) { throw r.Error("empty shape vertices must be zero"); } }
+        }
         return g;
     }
 

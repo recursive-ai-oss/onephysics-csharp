@@ -263,3 +263,49 @@ sort as the general insertion sort. Equal IDs keep candidate order. Larger sets
 retain the deepest/farthest/largest-area reduction and the existing final ordering.
 These paths introduce no persistent state and do not change snapshot bytes or
 world hashes.
+
+## Circular frusta and standalone triangles
+
+`ConvexShapeKind3D.TaperedCylinder` is additive (6); `Triangle` is 7.
+A frustum has its axis along Y, top at +halfHeight and bottom at
+-halfHeight. Half height is positive; radii are non-negative and not both
+zero. The support mapping compares the two rim circles, choosing the top
+on a tie. Equal radii return the existing cylinder representation, without
+changing cylinder arithmetic or results. The circular core has no skin.
+Mass properties integrate disks through the linear radius profile, using
+double intermediates in a fixed order; the reported inertia is about the
+computed centroid. One zero radius is an exact cone. Feature extraction
+uses the existing twelve rim samples for a cap (cap ids 0 and 1), side
+vertices 32/33 and edge 32; an isolated rim point uses vertex/edge 34+cap.
+Scaling accepts positive X=Z scale independently of Y.
+
+A standalone triangle is a double-sided lamina with an optional spherical
+inflation. Vertices keep their input order. Degenerate triangles and those
+with longest-edge-squared / twice-area above 2^20 are rejected. A two-face
+half-edge representation retains both windings for contact clipping and
+debug output; support ties choose the lowest input index. Mass is area
+at unit area density, with centroid the average of the vertices and inertia
+from their covariance divided by twelve. Inflation does not change these
+mass properties (the same convention as inflated hulls). Zero-radius
+triangles have no enclosed volume; their mass density has units kg/m².
+
+Geometry recipes extend the existing length-delimited recipe table without
+changing snapshot v1: kind 10 stores frustum half height, top radius and
+bottom radius as three little-endian float32 values; kind 11 stores the
+three triangle vertices (XYZ in input order), then inflation radius, as ten
+float32 values. Compound children accept both recipes. Old readers reject
+these unknown kinds cleanly. Forks, exact-state scenes and mutation replay
+retain the recipe bytes. Debug kind 11 carries a frustum's bottom and top
+axis ends, top radius in Radius and bottom radius in BottomRadius.
+
+## Empty placeholders
+
+Convex kind 8 and geometry recipe 12 (no payload) represent `Empty`, distinct
+from the zero-radius sphere used as a point in queries. Empty geometry
+contributes zero mass and inertia. Distance to it is positive infinity;
+contact, overlap, ray and cast queries miss it. An empty sensor has no volume
+and cannot generate overlap events. Compound mass combination ignores empty
+children; an all-empty compound has zero shape mass. Bodies use explicit
+mass and inertia overrides for physical placeholders (`AddEmpty` defaults
+to unit mass and principal inertia). Empty bounds are a point at the local
+origin, used only for broadphase storage. Debug kind 12 has zero points.

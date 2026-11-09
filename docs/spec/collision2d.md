@@ -59,3 +59,34 @@ A chain segment `(ghost1, p1, p2, ghost2)` collides with every shape except anot
 ## Determinism check
 
 `Reference.CollisionHash2D.Compute()` hashes (FNV-1a, 64 bit, over the 32-bit words of every float and integer) rejected and accepted shapes, mass data, bounds, 4000 random pair manifolds, GJK results, ray and shape casts and times of impact, from a fixed xorshift generator. Expected value: `0x31E47F1BCE1B321F` is recorded in `DeterminismTests`; it must be equal on x64, scalar (`DOTNET_EnableHWIntrinsic=0`), NativeAOT, browser WebAssembly and arm64.
+
+## Sampled terrain
+
+`HeightField2D` copies 2..2^20 height samples and an optional interval-hole
+mask. Sample i is at (i*spacing, height[i]); coordinates must fit the existing
+shape coordinate limit and every surviving segment must pass the chain's
+minimum-length check. A true hole removes an interval. Non-hole intervals
+are one-sided chain segments directed from sample i+1 to sample i, so their
+right-hand normal faces upward. The predecessor ghost is sample i+2 and
+the successor is sample i-1; neither crosses a hole or an endpoint. Stable
+column order is increasing i. Ghosts suppress internal-edge contacts with
+the existing chain contact rule. Segments have zero area and add no mass.
+
+A world attaches one ordinary chain-segment shape per surviving interval to
+a static body. This reuses chain queries, debug geometry and snapshot v1
+payloads without a second collision representation. Snapshot, fork, exact
+scene and mutation replay preserve the segment vertices, flags and ghosts;
+the original sampled authoring representation is not stored. An all-hole
+field attaches no shapes and returns a default first-segment handle.
+
+## Empty placeholders
+
+Shape kind 6 is `Empty`. It has zero vertices, radius, flags, centroid,
+ghosts and stored vertex/normal payload. The v1 shape record has unchanged
+length; readers accept a zero vertex count only for this new kind and
+validate its zero payload. Empty shapes have no area or inertia, no
+contacts or sensor volume, no ray or cast hits and infinite distance to
+other geometry. They are not zero-radius circles (points). World queries
+exclude them. Debug kind 12 carries no points. `AddEmpty` supplies explicit
+body mass and inertia overrides, unit values by default, so a placeholder
+still integrates and can participate in joints without collision geometry.

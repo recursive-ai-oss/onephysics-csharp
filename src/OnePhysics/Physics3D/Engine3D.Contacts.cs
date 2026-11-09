@@ -664,6 +664,7 @@ internal sealed partial class Engine3D
 
         var ga = Geoms[GeomOf[sa]]!;
         var gb = Geoms[GeomOf[sb]]!;
+        if (ga.Convex.Kind == ConvexShapeKind3D.Empty || gb.Convex.Kind == ConvexShapeKind3D.Empty) { return; }
         if (ga.Soup != null && gb.Soup != null) { return; }
         sc.Reached++;
         var owner = Core.Shapes.Owner;
@@ -1057,6 +1058,7 @@ internal sealed partial class Engine3D
         {
             case ConvexShapeKind3D.Box:
                 return Math.Abs(n.X) > FaceParallel || Math.Abs(n.Y) > FaceParallel || Math.Abs(n.Z) > FaceParallel;
+            case ConvexShapeKind3D.TaperedCylinder:
             case ConvexShapeKind3D.Cylinder:
                 return Math.Abs(n.Y) > FaceParallel;
             case ConvexShapeKind3D.Hull:
