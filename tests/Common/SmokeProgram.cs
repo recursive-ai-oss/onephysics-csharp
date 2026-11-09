@@ -86,6 +86,18 @@ internal static class SmokeProgram
         return dbg && w2.ComputeHash() == c2.ComputeHash() && w3.ComputeHash() == c3.ComputeHash() && r2.GetActiveInfo().StepCount >= 0;
     }
 
+    // Destruction in both dimensions: impact fractures, a bonded wall, a static bridge, a slice and the debris rules, with a snapshot round trip into a fork; equal hashes at 1 and 3 threads and after the fork.
+    private static bool DestructionSmoke(out ulong hash)
+    {
+        ulong a3 = RecursiveAI.OnePhysics.Tests.Common.DestructionScenes.Run3D(1, 140, false), b3 = RecursiveAI.OnePhysics.Tests.Common.DestructionScenes.Run3D(3, 140, true);
+        ulong a2 = RecursiveAI.OnePhysics.Tests.Common.DestructionScenes.Run2D(1, 140, false), b2 = RecursiveAI.OnePhysics.Tests.Common.DestructionScenes.Run2D(3, 140, true);
+        var (w, _) = RecursiveAI.OnePhysics.Tests.Common.DestructionScenes.Spatial(1);
+        for (int i = 0; i < 140; i++) w.Step(1f / 60f);
+        bool counted = w.DestructionCounters.Fractures > 0 && w.DestructionCounters.BondBreaks >= 0;
+        hash = a3 * 31UL + a2;
+        return a3 == b3 && a2 == b2 && counted;
+    }
+
     private static ulong Ragdolls2DHash(int threads)
     {
         var w = Vehicles2DScene.RagdollPileScene(threads).World;
@@ -258,9 +270,11 @@ internal static class SmokeProgram
         Console.WriteLine((tools ? "OK tools " : "FAIL tools ") + toolsHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool active = ActiveSmoke(out ulong activeHash);
         Console.WriteLine((active ? "OK active " : "FAIL active ") + activeHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        bool destruction = DestructionSmoke(out ulong destructionHash);
+        Console.WriteLine((destruction ? "OK destruction " : "FAIL destruction ") + destructionHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool machines = JointMachineSmoke.Run();
         Console.WriteLine(machines ? "OK machines" : "FAIL machines");
-        return tools && active && railBike && abilities && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
+        return tools && destruction && active && railBike && abilities && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
     }
 
     private static bool MissingShapes()

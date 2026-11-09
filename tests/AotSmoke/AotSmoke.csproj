@@ -39,6 +39,7 @@
     <Compile Include="../Common/Actuators2DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/VehicleKinds3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Ragdolls3DScene.cs" LinkBase="Common" />
+    <Compile Include="../Common/DestructionScenes.cs" LinkBase="Common" />
     <Compile Include="../OnePhysics.Tests/Collision3D/Collision3DHash.cs" LinkBase="Common" />
     <Compile Include="../OnePhysics.Tests/Collision3D/TestRng.cs" LinkBase="Common" />
     <Compile Include="../OnePhysics.Tests/Broadphase/BroadphaseHash.cs" LinkBase="Common" />
