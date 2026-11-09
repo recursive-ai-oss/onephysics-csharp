@@ -145,7 +145,7 @@ internal static class FuzzVehicles2D
             case 10:
                 {
                     var v = Pick(vs, r);
-                    if (v.IsValid) { _ = v.EngineRpm; _ = v.ForwardSpeed; _ = v.Gear; _ = v.Chassis.Position; _ = v.Kind; _ = v.TrackSpeed; if (v.WheelCount > 0) { _ = v.GetWheel(r.Byte() % v.WheelCount); } }
+                    if (v.IsValid) { _ = v.EngineRpm; _ = v.ForwardSpeed; _ = v.Gear; _ = v.Chassis.Position; _ = v.Kind; if (v.Kind == VehicleKind.Tracked) { _ = v.TrackSpeed; } if (v.WheelCount > 0) { _ = v.GetWheel(r.Byte() % v.WheelCount); } }
                     else if (vs.Count > 0) { try { v.Drive(0f); } catch (StaleHandleException) { } catch (InvalidHandleException) { } }
                     break;
                 }
