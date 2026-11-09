@@ -104,36 +104,82 @@ internal sealed partial class Engine2D
         }
 
         _edgeGrid.Build(ne);
-        Span<long> seen = stackalloc long[16];
+        // The queries are independent reads, so they run in tasks of SurfaceChunk particles, each into its own list; joining the lists in task order gives the order one pass over the particles would.
+        int nq = 0;
+        for (int a = 0; a < _awakeSoftCount; a++) { if (_awakeSoft[a].SurfBase >= 0) { nq += _awakeSoft[a].SurfParticles.Length; } }
+        GrowTo(ref _sqG, nq);
+        nq = 0;
         for (int a = 0; a < _awakeSoftCount; a++)
         {
             var dp = _awakeSoft[a];
             if (dp.SurfBase < 0) { continue; }
-            double ep = dp.Radius + 2.0 * dp.SurfTravel;
-            for (int pi = 0; pi < dp.SurfParticles.Length; pi++)
+            for (int pi = 0; pi < dp.SurfParticles.Length; pi++) { _sqG[nq++] = dp.Base + dp.SurfParticles[pi]; }
+        }
+
+        _sfIcsz = icsz; _sfCount = nq;
+        int tasks = (nq + SurfaceChunk - 1) / SurfaceChunk;
+        EnsureTaskBufs(tasks);
+        for (int t = 0; t < tasks; t++) { _tb[t].SurfCount = 0; }
+        Core.Executor.For(tasks, new SurfaceProgram(this));
+        for (int t = 0; t < tasks; t++)
+        {
+            var tb = _tb[t];
+            GrowTo(ref _sePG, _seCount + tb.SurfCount); GrowTo(ref _seEG, _seCount + tb.SurfCount); GrowTo(ref _seS, _seCount + tb.SurfCount);
+            for (int k = 0; k < tb.SurfCount; k++)
             {
-                int p = dp.SurfParticles[pi];
-                double px = dp.Ox + dp.X[2 * p], py = dp.Oy + dp.X[2 * p + 1];
-                long x0 = (long)Math.Floor((px - ep) * icsz) - 1, x1 = (long)Math.Floor((px + ep) * icsz);
-                long y0 = (long)Math.Floor((py - ep) * icsz) - 1, y1 = (long)Math.Floor((py + ep) * icsz);
-                int nseen = 0;
-                for (long cy = y0; cy <= y1; cy++)
+                _sePG[_seCount] = (int)(tb.SurfPairs[k] >> 32); _seEG[_seCount] = (int)(tb.SurfPairs[k] & 0xFFFFFFFFL); _seS[_seCount] = tb.SurfSide[k];
+                _seCount++;
+            }
+        }
+    }
+
+    private int[] _sqG = new int[64];
+    private double _sfIcsz;
+    private int _sfCount;
+    internal const int SurfaceChunk = 64;
+
+    private readonly struct SurfaceProgram : IParallelBody
+    {
+        private readonly Engine2D _e;
+        public SurfaceProgram(Engine2D e) { _e = e; }
+        public void Run(int task) => _e.SurfaceTask(task);
+    }
+
+    // Particle against edge for the query particles of one task: the particle, grown like a feature of its body, looks at the cells that can hold an edge's minimum corner whose box meets its own.
+    private void SurfaceTask(int t)
+    {
+        var buf = _tb[t];
+        buf.SurfCount = 0;
+        int q0 = t * SurfaceChunk, q1 = Math.Min(_sfCount, q0 + SurfaceChunk);
+        double icsz = _sfIcsz;
+        var keys = _edgeGrid.Keys;
+        Span<long> seen = stackalloc long[16];
+        for (int q = q0; q < q1; q++)
+        {
+            int g = _sqG[q];
+            var dp = _gData[g];
+            int p = _gPart[g];
+            double ep = dp.Radius + 2.0 * dp.SurfTravel;
+            double px = dp.Ox + dp.X[2 * p], py = dp.Oy + dp.X[2 * p + 1];
+            long x0 = (long)Math.Floor((px - ep) * icsz) - 1, x1 = (long)Math.Floor((px + ep) * icsz);
+            long y0 = (long)Math.Floor((py - ep) * icsz) - 1, y1 = (long)Math.Floor((py + ep) * icsz);
+            int nseen = 0;
+            for (long cy = y0; cy <= y1; cy++)
+            {
+                for (long cx = x0; cx <= x1; cx++)
                 {
-                    for (long cx = x0; cx <= x1; cx++)
+                    long hsh = SoftCellGrid.Hash(cx, cy, 0);
+                    bool dup = false;
+                    for (int u = 0; u < nseen; u++) { if (seen[u] == hsh) { dup = true; break; } }
+                    if (dup) { continue; }
+                    if (nseen < seen.Length) { seen[nseen++] = hsh; }
+                    if (!_edgeGrid.Find(hsh, out int s0, out int s1)) { continue; }
+                    for (int k = s0; k < s1; k++)
                     {
-                        long hsh = SoftCellGrid.Hash(cx, cy, 0);
-                        bool dup = false;
-                        for (int u = 0; u < nseen; u++) { if (seen[u] == hsh) { dup = true; break; } }
-                        if (dup) { continue; }
-                        if (nseen < seen.Length) { seen[nseen++] = hsh; }
-                        if (!_edgeGrid.Find(hsh, out int s0, out int s1)) { continue; }
-                        for (int k = s0; k < s1; k++)
-                        {
-                            int ge = (int)(keys[k] & 0xFFFFFF);
-                            int o = 4 * ge;
-                            if (px + ep < _geBox[o] || px - ep > _geBox[o + 2] || py + ep < _geBox[o + 1] || py - ep > _geBox[o + 3]) { continue; }
-                            TryAddSurfacePair(dp, p, px, py, ge);
-                        }
+                        int ge = (int)(keys[k] & 0xFFFFFF);
+                        int o = 4 * ge;
+                        if (px + ep < _geBox[o] || px - ep > _geBox[o + 2] || py + ep < _geBox[o + 1] || py - ep > _geBox[o + 3]) { continue; }
+                        TryAddSurfacePair(dp, p, px, py, ge, buf);
                     }
                 }
             }
@@ -153,7 +199,7 @@ internal sealed partial class Engine2D
         return float.Sqrt(m2);
     }
 
-    private void TryAddSurfacePair(SoftBodyData dp, int p, double px, double py, int ge)
+    private void TryAddSurfacePair(SoftBodyData dp, int p, double px, double py, int ge, SoftTaskBuf buf)
     {
         var de = _geBody[ge];
         int el = _geLocal[ge];
@@ -176,9 +222,9 @@ internal sealed partial class Engine2D
         // first substep that finds the particle over the edge fixes it from where the particle is then.
         double side = (ey * (px - ax) - ex * (py - ay));
         double t0 = ((px - ax) * ex + (py - ay) * ey) / l2;
-        GrowTo(ref _sePG, _seCount + 1); GrowTo(ref _seEG, _seCount + 1); GrowTo(ref _seS, _seCount + 1);
-        _sePG[_seCount] = dp.Base + p; _seEG[_seCount] = ge; _seS[_seCount] = t0 < 0.0 || t0 > 1.0 ? 0f : (side >= 0.0 ? 1f : -1f);
-        _seCount++;
+        GrowTo(ref buf.SurfPairs, buf.SurfCount + 1); GrowTo(ref buf.SurfSide, buf.SurfCount + 1);
+        buf.SurfPairs[buf.SurfCount] = ((long)(dp.Base + p) << 32) | (long)ge; buf.SurfSide[buf.SurfCount] = t0 < 0.0 || t0 > 1.0 ? 0f : (side >= 0.0 ? 1f : -1f);
+        buf.SurfCount++;
     }
 
     // One pass over the listed pairs. The constraint C = s (n . (p - a)) - T, with n the unit normal of the edge on its right, T the two particle radii, and the projection of p on the edge inside the segment (outside it the

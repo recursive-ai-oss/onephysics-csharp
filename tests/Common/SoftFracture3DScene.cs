@@ -33,7 +33,7 @@ internal static class SoftFracture3DScene
     private static void Fold(PhysicsWorld3D w, bool selfCollision)
     {
         var def = SoftBodyDef.Cloth(SoftBodyMesh.Cloth(2.4f, 2.4f, 24, 24), new Vector3D(0, 1.25, 0));
-        def.Mass = 1.5f; def.SelfCollision = selfCollision;
+        def.Mass = 1.5f; def.SelfCollision = selfCollision; def.SurfaceCollision = selfCollision;
         def.Rotation = new QuaternionF(0.7071068f, 0f, 0f, 0.7071068f);
         def.LinearVelocity = new Vector3F(0.6f, 0f, 0.3f);
         w.AddSoftBody(def);
@@ -43,7 +43,7 @@ internal static class SoftFracture3DScene
     private static void Tear(PhysicsWorld3D w)
     {
         var cloth = SoftBodyDef.Cloth(SoftBodyMesh.Cloth(1.6f, 1.2f, 16, 12), new Vector3D(-1.2, 1.6, 0));
-        cloth.Mass = 0.6f; cloth.EdgeCompliance = 2e-4f; cloth.TearStrain = 0.2f; cloth.SelfCollision = true;
+        cloth.Mass = 0.6f; cloth.EdgeCompliance = 2e-4f; cloth.TearStrain = 0.2f; cloth.SelfCollision = true; cloth.SurfaceCollision = true;
         cloth.Rotation = new QuaternionF(0.7071068f, 0f, 0f, 0.7071068f);
         var top = new List<int>();
         for (int i = 0; i <= 16; i++) { top.Add(12 * 17 + i); }
@@ -54,7 +54,7 @@ internal static class SoftFracture3DScene
         var hooks = Hooks.GetOrCreateValue(w); hooks.Add(hook);
 
         var bar = SoftBodyDef.Jelly(SoftBodyMesh.Box(new Vector3F(1.4f, 0.2f, 0.2f), 14, 2, 2), new Vector3D(1.4, 1.2, 0));
-        bar.Mass = 2f; bar.EdgeCompliance = 2e-4f; bar.VolumeCompliance = 1e-6f; bar.TearStrain = 0.15f; bar.PlasticYield = 0.06f;
+        bar.Mass = 2f; bar.EdgeCompliance = 2e-4f; bar.VolumeCompliance = 1e-6f; bar.TearStrain = 0.15f; bar.PlasticYield = 0.06f; bar.SurfaceCollision = true;
         var ends = new List<int>();
         for (int k = 0; k <= 2; k++) { for (int j = 0; j <= 2; j++) { ends.Add((k * 3 + j) * 15); ends.Add((k * 3 + j) * 15 + 14); } }
         bar.PinnedParticles = ends;

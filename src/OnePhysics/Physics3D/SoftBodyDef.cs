@@ -87,8 +87,8 @@ public sealed class SoftBodyDef
     /// <summary>Whether the body may fall asleep when every particle has been slow for <see cref="WorldOptions3D.TimeToSleep"/>. Default true.</summary>
     public bool AllowSleep { get; set; } = true;
 
-    /// <summary>Whether the surface of the body (its triangles, or the boundary faces of a tetrahedral mesh) stops the particles and edges of other bodies, and, with <see cref="SelfCollision"/>, of this body: particles are kept out of triangles and edges out of edges, so a body is not porous between its surface particles and a cloth does not pass through itself. Without it only the particle spheres collide. Costs a search each step while two awake bodies with surface collision exist or a body has <see cref="SelfCollision"/>. Default true.</summary>
-    public bool SurfaceCollision { get; set; } = true;
+    /// <summary>Whether the surface of the body (its triangles, or the boundary faces of a tetrahedral mesh) stops the particles and edges of other bodies, and, with <see cref="SelfCollision"/>, of this body: particles are kept out of triangles and edges out of edges, so a body is not porous between its surface particles and a cloth does not pass through itself. Without it only the particle spheres collide. Costs a search each step while two awake bodies with surface collision exist or a body has <see cref="SelfCollision"/> (measured at 1.5 to 3 times the step time of a pile or a draped cloth without it), so it is opt in. Default false.</summary>
+    public bool SurfaceCollision { get; set; }
 
     /// <summary>Tearing by strain: an edge whose length exceeds its rest length by this fraction at the end of a step breaks. The strain is measured after the solve, so edges with zero <see cref="EdgeCompliance"/> never reach it; use <see cref="TearForce"/> for those. 0 (default) turns it off. Finite, 0 to 100. A skinned body cannot tear.</summary>
     public float TearStrain { get; set; }

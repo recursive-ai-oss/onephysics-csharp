@@ -355,4 +355,7 @@ internal sealed class SoftTaskBuf
     public bool Moving;
     public long[] Pairs = new long[64];
     public int PairCount;
+    public long[] SurfPairs = new long[64];
+    public float[] SurfSide = new float[64];
+    public int SurfCount;
 }
