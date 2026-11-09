@@ -91,6 +91,9 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     public Engine3D(WorldCore core, Broadphase3D bp, WorldOptions3D opt)
     {
+        core.ContactModifications.ShapeFriction = s => Friction[s];
+        core.ContactMaterials.SubshapeCount = s => (uint)s < (uint)GeomOf.Length && (uint)GeomOf[s] < (uint)Geoms.Count && Geoms[GeomOf[s]] is { } geometry ? geometry.Soup?.TriangleIdCount ?? 1 : -1;
+        core.ContactMaterials.PlaneId = (s, t) => Geoms[GeomOf[s]]!.Soup is { } soup && soup.TryGetTriangle(t, out var triangle) ? triangle.CoplanarPatchId : t;
         Core = core;
         bp.Profile = core.Profile;
         Bp = bp;
@@ -285,6 +288,7 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     public ShapeHandle AddShape(BodyHandle body, byte[] recipe, in ShapeDef def)
     {
+        def.Surface.Validate(Core.Layout.PositionLanes);
         Nonnegative(def.Density, "Density");
         Coefficient(def.Friction, "Friction");
         Coefficient(def.RollingResistance, "RollingResistance");
@@ -313,6 +317,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         GeomOf[s] = gid;
         Local[s] = new RigidTransformF(rot, def.LocalPosition);
         Friction[s] = def.Friction; Restitution[s] = def.Restitution; Rolling[s] = def.RollingResistance; Density[s] = def.Density;
+        if (!def.Surface.IsDefault) Core.SetSurfaceProperties(sh, def.Surface);
         Category[s] = def.CategoryBits; Mask[s] = def.MaskBits; Group[s] = def.GroupIndex;
         ShapeFlags[s] = def.IsSensor ? FlagSensor : (byte)0; ShapeLayer[s] = (byte)def.Layer;
         NextShape[s] = -1;

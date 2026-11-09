@@ -223,7 +223,7 @@ public class Services3DTests
         }
 
         Assert.Equal(1, begins);
-        Assert.True(maxCoreBegins > 1, "the core should have reported several sub-shape contacts");
+        Assert.Equal(1, maxCoreBegins); // Connected coplanar triangles share one persistent contact patch.
         Assert.InRange(points, 1, 4);
         box.ApplyImpulse(new Vector3F(0, 40, 0));
         for (int i = 0; i < 60; i++) { w.Step(Dt); }

@@ -39,6 +39,11 @@ public sealed class SoftDef
 /// <summary>One shape attached to the most recent body. Parameters are in the body's local frame.</summary>
 public sealed class ShapeDef
 {
+    /// <summary>Body-frame surface settings. Default stationary, two-sided and isotropic; validated when loading.</summary>
+    public SurfaceProperties Surface { get; set; }
+    /// <summary>Optional global material index per triangle/segment. Empty uses the shape's scalar material.</summary>
+    public int[] MaterialIndices { get; set; } = [];
+
     internal int SourceLine { get; set; }
     /// <summary>Scene Kind field; defaults and SI units follow the scene record specification. Invalid values are rejected when loading a world.</summary>
     public string Kind { get; set; } = "";        // circle, box, capsule, polygon, segment, chain
@@ -382,6 +387,12 @@ public sealed partial class Scene
                     if (cur == null) throw new InvalidDataException("shape before body");
                     cur.Shapes.Add(new ShapeDef { SourceLine = number, Kind = t[1], Material = I(t[2]), Density = D(t[3]), Radius = D(t[4]), P = t.Skip(5).Select(D).ToArray() });
                     break;
+                case "surface":
+                    if (cur == null || cur.Shapes.Count == 0) throw new FormatException("surface requires a preceding shape");
+                    cur.Shapes[^1].Surface = ReadSurface(t); cur.Shapes[^1].Surface.Validate(s.Dim); break;
+                case "material_indices":
+                    if (cur == null || cur.Shapes.Count == 0) throw new FormatException("material_indices requires a preceding shape");
+                    cur.Shapes[^1].MaterialIndices = t.Skip(1).Select(I).ToArray(); break;
                 case "character":
                     if (cur == null) throw new InvalidDataException("character before body");
                     cur.Script = new CharacterScript { Speed = D(t[1]), Period = I(t[2]), Jump = I(t[3]), Stop = I(t[4]), Push = D(t[5]) };
@@ -478,6 +489,8 @@ public sealed partial class Scene
                 sb.Append("shape ").Append(sh.Kind).Append(' ').Append(sh.Material).Append(' ').Append(F(sh.Density)).Append(' ').Append(F(sh.Radius));
                 foreach (var v in sh.P) sb.Append(' ').Append(F(v));
                 sb.Append('\n');
+                WriteSurface(sb, sh.Surface);
+                if (sh.MaterialIndices.Length != 0) { sb.Append("material_indices"); foreach (int index in sh.MaterialIndices) sb.Append(' ').Append(index); sb.Append('\n'); }
             }
             if (b.Vehicle != null) sb.Append("vehicle ").Append(b.Vehicle.Preset).Append(' ').Append(F(b.Vehicle.Throttle)).Append(' ').Append(F(b.Vehicle.SteerAmp)).Append(' ').Append(b.Vehicle.SteerPeriod).Append(' ').Append(b.Vehicle.SteerFrom).Append(' ').Append(b.Vehicle.BrakeFrom).Append('\n');
             if (b.Script != null) sb.Append("character ").Append(F(b.Script.Speed)).Append(' ').Append(b.Script.Period).Append(' ').Append(b.Script.Jump).Append(' ').Append(b.Script.Stop).Append(' ').Append(F(b.Script.Push)).Append('\n');

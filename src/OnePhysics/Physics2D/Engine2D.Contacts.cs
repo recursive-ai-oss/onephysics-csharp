@@ -72,6 +72,8 @@ internal struct Pair2D
 
 internal sealed partial class Engine2D
 {
+    internal ContactModificationPipeline ContactModifications => Core.ContactModifications;
+
     // ------------------------------------------------------------------ pair filter for the broadphase
 
     private readonly struct PairFilter : IPairFilter
@@ -255,6 +257,8 @@ internal sealed partial class Engine2D
         }
         if (Opt.MaterialMixer != null) { new WriteTask(this).RunAll(); } // a user mixer runs serially, in pair order
         else { world.Executor.For(_collideBlocks, new WriteTask(this)); }
+        if (world.ContactMotionEnabled) world.ContactMotion.Capture(world);
+        if (ContactModifications.Refresh) { ContactModifications.Run(world); }
     }
 
     private Shape WrapShape(int slot) => new(World!, Core.HandleOfShape(slot));
@@ -286,7 +290,7 @@ internal sealed partial class Engine2D
                 e.Ready(ref pr);
                 int flags = hot[pr.BodyA].Flags | hot[pr.BodyB].Flags;
                 // A pair needs a fresh manifold when a body is awake (or a kinematic body is moving), or when it was just found and has a sensor.
-                if ((flags & BodyHot.Active) == 0 && !(_anyFresh && e._fresh[p])) { continue; }
+                if (!e.ContactModifications.Refresh && (flags & BodyHot.Active) == 0 && !(_anyFresh && e._fresh[p])) { continue; }
                 int i = lo + listed++;
                 e._updateList[i] = p;
                 bool act;
@@ -466,7 +470,7 @@ internal sealed partial class Engine2D
         bool plain = !pr.Sensor && Opt.MaterialMixer == null;
         // A touching pair that has barely moved reuses its manifold. This is tried before the bounds tests: a manifold within the speculative distance
         // means the boxes overlap, so they would not have stopped it, and it saves loading the proxies of the pairs that are still touching.
-        if (RecycleManifolds && existing >= 0 && plain && TryRecycleInPlace(existing, ref pr, in hA, in hB)) { return true; }
+        if (!ContactModifications.Refresh && RecycleManifolds && existing >= 0 && plain && TryRecycleInPlace(existing, ref pr, in hA, in hB)) { return true; }
 
         ref PairResult res = ref _results[i];
         res = default;
@@ -511,7 +515,7 @@ internal sealed partial class Engine2D
         // A pair without a manifold whose last narrowphase proved the shapes apart by more than the speculative distance stays empty until they have moved that far toward each other.
         ref SkipFrame skip = ref pr.Skip;
         if (existing < 0 && skip.Clear > 0f && StillApart(in skip, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy))) { return false; }
-        if (RecycleManifolds && existing >= 0 && !plain && TryRecycle(existing, sa, sb, hB.Extent, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy), ref res))
+        if (!ContactModifications.Refresh && RecycleManifolds && existing >= 0 && !plain && TryRecycle(existing, sa, sb, hB.Extent, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy), ref res))
         {
             // A recycled manifold only rewrites the pair's own payload, and nothing in the serial stage can remove it, so it is written here, in parallel, instead of going through the result list.
             // A user mixer runs serially in pair order, and a pair with a sensor shape never writes a contact payload.
@@ -602,6 +606,7 @@ internal sealed partial class Engine2D
     // keepMix: the payload still holds the pair's current mixed coefficients (nothing has changed a material since it was written), so they are kept instead of mixed again.
     private void WriteManifold(ConstraintStore cs, int c, int sa, int sb, in PairResult res, bool keepMix = false)
     {
+        keepMix &= !ContactModifications.Refresh;
         var pl = cs.Payload(c);
         var ids = cs.FeatureIdsOf(c);
         // Offsets below are all under Header + 2 * PointStride (+ the trailing floats), which the payload layout of the planar world always holds.
@@ -914,18 +919,28 @@ internal sealed partial class Engine2D
         }
     }
 
-    private Material2D Mix(int sa, int sb)
+    // Keep the ordinary contact path scalar: body-frame surface configuration is resolved separately.
+    private ContactMaterial Mix(int sa, int sb)
     {
+        float fa = Friction[sa], fb = Friction[sb], ra = Restitution[sa], rb = Restitution[sb], rra = Rolling[sa], rrb = Rolling[sb];
+        if (Core.ContactMaterials.IsPresent)
+        {
+            var a = Core.ContactMaterials.Resolve(sa, 0, new ContactMaterial(fa, ra, rra));
+            var b = Core.ContactMaterials.Resolve(sb, 0, new ContactMaterial(fb, rb, rrb));
+            fa = a.Friction; fb = b.Friction; ra = a.Restitution; rb = b.Restitution; rra = a.RollingResistance; rrb = b.RollingResistance;
+        }
+
         var mixer = Opt.MaterialMixer;
         if (mixer != null)
         {
-            return mixer(new Material2D(Friction[sa], Restitution[sa], Rolling[sa]), new Material2D(Friction[sb], Restitution[sb], Rolling[sb]));
+            var mixed = mixer(new Material2D(fa, ra, rra), new Material2D(fb, rb, rrb));
+            return new ContactMaterial(mixed.Friction, mixed.Restitution, mixed.RollingResistance);
         }
 
         // Friction: geometric mean (a slippery surface stays slippery); restitution and rolling resistance: the larger.
-        float f = float.Sqrt(Friction[sa] * Friction[sb]);
-        float r = Restitution[sa] > Restitution[sb] ? Restitution[sa] : Restitution[sb];
-        float rr = Rolling[sa] > Rolling[sb] ? Rolling[sa] : Rolling[sb];
-        return new Material2D(f, r, rr);
+        float f = float.Sqrt(fa * fb);
+        float r = ra > rb ? ra : rb;
+        float rr = rra > rrb ? rra : rrb;
+        return new ContactMaterial(f, r, rr);
     }
 }

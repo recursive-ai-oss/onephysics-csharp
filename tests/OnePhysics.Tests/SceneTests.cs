@@ -13,6 +13,18 @@ public sealed class SceneTests
 {
     private const string Planar = "scene 1\nname test\ndim 2\nmaterial 0 0.6 0\nbody dynamic 1.0000000002328306 3 0 0 0 0 -\nshape box 0 1 0 0.5 0.5 0 0 0\n";
     [Fact]
+    public void SurfaceAndIndexedMaterialAuthoringRecordsRoundTrip()
+    {
+        const string text = "scene 1\nname conveyor\ndim 2\nmaterial 0 0.6 0\nbody static 0 -0.5 0 0 0 0 -\nshape box 0 0 0 10 0.5 0 0 0\nsurface 2 0 0 0 0 0 0 0 0 0 0 0\nmaterial_indices 0\nbody dynamic 0 0.5 0 0 0 0 -\nshape box 0 1 0 0.5 0.5 0 0 0\n";
+        var scene = Document.Read(new StringReader(text)); using var writer = new StringWriter(); scene.Write(writer);
+        var copy = Document.Read(new StringReader(writer.ToString())); using var second = new StringWriter(); copy.Write(second);
+        Assert.Equal(writer.ToString(), second.ToString());
+        var w = copy.CreateWorld2D(); var body = w.GetBody(w.Core.HandleOfBody(1));
+        for (int i = 0; i < 180; i++) w.Step(1f / 60);
+        Assert.InRange(body.LinearVelocity.X, 1.98f, 2.02f);
+    }
+
+    [Fact]
     public void LegacyDefinitionIsPublicAndDoublePositionsRoundTrip()
     {
         var scene = Document.Read(new StringReader(Planar), "example");

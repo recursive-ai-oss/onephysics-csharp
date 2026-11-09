@@ -35,10 +35,23 @@ public readonly struct PhysicsEvent
     /// <summary>Kind-specific number (break value for joint breaks); zero otherwise.</summary>
     public float Value { get; }
 
+    /// <summary>Optional audio/haptic speeds, zero unless ContactMotionEnabled is set on the world.</summary>
+    public ContactMotion Motion { get; }
+    /// <summary>Pre-solve approach speed at manifold birth, metres/second; zero if collection is disabled.</summary>
+    public float ImpactSpeed => Motion.ImpactSpeed;
+    /// <summary>Residual sliding speed at the end of this step, metres/second; zero if collection is disabled.</summary>
+    public float SlidingSpeed => Motion.SlidingSpeed;
+    /// <summary>Rolling surface speed at the end of this step, metres/second; zero if collection is disabled.</summary>
+    public float RollingSpeed => Motion.RollingSpeed;
+    internal PhysicsEvent WithMotion(ContactMotion motion) => new(Kind, BodyA, BodyB, ShapeA, ShapeB, SubShapeA, SubShapeB, Joint, Value, motion);
+
     /// <summary>Creates an event from all its parts.</summary>
     public PhysicsEvent(EventKind kind, BodyHandle a, BodyHandle b, ShapeHandle sa, ShapeHandle sb, int subA, int subB, JointHandle joint, float value)
+        : this(kind, a, b, sa, sb, subA, subB, joint, value, default) { }
+
+    internal PhysicsEvent(EventKind kind, BodyHandle a, BodyHandle b, ShapeHandle sa, ShapeHandle sb, int subA, int subB, JointHandle joint, float value, ContactMotion motion)
     {
-        Kind = kind; BodyA = a; BodyB = b; ShapeA = sa; ShapeB = sb; SubShapeA = subA; SubShapeB = subB; Joint = joint; Value = value;
+        Motion = motion; Kind = kind; BodyA = a; BodyB = b; ShapeA = sa; ShapeB = sb; SubShapeA = subA; SubShapeB = subB; Joint = joint; Value = value;
     }
 
     /// <summary>
@@ -61,7 +74,10 @@ public readonly struct PhysicsEvent
         c = x.ShapeA.Generation.CompareTo(y.ShapeA.Generation); if (c != 0) { return c; }
         c = x.ShapeB.Generation.CompareTo(y.ShapeB.Generation); if (c != 0) { return c; }
         c = x.Joint.Generation.CompareTo(y.Joint.Generation); if (c != 0) { return c; }
-        return BitConverter.SingleToUInt32Bits(x.Value).CompareTo(BitConverter.SingleToUInt32Bits(y.Value));
+        c = BitConverter.SingleToUInt32Bits(x.Value).CompareTo(BitConverter.SingleToUInt32Bits(y.Value));
+        if (c == 0) c = BitConverter.SingleToUInt32Bits(x.ImpactSpeed).CompareTo(BitConverter.SingleToUInt32Bits(y.ImpactSpeed));
+        if (c == 0) c = BitConverter.SingleToUInt32Bits(x.SlidingSpeed).CompareTo(BitConverter.SingleToUInt32Bits(y.SlidingSpeed));
+        return c != 0 ? c : BitConverter.SingleToUInt32Bits(x.RollingSpeed).CompareTo(BitConverter.SingleToUInt32Bits(y.RollingSpeed));
     }
 
     internal void Write(StateWriter w)
