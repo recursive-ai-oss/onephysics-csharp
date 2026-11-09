@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.Aero;
@@ -342,5 +343,87 @@ public class Cloth3DTests
         sd = new ClothDef().ToSoftBodyDef();
         sd.Fabric!.WeftAxis = sd.Fabric.WarpAxis;
         Assert.Throws<SoftBodyException>(() => w.AddSoftBody(sd));
+    }
+
+    // ---- seams and attachments
+
+    [Fact]
+    public void ASeamHoldsTwoClothsTogetherAlongTheirEdges()
+    {
+        var w = NewWorld();
+        var m = Light(); m.ArealDensity = 0.5f; m.StrainLimit = 0.02f;
+        var left = w.AddCloth(new ClothDef { Width = 1f, Depth = 1f, SegmentsX = 8, SegmentsZ = 8, Position = new Vector3D(-0.5, 3, 0), Material = m, SelfCollision = false, SurfaceCollision = false, PinnedParticles = ClothDef.PinEdge(8, 8, 3) });
+        var right = w.AddCloth(new ClothDef { Width = 1f, Depth = 1f, SegmentsX = 8, SegmentsZ = 8, Position = new Vector3D(0.5, 3, 0), Material = m, SelfCollision = false, SurfaceCollision = false });
+        int first = w.AddSeam(left, ClothDef.PinEdge(8, 8, 1), right, ClothDef.PinEdge(8, 8, 3));
+        Assert.Equal(9, w.ClothLinkCount);
+        Run(w, 240);
+        var ea = ClothDef.PinEdge(8, 8, 1); var eb = ClothDef.PinEdge(8, 8, 3);
+        double worst = 0.0;
+        for (int i = 0; i < ea.Length; i++) { worst = Math.Max(worst, (left.GetPosition(ea[i]) - right.GetPosition(eb[i])).Length()); }
+        Assert.True(worst < 0.002, "seam gap " + worst);
+        // the free cloth hangs from the seam: its far edge is about one cloth width below
+        Assert.True(right.GetPosition(8).Y < 3.0 - 0.3);
+        w.RemoveClothLink(first);
+        Assert.Equal(8, w.ClothLinkCount);
+    }
+
+    [Fact]
+    public void AClothAttachedToARigidBodyFollowsItAndSlowsIt()
+    {
+        var w = NewWorld(1, o => o.Gravity = default);
+        var box = w.AddBox(new Vector3F(0.3f, 0.3f, 0.3f), at: new Vector3D(0, 2, 0), density: 37f);
+        box.LinearVelocity = new Vector3F(3f, 0f, 0f);
+        var m = Light(); m.ArealDensity = 2f; m.StrainLimit = 0.02f;
+        var def = new ClothDef { Width = 0.4f, Depth = 0.4f, SegmentsX = 6, SegmentsZ = 6, Position = new Vector3D(0.35, 2, 0), Material = m, SelfCollision = false, SurfaceCollision = false };
+        var cloth = w.AddCloth(def);
+        // the cloth's x = -width/2 edge lies against the box's +x face: attach it
+        var near = ClothDef.PinEdge(6, 6, 3).ToList();
+        w.AttachClothEdge(cloth, near.ToArray(), box);
+        var anchors = new List<(int, Vector3D)>();
+        foreach (int i in near) { var off = cloth.GetPosition(i) - box.Position; var lo = box.Rotation.Conjugated().Rotate(new Vector3F((float)off.X, (float)off.Y, (float)off.Z)); anchors.Add((i, new Vector3D(lo.X, lo.Y, lo.Z))); }
+        Run(w, 120);
+        // the box slowed as it dragged the cloth along
+        Assert.True(box.LinearVelocity.X < 3f - 0.02f, "the box was slowed: " + box.LinearVelocity.X);
+        double slip = 0.0;
+        foreach (var (i, lo) in anchors) { var ro = box.Rotation.Rotate(new Vector3F((float)lo.X, (float)lo.Y, (float)lo.Z)); slip = Math.Max(slip, (cloth.GetPosition(i) - box.Position - new Vector3D(ro.X, ro.Y, ro.Z)).Length()); }
+        Assert.True(slip < 0.02, "attached particles stay where they were on the box: " + slip);
+    }
+
+    [Fact]
+    public void ClothLinksSurviveASnapshotAndAFork()
+    {
+        PhysicsWorld3D Make(out SoftBody cloth, out Body box)
+        {
+            var w = NewWorld();
+            box = w.AddBox(new Vector3F(0.3f, 0.3f, 0.3f), at: new Vector3D(0, 3.2, 0), type: BodyType.Kinematic);
+            var m = Light(); m.ArealDensity = 0.3f; m.StrainLimit = 0.03f;
+            var a = w.AddCloth(new ClothDef { Width = 0.6f, Depth = 0.6f, SegmentsX = 6, SegmentsZ = 6, Position = new Vector3D(0, 3, 0), Material = m, SelfCollision = false, SurfaceCollision = false });
+            var b = w.AddCloth(new ClothDef { Width = 0.6f, Depth = 0.6f, SegmentsX = 6, SegmentsZ = 6, Position = new Vector3D(0.6, 3, 0), Material = m, SelfCollision = false, SurfaceCollision = false });
+            w.AddSeam(a, ClothDef.PinEdge(6, 6, 1), b, ClothDef.PinEdge(6, 6, 3), 1e-4f);
+            w.AttachClothEdge(a, ClothDef.PinEdge(6, 6, 3), box);
+            cloth = a;
+            return w;
+        }
+
+        var w1 = Make(out _, out var box1);
+        Run(w1, 30);
+        var snap = w1.Snapshot();
+        var w2 = Make(out _, out _);
+        w2.Restore(snap);
+        Assert.Equal(snap, w2.Snapshot());
+        Assert.Equal(w1.ComputeHash(), w2.ComputeHash());
+        Assert.Equal(14, w2.ClothLinkCount);
+        var f = w1.Fork();
+        for (int i = 0; i < 30; i++)
+        {
+            w1.Step(Dt); w2.Step(Dt); f.Step(Dt);
+            Assert.Equal(w1.ComputeHash(), w2.ComputeHash());
+            Assert.Equal(w1.ComputeHash(), f.ComputeHash());
+        }
+
+        // destroying the rigid body drops its attachments
+        box1.Destroy();
+        w1.Step(Dt);
+        Assert.Equal(7, w1.ClothLinkCount);
     }
 }

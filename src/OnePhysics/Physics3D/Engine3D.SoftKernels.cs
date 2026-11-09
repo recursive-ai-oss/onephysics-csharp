@@ -592,6 +592,7 @@ internal sealed partial class Engine3D
     {
         SolveDiscPairs();
         if (_avCount + _aeCount > 0) { SolveSurfacePairs(); }
+        if (_lkCount > 0) { SolveLinks(); }
     }
 
     private void SolveDiscPairs()

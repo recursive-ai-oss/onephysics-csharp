@@ -62,6 +62,7 @@ internal sealed partial class Engine3D
 
     public void RemoveSoftBody(int i)
     {
+        DropLinksOf(i);
         _softParticles -= SoftData[i]!.N;
         SoftData[i] = null;
         SoftHandles.Free(i);

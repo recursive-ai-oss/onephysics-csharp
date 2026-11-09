@@ -137,6 +137,7 @@ internal sealed partial class Engine3D
             }
         }
 
+        if (LinkHandles.HighWater > 0) { LinkWake(); }
         for (int i = 0; i < SoftHandles.HighWater; i++) { if (_wakeFlag[i] == 4) { _wakeFlag[i] = 2; SoftData[i]!.Asleep = false; SoftData[i]!.SleepTime = 0f; } }
         for (int i = 0; i < SoftHandles.HighWater; i++)
         {
@@ -229,6 +230,7 @@ internal sealed partial class Engine3D
 #endif
             SoftenDepenetration(h);
             for (int a = 0; a < _awakeSoftCount; a++) { Array.Clear(_awakeSoft[a].Lambda); }
+            PrepareLinks(t1, h, invH);
             SolveSubstep(h, invH, iterations, tSkin);
 
         Core.Profile.Mark(StepStage.SoftFinish);

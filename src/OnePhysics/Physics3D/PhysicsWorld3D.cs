@@ -48,6 +48,7 @@ public sealed partial class PhysicsWorld3D
         _core.AddSection(_engine.Actuators);
         _core.AddSection(_engine.BicycleSnapshotSection);
         _core.AddSection(_engine.RailSnapshotSection);
+        _core.AddSection(_engine.ClothLinkSnapshotSection);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 

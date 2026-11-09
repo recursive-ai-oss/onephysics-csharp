@@ -38,6 +38,8 @@ public readonly struct SoftBody : IEquatable<SoftBody>
         _generation = generation;
     }
 
+    internal PhysicsWorld3D? WorldOrNull => _world;
+
     private SoftBodyData Resolve()
     {
         if (_world == null) { throw new InvalidHandleException("The default SoftBody is not attached to a world."); }
