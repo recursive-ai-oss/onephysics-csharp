@@ -27,6 +27,7 @@ public static class Program
             case "pulley-run": return PulleyRuns.Run(opts);
             case "fields-stability": return FieldStability.Run();
             case "destruction-stability": return DestructionStability.Run(opts);
+            case "destruction-timing": return DestructionTiming.Run(opts);
             case "decomposed-pile-stability": return DecomposedPileStability.Run();
             case "tools-timing": return ToolsTiming.Run();
             case "soft2d-stability": return SoftStability2D.Run();
