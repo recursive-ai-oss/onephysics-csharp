@@ -7,8 +7,8 @@ namespace RecursiveAI.OnePhysics.Tools.Tests;
 /// <summary>A triangle mesh built by the generators below.</summary>
 public sealed class TestMesh
 {
-    public List<Vector3F> Vertices = new();
-    public List<int> Indices = new();
+    public List<Vector3F> Vertices { get; } = new();
+    public List<int> Indices { get; } = new();
 
     public int Add(float x, float y, float z) { Vertices.Add(new Vector3F(x, y, z)); return Vertices.Count - 1; }
 
