@@ -134,8 +134,17 @@ internal sealed class RodScene
         }
         else
         {
-            if(Spatial!=null){var bs=Spatial.Core.Bodies;for(int b=0;b<bs.HighWater;b++)if(bs.IsLive(b)&&bs.IsDynamic(b)&&bs.PositionOf(b)[1]<-2.5)count++;}
-            else {var bs=Planar!.Core.Bodies;for(int b=0;b<bs.HighWater;b++)if(bs.IsLive(b)&&bs.IsDynamic(b)&&bs.PositionOf(b)[1]<-.5)count++;}
+            // Bridge and swing: a dynamic body or a rod particle whose centre is below the centre plane of the floor slab has passed through it.
+            if(Spatial!=null)
+            {
+                var bs=Spatial.Core.Bodies;for(int b=0;b<bs.HighWater;b++)if(bs.IsLive(b)&&bs.IsDynamic(b)&&bs.PositionOf(b)[1]<-2)count++;
+                foreach(var rod in Rods3)for(int p=0;p<rod.ParticleCount;p++)if(rod.GetPosition(p).Y<-2)count++;
+            }
+            else
+            {
+                var bs=Planar!.Core.Bodies;for(int b=0;b<bs.HighWater;b++)if(bs.IsLive(b)&&bs.IsDynamic(b)&&bs.PositionOf(b)[1]<-.5)count++;
+                foreach(var rod in Rods2)for(int p=0;p<rod.ParticleCount;p++)if(rod.GetPosition(p).Y<-.5)count++;
+            }
         }
         return count;
     }

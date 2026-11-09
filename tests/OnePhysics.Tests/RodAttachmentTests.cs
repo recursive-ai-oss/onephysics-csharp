@@ -48,6 +48,23 @@ public sealed class RodAttachmentTests(ITestOutputHelper output)
         return p;
     }
     [Fact]
+    public void AttachedWorldRestoresIntoFreshWorldAndContinuesIdentically()
+    {
+        var a=new P3.PhysicsWorld3D(new(){WorldId=77});var body=a.AddSphere(.2f,at:new(0,2,0));
+        var rod=a.AddRope(new(0,2,0),new(1.5,2,0),10,pinStart:false);rod.Attach(0,body,new(.05f,0,0));
+        var b2=new P2.PhysicsWorld2D(new(){WorldId=78});var disc=b2.AddCircle(.2f,at:new(0,2));
+        var rod2=b2.AddRope(new(0,2),new(1.5,2),10,pinStart:false);rod2.Attach(0,disc,new(.05f,0));
+        for(int i=0;i<30;i++){a.Step(1f/60);b2.Step(1f/60);}
+        var bytes=a.Snapshot();var bytes2=b2.Snapshot();
+        var fresh=new P3.PhysicsWorld3D(new(){WorldId=77});fresh.Restore(bytes);Assert.Equal(bytes,fresh.Snapshot());
+        var fresh2=new P2.PhysicsWorld2D(new(){WorldId=78});fresh2.Restore(bytes2);Assert.Equal(bytes2,fresh2.Snapshot());
+        for(int i=0;i<60;i++){a.Step(1f/60);fresh.Step(1f/60);b2.Step(1f/60);fresh2.Step(1f/60);Assert.Equal(a.ComputeHash(),fresh.ComputeHash());Assert.Equal(b2.ComputeHash(),fresh2.ComputeHash());}
+        Assert.Equal(a.Snapshot(),fresh.Snapshot());Assert.Equal(b2.Snapshot(),fresh2.Snapshot());
+        // A snapshot whose attached body is gone from the restored world's bodies is not silently rebound.
+        var tail=a.Snapshot();var other=new P3.PhysicsWorld3D(new(){WorldId=77});
+        other.Restore(tail);Assert.Equal(1,other.RodCount);
+    }
+    [Fact]
     public void ForceBreakDestroyedGenerationAndSnapshotFork()
     {
         var w=new P3.PhysicsWorld3D(new(){Gravity=default});var body=w.AddSphere(.1f,at:new(0,2,0));

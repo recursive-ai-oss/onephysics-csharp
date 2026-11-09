@@ -75,7 +75,7 @@ internal sealed partial class RodStore
                 if(version>=2)
                 {
                     attached[p]=r.ReadInt32();generationsOfBody[p]=r.ReadInt32();anchors[p]=ReadVector(r);breaking[p]=r.ReadSingle();forces[p]=ReadVector(r);broken[p]=r.ReadBool();
-                    if(attached[p]<-1 || (attached[p]>=0&&(attached[p]>=Host.RodCore.Bodies.HighWater||generationsOfBody[p]<=0)) || !Finite(anchors[p]) || Math.Abs(anchors[p].X)>2097152 || Math.Abs(anchors[p].Y)>2097152 || Math.Abs(anchors[p].Z)>2097152 || !(breaking[p]>0&&float.IsFinite(breaking[p])) || !Finite(forces[p]) || (Host.Planar&&(anchors[p].Z!=0||forces[p].Z!=0)) || (pins[p]&&attached[p]>=0))throw r.Error("Invalid rod attachment.");
+                    if(attached[p]<-1 || (attached[p]>=0&&(attached[p]>=(Host.RodCore.RestoringBodies??Host.RodCore.Bodies).HighWater||generationsOfBody[p]<=0)) || !Finite(anchors[p]) || Math.Abs(anchors[p].X)>2097152 || Math.Abs(anchors[p].Y)>2097152 || Math.Abs(anchors[p].Z)>2097152 || !(breaking[p]>0&&float.IsFinite(breaking[p])) || !Finite(forces[p]) || (Host.Planar&&(anchors[p].Z!=0||forces[p].Z!=0)) || (pins[p]&&attached[p]>=0))throw r.Error("Invalid rod attachment.");
                 }
                 var x = points[p]; var target = targets[p];
                 if (!(Math.Abs(target.X) <= 4194304 && Math.Abs(target.Y) <= 4194304 && Math.Abs(target.Z) <= 4194304)) throw r.Error("Invalid rod pin target.");
