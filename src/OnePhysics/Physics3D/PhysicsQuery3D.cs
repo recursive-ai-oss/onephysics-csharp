@@ -11,7 +11,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// Single queries may run concurrently from several threads; each thread has its own scratch, so steady-state queries with caller buffers allocate nothing.
 /// </summary>
 [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
-public sealed class PhysicsQuery3D
+public sealed partial class PhysicsQuery3D
 {
     private readonly PhysicsWorld3D _world;
 
@@ -150,5 +150,9 @@ public sealed class PhysicsQuery3D
         }
     }
 
-    private void Run(BatchBody body, int n) => _world.Core.Executor.For((n + 63) / 64, body);
+    private void Run(BatchBody body, int n)
+    {
+        _world.QueryEngine.PrepareQueries();
+        _world.Core.Executor.For((n + 63) / 64, body);
+    }
 }

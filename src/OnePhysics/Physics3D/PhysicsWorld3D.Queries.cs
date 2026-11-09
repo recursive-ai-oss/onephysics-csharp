@@ -395,6 +395,9 @@ public sealed partial class PhysicsWorld3D
         return QueryArray(in q, 0f, in filter);
     }
 
+    internal Engine3D QueryEngine => _engine;
+    internal QueryHit3D ToPublic(in RawHit h, float length) => ToHit(in h, length);
+
     // ------------------------------------------------------------------ used by batches and tests
 
     internal static void ValidateRay(Vector3D origin, Vector3F direction, float maxDistance)

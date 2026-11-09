@@ -5,7 +5,7 @@ using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics2D;
 
-internal enum QueryKind : byte { Ray, Cast, Overlap, Closest }
+internal enum QueryKind : byte { Ray, Cast, Overlap, Closest, Penetration }
 
 internal enum QueryMode : byte { Closest, Any, All }
 
@@ -78,6 +78,8 @@ internal readonly struct PaddedRay<TRay> : IRay<Aabb2D> where TRay : struct, IRa
 internal struct QueryParams
 {
     public QueryKind Kind;
+    public int OnlyBodyPlusOne, OnlyShapePlusOne, ExcludeBodyPlusOne;
+    public bool ExcludeJointed;
     public double X, Y;          // ray origin, mover position, or closest-point query point
     public float Tx, Ty;         // ray or cast translation (world frame)
     public Shape2D Mover;        // cast and overlap shape in its own frame
@@ -94,7 +96,7 @@ internal sealed partial class Engine2D
     internal bool BruteQueries;
 
     private double _queryPad;
-    private bool _queryPadValid;
+    private volatile bool _queryPadValid;
 
     private static Shape2D MakePoint()
     {
@@ -103,6 +105,8 @@ internal sealed partial class Engine2D
     }
 
     public void InvalidatePad() => _queryPadValid = false;
+
+    internal void PrepareQueries() => QueryPad();
 
     /// <summary>
     /// How far any moving proxy's stored (fat) box may be behind the body's pose: bodies move during a step but their proxies are updated at the start of the next one, so between steps a box can be stale.
@@ -158,6 +162,20 @@ internal sealed partial class Engine2D
         FrameOf(b, out double ox, out double oy, out Rot2 bq);
         switch (q.Kind)
         {
+            case QueryKind.Penetration:
+            {
+                var relative = Transform2.InvMul(new Transform2(default, bq), new Transform2(new Vec2((float)(q.X - ox), (float)(q.Y - oy)), q.MoverRot));
+                var manifold = Collide2D.Collide(in Geom[s], in q.Mover, relative, 0f);
+                if (manifold.PointCount == 0) { return false; }
+                var point = manifold.Point0;
+                for (int i = 1; i < manifold.PointCount; i++) { if (manifold[i].Separation < point.Separation) { point = manifold[i]; } }
+                if (!(point.Separation < 0f)) { return false; }
+                var wp = bq.Rotate(point.Point); var normal = bq.Rotate(manifold.Normal);
+                h.Key = point.Separation; h.Distance = -point.Separation;
+                h.Px = ox + wp.X; h.Py = oy + wp.Y; h.Nx = normal.X; h.Ny = normal.Y;
+                return true;
+            }
+
             case QueryKind.Ray:
             {
                 Vec2 lo = bq.InverseRotate(new Vec2((float)(q.X - ox), (float)(q.Y - oy)));
@@ -230,6 +248,8 @@ internal sealed partial class Engine2D
 
         private bool Visit(int slot)
         {
+            if (Q.ExcludeBodyPlusOne != 0 && E.ExcludedFromSweep(E.Core.Shapes.Owner[slot], Q.ExcludeBodyPlusOne - 1, Q.ExcludeJointed)) { return false; }
+            if ((Q.OnlyShapePlusOne != 0 && slot != Q.OnlyShapePlusOne - 1) || (Q.OnlyBodyPlusOne != 0 && E.Core.Shapes.Owner[slot] != Q.OnlyBodyPlusOne - 1)) { return false; }
             if (!E.Passes(in Filter, slot) || !E.Narrow(in Q, Mode, slot, out RawHit h)) { return false; }
             S.Insert(in h);
             return true;
@@ -265,7 +285,16 @@ internal sealed partial class Engine2D
         {
             if (capacity == 0) { return scratch; }
             var v = new Visitor { E = this, Q = q, Filter = filter, Mode = mode, S = scratch };
-            if (BruteQueries) { Brute(ref v); }
+            if (q.OnlyShapePlusOne != 0) { v.Report(0, q.OnlyShapePlusOne - 1, 1.0); }
+            else if (q.OnlyBodyPlusOne != 0)
+            {
+                for (int slot = ShapeHead[q.OnlyBodyPlusOne - 1]; slot >= 0; slot = NextShape[slot])
+                {
+                    v.Report(0, slot, 1.0);
+                    if (mode == QueryMode.Any && scratch.Count != 0) { break; }
+                }
+            }
+            else if (BruteQueries) { Brute(ref v); }
             else if (q.Kind == QueryKind.Closest) { ClosestSearch(ref v); }
             else { Trees(ref v); }
             return scratch;
@@ -301,7 +330,7 @@ internal sealed partial class Engine2D
             return;
         }
 
-        var local = q.Kind == QueryKind.Cast || q.Kind == QueryKind.Overlap ? q.Mover.ComputeAabb(new Transform2(default, q.MoverRot)) : default;
+        var local = q.Kind == QueryKind.Cast || q.Kind == QueryKind.Overlap || q.Kind == QueryKind.Penetration ? q.Mover.ComputeAabb(new Transform2(default, q.MoverRot)) : default;
         var box = new Aabb2D(q.X + (double)local.Lower.X, q.Y + (double)local.Lower.Y, q.X + (double)local.Upper.X, q.Y + (double)local.Upper.Y);
         if (q.Kind == QueryKind.Cast)
         {

@@ -37,6 +37,7 @@ public sealed partial class PhysicsWorld3D
             EnlargedRefitSteps = 3,
         });
         _engine = new Engine3D(_core, bp, o) { World = this };
+        _mixedQueries = new PhysicsQuery3D(this);
         _core.AddSection(bp);
         _core.AddSection(_engine);
         BindBodyControlOptions();

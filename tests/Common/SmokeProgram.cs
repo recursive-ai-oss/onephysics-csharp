@@ -8,6 +8,31 @@ using V3D = RecursiveAI.OneMath.Vector3D;
 // snapshots and restores it, and checks that every path gives the same world hash.
 internal static class SmokeProgram
 {
+    private static bool ExtendedQueriesSmoke()
+    {
+        var a = new RecursiveAI.OnePhysics.Physics2D.PhysicsWorld2D();
+        var b = new RecursiveAI.OnePhysics.Physics3D.PhysicsWorld3D();
+        var source2 = a.AddCircle(0.5f, default);
+        var source3 = b.AddSphere(0.5f, default);
+        a.AddCircle(0.5f, new RecursiveAI.OneMath.Vector2D(5, 0), BodyType.Static);
+        b.AddSphere(0.5f, new V3D(5, 0, 0), BodyType.Static);
+        var requests2 = new[] { RecursiveAI.OnePhysics.Physics2D.QueryInput2D.Ray(default, new RecursiveAI.OneMath.Vector2F(1, 0), 10f) };
+        var requests3 = new[] { RecursiveAI.OnePhysics.Physics3D.QueryInput3D.Ray(default, new V3F(1, 0, 0), 10f) };
+        var results2 = new RecursiveAI.OnePhysics.Physics2D.QueryHit2D[2];
+        var results3 = new RecursiveAI.OnePhysics.Physics3D.QueryHit3D[2];
+        bool good = a.QueryBatch(requests2, results2) == 1 && b.QueryBatch(requests3, results3) == 1;
+        var counts = new int[1]; var any = new bool[1];
+        a.QueryAllBatch(requests2, results2, counts, 2); good &= counts[0] == 2;
+        b.QueryAllBatch(requests3, results3, counts, 2); good &= counts[0] == 2;
+        a.QueryAnyBatch(requests2, any); good &= any[0]; b.QueryAnyBatch(requests3, any); good &= any[0];
+        good &= source2.Sweep(new RecursiveAI.OneMath.Vector2F(1, 0), out var sweep2, 10f) && sweep2.Distance > 3f;
+        good &= source3.Sweep(new V3F(1, 0, 0), out var sweep3, 10f) && sweep3.Distance > 3f;
+        good &= a.Penetration(Shape2D.CreateCircle(default, 0.5f), default, 0f, out _);
+        good &= b.Penetration(ConvexShape3D.Sphere(0.5f), default, default, out _);
+        Console.WriteLine(good ? "OK extended-queries" : "FAIL extended-queries");
+        return good;
+    }
+
     private static int Main()
     {
         const float dt = 1f / 60f;
@@ -95,7 +120,7 @@ internal static class SmokeProgram
         Console.WriteLine((inspection ? "OK inspection " : "FAIL inspection ") + inspectionHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool machines = JointMachineSmoke.Run();
         Console.WriteLine(machines ? "OK machines" : "FAIL machines");
-        return repairs && bodyControls && machines && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
+        return ExtendedQueriesSmoke() && repairs && bodyControls && machines && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame ? 0 : 1;
     }
 
     private static bool HostRepairs()
