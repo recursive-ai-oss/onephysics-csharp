@@ -591,17 +591,19 @@ internal sealed partial class Engine2D
         return reach + g.Radius;
     }
 
-    // Whether a pair recorded as apart still is. Every point of B's shape moves, relative to A, by at most the move of B's centre of mass plus the chord of the turn times the point's distance from that centre
-    // (the turn's cosine is the product of the two stored and current rotations, so no angle is needed). The slack covers float rounding of the relative pose, which grows with its size.
-    private static bool StillApart(in SkipFrame f, Rot2 qA, Rot2 qB, float dx, float dy)
+    // Whether a pair recorded as apart still is. Every point of B's shape moves, relative to A, by at most the move of B's centre of mass plus the chord of the turn times the point's distance from that centre.
+    // The chord is the length of (cos - 1, sin) of the turn since the pair was recorded, taken from the sine as well as the cosine: sqrt(2 (1 - cos)) turns a rounding error of 1e-7 in the cosine into a chord error of
+    // 4e-4, which times the reach of a long shape (tens of metres) can exceed the clearance and skip a pair that touches. The slack covers float rounding of the relative pose, which grows with its size.
+    internal static bool StillApart(in SkipFrame f, Rot2 qA, Rot2 qB, float dx, float dy)
     {
         float cA = qA.C, sA = qA.S;
         float ex = cA * dx + sA * dy - f.X, ey = cA * dy - sA * dx - f.Y;
-        float dc = (cA * qB.C + sA * qB.S) * f.C + (cA * qB.S - sA * qB.C) * f.S;
-        float turn = 2f * (1f - dc);
+        float cr = cA * qB.C + sA * qB.S, sr = cA * qB.S - sA * qB.C;   // B's current rotation in A's frame
+        float dc = cr * f.C + sr * f.S, ds = sr * f.C - cr * f.S;       // cosine and sine of the turn since the pair was recorded
+        float turn = float.Sqrt((1f - dc) * (1f - dc) + ds * ds);
         float radius = f.Reach;
         float slack = 0.001f + 1e-6f * (float.Abs(dx) + float.Abs(dy) + radius);
-        float used = float.Sqrt(ex * ex + ey * ey) + float.Sqrt(turn > 0f ? turn : 0f) * radius + slack;
+        float used = float.Sqrt(ex * ex + ey * ey) + turn * radius + slack;
         return used <= f.Clear; // false for NaN
     }
 
