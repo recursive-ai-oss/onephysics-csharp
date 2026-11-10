@@ -13,15 +13,15 @@ The package id is `RecursiveAI.OnePhysics`. Its only dependency is `RecursiveAI.
 
 ## Preview markers
 
-Two parts of the package carry `[Experimental]` and fail to compile until you opt in, so you cannot use them by accident:
+Three parts of the package carry `[Experimental]` and fail to compile until you opt in, so you cannot use them by accident:
 
 | Part | Diagnostic | Opt in |
 |---|---|---|
 | The 3D engine, namespace `RecursiveAI.OnePhysics.Physics3D` | `OPHYS0002` | `<NoWarn>$(NoWarn);OPHYS0002</NoWarn>` in the project, or `#pragma warning disable OPHYS0002` in a file |
-| The 2D soft bodies (`SoftBody`, `SoftBodyDef`, `SoftBodyMesh`, `SoftMaterial`, `PhysicsWorld2D.AddSoftBody` and friends), namespace `RecursiveAI.OnePhysics.Physics2D` | `OPHYS0003` | `<NoWarn>$(NoWarn);OPHYS0003</NoWarn>` in the project, or `#pragma warning disable OPHYS0003` in a file |
-| The raw tier, namespace `RecursiveAI.OnePhysics.LowLevel` | `OPHYS0001` | the same, with `OPHYS0001` |
+| The later features in both dimensions: active ragdolls, articulations, actuators and aerodynamics, 2D vehicles, rail vehicles, bicycles and ragdolls, 2D soft bodies and strips | `OPHYS0003` | `<NoWarn>$(NoWarn);OPHYS0003</NoWarn>` in the project, or `#pragma warning disable OPHYS0003` in a file |
+| The raw tier, namespace `RecursiveAI.OnePhysics.LowLevel`, and the rope, rod and pulley types | `OPHYS0001` | the same, with `OPHYS0001` |
 
-Both may change between previews. **0.x previews are not bit-compatible with each other**: do not carry snapshots, saved games or replays across a package update (the [changelog](../../CHANGELOG.md) says which previews moved results).
+Each may change between previews; [the API notes](../spec/api.md) list exactly which types carry which marker. **0.x previews are not bit-compatible with each other**: do not carry snapshots, saved games or replays across a package update (the [changelog](../../CHANGELOG.md) says which previews moved results).
 
 ## Next
 

@@ -4,8 +4,8 @@
     <AssemblyName>$(PackageBaseName)</AssemblyName>
     <RootNamespace>RecursiveAI.OnePhysics</RootNamespace>
     <PackageId>$(PackageBaseName)</PackageId>
-    <Description>Deterministic 2D and 3D rigid-body physics for .NET with identical results on every platform.</Description>
-    <PackageTags>physics;rigid-body;2d;3d;deterministic;determinism;lockstep;rollback;simulation;collision;nativeaot;trimmable</PackageTags>
+    <Description>Deterministic 2D and 3D physics for .NET with identical results on every platform: rigid bodies, joints, characters, vehicles, ragdolls, ropes, cloth and soft bodies, fluids, fracture, articulations, and rollback tooling (byte-exact snapshots, world hashes, replays).</Description>
+    <PackageTags>physics;rigid-body;2d;3d;deterministic;determinism;lockstep;rollback;simulation;collision;soft-body;cloth;fluid;ragdoll;vehicle;nativeaot;trimmable</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageReleaseNotes>See CHANGELOG.md in the repository.</PackageReleaseNotes>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -27,6 +27,7 @@
     <!-- The repository README is the package page on nuget.org, where relative links break: tools/check.sh rejects any link in it that is not absolute. -->
     <None Include="../../README.md" Pack="true" PackagePath="\" Visible="false" />
     <None Include="../../CHANGELOG.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="../../THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" Visible="false" />
     <None Include="../../LICENSE-MIT" Pack="true" PackagePath="/" Visible="false" />
     <None Include="../../LICENSE-APACHE" Pack="true" PackagePath="/" Visible="false" />
   </ItemGroup>

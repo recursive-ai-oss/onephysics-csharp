@@ -162,6 +162,8 @@ jobs:
         run: |
           dotnet pack src/OnePhysics -c Release -o "$RUNNER_TEMP/packages"
           dotnet pack src/OnePhysics.Tools -c Release -o "$RUNNER_TEMP/packages"
+          # When the Interchange package ships, pack it here and add its two ls lines below:
+          # dotnet pack src/OnePhysics.Interchange -c Release -o "$RUNNER_TEMP/packages"
           ls -l "$RUNNER_TEMP/packages"
           ls "$RUNNER_TEMP/packages"/RecursiveAI.OnePhysics.[0-9]*.nupkg "$RUNNER_TEMP/packages"/RecursiveAI.OnePhysics.[0-9]*.snupkg
           ls "$RUNNER_TEMP/packages"/RecursiveAI.OnePhysics.Tools.*.nupkg "$RUNNER_TEMP/packages"/RecursiveAI.OnePhysics.Tools.*.snupkg

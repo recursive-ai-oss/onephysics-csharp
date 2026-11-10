@@ -334,6 +334,18 @@ public sealed partial class PhysicsWorld2D
     /// <summary>Every shape containing the point, by slot, in a new array.</summary>
     public QueryHit2D[] OverlapPointAll(Vector2D point, in QueryFilter2D filter = default) => OverlapShapeAll(Engine2D.s_point, point, 0f, in filter);
 
+    /// <summary>The overlapped shape nearest the capsule's centre; the capsule's axis runs along x from -halfLength to halfLength in its frame.</summary>
+    public bool OverlapCapsule(Vector2D center, float halfLength, float radius, float angleRadians, out QueryHit2D hit, in QueryFilter2D filter = default) => OverlapShape(Capsule(halfLength, radius), center, angleRadians, out hit, in filter);
+
+    /// <summary>True when the capsule overlaps anything.</summary>
+    public bool OverlapCapsuleAny(Vector2D center, float halfLength, float radius, float angleRadians, in QueryFilter2D filter = default) => OverlapShapeAny(Capsule(halfLength, radius), center, angleRadians, in filter);
+
+    /// <summary>Every shape the capsule overlaps, by slot, into a caller buffer.</summary>
+    public int OverlapCapsuleAll(Vector2D center, float halfLength, float radius, float angleRadians, Span<QueryHit2D> results, in QueryFilter2D filter = default) => OverlapShapeAll(Capsule(halfLength, radius), center, angleRadians, results, in filter);
+
+    /// <summary>Every shape the capsule overlaps, by slot, in a new array.</summary>
+    public QueryHit2D[] OverlapCapsuleAll(Vector2D center, float halfLength, float radius, float angleRadians, in QueryFilter2D filter = default) => OverlapShapeAll(Capsule(halfLength, radius), center, angleRadians, in filter);
+
     /// <summary>The overlapped shape nearest the circle's centre.</summary>
     public bool OverlapCircle(Vector2D center, float radius, out QueryHit2D hit, in QueryFilter2D filter = default) => OverlapShape(CircleShape(radius), center, 0f, out hit, in filter);
 
