@@ -728,8 +728,9 @@ internal sealed partial class Engine2D
             int o = (b + 1) * BS2D.Stride;
             if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) LimitBodyControls(b);
             // The joint and contact solve that just ran can hand a body far more speed than the limit applied when its velocity was integrated (a joint anchored hundreds of metres from a light body asks for
-            // arbitrary impulses). Limit again before the body moves, so a badly posed joint flings a body at most as fast as the world allows rather than to infinity.
-            if (bodies.Type[b] == (byte)BodyType.Dynamic) { LimitAfterSolve(o, maxSpeed, maxSpin); }
+            // arbitrary impulses, and the next solve asks for more). A solve may legitimately exceed the limits a little, so this one allows 16 times as much: enough that only a runaway is cut, so a badly posed
+            // joint flings a body at a bounded speed rather than to infinity and then to NaN.
+            if (bodies.Type[b] == (byte)BodyType.Dynamic) { LimitAfterSolve(o, 16f * maxSpeed, 16f * maxSpin); }
             float dx = h * st[o + BS2D.Vx], dy = h * st[o + BS2D.Vy];
             st[o + BS2D.Dpx] += dx; st[o + BS2D.Dpy] += dy;
             pos[2 * b] += WorldCore.Grid(dx); pos[2 * b + 1] += WorldCore.Grid(dy);

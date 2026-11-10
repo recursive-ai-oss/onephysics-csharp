@@ -8,7 +8,7 @@ namespace RecursiveAI.OnePhysics.Tests.Fuzz;
 // Behaviours behind fuzz findings that deserve a statement of their own beside the replayed inputs in testdata/fuzz.
 public sealed class Robustness2DFindingsTests
 {
-    // A slider anchored 200 m from two light bodies asks the solver for enormous impulses. The speed limit applied before the solve is not enough: bodies must also be limited before they move,
+    // A slider anchored 200 m from two light bodies asks the solver for enormous impulses. The speed limit applied before the solve is not enough: runaway speeds must also be cut before bodies move,
     // so the world stays finite however a joint is posed.
     [Fact]
     public void AFarAnchoredJointKeepsEveryBodyFinite()
@@ -22,7 +22,7 @@ public sealed class Robustness2DFindingsTests
             w.Step(1f / 60f);
             var p = a.Position; var v = a.LinearVelocity;
             Assert.True(double.IsFinite(p.X) && double.IsFinite(p.Y) && float.IsFinite(v.X) && float.IsFinite(v.Y));
-            Assert.True(v.X * v.X + v.Y * v.Y <= 400.5f * 400.5f);
+            Assert.True(v.X * v.X + v.Y * v.Y <= 6400.5f * 6400.5f);
         }
 
         Assert.NotEmpty(w.Snapshot());
