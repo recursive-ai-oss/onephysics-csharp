@@ -257,3 +257,26 @@ public sealed class StreamingTests
         Assert.Equal(snap, c2.Snapshot()); Assert.Equal(snap, w2.Fork().Snapshot());
     }
 }
+
+public sealed class StreamingSceneTests
+{
+    [Fact]
+    public void StreamingSceneHoldsTogetherAndSeamsAreNoWorseThanOneField()
+    {
+        var tiled = WorldScaleScenes.BuildStreaming3D(1);
+        var whole = WorldScaleScenes.BuildStreaming3D(1, 1401, true);
+        for (int i = 0; i < 1200; i++) { tiled.Step(i); whole.Step(i); }
+        string report = $"tiled: loads {tiled.Loads} unloads {tiled.Unloads} maxLoaded {tiled.MaxLoaded} maxSpeed {tiled.MaxSpeed:F2} tunnelled {tiled.Tunnelled} seam dvy {tiled.SeamStep:F3}; unsplit: maxSpeed {whole.MaxSpeed:F2} tunnelled {whole.Tunnelled} seam dvy {whole.SeamStep:F3}";
+        Assert.True(tiled.Tunnelled == 0 && tiled.NonFinite == 0 && tiled.World.FailedTileLoads == 0 && tiled.Loads > 25, report);
+        Assert.True(tiled.SeamStep <= whole.SeamStep * 1.25 + 0.1, report);
+        Assert.True(tiled.MaxLoaded <= 30, report);
+    }
+
+    [Fact]
+    public void StreamingSceneHashesAreEqualOnAnyThreadCountAndThroughARestore()
+    {
+        ulong a = WorldScaleScenes.RunStreaming3D(1, false, null, 200);
+        Assert.Equal(a, WorldScaleScenes.RunStreaming3D(1, true, null, 200));
+        Assert.Equal(a, WorldScaleScenes.RunStreaming3D(8, false, null, 200));
+    }
+}
