@@ -19,6 +19,7 @@ internal sealed partial class FluidStore
         _k = new FluidKernels(Dim, Spacing * KernelScale);
         _spacing2 = Spacing * Spacing;
         _spec = 0.25f * Spacing;
+        SetUpSolids();
         var g = Host.Gravity;
         _g.X = g.X; _g.Y = g.Y; _g.Z = Dim == 3 ? g.Z : 0f;
         _anyVisc = false; _anyVort = false;
@@ -48,6 +49,7 @@ internal sealed partial class FluidStore
         if (need > 1_500_000_000L) { throw new FluidBudgetException("The neighbour lists of " + Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + " particles at this kernel radius would take too much memory; use a smaller KernelRadiusScale or fewer particles."); }
         EnsureWork(Count);
         if (_nbr.Length < need) { _nbr = new int[(int)Math.Min(Math.Max(need, (long)_nbr.Length * 2), 1_500_000_000L)]; }
+        SetUpViscosity();
     }
 
     /// <summary>Steps the fluids once, after the rigid step. Emitters add particles first; drains remove them last; a settled fluid sleeps.</summary>
@@ -81,6 +83,8 @@ internal sealed partial class FluidStore
 
         vmax = float.Sqrt(vmax);
         float gm = float.Sqrt(_g.X * _g.X + _g.Y * _g.Y + _g.Z * _g.Z);
+        int substeps = SubstepCount(dt, vmax);
+        _h = dt / substeps;
         float travel = (vmax + 2f * gm * dt + 1f) * dt;
         double margin = travel + _k.H;
         _ox = Math.Floor(mnx - margin); _oy = Math.Floor(mny - margin); _oz = Dim == 3 ? Math.Floor(mnz - margin) : 0.0;
@@ -101,10 +105,10 @@ internal sealed partial class FluidStore
             _x[i] = (float)(PX[i] - _ox); _y[i] = (float)(PY[i] - _oy); _z[i] = Dim == 3 ? (float)(PZ[i] - _oz) : 0f;
         }
 
-        _def.Substeps = Settings.Substeps;
+        _def.Substeps = substeps;
         if (_def.Count > 0) { BuildDeformableGrid(); }
         LastContacts = 0; LastCoupledContacts = 0;
-        int substeps = Settings.Substeps, iterations = Settings.Iterations;
+        int iterations = _anyPbf ? Settings.Iterations : Math.Min(Settings.Iterations, 2);
         var ex = Host.Core.Executor;
         for (int sub = 0; sub < substeps; sub++)
         {
@@ -114,6 +118,8 @@ internal sealed partial class FluidStore
             ex.For((Count + Chunk - 1) / Chunk, new PredictTask { S = this });
             SortParticles();
             ex.For(_taskCount, new NeighbourTask { S = this });
+            if (_anyViscous) { SolveViscosity(); }
+            if (_anyMpm) { SolidTransfer(); }
             ex.For(_taskCount, new DetectTask { S = this });
             JoinContacts();
             LastContacts = _csCount; LastCoupledContacts = _coupledCount;
@@ -173,7 +179,9 @@ internal sealed partial class FluidStore
     {
         var st = Settings;
         if (!(st.SleepSpeed > 0f) || HasActiveEmitter()) { QuietTime = 0f; return; }
-        if (LastMaxSpeed < st.SleepSpeed) { QuietTime += dt; } else { QuietTime = 0f; }
+        // Solid matter holds elastic strain that a sleeping step would freeze mid-recovery: it sleeps only when it is nearly still.
+        float sleepSpeed = _anyMpm ? 0.05f * st.SleepSpeed : st.SleepSpeed;
+        if (LastMaxSpeed < sleepSpeed) { QuietTime += dt; } else { QuietTime = 0f; }
         if (QuietTime >= st.TimeToSleep)
         {
             Asleep = true;

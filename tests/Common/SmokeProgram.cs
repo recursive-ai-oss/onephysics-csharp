@@ -283,7 +283,7 @@ internal static class SmokeProgram
         foreach (string scene in FluidScenes.Names)
         {
             bool fluid3 = FluidScenes.Is3D(scene);
-            float sp = scene switch { "dam-break-2d" => 0.06f, "fluid-rope-2d" => 0.08f, _ => 0.1f };
+            float sp = FluidScenes.CoarseSpacing(scene);
             ulong g1 = fluid3 ? FluidScenes.Run3D(scene, 1, 40, sp) : FluidScenes.Run2D(scene, 1, 40, sp);
             ulong g3 = fluid3 ? FluidScenes.Run3D(scene, 3, 40, sp) : FluidScenes.Run2D(scene, 3, 40, sp);
             ulong gr = fluid3 ? FluidScenes.Run3D(scene, 1, 40, sp, true) : FluidScenes.Run2D(scene, 1, 40, sp, true);

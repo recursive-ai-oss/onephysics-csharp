@@ -21,6 +21,13 @@ internal sealed partial class FluidStore
             for (int i = from; i < to; i++)
             {
                 int f = s.PFluid[i];
+                if (s._isMpm[f])
+                {
+                    // Solid matter is moved by the grid transfer, which also applies gravity.
+                    s._x0[i] = s._x[i]; s._y0[i] = s._y[i]; s._z0[i] = s._z[i];
+                    continue;
+                }
+
                 float gs = s._gscale[f];
                 float vx = s.PVx[i] + gx * gs, vy = s.PVy[i] + gy * gs, vz = s.PVz[i] + gz * gs;
                 float m = s._maxSpeed[f];
