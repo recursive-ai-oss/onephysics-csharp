@@ -40,15 +40,18 @@ public sealed partial class SdfGrid3D
 {
     /// <summary>Largest sample count, 2^22; each dimension is 2..512.</summary>
     public const int MaxSamples = 1 << 22;
+    /// <summary>Largest sample magnitude, 2^24 metres (more than the diagonal of the largest allowed extent).</summary>
+    public const float MaxSampleMagnitude = 16777216f;
     private readonly float[] _values;
     private readonly float _lipschitz;
 
-    /// <summary>Copies samples. Dimensions are 2..512 each with at most 2^22 samples in total, the cell size is finite and at least 1e-4, the origin finite, the total extent within 2^20 metres, and every sample finite. Throws SdfBuildException for any other input.</summary>
+    /// <summary>Copies samples. Dimensions are 2..512 each with at most 2^22 samples in total, the cell size is finite and at least 1e-4, the origin finite, the total extent within 2^20 metres, and every sample finite with magnitude at most <see cref="MaxSampleMagnitude"/> (a distance inside the largest allowed extent never exceeds it, and larger values would overflow the gradient arithmetic). Throws SdfBuildException for any other input.</summary>
     public SdfGrid3D(int sizeX, int sizeY, int sizeZ, ReadOnlySpan<float> samples, float cellSize, Vector3F origin = default)
     {
         Validate(sizeX, sizeY, sizeZ, cellSize, origin);
         if (samples.Length != (long)sizeX * sizeY * sizeZ) throw new SdfBuildException(SdfBuildError.OutOfRange, "Sample count " + samples.Length + " must equal sizeX * sizeY * sizeZ = " + (long)sizeX * sizeY * sizeZ + ".", nameof(samples));
         for (int i = 0; i < samples.Length; i++) if (!float.IsFinite(samples[i])) throw new SdfBuildException(SdfBuildError.NonFinite, "Sample " + i + " is not finite.", nameof(samples));
+        for (int i = 0; i < samples.Length; i++) if (Math.Abs(samples[i]) > MaxSampleMagnitude) throw new SdfBuildException(SdfBuildError.OutOfRange, "Sample " + i + " (" + samples[i] + ") has magnitude above " + MaxSampleMagnitude + ".", nameof(samples));
         SizeX = sizeX; SizeY = sizeY; SizeZ = sizeZ; CellSize = cellSize; Origin = origin; _values = samples.ToArray();
         _lipschitz = MeasureLipschitz();
     }
