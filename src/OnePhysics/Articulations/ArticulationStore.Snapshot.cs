@@ -167,7 +167,7 @@ internal sealed partial class ArticulationStore
                     if (!(l2 > 0.999 && l2 < 1.001)) { throw r.Error("articulation joint rotation is not a unit quaternion"); }
                 }
 
-                if (Math.Abs(model.Q[po]) > 1e7) { throw r.Error("articulation position out of range"); }
+                if (model.Kind[k] != JointKind.Fixed && Math.Abs(model.Q[po]) > 1e7) { throw r.Error("articulation position out of range"); }
             }
 
             st.TargetLink = r.ReadInt32();

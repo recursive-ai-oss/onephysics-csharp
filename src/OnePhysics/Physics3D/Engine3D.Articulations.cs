@@ -221,6 +221,8 @@ internal sealed partial class Engine3D : IArticulationHost
         MaxExtent[b] = maxE; MinExtent[b] = minE;
     }
 
+    internal void CheckArticulationBounds() { _articulations?.CheckBounds(); }
+
     internal void StepArticulations() { if (_articulations != null && _articulations.Count != 0) { _articulations.Step(Core.ContactStepDt); } }
 
     internal void EndArticulations() { if (_articulations != null && _articulations.Count != 0) { _articulations.EndStep(); } }

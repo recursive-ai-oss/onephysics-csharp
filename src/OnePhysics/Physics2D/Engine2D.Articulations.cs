@@ -240,6 +240,8 @@ internal sealed partial class Engine2D : IArticulationHost
         return any;
     }
 
+    internal void CheckArticulationBounds() { _articulations?.CheckBounds(); }
+
     internal void StepArticulations() { if (_articulations != null && _articulations.Count != 0) { _articulations.Step(Core.ContactStepDt); } }
 
     internal void EndArticulations() { if (_articulations != null && _articulations.Count != 0) { _articulations.EndStep(); } }

@@ -70,6 +70,25 @@ internal sealed partial class ArticulationStore
 
     // ------------------------------------------------------------------ the stage
 
+    /// <summary>Refuses to step an articulation whose coordinates or speeds are not finite or are beyond the domain the step is written for; nothing has changed yet.</summary>
+    public void CheckBounds()
+    {
+        for (int i = 0; i < Handles.HighWater; i++)
+        {
+            if (!Handles.IsLive(i)) { continue; }
+            var m = States[i]!.Model;
+            for (int k = 0; k < m.Q.Length; k++)
+            {
+                if (!(Math.Abs(m.Q[k]) <= 4194304.0)) { throw new ArticulationStateException(i, k, "positions", "Articulation " + i.ToString(System.Globalization.CultureInfo.InvariantCulture) + ", position value " + k.ToString(System.Globalization.CultureInfo.InvariantCulture) + " must be finite and within ±4194304."); }
+            }
+
+            for (int k = 0; k < m.Qd.Length; k++)
+            {
+                if (!(Math.Abs(m.Qd[k]) <= 1e6)) { throw new ArticulationStateException(i, k, "velocities", "Articulation " + i.ToString(System.Globalization.CultureInfo.InvariantCulture) + ", velocity value " + k.ToString(System.Globalization.CultureInfo.InvariantCulture) + " must be finite and within ±1e6."); }
+            }
+        }
+    }
+
     /// <summary>Runs every articulation for one step, in slot order. Called once per world step after the contact stage has made this step's manifolds.</summary>
     public void Step(float dt)
     {
