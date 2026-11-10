@@ -94,10 +94,18 @@ public static class AutoRagdoller
             if (!(h[i] > 0f) || !(h[i] <= 65536f)) { throw Fail(GeometryToolError.OutOfRange, where + ": a shape size of " + h[i].ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " m is not a positive length within 65536 m", "bindPositions"); }
         }
 
+        // The engines refuse a half size under 1e-5 m, and a 3D box or capsule more than 2^20 times longer than it is thick.
+        float shortest = float.MaxValue, longest = 0f;
+        for (int i = 0; i < used; i++) { shortest = Math.Min(shortest, h[i]); longest = Math.Max(longest, h[i]); }
+        if (!(shortest >= 1e-5f) || !(longest <= shortest * 1048576f)) { throw Fail(GeometryToolError.OutOfRange, where + ": the fitted shape is " + longest.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " m long and " + shortest.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " m thick; the engine needs a thickness of at least 1e-5 m and at least 1/1048576 of the length. Give the skeleton skinned points or bone lengths that fit its parts", "bindPositions"); }
+
         // The engine refuses a body whose mass or inertia falls outside 1e-18..1e30; mass times the smallest half size squared stands for the inertia here.
         float smallest = float.MaxValue;
         for (int i = 0; i < used; i++) { smallest = Math.Min(smallest, h[i]); }
         if (!(mass * smallest * smallest >= 1e-14f) || mass > 1e12f) { throw Fail(GeometryToolError.OutOfRange, where + ": a mass of " + mass.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " kg on a shape this small (" + smallest.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " m) gives an inertia outside what the engine accepts; use a larger TotalMass or larger bones", "options"); }
+        // Both ends of the engine's limit: a mass under 1e-18 is refused outright, and an inertia tensor whose entries are beyond about 7e12 has a determinant that overflows float32, so it cannot be inverted.
+        float reach = used == 1 ? a : used == 2 ? a + b : (float)Math.Sqrt(((double)a * a) + ((double)b * b) + ((double)c * c));
+        if (!(mass >= 1e-17f) || !(mass * reach * reach <= 1e12f)) { throw Fail(GeometryToolError.OutOfRange, where + ": a mass of " + mass.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " kg on a shape reaching " + reach.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " m is outside what the engine can simulate (mass at least 1e-17 kg, mass times reach squared at most 1e12); change TotalMass or the skeleton's size", "options"); }
         if (!float.IsFinite(px) || !float.IsFinite(py) || !float.IsFinite(pz)) { throw Fail(GeometryToolError.NonFinite, where + ": the fitted position is not finite", "bindPositions"); }
     }
 
@@ -216,6 +224,7 @@ public static class AutoRagdoller
             parts[i] = def;
         }
 
+        CheckJointReach(parts, nameof(bindPositions));
         var ragdoll = new P3.RagdollDef { Parts = parts, SelfCollision = opt.SelfCollision, AngularDamping = 0.05f };
         BipedBones? biped = null;
         if (model.Humanoid && !(opt.SplitTorso && model.Parts[model.Torso].Kind == BoneRole.Spine))
@@ -229,6 +238,37 @@ public static class AutoRagdoller
         }
 
         return new AutoRagdoll3D(ragdoll, biped, model.PartOfBone, model.Roles, model.Humanoid, (float)model.Height);
+    }
+
+    // The engine refuses a joint that lies farther from the centre of either body it joins than this many times the body's reach (plus a small slack): the joint's point block is then too ill-conditioned to solve.
+    // A skeleton whose fitted parts are that small next to its bone lengths gets a typed error here, naming the bone, instead of a refused definition.
+    private const double MaxJointReachRatio = 40.0, MaxJointReachSlack = 0.05;
+
+    private static string Num(double v) => v.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static double Reach(P3.RagdollPartDef p) => p.Shape switch
+    {
+        P3.RagdollShapeKind.Sphere => p.ShapeHalfSize.X,
+        P3.RagdollShapeKind.Capsule => (double)p.ShapeHalfSize.X + p.ShapeHalfSize.Y,
+        _ => Math.Sqrt(((double)p.ShapeHalfSize.X * p.ShapeHalfSize.X) + ((double)p.ShapeHalfSize.Y * p.ShapeHalfSize.Y) + ((double)p.ShapeHalfSize.Z * p.ShapeHalfSize.Z)),
+    };
+
+    private static void CheckJointReach(P3.RagdollPartDef[] parts, string paramName)
+    {
+        for (int i = 0; i < parts.Length; i++)
+        {
+            var p = parts[i];
+            if (p.Parent < 0) { continue; }
+            var q = parts[p.Parent];
+            double Arm(Vector3F centre) => Math.Sqrt((((double)p.JointPosition.X - centre.X) * ((double)p.JointPosition.X - centre.X)) + (((double)p.JointPosition.Y - centre.Y) * ((double)p.JointPosition.Y - centre.Y)) + (((double)p.JointPosition.Z - centre.Z) * ((double)p.JointPosition.Z - centre.Z)));
+            double own = Arm(p.Position), parent = Arm(q.Position);
+            if (own > (MaxJointReachRatio * Reach(p)) + MaxJointReachSlack || parent > (MaxJointReachRatio * Reach(q)) + MaxJointReachSlack)
+            {
+                throw new GeometryToolException(GeometryToolError.OutOfRange, "bone \"" + p.Name + "\" (part " + MeshInput.Inv(i) + ") has its joint " + Num(own) + " m from its own centre and " + Num(parent)
+                    + " m from its parent's, but the fitted shapes reach only " + Num(Reach(p)) + " m and " + Num(Reach(q)) + " m; a joint must lie within " + Num(MaxJointReachRatio) + " times a shape's reach plus " + Num(MaxJointReachSlack)
+                    + " m of its centre. Give the skeleton skinned points or bone lengths that fit its parts", paramName);
+            }
+        }
     }
 
     /// <summary>Makes a 2D ragdoll from a skeleton in a side view (x along the ground, y up).</summary>

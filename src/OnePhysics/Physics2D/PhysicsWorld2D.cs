@@ -138,9 +138,9 @@ public sealed partial class PhysicsWorld2D
         _engine.CheckBounds();
         _engine.Rods.CheckBounds();
         _engine.CheckArticulationBounds();
+        _engine.Fields.ValidateStep();
         _engine.Rods.ValidateStep(dt);
         _engine.CheckSoftBounds();
-        if (_engine.Fields.Count != 0) _engine.Fields.ValidateStep();
         if (_core.Controls.Active) _engine.ValidateTargetMotion(dt);
         SyncCoreOptions();
         if (_recorder != null) { RecordPreparedStep(dt); return; }

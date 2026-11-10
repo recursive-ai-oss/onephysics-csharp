@@ -93,6 +93,7 @@ case "$cmd" in
     dotnet publish fuzz/Fuzz/Fuzz.csproj -c Checked -o "$instr" -v quiet -clp:NoSummary
     # Only the library under test is instrumented; the fuzz driver and onemath are not.
     "$tool" "$instr/RecursiveAI.OnePhysics.dll" >/dev/null
+    "$tool" "$instr/RecursiveAI.OnePhysics.Tools.dll" >/dev/null
     "$tool" "$instr/RecursiveAI.OnePhysics.Interchange.dll" >/dev/null
     echo "instrumented build in $instr"
     ;;

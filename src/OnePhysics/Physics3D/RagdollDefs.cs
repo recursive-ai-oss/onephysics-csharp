@@ -172,6 +172,29 @@ public sealed class RagdollDef
         if (Math.Abs(v.X) > 1048576f || Math.Abs(v.Y) > 1048576f || Math.Abs(v.Z) > 1048576f) { throw new ArgumentOutOfRangeException(field, v, Where(i, p) + ": " + field + " is outside the supported range of +-2^20."); }
     }
 
+    // How far a part's shape reaches from its centre: the radius of a sphere, half length plus radius of a capsule, the half-diagonal of a box. The parts are validated parents first, so the sizes are positive and finite here.
+    private static double Reach(RagdollPartDef p) => p.Shape switch
+    {
+        RagdollShapeKind.Sphere => p.ShapeHalfSize.X,
+        RagdollShapeKind.Capsule => (double)p.ShapeHalfSize.X + p.ShapeHalfSize.Y,
+        _ => Math.Sqrt(((double)p.ShapeHalfSize.X * p.ShapeHalfSize.X) + ((double)p.ShapeHalfSize.Y * p.ShapeHalfSize.Y) + ((double)p.ShapeHalfSize.Z * p.ShapeHalfSize.Z)),
+    };
+
+    // A joint far from the body it holds has an ill-conditioned point block (see Engine3D.CheckAnchorArm); the same limit is checked here so the definition is refused before any body is made.
+    private static void AnchorReach(Vector3F joint, Vector3F centre, RagdollPartDef owner, int i, RagdollPartDef p, string field, string whose)
+    {
+        double dx = (double)joint.X - centre.X, dy = (double)joint.Y - centre.Y, dz = (double)joint.Z - centre.Z;
+        double arm = Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
+        double reach = Reach(owner);
+        double limit = (JointData3D.MaxAnchorArmRatio * reach) + JointData3D.MaxAnchorArmSlack;
+        if (arm > limit)
+        {
+            throw new ArgumentOutOfRangeException(field, joint, Where(i, p) + ": " + field + " is " + arm.ToString("R", CultureInfo.InvariantCulture) + " m from the centre of " + whose + ", whose shape reaches "
+                + reach.ToString("R", CultureInfo.InvariantCulture) + " m; a joint must lie within " + JointData3D.MaxAnchorArmRatio.ToString(CultureInfo.InvariantCulture) + " times that reach plus "
+                + JointData3D.MaxAnchorArmSlack.ToString(CultureInfo.InvariantCulture) + " m (" + limit.ToString("R", CultureInfo.InvariantCulture) + " m here).");
+        }
+    }
+
     private static void Rotation(QuaternionF q, int i, RagdollPartDef p, string field)
     {
         float l2 = q.LengthSquared();
@@ -219,6 +242,8 @@ public sealed class RagdollDef
             if (p.Parent >= 0)
             {
                 Position(p.JointPosition, i, p, "JointPosition");
+                AnchorReach(p.JointPosition, p.Position, p, i, p, "JointPosition", "this part");
+                AnchorReach(p.JointPosition, Parts[p.Parent].Position, Parts[p.Parent], i, p, "JointPosition", "its parent (part " + p.Parent.ToString(CultureInfo.InvariantCulture) + ")");
                 Rotation(p.JointRotation, i, p, "JointRotation");
                 Finite(p.LowerTwist, i, p, "LowerTwist"); Finite(p.UpperTwist, i, p, "UpperTwist");
                 if (p.LowerTwist > p.UpperTwist) { throw new InvalidRagdollException(Where(i, p) + ": LowerTwist " + Num(p.LowerTwist) + " is above UpperTwist " + Num(p.UpperTwist) + "."); }

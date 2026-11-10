@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.LowLevel;
@@ -80,6 +81,8 @@ internal sealed partial class Engine3D
         var bodies = Core.Bodies;
         if (!bodies.IsDynamic(a) && !bodies.IsDynamic(b)) { throw new InvalidJointException(name + " joint between " + ha + " and " + hb + ": at least one body must be dynamic."); }
         d.Validate();
+        CheckAnchorArm(a, d.LAx, d.LAy, d.LAz, name, "A", ha);
+        CheckAnchorArm(b, d.LBx, d.LBy, d.LBz, name, "B", hb);
         d.Prepare();
         var desc = new ConstraintDesc { Kind = ConstraintKind.Joint, BodyA = ha, BodyB = hb };
         int c = Core.AddConstraint(desc);
@@ -98,6 +101,28 @@ internal sealed partial class Engine3D
         }
 
         return Core.HandleOfJoint(c);
+    }
+
+    /// <summary>
+    /// A joint anchor far outside its body makes the point block ill-conditioned: the block's response is the body's mass along the arm and about (arm / extent)² times that across it, and the block is inverted
+    /// in float32 (condition numbers beyond about 10^4 give a wrong inverse, and the impulses then feed on each other). Anchors within <see cref="JointData3D.MaxAnchorArmRatio"/> extents of the centre of mass,
+    /// plus <see cref="JointData3D.MaxAnchorArmSlack"/> m, are accepted; static and kinematic bodies and bodies without shapes have no such limit.
+    /// </summary>
+    private void CheckAnchorArm(int body, float x, float y, float z, string name, string side, BodyHandle handle)
+    {
+        if (!Core.Bodies.IsDynamic(body)) { return; }
+        float extent = MaxExtent[body];
+        if (!(extent > 0f)) { return; }
+        var lc = LocalCenterOf(body);
+        double dx = x - (double)lc.X, dy = y - (double)lc.Y, dz = z - (double)lc.Z;
+        double arm = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+        double limit = JointData3D.MaxAnchorArmRatio * (double)extent + JointData3D.MaxAnchorArmSlack;
+        if (arm > limit)
+        {
+            throw new InvalidJointException(name + " joint: the anchor on body " + side + " (" + handle + ") is " + arm.ToString("R", CultureInfo.InvariantCulture) + " m from its centre of mass, but the body reaches only "
+                + extent.ToString("R", CultureInfo.InvariantCulture) + " m; an anchor must be within " + JointData3D.MaxAnchorArmRatio.ToString(CultureInfo.InvariantCulture) + " times that reach plus "
+                + JointData3D.MaxAnchorArmSlack.ToString(CultureInfo.InvariantCulture) + " m (" + limit.ToString("R", CultureInfo.InvariantCulture) + " m here). Attach it nearer the body or add a body between.");
+        }
     }
 
     /// <summary>Removes the contacts between all shape pairs of two bodies (they stop colliding because a joint now connects them).</summary>

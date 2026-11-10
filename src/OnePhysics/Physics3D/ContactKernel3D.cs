@@ -235,6 +235,9 @@ internal static class ContactKernel3D
         return T.Select(T.GreaterThan(k, zero), one / k, zero);
     }
 
+    /// <summary>Relative normal speed, m/s, that bounds a contact point's accumulated impulse (see NormalImpulse). Fifty times the default speed limit.</summary>
+    internal const float ImpulseSpeedCap = 20000f;
+
     private interface IContactMode { static abstract bool Extended { get; } }
     private readonly struct OrdinaryMode : IContactMode { public static bool Extended => false; }
     private readonly struct SurfaceMode : IContactMode { public static bool Extended => true; }
@@ -521,6 +524,9 @@ internal static class ContactKernel3D
         T old = Field<T>(wide, f + W3D.NormalImpulse, l0);
         T lambda = T.Negate(Field<T>(wide, f + W3D.NormalMass, l0)) * ms * (vn + bias) - isc * old;
         T nw = Clamp0(old + lambda);
+        // A point never carries more impulse than would change the relative normal speed by ImpulseSpeedCap (the effective mass times that speed). Real contacts stay far below it; a runaway pair
+        // (friction and the normal row feeding each other through a light body's spin) would otherwise warm-start ever larger impulses into the next substep and step.
+        nw = Lane.Min(nw, Field<T>(wide, f + W3D.NormalMass, l0) * T.Broadcast(ImpulseSpeedCap));
         if (TMode.Extended) { nw = Lane.Min(nw, Field<T>(wide, W3D.ImpulseLimit, l0)); }
         lambda = nw - old;
         T.Select(pm, nw, old).StoreAt(wide, (f + W3D.NormalImpulse) * 8 + l0);

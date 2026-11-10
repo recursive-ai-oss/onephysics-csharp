@@ -140,6 +140,9 @@ internal static class BipedGait
 
     internal static float Clamp(float v, float lo, float hi) => v < lo ? lo : v > hi ? hi : v;
 
+    // Within [-limit, limit]; NaN becomes 0.
+    private static float BoundTo(float v, float limit) => float.IsNaN(v) ? 0f : v < -limit ? -limit : v > limit ? limit : v;
+
     private static float Min(float a, float b) => a < b ? a : b;
 
     private static float Max(float a, float b) => a > b ? a : b;
@@ -313,6 +316,8 @@ internal static class BipedGait
 
             float reach = bal.MaxStepReach * legLen;
             float hd = float.Sqrt(pf * pf + pl * pl);
+            // A body flung at an absurd speed makes the capture point overflow; an infinite length would scale the target by zero and turn it into NaN, which the saved state then refuses.
+            if (!float.IsFinite(hd)) { pf = BoundTo(pf, reach); pl = BoundTo(pl, reach); hd = float.Sqrt(pf * pf + pl * pl); }
             if (hd > reach) { float k = reach / hd; pf *= k; pl *= k; }
             s.PlaceF = pf; s.PlaceL = pl;
 

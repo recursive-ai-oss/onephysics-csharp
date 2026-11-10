@@ -27,6 +27,9 @@ internal sealed partial class Engine3D : ISnapshotSection
     public PhysicsWorld3D? World;
 
     // Bodies (index = body slot).
+    /// <summary>Largest magnitude of a centre-of-mass component in the body's frame: what a centre override accepts and a snapshot may hold.</summary>
+    public const float MaxCenterOffset = 2097152f;
+
     public float[] LocalCenter = new float[24];   // centre of mass in the body's frame, 3 per body
     public float[] Mass = new float[8];
     public float[] Inertia = new float[48];       // about the centre of mass in the body's frame: xx xy xz yy yz zz
@@ -939,7 +942,14 @@ internal sealed partial class Engine3D : ISnapshotSection
         var lc = Fit(ref _sLc, 3 * nb); var mass = Fit(ref _sMass, nb); var inertia = Fit(ref _sInertia, 6 * nb); var maxE = Fit(ref _sMaxE, nb); var minE = Fit(ref _sMinE, nb);
         var ld = Fit(ref _sLd, nb); var ad = Fit(ref _sAd, nb); var gs = Fit(ref _sGs, nb); var force = Fit(ref _sForce, 3 * nb); var torque = Fit(ref _sTorque, 3 * nb);
         var bf = Fit(ref _sBf, nb); var head = Fit(ref _sHead, nb); var tail = Fit(ref _sTail, nb); var dp = Fit(ref _sDp, 3 * nb);
-        r.ReadSingles(lc.AsSpan(0, 3 * nb), true, "local centres"); r.ReadSingles(mass.AsSpan(0, nb), true, "masses"); r.ReadSingles(inertia.AsSpan(0, 6 * nb), true, "inertias");
+        r.ReadSingles(lc.AsSpan(0, 3 * nb), true, "local centres");
+        // The centre of mass of any body, static and kinematic included, is within the bound a centre override accepts; a larger value could only come from a damaged snapshot, and the narrowphase would refuse the frames built from it.
+        for (int k = 0; k < 3 * nb; k++)
+        {
+            if (!(Math.Abs(lc[k]) <= MaxCenterOffset)) { throw r.Error("a centre of mass beyond " + MaxCenterOffset.ToString("R", CultureInfo.InvariantCulture)); }
+        }
+
+        r.ReadSingles(mass.AsSpan(0, nb), true, "masses"); r.ReadSingles(inertia.AsSpan(0, 6 * nb), true, "inertias");
         r.ReadSingles(maxE.AsSpan(0, nb), true, "extents"); r.ReadSingles(minE.AsSpan(0, nb), false, "extents");
         r.ReadSingles(ld.AsSpan(0, nb), true, "damping"); r.ReadSingles(ad.AsSpan(0, nb), true, "damping"); r.ReadSingles(gs.AsSpan(0, nb), true, "gravity scales");
         r.ReadSingles(force.AsSpan(0, 3 * nb), true, "forces"); r.ReadSingles(torque.AsSpan(0, 3 * nb), true, "torques");
