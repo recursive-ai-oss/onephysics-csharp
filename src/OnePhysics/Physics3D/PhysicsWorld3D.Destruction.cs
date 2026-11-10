@@ -7,7 +7,6 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>How a body fractures into Voronoi cells, and when it does so by itself. Copied when assigned; defaults give 16 uniform cells and no automatic fracture.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class FractureDef
 {
     /// <summary>Number of seeds, hence cells, 2 to 512. Default 16. A cell that clips away or is merged into a neighbour leaves fewer bodies.</summary>
@@ -62,7 +61,6 @@ public sealed class FractureDef
 }
 
 /// <summary>Convex cells in a body's frame with the bonds between touching cells: the authored form of a pre-fractured object, turned into a body by <see cref="PhysicsWorld3D.AddBreakable"/>.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class FractureAsset
 {
     private readonly Vector3F[][] _cells;
@@ -159,7 +157,6 @@ public sealed class FractureAsset
 }
 
 /// <summary>A fracture, slice or bond break of the last step (or a manual one since). The source body no longer exists.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct FractureEvent
 {
     internal FractureEvent(FractureKind kind, BodyHandle source, int first, int count, float impulse, Vector3D point)
@@ -182,7 +179,6 @@ public readonly struct FractureEvent
 }
 
 /// <summary>The two bodies a slice made.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct SliceResult
 {
     internal SliceResult(Body positive, Body negative) { Positive = positive; Negative = negative; }

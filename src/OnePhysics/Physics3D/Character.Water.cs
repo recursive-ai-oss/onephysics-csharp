@@ -5,7 +5,6 @@ using RecursiveAI.OnePhysics.Characters;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>A character entered or left water, or started or stopped swimming (see <see cref="PhysicsWorld3D.CharacterWaterEvents"/>).</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct CharacterWaterEvent
 {
     internal CharacterWaterEvent(CharacterWaterEventKind kind, Character character, CharacterWaterSource source, float immersion) { Kind = kind; Character = character; Source = source; Immersion = immersion; }
@@ -91,7 +90,6 @@ public sealed partial class PhysicsWorld3D
     private CharacterWaterEvent[] _characterWaterScratch = Array.Empty<CharacterWaterEvent>();
 
     /// <summary>The character water events of the last step (entered and left water, started and stopped swimming), in character slot order; valid until the next step, rebuilt on each read.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public ReadOnlySpan<CharacterWaterEvent> CharacterWaterEvents
     {
         get
@@ -110,7 +108,6 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>Raised after a step for each character water event (unless callbacks are suppressed), in the order of <see cref="CharacterWaterEvents"/>.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public event Action<CharacterWaterEvent>? CharacterWaterChanged;
 
     private void DispatchCharacterWaterEvents()

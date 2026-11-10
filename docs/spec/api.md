@@ -1,6 +1,6 @@
 # Public API surface
 
-Normative for what the two worlds promise to have in common, which parts of the package still carry `[Experimental]`, and how both are checked. The listings are written from the code; the tests below fail when the code and a listing disagree.
+Normative for what the two worlds promise to have in common, which part of the package still carries `[Experimental]`, and how both are checked. The listings are written from the code; the tests below fail when the code and a listing disagree.
 
 ## The two worlds have the same members
 
@@ -24,24 +24,9 @@ The middle and raw tiers take struct callbacks as generic arguments so the call 
 
 ## `[Experimental]` inventory
 
-Each marker names a diagnostic id. A consumer opts in with `#pragma warning disable <id>` or `<NoWarn>` in the project. The package itself, the README examples and the guide examples do not suppress them in code a user would copy. Nothing is listed here that is not marked; nothing marked is missing.
+One marker remains: **`OPHYS0001`, the raw tier**, the `RecursiveAI.OnePhysics.LowLevel` namespace (body and constraint stores, colouring, broadphase trees, narrowphase routines, shape kernels) and the `Core` accessors of the two worlds. Its shapes follow the engine's internals and may change in a minor release. A consumer opts in with `#pragma warning disable OPHYS0001` or `<NoWarn>` in the project. The package itself, the README examples and the guide examples do not suppress it in code a user would copy.
 
-| Id | Covers | Count |
-|---|---|---|
-| `OPHYS0001` | The raw tier: the whole `RecursiveAI.OnePhysics.LowLevel` namespace (body and constraint stores, colouring, broadphase trees, narrowphase routines, shape kernels); in addition the rope, pulley and belt types that sit in the world namespaces and in `Cables` and `Rods` (see below) | 147 markers |
-| `OPHYS0002` | The 3D engine: every type of `RecursiveAI.OnePhysics.Physics3D` (the world, `Body`, `Shape`, `Joint` and the joint kinds, characters, vehicles, ragdolls, soft bodies and cloth, fluids, water, terrain tiles, queries, options), the 3D members of shared types, and in `.Tools` the two members that return a 3D compound or shape specification (`ToCompoundParts`, `ToShapeSpec`); 2D: the character-water event | 178 markers |
-| `OPHYS0003` | Features added after the first previews, in both dimensions: active ragdolls and walking (`ActiveRagdollDef`, `BalanceDef`, `WalkerDef`, `BipedBones`, `ActiveMode`, `AnimationRootMode`, `GaitPhase`), articulations (`Articulation*` in both worlds, `ArticulationDrive`, `ArticulationJointKind`, `ArticulationStateException`), actuators and aerodynamics (`AeroSurface`, `AeroCoefficients`, `AeroMedium`, `AeroSurfaceKind`, `Thruster*`, `Boat*`, `Hover*`), 2D vehicles, tracked vehicles, rail vehicles and bicycles, 2D ragdolls, 2D soft bodies and strips (`SoftBody*`, `SoftMaterial`, `StripParams`), and the debug records for active ragdolls and articulations | 101 markers |
-
-`Physics3D` types that also belong to the later features carry `OPHYS0002` (the 3D engine is the wider marker); `OPHYS0003` on a 3D type appears only for `Aero`, `Thruster*`, `Boat*`, `Hover*` and `Articulation*`.
-
-### Where a marker needs a decision before a release without markers
-
-- **Rods and ropes, pulleys and belts** (`Rod`, `RodDef`, `RodAttachment`, `RodMaterial`, `RodParticles`, `RodStepStatistics`, `RopeEnd`, `Pulley`, `PulleyNodeDef`, `PulleySystem`, `PulleySystemDef`, `Sprocket`, the cable enums, and the `AddPulleySystem`/`AddRopeOverPulleys`/`AddWinch`/`AddBelt` members of both worlds) are user features but carry the raw tier's id `OPHYS0001`. Opting in to the raw tier opts in to them.
-- **The 3D engine** is one marker over the whole namespace; its 2D twin is unmarked. A release that drops the 3D marker drops it for every type at once, or splits it per feature.
-- **`OPHYS0003` members** are individually marked on both worlds and on the debug records; they share one id so a single decision covers them.
-- **`.Tools`** has two marked members only (above); the rest of the package is unmarked.
-
-No marker is removed by this document; it only lists them.
+Everything else is supported: the 3D engine, rods, ropes, cables, pulleys and belts, and the features added after the first previews carry no marker and follow the compatibility promise in the README.
 
 ## Documentation comments
 

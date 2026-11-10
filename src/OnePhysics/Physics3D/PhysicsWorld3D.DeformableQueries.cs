@@ -92,7 +92,6 @@ public sealed partial class PhysicsWorld3D
     /// <param name="maxDistance">Ray length, positive; infinity (the default) means <see cref="MaxQueryDistance"/>.</param>
     /// <param name="filter">Which deformables count; the default accepts all.</param>
     /// <exception cref="ArgumentOutOfRangeException">A value is not finite, the direction is zero, the length is not positive or the origin is beyond +-2^22.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public bool RaycastDeformables(Vector3D origin, Vector3F direction, out DeformableHit3D hit, float maxDistance = float.PositiveInfinity, in DeformableFilter3D filter = default)
     {
         var b = Engine3D.DeformScratch(1);
@@ -103,13 +102,11 @@ public sealed partial class PhysicsWorld3D
 
     /// <summary>True when the ray hits any deformable (stops at the first element found, in slot order).</summary>
     /// <inheritdoc cref="RaycastDeformables"/>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public bool RaycastDeformablesAny(Vector3D origin, Vector3F direction, float maxDistance = float.PositiveInfinity, in DeformableFilter3D filter = default) =>
         RunDeformableRay(origin, direction, maxDistance, in filter, Engine3D.DeformScratch(1), 1, true) > 0;
 
     /// <summary>All hits of a ray, nearest first, into a caller buffer: the nearest <c>results.Length</c> elements. Returns the count stored.</summary>
     /// <inheritdoc cref="RaycastDeformables"/>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public int RaycastDeformablesAll(Vector3D origin, Vector3F direction, Span<DeformableHit3D> results, float maxDistance = float.PositiveInfinity, in DeformableFilter3D filter = default)
     {
         if (results.Length == 0) { return 0; }
@@ -133,7 +130,6 @@ public sealed partial class PhysicsWorld3D
     /// <param name="filter">Which deformables count.</param>
     /// <exception cref="ArgumentOutOfRangeException">A value is not finite or out of range.</exception>
     /// <exception cref="ArgumentException">The shape is a plane.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public bool ShapeCastDeformables(in ConvexShape3D shape, Vector3D position, QuaternionF rotation, Vector3F direction, out DeformableHit3D hit, float maxDistance = float.PositiveInfinity, in DeformableFilter3D filter = default)
     {
         var b = Engine3D.DeformScratch(1);
@@ -144,13 +140,11 @@ public sealed partial class PhysicsWorld3D
 
     /// <summary>True when the swept shape touches any deformable.</summary>
     /// <inheritdoc cref="ShapeCastDeformables"/>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public bool ShapeCastDeformablesAny(in ConvexShape3D shape, Vector3D position, QuaternionF rotation, Vector3F direction, float maxDistance = float.PositiveInfinity, in DeformableFilter3D filter = default) =>
         RunDeformableCast(in shape, position, rotation, direction, maxDistance, in filter, Engine3D.DeformScratch(1), 1, true) > 0;
 
     /// <summary>Every element the swept shape touches, nearest first, into a caller buffer. Returns the count stored.</summary>
     /// <inheritdoc cref="ShapeCastDeformables"/>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public int ShapeCastDeformablesAll(in ConvexShape3D shape, Vector3D position, QuaternionF rotation, Vector3F direction, Span<DeformableHit3D> results, float maxDistance = float.PositiveInfinity, in DeformableFilter3D filter = default)
     {
         if (results.Length == 0) { return 0; }
@@ -161,7 +155,6 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>Casts a sphere; see <see cref="ShapeCastDeformables"/>.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public bool SphereCastDeformables(Vector3D center, float radius, Vector3F direction, out DeformableHit3D hit, float maxDistance = float.PositiveInfinity, in DeformableFilter3D filter = default)
     {
         CheckRadius(radius);
@@ -176,7 +169,6 @@ public sealed partial class PhysicsWorld3D
     /// <param name="rotation">The shape's orientation; zero means identity.</param>
     /// <param name="hit">The element and a point of contact.</param>
     /// <param name="filter">Which deformables count.</param>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public bool OverlapDeformables(in ConvexShape3D shape, Vector3D position, QuaternionF rotation, out DeformableHit3D hit, in DeformableFilter3D filter = default)
     {
         var b = Engine3D.DeformScratch(1);
@@ -187,13 +179,11 @@ public sealed partial class PhysicsWorld3D
 
     /// <summary>True when the shape overlaps any deformable.</summary>
     /// <inheritdoc cref="OverlapDeformables"/>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public bool OverlapDeformablesAny(in ConvexShape3D shape, Vector3D position, QuaternionF rotation, in DeformableFilter3D filter = default) =>
         RunDeformableOverlap(in shape, position, rotation, in filter, Engine3D.DeformScratch(1), 1, true) > 0;
 
     /// <summary>Every element the shape overlaps, ordered by kind, slot, element and index, into a caller buffer (the first <c>results.Length</c>). Returns the count stored.</summary>
     /// <inheritdoc cref="OverlapDeformables"/>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public int OverlapDeformablesAll(in ConvexShape3D shape, Vector3D position, QuaternionF rotation, Span<DeformableHit3D> results, in DeformableFilter3D filter = default)
     {
         if (results.Length == 0) { return 0; }
@@ -204,7 +194,6 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>Every element a sphere overlaps; see <see cref="OverlapDeformablesAll"/>.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public int OverlapSphereDeformablesAll(Vector3D center, float radius, Span<DeformableHit3D> results, in DeformableFilter3D filter = default)
     {
         CheckRadius(radius);
@@ -218,7 +207,6 @@ public sealed partial class PhysicsWorld3D
     /// <param name="hit">The nearest element.</param>
     /// <param name="maxDistance">Search distance, at least 0 (infinity allowed); default 1000.</param>
     /// <param name="filter">Which deformables count.</param>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public bool ClosestDeformable(Vector3D point, out DeformableHit3D hit, float maxDistance = 1000f, in DeformableFilter3D filter = default)
     {
         var b = Engine3D.DeformScratch(1);
@@ -229,7 +217,6 @@ public sealed partial class PhysicsWorld3D
 
     /// <summary>True when any deformable lies within the distance of the point.</summary>
     /// <inheritdoc cref="ClosestDeformable"/>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public bool ClosestDeformableAny(Vector3D point, float maxDistance = 1000f, in DeformableFilter3D filter = default) =>
         RunDeformableClosest(point, maxDistance, in filter, Engine3D.DeformScratch(1), true);
 }

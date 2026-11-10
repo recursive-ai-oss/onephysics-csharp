@@ -1,4 +1,3 @@
-#pragma warning disable OPHYS0001, OPHYS0002, OPHYS0003
 using System;
 using System.IO;
 using RecursiveAI.OneMath;                       // Vector3D

@@ -75,7 +75,6 @@ public sealed class ConvexDecomposition
 
     /// <summary>The hulls as compound parts, each at the origin since the hulls share the mesh's frame; pass them to <c>PhysicsWorld3D.AddCompound</c>.</summary>
     /// <returns>One part per hull, in hull order.</returns>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public CompoundPart[] ToCompoundParts()
     {
         var parts = new CompoundPart[Hulls.Count];
@@ -85,7 +84,6 @@ public sealed class ConvexDecomposition
 
     /// <summary>The shape to attach to a body: the one hull itself, or a compound of the hulls (each at the origin, since the hulls share the mesh's frame).</summary>
     /// <returns>A shape description ready for <c>PhysicsWorld3D.CreateShape</c>.</returns>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public ShapeSpec3D ToShapeSpec()
     {
         if (Hulls.Count == 1) { return ShapeSpec3D.ConvexHull(Hulls[0].Vertices); }

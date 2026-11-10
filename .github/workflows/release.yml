@@ -1,6 +1,6 @@
 name: release
 
-# Publishes the NuGet packages (RecursiveAI.OnePhysics and RecursiveAI.OnePhysics.Tools, one version, one tag) when a version tag is pushed. nuget.org trusts this
+# Publishes the NuGet packages (RecursiveAI.OnePhysics, RecursiveAI.OnePhysics.Tools and RecursiveAI.OnePhysics.Interchange, one version, one tag) when a version tag is pushed. nuget.org trusts this
 # workflow through Trusted Publishing: the job exchanges its GitHub identity token for
 # a short-lived API key, so no key is stored in the repository or its secrets.
 #

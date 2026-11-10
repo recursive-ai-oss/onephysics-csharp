@@ -20,7 +20,6 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// shape in the world, with each other (bodies with compatible filters) and, if <see cref="SelfCollision"/> is on, with the rest of their own body.
 /// Rigid bodies feel the contacts too: the body is pushed with the same impulse the particle is pushed with, so momentum is conserved.
 /// </remarks>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class SoftBodyDef
 {
     /// <summary>Largest compliance accepted, m/N.</summary>

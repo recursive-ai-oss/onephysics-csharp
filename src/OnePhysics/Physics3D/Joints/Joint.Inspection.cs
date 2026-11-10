@@ -5,7 +5,6 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>Live read-only joint diagnostics; no allocation. A held view remains readable after breaking, until the next step or slot reuse. Read between steps.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct JointInspection
 {
     private readonly JointInspectionView _view;

@@ -8,7 +8,6 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics2D;
 
 /// <summary>The state of one wheel after the last step (<see cref="Vehicle.GetWheel"/>).</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public readonly struct WheelState
 {
     internal WheelState(bool contact, Vector2D point, Vector2F normal, Body ground, float length, float springForce, float omega, float spin, float slipRatio, float fx, Vector2D center, float radius)
@@ -60,7 +59,6 @@ public readonly struct WheelState
 /// <see cref="StaleHandleException"/> once the vehicle is destroyed (its chassis body destroyed or <see cref="Destroy"/> called); the state lives in the world and in its snapshots.
 /// </summary>
 /// <example><c>var car = world.AddCar(new Vector2D(0, 1)); car.Drive(throttle: 1f); world.Step(1f / 60f);</c></example>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public readonly struct Vehicle : IEquatable<Vehicle>
 {
     private readonly PhysicsWorld2D? _world;
@@ -246,7 +244,6 @@ public sealed partial class PhysicsWorld2D
     /// <exception cref="ArgumentException">The body is not dynamic or belongs to another world.</exception>
     /// <exception cref="PhysicsException">The body already carries a vehicle.</exception>
     /// <exception cref="StaleHandleException">The body was destroyed.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public Vehicle AddVehicle(Body chassis, VehicleDef def)
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddVehicle");
@@ -262,7 +259,6 @@ public sealed partial class PhysicsWorld2D
     /// <exception cref="ArgumentOutOfRangeException">A definition value is out of range.</exception>
     /// <exception cref="ArgumentException">The body is not dynamic or belongs to another world.</exception>
     /// <exception cref="PhysicsException">The body already carries a vehicle.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public Vehicle AddVehicle(Body chassis, TrackedVehicleDef def)
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddVehicle");
@@ -278,7 +274,6 @@ public sealed partial class PhysicsWorld2D
     /// <exception cref="ArgumentOutOfRangeException">A definition value is out of range.</exception>
     /// <exception cref="ArgumentException">The body is not dynamic or belongs to another world.</exception>
     /// <exception cref="PhysicsException">The body already carries a vehicle.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public Vehicle AddVehicle(Body chassis, MotorcycleDef def)
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddVehicle");
@@ -298,7 +293,6 @@ public sealed partial class PhysicsWorld2D
     /// <param name="chassisMass">Mass of the chassis, kg; positive.</param>
     /// <param name="angleRadians">Orientation of the chassis. Default 0 (upright, facing +X).</param>
     /// <exception cref="ArgumentOutOfRangeException">A value is out of range.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public Vehicle AddVehicle(Vector2D ground, VehicleDef def, Vector2F chassisSize, float chassisMass, float angleRadians = 0f)
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddVehicle");
@@ -312,19 +306,16 @@ public sealed partial class PhysicsWorld2D
     /// <summary>Happy path: <see cref="VehicleDef.Car"/> on a 3.2 × 0.8 m, 1500 kg chassis resting on the ground at <paramref name="ground"/>.</summary>
     /// <param name="ground">Ground point under the chassis centre.</param>
     /// <param name="angleRadians">Orientation of the chassis.</param>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public Vehicle AddCar(Vector2D ground, float angleRadians = 0f) => AddVehicle(ground, VehicleDef.Car, new Vector2F(3.2f, 0.8f), 1500f, angleRadians);
 
     /// <summary>Happy path: <see cref="VehicleDef.Truck"/> on a 6 × 1.4 m, 8000 kg chassis resting on the ground at <paramref name="ground"/>.</summary>
     /// <param name="ground">Ground point under the chassis centre.</param>
     /// <param name="angleRadians">Orientation of the chassis.</param>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public Vehicle AddTruck(Vector2D ground, float angleRadians = 0f) => AddVehicle(ground, VehicleDef.Truck, new Vector2F(6f, 1.4f), 8000f, angleRadians);
 
     /// <summary>Happy path: <see cref="VehicleDef.Kart"/> on a 1.4 × 0.2 m, 150 kg chassis resting on the ground at <paramref name="ground"/>.</summary>
     /// <param name="ground">Ground point under the chassis centre.</param>
     /// <param name="angleRadians">Orientation of the chassis.</param>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public Vehicle AddKart(Vector2D ground, float angleRadians = 0f) => AddVehicle(ground, VehicleDef.Kart, new Vector2F(1.4f, 0.2f), 150f, angleRadians);
 
     /// <summary>
@@ -335,7 +326,6 @@ public sealed partial class PhysicsWorld2D
     /// <param name="def">The track; null (default) is <see cref="TrackedVehicleDef.Tank"/>.</param>
     /// <param name="angleRadians">Orientation of the hull.</param>
     /// <exception cref="ArgumentOutOfRangeException">A definition value is out of range.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public Vehicle AddTank(Vector2D ground, TrackedVehicleDef? def = null, float angleRadians = 0f)
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddTank");
@@ -354,7 +344,6 @@ public sealed partial class PhysicsWorld2D
     /// <param name="def">The motorcycle; null (default) is <see cref="MotorcycleDef.Road"/>.</param>
     /// <param name="angleRadians">Orientation of the chassis.</param>
     /// <exception cref="ArgumentOutOfRangeException">A definition value is out of range.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public Vehicle AddMotorcycle(Vector2D ground, MotorcycleDef? def = null, float angleRadians = 0f)
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddMotorcycle");
@@ -378,7 +367,6 @@ public sealed partial class PhysicsWorld2D
 
     /// <summary>The <see cref="Vehicle"/> for a raw handle (from <see cref="Vehicle.RawHandle"/>).</summary>
     /// <exception cref="InvalidHandleException">The handle is null, belongs to another world (<see cref="ForeignHandleException"/>) or refers to a removed vehicle (<see cref="StaleHandleException"/>).</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public Vehicle GetVehicle(VehicleHandle handle)
     {
         if (handle.IsNull) { throw new InvalidHandleException("The null vehicle handle was used."); }
@@ -388,11 +376,9 @@ public sealed partial class PhysicsWorld2D
     }
 
     /// <summary>True while the vehicle exists in this world. False for null handles, handles of another world and removed vehicles (never throws). Allocates nothing.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public bool IsVehicleAlive(VehicleHandle handle) => !handle.IsNull && handle.World == Id && _engine.VehHandles.IsAlive(handle.Index, handle.Generation);
 
     /// <summary>The vehicle whose chassis is <paramref name="body"/>, if there is one.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public bool TryGetVehicle(Body body, out Vehicle vehicle)
     {
         vehicle = default;
@@ -404,7 +390,6 @@ public sealed partial class PhysicsWorld2D
     }
 
     /// <summary>All live vehicles in slot order (allocates the array).</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public Vehicle[] GetVehicles()
     {
         var list = new List<Vehicle>();

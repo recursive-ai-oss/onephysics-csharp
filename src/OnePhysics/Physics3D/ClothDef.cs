@@ -9,7 +9,6 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// The physical constants of a fabric. The presets are starting values for a metre-scale piece of cloth (the stretch compliances are the inverse of the membrane stiffness in newtons per metre of a square weave:
 /// one edge of a grid with spacing h is a spring of stiffness about E·t).
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class ClothMaterial
 {
     /// <summary>Mass per square metre, kg/m². Finite, above 0.</summary>
@@ -68,7 +67,6 @@ public sealed class ClothMaterial
 /// A rectangular piece of fabric (middle tier): a grid of <see cref="SegmentsX"/> × <see cref="SegmentsZ"/> cells in the x–z plane, warp along x and weft along z, made of a <see cref="Material"/>. Pass it to
 /// <see cref="PhysicsWorld3D.AddCloth(ClothDef)"/>; <see cref="ToSoftBodyDef"/> gives the soft-body definition it makes, for anything the properties here do not reach.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class ClothDef
 {
     /// <summary>Size along x (warp), metres. Default 1.</summary>

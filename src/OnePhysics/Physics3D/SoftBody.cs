@@ -6,7 +6,6 @@ using RecursiveAI.OneMath;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>The presets of the happy path: starting values for <see cref="SoftBodyDef"/> that behave like the named material at metre scale.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public enum SoftMaterial
 {
     /// <summary>Thin, inextensible, easy to fold; self-collision on. Use with a surface mesh such as <see cref="SoftBodyMesh.Cloth"/>.</summary>
@@ -24,7 +23,6 @@ public enum SoftMaterial
 /// It allocates nothing and throws <see cref="StaleHandleException"/> once the body is destroyed. Positions are read without allocation, one particle at a time or into a span you own.
 /// </summary>
 /// <remarks>Particles are numbered like the mesh vertices. There is no callback anywhere on this type.</remarks>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct SoftBody : IEquatable<SoftBody>
 {
     private readonly PhysicsWorld3D? _world;

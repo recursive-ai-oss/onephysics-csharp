@@ -6,7 +6,6 @@ using RecursiveAI.OnePhysics.Rods;
 namespace RecursiveAI.OnePhysics.Physics2D;
 
 /// <summary>A discretized circular Cosserat rod. Positions and material frames are copied on creation. Metres, kilograms and seconds.</summary>
-[Experimental("OPHYS0001")]
 public sealed class RodDef
 {
     /// <summary>Rest centerline, 2 to 4097 points; adjacent distances 0.0001 to 100 metres. Required. Coordinates finite within ±2^21.</summary>

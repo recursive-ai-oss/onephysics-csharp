@@ -17,8 +17,8 @@
     <PackageValidationBaselineVersion>0.4.0-preview.1</PackageValidationBaselineVersion>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
-    <!-- The raw tier is marked experimental for consumers (OPHYS0001), and so is the 3D engine (OPHYS0002); inside the package they are simply used. -->
-    <NoWarn>$(NoWarn);OPHYS0001;OPHYS0002;OPHYS0003</NoWarn>
+    <!-- The raw tier is marked experimental for consumers (OPHYS0001); inside the package it is simply used. -->
+    <NoWarn>$(NoWarn);OPHYS0001</NoWarn>
     <!-- Only so that the SkipLocalsInit attribute compiles (the 3D solver kernels); no such code blocks are allowed in src (tools/check.sh). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>

@@ -9,7 +9,6 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// A rope over pulleys, a winch, a belt or a chain: a generation-checked handle. Readbacks describe the last step; a destroyed handle throws InvalidOperationException and the default handle is invalid.
 /// Spans are numbered along the path (span i runs from node i to node i+1, the last span of a loop back to node 0).
 /// </summary>
-[Experimental("OPHYS0001")]
 public readonly struct PulleySystem
 {
     private readonly CableStore? _store;

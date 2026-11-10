@@ -10,7 +10,6 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// A railway track in a 3D world (a <see cref="TrackDef"/> laid out in place). Like <see cref="Body"/> it is a small struct handle (world, slot, generation) that allocates nothing and fails with a
 /// <see cref="StaleHandleException"/> once the track is destroyed. With <see cref="TrackDef.Collide"/> the track owns two static bodies, the ballast bed and the rails, so other bodies rest on and hit it.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct Track : IEquatable<Track>
 {
     private readonly PhysicsWorld3D? _world;
@@ -105,7 +104,6 @@ public readonly struct Track : IEquatable<Track>
 }
 
 /// <summary>A switch on a <see cref="Track"/>: where a branch leaves, and which way the points are set.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct Switch
 {
     private readonly PhysicsWorld3D _world;
@@ -137,7 +135,6 @@ public readonly struct Switch
 }
 
 /// <summary>The state of one wheelset of a rail vehicle after the last step.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct WheelsetState
 {
     internal WheelsetState(Body body, Track track, double chainage, float spin, float radius, float normalLeft, float normalRight, float longitudinalLeft, float longitudinalRight, float lateralLeft, float lateralRight, float flangeLeft, float flangeRight, float climb, byte flags, float qLeft, float qRight, float yLeft, float yRight)
@@ -225,7 +222,6 @@ public readonly struct WheelsetState
 /// generation) that allocates nothing and fails with a <see cref="StaleHandleException"/> once the vehicle is destroyed (its car or, for a bare wheelset, the wheelset's body destroyed, or <see cref="Destroy"/> called).
 /// </summary>
 /// <example><c>var track = world.AddTrack(TrackDef.Curve(300, 200, 60, 0.1f)); var loco = world.AddRailVehicle(track, 30, RailDef.Locomotive); loco.Drive(throttle: 0.5f); world.Step(1f / 60f);</c></example>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct RailVehicle : IEquatable<RailVehicle>
 {
     private readonly PhysicsWorld3D? _world;

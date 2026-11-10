@@ -4,7 +4,6 @@ using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics.Physics3D;
 using Xunit;
 
-#pragma warning disable OPHYS0003, OPHYS0002
 
 namespace RecursiveAI.OnePhysics.Interchange.Tests;
 

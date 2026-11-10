@@ -6,11 +6,9 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>A box in world coordinates whose bodies step every <see cref="Period"/> steps (1, 2, 4 or 8).</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly record struct LodRegion3D(Vector3D Minimum, Vector3D Maximum, int Period);
 
 /// <summary>A box in world coordinates whose bodies run at <see cref="Scale"/> times real time (1/1024 to 4).</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly record struct TimeScaleRegion3D(Vector3D Minimum, Vector3D Maximum, float Scale);
 
 public sealed partial class PhysicsWorld3D

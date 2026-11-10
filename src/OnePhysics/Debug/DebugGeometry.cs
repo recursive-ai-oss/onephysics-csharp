@@ -335,7 +335,6 @@ public readonly struct DebugBody
 /// An active ragdoll's controller as plain data: its centre of mass, the capture point on the ground, the support box (bounding box of the grounded feet's soles) and, while a foot swings, the point it is aimed at.
 /// Emitted with <see cref="DebugContent.Joints"/>, in ragdoll slot order; 2D worlds fill X and Y (Z is 0).
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public readonly struct DebugActiveRagdoll
 {
     /// <summary>Creates an entry.</summary>
@@ -607,7 +606,6 @@ public sealed partial class DebugGeometry
     public ReadOnlySpan<DebugJoint> Joints => _joints.AsSpan(0, _nJoints);
 
     /// <summary>Active ragdolls' controller state (emitted with <see cref="DebugContent.Joints"/>).</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public ReadOnlySpan<DebugActiveRagdoll> ActiveRagdolls => _active.AsSpan(0, _nActive);
 
     /// <summary>Characters, by character slot.</summary>
@@ -686,6 +684,5 @@ public sealed partial class DebugGeometry
     public void Add(in DebugJoint j) => Push(ref _joints, ref _nJoints, in j);
 
     /// <summary>Appends an active ragdoll entry.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public void Add(in DebugActiveRagdoll a) => Push(ref _active, ref _nActive, in a);
 }

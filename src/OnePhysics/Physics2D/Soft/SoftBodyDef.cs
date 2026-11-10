@@ -7,7 +7,6 @@ using RecursiveAI.OneMath;
 namespace RecursiveAI.OnePhysics.Physics2D;
 
 /// <summary>The presets of the happy path: starting values for <see cref="SoftBodyDef"/> that behave like the named material at metre scale.</summary>
-[Experimental("OPHYS0003")]
 public enum SoftMaterial
 {
     /// <summary>A stiff elastic area or a pressurised skin that springs back fast.</summary>
@@ -18,7 +17,6 @@ public enum SoftMaterial
 }
 
 /// <summary>Which constraints hold a 2D soft body together.</summary>
-[Experimental("OPHYS0003")]
 public enum SoftBodyModel
 {
     /// <summary>A network of constraints: a distance constraint on every edge, an area constraint on every triangle, bending along an outline, and pressure on a closed outline (mass-spring and finite-element-like bodies).</summary>
@@ -47,7 +45,6 @@ public enum SoftBodyModel
 /// shape in the world, with each other (bodies with compatible filters) and, if <see cref="SelfCollision"/> is on, with the rest of their own body.
 /// Rigid bodies feel the contacts too: the body is pushed with the same impulse the particle is pushed with, so momentum is conserved.
 /// </remarks>
-[Experimental("OPHYS0003")]
 public sealed class SoftBodyDef
 {
     /// <summary>Largest compliance accepted.</summary>

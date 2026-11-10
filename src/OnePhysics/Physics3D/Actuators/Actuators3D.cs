@@ -12,7 +12,6 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// is destroyed. Thrusters run once per step before the solver, in creation order, and add their force to the body (a sleeping body is woken by a non-zero throttle).
 /// </summary>
 /// <example><c>var rocket = body.AddThruster(ThrusterDef.Rocket(2000f)); rocket.Throttle = 1f; world.Step(1f / 60f);</c></example>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public readonly struct Thruster : IEquatable<Thruster>
 {
     private readonly PhysicsWorld3D? _world;
@@ -100,7 +99,6 @@ public readonly struct Thruster : IEquatable<Thruster>
 /// A boat on a dynamic body (see <see cref="BoatDef"/>): set <see cref="Throttle"/> and <see cref="Steer"/>, step the world. A struct handle like <see cref="Body"/>; it fails with a <see cref="StaleHandleException"/> once the boat or its body is destroyed.
 /// </summary>
 /// <example><c>var boat = world.AddBoat(hull, BoatDef.Dinghy); boat.Throttle = 1f; boat.Steer = 0.3f; world.Step(1f / 60f);</c></example>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public readonly struct Boat : IEquatable<Boat>
 {
     private readonly PhysicsWorld3D? _world;
@@ -193,7 +191,6 @@ public readonly struct Boat : IEquatable<Boat>
 /// A hovercraft on a dynamic body (see <see cref="HovercraftDef"/>): set <see cref="Lift"/>, <see cref="Throttle"/> and <see cref="Steer"/>, step the world. A struct handle like <see cref="Body"/>; it fails with a <see cref="StaleHandleException"/> once the
 /// hovercraft or its body is destroyed.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public readonly struct Hovercraft : IEquatable<Hovercraft>
 {
     private readonly PhysicsWorld3D? _world;

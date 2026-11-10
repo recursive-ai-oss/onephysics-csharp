@@ -4,7 +4,6 @@ using RecursiveAI.OneMath;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>One validated, immutable query for a mixed batch. Create with the factories; default is invalid. Positions and lengths use the world query limits, metres and radians.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct QueryInput3D
 {
     internal readonly QueryParams Params;

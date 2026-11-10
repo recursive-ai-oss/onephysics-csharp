@@ -10,7 +10,6 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// lateral play is used up the flange meets the rail's gauge face with a steep contact angle, so hunting, curving, flange climb and derailment all come from the contact forces.
 /// Suspensions are six-degree-of-freedom spring joints between wheelsets, bogies and the car. Axes of the vehicle: +X right, +Y up, +Z forward.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class RailDef
 {
     // ---- car

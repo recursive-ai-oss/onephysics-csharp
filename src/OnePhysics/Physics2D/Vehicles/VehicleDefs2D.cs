@@ -10,7 +10,6 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// <c>f(s) = sin(C · atan(B·s − E·(B·s − atan(B·s))))</c>, scaled by friction and the load on the wheel. The slip ratio is the wheel's surface speed against the ground speed along the rolling direction.
 /// A 2D vehicle has no sideways direction, so there is no lateral curve: only the longitudinal part of the 3D tyre model applies.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class TyreDef
 {
     /// <summary>Peak friction coefficient of the tyre; combined with the ground shape's friction as <c>sqrt(tyre · ground)</c>, the world's rule. Default 1.5 (about 0.95 on the default ground). Within 0 to 1000.</summary>
@@ -45,7 +44,6 @@ public sealed class TyreDef
 /// (+X forward and +Y up in the presets). The wheel centre sits at <c>Position + SuspensionDirection · length</c> with <c>length</c> between <see cref="SuspensionMinLength"/> and <see cref="SuspensionMaxLength"/>;
 /// <see cref="Position"/> is the highest the wheel centre can be. The wheel is not a body: a circle of the wheel's radius sweeps along the suspension for the ground.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class WheelDef
 {
     /// <summary>Top of the suspension: the wheel centre at zero length, in the chassis frame. Default the origin.</summary>
@@ -118,7 +116,6 @@ public sealed class WheelDef
 }
 
 /// <summary>An engine: peak torque, rev range and a torque curve.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class EngineDef
 {
     /// <summary>Torque at the curve's value 1, N·m. Default 400. Positive, at most 10000000.</summary>
@@ -168,7 +165,6 @@ public sealed class EngineDef
 }
 
 /// <summary>A gearbox, automatic or manual.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class TransmissionDef
 {
     /// <summary>True (default) for an automatic box that shifts by engine speed and picks reverse from the drive input; false for a manual one set with <c>Vehicle.Gear</c>.</summary>
@@ -211,7 +207,6 @@ public sealed class TransmissionDef
 /// A differential sharing the driveshaft's torque between two wheels (or giving it all to one wheel with the other index -1). In a side view an axle has one wheel, so a differential is usually a
 /// centre differential between a front and a rear wheel, or a single driven wheel; the two indices are called <see cref="Left"/> and <see cref="Right"/> as in the 3D definition, with no geometric meaning.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class DifferentialDef
 {
     /// <summary>Index of the first wheel in <see cref="VehicleDef.Wheels"/>, or -1 for none.</summary>
@@ -257,7 +252,6 @@ public sealed class DifferentialDef
 /// indices name them everywhere (the differentials, <see cref="Vehicle.GetWheel"/>). Chassis frame: +X forward and +Y up in the presets. Definitions are classes so the arrays and the presets can be edited freely;
 /// <see cref="PhysicsWorld2D.AddVehicle(Body, VehicleDef)"/> copies what it needs.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class VehicleDef
 {
     /// <summary>The wheels, 1 to 32.</summary>
@@ -386,7 +380,6 @@ public sealed class VehicleDef
 }
 
 /// <summary>Which controller drives a <see cref="Vehicle"/>.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public enum VehicleKind : byte
 {
     /// <summary>Engine, gearbox and differentials driving wheels with tyres (<see cref="VehicleDef"/>).</summary>
@@ -405,7 +398,6 @@ public enum VehicleKind : byte
 /// towards the commanded speed within its torque limit (Wong, <i>Theory of Ground Vehicles</i>, ch. 5). Inputs (<see cref="Vehicle.SetInput"/>): throttle −1..1 drives the belt; the second input pitches the hull in the air.
 /// There is no skid steering in a side view.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class TrackedVehicleDef
 {
     /// <summary>Road wheels of the track, 1 to 32. Their tyre and handbrake values are ignored.</summary>
@@ -506,7 +498,6 @@ public sealed class TrackedVehicleDef
 /// on the ground and in the air, so a wheelie (driving torque lifts the front wheel through the tyre force below the centre of mass) and a stoppie (front braking pushes the rear up) can be caught or provoked.
 /// The wheels sweep for the ground like those of a <see cref="VehicleDef"/>. Chassis frame: +X forward, +Y up.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class MotorcycleDef
 {
     /// <summary>The front wheel (wheel 0). Its tyre and brake torque apply.</summary>

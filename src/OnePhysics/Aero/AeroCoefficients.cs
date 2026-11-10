@@ -5,7 +5,6 @@ using RecursiveAI.OneMath;
 namespace RecursiveAI.OnePhysics.Aero;
 
 /// <summary>The medium a lifting surface, thruster or foil works in.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public enum AeroMedium : byte
 {
     /// <summary>The air of the world: density from the world's air setting, flow from the wind of the area fields (see the fields documentation).</summary>
@@ -16,7 +15,6 @@ public enum AeroMedium : byte
 }
 
 /// <summary>How a surface turns the relative flow into force.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public enum AeroSurfaceKind : byte
 {
     /// <summary>A lifting surface (wing, plate, fin, rudder): lift and drag from the angle of attack in the plane of its chord and normal, from <see cref="AeroCoefficients"/>. Flow along the span makes no force.</summary>
@@ -32,7 +30,6 @@ public enum AeroSurfaceKind : byte
 /// Separated flow past the stall: the flat-plate normal force C<sub>N</sub> = C<sub>D90</sub>·sin α, so C<sub>L</sub> = C<sub>D90</sub>·sin α·cos α and C<sub>D</sub> = C<sub>D0</sub> + C<sub>D90</sub>·sin²α (Hoerner, <i>Fluid-Dynamic Drag</i>, flat plate normal to the flow).
 /// The two are blended with a smoothstep over <see cref="StallBlend"/> radians starting at <see cref="StallAngle"/> from the zero-lift angle, so the curves are continuous and the surface stalls the same way on both sides and in reversed flow.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public struct AeroCoefficients
 {
     /// <summary>Lift slope dC<sub>L</sub>/dα in 1/rad before the stall. Default 2π/(1 + 2/AR) with AR 6 (a finite wing).</summary>

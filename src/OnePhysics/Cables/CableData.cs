@@ -5,7 +5,6 @@ using RecursiveAI.OneMath;
 namespace RecursiveAI.OnePhysics.Cables;
 
 /// <summary>What a node of a pulley system is.</summary>
-[Experimental("OPHYS0001")]
 public enum CableNodeKind
 {
     /// <summary>A point on a body (or in the world) where the rope ends or is tied.</summary>
@@ -17,7 +16,6 @@ public enum CableNodeKind
 }
 
 /// <summary>Which way the rope turns around a wheel.</summary>
-[Experimental("OPHYS0001")]
 public enum WrapDirection
 {
     /// <summary>Counter-clockwise seen from the tip of the wheel axis (in 2D, counter-clockwise on screen).</summary>
@@ -27,7 +25,6 @@ public enum WrapDirection
 }
 
 /// <summary>Whether a wheel spins on its own (a rotor with its own inertia, turning on its carrier body) or with its body.</summary>
-[Experimental("OPHYS0001")]
 public enum WheelSpin
 {
     /// <summary>The wheel is a rotor owned by the pulley system and mounted on the node's body (or the world), turning about the axle with a given inertia. Pulleys and winch drums use this.</summary>

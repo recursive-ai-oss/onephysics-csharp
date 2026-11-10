@@ -3,7 +3,6 @@ using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics.Physics2D;
 using Xunit;
 
-#pragma warning disable OPHYS0003, OPHYS0002
 
 namespace RecursiveAI.OnePhysics.Tests.Articulations;
 

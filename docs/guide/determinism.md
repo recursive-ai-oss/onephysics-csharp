@@ -11,9 +11,17 @@
 
 The repository's hash-matrix tool steps its scenes and compares the per-step world hash across x64 and arm64, scalar and every vector width, one thread and all cores, JIT and NativeAOT, and WebAssembly. [../spec/hash-matrix.md](../spec/hash-matrix.md) describes it and [../spec/architecture.md](../spec/architecture.md) defines the hash and the snapshot layout.
 
+## Compatibility across 1.x
+
+- Results are bit-identical across operating systems, CPUs, vector widths, WebAssembly modes and thread counts in every release.
+- Within 1.x, patch releases never change a result: the same inputs give the same world, bit for bit.
+- A minor release may change results (for example a faster or more accurate solver path); the [changelog](../../CHANGELOG.md) says so whenever one does. Peers in a lockstep or rollback session must run the same minor version.
+- Snapshots, delta snapshots, replays and scene files written by any 1.x release load in every later 1.x release.
+- The public API follows semantic versioning.
+
 ## What is not promised
 
-- **Between previews.** 0.x previews are not bit-compatible with each other. A snapshot, saved game or replay from one preview does not carry to another, and a world stepped on a newer preview may differ from one stepped on an older. The [changelog](../../CHANGELOG.md) lists the previews that moved results. The 1.0 contract is the one that will be kept across versions.
+- **Before 1.0.** The 0.x previews were not bit-compatible with each other; nothing saved by one carries to 1.0.
 - **Different inputs.** Two worlds fed the same calls in a different order are different worlds: creation order decides handles and slots, and slots decide event order. Different `dt`, substeps, iterations or gravity are different simulations. `ThreadCount` and `WorldId` are the exceptions: they never change a result.
 - **Your code.** The world is deterministic; your game around it must be too. Do not feed it `Math.Sin` results, wall-clock times or a hash-ordered loop, and use the same `dt` on every peer. onemath provides the deterministic functions (`RecursiveAI.OneMath.Math64` and friends).
 - **Single writer.** Call a world from one thread at a time. Queries only read, and single queries may run concurrently when nothing writes.

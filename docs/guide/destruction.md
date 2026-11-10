@@ -1,6 +1,6 @@
 # Destruction
 
-Breaking things, in 2D and 3D (a preview, like the rest of `Physics3D`). Everything here is deterministic and part of the snapshot and the world hash; the exact rules are in [../spec/destruction.md](../spec/destruction.md).
+Breaking things, in 2D and 3D. Everything here is deterministic and part of the snapshot and the world hash; the exact rules are in [../spec/destruction.md](../spec/destruction.md).
 
 ## Happy path
 

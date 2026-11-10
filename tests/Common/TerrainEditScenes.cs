@@ -1,4 +1,4 @@
-#pragma warning disable OPHYS0001, OPHYS0002, OPHYS0003
+#pragma warning disable OPHYS0001
 using System;
 using System.Collections.Generic;
 using RecursiveAI.OneMath;

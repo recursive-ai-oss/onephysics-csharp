@@ -17,7 +17,7 @@
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
     <!-- Importers produce definitions of the 3D engine, whose types are marked experimental for consumers; inside this package they are simply used. -->
-    <NoWarn>$(NoWarn);OPHYS0001;OPHYS0002;OPHYS0003</NoWarn>
+    <NoWarn>$(NoWarn);OPHYS0001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

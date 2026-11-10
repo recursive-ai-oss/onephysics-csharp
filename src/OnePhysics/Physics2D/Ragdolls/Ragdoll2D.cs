@@ -18,7 +18,6 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// <para>A pose is one angle per part, radians. Entry <c>i</c> is the joint angle of part <c>i</c>: its angle minus its parent's, minus the same in the bind pose (0 everywhere is the bind pose; positive is counter-clockwise).
 /// Entry 0, the root, turns the whole figure in <see cref="SetPose"/> and <see cref="MoveToPose"/> and is ignored by <see cref="DriveToPose"/>.</para>
 /// </remarks>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public readonly partial struct Ragdoll : IEquatable<Ragdoll>
 {
     private readonly PhysicsWorld2D? _world;
@@ -332,7 +331,6 @@ public sealed partial class PhysicsWorld2D
     /// <param name="pose">Optional starting pose (one angle per part, see <see cref="Ragdoll"/>); empty means the bind pose.</param>
     /// <exception cref="InvalidRagdollException">The skeleton is not valid: no parts, too many, no single root, a parent that does not come first.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A value in the definition, or <paramref name="at"/>, is out of range; the message names the part and the field. Nothing has been added.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public Ragdoll AddRagdoll(RagdollDef def, Vector2D at = default, float angle = 0f, ReadOnlySpan<float> pose = default)
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddRagdoll");
@@ -419,7 +417,6 @@ public sealed partial class PhysicsWorld2D
 
     /// <summary>The <see cref="Ragdoll"/> for a raw handle (from <see cref="Ragdoll.RawHandle"/>).</summary>
     /// <exception cref="InvalidHandleException">The handle is null, belongs to another world (<see cref="ForeignHandleException"/>) or refers to a removed ragdoll (<see cref="StaleHandleException"/>).</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public Ragdoll GetRagdoll(RagdollHandle handle)
     {
         if (handle.IsNull) { throw new InvalidHandleException("The null ragdoll handle was used."); }
@@ -429,11 +426,9 @@ public sealed partial class PhysicsWorld2D
     }
 
     /// <summary>True while the ragdoll exists in this world. False for null handles, handles of another world and removed ragdolls (never throws). Allocates nothing.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public bool IsRagdollAlive(RagdollHandle handle) => !handle.IsNull && handle.World == Id && _engine.RagHandles.IsAlive(handle.Index, handle.Generation);
 
     /// <summary>The ragdoll that <paramref name="body"/> is a part of, if there is one.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public bool TryGetRagdoll(Body body, out Ragdoll ragdoll)
     {
         ragdoll = default;
@@ -445,7 +440,6 @@ public sealed partial class PhysicsWorld2D
     }
 
     /// <summary>All live ragdolls in slot order (allocates the array).</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public Ragdoll[] GetRagdolls()
     {
         var list = new List<Ragdoll>();

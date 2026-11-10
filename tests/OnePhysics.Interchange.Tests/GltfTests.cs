@@ -6,7 +6,6 @@ using RecursiveAI.OnePhysics.Physics3D;
 using Xunit;
 using SceneFormat = RecursiveAI.OnePhysics.Scene;
 
-#pragma warning disable OPHYS0003, OPHYS0002
 
 namespace RecursiveAI.OnePhysics.Interchange.Tests;
 

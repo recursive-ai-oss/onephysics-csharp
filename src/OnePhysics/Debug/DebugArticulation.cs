@@ -4,7 +4,6 @@ using RecursiveAI.OneMath;
 namespace RecursiveAI.OnePhysics.Debug;
 
 /// <summary>One link's joint of an articulation, in world space: where the joint is, which way it turns or slides, where it stands and whether it sits at a limit. World-relative metres; planar worlds leave z at 0.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public readonly struct DebugArticulationJoint
 {
     /// <summary>Creates an entry.</summary>
@@ -48,7 +47,6 @@ public readonly struct DebugArticulationJoint
 }
 
 /// <summary>A contact point of a link with another body in the last step: where, which way it pushes the other body, how deep, and the impulse the articulation's solve gave it.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public readonly struct DebugArticulationContact
 {
     /// <summary>Creates an entry.</summary>
@@ -84,19 +82,15 @@ public sealed partial class DebugGeometry
     private int _nArtContacts;
 
     /// <summary>The joints of every articulation link, articulations by slot and links by index, valid until the next collection or Clear.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public ReadOnlySpan<DebugArticulationJoint> ArticulationJoints => _artJoints.AsSpan(0, _nArtJoints);
 
     /// <summary>The contact points of articulation links in the last step, articulations by slot, in the order the solve took them.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public ReadOnlySpan<DebugArticulationContact> ArticulationContacts => _artContacts.AsSpan(0, _nArtContacts);
 
     /// <summary>Appends a joint; owned storage grows when necessary.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public void Add(in DebugArticulationJoint j) => Push(ref _artJoints, ref _nArtJoints, in j);
 
     /// <summary>Appends a contact point; owned storage grows when necessary.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
     public void Add(in DebugArticulationContact c) => Push(ref _artContacts, ref _nArtContacts, in c);
 
     private void ClearArticulations() { _nArtJoints = 0; _nArtContacts = 0; }

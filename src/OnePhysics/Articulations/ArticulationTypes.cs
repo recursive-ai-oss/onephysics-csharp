@@ -4,7 +4,6 @@ using System.Globalization;
 namespace RecursiveAI.OnePhysics;
 
 /// <summary>How a link of an articulation moves relative to its parent link.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public enum ArticulationJointKind : byte
 {
     /// <summary>No motion: the link is welded to its parent.</summary>
@@ -25,7 +24,6 @@ public enum ArticulationJointKind : byte
 /// <c>−Stiffness (position − TargetPosition) − Damping (velocity − TargetVelocity)</c>, clamped to ±<see cref="MaxForce"/> when that is above 0. It is integrated implicitly, so any stiffness is stable at any step.
 /// For a spherical joint the position error is the rotation vector to the target orientation and the force is a torque.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public struct ArticulationDrive : IEquatable<ArticulationDrive>
 {
     /// <summary>Spring constant: newton-metres per radian or newtons per metre. Finite, at least 0. Default 0 (no spring).</summary>

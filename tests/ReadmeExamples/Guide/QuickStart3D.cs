@@ -1,4 +1,3 @@
-#pragma warning disable OPHYS0002
 using System;
 using RecursiveAI.OneMath;               // Vector3F, Vector3D
 using RecursiveAI.OnePhysics;            // BodyType, events, exceptions

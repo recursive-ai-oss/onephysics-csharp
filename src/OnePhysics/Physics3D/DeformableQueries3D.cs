@@ -6,7 +6,6 @@ using RecursiveAI.OnePhysics.Rods;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>Which deformables a query looks at: kinds, layers and categories (the same bit rules as <see cref="QueryFilter3D"/>, applied to the layer and category and mask bits of the soft body or rod).</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct DeformableFilter3D
 {
     private uint _noLayers, _noCategory, _noMask;
@@ -31,7 +30,6 @@ public struct DeformableFilter3D
 /// <summary>
 /// A hit on a deformable: which one (kind, slot and generation: <c>GetSoftBody(slot)</c> or <c>GetRod(slot)</c>), which element of it, where, and the barycentric weights of the point on the element.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct DeformableHit3D
 {
     internal DeformableHit3D(DeformableKind kind, int slot, int generation, DeformableElement element, int index, int a, int b, int c, Vector3F weights, Vector3D point, Vector3F normal, float fraction, float distance)

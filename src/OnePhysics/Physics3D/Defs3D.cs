@@ -6,7 +6,6 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>Surface properties of a shape: friction, restitution and rolling resistance. Presets are starting points, not measurements.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct Material3D : IEquatable<Material3D>
 {
     /// <summary>The rolling resistance of a material or shape that does not set one: 0.003. A sphere or capsule touches a surface at one point or along a line, where Coulomb friction alone has no
@@ -73,15 +72,12 @@ public readonly struct Material3D : IEquatable<Material3D>
 }
 
 /// <summary>Combines the materials of two touching shapes (the lower shape slot first). Must be a pure function of its arguments.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public delegate Material3D MaterialMixer(Material3D a, Material3D b);
 
 /// <summary>Decides whether two shapes whose bounds overlap should collide at all. Called while pairs are created, never for existing pairs.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public delegate bool PairPredicate(Shape a, Shape b);
 
 /// <summary>World configuration. Defaults suit human-scale scenes in metres, seconds and kilograms.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class WorldOptions3D
 {
     internal Action<string>? ReplayChanged;
@@ -311,7 +307,6 @@ public sealed class WorldOptions3D
 }
 
 /// <summary>Everything needed to create a body; defaults make a dynamic body at the origin.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct BodyDef
 {
     /// <summary>Static, kinematic or dynamic. Default dynamic.</summary>
@@ -376,7 +371,6 @@ public struct BodyDef
 }
 
 /// <summary>Everything needed to create a shape besides its geometry; defaults suit a wooden object.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct ShapeDef
 {
     /// <summary>Optional body-frame conveyor, one-way and directional-friction properties. Default is an ordinary surface. Validated at shape creation; planar worlds reject 3D-only settings.</summary>
@@ -443,7 +437,6 @@ public struct ShapeDef
 }
 
 /// <summary>One manifold point of a contact as a callback sees it.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct ContactPoint3D
 {
     internal ContactPoint3D(Vector3D point, float separation, float normalImpulse, float tangentImpulse)
@@ -472,7 +465,6 @@ public readonly struct ContactPoint3D
 /// sub-shape contact (lowest sub-shape ids), as they are at the end of the step.
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "Handle fields, not properties, so that `hit.Body.LinearVelocity = v` compiles: a property result is not a variable (CS1612), a readonly field is.")]
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct Collision
 {
     private readonly ContactPoint3D _p0, _p1, _p2, _p3;
@@ -547,7 +539,6 @@ public readonly struct Collision
 
 /// <summary>What a trigger callback is told: the other body and shapes of a sensor overlap.</summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "Handle fields, not properties, so that `hit.Body.LinearVelocity = v` compiles: a property result is not a variable (CS1612), a readonly field is.")]
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct Trigger
 {
     internal Trigger(Body self, Body other, Shape selfShape, Shape otherShape, bool selfIsSensor)
@@ -581,7 +572,6 @@ public readonly struct Trigger
 }
 
 /// <summary>A body has left the range the engine supports; <see cref="Body"/> names it.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class BodyOutOfBoundsException : PhysicsException
 {
     /// <summary>The offending body; destroy it or move it back, then step again.</summary>

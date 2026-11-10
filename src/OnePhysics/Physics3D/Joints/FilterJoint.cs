@@ -3,7 +3,6 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>Disables collision between two distinct bodies; at least one must be dynamic. No physical rows are solved.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct FilterJointDef
 {
     /// <summary>First body, belonging to the destination world.</summary>

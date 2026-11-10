@@ -11,7 +11,6 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// An edge of the rest mesh within about 26° of the <see cref="AlongAxis"/> is an <i>along</i> edge, within 26° of the perpendicular an <i>across</i> edge, any other a <i>shear</i> edge (Provot 1995).
 /// Wind acts on the boundary: the windward face of every boundary edge takes the flat-plate force of the library's aerodynamic model (normal force and lift from the angle of attack), the lee face none; skin friction acts on both.
 /// </remarks>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class StripParams
 {
     /// <summary>Largest strain limit accepted.</summary>

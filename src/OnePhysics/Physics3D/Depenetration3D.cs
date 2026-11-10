@@ -4,7 +4,6 @@ using RecursiveAI.OneMath;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>A tested partial or complete correction from iterative depenetration. Not a globally minimum translation. The world is unchanged.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct DepenetrationResult3D
 {
     internal DepenetrationResult3D(Vector3D translation, float remainingDepth, int iterations, DepenetrationStatus status)

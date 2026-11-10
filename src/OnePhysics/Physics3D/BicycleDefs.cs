@@ -8,7 +8,6 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// (the axes of Meijaard, Papadopoulos, Ruina and Schwab, "Linearized dynamics equations for the balance and steer of a bicycle: a benchmark and review", Proc. R. Soc. A 463, 2007).
 /// The part's mass includes the wheel that is mounted on it; its inertia is about its own centre of mass.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class BicyclePart
 {
     /// <summary>Mass of the part with its wheel, kg. Positive.</summary>
@@ -48,7 +47,6 @@ public sealed class BicyclePart
 }
 
 /// <summary>A bicycle wheel: a thin disc that spins about its axle.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class BicycleWheel
 {
     /// <summary>Radius, m. Positive.</summary>
@@ -77,7 +75,6 @@ public sealed class BicycleWheel
 /// <see cref="HeadAngle"/> from the vertical. Heading is +Z, the bicycle's right is +X, up is +Y.
 /// </para>
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class BicycleDef
 {
     /// <summary>Distance between the two contact points, m. Default 1.02 (the benchmark).</summary>

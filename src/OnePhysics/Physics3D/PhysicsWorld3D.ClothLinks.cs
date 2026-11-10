@@ -8,7 +8,6 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 public sealed partial class PhysicsWorld3D
 {
     /// <summary>Number of seams and attachments in the world.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public int ClothLinkCount => _engine.LinkHandles.Count;
 
     private SoftBodyData LinkParticle(SoftBody body, int particle, string bodyName, string particleName)
@@ -29,7 +28,6 @@ public sealed partial class PhysicsWorld3D
     /// <returns>The link's number, for <see cref="RemoveClothLink"/>. Numbers are reused, lowest first.</returns>
     /// <exception cref="StaleHandleException">A body was destroyed.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A particle or the compliance is out of range, or both ends are the same particle.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public int AddSeam(SoftBody a, int particleA, SoftBody b, int particleB, float compliance = 0f)
     {
         using var replayMutation = RecordMutation("PhysicsWorld3D.AddSeam");
@@ -42,7 +40,6 @@ public sealed partial class PhysicsWorld3D
     /// <summary>Stitches two rows of particles pairwise: <c>particlesA[i]</c> to <c>particlesB[i]</c>, the seam between two edges of cloth (see <see cref="AddSeam(SoftBody, int, SoftBody, int, float)"/>).</summary>
     /// <returns>The number of the first link made; the links are numbered consecutively unless numbers were being reused.</returns>
     /// <exception cref="ArgumentException">The two lists differ in length or are empty.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public int AddSeam(SoftBody a, ReadOnlySpan<int> particlesA, SoftBody b, ReadOnlySpan<int> particlesB, float compliance = 0f)
     {
         if (particlesA.Length != particlesB.Length || particlesA.Length == 0) { throw new ArgumentException("the two particle lists must have the same, non-zero length (" + particlesA.Length.ToString(CultureInfo.InvariantCulture) + " and " + particlesB.Length.ToString(CultureInfo.InvariantCulture) + ").", nameof(particlesB)); }
@@ -64,7 +61,6 @@ public sealed partial class PhysicsWorld3D
     /// <returns>The link's number, for <see cref="RemoveClothLink"/>. The link goes when the rigid body or the soft body is destroyed.</returns>
     /// <exception cref="StaleHandleException">A body was destroyed.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The particle is out of range.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public int AttachCloth(SoftBody cloth, int particle, Body body)
     {
         using var replayMutation = RecordMutation("PhysicsWorld3D.AttachCloth");
@@ -81,7 +77,6 @@ public sealed partial class PhysicsWorld3D
     /// <summary>Attaches a row of particles (an edge of the cloth) to a rigid body, each where it is now (see <see cref="AttachCloth(SoftBody, int, Body)"/>).</summary>
     /// <returns>The number of the first link made.</returns>
     /// <exception cref="ArgumentException">The list is empty.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public int AttachClothEdge(SoftBody cloth, ReadOnlySpan<int> particles, Body body)
     {
         if (particles.Length == 0) { throw new ArgumentException("the particle list is empty.", nameof(particles)); }
@@ -98,7 +93,6 @@ public sealed partial class PhysicsWorld3D
     /// <summary>Removes a seam or attachment.</summary>
     /// <param name="link">A number returned by one of the link methods.</param>
     /// <exception cref="ArgumentOutOfRangeException">The number is not that of a live link.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public void RemoveClothLink(int link)
     {
         using var replayMutation = RecordMutation("PhysicsWorld3D.RemoveClothLink");

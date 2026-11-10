@@ -7,7 +7,6 @@ using RecursiveAI.OneMath;
 namespace RecursiveAI.OnePhysics.Physics2D;
 
 /// <summary>Why a 2D soft-body mesh or definition was refused.</summary>
-[Experimental("OPHYS0003")]
 public enum SoftBodyError
 {
     /// <summary>No vertices, no elements, or more than the limits allow.</summary>
@@ -39,7 +38,6 @@ public enum SoftBodyError
 }
 
 /// <summary>Thrown when a 2D soft-body mesh or definition cannot be used. The message names the field or element and what was expected.</summary>
-[Experimental("OPHYS0003")]
 public sealed class SoftBodyException : ArgumentException
 {
     /// <summary>Creates the exception.</summary>
@@ -62,7 +60,6 @@ public sealed class SoftBodyException : ArgumentException
 /// Triangles are counter-clockwise; one given clockwise is repaired by swapping its last two vertices. For a triangle mesh the <see cref="Outline"/> is derived: the boundary, when it is one closed loop
 /// (counter-clockwise, so the area is to its left). A mesh made from an outline has no triangles and its outline is the vertices in order.
 /// </remarks>
-[Experimental("OPHYS0003")]
 public sealed class SoftBodyMesh
 {
     /// <summary>Largest number of vertices in one mesh (and so particles in one body), 2^20.</summary>

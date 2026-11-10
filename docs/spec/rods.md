@@ -1,11 +1,12 @@
 # Circular Cosserat rods
 
-The experimental rod solver is shared by both dimensions. It provides stretch,
+The rod solver is shared by both dimensions. It provides stretch,
 shear, bend and spatial twist, pins and driven particle/material-frame targets,
 generation-checked rigid attachments, force breaking, frictional capsule contacts
-with the world, rod–rod contacts and self contacts. The rod APIs remain experimental.
+with the world, rod–rod contacts and self contacts.
 The strain solver and contact geometry use physical SI parameters; they are not a
-joint-chain wrapper. Production performance has not yet been established.
+joint-chain wrapper. No managed .NET engine has comparable rods, so the rod scenes are
+judged on their own stability thresholds; their step times are in the bench results.
 
 ## Representation and units
 

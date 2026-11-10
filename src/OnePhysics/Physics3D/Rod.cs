@@ -7,7 +7,6 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>Generation-checked rod handle. Destroyed or default handles throw InvalidOperationException on access. The world owns all storage.</summary>
-[Experimental("OPHYS0001")]
 public readonly struct Rod
 {
     private readonly RodStore? _store;

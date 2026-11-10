@@ -4,7 +4,6 @@ using RecursiveAI.OneMath;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>A typed, allocation-free view of a spatial WheelJoint. Edits validate and wake bodies; stale handles throw.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct WheelJoint : IEquatable<WheelJoint>
 {
     private readonly Joint _joint;
@@ -119,7 +118,6 @@ public readonly struct WheelJoint : IEquatable<WheelJoint>
 }
 
 /// <summary>A typed, allocation-free view of a spatial TargetJoint. Edits validate and wake bodies; stale handles throw.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct TargetJoint : IEquatable<TargetJoint>
 {
     private readonly Joint _joint;
@@ -208,7 +206,6 @@ public readonly struct TargetJoint : IEquatable<TargetJoint>
 }
 
 /// <summary>A typed, allocation-free view of a spatial RelativeJoint. Edits validate and wake bodies; stale handles throw.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct RelativeJoint : IEquatable<RelativeJoint>
 {
     private readonly Joint _joint;

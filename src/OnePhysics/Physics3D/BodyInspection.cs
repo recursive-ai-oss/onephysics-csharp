@@ -3,7 +3,6 @@ using RecursiveAI.OneMath;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>Read-only body diagnostics. Read between steps; getters validate the handle and throw for default or stale bodies. No allocation once world capacity is reserved.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct BodyInspection
 {
     private readonly RecursiveAI.OnePhysics.BodyInspection _raw;

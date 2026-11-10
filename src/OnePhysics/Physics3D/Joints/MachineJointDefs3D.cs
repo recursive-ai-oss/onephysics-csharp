@@ -3,7 +3,6 @@ using RecursiveAI.OneMath;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>Suspension with independent wheel spin. Values are validated on creation; defaults apply to the zero struct.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct WheelJointDef : IJointDef3D
 {
     /// <summary>First body, in the destination world.</summary>
@@ -45,7 +44,6 @@ public struct WheelJointDef : IJointDef3D
 }
 
 /// <summary>Capped relative-pose motor. Values are validated on creation; defaults apply to the zero struct.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct MotorJointDef : IJointDef3D
 {
     /// <summary>First body, in the destination world.</summary>
@@ -77,7 +75,6 @@ public struct MotorJointDef : IJointDef3D
 }
 
 /// <summary>Soft capped drag to a world point. Body A is a graph endpoint and receives no impulse. Values are validated on creation; defaults apply to the zero struct.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct MouseJointDef : IJointDef3D
 {
     /// <summary>First body, in the destination world.</summary>

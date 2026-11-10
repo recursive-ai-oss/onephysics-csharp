@@ -6,7 +6,6 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Rods;
 
 /// <summary>Raw rod particle and segment storage. Mutable spans are single-writer, unvalidated access; do not retain them across restore. One frame per segment, tangent along its local X axis.</summary>
-[Experimental("OPHYS0001")]
 public sealed partial class RodParticles
 {
     internal Vector3D[] PositionData, Previous, PinTarget, PinStart;

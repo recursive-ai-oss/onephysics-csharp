@@ -5,7 +5,6 @@ using System.Globalization;
 namespace RecursiveAI.OnePhysics;
 
 /// <summary>Where a ragdoll's root (the pelvis in the humanoid presets) comes from while an animation pose is blended in.</summary>
-[Experimental("OPHYS0003")]
 public enum AnimationRootMode : byte
 {
     /// <summary>The root follows the animation's root transform exactly while its blend weight is 0, and is simulated as it is weighted up. The default.</summary>
@@ -19,7 +18,6 @@ public enum AnimationRootMode : byte
 }
 
 /// <summary>What an active ragdoll's controller is doing.</summary>
-[Experimental("OPHYS0003")]
 public enum ActiveMode : byte
 {
     /// <summary>No locomotion controller: the bones follow the animation pose (or the bind pose) according to their blend weights.</summary>
@@ -33,7 +31,6 @@ public enum ActiveMode : byte
 }
 
 /// <summary>The gait's finite state, readable from <see cref="ActiveRagdollInfo"/>.</summary>
-[Experimental("OPHYS0003")]
 public enum GaitPhase : byte
 {
     /// <summary>Both feet planted; the balance law runs.</summary>
@@ -50,7 +47,6 @@ public enum GaitPhase : byte
 }
 
 /// <summary>Which parts of a skeleton are the pelvis, torso, head, arms and legs, for the balance and walking controllers. The defaults are the layout of <c>RagdollDef.Humanoid</c> in both dimensions.</summary>
-[Experimental("OPHYS0003")]
 public sealed class BipedBones
 {
     /// <summary>The root part. Default 0.</summary>
@@ -90,7 +86,6 @@ public sealed class BipedBones
 /// stop the fall. While ξ stays inside the support polygon the ankles apply the torque that moves the centre of pressure towards ξ, never further than the foot's edge (a zero-moment-point limit); when ξ leaves the polygon
 /// by more than <see cref="StepTrigger"/> the figure takes a step and puts the swing foot on ξ.
 /// </summary>
-[Experimental("OPHYS0003")]
 public sealed class BalanceDef
 {
     /// <summary>Centre-of-pressure feedback: the pressure point is put at ξ + gain · (ξ − the support centre). At least 0. Default 2.5.</summary>
@@ -138,7 +133,6 @@ public sealed class BalanceDef
 /// A walking controller in the SIMBICON family (Yin, Loken and van de Panne 2007; Coros, Beaudoin and van de Panne 2010): a finite-state gait with one leg swinging while the other carries the body, the swing foot
 /// placed by feedback on the centre of mass position and velocity (the capture point), the stance hip holding the pelvis level, the knee holding the hip height, and the ankle keeping the foot flat on the ground.
 /// </summary>
-[Experimental("OPHYS0003")]
 public sealed class WalkerDef
 {
     /// <summary>Duration of one step (one leg's swing), s. Default 0.42.</summary>
@@ -219,7 +213,6 @@ public sealed class WalkerDef
 /// What turns a ragdoll into an active one: the pose drive's gains (a stable proportional-derivative controller, Tan, Liu and Turk 2011, so any gain is safe at any time step), animation blending, hit reactions
 /// and the optional balance and walking controllers. Copied when the ragdoll is made active.
 /// </summary>
-[Experimental("OPHYS0003")]
 public sealed class ActiveRagdollDef
 {
     /// <summary>
@@ -345,7 +338,6 @@ internal static class BipedSkeleton
 }
 
 /// <summary>A read-only view of an active ragdoll's controller, from <c>Ragdoll.GetActiveInfo</c>: for hosts, tests and debug drawing.</summary>
-[Experimental("OPHYS0003")]
 public readonly struct ActiveRagdollInfo
 {
     internal ActiveRagdollInfo(ActiveMode mode, GaitPhase phase, int stepCount, float time, float comX, float comY, float comZ, float captureX, float captureZ, float supportMinX, float supportMinZ, float supportMaxX, float supportMaxZ, int supportFeet)

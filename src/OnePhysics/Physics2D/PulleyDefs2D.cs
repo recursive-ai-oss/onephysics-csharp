@@ -9,7 +9,6 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// One node of a pulley system: an anchor where the rope is tied, a wheel it runs over, or a drum it is wound on. Points are in the body's authoring frame when <see cref="Body"/> is set,
 /// otherwise in world coordinates. Metres, kilograms, radians and seconds.
 /// </summary>
-[Experimental("OPHYS0001")]
 public sealed class PulleyNodeDef
 {
     /// <summary>Anchor, wheel or drum. Default anchor.</summary>
@@ -60,7 +59,6 @@ public sealed class PulleyNodeDef
 }
 
 /// <summary>A rope over wheels, a winch, a belt or a chain: the nodes in path order and the solver options. Creation reads the bodies' current poses, so build the system with the bodies where they should hang.</summary>
-[Experimental("OPHYS0001")]
 public sealed class PulleySystemDef
 {
     /// <summary>Nodes in path order. An open rope runs from an anchor or drum, over wheels, to an anchor or drum; a closed loop holds only wheels. 2 to 256 nodes.</summary>
@@ -100,7 +98,6 @@ public sealed class PulleySystemDef
 }
 
 /// <summary>An end of a rope for the one-line constructors: a point on a body, or a world point.</summary>
-[Experimental("OPHYS0001")]
 public readonly struct RopeEnd
 {
     internal RopeEnd(BodyHandle body, Vector2D point) { Body = body; Point = point; }
@@ -113,7 +110,6 @@ public readonly struct RopeEnd
 }
 
 /// <summary>A pulley for the one-line constructors: a frictionless sheave turning freely on its carrier.</summary>
-[Experimental("OPHYS0001")]
 public readonly struct Pulley
 {
     /// <summary>A wheel of <paramref name="radius"/> metres centred at <paramref name="center"/> (in the body's authoring frame, or the world when <paramref name="body"/> is the default).</summary>
@@ -137,7 +133,6 @@ public readonly struct Pulley
 }
 
 /// <summary>A chain sprocket for <c>AddChainDrive</c>: it turns with its body, which should hang on a hinge.</summary>
-[Experimental("OPHYS0001")]
 public readonly struct Sprocket
 {
     /// <summary>A sprocket of <paramref name="teeth"/> teeth centred at <paramref name="center"/> on <paramref name="body"/>.</summary>
