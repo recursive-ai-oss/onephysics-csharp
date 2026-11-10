@@ -67,6 +67,8 @@ internal interface IArticulationHost
 internal sealed class ArticulationState
 {
     public ArticulationModel Model = null!;
+    /// <summary>Scratch for the step (not state; never copied by a fork or saved).</summary>
+    public ArticulationWork? Work;
     public int[] Body = Array.Empty<int>(), BodyGen = Array.Empty<int>();
     public bool Planar;
     public bool FixedBase;
