@@ -121,7 +121,7 @@ internal sealed class ArticulationWork
             double w = m.ForwardDynamics(_tau.AsSpan(0, n), _dAdd.AsSpan(0, n), g, external, _qdd.AsSpan(0, n)) ? m.StiffnessFrequency(g.Length) : 0.0;
             // A fast spin needs short steps for accuracy even when nothing is stiff: the energy error of a step grows with (hω)² (second order) or (hω)⁴ (the fourth-order step of passive chains), so h ω is kept near 0.2 or 0.25.
             // A passive chain whose stiffness estimate allows it takes the fourth-order step. An explicit method needs hω below about 2.8 and the estimate can be a factor of two low (a 64-link chain with a 1000:1 end mass), so it takes 2.5 times the substeps the estimate alone asks for.
-            rk4 = IsPassive(s) && dt * w <= 10.0;
+            rk4 = _cpCount == 0 && IsPassive(s) && dt * w <= 10.0;
             double spin = SpinRate(m, _qdd, dt);
             w = Math.Max(rk4 ? w * 2.5 : w, spin / (rk4 ? 0.25 : 0.2));
             substeps = (int)Math.Min(64.0, Math.Max(4.0, Math.Ceiling(dt * w)));
@@ -230,7 +230,7 @@ internal sealed class ArticulationWork
         return best;
     }
 
-    /// <summary>A fixed-base chain of revolute and prismatic joints with no drives and no joint damping: nothing stiff, so an explicit fourth-order step is stable and accurate (whips, ropes of links, hanging chains).</summary>
+    /// <summary>A fixed-base chain of revolute and prismatic joints with no drives, no joint damping and no limits: nothing stiff, so an explicit fourth-order step is stable and accurate (whips, ropes of links, hanging chains).</summary>
     private double[] _below = Array.Empty<double>();
 
     private bool IsPassive(ArticulationState s)
@@ -240,7 +240,7 @@ internal sealed class ArticulationWork
         for (int j = 1; j < m.N; j++)
         {
             if (m.Kind[j] != JointKind.Revolute && m.Kind[j] != JointKind.Prismatic && m.Kind[j] != JointKind.Fixed) { return false; }
-            if (m.Stiff[j] > 0.0 || m.Damp[j] > 0.0 || m.JointDamping[j] > 0.0) { return false; }
+            if (m.Stiff[j] > 0.0 || m.Damp[j] > 0.0 || m.JointDamping[j] > 0.0 || m.HasLimit[j]) { return false; }
         }
 
         // The stiffness estimate counts gravity only, but a link carrying a much heavier subtree is held by a tension that grows with the motion (a 1000:1 end mass swinging down), and an explicit step then goes unstable

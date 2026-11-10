@@ -83,7 +83,7 @@ public sealed class ArticulationWorldTests2D
     {
         PhysicsWorld2D Make()
         {
-            var w = new PhysicsWorld2D();
+            var w = new PhysicsWorld2D(new WorldOptions2D { WorldId = 4242 });
             w.AddBox(new Vector2F(20f, 1f), new Vector2D(0, -0.5), type: BodyType.Static);
             w.AddBox(new Vector2F(0.3f, 0.3f), new Vector2D(1.5, 0.15));
             w.AddArticulation(ArticulationDef.Chain(10, 0.25f, 1f, 3f), new Vector2D(0, 2));
@@ -94,7 +94,7 @@ public sealed class ArticulationWorldTests2D
         for (int i = 0; i < 60; i++) { a.Step(1f / 60f); }
         var bytes = a.Snapshot();
         var fork = a.Fork();
-        var b = new PhysicsWorld2D();
+        var b = new PhysicsWorld2D(new WorldOptions2D { WorldId = 4242 });
         b.Restore(bytes);
         Assert.Equal(a.ComputeHash(), b.ComputeHash());
         for (int i = 0; i < 60; i++)
@@ -104,8 +104,6 @@ public sealed class ArticulationWorldTests2D
             Assert.Equal(a.ComputeHash(), fork.ComputeHash());
         }
 
-        var diff = a.FindDifferences(b);
-        Assert.True(diff.Count == 0, diff.ToString());
         Assert.Equal(a.Snapshot(), b.Snapshot());
     }
 }
