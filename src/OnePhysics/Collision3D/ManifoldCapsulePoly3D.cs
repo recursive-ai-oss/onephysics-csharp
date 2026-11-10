@@ -18,16 +18,16 @@ public sealed partial class ManifoldGenerator3D
         Vector3F e0, e1;
         if (capsuleIsB)
         {
-            Matrix3x3F r = bInA.Rotation.ToMatrix();
-            Vector3F axis = r * new Vector3F(0f, hy, 0f);
+            Matrix3x3F r = bInA.Rotation.ToMatrixInline();
+            Vector3F axis = r.TransformInline(new Vector3F(0f, hy, 0f));
             e0 = bInA.Translation + axis;
             e1 = bInA.Translation - axis;
         }
         else
         {
             QuaternionF inv = bInA.Rotation.Conjugated();
-            e0 = inv.Rotate(new Vector3F(0f, hy, 0f) - bInA.Translation);
-            e1 = inv.Rotate(new Vector3F(0f, -hy, 0f) - bInA.Translation);
+            e0 = inv.RotateInline(new Vector3F(0f, hy, 0f) - bInA.Translation);
+            e1 = inv.RotateInline(new Vector3F(0f, -hy, 0f) - bInA.Translation);
         }
 
         float limit = poly.ConvexRadius + cap.ConvexRadius + margin;

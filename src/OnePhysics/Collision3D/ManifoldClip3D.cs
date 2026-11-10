@@ -43,7 +43,7 @@ internal sealed class Feat
     {
         for (int i = 0; i < N; i++)
         {
-            P[i] = (r * P[i]) + t;
+            P[i] = r.TransformInline(P[i]) + t;
         }
     }
 

@@ -234,6 +234,10 @@ Same run as the proposed thresholds in `docs/spec/scenes.md` (metric definitions
 
 `BAR_BEPU_ITERS=n` sets the Bepu driver's `SolveDescription(n, 1)` (default 8); with `BAR_VELITERS`, `BAR_RELAX` and `BAR_SUBSTEPS` for our engine it gives the cost of one more solver pass per constraint (slope of step time over n divided by the constraint counts our driver prints as `constraints_contacts`, `constraints_points`, `constraints_joints`). Results: docs/world3d.md, round 15.
 
+## Repeatable contact-stage and whole-step timing
+
+`bar narrow-bench --scene FILE --at N [--reps R]` steps a 3D scene to step N, then runs the contact stage (pair revisit, narrowphase, apply) R times on the unchanged bodies. Every repetition does identical work, so the minimum over repetitions is steady on a shared host. `--fresh` turns manifold reuse off and clears each pair's "found apart" memory between repetitions, so every touching pair runs the whole narrowphase (the cost of a violent phase). `--steps K` saves a snapshot at step N and then, for each repetition, restores it and takes K + 3 steps; the first three after a restore are not measured, and the report is the sum over the K measured steps of each step's minimum over repetitions. Two builds are compared by alternating them round by round on one pinned core and taking each metric's minimum over rounds; the noise floor of that method, the same build against itself, was within about 3% for the contact stage and 1-2% for whole steps on a host with a load average of 15-25. Indicative only: it is not the bar's method (which times the live scene).
+
 ## Indicative recording overhead
 
 `bar recording-indicative --variant off|on --reps 3` (build the current benchmark

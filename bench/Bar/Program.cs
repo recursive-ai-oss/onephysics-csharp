@@ -49,6 +49,7 @@ public static class Program
             case "terrain-edit-stability": return TerrainEditStability.Run(opts);
             case "terrain-edit-timing": return TerrainEditStability.Time(opts);
             case "micro-boxbox": return MicroBoxBox.Run(opts);
+            case "narrow-bench": return NarrowBench.Run(opts);
             case "queries-indicative": return MixedQueryTiming.Run(opts);
             case "recording-indicative": return RecordingTiming.Run(opts);
             case "selftest": return Metrics.SelfTest() + Metrics3.SelfTest() + Robust.SelfTest() + ProfileReport.SelfTest() + Verdict.SelfTest();

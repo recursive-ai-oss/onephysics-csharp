@@ -96,7 +96,7 @@ public sealed partial class ManifoldGenerator3D
             if (placedBox)
             {
                 // A placed box is its centre plus or minus its three half-extent columns: the corners are sums of the scaled columns with signs, not eight matrix products.
-                Vector3F c0 = r.Transform(new Vector3F(size.X, 0f, 0f)), c1 = r.Transform(new Vector3F(0f, size.Y, 0f)), c2 = r.Transform(new Vector3F(0f, 0f, size.Z));
+                Vector3F c0 = r.TransformInline(new Vector3F(size.X, 0f, 0f)), c1 = r.TransformInline(new Vector3F(0f, size.Y, 0f)), c2 = r.TransformInline(new Vector3F(0f, 0f, size.Z));
                 for (int i = 0; i < nv; i++)
                 {
                     Vector3F h = hv[i];
@@ -113,7 +113,7 @@ public sealed partial class ManifoldGenerator3D
                 for (int i = 0; i < nv; i++)
                 {
                     Vector3F v = box ? hv[i] * size : hv[i];
-                    if (transform) { v = r.Transform(v) + t; }
+                    if (transform) { v = r.TransformInline(v) + t; }
                     vs[i] = v;
                     sum += v;
                 }
@@ -124,7 +124,7 @@ public sealed partial class ManifoldGenerator3D
             for (int f = 0; f < nf; f++)
             {
                 Vector3F n = hf[f].Normal;
-                if (transform) { n = r.Transform(n); }
+                if (transform) { n = r.TransformInline(n); }
                 ns[f] = n;
                 ds[f] = Vector3F.Dot(n, vs[he[hf[f].FirstEdge].Origin]);
             }
@@ -160,7 +160,7 @@ public sealed partial class ManifoldGenerator3D
     private Manifold3D PolyPoly(in ConvexShape3D a, in ConvexShape3D b, in RigidTransformF bInA, float margin)
     {
         float rA = a.ConvexRadius, rB = b.ConvexRadius, rr = rA + rB;
-        Matrix3x3F r = bInA.Rotation.ToMatrix();
+        Matrix3x3F r = bInA.Rotation.ToMatrixInline();
         PolyData pa = _pa, pb = _pb;
         bool boxes = a.Kind == ConvexShapeKind3D.Box && b.Kind == ConvexShapeKind3D.Box;
         Vector3F tB = bInA.Translation;
@@ -200,7 +200,7 @@ public sealed partial class ManifoldGenerator3D
         if (sepB > limit)
         {
             ClearanceOut = sepB - limit;
-            ClearanceAxisOut = boxes ? -r.Transform(s_boxTopo.FaceNormal[faceB]) : -pb.N[faceB];
+            ClearanceAxisOut = boxes ? -r.TransformInline(s_boxTopo.FaceNormal[faceB]) : -pb.N[faceB];
             return Empty;
         }
 
@@ -238,7 +238,7 @@ public sealed partial class ManifoldGenerator3D
             // A unit separating axis is a lower bound on Euclidean distance, whether it came
             // from a face or an edge pair. Keep the edge bound for the same motion-budget test.
             ClearanceOut = best - limit;
-            ClearanceAxisOut = useEdge ? axisE : useB ? (boxes ? -r.Transform(s_boxTopo.FaceNormal[faceB]) : -pb.N[faceB]) : (boxes ? s_boxTopo.FaceNormal[faceA] : pa.N[faceA]);
+            ClearanceAxisOut = useEdge ? axisE : useB ? (boxes ? -r.TransformInline(s_boxTopo.FaceNormal[faceB]) : -pb.N[faceB]) : (boxes ? s_boxTopo.FaceNormal[faceA] : pa.N[faceA]);
             return Empty;
         }
 

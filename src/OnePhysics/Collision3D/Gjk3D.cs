@@ -81,7 +81,7 @@ internal readonly struct ConvexPair
     {
         A = a;
         B = b;
-        R = bInA.Rotation.ToMatrix();
+        R = bInA.Rotation.ToMatrixInline();
         Rt = R.Transposed();
         T = bInA.Translation;
     }
@@ -92,7 +92,7 @@ internal readonly struct ConvexPair
     public void Support(Vector3F u, out Vector3F p, out Vector3F a, out Vector3F b)
     {
         a = A.CoreSupport(u);
-        b = (R * B.CoreSupport(Rt * -u)) + T;
+        b = R.TransformInline(B.CoreSupport(Rt.TransformInline(-u))) + T;
         p = a - b;
     }
 }
