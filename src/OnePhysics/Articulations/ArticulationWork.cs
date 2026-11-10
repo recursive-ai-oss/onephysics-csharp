@@ -114,17 +114,32 @@ internal sealed class ArticulationWork
         m.ForwardKinematics();
         ReadOnlySpan<double> external = s.AnyExternal ? s.External : ReadOnlySpan<double>.Empty;
         int substeps = s.Substeps;
+        bool rk4 = false;
         if (substeps == 0)
         {
             // Automatic: at least 4, more when the highest frequency of the step (see StiffnessFrequency) would make the explicit part unstable (h ω ≤ 1).
             ComputeDrives(s, dt * 0.25, g);
             double w = m.ForwardDynamics(_tau.AsSpan(0, n), _dAdd.AsSpan(0, n), g, external, _qdd.AsSpan(0, n)) ? m.StiffnessFrequency(g.Length) : 0.0;
+            // A fast spin needs short steps for accuracy even when nothing is stiff: the energy error of a step grows with (hω)² (second order) or (hω)⁴ (the fourth-order step of passive chains), so h ω is kept near 0.2 or 0.25.
+            // A passive chain whose stiffness estimate allows it takes the fourth-order step. An explicit method needs hω below about 2.8 and the estimate can be a factor of two low (a 64-link chain with a 1000:1 end mass), so it takes 2.5 times the substeps the estimate alone asks for.
+            rk4 = IsPassive(s) && dt * w <= 10.0;
+            double spin = SpinRate(m, _qdd, dt);
+            w = Math.Max(rk4 ? w * 2.5 : w, spin / (rk4 ? 0.25 : 0.2));
             substeps = (int)Math.Min(64.0, Math.Max(4.0, Math.Ceiling(dt * w)));
         }
 
         double h = (double)dt / substeps;
         for (int sub = 0; sub < substeps; sub++)
         {
+            if (rk4)
+            {
+                ComputeDrives(s, h, g);
+                Rk4Substep(h, g, external, n);
+                SolveConstraints(s, h);
+                ClampVelocities(s);
+                continue;
+            }
+
             // Drift, kick, drift (leapfrog): positions and velocities both land on whole steps, second order in the step.
             m.IntegratePositions(0.5 * h);
             m.ForwardKinematics();
@@ -192,6 +207,94 @@ internal sealed class ArticulationWork
             var dv = ob.V - ob.V0; var dw = ob.W - ob.W0;
             if (dv.X != 0.0 || dv.Y != 0.0 || dv.Z != 0.0 || dw.X != 0.0 || dw.Y != 0.0 || dw.Z != 0.0) { _host.AddBodyVelocity(ob.Body, dv, dw); }
         }
+    }
+
+    /// <summary>The fastest joint rotation, rad/s, at the present state and at the end of the step if the present accelerations lasted.</summary>
+    private static double SpinRate(ArticulationModel m, double[] qdd, double dt)
+    {
+        double best = 0.0;
+        for (int j = 0; j < m.N; j++)
+        {
+            int vo = m.VelOff[j];
+            double v;
+            switch (m.Kind[j])
+            {
+                case JointKind.Revolute: v = Math.Max(Math.Abs(m.Qd[vo]), Math.Abs(m.Qd[vo] + dt * qdd[vo])); break;
+                case JointKind.Spherical: case JointKind.Free: v = Math.Max(new D3(m.Qd[vo], m.Qd[vo + 1], m.Qd[vo + 2]).Length, new D3(m.Qd[vo] + dt * qdd[vo], m.Qd[vo + 1] + dt * qdd[vo + 1], m.Qd[vo + 2] + dt * qdd[vo + 2]).Length); break;
+                case JointKind.FreePlanar: v = Math.Max(Math.Abs(m.Qd[vo]), Math.Abs(m.Qd[vo] + dt * qdd[vo])); break;
+                default: continue;
+            }
+
+            if (v > best) { best = v; }
+        }
+
+        return best;
+    }
+
+    /// <summary>A fixed-base chain of revolute and prismatic joints with no drives and no joint damping: nothing stiff, so an explicit fourth-order step is stable and accurate (whips, ropes of links, hanging chains).</summary>
+    private double[] _below = Array.Empty<double>();
+
+    private bool IsPassive(ArticulationState s)
+    {
+        var m = s.Model;
+        if (m.Kind[0] != JointKind.Fixed || s.GravityCompensation || s.HasTarget) { return false; }
+        for (int j = 1; j < m.N; j++)
+        {
+            if (m.Kind[j] != JointKind.Revolute && m.Kind[j] != JointKind.Prismatic && m.Kind[j] != JointKind.Fixed) { return false; }
+            if (m.Stiff[j] > 0.0 || m.Damp[j] > 0.0 || m.JointDamping[j] > 0.0) { return false; }
+        }
+
+        // The stiffness estimate counts gravity only, but a link carrying a much heavier subtree is held by a tension that grows with the motion (a 1000:1 end mass swinging down), and an explicit step then goes unstable
+        // beyond the estimate. Chains where no link carries more than 16 times its own mass are far from that.
+        Fit(ref _below, m.N);
+        var below = _below;
+        for (int j = 0; j < m.N; j++) { below[j] = m.Mass[j]; }
+        for (int j = m.N - 1; j > 0; j--) { below[m.Parent[j]] += below[j]; }
+        for (int j = 1; j < m.N; j++) { if (below[j] > 16.0 * m.Mass[j]) { return false; } }
+        return true;
+    }
+
+    private double[] _q0 = Array.Empty<double>(), _v0 = Array.Empty<double>(), _a1 = Array.Empty<double>(), _a2 = Array.Empty<double>(), _a3 = Array.Empty<double>(), _v2 = Array.Empty<double>(), _v3 = Array.Empty<double>(), _v4 = Array.Empty<double>();
+
+    /// <summary>
+    /// One classical fourth-order Runge–Kutta step of the free motion, positions and velocities together (Kutta 1901; the accelerations are the articulated-body sweep's). Used where nothing in the system is stiff, so the
+    /// explicit method is stable, and the energy error of a fast whip falls with the fourth power of the step instead of the second.
+    /// </summary>
+    private void Rk4Substep(double h, D3 g, ReadOnlySpan<double> external, int n)
+    {
+        var m = _m;
+        Fit(ref _q0, m.TotalPos); Fit(ref _v0, n); Fit(ref _a1, n); Fit(ref _a2, n); Fit(ref _a3, n); Fit(ref _v2, n); Fit(ref _v3, n); Fit(ref _v4, n); Fit(ref _qdd, n);
+        Array.Copy(m.Q, _q0, m.TotalPos); Array.Copy(m.Qd, _v0, n);
+        var tau = _tau.AsSpan(0, n); var dAdd = _dAdd.AsSpan(0, n);
+        m.ForwardKinematics();
+        if (!m.ForwardDynamics(tau, dAdd, g, external, _a1.AsSpan(0, n))) { Array.Clear(_a1, 0, n); }
+        // Stage 2: half a step along the start velocity and acceleration.
+        for (int d = 0; d < n; d++) { _v2[d] = _v0[d] + 0.5 * h * _a1[d]; }
+        Stage(h * 0.5, _v0, _v2, g, external, n, _a2);
+        // Stage 3: half a step along stage 2.
+        for (int d = 0; d < n; d++) { _v3[d] = _v0[d] + 0.5 * h * _a2[d]; }
+        Stage(h * 0.5, _v2, _v3, g, external, n, _a3);
+        // Stage 4: a whole step along stage 3.
+        for (int d = 0; d < n; d++) { _v4[d] = _v0[d] + h * _a3[d]; }
+        Stage(h, _v3, _v4, g, external, n, _qdd);
+        // Combine.
+        Array.Copy(_q0, m.Q, m.TotalPos);
+        for (int d = 0; d < n; d++) { m.Qd[d] = (_v0[d] + 2.0 * _v2[d] + 2.0 * _v3[d] + _v4[d]) / 6.0; }
+        m.IntegratePositions(h);
+        for (int d = 0; d < n; d++) { m.Qd[d] = _v0[d] + h / 6.0 * (_a1[d] + 2.0 * _a2[d] + 2.0 * _a3[d] + _qdd[d]); }
+        m.ForwardKinematics();
+    }
+
+    // One stage: positions at the start plus dt along the velocity that drives them (move), then the acceleration at the stage's own velocity.
+    private void Stage(double dt, double[] drive, double[] velocity, D3 g, ReadOnlySpan<double> external, int n, double[] acc)
+    {
+        var m = _m;
+        Array.Copy(_q0, m.Q, m.TotalPos);
+        Array.Copy(drive, m.Qd, n);
+        m.IntegratePositions(dt);
+        Array.Copy(velocity, m.Qd, n);
+        m.ForwardKinematics();
+        if (!m.ForwardDynamics(_tau.AsSpan(0, n), _dAdd.AsSpan(0, n), g, external, acc.AsSpan(0, n))) { Array.Clear(acc, 0, n); }
     }
 
     /// <summary>The gap of a contact now: along its normal, between the point on the link and the point it touches (a fixed point on the other link, or the starting point on a body outside).</summary>
