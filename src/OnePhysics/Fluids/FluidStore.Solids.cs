@@ -36,6 +36,7 @@ internal sealed partial class FluidStore
 
     // Per step.
     private float[] _aff = new float[9], _fx = new float[1], _fy = new float[1], _fz = new float[1];
+    private float[] _rhoP = new float[1];
     private float[] _nm = new float[1], _gvx = new float[1], _gvy = new float[1], _gvz = new float[1];
     private int _nnx, _nny, _nnz;
 
@@ -48,6 +49,7 @@ internal sealed partial class FluidStore
     private const float InertialI0 = 0.279f, FlowFrictionRise = 12f;
     private const double PlanarConeCalibration = 1.2;
     private const float MaxHardening = 4f;
+    private const float OverpackRatio = 1.1f;
     /// <summary>The most log-volume of expansion a granular particle keeps for later (a factor of about 20 in volume).</summary>
     private const float MaxVolumeCorrection = 3f;
     private const int MaxSolidSubsteps = 64;
@@ -159,14 +161,109 @@ internal sealed partial class FluidStore
         _nnx = _gnx + 2; _nny = _gny + 2; _nnz = Dim == 3 ? _gnz + 2 : 1;
         long nodes = (long)_nnx * _nny * _nnz;
         if (nodes > 1L << 26) { throw new FluidBudgetException("The solid matter's grid would have " + nodes.ToString(System.Globalization.CultureInfo.InvariantCulture) + " nodes."); }
-        Fit(ref _aff, n * 9); Fit(ref _fx, n); Fit(ref _fy, n); Fit(ref _fz, n);
+        Fit(ref _aff, n * 9); Fit(ref _rhoP, n); Fit(ref _fx, n); Fit(ref _fy, n); Fit(ref _fz, n);
         int nn = (int)nodes;
         Fit(ref _nm, nn); Fit(ref _gvx, nn); Fit(ref _gvy, nn); Fit(ref _gvz, nn);
         var ex = Host.Core.Executor;
+        // Density first (mass on the nodes, then back to the particles), because a particle's stress needs it: the elastic strain follows the velocity gradient, which cannot see grains packing closer than a cell.
+        ex.For(_taskCount, new SolidFracTask { S = this });
+        ex.For((nn + Chunk - 1) / Chunk, new SolidMassTask { S = this, Nodes = nn });
+        ex.For(_taskCount, new SolidDensityTask { S = this });
         ex.For(_taskCount, new SolidPrepareTask { S = this });
         ex.For((nn + Chunk - 1) / Chunk, new SolidGridTask { S = this, Nodes = nn });
         SolidBoundary();
         ex.For(_taskCount, new SolidG2PTask { S = this });
+    }
+
+    private struct SolidFracTask : IParallelBody
+    {
+        public FluidStore S;
+        public void Run(int task)
+        {
+            var s = S; int d = s.Dim; float invDx = s._invH;
+            for (int i = task * Chunk, to = Math.Min(s.Count, task * Chunk + Chunk); i < to; i++)
+            {
+                if (!s._isMpm[s.PFluid[i]]) { continue; }
+                float ux = (s._x[i] - s._gMinX) * invDx, uy = (s._y[i] - s._gMinY) * invDx, uz = d == 3 ? (s._z[i] - s._gMinZ) * invDx : 0f;
+                s._fx[i] = ux - (float)Math.Floor(ux) - 0.5f; s._fy[i] = uy - (float)Math.Floor(uy) - 0.5f; s._fz[i] = d == 3 ? uz - (float)Math.Floor(uz) - 0.5f : 0f;
+            }
+        }
+    }
+
+    // Mass of every node alone (the momentum pass repeats it): the same node-centric gather in the sorted order of the particles.
+    private struct SolidMassTask : IParallelBody
+    {
+        public FluidStore S;
+        public int Nodes;
+        public void Run(int task)
+        {
+            var s = S; int d = s.Dim; var cs = s._cellStart;
+            int nnx = s._nnx, nny = s._nny, gnx = s._gnx, gny = s._gny, gnz = s._gnz, zr = d == 3 ? 1 : 0;
+            for (int n = task * Chunk, to = Math.Min(Nodes, task * Chunk + Chunk); n < to; n++)
+            {
+                int nx = n % nnx, ny = (n / nnx) % nny, nz = n / (nnx * nny);
+                int cxn = nx - 1, cyn = ny - 1, czn = d == 3 ? nz - 1 : 0;
+                float m = 0f;
+                for (int oz = -zr; oz <= zr; oz++)
+                {
+                    int cz = czn + oz;
+                    if (cz < 0 || cz >= gnz) { continue; }
+                    for (int oy = -1; oy <= 1; oy++)
+                    {
+                        int cy = cyn + oy;
+                        if (cy < 0 || cy >= gny) { continue; }
+                        for (int ox = -1; ox <= 1; ox++)
+                        {
+                            int cx = cxn + ox;
+                            if (cx < 0 || cx >= gnx) { continue; }
+                            int cell = cx + gnx * (cy + gny * cz);
+                            for (int j = cs[cell], b = cs[cell + 1]; j < b; j++)
+                            {
+                                int f = s.PFluid[j];
+                                if (!s._isMpm[f]) { continue; }
+                                float w = Spline(-ox - s._fx[j]) * Spline(-oy - s._fy[j]) * (d == 3 ? Spline(-oz - s._fz[j]) : 1f);
+                                m += w * s._mass[f];
+                            }
+                        }
+                    }
+                }
+
+                s._nm[n] = m;
+            }
+        }
+    }
+
+    // The particle's density: the node masses interpolated back and divided by the cell volume.
+    private struct SolidDensityTask : IParallelBody
+    {
+        public FluidStore S;
+        public void Run(int task)
+        {
+            var s = S; int d = s.Dim; int nnx = s._nnx, nny = s._nny, zr = d == 3 ? 1 : 0;
+            float dx = s._k.H, inv = d == 3 ? 1f / (dx * dx * dx) : 1f / (dx * dx);
+            for (int i = task * Chunk, to = Math.Min(s.Count, task * Chunk + Chunk); i < to; i++)
+            {
+                if (!s._isMpm[s.PFluid[i]]) { continue; }
+                float ux = (s._x[i] - s._gMinX) * s._invH, uy = (s._y[i] - s._gMinY) * s._invH, uz = d == 3 ? (s._z[i] - s._gMinZ) * s._invH : 0f;
+                int cx = (int)Math.Floor(ux), cy = (int)Math.Floor(uy), cz = d == 3 ? (int)Math.Floor(uz) : 0;
+                float fx = s._fx[i], fy = s._fy[i], fz = s._fz[i];
+                float rho = 0f;
+                for (int oz = -zr; oz <= zr; oz++)
+                {
+                    for (int oy = -1; oy <= 1; oy++)
+                    {
+                        for (int ox = -1; ox <= 1; ox++)
+                        {
+                            float w = Spline(ox - fx) * Spline(oy - fy) * (d == 3 ? Spline(oz - fz) : 1f);
+                            if (w == 0f) { continue; }
+                            rho += w * s._nm[(cx + ox + 1) + nnx * ((cy + oy + 1) + nny * (d == 3 ? cz + oz + 1 : 0))];
+                        }
+                    }
+                }
+
+                s._rhoP[i] = rho * inv;
+            }
+        }
     }
 
     private struct SolidPrepareTask : IParallelBody
@@ -324,6 +421,19 @@ internal sealed partial class FluidStore
             // Stress and the new elastic strain, from the final principal strains.
             float tr2 = d == 3 ? ep0 + ep1 + ep2 : ep0 + ep1;
             float ta = 2f * mu * ep0 + lam * tr2, tb = 2f * mu * ep1 + lam * tr2, tc = d == 3 ? 2f * mu * ep2 + lam * tr2 : 0f;
+            // Overpacking: a strain that follows the velocity gradient cannot see grains pressed closer than a cell (they move as one smooth field), so a stream that lands on a pile packs several times its rest density with no
+            // stress. The density the grid holds (node masses interpolated back) exceeds what the elastic volume change accounts for, ln(rho / rho0) + tr(eps), only by that excess, and the excess is resisted by the bulk modulus
+            // of the particle, in compression only and beyond a 10% dead zone that the lattice and the free surface stay inside.
+            if (_rhoP[i] > OverpackRatio * _rhoRest[f])
+            {
+                float excess = Math32.Log(_rhoP[i] / _rhoRest[f]) + tr2;
+                if (excess > 0f)
+                {
+                    float iso = -(lam + 2f * mu / d) * Math.Min(excess, 1f);
+                    ta += iso; tb += iso; if (d == 3) { tc += iso; }
+                }
+            }
+
             {
                 float f0 = Math32.Exp(2f * ep0), f1 = Math32.Exp(2f * ep1), f2 = d == 3 ? Math32.Exp(2f * ep2) : 1f;
                 be[b0] = u00 * u00 * f0 + u01 * u01 * f1 + u02 * u02 * f2; be[b0 + 1] = u10 * u10 * f0 + u11 * u11 * f1 + u12 * u12 * f2; be[b0 + 2] = u20 * u20 * f0 + u21 * u21 * f1 + u22 * u22 * f2;
