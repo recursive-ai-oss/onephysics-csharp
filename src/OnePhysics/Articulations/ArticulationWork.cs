@@ -100,7 +100,7 @@ internal sealed class ArticulationWork
     public void Simulate(ArticulationState s, float dt, D3 gravity, double slop, double pushCap)
     {
         try { SimulateCore(s, dt, gravity, slop, pushCap); }
-        finally { s.Model.EndRelative(); s.Model.ForwardKinematics(); }
+        finally { s.Model.EndRelative(); }
     }
 
     private void SimulateCore(ArticulationState s, float dt, D3 gravity, double slop, double pushCap)
@@ -111,7 +111,6 @@ internal sealed class ArticulationWork
         D3 g = gravity * s.GravityScale;
         Fit(ref _tau, n); Fit(ref _dAdd, n); Fit(ref _qdd, n); Fit(ref _tauG, n); Fit(ref _zero, n); Fit(ref _col, n);
         if (s.HasTarget) { UpdateTarget(s); }
-        m.ForwardKinematics();
         ReadOnlySpan<double> external = s.AnyExternal ? s.External : ReadOnlySpan<double>.Empty;
         int substeps = s.Substeps;
         bool rk4 = false;
