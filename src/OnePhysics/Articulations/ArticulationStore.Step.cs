@@ -102,6 +102,9 @@ internal sealed partial class ArticulationStore
         for (int i = 0; i < Handles.HighWater; i++)
         {
             if (!Handles.IsLive(i)) { continue; }
+            // A floating base lands on the same 2^-32 grid as every body position, so a shift of the origin by whole grid steps moves it exactly and the next step is bit-identical to the unshifted world's.
+            var m = States[i]!.Model;
+            if (m.Kind[0] != JointKind.Fixed) { int po = m.PosOff[0]; var g = Grid(new D3(m.Q[po], m.Q[po + 1], m.Q[po + 2])); m.Q[po] = g.X; m.Q[po + 1] = g.Y; m.Q[po + 2] = g.Z; }
             Place(i);
         }
     }
