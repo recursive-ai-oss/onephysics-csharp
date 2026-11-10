@@ -48,7 +48,8 @@ internal static class InterchangeSamples
     /// <summary>The arm drives used by every robot run: each joint to a small target, with a position drive.</summary>
     public static ulong RunArm(P3.ArticulationDef def, int steps, Action<int, ulong>? perStep = null)
     {
-        var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { Gravity = new Vector3F(0, 0, -9.81f) });
+        // Explicit world ids: the automatic ones come from a process-wide counter, and a scenario that took some would change the hash of every id-dependent scenario that runs after it.
+        var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { Gravity = new Vector3F(0, 0, -9.81f), WorldId = 90101 });
         var art = w.AddArticulation(def);
         for (int i = 1; i < def.Links.Count; i++) { art.SetDrive(i, new ArticulationDrive { Stiffness = 60f, Damping = 6f, MaxForce = 50f, TargetPosition = 0.25f * i / 6f }); }
         for (int i = 0; i < steps; i++) { w.Step(1f / 60f); perStep?.Invoke(i, w.ComputeHash()); }
@@ -57,6 +58,7 @@ internal static class InterchangeSamples
 
     public static ulong RunScene3D(RecursiveAI.OnePhysics.Scene.Scene scene, int steps, Action<int, ulong>? perStep = null)
     {
+        scene.Params["world-id"] = new[] { "90102" };
         var w = scene.CreateWorld3D(1);
         for (int i = 0; i < steps; i++) { w.Step(1f / 60f); perStep?.Invoke(i, w.ComputeHash()); }
         return w.ComputeHash();
@@ -65,7 +67,7 @@ internal static class InterchangeSamples
     /// <summary>A map applied to a world with a ball and a box thrown over its slopes and one-way platform.</summary>
     public static ulong RunMap(Map2D map, int steps, Action<int, ulong>? perStep = null)
     {
-        var w = new P2.PhysicsWorld2D();
+        var w = new P2.PhysicsWorld2D(new P2.WorldOptions2D { WorldId = 90103 });
         map.Apply(w);
         var ball = w.AddCircle(0.3f, new Vector2D(6.0, 1.3), material: new P2.Material2D(0.2f));
         ball.LinearVelocity = new Vector2F(8f, 0f);
