@@ -273,6 +273,16 @@ Built in code by `tests/Common/Cloth3DScene.cs` and `Strip2DScene.cs` (shared by
 | `cloth-garment-3d` | two 0.6 x 0.8 m denim panels laid round a 0.2 m cylinder, stitched along both sides (1e-4 m/N), hung by pinned top rows with tethers | 2.3 (3.5) | 0.007 (0.02) | 0.040 (0.06) | seam gap below the pinned row after step 300 0.058 (0.09) |
 | `strip-2d` | two 1.2 m and 0.8 m strips pinned at one end above a box in a gusting upward wind | 10.4 (16) | | 0.074 (0.11) | 2D; highest particle 3.41 m |
 
+### Articulation scenes (own scenes, no reference engine)
+
+Built in code by `tests/Common/ArticulationScenes3D.cs` and `ArticulationScenes2D.cs` (shared by the tests, the hash-matrix runner and `bar articulation-stability`). No reference engine runs reduced-coordinate articulations at its defaults, so the thresholds are our own: 1.5 times the worst of the x64 and arm64 values (the two agreed to the bit), rounded up, except where the unit's targets are tighter. Always `nan` = `escapes` = `tunnelled` = 0 and `jointError` (distance between a link and where its joint puts it, from the stored poses) at most 1e-6. `linkPenetration` is the articulation solve's deepest link contact; `maxPenetration` the deepest contact of any dynamic body.
+
+| scene | what | maxSpeed | linkPenetration | maxPenetration | other |
+|---|---|---|---|---|---|
+| `articulation-arm-3d` | 7-joint arm on the floor; a task target on the tool descends beside a 0.12 m box 0.55 m away and pushes it to z = 0.72 m, two more boxes nearby | 0.154 (0.3) | 0.0014 (0.003) | 0.0004 (0.002) | boxError 0.0038 (0.007; target 0.01), fallen 0 |
+| `quadruped-3d` | two 12 kg quadrupeds under PD stand, one on a box floor, one on a rolling height field (amplitude 0.02 m), pushed by 60 N for 0.1 s at step 240 (about 0.5 m/s), three 0.2 m boxes dropped near each | 2.78 (4.2) | 0.00003 (0.02) | 0.032 (0.05, the dropped boxes) | fallen 0, minTorsoHeight 0.548 (at least 0.5) |
+| `articulation-chain-2d` | 64-link chain with a 1000:1 end mass hanging from 28 m; a 12-link 5:1 whip falling into a floor and a pile of boxes; a 3-joint arm pushing a crate with a task target | 23.5 (36) | 0.0167 (0.03, the whip's impact) | 0.0002 (0.001) | jointError 1.2e-8 |
+
 ### Authoring-tool scenes (own scenes, no reference engine)
 
 `tet-drop-3d`, `tri-drop-2d`, `autoragdoll-pile-3d`, `autoragdoll-stand-3d` and `autoragdoll-pile-2d` (`tests/Common/TetDropScene.cs`, `tests/Common/AutoRagdollScenes.cs`; rows from `bar authoring-stability`). Definitions, thresholds and what they measured are in `docs/spec/tools.md` (Scenes and hash matrix, part 2).

@@ -118,6 +118,12 @@ public class ReadmeTests
         Assert.InRange(wt.CrateY, 1.8, 2.3);
         Assert.True(wt.Depth > 1.9f);
 
+        var art = GuideExamples.Articulations.Run();
+        Assert.Equal(art, GuideExamples.Articulations.Run());
+        Assert.True(art.TorsoY > 0.4 && art.TorsoY < 0.7, "the quadruped stands: " + art.TorsoY);
+        var dyn = GuideExamples.Articulations.Dynamics();
+        Assert.True(double.IsFinite(dyn.Torque0) && double.IsFinite(dyn.Torque1));
+
         var t = GuideExamples.Tiers.Run();
         Assert.Equal(t, GuideExamples.Tiers.Run());
         Assert.True(t.Contacts > 0);

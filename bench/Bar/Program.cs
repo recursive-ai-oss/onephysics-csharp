@@ -39,6 +39,8 @@ public static class Program
             case "active-stability": return ActiveStability.Run(opts);
             case "walkers3d-stability": return WalkerStability3D.Run(opts);
             case "railbike-stability": return RailBikeStability.Run(opts);
+            case "articulation-stability": return ArticulationStability.Run(opts);
+            case "articulation-timing": return ArticulationStability.Time(opts);
             case "actuators-stability": return ActuatorStability.Run(opts);
             case "fluid-stability": return FluidStability.Run(opts);
             case "fluid-timing": return FluidStability.Time(opts);

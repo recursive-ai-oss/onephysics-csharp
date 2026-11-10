@@ -14,7 +14,7 @@ internal readonly struct Stages3D : IWorldStages
 
     public Stages3D(Engine3D e) => _e = e;
 
-    public void UpdateContacts(WorldCore world) { _e.UpdateContacts(world); _e.ApplyFieldContacts(); }
+    public void UpdateContacts(WorldCore world) { _e.UpdateContacts(world); _e.ApplyFieldContacts(); _e.StepArticulations(); }
 
     public void Prepare(WorldCore world, ReadOnlySpan<int> constraints, in StepContext context) {
         // Contacts are prepared per batch (PrepareBatch); nothing else needs chunk-wise preparation yet.
@@ -45,7 +45,7 @@ internal readonly struct Stages3D : IWorldStages
     public void FinalizeBodies(WorldCore world, ReadOnlySpan<int> bodies, in StepContext context) => _e.FinalizeBodies(bodies, in context);
 
     // Spelled out because calling a default interface member on a struct boxes it: that was 48 bytes allocated by every step.
-    public void AfterFinalize(WorldCore world, in StepContext context) { }
+    public void AfterFinalize(WorldCore world, in StepContext context) { _e.EndArticulations(); }
 
     public bool BodyMotionIsConcurrent => true;
 }
@@ -148,7 +148,7 @@ internal sealed partial class Engine3D
             // The table is only read while pairs are searched; it changes in the serial stage that follows.
             if (_e.PairMap.ContainsKey(shapeA < shapeB ? PairKey(shapeA, shapeB) : PairKey(shapeB, shapeA))) { return false; }
             var owner = _e.Core.Shapes.Owner;
-            return owner[shapeA] != owner[shapeB] && _e.CanCollide(shapeA, shapeB) && !_e.JointsPreventCollision(owner[shapeA], owner[shapeB]);
+            return owner[shapeA] != owner[shapeB] && _e.CanCollide(shapeA, shapeB) && !_e.JointsPreventCollision(owner[shapeA], owner[shapeB]) && !_e.ArticulationBlocks(owner[shapeA], owner[shapeB]);
         }
     }
 
@@ -258,6 +258,9 @@ internal sealed partial class Engine3D
             _fresh[np] = IsSensor(a) || IsSensor(b);
             anyFresh |= _fresh[np];
         }
+
+        // The broadphase never pairs a kinematic body with a static one, but the links of an articulation are kinematic bodies that must touch the ground: their pairs are found here.
+        anyFresh |= AddLinkPairs();
 
         // Most pairs end up with one constraint; making room for them (and half as many again) at once saves the repeated doubling when thousands of pairs appear in one step.
         world.Constraints.Reserve(PairHigh + (PairHigh >> 1));
@@ -508,7 +511,7 @@ internal sealed partial class Engine3D
             {
                 if (!bodies.IsLive(b)) { e._active[b] = 0; e._isSleeper[b] = 0; e.ReachLinear[b] = 0f; e.ReachTurn[b] = 0f; e.ReachSum[b] = 0f; continue; }
                 e.SetReach(b);
-                e._active[b] = IsActive(bodies, b) ? (byte)1 : (byte)0;
+                e._active[b] = IsActive(bodies, b) || e.IsLinkBody(b) ? (byte)1 : (byte)0;
                 e.StartPos[3 * b] = pos[3 * b]; e.StartPos[3 * b + 1] = pos[3 * b + 1]; e.StartPos[3 * b + 2] = pos[3 * b + 2];
                 for (int k = 0; k < 4; k++) { e.StartRot[4 * b + k] = rot[4 * b + k]; }
                 e.Dp[3 * b] = 0f; e.Dp[3 * b + 1] = 0f; e.Dp[3 * b + 2] = 0f;

@@ -217,11 +217,13 @@ internal sealed partial class Engine2D : ISnapshotSection
         DropRailOfBody(b);
         DropVehicleOfBody(b);
         DropRagdollOfBody(b);
+        List<BodyHandle>? siblings = _articulations != null && _articulations.ArticulationOfBody(b) >= 0 ? TakeArticulationSiblings(b) : null;
         Core.DestroyBody(handle);
         ShapeHead[b] = -1; ShapeTail[b] = -1;
         Mass[b] = 0f; Inertia[b] = 0f;
         Dp[2 * b] = 0f; Dp[2 * b + 1] = 0f;
         ReconcileJoints();
+        if (siblings != null) { foreach (var sib in siblings) { if (Core.Bodies.Handles.IsAlive(sib.Index, sib.Generation)) { DestroyBody(sib); } } }
     }
 
     // ------------------------------------------------------------------ shapes
@@ -871,7 +873,7 @@ internal sealed partial class Engine2D : ISnapshotSection
         var bodies = Core.Bodies;
         var shapes = Core.Shapes;
         if (ShapeHead.Length < bodies.HighWater || Geom.Length < shapes.HighWater) { return false; }
-        if (!CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent() || !ActuatorsConsistent() || !WaterConsistent() || !BicyclesConsistent() || !RailConsistent() || !CharacterExtensionsConsistent() || !ParticleFluidsConsistent()) { return false; }
+        if (!CharactersConsistent() || !VehiclesConsistent() || !RagdollsConsistent() || !ActuatorsConsistent() || !WaterConsistent() || !BicyclesConsistent() || !RailConsistent() || !CharacterExtensionsConsistent() || !ParticleFluidsConsistent() || !ArticulationsConsistent()) { return false; }
         var cons = Core.Constraints;
         if (!JointsConsistentWithCore()) { return false; }
         for (int s = 0; s < shapes.HighWater; s++)

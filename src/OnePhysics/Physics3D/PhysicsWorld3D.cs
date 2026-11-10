@@ -54,6 +54,7 @@ public sealed partial class PhysicsWorld3D
         _core.AddSection(_engine.Destruction);
         _core.AddSection(_engine.ParticleFluids);
         _core.AddSection(_engine.Water);
+        _core.AddSection(_engine.Articulations);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -131,12 +132,14 @@ public sealed partial class PhysicsWorld3D
     /// <param name="dt">Seconds; finite and positive. Use the same value every step for reproducible results.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="dt"/> is invalid or an option is out of range.</exception>
     /// <exception cref="BodyOutOfBoundsException">A moving body is outside the supported range or has a non-finite position, velocity or rotation; the world is unchanged. Move, destroy it or call <see cref="ShiftOrigin"/>.</exception>
+    /// <exception cref="ArticulationStateException">An articulation's joint coordinates or speeds are not finite or are beyond the supported range; the world is unchanged.</exception>
     public void Step(float dt)
     {
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
         _engine.Opt.Validate();
         _engine.CheckBounds();
         _engine.Rods.CheckBounds();
+        _engine.CheckArticulationBounds();
         _engine.Rods.ValidateStep(dt);
         _engine.CheckSoftBounds();
         if (_core.Controls.Active) _engine.ValidateTargetMotion(dt);
@@ -357,6 +360,7 @@ public sealed partial class PhysicsWorld3D
         _engine.Cables.Shift(offset);
         _engine.ParticleFluids.ShiftOrigin(d);
         _engine.Water.Shift(offset);
+        _engine.ShiftArticulations(offset);
         _engine.ShiftSoft(offset.X, offset.Y, offset.Z);
         _engine.ShiftProxies(d);
         InvalidateQueryPad();
