@@ -220,7 +220,8 @@ internal sealed partial class FluidStore
             try { d.Validate(); }
             catch (ArgumentOutOfRangeException ex) { throw r.Error("invalid emitter: " + ex.Message); }
             e.Def = d; e.Phase = r.ReadSingle(); e.Emitted = r.ReadInt32();
-            if (!(float.IsFinite(e.Phase) && e.Phase >= 0f) || e.Emitted < 0) { throw r.Error("invalid emitter state"); }
+            // A step leaves less than one layer of flow pending (the budget stop caps it at one spacing); a larger value would emit the same layer over and over.
+            if (!(float.IsFinite(e.Phase) && e.Phase >= 0f && e.Phase <= spacing) || e.Emitted < 0) { throw r.Error("invalid emitter state"); }
             emitters[i] = e;
         }
 

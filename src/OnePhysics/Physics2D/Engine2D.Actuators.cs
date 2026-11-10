@@ -108,6 +108,7 @@ internal sealed partial class Engine2D : IActuatorHost
         distance = 0f; normal = default; hitBody = -1;
         double lim = BoxLimits.MaxCoordinate;
         if (!(Math.Abs(origin.X) <= lim && Math.Abs(origin.Y) <= lim)) { return false; }
+        if (!PhysicsWorld2D.UsableCastDirection(new Vector2F(direction.X, direction.Y)) || !(maxDistance > 0f)) { return false; }
         _castPredicate ??= sh => Core.Shapes.Owner[sh.Handle.Index] != _castIgnore;
         _castIgnore = ignoreBody;
         var filter = new QueryFilter2D { Predicate = _castPredicate };

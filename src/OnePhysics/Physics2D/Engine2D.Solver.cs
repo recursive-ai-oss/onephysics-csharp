@@ -699,6 +699,22 @@ internal sealed partial class Engine2D
         }
     }
 
+    private void LimitAfterSolve(int o, float maxSpeed, float maxSpin)
+    {
+        Span<float> st = BodyState;
+        float vx = st[o + BS2D.Vx], vy = st[o + BS2D.Vy], w = st[o + BS2D.W];
+        float v2 = vx * vx + vy * vy;
+        if (v2 <= maxSpeed * maxSpeed && w <= maxSpin && w >= -maxSpin) { return; }   // the common case changes nothing
+        if (float.IsNaN(vx)) { vx = 0f; } if (float.IsNaN(vy)) { vy = 0f; } if (float.IsNaN(w)) { w = 0f; }
+        // Components first, so that the squared length below cannot overflow into a scale of zero times infinity.
+        vx = vx > maxSpeed ? maxSpeed : vx < -maxSpeed ? -maxSpeed : vx;
+        vy = vy > maxSpeed ? maxSpeed : vy < -maxSpeed ? -maxSpeed : vy;
+        v2 = vx * vx + vy * vy;
+        if (v2 > maxSpeed * maxSpeed) { float scale = maxSpeed / float.Sqrt(v2); vx *= scale; vy *= scale; }
+        w = w > maxSpin ? maxSpin : w < -maxSpin ? -maxSpin : w;
+        st[o + BS2D.Vx] = vx; st[o + BS2D.Vy] = vy; st[o + BS2D.W] = w;
+    }
+
     public void IntegratePositions(ReadOnlySpan<int> list, in StepContext ctx)
     {
         var bodies = Core.Bodies;
@@ -706,10 +722,15 @@ internal sealed partial class Engine2D
         Span<double> pos = bodies.Position;
         Span<float> rot = bodies.Rotation;
         float h = ctx.SubstepDt;
+        float maxSpeed = Opt.MaxLinearSpeed, maxSpin = Opt.MaxRotationPerSubstep / h;
         foreach (int b in list)
         {
             int o = (b + 1) * BS2D.Stride;
             if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) LimitBodyControls(b);
+            // The joint and contact solve that just ran can hand a body far more speed than the limit applied when its velocity was integrated (a joint anchored hundreds of metres from a light body asks for
+            // arbitrary impulses, and the next solve asks for more). A solve may legitimately exceed the limits a little, so this one allows 16 times as much: enough that only a runaway is cut, so a badly posed
+            // joint flings a body at a bounded speed rather than to infinity and then to NaN.
+            if (bodies.Type[b] == (byte)BodyType.Dynamic) { LimitAfterSolve(o, 16f * maxSpeed, 16f * maxSpin); }
             float dx = h * st[o + BS2D.Vx], dy = h * st[o + BS2D.Vy];
             st[o + BS2D.Dpx] += dx; st[o + BS2D.Dpy] += dy;
             pos[2 * b] += WorldCore.Grid(dx); pos[2 * b + 1] += WorldCore.Grid(dy);

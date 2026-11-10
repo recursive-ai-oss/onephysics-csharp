@@ -94,8 +94,16 @@ internal abstract class ActiveCommon
         Gait.Phase = r.ReadByte(); Gait.LastSwing = r.ReadByte(); Gait.Steps = r.ReadInt32(); Gait.Time = r.ReadSingle();
         Gait.LiftF = r.ReadSingle(); Gait.LiftL = r.ReadSingle(); Gait.LiftU = r.ReadSingle(); Gait.PlaceF = r.ReadSingle(); Gait.PlaceL = r.ReadSingle();
         Gait.FVelF = r.ReadSingle(); Gait.FVelL = r.ReadSingle(); Gait.Height = r.ReadSingle(); Gait.BiasF = r.ReadSingle(); Gait.BiasL = r.ReadSingle(); Gait.SumF = r.ReadSingle(); Gait.SumL = r.ReadSingle(); Gait.SumT = r.ReadSingle(); Gait.Primed = r.ReadByte();
-        if (Gait.Phase > (byte)GaitPhase.SwingRight || Gait.LastSwing > 1 || Gait.Steps < 0 || !float.IsFinite(Gait.Time) || !float.IsFinite(Gait.LiftF) || !float.IsFinite(Gait.LiftL) || !float.IsFinite(Gait.LiftU)
-            || !float.IsFinite(Gait.PlaceF) || !float.IsFinite(Gait.PlaceL) || !float.IsFinite(Gait.FVelF) || !float.IsFinite(Gait.FVelL) || !(Gait.Height >= 0f && Gait.Height < 1f) || !float.IsFinite(Gait.BiasF) || !float.IsFinite(Gait.BiasL) || !float.IsFinite(Gait.SumF) || !float.IsFinite(Gait.SumL) || !(Gait.SumT >= 0f) || !float.IsFinite(Gait.SumT) || Gait.Primed > 1 || Gait.Time < 0f) { throw r.Error("invalid active ragdoll gait state"); }
+        if (Gait.Phase > (byte)GaitPhase.SwingRight) { throw r.Error("invalid active ragdoll gait state: phase"); }
+        if (Gait.LastSwing > 1 || Gait.Primed > 1) { throw r.Error("invalid active ragdoll gait state: flags"); }
+        if (Gait.Steps < 0) { throw r.Error("invalid active ragdoll gait state: step count"); }
+        if (!float.IsFinite(Gait.Time) || Gait.Time < 0f) { throw r.Error("invalid active ragdoll gait state: time"); }
+        // Foot targets are offsets between ankles of one figure, so they stay far inside the world's coordinate range; a larger value could only come from damaged bytes and would overflow the swing interpolation.
+        const float FootLimit = 33554432f;   // 2^25 m
+        if (!(Math.Abs(Gait.LiftF) <= FootLimit) || !(Math.Abs(Gait.LiftL) <= FootLimit) || !(Math.Abs(Gait.LiftU) <= FootLimit) || !(Math.Abs(Gait.PlaceF) <= FootLimit) || !(Math.Abs(Gait.PlaceL) <= FootLimit)) { throw r.Error("invalid active ragdoll gait state: foot targets (" + Gait.LiftF.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ", " + Gait.LiftL.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ", " + Gait.LiftU.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ", " + Gait.PlaceF.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ", " + Gait.PlaceL.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ") beyond 2^25"); }
+        if (!float.IsFinite(Gait.FVelF) || !float.IsFinite(Gait.FVelL) || !float.IsFinite(Gait.BiasF) || !float.IsFinite(Gait.BiasL) || !float.IsFinite(Gait.SumF) || !float.IsFinite(Gait.SumL)) { throw r.Error("invalid active ragdoll gait state: velocity filter"); }
+        if (!(Gait.Height >= 0f && Gait.Height < 1f)) { throw r.Error("invalid active ragdoll gait state: height"); }
+        if (!(Gait.SumT >= 0f) || !float.IsFinite(Gait.SumT)) { throw r.Error("invalid active ragdoll gait state: summed time"); }
     }
 
     public void CloneCommonInto(ActiveCommon c)

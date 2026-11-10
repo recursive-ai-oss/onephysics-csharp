@@ -258,7 +258,7 @@ internal sealed partial class Engine2D
             float dx = qc * wd.SuspensionDirection.X - qs * wd.SuspensionDirection.Y, dy = qs * wd.SuspensionDirection.X + qc * wd.SuspensionDirection.Y;
             // A chassis just inside the supported range can carry a wheel top just outside it; the public query rejects such a start, and a step must not fail half way, so that wheel finds no ground.
             double lim = BoxLimits.MaxCoordinate;
-            bool inRange = Math.Abs(topX) <= lim && Math.Abs(topY) <= lim;   // NaN fails
+            bool inRange = Math.Abs(topX) <= lim && Math.Abs(topY) <= lim && PhysicsWorld2D.UsableCastDirection(new Vector2F(dx, dy));   // NaN fails; a chassis rotation that is not a rotation gives no cast direction
             var hh = default(QueryHit2D);
             bool hit = inRange && world.ShapeCast(in s.CastShapes[i], new Vector2D(topX, topY), 0f, new Vector2F(dx, dy), out hh, wd.SuspensionMaxLength + 1e-4f, in filter);
             s.Contact[i] = 0;
@@ -626,7 +626,7 @@ internal sealed partial class Engine2D
         var t = s.Track!;
         float v = TrackSpeedOf(s);
         if (v > t.MaxTrackSpeed) { v = t.MaxTrackSpeed; } else if (v < -t.MaxTrackSpeed) { v = -t.MaxTrackSpeed; }
-        for (int i = 0; i < s.Wheels; i++) { s.Omega[i] = v / s.Def.Wheels[i].Radius; }
+        for (int i = 0; i < s.Wheels; i++) { s.Omega[i] = SaneSpin(v / s.Def.Wheels[i].Radius); }   // a tiny wheel radius would otherwise push the speed past what a snapshot accepts
     }
 
     /// <summary>Belt speed as of the last step, m/s; positive moves the hull forward.</summary>

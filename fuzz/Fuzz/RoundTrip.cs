@@ -9,7 +9,8 @@ internal static class RoundTrip
 {
     public static void StepChecked(this PhysicsWorld3D w, float dt)
     {
-        w.Step(dt);
+        // A snapshot restored into a fresh world has no host delegates; a custom gravity field then refuses the step before changing anything (documented), and there is nothing to round-trip.
+        try { w.Step(dt); } catch (FieldCallbackException) { return; }
         byte[] written;
         // A diverged world refuses to be saved (by contract); the next step reports the body, so there is nothing to round-trip yet.
         try { written = w.Snapshot(); } catch (NonFiniteStateException) { return; }
@@ -18,7 +19,8 @@ internal static class RoundTrip
 
     public static void StepChecked(this PhysicsWorld2D w, float dt)
     {
-        w.Step(dt);
+        // A snapshot restored into a fresh world has no host delegates; a custom gravity field then refuses the step before changing anything (documented), and there is nothing to round-trip.
+        try { w.Step(dt); } catch (FieldCallbackException) { return; }
         byte[] written;
         // A diverged world refuses to be saved (by contract); the next step reports the body, so there is nothing to round-trip yet.
         try { written = w.Snapshot(); } catch (NonFiniteStateException) { return; }

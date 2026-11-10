@@ -230,7 +230,7 @@ internal sealed partial class SoftBodyData
 
         double edgeSum = 0.0;
         for (int i = 0; i < ne; i++) { edgeSum += EdgeRest[i]; }
-        Radius = Def.ParticleRadius != 0f ? Def.ParticleRadius : (float)Math.Max(1e-4, 0.25 * edgeSum / Math.Max(1, ne));
+        Radius = Def.ParticleRadius != 0f ? Def.ParticleRadius : (float)Math.Min(100.0, Math.Max(1e-4, 0.25 * edgeSum / Math.Max(1, ne)));   // the largest radius a definition accepts, so a saved body always restores
         Lambda = new float[ConstraintCount];
         X = new float[2 * N]; XP = new float[2 * N]; X0 = new float[2 * N];
         GradP = PressureRest > 0f ? new float[2 * N] : Array.Empty<float>();   // the pressure may be switched on later through the handle

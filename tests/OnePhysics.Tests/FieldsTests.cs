@@ -100,7 +100,7 @@ public sealed class FieldsTests
         var w=new P3.PhysicsWorld3D(new(){Gravity=default});var body=w.AddSphere(0.1f);
         w.AddField(new(){Kind=FieldKind.CustomGravity,CallbackId=7});w.BindGravityField(7,static (position,tick)=>new(0,2,0));w.Step(0.1f);
         Assert.InRange(body.LinearVelocity.Y,0.19999f,0.20001f);
-        Assert.Throws<InvalidOperationException>(()=>w.Fork().Step(0.1f));
+        Assert.Throws<FieldCallbackException>(()=>w.Fork().Step(0.1f));
     }
     [Fact]
     public void HostileDefinitionsAreRejectedBeforeMutationAndLayersExcludeBodies()
