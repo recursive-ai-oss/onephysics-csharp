@@ -26,13 +26,13 @@ internal static class FluidStability
         ["fluid-boxes-3d"] = (2, 0.04, 1),
         ["fluid-cloth-3d"] = (8, 0.03, 1),
         ["fluid-rope-2d"] = (12, 0.15, 4),
-        // Solid and viscous matter (x64 values on one thread, scaled by 1.5 and rounded up; arm64 not yet measured). The density column is the SPH density of the particle count, which the material point method does not hold near rest:
-        // it reports how far particles pile up on a floor.
-        ["sand-pile-3d"] = (4, 10, 0.5),
-        ["hopper-2d"] = (4, 8, 3),
+        // Solid and viscous matter: 1.5 times the values measured at one thread (x64 and arm64 agree to the digits shown, the scenes being bit-identical), rounded up. The density column is the SPH density of the particle count,
+        // which the material point method does not hold near rest: it reports how far particles pile up on a floor (7.2 for the poured pile, so the particles are close to twice as dense as water's lattice there).
+        ["sand-pile-3d"] = (5, 11, 0.5),
+        ["hopper-2d"] = (5, 1.2, 4),
         ["honey-coil-3d"] = (3, 0.02, 2),
-        ["snow-impact-3d"] = (4, 4, 0.1),
-        ["clay-press-2d"] = (0.1, 0.1, 0.1),
+        ["snow-impact-3d"] = (12, 2, 0.1),
+        ["clay-press-2d"] = (0.1, 0.15, 0.1),
     };
 
     internal static int Run(Opts opts)

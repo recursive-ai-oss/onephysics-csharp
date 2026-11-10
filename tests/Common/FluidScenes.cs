@@ -58,7 +58,7 @@ internal static class FluidScenes
         "sand-pile-3d" => (new[] { -3.0, -0.1, -3.0 }, new[] { 3.0, 1.6, 3.0 }),
         "hopper-2d" => (new[] { -0.45, -1.0, 0.0 }, new[] { 0.45, 3.0, 0.0 }),
         "honey-coil-3d" => (new[] { -1.0, -0.05, -1.0 }, new[] { 1.0, 0.4, 1.0 }),
-        "snow-impact-3d" => (new[] { -1.0, -0.1, -2.0 }, new[] { 1.95, 3.0, 2.0 }),
+        "snow-impact-3d" => (new[] { -1.0, -0.1, -2.0 }, new[] { 1.95, 6.0, 2.0 }),
         "clay-press-2d" => (new[] { -3.0, -0.1, 0.0 }, new[] { 3.0, 1.0, 0.0 }),
         _ => throw new ArgumentException("unknown scene " + name, nameof(name)),
     };
