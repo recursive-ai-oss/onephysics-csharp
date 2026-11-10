@@ -80,6 +80,9 @@ internal sealed partial class Engine2D
     /// <summary>Nothing under the character's feet and it is not moving up: what it meets in water it falls into.</summary>
     private bool Airborne(int c) => CharGround[c] != GroundState.OnGround && CharVy[c] <= 0.5f;
 
+    /// <summary>The density a character swims with: its own setting, else a person's 900 (2D characters are all virtual).</summary>
+    internal static float SwimDensityOf(int c, in CharacterExtState st) => st.SwimDensity > 0f ? st.SwimDensity : Swimming.DefaultDensity;
+
     private float SwimGravity() => Math.Max(-Opt.Gravity.Y, 0f);
 
     /// <summary>
@@ -96,7 +99,7 @@ internal sealed partial class Engine2D
         ProbeCharacterWater(c, cx, cy, out var probe, out _, out float extent);
         if (!probe.Found) { return displacement; }
         float immersion = probe.Depth / extent;
-        float charDensity = Swimming.DensityOf(in st);
+        float charDensity = SwimDensityOf(c, in st);
         var state = Swimming.Next(st.Water, immersion, charDensity / probe.Density, Airborne(c));
         if (state == CharacterWaterState.Dry) { return displacement; }
         if (state == CharacterWaterState.Wading)
@@ -144,7 +147,7 @@ internal sealed partial class Engine2D
             CharacterPosition(c, out double cx, out double cy);
             ProbeCharacterWater(c, cx, cy, out var probe, out _, out float extent);
             float immersion = probe.Found ? probe.Depth / extent : 0f;
-            var next = probe.Found ? Swimming.Next(st.Water, immersion, Swimming.DensityOf(in st) / probe.Density, Airborne(c)) : CharacterWaterState.Dry;
+            var next = probe.Found ? Swimming.Next(st.Water, immersion, SwimDensityOf(c, in st) / probe.Density, Airborne(c)) : CharacterWaterState.Dry;
             var prev = st.Water;
             if (next == prev && immersion == st.Immersion) { continue; }
             int gen = CharHandles.GenerationOf(c);

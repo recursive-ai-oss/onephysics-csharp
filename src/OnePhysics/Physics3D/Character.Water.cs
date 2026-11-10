@@ -53,11 +53,11 @@ public readonly partial struct Character
         }
     }
 
-    /// <summary>The density the character swims with, kg/m³; see <see cref="CharacterDef.SwimDensity"/>. Setting it to 0 restores the default.</summary>
+    /// <summary>The density the character swims with, kg/m³ (kg/m² in 2D); see <see cref="CharacterDef.SwimDensity"/>. Setting it to 0 restores the default: 900 for a virtual character, the real density (mass over capsule volume) for a rigid one.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is not within [0, 100000].</exception>
     public float SwimDensity
     {
-        get { var e = Resolve(out int c); return Swimming.DensityOf(e.Extensions.At(c)); }
+        get { var e = Resolve(out int c); return e.SwimDensityOf(c, e.Extensions.At(c)); }
         set
         {
             if (!(value >= 0f && value <= 1e5f)) { throw new ArgumentOutOfRangeException(nameof(value), value, "SwimDensity must be within [0, 100000]."); }

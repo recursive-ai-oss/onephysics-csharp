@@ -187,7 +187,7 @@ public struct CharacterDef
 
     private bool _noSwim;
 
-    /// <summary>Density the character swims with, kg/m³ (in a 2D world, kg/m² of side-view area), within [0, 100000]; 0 (the default) means 900, a person's average. Lighter than the water it floats; heavier it sinks. Independent of <see cref="Mass"/>, which is what the character weighs on a body it stands on.</summary>
+    /// <summary>Density the character swims with, kg/m³ (in a 2D world, kg/m² of side-view area), within [0, 100000]; 0 (the default) means 900, a person's average, for a virtual character and its real density (<see cref="Mass"/> over the capsule's volume) for a rigid one. Lighter than the water it floats; heavier it sinks. For a virtual character it is independent of <see cref="Mass"/>, which is what it weighs on a body it stands on.</summary>
     public float SwimDensity { get; set; }
 
     /// <summary>The rate, per second, at which a swimmer's velocity relaxes towards the water's velocity plus its own swim intent, within [0, 1000]; 0 (the default) means 4. Also sets the terminal sink or rise speed: buoyancy minus weight, as an acceleration, over this rate.</summary>

@@ -279,4 +279,21 @@ public class CharacterSwimmingTests
         // Damage to a float is mostly still a valid state; the point is that nothing but a typed refusal ever comes out, and what is accepted steps.
         Assert.Equal(400, refused + accepted);
     }
+
+    [Fact]
+    public void ARigidCharacterFloatsAndTakesStrokesAsVelocityTargets()
+    {
+        var w = World3(385);
+        w.AddWater(0.0, flow: new Vector3F(0f, 0f, 0.3f));
+        var c = w.AddCharacter(new Vector3D(0, -0.2, 0), Def3.RigidHumanoid);
+        for (int i = 0; i < 240; i++) { c.Move(new Vector3F(1.0f * Dt, 0f, 0f), Dt); w.Step(Dt); }
+        Assert.Equal(CharacterWaterState.Swimming, c.WaterState);
+        // A body lighter than the water floats; the stroke sets the horizontal velocity relative to the water.
+        Assert.InRange(c.Position.Y, -0.5, 0.9);
+        Assert.InRange(c.Velocity.X, 0.9f, 1.1f);
+        Assert.InRange(c.Velocity.Z, 0.2f, 0.4f);
+        // A vertical stroke dives it.
+        for (int i = 0; i < 120; i++) { c.Move(new Vector3F(0f, -1.0f * Dt, 0f), Dt); w.Step(Dt); }
+        Assert.True(c.Position.Y < -0.5, "y " + c.Position.Y);
+    }
 }

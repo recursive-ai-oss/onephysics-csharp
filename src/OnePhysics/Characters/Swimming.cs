@@ -27,6 +27,13 @@ internal static class Swimming
     /// <summary>Default rate, per second, at which a swimmer's velocity relaxes towards the water's plus its intent.</summary>
     public const float DefaultDamping = 4f;
 
+    /// <summary>Volume (area in 2D) of an upright capsule: its cylinder and its two caps.</summary>
+    public static float CapsuleVolume(bool planar, float radius, float height)
+    {
+        double r = radius, l = Math.Max(height - 2.0 * radius, 0.0);
+        return (float)(planar ? 2.0 * r * l + Math.PI * r * r : Math.PI * r * r * l + 4.0 / 3.0 * Math.PI * r * r * r);
+    }
+
     public static float DensityOf(in CharacterExtState s) => s.SwimDensity > 0f ? s.SwimDensity : DefaultDensity;
 
     public static float DampingOf(in CharacterExtState s) => s.SwimDamping > 0f ? s.SwimDamping : DefaultDamping;

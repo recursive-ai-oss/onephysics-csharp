@@ -91,6 +91,15 @@ internal sealed partial class Engine3D
     /// <summary>Nothing under the character's feet and it is not moving up: what it meets in water it falls into.</summary>
     private bool Airborne(int c) => CharGround[c] != GroundState.OnGround && CharVy[c] <= 0.5f;
 
+    /// <summary>The density a character swims with: its own setting, else a rigid character's real density (its mass over its capsule's volume), else a person's 900.</summary>
+    internal float SwimDensityOf(int c, in CharacterExtState st)
+    {
+        if (st.SwimDensity > 0f) { return st.SwimDensity; }
+        var def = CharDef[c];
+        if (def.Kind != CharacterKind.Rigid) { return Swimming.DefaultDensity; }
+        return def.Mass / Swimming.CapsuleVolume(false, def.Radius, def.Height);
+    }
+
     private float SwimGravity() => Math.Max(-Opt.Gravity.Y, 0f);
 
     /// <summary>
@@ -107,7 +116,7 @@ internal sealed partial class Engine3D
         ProbeCharacterWater(c, centre, out var probe, out _, out float extent);
         if (!probe.Found) { return displacement; }
         float immersion = probe.Depth / extent;
-        float charDensity = Swimming.DensityOf(in st);
+        float charDensity = SwimDensityOf(c, in st);
         var state = Swimming.Next(st.Water, immersion, charDensity / probe.Density, Airborne(c));
         if (state == CharacterWaterState.Dry) { return displacement; }
         if (state == CharacterWaterState.Wading)
@@ -138,7 +147,7 @@ internal sealed partial class Engine3D
     }
 
     /// <summary>
-    /// A rigid character's move adjusted for water: wading slows its walking; swimming replaces the walking step by a relaxation of its velocity towards the water's plus the swim intent (buoyancy, weight and
+    /// A rigid character's move adjusted for water: wading slows its walking; swimming replaces the walking step by a stroke that sets its velocity relative to the water (buoyancy, weight and
     /// water drag are the solver's). Returns true when the character swims and the walking code must not run.
     /// </summary>
     public bool SwimRigid(int c, ref Vector3F displacement, float dt)
@@ -149,7 +158,7 @@ internal sealed partial class Engine3D
         ProbeCharacterWater(c, centre, out var probe, out _, out float extent);
         if (!probe.Found) { return false; }
         float immersion = probe.Depth / extent;
-        var state = Swimming.Next(st.Water, immersion, Swimming.DensityOf(in st) / probe.Density, Airborne(c));
+        var state = Swimming.Next(st.Water, immersion, SwimDensityOf(c, in st) / probe.Density, Airborne(c));
         if (state == CharacterWaterState.Dry) { return false; }
         if (state == CharacterWaterState.Wading)
         {
@@ -162,13 +171,10 @@ internal sealed partial class Engine3D
 
         int b = CharBody[c];
         var lin = Core.Bodies.LinearVelocityOf(b);
-        float rate = Swimming.DampingOf(in st);
-        float blend = rate * dt / (1f + rate * dt);
         var intent = displacement / dt;
-        // Horizontal velocity follows the water plus the stroke; the vertical one only when the stroke has a vertical part, so buoyancy and weight decide the rest.
-        lin[0] += (probe.Flow.X + intent.X - lin[0]) * blend;
-        lin[2] += (probe.Flow.Z + intent.Z - lin[2]) * blend;
-        if (intent.Y != 0f) { lin[1] += (probe.Flow.Y + intent.Y - lin[1]) * blend; }
+        // A stroke sets the velocity relative to the water along the axes it has a part in (the water's own drag on the body would eat any gentler blend); with none, buoyancy, weight and the water's drag decide.
+        if (intent.X != 0f || intent.Z != 0f) { lin[0] = probe.Flow.X + intent.X; lin[2] = probe.Flow.Z + intent.Z; }
+        if (intent.Y != 0f) { lin[1] = probe.Flow.Y + intent.Y; }
         GravityScale[b] = 1f;
         MarkInAir(c);
         CharVx[c] = lin[0]; CharVy[c] = lin[1]; CharVz[c] = lin[2];
@@ -194,7 +200,7 @@ internal sealed partial class Engine3D
             var centre = CharacterPosition(c);
             ProbeCharacterWater(c, centre, out var probe, out _, out float extent);
             float immersion = probe.Found ? probe.Depth / extent : 0f;
-            var next = probe.Found ? Swimming.Next(st.Water, immersion, Swimming.DensityOf(in st) / probe.Density, Airborne(c)) : CharacterWaterState.Dry;
+            var next = probe.Found ? Swimming.Next(st.Water, immersion, SwimDensityOf(c, in st) / probe.Density, Airborne(c)) : CharacterWaterState.Dry;
             var prev = st.Water;
             if (next == prev && immersion == st.Immersion) { continue; }
             int gen = CharHandles.GenerationOf(c);
