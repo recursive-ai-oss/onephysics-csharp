@@ -2,6 +2,7 @@
 
 `RecursiveAI.OnePhysics.Interchange` turns files other tools write into this library's definitions. Nothing in it touches the file system: you read the file, the importer returns definitions and a list of warnings for what it could not express.
 
+<!-- example: Guide/Interchange.cs -->
 ```csharp
 using RecursiveAI.OnePhysics.Interchange;
 
