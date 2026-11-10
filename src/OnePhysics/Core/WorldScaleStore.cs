@@ -239,6 +239,8 @@ internal sealed class WorldScaleStore : ISnapshotSection
 
     public void Write(StateWriter w)
     {
+        // Configuration and the tile registry are host-driven, not part of a region; per-body scales below belong to their bodies.
+        w.DescribeEntity("worldscale", 0);
         w.NamedInt32(1, "version");
         w.NamedInt32(LodSubstepFactor, "lod substep factor");
         w.NamedInt32(FarPeriod, "far period");
@@ -258,6 +260,7 @@ internal sealed class WorldScaleStore : ISnapshotSection
             w.NamedInt32(b, "slot"); w.NamedSingle(_bodyScale[b], "scale");
         }
 
+        w.DescribeEntity("worldscale", 0);
         w.NamedInt32(Tiles.Count, "tiles");
         foreach (var t in Tiles)
         {

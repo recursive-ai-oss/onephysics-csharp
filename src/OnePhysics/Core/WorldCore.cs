@@ -306,6 +306,7 @@ public sealed partial class WorldCore
     public BodyHandle CreateBody(BodyType type, ReadOnlySpan<double> position, ReadOnlySpan<float> rotation = default, ReadOnlySpan<float> linearVelocity = default,
         ReadOnlySpan<float> angularVelocity = default, float inverseMass = 1f, ReadOnlySpan<float> inverseInertia = default, BodyBits flags = BodyBits.None)
     {
+        FlushPending();
         var l = Layout;
         if (type != BodyType.Static && type != BodyType.Kinematic && type != BodyType.Dynamic) { throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown body type."); }
         Lanes(position.Length, l.PositionLanes, nameof(position), false);
@@ -383,6 +384,7 @@ public sealed partial class WorldCore
     /// <summary>Destroys a body, its shapes and every constraint touching it (their end events are queued). Islands touching it wake. Cost: proportional to the body's constraints if it is dynamic, to all constraints and shapes otherwise.</summary>
     public void DestroyBody(BodyHandle handle)
     {
+        FlushPending();
         int b = Resolve(handle);
         _scratch.Clear();
         if (_bodies.IsDynamic(b))
@@ -414,6 +416,7 @@ public sealed partial class WorldCore
     /// <summary>Attaches a shape slot to a body. The geometry itself lives in the engine's own arrays indexed by the returned slot.</summary>
     public ShapeHandle CreateShape(BodyHandle owner)
     {
+        FlushPending();
         int b = Resolve(owner);
         return HandleOfShape(_shapes.AllocateSlot(b));
     }
@@ -421,6 +424,7 @@ public sealed partial class WorldCore
     /// <summary>Destroys a shape and the constraints that reference it (cost: all constraints).</summary>
     public void DestroyShape(ShapeHandle handle)
     {
+        FlushPending();
         int s = Resolve(handle);
         _scratch.Clear();
         for (int c = 0; c < _constraints.HighWater; c++)
