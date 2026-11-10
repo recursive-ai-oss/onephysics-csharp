@@ -50,16 +50,17 @@ Particles are spheres of half the spacing for rays; `FluidDensityAt` reads the S
 - **Rigid bodies** are coupled in both directions with momentum conserved: a dense body sinks, a light one floats at the waterline of its density ratio (within about one spacing), a thrown one makes a splash and loses speed. A sleeping body is pushed awake only by a push that changes its velocity by more than `WakeBodySpeed`.
 - **Soft bodies, cloth and rods** are surfaces for the fluid. For a cloth to hold water, the cloth's collision radius plus half the fluid spacing must exceed half the diagonal of a cloth cell (a 0.05 m cloth with radius 0.02 m holds 0.05 m water).
 - It is deterministic like everything else: the same bits on every platform and thread count, in the snapshot, the world hash, forks, regions, the replay and `ShiftOrigin`. Worlds that never add a fluid keep their bytes.
-- Not here yet: granular matter, viscoelastic liquids, shallow water and swimming characters.
+- Not here yet: shallow water and swimming characters.
 
 Details, the kernels and the layout of the saved state are in `docs/spec/fluids.md`.
 
 ## Sand, snow, clay, mud and honey
 
+<!-- example: Guide/Fluids.cs -->
 ```csharp
-var sand = world.AddParticleFluid(ParticleFluidDef.Sand(spacing: 0.04f));   // ElasticModulus above 0 makes a solid
+var sand = world.AddParticleFluid(ParticleFluidDef.Sand(spacing: 0.06f));   // ElasticModulus above 0 makes a solid
 sand.AddEmitter(new FluidEmitterDef { Position = new Vector3D(0, 1, 0), Direction = new Vector3F(0, -1, 0), Kind = FluidVolumeKind.Sphere, Size = new Vector3F(0.08f, 0.08f, 0.08f), Speed = 0.5f });
-var clay = ParticleFluidDef.Clay(0.02f);   // yields at 3 kPa and keeps its dents; Snow, Mud, Dough, Gravel likewise
+var clay = ParticleFluidDef.Clay(0.06f);   // yields at 3 kPa and keeps its dents; Snow, Mud, Dough, Gravel likewise
 ```
 
 Solids (`ElasticModulus` above 0) use the material point method: grains pile at their friction angle, snow breaks, clay keeps a dent, and they push rigid bodies, soft bodies and rods as fluids do. A stiff solid makes the world take more substeps (up to 64), so a softer `ElasticModulus` is cheaper. `Honey` (`DynamicViscosity` in Pa·s) solves viscosity implicitly. See `docs/spec/fluids.md` for the model and what is not met yet.

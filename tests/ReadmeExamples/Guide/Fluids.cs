@@ -43,6 +43,18 @@ public static class Fluids
         int count = world.OverlapFluidSphere(new Vector3D(0.3, 0.2, 0), 0.1f, near, out int total);
         bool hit = world.RaycastFluid(new Vector3D(0.3, 2, 0), new Vector3F(0, -1, 0), out FluidRayHit first);
         Console.WriteLine($"{count} of {total} particles near, ray {(hit ? first.Distance : -1f)}");
+        var dry = new PhysicsWorld3D();   // sand lives in a world of its own here: the fluids of a world share one spacing
+        dry.AddBox(new Vector3F(3, 0.2f, 3), at: new Vector3D(0, -0.1, 0), type: BodyType.Static);
+        Materials(dry);
+        for (int i = 0; i < 20; i++) dry.Step(1f / 60);
         return (world.FluidParticleCount, fraction, world.ComputeHash());
+    }
+
+    private static void Materials(PhysicsWorld3D world)
+    {
+        var sand = world.AddParticleFluid(ParticleFluidDef.Sand(spacing: 0.06f));   // ElasticModulus above 0 makes a solid
+        sand.AddEmitter(new FluidEmitterDef { Position = new Vector3D(0, 1, 0), Direction = new Vector3F(0, -1, 0), Kind = FluidVolumeKind.Sphere, Size = new Vector3F(0.08f, 0.08f, 0.08f), Speed = 0.5f });
+        var clay = ParticleFluidDef.Clay(0.06f);   // yields at 3 kPa and keeps its dents; Snow, Mud, Dough, Gravel likewise
+        _ = clay;
     }
 }
