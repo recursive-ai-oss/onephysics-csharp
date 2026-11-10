@@ -1,5 +1,6 @@
 # Big worlds: streamed terrain, level of detail and slow motion
 
+<!-- example: Guide/WorldScale.cs -->
 ```csharp
 var world = new PhysicsWorld3D();
 
