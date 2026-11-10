@@ -79,7 +79,6 @@ internal static class WorldScaleStability
     static int TimeScale2D(int threads)
     {
         var s = WorldScaleScenes.BuildTimeScale2D(threads);
-        double pyramid0 = 0;
         for (int i = 0; i < s.Steps; i++) { s.Step(i); s.Measure(); }
         double bubbleDrift = 0, normalDrift = 0;
         // boxes were added two at a time: even entries stand in normal time, odd ones in the bubble
@@ -93,9 +92,8 @@ internal static class WorldScaleStability
             if (i % 2 == 0) normalDrift = Math.Max(normalDrift, d); else bubbleDrift = Math.Max(bubbleDrift, d);
         }
 
-        pyramid0 += 0;
         var r = new SortedDictionary<string, double> { ["maxSpeed"] = s.MaxSpeed, ["nan"] = s.NonFinite, ["normalPyramidDrift"] = normalDrift, ["bubblePyramidDrift"] = bubbleDrift, ["ballX"] = s.Ball.Position.X };
-        bool ok = s.NonFinite == 0 && s.MaxSpeed <= Th.ScaleSpeed && normalDrift <= Th.ScaleDrift && bubbleDrift <= Th.ScaleDrift && pyramid0 == 0;
+        bool ok = s.NonFinite == 0 && s.MaxSpeed <= Th.ScaleSpeed && normalDrift <= Th.ScaleDrift && bubbleDrift <= Th.ScaleDrift;
         Report("timescale-2d", s.Steps, threads, r, ok);
         return ok ? 0 : 1;
     }
@@ -115,6 +113,13 @@ internal static class WorldScaleStability
             sw.Restart(); w.LoadTile(new TileKey(2, 2), def); w.FlushTiles(); load.Add(sw.Elapsed.TotalMilliseconds);
             w.Step(WorldScaleScenes.Dt);
             sw.Restart(); w.UnloadTile(new TileKey(2, 2)); w.FlushTiles(); unload.Add(sw.Elapsed.TotalMilliseconds);
+        }
+
+        {
+            var tdef = WorldScaleScenes.Tile3D(2, 2, true, 64); var part = tdef.HeightFields[0]; var create = new List<double>();
+            for (int rep = 0; rep < 20; rep++) { sw.Restart(); _ = RecursiveAI.OnePhysics.LowLevel.HeightField3D.Create(part.Heights, part.SamplesX, part.SamplesZ, part.Scale, default, default, part.Edges); create.Add(sw.Elapsed.TotalMilliseconds); }
+            create.RemoveRange(0, 5); create.Sort();
+            Console.WriteLine($"height-field-65x65 createMs median={F(create[create.Count / 2])}");
         }
 
         load.RemoveRange(0, 4); unload.RemoveRange(0, 4); load.Sort(); unload.Sort(); build.Sort();

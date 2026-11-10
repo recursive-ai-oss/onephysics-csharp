@@ -131,29 +131,7 @@ public sealed class HeightField3D : TriangleSoup3D
         _levelMax = maxs.ToArray();
         _bounds = new Bounds3F(new Vector3F(0f, _levelMin[^1][0], 0f), new Vector3F(_cx * _scale.X, _levelMax[^1][0], _cz * _scale.Z));
 
-        _flags = new byte[_cx * _cz];
-        for (int cell = 0; cell < _flags.Length; cell++)
-        {
-            if (IsHole(cell))
-            {
-                continue;
-            }
-
-            int f = 0;
-            for (int k = 0; k < 2; k++)
-            {
-                Tri(cell, k, out Vector3F a, out Vector3F b, out Vector3F c);
-                for (int e = 0; e < 3; e++)
-                {
-                    if (NeighbourActive(cell, k, e, a, b, c, tolerance))
-                    {
-                        f |= 1 << ((3 * k) + e);
-                    }
-                }
-            }
-
-            _flags[cell] = (byte)f;
-        }
+        _flags = ComputeFlags(tolerance);
         _patchIds = CoplanarPatchIds.Create(2 * _flags.Length);
         for (int id = 0; id < _patchIds.Length; id++)
         {
@@ -236,6 +214,85 @@ public sealed class HeightField3D : TriangleSoup3D
             c = v10;
         }
     }
+
+    // The active-edge flags of every triangle. Each triangle's normal is computed once and shared by its three edge tests (the same arithmetic as testing each edge from scratch, which costs the normals again per edge); edges
+    // on the border of the grid, next to a hole, or in need of the ring of neighbour samples take the general test.
+    private byte[] ComputeFlags(double tolerance)
+    {
+        int cells = _cx * _cz;
+        var flags = new byte[cells];
+        var normal = new Vector3D[2 * cells];
+        var length = new double[2 * cells];
+        for (int cell = 0; cell < cells; cell++)
+        {
+            if (IsHole(cell)) { continue; }
+            for (int k = 0; k < 2; k++)
+            {
+                Tri(cell, k, out Vector3F a, out Vector3F b, out Vector3F c);
+                Vector3D da = a.ToDouble(), db = b.ToDouble(), dc = c.ToDouble();
+                Vector3D n = Vector3D.Cross(db - da, dc - da);
+                normal[(2 * cell) + k] = n;
+                length[(2 * cell) + k] = Math.Sqrt(n.LengthSquared());
+            }
+        }
+
+        for (int cell = 0; cell < cells; cell++)
+        {
+            if (IsHole(cell)) { continue; }
+            int i = cell % _cx, j = cell / _cx;
+            int f = 0;
+            for (int k = 0; k < 2; k++)
+            {
+                Tri(cell, k, out Vector3F a, out Vector3F b, out Vector3F c);
+                Vector3D da = a.ToDouble(), db = b.ToDouble(), dc = c.ToDouble();
+                for (int e = 0; e < 3; e++)
+                {
+                    int ni, nj, nk;
+                    if (k == 0) { (ni, nj, nk) = e == 0 ? (i - 1, j, 1) : e == 1 ? (i, j + 1, 1) : (i, j, 1); }
+                    else { (ni, nj, nk) = e == 0 ? (i, j, 0) : e == 1 ? (i + 1, j, 0) : (i, j - 1, 0); }
+                    bool active;
+                    if ((uint)ni < (uint)_cx && (uint)nj < (uint)_cz && !IsHole((nj * _cx) + ni))
+                    {
+                        int own = (2 * cell) + k, other = (2 * ((nj * _cx) + ni)) + nk;
+                        Vector3D eA = e == 0 ? db - da : e == 1 ? dc - db : da - dc;
+                        active = TriangleTests3D.IsActiveFromNormals(normal[own], length[own], normal[other], length[other], eA, tolerance);
+                    }
+                    else
+                    {
+                        active = NeighbourActive(cell, k, e, a, b, c, tolerance);
+                    }
+
+                    if (active) { f |= 1 << ((3 * k) + e); }
+                }
+            }
+
+            flags[cell] = (byte)f;
+        }
+
+        return flags;
+    }
+
+    /// <summary>The flags computed edge by edge with the general test, for checking <see cref="ComputeFlags"/> against it.</summary>
+    internal byte[] ReferenceFlags(double tolerance)
+    {
+        var flags = new byte[_cx * _cz];
+        for (int cell = 0; cell < flags.Length; cell++)
+        {
+            if (IsHole(cell)) { continue; }
+            int f = 0;
+            for (int k = 0; k < 2; k++)
+            {
+                Tri(cell, k, out Vector3F a, out Vector3F b, out Vector3F c);
+                for (int e = 0; e < 3; e++) { if (NeighbourActive(cell, k, e, a, b, c, tolerance)) { f |= 1 << ((3 * k) + e); } }
+            }
+
+            flags[cell] = (byte)f;
+        }
+
+        return flags;
+    }
+
+    internal byte[] FlagsForTests => _flags;
 
     // The neighbour across each edge, by the cell layout in the type's remarks: A edges 0, 1, 2 meet B of the cells (i-1, j), (i, j+1) and the same cell (edges 1, 2 and 0 of B);
     // B edges 0, 1, 2 meet A of the same cell, (i+1, j) and (i, j-1) (edges 2, 0 and 1 of A). A missing or hole neighbour makes the edge a boundary, which is active.
