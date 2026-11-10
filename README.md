@@ -1,16 +1,12 @@
 # OnePhysics for .NET
 
-Deterministic 2D rigid-body physics for .NET, written from first principles: the same world state, bit for bit, on every platform, CPU, vector width and thread count. Package `RecursiveAI.OnePhysics`, built on [onemath](https://github.com/recursive-ai-oss/onemath-csharp) for its deterministic math.
+Deterministic 2D and 3D physics for .NET (`RecursiveAI.OnePhysics`), written from first principles: the same world state, bit for bit, on every OS, CPU, vector width, WebAssembly mode and thread count. Rigid bodies, shapes, contacts and joints; rods, ropes, cables, cloth and soft bodies; fracture and carving; particle fluids, shallow water and granular matter; articulations; fields; characters, vehicles and ragdolls; rollback tooling. No dependencies beyond the .NET base class library and [onemath](https://github.com/recursive-ai-oss/onemath-csharp), which supplies the deterministic math. NativeAOT and trimming compatible.
 
-**Status: preview.** The 2D engine is the supported surface: circles, capsules, rounded polygons, segments and chains; revolute, prismatic, weld, wheel, distance, motor and mouse joints; bullets and continuous collision; a character mover; layers, filters, sensors, events and queries; byte-exact snapshot and restore; per-step world hashes; debug geometry. The 3D engine (`RecursiveAI.OnePhysics.Physics3D`) ships as a **preview marked `[Experimental("OPHYS0002")]`**: it works and is deterministic, but its API and its results may change between previews. The raw tier (`RecursiveAI.OnePhysics.LowLevel`) is `[Experimental("OPHYS0001")]`. Previews are not bit-compatible with each other: a snapshot or replay from one preview does not carry to the next.
-
-## Install
+**Status.** Each part is either supported or marked `[Experimental]` (the 3D engine, the raw tier and the later features carry diagnostic ids `OPHYS0001`–`OPHYS0003`; the list of what each covers is in [docs/spec/api.md](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/spec/api.md)). The [changelog](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/CHANGELOG.md) says which releases moved results; a snapshot or replay from a release that did is not guaranteed to load or reproduce in the next.
 
 ```
-dotnet add package RecursiveAI.OnePhysics --prerelease
+dotnet add package RecursiveAI.OnePhysics
 ```
-
-Targets `net10.0`; works under NativeAOT, trimming and browser WebAssembly. Its only dependency is `RecursiveAI.OneMath`.
 
 ## 2D in a minute
 
@@ -38,9 +34,9 @@ byte[] saved = world.Snapshot();                // byte-exact; Restore(saved) co
 ulong hash = world.ComputeHash();               // the same on every platform
 ```
 
-## 3D, a preview
+## 3D
 
-The 3D world has the same members with 3D math types. Using it raises the experimental diagnostic `OPHYS0002` until you acknowledge it:
+The 3D world has the same members with 3D math types. While the 3D engine carries `[Experimental("OPHYS0002")]` (see [the API surface](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/spec/api.md)), using it raises that diagnostic until you acknowledge it:
 
 <!-- example: Quickstart3D.cs -->
 ```csharp
@@ -64,28 +60,33 @@ ulong hash = world.ComputeHash();
 
 ## What you get
 
-- **Deterministic.** Only IEEE-exact `+ - * /` and `sqrt` and our own transcendental functions; fixed-order reductions and constraint coloring. The world hash after N steps is the same on x64, arm64 and WebAssembly, scalar or SIMD, one thread or all cores.
-- **Three tiers, one engine.** One-liners (`world.AddBox(...)`, `body.OnCollisionEnter`), definitions and polled events, and a raw tier, each built on the one below.
-- **Rollback-ready.** Byte-exact `Snapshot`/`TrySnapshot` and `Restore`, `ComputeHash` per step, `SuppressCallbacks` for resimulation, allocation-free steady state after `Warmup`.
+- **Deterministic.** Only IEEE-exact `+ - * /` and `sqrt` plus onemath's transcendental functions; fixed-order reductions and constraint colouring. The world hash after N steps is the same on x64, arm64 and WebAssembly, scalar or SIMD, one thread or all cores. Positions cross the API as `double`, exact within ±2^21 (a deterministic game host's Q31.32 fixed-point format converts without loss); larger worlds shift their origin.
+- **Three tiers, one engine.** One-liners (`world.AddBox(...)`, `body.OnCollisionEnter`, `world.AddCharacter(...)`) with Unity's vocabulary, definitions and polled events with struct callbacks for the hot paths, and a raw tier (`LowLevel`) with the storage, colouring, trees and narrowphase. Each tier is built on the one below. Nothing on the happy path asks you to write a struct callback.
+- **Two engines, the same members.** `PhysicsWorld2D` and `PhysicsWorld3D` share `Body`, `Shape`, `Joint`, events, queries, options and presets in shape; where physics differs (voxels and meshes in 3D, tile grids and chains in 2D) [the API notes](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/spec/api.md) list it.
+- **Rollback-ready.** Byte-exact `Snapshot` and `Restore`, delta snapshots, `ComputeHash` per step, a desync finder, world fork, a replay format, `SuppressCallbacks` for resimulation, allocation-free steady state after `Warmup`.
 - **Handles you can hold.** `Body`, `Shape` and `Joint` are small structs; a destroyed one throws a `StaleHandleException` naming it.
 - **Hostile input is refused,** with typed errors that name the value and the limit.
 
-## Authoring tools
+## Platforms
 
-`RecursiveAI.OnePhysics.Tools` is a separate package for work done at authoring or load time, never needed to run a world: approximate convex decomposition of triangle meshes into compounds of hulls, hull simplification with a measured error, mesh weld and clean (with non-manifold and hole reports), closed-mesh mass properties, convex decomposition of 2D polygons with holes, and sprite alpha masks to outlines and convex pieces. It depends on this package and follows the same determinism rules: the same input gives the same bits on every platform and at every thread count. See [the tool specification](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/spec/tools.md).
+`net10.0` on Linux, macOS and Windows (x64 and arm64) and browser WebAssembly, under the JIT and NativeAOT.
+
+## Related packages
+
+- `RecursiveAI.OnePhysics.Tools`: authoring-time geometry, never needed at runtime. Convex decomposition of triangle meshes, hull simplification, mesh cleaning and mass properties, tetrahedralization and quality triangulation, ragdoll fitting from a skeleton, 2D polygon decomposition and sprite outlines. See [its page](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/src/OnePhysics.Tools/README.md) and [the specification](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/spec/tools.md).
+<!-- Interchange: when RecursiveAI.OnePhysics.Interchange ships, add its line here: importers for glTF physics, URDF, MJCF, Tiled and LDtk. -->
 
 ## Guide
 
-- [Install](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/install.md) and [quick start](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/quick-start.md)
-- [The three tiers](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/tiers.md)
-- [Events](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/events.md)
-- [Queries, layers and filters](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/queries-and-layers.md)
-- [Rollback and lockstep](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/rollback.md)
-- [Determinism guarantees](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/determinism.md)
-- [Units and sizes](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/units.md), [names and conventions](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/api-names.md), [input limits](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/limits.md)
-- [Coming from Unity](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/docs/guide/unity-mapping.md)
-- [Port specifications](https://github.com/recursive-ai-oss/onephysics-csharp/tree/v0.4.0-preview.1/docs/spec): the normative, language-neutral description of every choice that affects the bits.
-- [Changelog](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/CHANGELOG.md) and [contributing](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v0.4.0-preview.1/CONTRIBUTING.md)
+- [Install](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/install.md) and [quick start](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/quick-start.md)
+- [The three tiers](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/tiers.md)
+- [Events](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/events.md) and [queries, layers and filters](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/queries-and-layers.md)
+- [Rollback and lockstep](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/rollback.md) and [determinism guarantees](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/determinism.md)
+- [Units and sizes](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/units.md), [names and conventions](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/api-names.md), [input limits](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/limits.md)
+- [Soft bodies and cloth](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/soft-bodies.md), [fluids](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/fluids.md), [water](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/water.md), [terrain](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/terrain.md), [destruction](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/destruction.md), [articulations](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/articulations.md), [world scale](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/world-scale.md)
+- [Coming from Unity](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/guide/unity-mapping.md)
+- [Port specifications](https://github.com/recursive-ai-oss/onephysics-csharp/tree/main/docs/spec): the normative, language-neutral description of every choice that affects the bits.
+- [Changelog](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/CHANGELOG.md), [contributing](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/CONTRIBUTING.md) and [third-party notices](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/THIRD-PARTY-NOTICES.md)
 
 ## Licence
 

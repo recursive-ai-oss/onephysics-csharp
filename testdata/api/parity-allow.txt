@@ -1,0 +1,167 @@
+# Differences between the 2D and 3D public surfaces that the parity test accepts.
+# Line format:  Stem: member text -- why
+# Stem is the type name without its 2D/3D suffix, after the test's vocabulary table folds sphere/circle, hinge/revolute,
+# fixed/weld, slider/prismatic, rotation/angle, convex hull/polygon, soft ball/soft circle and local frame/local anchor together.
+# "*" matches any text. Entries marked "gap:" are real asymmetries that are not physics (work still to do); the rest are intentional.
+
+# ---- shapes and terrain that exist in one dimension only
+PhysicsWorld: method *Voxel* -- voxel grids are 3D; the 2D counterpart is the tile grid
+PhysicsWorld: method *Stamp* -- 3D voxel edits; 2D carves and fills terrain with circles and polygons
+PhysicsWorld: method *Tile* -- 2D tile grids; the 3D counterpart is the voxel grid and the tile meshes of streamed terrain
+PhysicsWorld: method Carve* -- 2D terrain carving; the 3D equivalent is voxel editing
+PhysicsWorld: method Fill* -- 2D terrain filling; the 3D equivalent is voxel editing
+PhysicsWorld: method DetachIslands -- 2D terrain islands; the 3D equivalent is DetachVoxelIslands
+PhysicsWorld: method DetachVoxelIslands -- 3D voxel islands; the 2D equivalent is DetachIslands
+PhysicsWorld: method AddBitmaskTerrain -- carvable bitmask terrain is 2D; 3D uses voxel grids
+PhysicsWorld: method StampMask -- carvable bitmask terrain is 2D; 3D uses voxel grids
+PhysicsWorld: method AddChain -- chains and segments are 2D curves; the 3D counterparts are meshes and height fields
+PhysicsWorld: method CreateChain -- as AddChain
+PhysicsWorld: method AddSegment -- as AddChain
+PhysicsWorld: method CreateSegment -- as AddChain
+PhysicsWorld: method AddMesh -- triangle meshes are 3D; the 2D counterpart is the chain
+PhysicsWorld: method CreateMesh -- as AddMesh
+PhysicsWorld: method AddPlane -- a half-space in 3D; in 2D a long segment or box does the same
+PhysicsWorld: method AddTriangle -- a single double-sided triangle is a 3D surface; 2D polygons cover triangles
+PhysicsWorld: method AddCylinder -- cylinders, tapered cylinders and cones are 3D solids of revolution (a 2D cone is the polygon or capsule)
+PhysicsWorld: method AddTaperedCylinder -- as AddCylinder
+PhysicsWorld: method CreateCylinder -- as AddCylinder
+PhysicsWorld: method AddCompound -- a 3D compound shape; a 2D body simply holds several shapes
+PhysicsWorld: method CreateCompound -- as AddCompound
+PhysicsWorld: method CreateSdf -- gap: the 2D world has AddSdf only
+PhysicsWorld: method AddStrip -- 2D cloth strips; 3D uses AddCloth
+PhysicsWorld: method AddCloth -- 3D cloth; 2D uses AddStrip
+PhysicsWorld: method AttachCloth* -- 3D cloth attachments; 2D strips attach through their definition
+PhysicsWorld: method RemoveClothLink -- as AttachCloth
+PhysicsWorld: property ClothLinkCount -- as AttachCloth
+PhysicsWorld: method AddSeam -- 3D cloth seams
+PhysicsWorld: method AddBalloon -- 2D soft-body presets; 3D soft bodies are built from tetrahedral meshes
+PhysicsWorld: method AddBlob -- as AddBalloon
+PhysicsWorld: method OverlapSoftBodies -- gap: 3D finds soft bodies through the deformable queries
+PhysicsWorld: method AddCar -- 2D side-view vehicle presets; 3D vehicles are built from VehicleDef
+PhysicsWorld: method AddKart -- as AddCar
+PhysicsWorld: method AddTruck -- as AddCar
+PhysicsWorld: method AddCharacterJoint -- 3D ragdoll swing-twist joint; a 2D ragdoll joint is a limited revolute
+PhysicsWorld: method NadalLimit -- 3D wheel-rail flange climb limit; a 2D side view has no flange
+
+# ---- bodies, shapes, joints
+Body: method Carve* -- 2D terrain editing on a body; the 3D equivalent is voxel editing on its shape
+Body: method Fill* -- as Carve
+Body: method DetachIslands -- as Carve
+Body: property Voxels -- 3D voxel grid of a body
+Shape: method *Voxel* -- 3D voxel editing on a shape
+Shape: method DetachIslands -- as above
+Shape: method DigCircle -- as above
+Shape: method FillCircle -- as above
+Shape: method StampBox -- as above
+BodyDef: property InertiaAngleOverride -- 3D has a rotation of the inertia frame; a planar inertia is one number
+ShapeDef: property LocalAngle -- gap: a 2D shape's local pose is set on the shape creation call
+ShapeDef: property LocalPosition -- gap: as LocalAngle
+Joint: method SetAxis -- 2D prismatic and wheel axis; 3D joints take a frame
+Joint: method SetWeldSprings -- gap: 3D fixed joints are rigid
+WeldJoint: method SetWeldSprings -- gap: as above
+Joint: method SetPoseDrive -- 3D pose drive of swing-twist and six-DOF joints
+Joint: method ClearPoseDrive -- as SetPoseDrive
+Joint: method SetSwingTwistLimits -- swing and twist exist only in 3D
+Joint: property HalfConeAngle -- swing and twist exist only in 3D
+Joint: property IsPoseDriven -- as SetPoseDrive
+Joint: property PoseDriveTarget -- as SetPoseDrive
+JointType: field Cone -- 3D rotational joint kinds
+JointType: field SwingTwist -- as Cone
+JointType: field SixDof -- as Cone
+JointType: field Point -- as Cone
+JointType: field Configurable -- the 2D name for what 3D calls SixDof
+JointAxes: field * -- 3D has three rotation axes and a third translation axis
+ConfigurableJointDef: type only in 2D -- the 2D name for what 3D calls SixDofJointDef
+JointAxisSettings: type only in 2D -- as ConfigurableJointDef
+ConeJoint*: type only in 3D -- cone, swing-twist, six-DOF and point joints constrain rotation about up to three axes; 2D has one
+SwingTwistJoint*: type only in 3D -- as ConeJoint
+SixDofJoint*: type only in 3D -- as ConeJoint
+PointJoint*: type only in 3D -- as ConeJoint
+GearJoint: type only in 3D -- gap: 2D gear, path, pulley and rack-and-pinion joints are returned as the general Joint
+PathJoint: type only in 3D -- gap: as GearJoint
+PulleyJoint: type only in 3D -- gap: as GearJoint
+RackAndPinionJoint: type only in 3D -- gap: as GearJoint
+IJointDef: type only in 3D -- gap: 2D definitions are separate structs without the shared interface
+JointFrame: type only in 3D -- 3D joints attach by frame (point and rotation); 2D by anchor
+PathAngle: type only in 3D -- 3D path joints orient the body along the path
+*JointDef: property LocalAnchor* -- 2D joints attach by an anchor point (3D by a frame)
+*JointDef: property LocalAxis* -- 2D axis of a prismatic or wheel joint; 3D joints take a frame
+*JointDef: property ReferenceAngle -- 2D relative angle at rest; 3D reads it from the frames
+*JointDef: property Angle -- 3D path joint orientation
+*JointDef: property Up -- 3D path joint orientation
+*JointDef: property AlignTangent -- 2D path joint option
+*JointDef: property Length -- 2D pulley rope length (3D reads it from the anchors)
+WeldJointDef: property *Hertz -- gap: 3D fixed joints are rigid
+WeldJointDef: property *DampingRatio -- gap: as above
+DistanceJoint*: property *Motor* -- gap: 3D distance joints have no motor
+
+# ---- queries, events, options
+QueryHit: property SubShapeId -- gap: 2D hits carry no triangle or sub-shape id
+Collision: property TangentImpulse -- gap: 3D reports friction through the contact manifold
+WorldOptions: property SpeculativeDistance -- gap: the 2D speculative margin is derived from the broadphase margin
+Material: field DefaultRollingResistance -- 3D default of 0.003; the 2D default is 0
+DeformableHit: property ParticleC -- 3D hits are triangles with three particles; 2D hits are edges with two
+Fluid: method * -- gap: the 3D buoyancy volume handle has value equality and text; the 2D one does not
+Buoyancy: method ComputeSubmergedArea -- 2D reports area; 3D reports volume (Submerged)
+Buoyancy: method Submerged -- as above
+SubmergedArea: type only in 2D -- 2D reports area; 3D reports volume
+SubmergedVolume: type only in 3D -- as SubmergedArea
+FractureAsset: method FromPolygon -- 2D fractures polygons; 3D hulls
+FractureAsset: method FromHull -- as above
+TerrainAnchors: type only in 2D -- 2D terrain anchors; 3D uses VoxelAnchors
+VoxelAnchors: type only in 3D -- as TerrainAnchors
+TileTileGrid: type only in 2D -- 2D tile grid tile definition
+TileMesh: type only in 3D -- streamed 3D terrain meshes
+TileVoxelGrid: type only in 3D -- streamed 3D voxel terrain
+TileDef: property * -- terrain kinds differ: 2D tile grids, 3D meshes and voxel grids
+TileHeightField: property * -- 2D height fields are curves (spacing, before and after heights); 3D are grids of samples
+ShallowWater*: property Cells* -- 2D water is one row of cells; 3D is a grid
+ShallowWater*: property MinZ -- 3D water grid extent
+ShallowWaterDef: property North -- 3D water grid edge
+ShallowWaterDef: property South -- as North
+
+# ---- characters, vehicles, ragdolls, articulations, deformables: the dimensions model them differently
+Character: property Kind -- 3D characters come in rigid and virtual kinds, and have a configurable up axis
+Character: property Up -- as Kind
+CharacterDef: property Kind -- as Character
+CharacterDef: property RigidHumanoid -- as Character
+CharacterDef: property Up -- as Character
+CharacterKind: type only in 3D -- as Character
+Vehicle: * -- 2D side-view vehicles and 3D wheeled vehicles report different state (pitch against lean and steering)
+VehicleDef: property * -- as Vehicle
+Wheel*: * -- 3D wheels cast shapes and steer about an axis; 2D wheels cast circles
+Tyre*: * -- 3D tyres add a lateral force curve
+Track: * -- 2D rails are a side-view surface; 3D tracks have switches, frames and cant
+Rail*: * -- 2D rail vehicles are a side view; 3D has bogies, wheelsets and conical treads
+Switch: type only in 3D -- as Track
+WheelsetState: type only in 3D -- as Rail
+AntiRollBarDef: type only in 3D -- roll exists only in 3D
+Bicycle*: * -- 2D bicycles are a side view; 3D has steering, lean and a fork
+Motorcycle*: * -- as Bicycle
+BoatDef: property LateralDrag -- 3D hulls also drag sideways; the 2D hull moves in a plane
+BoatFoilDef: property Horizontal -- 3D foils are horizontal or vertical; a 2D foil is one line
+TrackedVehicleDef: property * -- 2D tracks are a side view over a wheel list; 3D has left and right wheel lists and lateral friction
+Ragdoll*: * -- 2D ragdolls use limited revolute joints, 3D swing-twist joints
+ArticulationDef: method * -- named robot presets differ by dimension
+ArticulationLinkDef: property * -- planar inertia and angle against a tensor and rotation
+ArticulationShape: property * -- planar shape against 3D shape specification
+Articulation: method * -- 3D joints take rotation targets
+ShapeSpec: type only in 3D -- 3D shape description for articulations and compounds
+CompoundPart: type only in 3D -- 3D compound shapes (a 2D body simply holds several shapes)
+ThrusterRig: method * -- named rig presets differ by dimension
+ThrusterDef: property * -- 3D gimbal axis and spin torque
+Pulley*: * -- 3D pulleys and sprockets have a rotation axis
+Sprocket: * -- as Pulley
+SoftBody*: * -- 2D soft bodies are outline meshes with shape matching and area constraints, 3D are tetrahedral or cloth with volume constraints and skinning
+SoftMaterial: field Cloth -- 3D cloth material
+SoftSkin: type only in 3D -- 3D skinning
+SkinJointPose: type only in 3D -- as SoftSkin
+SoftBodyModel: type only in 2D -- 2D soft-body model kinds
+StripParams: type only in 2D -- 2D cloth strips
+Cloth*: type only in 3D -- 3D cloth; 2D uses strips
+WheelCastShape: type only in 3D -- as Wheel
+BicyclePart: type only in 3D -- as Bicycle
+BicycleWheel: type only in 3D -- as Bicycle
+ClothLinkKind: type only in 3D -- as Cloth
+ClothMaterial: type only in 3D -- as Cloth
+ClothParams: type only in 3D -- as Cloth

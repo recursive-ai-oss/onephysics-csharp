@@ -231,7 +231,7 @@ public sealed class WorldOptions2D
     internal WorldOptions2D Clone() { float speed = MaxAngularSpeed; var copy = (WorldOptions2D)MemberwiseClone(); copy.ReplayChanged = null; copy.ReadAngularSpeed = null; copy.WriteAngularSpeed = null; copy._angularSpeed = speed; return copy; }
 
     /// <summary>Checks every value; throws <see cref="ArgumentOutOfRangeException"/> naming the first bad one.</summary>
-    internal void Validate()
+    public void Validate()
     {
         if (SoftSubsteps < 1 || SoftSubsteps > 64) { throw new ArgumentOutOfRangeException(nameof(SoftSubsteps), SoftSubsteps, "SoftSubsteps must be in 1..64."); }
         if (SoftIterations < 1 || SoftIterations > 32) { throw new ArgumentOutOfRangeException(nameof(SoftIterations), SoftIterations, "SoftIterations must be in 1..32."); }

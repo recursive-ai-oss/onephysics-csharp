@@ -1,0 +1,9 @@
+# Public members that take a struct-constrained type parameter and have no plain overload of the same name.
+# They belong to the middle and raw tiers; the happy path has a delegate form for each of the world's two.
+# Line format:  Type.Member -- where the happy path does the same thing
+Physics2D.PhysicsWorld2D.SetContactFilter -- WorldOptions2D.PairFilter (a delegate) and the layer matrix
+Physics3D.PhysicsWorld3D.SetContactFilter -- WorldOptions3D.PairFilter (a delegate) and the layer matrix
+Physics2D.PhysicsWorld2D.SetContactModifier -- PhysicsWorld2D.ContactModifier (a delegate property)
+Physics3D.PhysicsWorld3D.SetContactModifier -- PhysicsWorld3D.ContactModifier (a delegate property)
+LowLevel.Broadphase`1.RayCast -- raw tier only; world.Raycast is the happy path
+LowLevel.DynamicTree`1.RayCast -- raw tier only; world.Raycast is the happy path

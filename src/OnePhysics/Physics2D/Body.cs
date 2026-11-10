@@ -237,6 +237,20 @@ public readonly partial struct Body : IEquatable<Body>
         WakeBody(w, b);
     }
 
+    /// <summary>Changes the angular velocity by <c>impulse / inertia</c> (an angular impulse about the out-of-plane axis, N·m·s; counter-clockwise is positive). Wakes the body.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The impulse is not finite.</exception>
+    public void ApplyAngularImpulse(float impulse)
+    {
+        using var replayMutation = _world?.RecordMutation("Body.ApplyAngularImpulse");
+        var (w, b) = Resolve();
+        RequireDynamic(w, b);
+        if (!float.IsFinite(impulse)) { throw new ArgumentOutOfRangeException(nameof(impulse), impulse, "An angular impulse must be finite."); }
+        var bodies = w.Core.Bodies;
+        bodies.AngularVelocityOf(b)[0] += bodies.InverseInertia[b] * impulse;
+        if (w.Options.DetailedInspection) { w.Core.BodyReadback.Pending(b, default, new(0, 0, impulse)); }
+        WakeBody(w, b);
+    }
+
     private static void RequireDynamic(PhysicsWorld2D w, int b, [System.Runtime.CompilerServices.CallerMemberName] string operation = "")
     {
         if (w.Core.Bodies.TypeOf(b) != BodyType.Dynamic) { throw new BodyTypeException(operation, w.Core.HandleOfBody(b), w.Core.Bodies.TypeOf(b), true); }
