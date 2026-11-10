@@ -24,16 +24,26 @@ internal static class ArticulationStability
         string only = opts.Get("scene", "");
         int threads = int.Parse(opts.Get("threads", "1"), CultureInfo.InvariantCulture);
         bool timing = opts.Get("timing", "") != "";
+        int failures = 0;
         foreach (var name in ArticulationScenes3D.Names.Concat(ArticulationScenes2D.Names))
         {
             if (only.Length != 0 && only != name) continue;
-            RunOne(name, threads, timing);
+            failures += RunOne(name, threads, timing);
         }
 
-        return 0;
+        return failures == 0 ? 0 : 1;
     }
 
-    static void RunOne(string name, int threads, bool timing)
+    // Thresholds: 1.5 times the worst of the x64 and arm64 runs (the two agree to the bit), rounded up; the arm's box error and the quadruped's link penetration follow the unit's own targets (1 cm, 2 cm).
+    // Always: nan = escapes = tunnelled = 0, jointError at most 1e-6 (by construction it is rounding only).
+    static readonly Dictionary<string, (string Metric, double Max)[]> Limits = new()
+    {
+        ["articulation-arm-3d"] = new[] { ("boxError", 0.007), ("maxSpeed", 0.3), ("linkPenetration", 0.003), ("maxPenetration", 0.002), ("fallen", 0) },
+        ["quadruped-3d"] = new[] { ("maxSpeed", 4.2), ("linkPenetration", 0.02), ("maxPenetration", 0.05), ("fallen", 0) },
+        ["articulation-chain-2d"] = new[] { ("maxSpeed", 36), ("linkPenetration", 0.03), ("maxPenetration", 0.001) },
+    };
+
+    static int RunOne(string name, int threads, bool timing)
     {
         var times = new List<double>();
         var sw = new Stopwatch();
@@ -54,7 +64,14 @@ internal static class ArticulationStability
         var sb = new System.Text.StringBuilder($"{name} threads={threads}");
         foreach (var kv in m) sb.Append($" {kv.Key}={F(kv.Value)}");
         if (timing) { times.Sort(); sb.Append($" medianMs={F(times[times.Count / 2])} meanMs={F(times.Average())}"); }
+        var bad = new List<string>();
+        foreach (var k in new[] { "nan", "escapes", "tunnelled" }) { if (m.GetValueOrDefault(k) != 0) { bad.Add(k); } }
+        if (m.GetValueOrDefault("jointError") > 1e-6) { bad.Add("jointError"); }
+        if (name == "quadruped-3d" && m.GetValueOrDefault("minTorsoHeight") < 0.5) { bad.Add("minTorsoHeight"); }
+        if (Limits.TryGetValue(name, out var lim)) { foreach (var (metric, max) in lim) { if (m.GetValueOrDefault(metric) > max) { bad.Add(metric); } } }
+        sb.Append(bad.Count == 0 ? " PASS" : " FAIL(" + string.Join(",", bad) + ")");
         Console.WriteLine(sb.ToString());
+        return bad.Count == 0 ? 0 : 1;
     }
 
     /// <summary>Median step time of 64 quadrupeds standing on a floor (3D) and of a 64-link chain with a 1000:1 end mass (2D and 3D), after a warm-up.</summary>

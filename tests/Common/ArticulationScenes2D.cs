@@ -47,9 +47,10 @@ internal static class ArticulationScenes2D
                 }
             }
 
-            foreach (var art in w.GetArticulations()) { pen = Math.Max(pen, art.DeepestPenetration); }
+            double linkPen = M.GetValueOrDefault("linkPenetration");
+            foreach (var art in w.GetArticulations()) { linkPen = Math.Max(linkPen, art.DeepestPenetration); }
             joint = Math.Max(joint, JointError(w));
-            M["maxSpeed"] = maxSpeed; M["nan"] = nan; M["escapes"] = esc; M["maxPenetration"] = pen; M["tunnelled"] = tunnelled; M["jointError"] = joint;
+            M["maxSpeed"] = maxSpeed; M["nan"] = nan; M["escapes"] = esc; M["maxPenetration"] = pen; M["linkPenetration"] = linkPen; M["tunnelled"] = tunnelled; M["jointError"] = joint;
         }
     }
 

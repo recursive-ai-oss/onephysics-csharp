@@ -31,7 +31,7 @@ internal static class ArticulationScenes3D
         {
             var w = World;
             double maxSpeed = M.GetValueOrDefault("maxSpeed"), nan = M.GetValueOrDefault("nan"), esc = M.GetValueOrDefault("escapes"), pen = M.GetValueOrDefault("maxPenetration"), joint = M.GetValueOrDefault("jointError");
-            double minTorso = M.GetValueOrDefault("minTorsoHeight", double.MaxValue), tunnelled = M.GetValueOrDefault("tunnelled");
+            double linkPen = M.GetValueOrDefault("linkPenetration"), minTorso = M.GetValueOrDefault("minTorsoHeight", double.MaxValue), tunnelled = M.GetValueOrDefault("tunnelled");
             int hw = w.Core.Bodies.HighWater;
             for (int b = 0; b < hw; b++)
             {
@@ -51,12 +51,12 @@ internal static class ArticulationScenes3D
 
             foreach (var art in w.GetArticulations())
             {
-                pen = Math.Max(pen, art.DeepestPenetration);
+                linkPen = Math.Max(linkPen, art.DeepestPenetration);
                 if (step >= 90 && !art.FixedBase) { minTorso = Math.Min(minTorso, art.GetLink(0).Position.Y); }
             }
 
             joint = Math.Max(joint, JointError(w));
-            M["maxSpeed"] = maxSpeed; M["nan"] = nan; M["escapes"] = esc; M["maxPenetration"] = pen; M["tunnelled"] = tunnelled; M["jointError"] = joint;
+            M["maxSpeed"] = maxSpeed; M["nan"] = nan; M["escapes"] = esc; M["maxPenetration"] = pen; M["linkPenetration"] = linkPen; M["tunnelled"] = tunnelled; M["jointError"] = joint;
             if (minTorso != double.MaxValue) { M["minTorsoHeight"] = minTorso; }
             if (step == Steps - 1)
             {
