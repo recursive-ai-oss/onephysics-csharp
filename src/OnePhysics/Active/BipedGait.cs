@@ -94,11 +94,17 @@ internal static class Tun
     internal const float Tau = 0.05f;         // look-ahead of the hip target, s
     internal const float LatTol = 0.04f;      // how far from the stance ankle the centre of mass may be sideways before the first step (3D), m
     internal const float Ki = 0.0202f;        // learning rate of the speed correction per step
-    internal const float Over = 1f;           // fraction of the sideways weight shift before the first step (3D)
+    internal const float Over = 0.3f;         // fraction of the sideways weight shift before the first step (3D): the hip goes only part of the way over the staying foot, because a body that is already over the foot and moving has to be stopped there
+    internal const float CrossLat = -0.1f;    // a landing wanted this far or less beyond the stance-side limit is crossed (3D); between that and the limit it is clamped to the limit, m
+    internal const float CrossMax = 0.25f;    // the farthest a swing foot may cross past the stance foot, m (3D)
     internal const float TrimLat = 0.04f;     // sideways pressure-point trim limit (3D), m
     internal const float TrimMax = 0.1083f;   // forward pressure-point trim limits, m
     internal const float TrimMin = -0.0282f;
     internal const float MinStep = -0.0418f;  // the farthest behind the stance foot a step may land, m
+    internal const float StopSpeed = 0.2f;    // a 3D figure told to stop keeps stepping until it is slower than this, m/s
+    internal const float FinalPf = 0.1f;      // while stopping, the last steps land no farther than this ahead of the stance foot, m
+    internal const float FinalSpeed = 0.5f;   // "the last steps" are those taken slower than this, m/s
+    internal const float MinStep3 = -0.3f;    // the farthest behind the stance foot a step may land in 3D, m: a figure that is told to stop, or that is pushed backwards, has to be able to step back
     internal const float Filt = 0.0716f;      // time constant of the velocity filter, s
     internal const float Rate = 0.15f;        // how fast the hip height changes, fraction of a leg per second
 }
@@ -188,7 +194,8 @@ internal static class BipedGait
         o.SupMinF = minF; o.SupMaxF = maxF; o.SupMinL = minL; o.SupMaxL = maxL; o.Grounded = grounded;
 
         float cmdSpeed = float.Sqrt(inn.CmdF * inn.CmdF + inn.CmdL * inn.CmdL);
-        bool walking = inn.Walk && cmdSpeed > 0.02f;
+        // A figure told to stop while it moves keeps stepping, planning for zero speed, until it has slowed down and is between steps; only then does the standing balance take over.
+        bool walking = inn.Walk && (cmdSpeed > 0.02f || (!planar && (s.Phase >= (byte)GaitPhase.SwingLeft || float.Sqrt(s.FVelF * s.FVelF + s.FVelL * s.FVelL) > Tun.StopSpeed)));
         float trig = bal.StepTrigger;
         bool needStep = !walking && grounded == 2 && (capF > maxF + trig || capF < minF - trig || (!planar && (capL > maxL + trig || capL < minL - trig)));
 
@@ -252,8 +259,9 @@ internal static class BipedGait
             float bL = walking ? planL * tCycle / (eT - 1f) + side * wk.StepWidth / (eT + 1f) : 0f;
             float xiNomEnd = bF * eT;   // the capture point of a steady gait at the end of the swing
             float pf = walking ? (xiNomEnd + wk.PlacementGain * (xiF - xiNomEnd)) - bF : xiF;
-            float minF0 = walking ? Tun.MinStep : -float.MaxValue;
+            float minF0 = walking ? (planar ? Tun.MinStep : Tun.MinStep3) : -float.MaxValue;
             if (pf < minF0) { pf = minF0; }
+            if (!planar && walking && cmdSpeed <= 0.02f && s.FVelF < Tun.FinalSpeed) { pf = Clamp(pf, minF0, Tun.FinalPf); }   // stopping: the swing foot is put down beside the stance foot, not ahead of it, so the figure ends with its feet together
             float pl;
             if (planar) { pl = 0f; }
             else
@@ -265,8 +273,15 @@ internal static class BipedGait
                 if (walking)
                 {
                     pl = (xiNomL + wk.PlacementGain * (xiL - xiNomL)) - bLnew;
-                    // The foot never lands on the wrong side of the stance foot (which would cross the legs).
-                    pl = side > 0f ? Max(pl, minGap) : Min(pl, -minGap);
+                    // A foot that the capture point wants inside the stance foot's side lands beside the stance foot; when the capture point has gone past the stance foot (a push towards it), the swing foot crosses it and lands on the
+                    // far side, the only place the body can still be caught. Without crossing, the two-step answer (a close step, then a very wide one) sends the speed up and the figure falls.
+                    float inward = side > 0f ? minGap - pl : pl + minGap;
+                    if (inward > 0f)
+                    {
+                        float crossed = side > 0f ? -pl : pl;   // positive: wanted past the stance foot
+                        if (crossed > Tun.CrossLat) { pl = side > 0f ? Max(pl, -Tun.CrossMax) : Min(pl, Tun.CrossMax); }
+                        else { pl = side > 0f ? minGap : -minGap; }
+                    }
                 }
                 else
                 {
@@ -286,7 +301,9 @@ internal static class BipedGait
             // Swing foot path: smooth interpolation from lift-off to landing with a clearance arch.
             float ss = Smooth(sFrac);
             float tf = s.LiftF + (pf - s.LiftF) * ss;
-            float tl = s.LiftL + (pl - s.LiftL) * ss;
+            float ssL = ss;
+            if (!planar && (side > 0f ? pl < 0f : pl > 0f)) { ssL = Smooth((sFrac - 0.3f) / 0.7f); }   // a crossing foot goes forward first and then sideways
+            float tl = s.LiftL + (pl - s.LiftL) * ssL;
             float placeU = swingL.PlaceDU;
             float tu = s.LiftU + (placeU - s.LiftU) * ss + stepHeight * (float)Math64.Sin((double)(Pi * Clamp(sFrac, 0f, 1f)));
 

@@ -18,6 +18,7 @@
 
   <ItemGroup><Compile Include="../../tests/Common/RodScenes.cs" LinkBase="Common" /><Compile Include="../../tests/Common/PulleyScenes.cs" LinkBase="Common" /></ItemGroup>
   <ItemGroup>
+    <Compile Include="../../tests/Common/Walkers3DScene.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/ToolsMeshes.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/DecomposedPileScene.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/TetBlob.cs;../../tests/Common/TestSkeleton.cs;../../tests/Common/TetDropScene.cs;../../tests/Common/AutoRagdollScenes.cs" LinkBase="Common" />

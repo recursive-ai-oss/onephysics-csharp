@@ -13,7 +13,7 @@ namespace Bar;
 ///  maxSpeed (m/s, any body), nan and escapes (bodies outside the scene), maxPenetration (m, deepest contact against the ground), jointError (largest gap between the two anchors of a joint, m; 3D rows) and armError
 ///  (blend-3d: mean absolute difference between the animated arm angle and the simulated one at weight 0.3, rad).
 /// Scenes: balance-3d (four standing humanoids pushed 12 N s forward or back every 2 s in turn, 600 steps), blend-3d (three standing humanoids with a waving arm animation at blend weight 0.3 and hit reactions on an arm, 600 steps),
-/// walkers-2d (six walkers on flat ground, 100 m apart, commands 0.8 and 1.0 m/s alternating, starts staggered by 3 steps, 1200 steps). A 3D walkers scene is not defined: 3D walking is a documented limitation.
+/// walkers-2d (six walkers on flat ground, 100 m apart, commands 0.8 and 1.0 m/s alternating, starts staggered by 3 steps, 1200 steps). The 3D walkers scene is `walkers3d-stability` (WalkerStability3D.cs).
 /// </summary>
 internal static class ActiveStability
 {
