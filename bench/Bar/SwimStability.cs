@@ -8,7 +8,7 @@ namespace Bar;
 /// <summary>
 /// Stability rows for the swimming scenes (no reference engine has swimming characters in water coupled to buoyancy volumes, shallow water and particle fluid). Over the steps until every
 /// character has reached its goal (at most 3600):
-///  reached (characters that arrived, of all), maxSpeed (m/s, any character), charJitter (95th percentile of a swimmer's vertical speed while it holds the surface, away from the log and the dock, m/s),
+///  reached (characters that arrived, of all), maxSpeed (m/s, any character), charJitter (95th percentile of the change of a swimmer's vertical speed from one step to the next while it swims at the surface away from the log and the dock, m/s: a smooth swimmer changes it by millimetres per second per step, a bobbing one by centimetres),
 ///  nan and escapes (characters outside the scene or below the floor), and the final world hash.
 /// </summary>
 internal static class SwimStability
@@ -18,7 +18,7 @@ internal static class SwimStability
     /// <summary>Own thresholds: 1.5 times the worse of the x64 and arm64 runs, rounded up (see docs/spec/scenes.md).</summary>
     internal static class Thresholds
     {
-        internal const double Speed3 = 8.0, Jitter3 = 0.1, Speed2 = 8.0, Jitter2 = 0.1;
+        internal const double Speed3 = 8.0, Jitter3 = 0.05, Speed2 = 9.0, Jitter2 = 0.05;
     }
 
     internal static int Run(Opts opts)
@@ -44,6 +44,7 @@ internal static class SwimStability
         var w = s.World;
         double maxSpeed = 0, nan = 0, escapes = 0;
         var bob = new List<double>();
+        var prevVy = new float[s.Characters.Length];
         int step = 0;
         for (; step < s.Steps && !SwimScenes.AllDone(s); step++)
         {
@@ -55,8 +56,9 @@ internal static class SwimStability
                 if (!double.IsFinite(p.X) || !double.IsFinite(p.Y) || !double.IsFinite(p.Z) || !float.IsFinite(v.X) || !float.IsFinite(v.Y) || !float.IsFinite(v.Z)) { nan++; continue; }
                 maxSpeed = Math.Max(maxSpeed, v.Length());
                 if (p.X < -8 || p.X > 75 || p.Z < -2 || p.Z > 16 || p.Y < -3 || p.Y > 12) { escapes++; }
-                bool lake = i < 12, holding = c.IsSwimming && c.Mode == CharacterMode.Free && (!lake || (p.X < SwimScenes.LogX - 3.2 && p.X > 10) || (p.X > SwimScenes.LogX + 3.2 && p.X < SwimScenes.DockFace - 2.5)) && p.Y > SwimScenes.Level - 1.4;
-                if (holding && step > 300) { bob.Add(Math.Abs(v.Y)); }
+                bool lake = i < 12, holding = c.IsSwimming && c.Mode == CharacterMode.Free && (!lake || (p.X < SwimScenes.LogX - 3.2 && p.X > 10) || (p.X > SwimScenes.LogX + 3.2 && p.X < SwimScenes.DockFace - 2.5)) && s.Swimmers[i].SwimSteps > 120 && p.Y > SwimScenes.Level - 1.0;
+                if (holding && step > 300) { bob.Add(Math.Abs(v.Y - prevVy[i])); }
+                prevVy[i] = v.Y;
             }
         }
 
@@ -73,6 +75,7 @@ internal static class SwimStability
         var w = s.World;
         double maxSpeed = 0, nan = 0, escapes = 0;
         var bob = new List<double>();
+        var prevVy = new float[s.Characters.Length];
         int step = 0;
         for (; step < s.Steps && !SwimScenes.AllDone(s); step++)
         {
@@ -85,8 +88,9 @@ internal static class SwimStability
                 if (!double.IsFinite(p.X) || !double.IsFinite(p.Y) || !float.IsFinite(v.X) || !float.IsFinite(v.Y)) { nan++; continue; }
                 maxSpeed = Math.Max(maxSpeed, v.Length());
                 if (p.X < -8 || p.X > 75 || p.Y < -3 || p.Y > 12) { escapes++; }
-                bool lake = i < 8, holding = c.IsSwimming && c.Mode == CharacterMode.Free && (!lake || (p.X < SwimScenes.LogX - 3.2 && p.X > 10) || (p.X > SwimScenes.LogX + 3.2 && p.X < SwimScenes.DockFace - 2.5)) && p.Y > SwimScenes.Level - 1.4;
-                if (holding && step > 300) { bob.Add(Math.Abs(v.Y)); }
+                bool lake = i < 8, holding = c.IsSwimming && c.Mode == CharacterMode.Free && (!lake || (p.X < SwimScenes.LogX - 3.2 && p.X > 10) || (p.X > SwimScenes.LogX + 3.2 && p.X < SwimScenes.DockFace - 2.5)) && s.Swimmers[i].SwimSteps > 120 && p.Y > SwimScenes.Level - 1.0;
+                if (holding && step > 300) { bob.Add(Math.Abs(v.Y - prevVy[i])); }
+                prevVy[i] = v.Y;
             }
         }
 
