@@ -1,5 +1,6 @@
 using System;
 using RecursiveAI.OneMath;
+using RecursiveAI.OnePhysics.Fluids;
 using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
@@ -31,6 +32,17 @@ public sealed partial class PhysicsQuery3D
     /// <summary>Nearest deformable element to a point.</summary>
     [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public bool ClosestDeformable(Vector3D point, out DeformableHit3D hit, float maxDistance = 1000f) => _world.ClosestDeformable(point, out hit, maxDistance, in _deformableFilter);
+
+    // The particle-fluid queries of the world, so a query object covers every kind of thing in the world; fluids have no element hits (see PhysicsWorld3D).
+
+    /// <summary>The fluid particles within <paramref name="radius"/> of a point, ascending by storage order, into a caller buffer (see <see cref="PhysicsWorld3D.OverlapFluidSphere"/>).</summary>
+    public int OverlapFluidSphere(Vector3D center, float radius, Span<FluidParticleInfo> results, out int total, int fluid = -1) => _world.OverlapFluidSphere(center, radius, results, out total, fluid);
+
+    /// <summary>The nearest fluid particle a ray hits (see <see cref="PhysicsWorld3D.RaycastFluid"/>).</summary>
+    public bool RaycastFluid(Vector3D origin, Vector3F direction, out FluidRayHit hit, float maxDistance = 1000f, int fluid = -1) => _world.RaycastFluid(origin, direction, out hit, maxDistance, fluid);
+
+    /// <summary>The SPH density of the fluid at a point (see <see cref="PhysicsWorld3D.FluidDensityAt"/>).</summary>
+    public float FluidDensityAt(Vector3D point, int fluid = -1) => _world.FluidDensityAt(point, fluid);
 
     private readonly struct DeformBatchBody : IParallelBody
     {

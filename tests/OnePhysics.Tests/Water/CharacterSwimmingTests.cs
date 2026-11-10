@@ -208,4 +208,75 @@ public class CharacterSwimmingTests
         fresh.Step(Dt);
         Assert.Equal(before, fresh.Snapshot());
     }
+
+    [Fact]
+    public void AShiftedWorldSwimsAndFloatsTheSameTranslated()
+    {
+        (PhysicsWorld3D, Physics3D.Character, Physics3D.SoftBody) Make(int id)
+        {
+            var w = World3(id);
+            w.AddBox(new Vector3F(60f, 1f, 60f), at: new Vector3D(10, -1.5, 10), type: BodyType.Static);
+            w.AddShallowWater(0, 0, 20, 20, 1.0, 0.5f, floor: -1.0);
+            var c = w.AddCharacter(new Vector3D(8, 1.5, 10), new Def3 { SwimDensity = 800f });
+            var ball = w.AddSoftBall(0.4f, new Vector3D(12, 2.0, 10), segments: 4);
+            return (w, c, ball);
+        }
+
+        var (a, ca, ba) = Make(381);
+        var (b, cb, bb) = Make(382);
+        for (int i = 0; i < 90; i++) { ca.Move(new Vector3F(0.5f * Dt, 0f, 0f), Dt); cb.Move(new Vector3F(0.5f * Dt, 0f, 0f), Dt); a.Step(Dt); b.Step(Dt); }
+        b.ShiftOrigin(new Vector3D(4096, 8, -2048));
+        for (int i = 0; i < 120; i++) { ca.Move(new Vector3F(0.5f * Dt, 0f, 0f), Dt); cb.Move(new Vector3F(0.5f * Dt, 0f, 0f), Dt); a.Step(Dt); b.Step(Dt); }
+        Assert.Equal(ca.Position.X - 4096, cb.Position.X);
+        Assert.Equal(ca.Position.Y - 8, cb.Position.Y);
+        Assert.Equal(ca.Position.Z + 2048, cb.Position.Z);
+        Assert.Equal(ca.WaterState, cb.WaterState);
+        Assert.InRange((ba.CenterOfMass - bb.CenterOfMass - new Vector3D(4096, 8, -2048)).Length(), 0.0, 1e-4);
+    }
+
+    [Fact]
+    public void RegionSnapshotsCarryTheSwimState()
+    {
+        var w = World3(383);
+        w.AddWater(0.0, flow: new Vector3F(0.4f, 0f, 0f));
+        var c = w.AddCharacter(new Vector3D(0, -1.0, 0), new Def3 { SwimDensity = 800f });
+        for (int i = 0; i < 60; i++) { c.Move(default, Dt); w.Step(Dt); }
+        var min = new Vector3D(-5, -5, -5); var max = new Vector3D(5, 5, 5);
+        var region = w.CaptureRegion(min, max);
+        ulong hash = region.ComputeHash();
+        Assert.Equal(hash, w.ComputeRegionHash(min, max));
+        c.SwimDensity = 600f;
+        Assert.NotEqual(hash, w.ComputeRegionHash(min, max));
+        w.RestoreRegion(region.ToArray());
+        Assert.Equal(hash, w.ComputeRegionHash(min, max));
+        Assert.Equal(CharacterWaterState.Swimming, c.WaterState);
+    }
+
+    [Fact]
+    public void DamagedSwimAndDisplacementSectionsAreRefusedCleanly()
+    {
+        var w = World3(384);
+        w.AddBox(new Vector3F(60f, 1f, 60f), at: new Vector3D(10, -1.5, 10), type: BodyType.Static);
+        w.AddShallowWater(0, 0, 20, 20, 1.0, 0.5f, floor: -1.0);
+        w.AddCharacter(new Vector3D(8, 1.5, 10), new Def3 { SwimDensity = 800f });
+        w.AddSoftBall(0.4f, new Vector3D(12, 2.0, 10), segments: 3);
+        for (int i = 0; i < 90; i++) { w.Step(Dt); }
+        var good = w.Snapshot();
+        var rng = new Random(11);
+        int refused = 0, accepted = 0;
+        for (int k = 0; k < 400; k++)
+        {
+            var bad = (byte[])good.Clone();
+            // Damage the tail, where the optional sections are written (character abilities, then shallow water), by one to three bytes.
+            int flips = 1 + rng.Next(3);
+            for (int f = 0; f < flips; f++) { bad[bad.Length - 1 - rng.Next(Math.Min(bad.Length, 6000))] ^= (byte)(1 + rng.Next(255)); }
+            var target = World3(384);
+            try { target.Restore(bad); accepted++; target.Step(Dt); }
+            catch (SnapshotFormatException) { refused++; }
+            catch (PhysicsException) { refused++; }
+        }
+
+        // Damage to a float is mostly still a valid state; the point is that nothing but a typed refusal ever comes out, and what is accepted steps.
+        Assert.Equal(400, refused + accepted);
+    }
 }
