@@ -71,8 +71,11 @@ public enum DebugContent
     /// <summary>The surface and depth of every shallow-water grid as plain data (<see cref="DebugGeometry.WaterSurfaces"/>, <see cref="DebugGeometry.WaterHeights"/>, <see cref="DebugGeometry.WaterDepths"/>).</summary>
     ShallowWater = 524288,
 
+    /// <summary>Streamed tiles, level-of-detail and time-scale regions and focus points as plain data (<see cref="DebugGeometry.Tiles"/>, <see cref="DebugGeometry.ScaleRegions"/>, <see cref="DebugGeometry.LodFocusPoints"/>).</summary>
+    WorldScale = 4194304,
+
     /// <summary>Everything.</summary>
-    All = 1048575,
+    All = 8388607,
 }
 
 /// <summary>The kind of a <see cref="DebugShape"/>. The same enum serves 2D and 3D worlds; a 2D world emits the first five.</summary>

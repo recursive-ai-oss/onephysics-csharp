@@ -416,3 +416,5 @@ geometry recipe (kind 15, `collision3d.md`), and a signed distance field is geom
 section (kind byte, int32 sizes x y z, float32 cell size, float32 origin x y z, float32 samples). Voxel geometries are
 never shared by recipe: every voxel shape has its own geometry entry. Readers validate sizes against the bytes left and
 reject non-finite samples with a typed snapshot error.
+
+One optional section in both worlds, "WSCL" (`0x4C435357`, version 1): simulation level-of-detail settings, time-scale regions, per-body time scales and the registry of streamed tiles. Written only while any of it is in use; registered after every other section. Entity kinds `worldscale` (configuration and tile registry) and `body` (per-body scales). Layout in `worldscale.md`.
