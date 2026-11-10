@@ -18,6 +18,7 @@ internal static class RodRuns
         "hair-3d"=>(5,.15,.001),
         _=>(50,.25,.03)
     };
+    internal static readonly string[] Names = ["rope-whip-3d", "rope-2d", "rope-bridge-3d", "hair-3d"];
     internal static int Run(Opts options)
     {
         string scene=options.Get("scene","rope-whip-3d");int threads=int.Parse(options.Get("threads","1"),CultureInfo.InvariantCulture);

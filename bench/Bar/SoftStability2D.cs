@@ -18,7 +18,7 @@ internal static class SoftStability2D
         {
             var m = SoftBodies2DScene.Measure(l.Scene);
             bool ok = m.NaN == 0 && m.Escapes == 0 && m.MaxSpeed <= l.Speed && m.MaxPenetration <= l.Pen && m.AreaError <= l.Area && m.MaxSoftOverlap <= l.Overlap && m.FinalSpeed99 <= l.Final;
-            Console.WriteLine(SoftBodies2DScene.Format(m) + (ok ? " STABLE" : " UNSTABLE"));
+            Console.WriteLine(SoftBodies2DScene.Format(m) + (ok ? " PASS" : " FAIL"));
             if (!ok) { bad++; }
         }
 

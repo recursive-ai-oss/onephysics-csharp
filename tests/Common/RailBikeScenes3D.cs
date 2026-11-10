@@ -22,6 +22,8 @@ internal static class RailBikeScenes3D
         internal Action<int> Script = _ => { };
         // Bicycles listed here start below the self-stable band and are expected to fall; the rest must stay up.
         internal int ExpectedFalls;
+        /// <summary>Bikes started below the self-stable band on purpose: they are expected to fall, so progress is not judged for them (fallen counts them).</summary>
+        internal bool[] BelowBand = Array.Empty<bool>();
 
         /// <summary>Points the scene at a restored or forked copy of its world: handles are looked up again in it.</summary>
         internal void Rebind(PhysicsWorld3D w) { World = w; Rail = w.GetRailVehicles(); Bikes = w.GetBicycles(); }
@@ -78,7 +80,7 @@ internal static class RailBikeScenes3D
                 M["fallen"] = fallenNow;
                 double minProgress = double.MaxValue;
                 for (int i = 0; i < Rail.Length; i++) { minProgress = Math.Min(minProgress, Rail[i].Car.Position.Z - _start[i]); }
-                for (int i = 0; i < Bikes.Length; i++) { { minProgress = Math.Min(minProgress, Bikes[i].Frame.Position.Z - _start[i]); } }
+                for (int i = 0; i < Bikes.Length; i++) { if (i < BelowBand.Length && BelowBand[i]) { continue; } minProgress = Math.Min(minProgress, Bikes[i].Frame.Position.Z - _start[i]); }
                 M["minProgress"] = minProgress;
                 int broken = 0;
                 for (int i = 0; i < Rail.Length; i++) { if (Rail[i].IsCouplerBroken(true)) { broken++; } if (Rail[i].IsCouplerBroken(false)) { broken++; } }
@@ -177,7 +179,7 @@ internal static class RailBikeScenes3D
             bikes.Add(bike);
         }
 
-        var sc = new Scene { Name = "bicycles-3d", World = w, Bikes = bikes.ToArray(), ExpectedFalls = 2 };
+        var sc = new Scene { Name = "bicycles-3d", World = w, Bikes = bikes.ToArray(), ExpectedFalls = 2, BelowBand = Array.ConvertAll(speeds, v => v < 4f) };
         return sc;
     }
 }

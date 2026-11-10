@@ -68,7 +68,28 @@ internal static class RailBikeStability
         foreach (var kv in m) sb.Append($" {kv.Key}={F(kv.Value)}");
         if (extra > 0) sb.Append($" expectedFalls={F(extra)}");
         if (timing) { times.Sort(); sb.Append($" medianMs={F(times[times.Count / 2])} meanMs={F(times.Average())}"); }
+        bool ok = Judge(name, m);
+        sb.Append(ok ? " PASS" : " FAIL");
         Console.WriteLine(sb.ToString());
-        return 0;
+        return ok ? 0 : 1;
+    }
+
+    // The limits of docs/spec/scenes.md (rail and bicycle rows): every counter below is 0 unless listed, speeds and penetration are
+    // maxima, progress is a minimum. A metric the scene does not report is not judged.
+    static bool Judge(string name, SortedDictionary<string, double> m)
+    {
+        bool ok = true;
+        void Max(string k, double limit) { if (m.TryGetValue(k, out var v) && !(v <= limit)) ok = false; }
+        void Min(string k, double limit) { if (!m.TryGetValue(k, out var v) || !(v > limit)) ok = false; }
+        foreach (var k in new[] { "nan", "escapes", "derailments", "brokenCouplers", "flips" }) Max(k, 0);
+        switch (name)
+        {
+            case "rail-3d": Max("fallen", 0); Max("maxSpeed", 25); Max("maxClimbRatio", 0.5); Min("minProgress", 50); break;
+            case "bicycles-3d": if (!m.TryGetValue("fallen", out var fallen) || fallen != 2) ok = false; Max("maxPenetration", 0.1); Max("maxSpeed", 10); Min("minProgress", 10); break;
+            case "rail-2d": Max("maxSpeed", 17.5); Min("minProgress", 50); break;
+            case "bicycles-2d": Max("maxPenetration", 0.05); Max("maxSpeed", 18); Min("minProgress", 10); break;
+        }
+
+        return ok;
     }
 }

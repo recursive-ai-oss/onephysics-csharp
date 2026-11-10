@@ -25,8 +25,9 @@ internal static class FieldStability
             maxOrbitError=Math.Max(maxOrbitError,Math.Abs(Math.Sqrt(p.X*p.X+p.Y*p.Y+p.Z*p.Z)-10));
             for(int b=0;b<fields.Core.Bodies.HighWater;b++){var v=fields.GetBody(fields.Core.HandleOfBody(b)).LinearVelocity;maxFieldSpeed=Math.Max(maxFieldSpeed,Math.Sqrt(v.X*v.X+v.Y*v.Y+v.Z*v.Z));}
         }
-        Console.WriteLine(string.Create(CultureInfo.InvariantCulture,$"buoyancy-2d steps=600 maxSpeed={maxSpeed:R} equilibriumDepthError={maxDraftError:R} restKE={restEnergy:R}"));
-        Console.WriteLine(string.Create(CultureInfo.InvariantCulture,$"fields-3d steps=600 maxSpeed={maxFieldSpeed:R} orbitRadiusError={maxOrbitError:R}"));
-        return double.IsFinite(restEnergy)&&maxSpeed<10&&maxDraftError<0.02&&restEnergy<0.05&&maxOrbitError<0.03&&maxFieldSpeed<20?0:1;
+        bool buoyancyOk=double.IsFinite(restEnergy)&&maxSpeed<10&&maxDraftError<0.02&&restEnergy<0.05,fieldsOk=maxOrbitError<0.03&&maxFieldSpeed<20;
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture,$"buoyancy-2d steps=600 maxSpeed={maxSpeed:R} equilibriumDepthError={maxDraftError:R} restKE={restEnergy:R} {(buoyancyOk?"PASS":"FAIL")}"));
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture,$"fields-3d steps=600 maxSpeed={maxFieldSpeed:R} orbitRadiusError={maxOrbitError:R} {(fieldsOk?"PASS":"FAIL")}"));
+        return buoyancyOk&&fieldsOk?0:1;
     }
 }
