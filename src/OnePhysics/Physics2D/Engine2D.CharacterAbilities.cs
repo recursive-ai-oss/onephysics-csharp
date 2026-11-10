@@ -44,6 +44,10 @@ internal sealed partial class Engine2D : ICharacterExtHost
     /// <summary>Puts a character's kinematic body at a pose with a velocity, without recording and without waking anything (the same placement as a teleport).</summary>
     private void PlaceCharacter(int c, double x, double y, Rot2 rotation, float vx, float vy)
     {
+        // A pose carried by a body that has been flung out of the supported range (a seat, a rope grip or a ledge on a damaged world) would put the character's box outside the broadphase; the character stays where it was.
+        const double Reach = 4000000.0;
+        if (!(Math.Abs(x) <= Reach && Math.Abs(y) <= Reach)) { return; }
+        if (!float.IsFinite(vx + vy)) { vx = 0f; vy = 0f; }
         int b = CharBody[c];
         var bodies = Core.Bodies;
         CancelKinematicDrive(b);

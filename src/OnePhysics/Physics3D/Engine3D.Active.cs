@@ -612,6 +612,8 @@ internal sealed partial class Engine3D
             }
         }
 
+        // Planning on measurements beyond what a figure can reach overflows into gait state that could not be saved; the controller sits this step out (as in 2D).
+        if (!BipedGait.Sane(in inp)) { a.HasLanding = false; return; }
         var o = new BipedOut();
         var ap = new ActiveParams(a.Def.Balance, a.Def.Walker);
         BipedGait.Step(ref a.Gait, in ap, in inp, ref o);

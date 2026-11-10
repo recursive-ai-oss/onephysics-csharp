@@ -101,6 +101,7 @@ public sealed class TetrahedralMesh
 /// </summary>
 public static class Tetrahedralizer
 {
+    private const long MaxCells = 1L << 18;
     private const double MinVolumeRatioGate = 0.3;
     private const int SnapSweeps = 3;
     private static readonly double[] SnapLadder = { 1.0, 0.75, 0.5, 0.25 };
@@ -143,7 +144,8 @@ public static class Tetrahedralizer
         double ox = x0 - a * 1.818, oy = y0 - a * 1.641, oz = z0 - a * 1.777;
         int nx = (int)Math.Ceiling((x1 - ox) / a) + 2, ny = (int)Math.Ceiling((y1 - oy) / a) + 2, nz = (int)Math.Ceiling((z1 - oz) / a) + 2;
         long cellCount = (long)nx * ny * nz;
-        if (cellCount > (1L << 21)) { throw Bad("TargetEdgeLength", a.ToString("R", System.Globalization.CultureInfo.InvariantCulture), "larger: the lattice would need " + cellCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + " cells, the limit is 2^21", nameof(options)); }
+        // An interior cell yields 24 tetrahedra, and a soft-body mesh holds at most 2^22 elements, so a box of more than 2^17 cells that the surface fills could only give a mesh the engine refuses; the limit is twice that because a surface seldom fills its box. Larger lattices cost seconds of work and gigabytes of memory.
+        if (cellCount > MaxCells) { throw Bad("TargetEdgeLength", a.ToString("R", System.Globalization.CultureInfo.InvariantCulture), "larger: the lattice would need " + cellCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + " cells, the limit is 2^18", nameof(options)); }
 
         var tri = indices.ToArray();
         var grid = new TriangleGrid(mx, my, mz, tri, ox, oy, oz, a, nx, ny, nz);
