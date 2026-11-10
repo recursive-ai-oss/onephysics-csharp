@@ -17,7 +17,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="../../testdata/interchange/**" Link="interchange/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="../../testdata/interchange/*" LogicalName="interchange.%(Filename)%(Extension)" />
+    <Compile Include="../Common/InterchangeSamples.cs" LinkBase="Common" />
   </ItemGroup>
 
   <ItemGroup>

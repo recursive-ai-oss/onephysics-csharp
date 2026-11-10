@@ -27,6 +27,10 @@ internal static class Program
         var inputs = new[] { QueryInput2D.Ray(new Vector2D(0, 3), new Vector2F(0, -1), 5) };
         good &= queries.QueryBatch(inputs, new QueryHit2D[1]) == 1;
         Console.WriteLine(good ? "OK trimmed 2D inspection" : "FAIL trimmed 2D inspection");
+        // A Tiled map through the importer: no 3D type may be pulled in by it.
+        var map = RecursiveAI.OnePhysics.Interchange.TiledImporter.Import("{\"orientation\":\"orthogonal\",\"width\":2,\"height\":1,\"tilewidth\":16,\"tileheight\":16,\"layers\":[{\"type\":\"tilelayer\",\"name\":\"collision\",\"width\":2,\"height\":1,\"data\":[1,1]}]}");
+        var mapWorld = new PhysicsWorld2D();
+        Console.WriteLine(map.Apply(mapWorld).TileBodies.Length == 1 ? "OK trimmed 2D map import" : "FAIL trimmed 2D map import");
         // Soft bodies: a balloon and a blob on a floor, a rigid box dropped on them, snapshot and restore into a fresh world.
         var soft = new PhysicsWorld2D(new WorldOptions2D { WorldId = 9 });
         soft.AddBox(new Vector2F(20, 1), new Vector2D(0, -0.5), type: BodyType.Static);

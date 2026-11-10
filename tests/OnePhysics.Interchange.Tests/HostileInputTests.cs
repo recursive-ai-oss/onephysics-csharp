@@ -72,7 +72,7 @@ public sealed class HostileInputTests
     public void Gltf()
     {
         var rng = new Random(6);
-        string sample = GltfTests.TwentyForFuzz();
+        string sample = InterchangeSamples.Twenty();
         int accepted = 0;
         for (int i = 0; i < 800; i++)
         {

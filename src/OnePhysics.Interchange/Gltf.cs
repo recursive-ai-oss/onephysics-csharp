@@ -312,11 +312,11 @@ public static class GltfPhysicsImporter
         private static (Matrix3x3D R, Vector3D S) Decompose(Matrix3x3D l, Js where)
         {
             var c0 = l.Column(0); var c1 = l.Column(1); var c2 = l.Column(2);
-            double s0 = c0.Length(), s1 = c1.Length(), s2 = c2.Length();
-            if (!(s0 > 1e-12 && s1 > 1e-12 && s2 > 1e-12)) { throw where.Fail("the node's scale is zero on an axis; a collider needs a non-degenerate transform."); }
-            var r = Matrix3x3D.FromColumns(c0 * (1 / s0), c1 * (1 / s1), c2 * (1 / s2));
-            if (r.Determinant() < 0) { r = Matrix3x3D.FromColumns(c0 * (-1 / s0), c1 * (1 / s1), c2 * (1 / s2)); }
-            return (r, new Vector3D(s0, s1, s2));
+            double lx = c0.Length(), ly = c1.Length(), lz = c2.Length();
+            if (!(lx > 1e-12 && ly > 1e-12 && lz > 1e-12)) { throw where.Fail("the node's scale is zero on an axis; a collider needs a non-degenerate transform."); }
+            var r = Matrix3x3D.FromColumns(c0 * (1 / lx), c1 * (1 / ly), c2 * (1 / lz));
+            if (r.Determinant() < 0) { r = Matrix3x3D.FromColumns(c0 * (-1 / lx), c1 * (1 / ly), c2 * (1 / lz)); }
+            return (r, new Vector3D(lx, ly, lz));
         }
 
         private static BodyAcc NewBody(int n, Affine w, Js node)
@@ -474,10 +474,10 @@ public static class GltfPhysicsImporter
             var relL = body.RotM.Transposed() * nodeWorld.L;
             var relQ = Io.Normalize(QuaternionD.CreateFromRotationMatrix(relR));
             int mat = 0;
-            if (collider.Get("physicsMaterial") is { } pm)
+            if (collider.Get("physicsMaterial") is { } materialRef)
             {
-                int mi = pm.Int();
-                if ((uint)mi >= (uint)_materials.Count) { throw pm.Fail("no physics material with index " + mi + "."); }
+                int mi = materialRef.Int();
+                if ((uint)mi >= (uint)_materials.Count) { throw materialRef.Fail("no physics material with index " + mi + "."); }
                 mat = 1 + mi;
             }
 

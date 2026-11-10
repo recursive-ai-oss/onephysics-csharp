@@ -680,12 +680,13 @@ public static class TiledImporter
             var body = kind ?? MapBodyKind.Static;
             if (ob.Gid != 0) { warnings.Add(new InterchangeWarning("tile-object", ob.Where, "tile objects carry no collision shape here and are left out.")); continue; }
             var (s, c) = Math64.SinCos(ob.Rot * (Math.PI / 180.0));
-            float rotation = (float)(-ob.Rot * (Math.PI / 180.0));
+            // A rotation of zero stays +0: a negative zero would change the bits (and so the world hash) of an otherwise identical map.
+            float rotation = ob.Rot == 0 ? 0f : (float)(-ob.Rot * (Math.PI / 180.0));
             MapObject2D? made;
             if (ob.HasPoly || ob.HasLine)
             {
                 if (ob.Poly.Count < 2 || (ob.HasPoly && ob.Poly.Count < 3)) { warnings.Add(new InterchangeWarning("degenerate-polygon", ob.Where, "a polygon or polyline with too few points is left out.")); continue; }
-                var pts = ob.Poly.Select(p => new Vector2D(p.X / ppm, -p.Y / ppm)).ToList();
+                var pts = ob.Poly.Select(p => new Vector2D(p.X / ppm, p.Y == 0 ? 0 : -p.Y / ppm)).ToList();
                 if (ob.HasPoly) { made = MapCore.PolygonObject(ob.Name, ob.Type, body, world(x, y), rotation, pts, warnings, ob.Where); }
                 else
                 {

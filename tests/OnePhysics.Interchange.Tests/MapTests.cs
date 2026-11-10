@@ -112,6 +112,14 @@ public sealed class MapTests
     }
 
     [Fact]
+    public void TheSameLevelInThreeFormatsSimulatesIdentically()
+    {
+        ulong a = InterchangeSamples.RunMap(Tmj(), 200);
+        Assert.Equal(a, InterchangeSamples.RunMap(Tmx(), 200));
+        Assert.Equal(a, InterchangeSamples.RunMap(Ldtk(), 200));
+    }
+
+    [Fact]
     public void ImportIsDeterministic()
     {
         string t = Samples.Read("level.tmj");
