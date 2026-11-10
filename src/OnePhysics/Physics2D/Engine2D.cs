@@ -688,6 +688,8 @@ internal sealed partial class Engine2D : ISnapshotSection
         if (kind < (byte)ShapeKind2D.Circle || kind > (byte)ShapeKind2D.Empty) { throw r.Error("invalid 2D shape kind " + kind.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
         int count = r.ReadInt32();
         if (kind == (byte)ShapeKind2D.Empty ? count != 0 : count < 1 || count > Constants2D.MaxPolygonVertices) { throw r.Error("invalid 2D shape point count"); }
+        // Each kind has the point count its constructor gives it; the narrowphase and sweeps index the vertices by kind.
+        if (kind == (byte)ShapeKind2D.Circle ? count != 1 : kind == (byte)ShapeKind2D.Polygon ? count < 3 : kind != (byte)ShapeKind2D.Empty && count != 2) { throw r.Error("invalid 2D shape point count for its kind"); }
         float radius = r.ReadSingle();
         if (!float.IsFinite(radius) || radius < 0f) { throw r.Error("invalid 2D shape radius"); }
         byte flags = r.ReadByte();

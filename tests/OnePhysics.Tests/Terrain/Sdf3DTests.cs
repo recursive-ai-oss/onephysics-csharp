@@ -69,6 +69,14 @@ public sealed class Sdf3DTests
     }
 
     [Fact]
+    public void SamplesBeyondTheLargestDistanceAreRejected()
+    {
+        var big = new float[64]; big[7] = 3e38f;
+        Assert.Equal(SdfBuildError.OutOfRange, Assert.Throws<SdfBuildException>(() => new SdfGrid3D(4, 4, 4, big, 1f)).Error);
+        big[7] = -SdfGrid3D.MaxSampleMagnitude; _ = new SdfGrid3D(4, 4, 4, big, 1f);
+    }
+
+    [Fact]
     public void HostileMeshesAreRejectedWithTypedErrors()
     {
         var (v, i) = BoxMesh(new(-1, -1, -1), new(1, 1, 1));
