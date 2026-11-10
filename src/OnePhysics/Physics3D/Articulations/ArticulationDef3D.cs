@@ -111,8 +111,11 @@ public sealed class ArticulationDef
     /// <summary>World orientation of the root link's frame. Default identity.</summary>
     public QuaternionF Rotation { get; set; } = QuaternionF.Identity;
 
-    /// <summary>Substeps per world step for the articulation's own integration and contact solve, 1 to 64. Default 4.</summary>
-    public int Substeps { get; set; } = 4;
+    /// <summary>
+    /// Substeps per world step for the articulation's own integration and contact solve, 1 to 64, or 0 (default) for automatic: at least 4, and more when the articulation is stiff enough for the explicit part of the step to need them
+    /// (a taut chain under a heavy end: the substep count then grows with the square root of the mass ratio, up to 64).
+    /// </summary>
+    public int Substeps { get; set; }
 
     /// <summary>Iterations of the contact and joint-limit solve in each substep, 0 to 256. Default 8.</summary>
     public int Iterations { get; set; } = 8;

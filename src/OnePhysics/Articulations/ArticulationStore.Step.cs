@@ -101,14 +101,22 @@ internal sealed partial class ArticulationStore
     {
         var m = s.Model;
         int n = m.TotalDof;
-        int substeps = s.Substeps;
-        double h = (double)dt / substeps;
         D3 g = _host.Gravity * s.GravityScale;
         Fit(ref _tau, n); Fit(ref _dAdd, n); Fit(ref _qdd, n); Fit(ref _tauG, n); Fit(ref _zero, n); Fit(ref _col, n);
         if (s.HasTarget) { UpdateTarget(s); }
         m.ForwardKinematics();
         GatherContactPoints(s);
         ReadOnlySpan<double> external = s.AnyExternal ? s.External : ReadOnlySpan<double>.Empty;
+        int substeps = s.Substeps;
+        if (substeps == 0)
+        {
+            // Automatic: at least 4, more when the highest frequency of the step (see StiffnessFrequency) would make the explicit part unstable (h ω ≤ 1).
+            ComputeDrives(s, dt * 0.25, g);
+            double w = m.ForwardDynamics(_tau.AsSpan(0, n), _dAdd.AsSpan(0, n), g, external, _qdd.AsSpan(0, n)) ? m.StiffnessFrequency(g.Length) : 0.0;
+            substeps = (int)Math.Min(64.0, Math.Max(4.0, Math.Ceiling(dt * w)));
+        }
+
+        double h = (double)dt / substeps;
         for (int sub = 0; sub < substeps; sub++)
         {
             // Drift, kick, drift (leapfrog): positions and velocities both land on whole steps, second order in the step.
@@ -116,6 +124,11 @@ internal sealed partial class ArticulationStore
             m.ForwardKinematics();
             ComputeDrives(s, h, g);
             if (!m.ForwardDynamics(_tau.AsSpan(0, n), _dAdd.AsSpan(0, n), g, external, _qdd.AsSpan(0, n))) { Array.Clear(_qdd, 0, n); }
+            // The velocity-dependent terms (Coriolis and centrifugal) are taken at the velocity half way through the kick (explicit midpoint on the velocity), which keeps the step second order.
+            Array.Copy(m.Qd, _col, n);
+            for (int d = 0; d < n; d++) { m.Qd[d] += 0.5 * h * _qdd[d]; }
+            if (!m.ForwardDynamics(_tau.AsSpan(0, n), _dAdd.AsSpan(0, n), g, external, _qdd.AsSpan(0, n))) { Array.Clear(_qdd, 0, n); }
+            Array.Copy(_col, m.Qd, n);
             for (int d = 0; d < n; d++) { m.Qd[d] += h * _qdd[d]; }
             SolveConstraints(s, h);
             ClampVelocities(s);

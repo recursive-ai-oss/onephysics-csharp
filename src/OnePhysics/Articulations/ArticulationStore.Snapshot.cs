@@ -102,7 +102,7 @@ internal sealed partial class ArticulationStore
             if ((flags & ~(FlagFixedBase | FlagPlanar | FlagSelfCollision | FlagGravityComp | FlagTarget | FlagTargetOrientation | FlagExternal)) != 0 || ((flags & FlagPlanar) != 0) != planar) { throw r.Error("invalid articulation flags"); }
             var st = new ArticulationState { Planar = planar, FixedBase = (flags & FlagFixedBase) != 0, SelfCollision = (flags & FlagSelfCollision) != 0, GravityCompensation = (flags & FlagGravityComp) != 0, HasTarget = (flags & FlagTarget) != 0, TargetOrientation = (flags & FlagTargetOrientation) != 0, AnyExternal = (flags & FlagExternal) != 0 };
             st.Substeps = r.ReadInt32(); st.Iterations = r.ReadInt32(); st.GravityScale = Finite(r, 1e6, "gravity scale");
-            if (st.Substeps < 1 || st.Substeps > 64 || st.Iterations < 0 || st.Iterations > 256) { throw r.Error("invalid articulation substeps or iterations"); }
+            if (st.Substeps < 0 || st.Substeps > 64 || st.Iterations < 0 || st.Iterations > 256) { throw r.Error("invalid articulation substeps or iterations"); }
             var specs = new LinkSpec[n];
             var prm = new double[n * 14];
             var tgt = new Q4[n];

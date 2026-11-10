@@ -29,7 +29,7 @@ internal sealed class ArticulationBlueprint
     public bool FixedBase;
     public D3 BasePosition;
     public Q4 BaseRotation = Q4.Identity;
-    public int Substeps = 4, Iterations = 8;
+    public int Substeps, Iterations = 8;
     public bool SelfCollision, GravityCompensation;
     public double GravityScale = 1.0;
 
@@ -45,7 +45,7 @@ internal sealed class ArticulationBlueprint
     public void Validate(bool planar, int maxLinks)
     {
         if (Links.Length < 1 || Links.Length > maxLinks) { throw new ArgumentException("An articulation needs 1 to " + maxLinks.ToString(CultureInfo.InvariantCulture) + " links; the definition has " + Links.Length.ToString(CultureInfo.InvariantCulture) + ".", DefParam); }
-        if (Substeps < 1 || Substeps > 64) { throw new ArgumentOutOfRangeException(DefParam, Substeps, "Substeps must be within 1..64."); }
+        if (Substeps < 0 || Substeps > 64) { throw new ArgumentOutOfRangeException(DefParam, Substeps, "Substeps must be within 0..64."); }
         if (Iterations < 0 || Iterations > 256) { throw new ArgumentOutOfRangeException(DefParam, Iterations, "Iterations must be within 0..256."); }
         if (!Fin(GravityScale, 1e6)) { throw new ArgumentOutOfRangeException(DefParam, GravityScale, "GravityScale must be finite."); }
         if (!Fin(BasePosition.X, 2097152) || !Fin(BasePosition.Y, 2097152) || !Fin(BasePosition.Z, 2097152)) { throw new ArgumentOutOfRangeException(DefParam, BasePosition.X, "The base position must be finite and within ±2^21."); }

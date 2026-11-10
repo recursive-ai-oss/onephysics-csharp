@@ -79,12 +79,12 @@ public readonly struct Articulation : IEquatable<Articulation>
         set { using var replayMutation = _world?.RecordMutation("Articulation.GravityCompensation"); Resolve().GravityCompensation = value; }
     }
 
-    /// <summary>Substeps per world step, 1 to 64.</summary>
-    /// <exception cref="ArgumentOutOfRangeException">Setting a value outside 1..64.</exception>
+    /// <summary>Substeps per world step, 1 to 64, or 0 for automatic (see <see cref="ArticulationDef.Substeps"/>).</summary>
+    /// <exception cref="ArgumentOutOfRangeException">Setting a value outside 0..64.</exception>
     public int Substeps
     {
         get => Resolve().Substeps;
-        set { using var replayMutation = _world?.RecordMutation("Articulation.Substeps"); var s = Resolve(); if (value < 1 || value > 64) { throw new ArgumentOutOfRangeException(nameof(value), value, "Substeps must be within 1..64."); } s.Substeps = value; }
+        set { using var replayMutation = _world?.RecordMutation("Articulation.Substeps"); var s = Resolve(); if (value < 0 || value > 64) { throw new ArgumentOutOfRangeException(nameof(value), value, "Substeps must be within 0..64."); } s.Substeps = value; }
     }
 
     /// <summary>Iterations of the contact and joint-limit solve per substep, 0 to 256.</summary>

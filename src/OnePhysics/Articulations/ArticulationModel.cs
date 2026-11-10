@@ -560,6 +560,35 @@ internal sealed class ArticulationModel
         for (int r = 0; r < 6; r++) { pp[r] += t[r]; }
     }
 
+    // ------------------------------------------------------------------ stability
+
+    private double[]? _stiff, _subtreeMass;
+
+    /// <summary>
+    /// An estimate of the highest frequency (rad/s) the explicit part of the step has to resolve, valid right after <see cref="ForwardDynamics"/>: for every joint the geometric stiffness gravity gives it
+    /// (the weight hanging beyond it times the lever it acts on, K) over the inertia the joint sees with all the other joints free (the articulated-body inertia D from the last pass), ω² = K/D.
+    /// A taut chain with a heavy end is the stiff case: bending one joint is resisted by the whole tension, while only one link's inertia moves.
+    /// </summary>
+    public double StiffnessFrequency(double gravity)
+    {
+        _stiff ??= new double[N]; _subtreeMass ??= new double[N];
+        for (int i = 0; i < N; i++) { _subtreeMass[i] = Mass[i]; _stiff[i] = Mass[i] * Com[i].Length; }
+        for (int i = N - 1; i > 0; i--) { _subtreeMass[Parent[i]] += _subtreeMass[i]; }
+        for (int i = 1; i < N; i++) { _stiff[Parent[i]] += _subtreeMass[i] * PlacePos[i].Length; }
+        double w2 = 0;
+        for (int j = 0; j < N; j++)
+        {
+            int dof = Dof[j];
+            if (dof == 0 || Kind[j] == JointKind.Free || Kind[j] == JointKind.FreePlanar) { continue; }
+            double dinv = 0;
+            for (int a = 0; a < dof; a++) { dinv = Math.Max(dinv, _dinv[36 * j + a * dof + a]); }
+            double v = gravity * _stiff[j] * dinv;
+            if (v > w2) { w2 = v; }
+        }
+
+        return Math.Sqrt(w2);
+    }
+
     // ------------------------------------------------------------------ Jacobians
 
     /// <summary>

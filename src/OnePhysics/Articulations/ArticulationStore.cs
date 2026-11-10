@@ -64,7 +64,7 @@ internal sealed class ArticulationState
     public int[] Body = Array.Empty<int>(), BodyGen = Array.Empty<int>();
     public bool Planar;
     public bool FixedBase;
-    public int Substeps = 4, Iterations = 8;
+    public int Substeps, Iterations = 8;
     public bool SelfCollision, GravityCompensation;
     public double GravityScale = 1.0;
     // Task-space target (damped least squares on joint targets).
