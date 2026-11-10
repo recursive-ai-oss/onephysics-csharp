@@ -171,7 +171,8 @@ internal sealed partial class FieldStore(IFieldHost host) : ISnapshotSection
                 if (d.Kind == FieldKind.Area) a=d.Direction;
                 else if (d.Kind == FieldKind.CustomGravity)
                 {
-                    if (!_callbacks.TryGetValue(d.CallbackId,out var callback)) throw new InvalidOperationException("A CustomGravity field has no host callback bound to its CallbackId.");
+                    // A restored or forked world holds the field but not the host delegate; until the host rebinds it the field applies nothing, counted like any other dropped application.
+                    if (!_callbacks.TryGetValue(d.CallbackId,out var callback)) {Skipped++;continue;}
                     a=callback(Position(b),core.StepCount);
                     // A callback result that is not finite or is beyond the field limit is dropped, as in Apply.
                     if(!Usable(a)){Skipped++;continue;}

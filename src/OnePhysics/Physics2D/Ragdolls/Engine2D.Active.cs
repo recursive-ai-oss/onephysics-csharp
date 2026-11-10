@@ -151,6 +151,9 @@ internal sealed partial class Engine2D
     private bool GroundRay(ActiveState2D a, int r, double x, double yTop, float length, out double groundY, out float slope)
     {
         groundY = 0; slope = 0f;
+        // A figure whose limbs reach beyond the world's coordinate range has no ground to find; a query there would be refused.
+        double limit = BoxLimits.MaxCoordinate;
+        if (!(Math.Abs(x) <= limit) || !(Math.Abs(yTop) <= limit) || !(length > 0f) || !float.IsFinite(length)) { return false; }
         a.GroundFilter ??= sh => RagdollOfBody(sh.Body.RawHandle.Index) != r;
         var filter = new QueryFilter2D { Predicate = a.GroundFilter };
         if (!World!.Raycast(new Vector2D(x, yTop), new Vector2F(0f, -1f), out var hit, length, in filter)) { return false; }
@@ -385,7 +388,7 @@ internal sealed partial class Engine2D
         ref var d = ref Joints[c];
         d.Flags |= JointData2D.FlagMotor;
         d.MotorSpeed = speed;
-        d.MaxMotor = p.MaxTorque * a.Def.TorqueScale * strength * torqueScale;
+        d.MaxMotor = MotorLimit(p.MaxTorque * a.Def.TorqueScale * strength * torqueScale);
     }
 
     // A planted ankle as a torque source: the motor is told to turn the joint at a speed it will not reach, with the torque as its limit, so the foot receives exactly that torque (up to the joint's limit).
@@ -395,8 +398,11 @@ internal sealed partial class Engine2D
         ref var d = ref Joints[c];
         d.Flags |= JointData2D.FlagMotor;
         d.MotorSpeed = torque >= 0f ? 40f : -40f;
-        d.MaxMotor = (torque >= 0f ? torque : -torque) * strength;
+        d.MaxMotor = MotorLimit((torque >= 0f ? torque : -torque) * strength);
     }
+
+    // A torque limit built from products of accepted finite values can overflow; a joint record with an infinite limit would not restore, and no real motor is stronger than this.
+    private static float MotorLimit(float v) => v >= 1e30f ? 1e30f : v > 0f ? v : 0f;
 
     private void ReleaseJoint(RagdollState rg, int part)
     {
@@ -474,6 +480,7 @@ internal sealed partial class Engine2D
             }
         }
 
+        if (!BipedGait.Sane(in inp)) { a.HasLanding = false; return; }
         var o = new BipedOut();
         var ap = new ActiveParams(a.Def.Balance, a.Def.Walker);
         BipedGait.Step(ref a.Gait, in ap, in inp, ref o);

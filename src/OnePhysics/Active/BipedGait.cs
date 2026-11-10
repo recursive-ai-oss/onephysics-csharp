@@ -120,6 +120,24 @@ internal static class BipedGait
         return Clamp(t, -1f, 1f);
     }
 
+    /// <summary>
+    /// Whether every measurement is finite and within a range a figure can really reach (1e7 m or m/s). A world whose parts have been thrown beyond that has no gait to plan; the engines skip the controller for that step,
+    /// because planning on such numbers overflows into values the gait state could not be saved with.
+    /// </summary>
+    internal static bool Sane(in BipedIn i)
+    {
+        return Ok(i.CmdF) && Ok(i.CmdL) && Ok(i.ComF) && Ok(i.ComL) && Ok(i.ComU) && Ok(i.VelF) && Ok(i.VelL) && Ok(i.PelvisRho) && Ok(i.PelvisPhi) && Ok(i.YawError) && SaneLeg(in i.Left) && SaneLeg(in i.Right)
+            && Ok(i.Geom.L1) && Ok(i.Geom.L2) && Ok(i.Geom.AnkleHeight) && Ok(i.Geom.FootBack) && Ok(i.Geom.FootFront) && Ok(i.Geom.FootHalfWidth) && Ok(i.Geom.Mass) && Ok(i.Gravity) && Ok(i.TorsoLean);
+    }
+
+    private static bool SaneLeg(in LegSense l)
+    {
+        return Ok(l.HipF) && Ok(l.HipL) && Ok(l.HipU) && Ok(l.AnkleF) && Ok(l.AnkleL) && Ok(l.AnkleU) && Ok(l.GroundU) && Ok(l.SlopeRho) && Ok(l.SlopePhi) && Ok(l.ShinRho) && Ok(l.ShinPhi) && Ok(l.ThighRho) && Ok(l.ThighPhi)
+            && Ok(l.FootRho) && Ok(l.FootPhi) && Ok(l.PlaceDU) && Ok(l.PlaceSlopeRho);
+    }
+
+    private static bool Ok(float v) => Math.Abs(v) <= 1e7f;   // NaN fails
+
     internal static float Clamp(float v, float lo, float hi) => v < lo ? lo : v > hi ? hi : v;
 
     private static float Min(float a, float b) => a < b ? a : b;

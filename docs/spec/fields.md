@@ -89,7 +89,8 @@ acceleration, force or torque is not finite, or has a component beyond ±1e12, i
 changes: no force, no wake. The step carries on with the other bodies and fields, and
 `StepCounters.FieldApplicationsSkipped` counts the drops of the last step. This covers a gravity callback that
 returns NaN, infinity or a huge vector, and a valid definition whose terms multiply past the limit (for
-example strength 1e12 over a softening of 1e-30 at the centre). A field step therefore never throws from
+example strength 1e12 over a softening of 1e-30 at the centre). A custom gravity field whose callback id has no delegate bound (a fork, or a snapshot restored into a fresh
+world) is dropped the same way until the host binds one. A field step therefore never throws from
 inside the step.
 
 ## Contact effectors

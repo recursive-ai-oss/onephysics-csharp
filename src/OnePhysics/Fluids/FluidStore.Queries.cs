@@ -86,7 +86,12 @@ internal sealed partial class FluidStore
         }
     }
 
-    private long QCoord(double v, double min) => (long)Math.Floor((v - min) / _qCellSize);
+    // Cell coordinates are limited to +-2^50 so that a point far outside the world (a body thrown out of range) still gives a coordinate a loop can count past: at the end of the long range "i <= last; i++" never ends.
+    private long QCoord(double v, double min)
+    {
+        double c = Math.Floor((v - min) / _qCellSize);
+        return c >= 1125899906842624.0 ? 1125899906842624L : c <= -1125899906842624.0 ? -1125899906842624L : (long)c;   // NaN: (long)NaN is 0
+    }
 
     private void EnsureQueryGrid()
     {
@@ -132,7 +137,7 @@ internal sealed partial class FluidStore
         long x0 = QCoord(cx - radius, _qMinX), x1 = QCoord(cx + radius, _qMinX);
         long y0 = QCoord(cy - radius, _qMinY), y1 = QCoord(cy + radius, _qMinY);
         long z0 = Dim == 3 ? QCoord(cz - radius, _qMinZ) : 0, z1 = Dim == 3 ? QCoord(cz + radius, _qMinZ) : 0;
-        if (x1 - x0 > 4096 || y1 - y0 > 4096 || z1 - z0 > 4096)
+        if (TooManyCells(x0, x1, y0, y1, z0, z1, 1 << 20))
         {
             // A query box larger than the grid's useful range: scan every particle in storage order.
             return ScanAll(cx, cy, cz, radius, fluid, results, ref total);
@@ -271,6 +276,11 @@ internal sealed partial class FluidStore
         return true;
     }
 
+    // Whether walking the cell box would take more than the given number of cells. Counted in double: a box reaching the ends of the long range (a huge radius or a point far outside the grid) would wrap
+    // a long difference and send the walk over billions of cells, and a box that is only long on one axis is as slow as one long on all three. Scanning every particle instead gives the same answer.
+    private static bool TooManyCells(long x0, long x1, long y0, long y1, long z0, long z1, double limit)
+        => !(((double)x1 - x0 + 1.0) * ((double)y1 - y0 + 1.0) * ((double)z1 - z0 + 1.0) <= limit);
+
     /// <summary>Whether any particle of the fluid lies within the distance of the point.</summary>
     private bool AnyWithin(double x, double y, double z, double r, int fluid)
     {
@@ -278,7 +288,7 @@ internal sealed partial class FluidStore
         long x0 = QCoord(x - r, _qMinX), x1 = QCoord(x + r, _qMinX), y0 = QCoord(y - r, _qMinY), y1 = QCoord(y + r, _qMinY);
         long z0 = Dim == 3 ? QCoord(z - r, _qMinZ) : 0, z1 = Dim == 3 ? QCoord(z + r, _qMinZ) : 0;
         double r2 = r * r;
-        if (x1 - x0 > 64 || y1 - y0 > 64 || z1 - z0 > 64)
+        if (TooManyCells(x0, x1, y0, y1, z0, z1, 1 << 16))
         {
             for (int p = 0; p < Count; p++)
             {

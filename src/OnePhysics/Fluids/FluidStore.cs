@@ -443,7 +443,10 @@ internal sealed partial class FluidStore : ISnapshotSection
             em.Phase += d.Speed * dt;
             while (em.Phase >= s)
             {
+                float before = em.Phase;
                 em.Phase -= s;
+                // A flow so long that one spacing is below the float's resolution would never count down: drop what is pending rather than emit one layer until the budget is full.
+                if (em.Phase == before) { em.Phase = 0f; break; }
                 if (!EmitLayer(em, em.Phase)) { em.Phase = Math.Min(em.Phase, s); break; }
             }
         }

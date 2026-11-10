@@ -182,7 +182,7 @@ internal sealed partial class Engine2D
                 ref var d = ref Joints[c];
                 d.Flags |= JointData2D.FlagMotor;
                 d.MotorSpeed = speed;
-                d.MaxMotor = p.MaxTorque * s.Strength;
+                d.MaxMotor = MotorLimit(p.MaxTorque * s.Strength);
             }
         }
     }

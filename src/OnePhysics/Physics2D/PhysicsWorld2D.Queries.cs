@@ -23,6 +23,13 @@ public sealed partial class PhysicsWorld2D
         }
     }
 
+    /// <summary>True when <see cref="CheckCast"/> would accept the direction (finite, with a length that neither underflows nor overflows); internal casts skip an unusable direction instead of throwing from inside a step.</summary>
+    internal static bool UsableCastDirection(Vector2F direction)
+    {
+        float len = float.Sqrt(direction.X * direction.X + direction.Y * direction.Y);
+        return float.IsFinite(direction.X) && float.IsFinite(direction.Y) && len > 0f && float.IsFinite(len);
+    }
+
     private static void CheckAngle(float angleRadians)
     {
         if (!float.IsFinite(angleRadians)) { throw new ArgumentOutOfRangeException(nameof(angleRadians), angleRadians, "Angle must be finite."); }

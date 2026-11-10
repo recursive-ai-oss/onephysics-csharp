@@ -36,6 +36,20 @@ public sealed class FieldStepRobustnessTests
         w.Step(1f/60);plain.Step(1f/60);
         Assert.Equal(1,w.Counters.FieldApplicationsSkipped);Assert.Equal(pb.LinearVelocity.Y,b.LinearVelocity.Y);Assert.NotEqual(pb.LinearVelocity.Y,a.LinearVelocity.Y);
     }
+    // A world restored or forked without the host's delegate holds the field but cannot evaluate it: the field applies nothing and is counted, and the step goes on.
+    [Fact]
+    public void UnboundGravityCallbackIsSkippedAndCounted()
+    {
+        var w=new P2.PhysicsWorld2D(new(){SleepEnabled=false});w.AddCircle(.5f,at:new(0,10));
+        w.AddField(new(){Kind=FieldKind.CustomGravity,CallbackId=3});w.BindGravityField(3,(p,t)=>new(0,-5,0));
+        var fresh=new P2.PhysicsWorld2D(new(){SleepEnabled=false});fresh.Restore(w.Snapshot());
+        fresh.Step(1f/60);
+        Assert.Equal(1,fresh.Counters.FieldApplicationsSkipped);
+        var fork=w.Fork();fork.Step(1f/60);Assert.Equal(1,fork.Counters.FieldApplicationsSkipped);
+        var w3=new P3.PhysicsWorld3D(new(){SleepEnabled=false});w3.AddSphere(.5f,at:new(0,10,0));
+        w3.AddField(new(){Kind=FieldKind.CustomGravity,CallbackId=3});
+        w3.Step(1f/60);Assert.Equal(1,w3.Counters.FieldApplicationsSkipped);
+    }
     // Strength 1e12 over a softening of 1e-30 is a valid definition whose result at the centre overflows.
     [Fact]
     public void OverflowingFalloffAtTheCentreIsSkipped()
