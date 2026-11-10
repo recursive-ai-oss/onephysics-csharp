@@ -22,9 +22,21 @@ internal sealed partial class WaterStore
 
     private const int SectionVersion = 1;
 
+    /// <summary>Written while some grid holds water displaced by soft bodies, cloth or rods: each grid then ends with those per-cell volumes.</summary>
+    private const int HoldSectionVersion = 2;
+
+    private bool AnyHold()
+    {
+        for (int i = 0; i < Handles.HighWater; i++) { if (Handles.IsLive(i) && Grids[i]!.HoldCount > 0) { return true; } }
+        return false;
+    }
+
     void ISnapshotSection.Write(StateWriter w)
     {
-        w.NamedInt32(SectionVersion);
+        // For the size bound, a grid may hold displaced water as soon as a soft body or a rod floats in it, by stepping alone.
+        bool bound = w.IsBound;
+        bool hold = bound ? _host.HasSoftBodies || (_host.WaterRods != null && _host.WaterRods.Count != 0) : AnyHold();
+        w.NamedInt32(hold ? HoldSectionVersion : SectionVersion);
         w.DescribeTable("shallow water");
         Handles.Write(w);
         for (int i = 0; i < Handles.HighWater; i++)
@@ -52,6 +64,20 @@ internal sealed partial class WaterStore
                 w.NamedInt32(rec.Slot); w.NamedInt32(rec.Generation); w.NamedSingle(rec.Volume); w.NamedSingle(rec.Submerged);
                 w.NamedSingle(rec.X0); w.NamedSingle(rec.X1); w.NamedSingle(rec.Z0); w.NamedSingle(rec.Z1);
             }
+
+            if (hold)
+            {
+                if (bound)
+                {
+                    w.NamedInt32(0);
+                    w.AddBound(8L * Math.Min(g.Cells, Math.Max(_host.DeformableParticleCount, g.HoldCount)));
+                }
+                else
+                {
+                    w.NamedInt32(g.HoldCount);
+                    for (int k = 0; k < g.HoldCount; k++) { w.NamedInt32(g.HoldCells[k]); w.NamedSingle(g.HoldVolume[k]); }
+                }
+            }
         }
     }
 
@@ -60,7 +86,7 @@ internal sealed partial class WaterStore
     void ISnapshotSection.Read(StateReader r)
     {
         int version = r.ReadInt32();
-        if (version != SectionVersion) { throw r.Error("unsupported shallow water section version " + version.ToString(CultureInfo.InvariantCulture)); }
+        if (version != SectionVersion && version != HoldSectionVersion) { throw r.Error("unsupported shallow water section version " + version.ToString(CultureInfo.InvariantCulture)); }
         var handles = HandleTable.Read(r, "shallow water");
         var grids = new WaterGrid?[Math.Max(handles.HighWater, 2)];
         bool planar = _host.Planar;
@@ -116,6 +142,20 @@ internal sealed partial class WaterStore
             }
 
             g.RecordCount = nr;
+            if (version == HoldSectionVersion)
+            {
+                int nh = r.ReadCount(8, "shallow water displaced volumes");
+                if (nh > g.H.Length) { throw r.Error("more displaced-volume cells than the grid has"); }
+                g.HoldCells = new int[nh]; g.HoldVolume = new float[nh]; g.HoldCount = nh;
+                int lastCell = -1;
+                for (int k = 0; k < nh; k++)
+                {
+                    int cell = r.ReadInt32(); float vol = r.ReadSingle();
+                    if (cell <= lastCell || cell >= g.H.Length || !(vol > 0f && vol <= 1e12f)) { throw r.Error("invalid displaced volume in a shallow water cell"); }
+                    lastCell = cell; g.HoldCells[k] = cell; g.HoldVolume[k] = vol;
+                }
+            }
+
             g.Derive();
             grids[i] = g;
         }

@@ -432,6 +432,12 @@ public interface ISnapshotSection
     /// <summary>For an optional section: whether it holds state now and so must be written. Ignored for a required section.</summary>
     bool IsPresent => true;
 
+    /// <summary>
+    /// For an optional section, when the world asks for the most bytes a snapshot can need while its storage does not grow (<c>GetSnapshotSizeBound</c>): whether the section may be written by then.
+    /// A section whose state can appear by stepping alone (without a call from the host) answers true when it could. Default: the same as <see cref="IsPresent"/>.
+    /// </summary>
+    bool IsPresentInBound => IsPresent;
+
     /// <summary>For an optional section: returns it to the empty state when a restored snapshot has no such section.</summary>
     void Reset() { }
 }

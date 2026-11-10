@@ -72,6 +72,11 @@ internal sealed partial class WaterGrid
     public WaterBodyRecord[] Records = new WaterBodyRecord[8];
     public int RecordCount;
 
+    // The volume that soft bodies, cloth and rods currently displace, per cell (cell index ascending; state): what the last step added for them, taken out again when it puts the new amounts in.
+    public int[] HoldCells = Array.Empty<int>();
+    public float[] HoldVolume = Array.Empty<float>();
+    public int HoldCount;
+
     /// <summary>Water pushed below zero by a coupling edit or a step that was too long for the substep cap; a measure of lost volume in cubic metres.</summary>
     public double LostVolume;
 
@@ -120,6 +125,7 @@ internal sealed partial class WaterGrid
             Cfl = Cfl, MaxSubsteps = MaxSubsteps, LostVolume = LostVolume, RecordCount = RecordCount,
             Sources = (WaterSourceSpec[])Sources.Clone(), Bed = (float[])Bed.Clone(), H = (float[])H.Clone(), Hu = (float[])Hu.Clone(), Hv = (float[])Hv.Clone(),
             Records = (WaterBodyRecord[])Records.Clone(),
+            HoldCells = (int[])HoldCells.Clone(), HoldVolume = (float[])HoldVolume.Clone(), HoldCount = HoldCount,
         };
         Array.Copy(Edges, c.Edges, 4); Array.Copy(EdgeLevel, c.EdgeLevel, 4); Array.Copy(EdgeSpeed, c.EdgeSpeed, 4);
         c.Derive();
@@ -252,6 +258,9 @@ internal sealed partial class WaterGrid
         double t = total + lost;
         return t >= 0.0 && t < 1e30 ? t : double.IsNaN(t) || t < 0.0 ? total : 1e30;
     }
+
+    /// <summary>Adds (or removes, if negative) a volume of water to one cell; removal never takes the cell below zero depth.</summary>
+    public void AddToCell(int cell, float volume) => Apply(cell, volume / CellArea);
 
     private void Apply(int c, float dh)
     {

@@ -365,3 +365,7 @@ An active layer turns a ragdoll into a character that follows an animation pose,
 ## Shallow water
 
 `world.AddShallowWater(minX, maxX, level, cellSize, floor)`, `CreateShallowWater(ShallowWaterDef)`, `ShallowWater` handles, `QueryWater`, `RaycastWater`, `WaterEvents` and `BodyWaterChanged`: a row of cells along x (the water has unit depth, so volumes are areas) with the same stages, coupling and "SWTR" section as 3D; the bodies' buoyancy and drag come from the planar buoyancy routine with the surface at the local tangent. Details in `water.md`.
+
+## Swimming and deformables in water
+
+The 2D world has the same swimming model as 3D (`world3d.md` → Swimming) with the character's capsule as a stadium (areas, circular segments) and the water being a shallow-water channel, a buoyancy field or a 2D particle fluid; soft bodies, strips and rods float in shallow water as in `water.md`. Deformable queries and contact events are as in `queries.md` with edges in place of triangles.

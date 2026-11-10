@@ -163,7 +163,7 @@ internal sealed partial class Engine2D : ICharacterExtHost
     {
         bool roped = st.Mode == CharacterMode.Roped;
         int rod = st.Rod, gen = st.RodGen;
-        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, LocalRotation = QuaternionF.Identity };
+        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, NoSwim = st.NoSwim, SwimDensity = st.SwimDensity, SwimDamping = st.SwimDamping, Water = st.Water, Immersion = st.Immersion, LocalRotation = QuaternionF.Identity };
         _charExt!.Set(c, in keep);
         MarkInAir(c);
         if (roped && Rods.Alive(rod, gen)) { RefreshGripMasses(rod); }
@@ -179,7 +179,7 @@ internal sealed partial class Engine2D : ICharacterExtHost
         if (st.Mode == CharacterMode.Roped) { ReleaseCharacter(c); }
         var next = new CharacterExtState
         {
-            CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, Mode = CharacterMode.Seated, Body = seatBody, BodyGen = Core.Bodies.Handles.GenerationOf(seatBody),
+            CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, NoSwim = st.NoSwim, SwimDensity = st.SwimDensity, SwimDamping = st.SwimDamping, Water = st.Water, Immersion = st.Immersion, Mode = CharacterMode.Seated, Body = seatBody, BodyGen = Core.Bodies.Handles.GenerationOf(seatBody),
             Local = new Vector3F(local.X, local.Y, 0f), LocalRotation = PlanarQuaternion(angleCos, angleSin),
         };
         _charExt!.Set(c, in next);
@@ -198,7 +198,7 @@ internal sealed partial class Engine2D : ICharacterExtHost
         int rod = st.Rod, gen = st.RodGen;
         bool roped = st.Mode == CharacterMode.Roped;
         if (st.Mode == CharacterMode.Seated || st.Mode == CharacterMode.Roped) { vel = new Vector2F(CharVx[c], CharVy[c]); }
-        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, LocalRotation = QuaternionF.Identity };
+        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, NoSwim = st.NoSwim, SwimDensity = st.SwimDensity, SwimDamping = st.SwimDamping, Water = st.Water, Immersion = st.Immersion, LocalRotation = QuaternionF.Identity };
         ext.Set(c, in keep);
         MarkInAir(c);
         if (roped && Rods.Alive(rod, gen)) { RefreshGripMasses(rod); }
@@ -219,7 +219,7 @@ internal sealed partial class Engine2D : ICharacterExtHost
             x += (double)o.X; y += (double)o.Y;
         }
 
-        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, LocalRotation = QuaternionF.Identity };
+        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, NoSwim = st.NoSwim, SwimDensity = st.SwimDensity, SwimDamping = st.SwimDamping, Water = st.Water, Immersion = st.Immersion, LocalRotation = QuaternionF.Identity };
         _charExt!.Set(c, in keep);
         MarkInAir(c);
         PlaceCharacter(c, x, y, Rot2.Identity, vel.X, vel.Y);
@@ -286,7 +286,7 @@ internal sealed partial class Engine2D : ICharacterExtHost
         ref var cur = ref Extensions.At(c);
         int prevRod = cur.Mode == CharacterMode.Roped ? cur.Rod : -1, prevGen = cur.RodGen;
         int i = Math.Min((int)position, n - 2);
-        var st = new CharacterExtState { CanClimb = cur.CanClimb, ExactCarry = cur.ExactCarry, Mode = CharacterMode.Roped, Rod = rod, RodGen = generation, Particle = i, Fraction = position - i, LocalRotation = QuaternionF.Identity };
+        var st = new CharacterExtState { CanClimb = cur.CanClimb, ExactCarry = cur.ExactCarry, NoSwim = cur.NoSwim, SwimDensity = cur.SwimDensity, SwimDamping = cur.SwimDamping, Water = cur.Water, Immersion = cur.Immersion, Mode = CharacterMode.Roped, Rod = rod, RodGen = generation, Particle = i, Fraction = position - i, LocalRotation = QuaternionF.Identity };
         _charExt!.Set(c, in st);
         RefreshGripMasses(rod);
         if (prevRod >= 0 && prevRod != rod && Rods.Alive(prevRod, prevGen)) { RefreshGripMasses(prevRod); }
@@ -415,7 +415,7 @@ internal sealed partial class Engine2D : ICharacterExtHost
         var nl = q.InverseRotate(new Vec2(nx, ny));
         var st = new CharacterExtState
         {
-            CanClimb = cur.CanClimb, ExactCarry = cur.ExactCarry, Mode = mode, Body = body, BodyGen = Core.Bodies.Handles.GenerationOf(body),
+            CanClimb = cur.CanClimb, ExactCarry = cur.ExactCarry, NoSwim = cur.NoSwim, SwimDensity = cur.SwimDensity, SwimDamping = cur.SwimDamping, Water = cur.Water, Immersion = cur.Immersion, Mode = mode, Body = body, BodyGen = Core.Bodies.Handles.GenerationOf(body),
             Local = new Vector3F(local.X, local.Y, 0f), LocalRotation = QuaternionF.Identity, Normal = new Vector3F(nl.X, nl.Y, 0f), Along = new Vector3F(0f, 1f, 0f),
         };
         if (cur.Mode == CharacterMode.Roped) { ReleaseCharacter(c); }
@@ -483,7 +483,7 @@ internal sealed partial class Engine2D : ICharacterExtHost
         double tx = ledge.Tx + (double)(side * inward), ty = ledge.Ty + (double)lift;
         if (!CapsuleFitsAt(c, tx, ty)) { return false; }
         ref var st = ref Extensions.At(c);
-        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, LocalRotation = QuaternionF.Identity };
+        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, NoSwim = st.NoSwim, SwimDensity = st.SwimDensity, SwimDamping = st.SwimDamping, Water = st.Water, Immersion = st.Immersion, LocalRotation = QuaternionF.Identity };
         _charExt!.Set(c, in keep);
         MarkInAir(c);
         PlaceCharacter(c, tx, ty, Rot2.Identity, 0f, 0f);
@@ -615,7 +615,7 @@ internal sealed partial class Engine2D : ICharacterExtHost
         if (st.Mode == CharacterMode.Free && !st.Riding) { return; }
         int rod = st.Rod, gen = st.RodGen;
         bool roped = st.Mode == CharacterMode.Roped;
-        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, LocalRotation = QuaternionF.Identity };
+        var keep = new CharacterExtState { CanClimb = st.CanClimb, ExactCarry = st.ExactCarry, NoSwim = st.NoSwim, SwimDensity = st.SwimDensity, SwimDamping = st.SwimDamping, Water = st.Water, Immersion = st.Immersion, LocalRotation = QuaternionF.Identity };
         _charExt.Set(c, in keep);
         if (roped && Rods.Alive(rod, gen)) { RefreshGripMasses(rod); }
         CharVx[c] = 0f; CharVy[c] = 0f;

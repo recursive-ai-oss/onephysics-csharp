@@ -182,6 +182,17 @@ public struct CharacterDef
     /// </summary>
     public bool ExactPlatformCarry { get; set; }
 
+    /// <summary>Whether water changes how the character moves (wading slows it, swimming replaces walking: see <see cref="CharacterWaterState"/>). Default true.</summary>
+    public bool CanSwim { readonly get => !_noSwim; set => _noSwim = !value; }
+
+    private bool _noSwim;
+
+    /// <summary>Density the character swims with, kg/m³ (in a 2D world, kg/m² of side-view area), within [0, 100000]; 0 (the default) means 900, a person's average, for a virtual character and its real density (<see cref="Mass"/> over the capsule's volume) for a rigid one. Lighter than the water it floats; heavier it sinks. For a virtual character it is independent of <see cref="Mass"/>, which is what it weighs on a body it stands on.</summary>
+    public float SwimDensity { get; set; }
+
+    /// <summary>The rate, per second, at which a swimmer's velocity relaxes towards the water's velocity plus its own swim intent, within [0, 1000]; 0 (the default) means 4. Also sets the terminal sink or rise speed: buoyancy minus weight, as an acceleration, over this rate.</summary>
+    public float SwimDamping { get; set; }
+
     /// <summary>A person: 1.8 m tall, 0.3 m radius, 45 degree slope limit, 0.3 m step, 70 kg.</summary>
     public static CharacterDef Humanoid => new();
 
@@ -203,6 +214,8 @@ public struct CharacterDef
         if (!(Skin >= 0.0001f && Skin <= 0.5f * Radius)) { throw new ArgumentOutOfRangeException(nameof(Skin), Skin, "Skin must be within [0.0001, Radius / 2]."); }
         if (!(PushStrength >= 0f && PushStrength <= 100f)) { throw new ArgumentOutOfRangeException(nameof(PushStrength), PushStrength, "PushStrength must be within [0, 100]."); }
         if (!(Mass > 0f && Mass <= 1e6f)) { throw new ArgumentOutOfRangeException(nameof(Mass), Mass, "Mass must be within (0, 1e6]."); }
+        if (!(SwimDensity >= 0f && SwimDensity <= 1e5f)) { throw new ArgumentOutOfRangeException(nameof(SwimDensity), SwimDensity, "SwimDensity must be within [0, 100000]."); }
+        if (!(SwimDamping >= 0f && SwimDamping <= 1000f)) { throw new ArgumentOutOfRangeException(nameof(SwimDamping), SwimDamping, "SwimDamping must be within [0, 1000]."); }
         if (!(MaxPushForce >= 0f && MaxPushForce <= 1e9f)) { throw new ArgumentOutOfRangeException(nameof(MaxPushForce), MaxPushForce, "MaxPushForce must be within [0, 1e9]."); }
         float l2 = Up.LengthSquared();
         if (!float.IsFinite(l2) || !(l2 > 1e-12f)) { throw new ArgumentOutOfRangeException(nameof(Up), Up, "Up must be a finite, non-zero vector."); }

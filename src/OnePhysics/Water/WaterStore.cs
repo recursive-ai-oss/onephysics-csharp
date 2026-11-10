@@ -29,6 +29,24 @@ internal interface IWaterHost
     /// </summary>
     float ApplyWater(int body, Vector3F normal, double offset, Vector3F flow, WaterGrid water, float dt);
 
+    /// <summary>The rods of the world, if any were created (they float and push water like any other particles).</summary>
+    Rods.RodStore? WaterRods { get; }
+
+    /// <summary>Whether the world holds soft bodies or cloth.</summary>
+    bool HasSoftBodies { get; }
+
+    /// <summary>The particles of every soft body, cloth and rod: at most as many cells can hold displaced water.</summary>
+    long DeformableParticleCount { get; }
+
+    /// <summary>
+    /// Gives the soft bodies and cloth the buoyancy and drag of one grid as changes of particle velocity, and records what each submerged particle displaces with <see cref="WaterStore.Deposit"/>,
+    /// in body slot then particle order.
+    /// </summary>
+    void ApplyWaterToSoftBodies(WaterStore store, WaterGrid water, float dt);
+
+    /// <summary>The volume of a body under the surface plane (like <see cref="ApplyWater"/>, but nothing is added to the body's force or torque): what a kinematic body displaces.</summary>
+    float SubmergedVolume(int body, Vector3F normal, double offset, Vector3F flow, WaterGrid water, float dt);
+
     /// <summary>The height where a ray cast straight down from <paramref name="fromY"/> first meets a static shape, within <paramref name="maxDistance"/>.</summary>
     bool CastDownStatic(double x, double z, double fromY, double maxDistance, out double hitY);
 
@@ -216,6 +234,20 @@ internal sealed partial class WaterStore : ISnapshotSection
 
         slot = -1; grid = null; fx = fz = 0f;
         return false;
+    }
+
+    /// <summary>Offers every grid (slot order) that holds the point with water over it to a character's probe: the surface there, the grid's density and the water's velocity.</summary>
+    public void Probe(double x, double z, double bottom, float height, ref Characters.WaterProbe probe)
+    {
+        for (int i = 0; i < Handles.HighWater; i++)
+        {
+            if (!Handles.IsLive(i)) { continue; }
+            var g = Grids[i]!;
+            if (!g.Locate(x, z, out float fx, out float fz)) { continue; }
+            g.Sample(fx, fz, out float s, out float depth, out float u, out float v);
+            if (!(depth > WaterGrid.DryDepth)) { continue; }
+            probe.Offer(CharacterWaterSource.ShallowWater, g.BaseY + s - bottom, g.Density, new Vector3F(u, 0f, g.Planar ? 0f : v), height);
+        }
     }
 
     /// <summary>Surface, depth and velocity at a point of one grid, in world terms.</summary>
@@ -452,7 +484,7 @@ internal sealed partial class WaterStore : ISnapshotSection
             for (int r = 0; r < g.RecordCount; r++)
             {
                 ref readonly var rec = ref g.Records[r];
-                if (!bodies.Handles.IsAlive(rec.Slot, rec.Generation) || bodies.TypeOf(rec.Slot) != BodyType.Dynamic) { return false; }
+                if (!bodies.Handles.IsAlive(rec.Slot, rec.Generation) || (bodies.TypeOf(rec.Slot) != BodyType.Dynamic && bodies.TypeOf(rec.Slot) != BodyType.Kinematic)) { return false; }
             }
         }
 
