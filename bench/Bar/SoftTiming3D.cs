@@ -22,6 +22,33 @@ internal static class SoftTiming3D
         return RunFold(threads);
     }
 
+    // soft3d-profile <threads> [scene]: per-stage means of the soft step over 600 steps, in windows of 100 steps (a settled body sleeps and stops costing anything, so the windows show where it is awake).
+    internal static int Profile(int threads, string scene = "cloth-drape-3d")
+    {
+        var sc = Gen.All().First(s => s.Name == scene);
+        var (w, _, _) = SceneBuilder3D.Build(sc, threads);
+        SceneBuilder3D.AddSofts(sc, w);
+        w.Profile.TimestampSource = Stopwatch.GetTimestamp;
+        string[] names = ["softSetup", "softPredict", "softDetect", "softPairs", "softConstraints", "softContacts", "softPairSolve", "softFinish"];
+        int[] idx = [17, 18, 19, 20, 21, 22, 23, 24];
+        for (int win = 0; win < 6; win++)
+        {
+            var acc = new double[names.Length]; double tot = 0;
+            for (int i = 0; i < 100; i++)
+            {
+                long t0 = Stopwatch.GetTimestamp();
+                w.Step((float)sc.Dt);
+                tot += Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
+                var d = w.Profile.Durations;
+                for (int k = 0; k < idx.Length; k++) { acc[k] += d[idx[k]] * 1000.0 / Stopwatch.Frequency; }
+            }
+
+            Console.WriteLine($"{scene} threads={threads} steps {win * 100}-{win * 100 + 99}: step mean {tot / 100:F4} ms; " + string.Join(" ", names.Select((n, k) => $"{n}={acc[k] / 100:F4}")));
+        }
+
+        return 0;
+    }
+
     private static double[] Time(Action step)
     {
         for (int i = 0; i < 60; i++) { step(); }

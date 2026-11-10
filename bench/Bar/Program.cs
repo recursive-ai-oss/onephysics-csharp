@@ -34,6 +34,7 @@ public static class Program
             case "tools-timing": return ToolsTiming.Run();
             case "soft2d-stability": return SoftStability2D.Run();
             case "soft3d-timing": return SoftTiming3D.Run(args.Length > 1 ? int.Parse(args[1]) : 1, args.Length > 2 ? args[2] : "default");
+            case "soft3d-profile": return SoftTiming3D.Profile(args.Length > 1 ? int.Parse(args[1]) : 1, args.Length > 2 ? args[2] : "cloth-drape-3d");
             case "soft2d-timing": return SoftStability2D.Time(args.Length > 1 ? int.Parse(args[1]) : 1);
             case "vehicles2d-stability": return Vehicles2DStability.Run(opts);
             case "active-stability": return ActiveStability.Run(opts);
