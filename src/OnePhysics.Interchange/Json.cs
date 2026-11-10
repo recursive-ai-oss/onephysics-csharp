@@ -26,18 +26,10 @@ internal readonly struct Js
         {
             throw new InterchangeException(format, "line " + (e is { LineNumber: not null } ? e.LineNumber + 1 : 0), "not valid JSON (" + e.Message + ").");
         }
-    }
-
-    public static Js Parse(ReadOnlyMemory<byte> utf8, string format)
-    {
-        try
+        catch (ArgumentException)
         {
-            var doc = JsonDocument.Parse(utf8, new JsonDocumentOptions { MaxDepth = 64, AllowTrailingCommas = false, CommentHandling = JsonCommentHandling.Disallow });
-            return new Js(doc.RootElement, "$", format);
-        }
-        catch (JsonException e)
-        {
-            throw new InterchangeException(format, "line " + (e is { LineNumber: not null } ? e.LineNumber + 1 : 0), "not valid JSON (" + e.Message + ").");
+            // A lone UTF-16 surrogate cannot be written as UTF-8 for the reader.
+            throw new InterchangeException(format, "document", "the text holds an invalid UTF-16 sequence (a lone surrogate).");
         }
     }
 

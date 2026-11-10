@@ -50,6 +50,7 @@ public static class GltfPhysicsImporter
 {
     private const string F = "glTF";
     private const long MaxBytes = 256L * 1024 * 1024;
+    private static readonly System.Text.UTF8Encoding StrictUtf8 = new(false, true);
 
     /// <summary>Imports a glTF (UTF-8 JSON) or GLB file from memory.</summary>
     /// <exception cref="InterchangeException">The file is malformed or refers to something that is not there (a bad index, a buffer that runs past its end, an unsupported accessor type); the message names the JSON path.</exception>
@@ -84,7 +85,11 @@ public static class GltfPhysicsImporter
         }
         else { json = copy; }
 
-        var root = Js.Parse(json, F);
+        // JsonDocument reads strings lazily and would throw on invalid UTF-8 when one is first used; decoding strictly up front turns that into one typed refusal.
+        string text;
+        try { text = StrictUtf8.GetString(json.Span); }
+        catch (System.Text.DecoderFallbackException) { throw new InterchangeException(F, "document", "the JSON is not valid UTF-8."); }
+        var root = Js.Parse(text, F);
         return new Reader(root, options, glbBin).Run();
     }
 

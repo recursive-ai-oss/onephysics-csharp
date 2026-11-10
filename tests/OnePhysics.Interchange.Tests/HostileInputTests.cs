@@ -103,6 +103,20 @@ public sealed class HostileInputTests
     }
 
     [Fact]
+    public void InvalidTextEncodingsAreRefused()
+    {
+        // A lone UTF-16 surrogate in a JSON string, and invalid UTF-8 in a glTF string (found by the fuzz target).
+        Assert.Throws<InterchangeException>(() => TiledImporter.Import("{\"orientation\":\"orthogonal\",\"width\":1,\"height\":1,\"tilewidth\":8,\"tileheight\":8,\"x\":\"\ud800\"}"));
+        Assert.Throws<InterchangeException>(() => LdtkImporter.Import("{\"levels\":[{\"identifier\":\"\ud800\",\"pxWid\":8,\"pxHei\":8,\"layerInstances\":[]}]}", "\ud800"));
+        Assert.Throws<InterchangeException>(() => UrdfImporter.Import("<robot><link name=\"\ud800\"/></robot>"));
+        Assert.Throws<InterchangeException>(() => MjcfImporter.Import("<mujoco><worldbody><body name=\"\udc00\"/></worldbody></mujoco>"));
+        var bytes = Encoding.UTF8.GetBytes(InterchangeSamples.Twenty());
+        int at = Array.IndexOf(bytes, (byte)'f', 100);
+        bytes[at] = 0xF3;
+        Assert.Throws<InterchangeException>(() => GltfPhysicsImporter.Import(bytes));
+    }
+
+    [Fact]
     public void ErrorsNameTheElement()
     {
         var e = Assert.Throws<InterchangeException>(() => UrdfImporter.Import("<robot><link name=\"a\"/><joint name=\"j\" type=\"revolute\"><parent link=\"a\"/><child link=\"zz\"/></joint></robot>"));
