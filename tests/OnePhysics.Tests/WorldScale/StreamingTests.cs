@@ -280,3 +280,49 @@ public sealed class StreamingSceneTests
         Assert.Equal(a, WorldScaleScenes.RunStreaming3D(8, false, null, 200));
     }
 }
+
+public sealed class WorldScaleSceneTests
+{
+    [Fact]
+    public void Streaming2DHoldsTogetherAndSeamsAreNoWorseThanOneField()
+    {
+        var tiled = WorldScaleScenes.BuildStreaming2D(1);
+        var whole = WorldScaleScenes.BuildStreaming2D(1, 1411, true);
+        for (int i = 0; i < 1200; i++) { tiled.Step(i); whole.Step(i); }
+        string report = $"tiled: loads {tiled.Loads} unloads {tiled.Unloads} maxLoaded {tiled.MaxLoaded} maxSpeed {tiled.MaxSpeed:F2} tunnelled {tiled.Tunnelled} seam dvy {tiled.SeamStep:F3}; unsplit: maxSpeed {whole.MaxSpeed:F2} tunnelled {whole.Tunnelled} seam dvy {whole.SeamStep:F3}";
+        Assert.True(tiled.Tunnelled == 0 && tiled.NonFinite == 0 && tiled.World.FailedTileLoads == 0, report);
+        Assert.True(tiled.SeamStep <= whole.SeamStep * 1.25 + 0.1, report);
+        Assert.True(tiled.MaxSpeed < 12, report);
+    }
+
+    [Fact]
+    public void Lod3DAndTimeScale2DScenesAreStable()
+    {
+        var l = WorldScaleScenes.BuildLod3D(1);
+        for (int i = 0; i < 600; i++) { l.Step(i); l.Measure(); }
+        var t = WorldScaleScenes.BuildTimeScale2D(1);
+        for (int i = 0; i < 900; i++) { t.Step(i); t.Measure(); }
+        string report = $"lod: maxSpeed {l.MaxSpeed:F2} drift {l.MaxDrift:F2} nan {l.NonFinite} asleep {l.World.Counters.AsleepIslands}; timescale: maxSpeed {t.MaxSpeed:F2} nan {t.NonFinite} ball {t.Ball.Position.X:F1},{t.Ball.Position.Y:F2}";
+        Assert.True(l.NonFinite == 0 && l.MaxSpeed < 2 && l.MaxDrift < 1 && l.World.Counters.AsleepIslands >= 20, report);
+        Assert.True(t.NonFinite == 0 && t.MaxSpeed < 12 && t.Ball.Position.X > 15, report);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void SceneHashesAreEqualOnAnyThreadCountAndThroughARestore(int scene)
+    {
+        Func<int, bool, ulong> run = scene switch
+        {
+            0 => (t, r) => WorldScaleScenes.RunStreaming2D(t, r, null, 160),
+            1 => (t, r) => WorldScaleScenes.RunLod3D(t, r, null, 160),
+            2 => (t, r) => WorldScaleScenes.RunTimeScale2D(t, r, null, 160),
+            _ => (t, r) => WorldScaleScenes.RunStreaming3D(t, r, null, 120),
+        };
+        ulong a = run(1, false);
+        Assert.Equal(a, run(1, true));
+        Assert.Equal(a, run(8, false));
+    }
+}

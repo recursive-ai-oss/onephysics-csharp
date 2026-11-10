@@ -231,4 +231,279 @@ internal static class WorldScaleScenes
 
         return hash;
     }
+
+    // ------------------------------------------------------------------ streaming-2d
+
+    /// <summary>A 16 tile ground profile (512 m) streamed in a window of five tiles that follows the mean position of 70 circles, 40 boxes and three walkers.</summary>
+    internal sealed class Streaming2D
+    {
+        internal required P2.PhysicsWorld2D World { get; set; }
+        internal readonly List<P2.Body> Bodies = new();
+        internal P2.Character[] Walkers = Array.Empty<P2.Character>();
+        internal int Focus = -1, Loads, Unloads, MaxLoaded, Steps = 1200, Tunnelled, NonFinite;
+        internal double MaxSpeed, SeamStep;
+        internal bool Unsplit;
+        internal ulong CharacterHash = 0xCBF29CE484222325UL;
+        private float[] _vy = Array.Empty<float>();
+
+        internal void Window()
+        {
+            if (Unsplit) { return; }
+            double lo = double.MaxValue, hi = double.MinValue;
+            foreach (var b in Bodies) { double x = b.Position.X; if (x < lo) { lo = x; } if (x > hi) { hi = x; } }
+            foreach (var c in Walkers) { double x = c.Position.X; if (x < lo) { lo = x; } if (x > hi) { hi = x; } }
+            int f = Math.Clamp((int)Math.Floor((lo + hi) * 0.5 / TileSize), 0, Tiles - 1);
+            if (f == Focus) { return; }
+            Focus = f;
+            foreach (var key in World.GetLoadedTiles()) { if (Math.Abs(key.X - f) > 2) { if (World.UnloadTile(key)) { Unloads++; } } }
+            for (int tx = Math.Max(0, f - 2); tx <= Math.Min(Tiles - 1, f + 2); tx++)
+            {
+                var key = new TileKey(tx, 0);
+                if (World.GetTileState(key) == TileState.Absent) { World.LoadTile(key, Tile2D(tx, true)); Loads++; }
+            }
+        }
+
+        internal void Step(int step)
+        {
+            if (step % 4 == 0 || Focus < 0) { Window(); }
+            for (int i = 0; i < Walkers.Length; i++)
+            {
+                var cc = Walkers[i].Move(new Vector2F(1.5f * Dt, -2f * Dt), Dt);
+                CharacterHash = (CharacterHash ^ (ulong)cc) * 0x100000001B3UL; CharacterHash ^= CharacterHash >> 29;
+            }
+
+            World.Step(Dt);
+            if (_vy.Length == 0) { _vy = new float[Bodies.Count]; }
+            int tunnelled = 0, index = -1;
+            foreach (var b in Bodies)
+            {
+                index++;
+                var p = b.Position; var v = b.LinearVelocity;
+                if (!double.IsFinite(p.X + p.Y) || !float.IsFinite(v.X + v.Y)) { NonFinite++; continue; }
+                MaxSpeed = Math.Max(MaxSpeed, v.Length());
+                if (index < 70 && step > 20 && Math.Abs(p.X - Math.Round(p.X / TileSize) * TileSize) < 0.45) { SeamStep = Math.Max(SeamStep, Math.Abs(v.Y - _vy[index])); }
+                _vy[index] = v.Y;
+                int gx = (int)Math.Floor(p.X);
+                if (gx >= 0 && gx < Tiles * TileCells && p.Y < Height2D(gx) - 2.5) { tunnelled++; }
+            }
+
+            Tunnelled = Math.Max(Tunnelled, tunnelled);
+            MaxLoaded = Math.Max(MaxLoaded, World.TileCount);
+        }
+    }
+
+    internal static Streaming2D BuildStreaming2D(int threads, int worldId = 1410, bool unsplit = false)
+    {
+        var w = new P2.PhysicsWorld2D(new P2.WorldOptions2D { ThreadCount = threads, WorldId = worldId });
+        var s = new Streaming2D { World = w, Unsplit = unsplit };
+        if (unsplit)
+        {
+            int n = Tiles * TileCells + 1;
+            var h = new float[n];
+            for (int i = 0; i < n; i++) { h[i] = Height2D(i); }
+            w.AddHeightField(h, Spacing);
+        }
+
+        for (int i = 0; i < 70; i++)
+        {
+            double x = 80 + i * 0.9 + (i % 3) * 0.2; int gx = (int)x;
+            s.Bodies.Add(w.AddCircle(0.3f + 0.05f * (i % 3), new Vector2D(x, Height2D(gx) + 0.6 + 0.35 * (i % 4)), material: new P2.Material2D(0.6f, 0f, 0.012f)));
+        }
+
+        for (int i = 0; i < 40; i++)
+        {
+            double x = 74 + i * 1.7; int gx = (int)x;
+            s.Bodies.Add(w.AddBox(new Vector2F(0.8f, 0.8f), new Vector2D(x, Height2D(gx) + 0.9), material: new P2.Material2D(0.55f, 0f)));
+        }
+
+        s.Walkers = new P2.Character[3];
+        for (int i = 0; i < 3; i++) { s.Walkers[i] = w.AddCharacter(new Vector2D(66 + i * 2, Height2D(66 + i * 2) + 1.0)); }
+        s.Window();
+        return s;
+    }
+
+    internal static ulong RunStreaming2D(int threads, bool restoreHalfway, Action<ulong>? onStep = null, int steps = 300)
+    {
+        var s = BuildStreaming2D(threads);
+        ulong hash = 0xCBF29CE484222325UL;
+        for (int i = 0; i < steps; i++)
+        {
+            if (i == steps / 2 && restoreHalfway)
+            {
+                var snap = s.World.Snapshot();
+                var w = new P2.PhysicsWorld2D(new P2.WorldOptions2D { ThreadCount = threads, WorldId = 1410 });
+                w.Restore(snap);
+                s.World = w;
+                for (int k = 0; k < s.Bodies.Count; k++) { s.Bodies[k] = w.GetBody(s.Bodies[k].RawHandle); }
+                s.Walkers = w.GetCharacters();
+            }
+
+            s.Step(i);
+            ulong h = s.World.ComputeHash() ^ s.CharacterHash;
+            hash = (hash ^ h) * 0x100000001B3UL; hash ^= hash >> 29;
+            onStep?.Invoke(h);
+        }
+
+        return hash;
+    }
+
+    // ------------------------------------------------------------------ lod-3d
+
+    /// <summary>
+    /// Twenty-four walls of 25 boxes (5 x 5) along a 340 m ground slab, a focus point that walks the length of it, and distance bands: within 30 m every step, to 80 m every second, to 150 m every fourth, beyond that every eighth.
+    /// With <paramref name="neverSleep"/> the boxes stay awake, which is what a timing run needs.
+    /// </summary>
+    internal sealed class Lod3D
+    {
+        internal required P3.PhysicsWorld3D World { get; set; }
+        internal readonly List<P3.Body> Bodies = new();
+        internal readonly List<Vector3D> Start = new();
+        internal int Steps = 600, NonFinite;
+        internal double MaxSpeed, MaxDrift;
+
+        internal static Vector3D Focus(int step) => new(10 + 0.1 * step, 1, 0);
+
+        internal void Step(int step)
+        {
+            if (step % 8 == 0) { World.SetLodFocus([Focus(step)]); }
+            World.Step(Dt);
+        }
+
+        internal void Measure()
+        {
+            for (int i = 0; i < Bodies.Count; i++)
+            {
+                var p = Bodies[i].Position; var v = Bodies[i].LinearVelocity;
+                if (!double.IsFinite(p.X + p.Y + p.Z) || !float.IsFinite(v.X + v.Y + v.Z)) { NonFinite++; continue; }
+                MaxSpeed = Math.Max(MaxSpeed, v.Length());
+                MaxDrift = Math.Max(MaxDrift, Math.Abs(p.X - Start[i].X) + Math.Abs(p.Z - Start[i].Z));
+            }
+        }
+    }
+
+    internal static Lod3D BuildLod3D(int threads, int worldId = 1420, bool neverSleep = false, bool lod = true, int walls = 24)
+    {
+        var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { ThreadCount = threads, WorldId = worldId });
+        w.AddBox(new Vector3F(walls * 14f + 40f, 1f, 30f), new Vector3D(walls * 7.0, -0.5, 0), type: BodyType.Static);
+        var s = new Lod3D { World = w };
+        for (int k = 0; k < walls; k++)
+        {
+            for (int row = 0; row < 5; row++)
+            {
+                for (int col = 0; col < 5; col++)
+                {
+                    var at = new Vector3D(k * 14.0 + col * 1.02 + 0.3 * (row % 2), 0.5 + row * 1.01, (k % 3 - 1) * 4.0);
+                    var b = w.AddBox(new Vector3F(1f, 1f, 1f), at);
+                    if (neverSleep) { b.NeverSleep = true; }
+                    s.Bodies.Add(b); s.Start.Add(at);
+                }
+            }
+        }
+
+        if (lod) { w.SetSimulationLod([new Vector3D(10, 1, 0)], [new LodBand(30, 1), new LodBand(80, 2), new LodBand(150, 4)], 8); }
+        return s;
+    }
+
+    internal static ulong RunLod3D(int threads, bool restoreHalfway, Action<ulong>? onStep = null, int steps = 200)
+    {
+        var s = BuildLod3D(threads);
+        ulong hash = 0xCBF29CE484222325UL;
+        for (int i = 0; i < steps; i++)
+        {
+            if (i == steps / 2 && restoreHalfway)
+            {
+                var snap = s.World.Snapshot();
+                var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { ThreadCount = threads, WorldId = 1420 });
+                w.Restore(snap);
+                s.World = w;
+                for (int k = 0; k < s.Bodies.Count; k++) { s.Bodies[k] = w.GetBody(s.Bodies[k].RawHandle); }
+            }
+
+            s.Step(i);
+            ulong h = s.World.ComputeHash();
+            hash = (hash ^ h) * 0x100000001B3UL; hash ^= hash >> 29;
+            onStep?.Invoke(h);
+        }
+
+        return hash;
+    }
+
+    // ------------------------------------------------------------------ timescale-2d
+
+    /// <summary>
+    /// A slow-motion bubble (time scale 0.25) next to normal time on a flat floor: a pyramid of boxes in each, a pendulum with its own scale of 0.5, and a ball that is thrown from normal time through the bubble's edge into the bubble's pyramid.
+    /// </summary>
+    internal sealed class TimeScale2D
+    {
+        internal required P2.PhysicsWorld2D World { get; set; }
+        internal readonly List<P2.Body> Bodies = new();
+        internal P2.Body Ball, Bob;
+        internal int Steps = 900, NonFinite;
+        internal double MaxSpeed;
+
+        internal void Step(int step)
+        {
+            World.Step(Dt);
+        }
+
+        internal void Measure()
+        {
+            foreach (var b in Bodies)
+            {
+                var p = b.Position; var v = b.LinearVelocity;
+                if (!double.IsFinite(p.X + p.Y) || !float.IsFinite(v.X + v.Y)) { NonFinite++; continue; }
+                MaxSpeed = Math.Max(MaxSpeed, v.Length());
+            }
+        }
+    }
+
+    internal static TimeScale2D BuildTimeScale2D(int threads, int worldId = 1430)
+    {
+        var w = new P2.PhysicsWorld2D(new P2.WorldOptions2D { ThreadCount = threads, WorldId = worldId });
+        var s = new TimeScale2D { World = w };
+        w.AddBox(new Vector2F(80f, 1f), new Vector2D(10, -0.5), type: BodyType.Static);
+        for (int level = 0; level < 6; level++)
+        {
+            for (int i = 0; i < 6 - level; i++)
+            {
+                s.Bodies.Add(w.AddBox(new Vector2F(1f, 1f), new Vector2D(-14 + i * 1.05 + level * 0.525, 0.5 + level * 1.01)));
+                s.Bodies.Add(w.AddBox(new Vector2F(1f, 1f), new Vector2D(24 + i * 1.05 + level * 0.525, 0.5 + level * 1.01)));
+            }
+        }
+
+        w.SetTimeScaleRegions([new P2.TimeScaleRegion2D(new(20, -5), new(40, 30), 0.25f)]);
+        var anchor = w.AddBox(new Vector2F(0.2f, 0.2f), new Vector2D(0, 12), type: BodyType.Static);
+        s.Bob = w.AddCircle(0.25f, new Vector2D(2.0, 12 - 1.4));
+        w.AddPoint(anchor, s.Bob, new Vector2D(0, 12));
+        s.Bob.TimeScale = 0.5f;
+        s.Bodies.Add(s.Bob);
+        s.Ball = w.AddCircle(0.4f, new Vector2D(8, 0.4), material: new P2.Material2D(0.4f, 0f), density: 3f);
+        s.Ball.LinearVelocity = new Vector2F(9f, 0f);
+        s.Bodies.Add(s.Ball);
+        return s;
+    }
+
+    internal static ulong RunTimeScale2D(int threads, bool restoreHalfway, Action<ulong>? onStep = null, int steps = 300)
+    {
+        var s = BuildTimeScale2D(threads);
+        ulong hash = 0xCBF29CE484222325UL;
+        for (int i = 0; i < steps; i++)
+        {
+            if (i == steps / 2 && restoreHalfway)
+            {
+                var snap = s.World.Snapshot();
+                var w = new P2.PhysicsWorld2D(new P2.WorldOptions2D { ThreadCount = threads, WorldId = 1430 });
+                w.Restore(snap);
+                s.World = w;
+                for (int k = 0; k < s.Bodies.Count; k++) { s.Bodies[k] = w.GetBody(s.Bodies[k].RawHandle); }
+            }
+
+            s.Step(i);
+            ulong h = s.World.ComputeHash();
+            hash = (hash ^ h) * 0x100000001B3UL; hash ^= hash >> 29;
+            onStep?.Invoke(h);
+        }
+
+        return hash;
+    }
 }
