@@ -34,7 +34,8 @@ internal sealed partial class Engine3D : IArticulationHost
         var lc = LocalCenterOf(body);
         var arm = q.Rotate(lc);
         var p = Core.Bodies.PositionOf(body);
-        p[0] = origin.X + arm.X; p[1] = origin.Y + arm.Y; p[2] = origin.Z + arm.Z;
+        // The centre sits on the 2^-32 grid like every body position, so shifting the origin by whole grid steps moves it exactly.
+        p[0] = origin.X + ArticulationStore.OnGrid(arm.X); p[1] = origin.Y + ArticulationStore.OnGrid(arm.Y); p[2] = origin.Z + ArticulationStore.OnGrid(arm.Z);
         var r = Core.Bodies.RotationOf(body);
         r[0] = q.X; r[1] = q.Y; r[2] = q.Z; r[3] = q.W;
         SetLinkVelocityCore(body, q, omega, vOrigin);
@@ -83,7 +84,7 @@ internal sealed partial class Engine3D : IArticulationHost
                     into.Add(new HostContact
                     {
                         Constraint = c, LinkBody = link, Other = other,
-                        Point = new D3(pos[0] + rl.X, pos[1] + rl.Y, pos[2] + rl.Z), Normal = linkIsA ? n : -n, OtherArm = ro,
+                        Point = new D3(pos[0] + rl.X, pos[1] + rl.Y, pos[2] + rl.Z), LinkPosition = new D3(pos[0], pos[1], pos[2]), PointArm = rl, Normal = linkIsA ? n : -n, OtherArm = ro,
                         Separation = pl[ManifoldLayout.Separation(k)], Friction = mu,
                     });
                 }

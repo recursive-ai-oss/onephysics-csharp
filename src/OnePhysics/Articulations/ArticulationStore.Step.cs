@@ -86,9 +86,6 @@ internal sealed partial class ArticulationStore
         for (int i = 0; i < Handles.HighWater; i++)
         {
             if (!Handles.IsLive(i)) { continue; }
-            // A floating base lands on the same 2^-32 grid as every body position, so a shift of the origin by whole grid steps moves it exactly and the next step is bit-identical to the unshifted world's.
-            var m = States[i]!.Model;
-            if (m.Kind[0] != JointKind.Fixed) { int po = m.PosOff[0]; var g = Grid(new D3(m.Q[po], m.Q[po + 1], m.Q[po + 2])); m.Q[po] = g.X; m.Q[po + 1] = g.Y; m.Q[po + 2] = g.Z; }
             Place(i);
         }
     }
@@ -96,6 +93,8 @@ internal sealed partial class ArticulationStore
     // Positions of bodies sit on a 2^-32 grid (see the engine's integration), so a shifted world steps like an unshifted one.
     private const double GridScale = 4294967296.0;
 
-    private static D3 Grid(D3 p) => new(Math.Floor(p.X * GridScale + 0.5) / GridScale, Math.Floor(p.Y * GridScale + 0.5) / GridScale, Math.Floor(p.Z * GridScale + 0.5) / GridScale);
+    internal static double OnGrid(double x) => Math.Floor(x * GridScale + 0.5) / GridScale;
+
+    internal static D3 Grid(D3 p) => new(Math.Floor(p.X * GridScale + 0.5) / GridScale, Math.Floor(p.Y * GridScale + 0.5) / GridScale, Math.Floor(p.Z * GridScale + 0.5) / GridScale);
 
 }

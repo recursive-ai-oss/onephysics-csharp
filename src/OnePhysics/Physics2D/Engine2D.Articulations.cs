@@ -36,7 +36,7 @@ internal sealed partial class Engine2D : IArticulationHost
         float lx = LocalCenter[2 * body], ly = LocalCenter[2 * body + 1];
         double ax = c * lx - s * ly, ay = s * lx + c * ly;
         var p = Core.Bodies.PositionOf(body);
-        p[0] = origin.X + ax; p[1] = origin.Y + ay;
+        p[0] = origin.X + ArticulationStore.OnGrid(ax); p[1] = origin.Y + ArticulationStore.OnGrid(ay);
         SetLinkVelocityCore(body, ax, ay, omega, vOrigin);
     }
 
@@ -84,7 +84,7 @@ internal sealed partial class Engine2D : IArticulationHost
                     into.Add(new HostContact
                     {
                         Constraint = c, LinkBody = link, Other = other,
-                        Point = new D3(pos[0] + rl.X, pos[1] + rl.Y, 0.0), Normal = linkIsA ? n : -n, OtherArm = ro,
+                        Point = new D3(pos[0] + rl.X, pos[1] + rl.Y, 0.0), LinkPosition = new D3(pos[0], pos[1], 0.0), PointArm = rl, Normal = linkIsA ? n : -n, OtherArm = ro,
                         Separation = pl[ManifoldLayout.Separation(k)], Friction = mu,
                     });
                 }

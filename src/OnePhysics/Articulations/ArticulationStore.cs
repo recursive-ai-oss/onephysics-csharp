@@ -13,6 +13,8 @@ internal struct HostContact
     public int Other;
     /// <summary>The contact point on the link, world coordinates.</summary>
     public D3 Point;
+    /// <summary>The position of the link body (its centre of mass) and the contact point's offset from it. The articulation works from these two, not from <see cref="Point"/>, so a world shifted by a whole number of grid steps gives the same bits.</summary>
+    public D3 LinkPosition, PointArm;
     /// <summary>Unit normal pointing from the link towards the other body.</summary>
     public D3 Normal;
     /// <summary>From the other body's centre of mass to the contact point on it.</summary>
@@ -188,12 +190,17 @@ internal sealed partial class ArticulationStore : ISnapshotSection
     {
         var s = States[i]!;
         var m = s.Model;
+        // Poses are found relative to the root and put on the grid before the root's position is added back: both parts are exact, so the result does not depend on how far from the world origin the articulation is.
+        m.BeginRelative();
         m.ForwardKinematics();
         for (int k = 0; k < m.N; k++)
         {
             m.LinkTwist(k, out var w, out var v);
-            _host.SetLinkState(s.Body[k], Grid(m.Pw[k]), m.Qw[k], w, v);
+            _host.SetLinkState(s.Body[k], Grid(m.Pw[k]) + m.Anchor, m.Qw[k], w, v);
         }
+
+        m.EndRelative();
+        m.ForwardKinematics();
     }
 
     public readonly struct BodyHandleRef

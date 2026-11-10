@@ -87,6 +87,7 @@ internal sealed class ArticulationWork
     public void Prepare(ArticulationState s, List<HostContact> all, int[] sorted, int first, int last, int art)
     {
         _first = first; _last = last; _all = all; _sorted = sorted; _art = art;
+        s.Model.BeginRelative();
         s.Model.ForwardKinematics();
         GatherContactPoints(s);
     }
@@ -97,6 +98,12 @@ internal sealed class ArticulationWork
 
     /// <summary>The parallel part: touches only the model, this scratch and read-only world options.</summary>
     public void Simulate(ArticulationState s, float dt, D3 gravity, double slop, double pushCap)
+    {
+        try { SimulateCore(s, dt, gravity, slop, pushCap); }
+        finally { s.Model.EndRelative(); s.Model.ForwardKinematics(); }
+    }
+
+    private void SimulateCore(ArticulationState s, float dt, D3 gravity, double slop, double pushCap)
     {
         var m = s.Model;
         _m = m; _slop = slop; _pushCap = pushCap;
@@ -161,10 +168,12 @@ internal sealed class ArticulationWork
         for (int c = 0; c < _cpCount; c++)
         {
             ref var cp = ref _cp[c];
-            s.LastContacts[c] = new Debug.DebugArticulationContact(0, cp.Link, new Vector3D(cp.P0.X, cp.P0.Y, cp.P0.Z), new Vector3F((float)cp.N.X, (float)cp.N.Y, (float)cp.N.Z), (float)cp.S0, (float)cp.Ln);
+            s.LastContacts[c] = new Debug.DebugArticulationContact(0, cp.Link, new Vector3D(cp.P0.X + m.Anchor.X, cp.P0.Y + m.Anchor.Y, cp.P0.Z + m.Anchor.Z), new Vector3F((float)cp.N.X, (float)cp.N.Y, (float)cp.N.Z), (float)cp.S0, (float)cp.Ln);
         }
 
         s.LastContactCount = _cpCount;
+        // A floating base lands on the 2^-32 grid like every body position; it is rounded relative to the anchor, which is itself on the grid, so a shift of the origin by whole grid steps is exact.
+        if (m.Kind[0] != JointKind.Fixed) { int po = m.PosOff[0]; var gr = ArticulationStore.Grid(new D3(m.Q[po], m.Q[po + 1], m.Q[po + 2])); m.Q[po] = gr.X; m.Q[po + 1] = gr.Y; m.Q[po + 2] = gr.Z; }
         if (s.AnyExternal) { Array.Clear(s.External); s.AnyExternal = false; }
     }
 
@@ -303,7 +312,7 @@ internal sealed class ArticulationWork
         var lin = _ikJ.AsSpan(0, 3 * n); var ang = _ikJ.AsSpan(3 * n, 3 * n);
         m.PointJacobian(s.TargetLink, s.TargetLocal, lin, s.TargetOrientation ? ang : Span<double>.Empty);
         var cur = m.WorldPoint(s.TargetLink, s.TargetLocal);
-        var e3 = s.TargetPosition - cur;
+        var e3 = (s.TargetPosition - m.Anchor) - cur;
         Span<double> err = stackalloc double[6];
         err[0] = e3.X; err[1] = e3.Y; err[2] = e3.Z;
         if (s.TargetOrientation)
@@ -405,18 +414,20 @@ internal sealed class ArticulationWork
             int k = _store.LinkOfBody(c.LinkBody);
             Fit(ref _cp, _cpCount + 1);
             ref var p = ref _cp[_cpCount++];
+            var p0 = (c.LinkPosition - m.Anchor) + c.PointArm;
+            p.P0 = p0;
             p.Link = k; p.Link2 = -1; p.Other = -1; p.Arm = default; p.Local2 = default; p.P02 = default;
             if (self)
             {
                 int k2 = _store.LinkOfBody(c.Other);
                 p.Link2 = k2;
-                p.P02 = c.Point + c.Normal * c.Separation;
+                p.P02 = p0 + c.Normal * c.Separation;
                 p.Local2 = m.Rw[k2].Transposed() * (p.P02 - m.Pw[k2]);
             }
             else { p.Other = OtherIndex(c.Other); p.Arm = c.OtherArm; }
-            p.P0 = c.Point; p.N = c.Normal; p.S0 = c.Separation; p.Mu = c.Friction;
+            p.N = c.Normal; p.S0 = c.Separation; p.Mu = c.Friction;
             Tangents(c.Normal, out p.T1, out p.T2);
-            p.Local = m.Rw[k].Transposed() * (c.Point - m.Pw[k]);
+            p.Local = m.Rw[k].Transposed() * (p.P0 - m.Pw[k]);
             p.Ln = 0; p.Lt1 = 0; p.Lt2 = 0;
         }
 
