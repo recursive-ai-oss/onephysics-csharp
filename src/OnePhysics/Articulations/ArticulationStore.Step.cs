@@ -124,10 +124,16 @@ internal sealed partial class ArticulationStore
             m.ForwardKinematics();
             ComputeDrives(s, h, g);
             if (!m.ForwardDynamics(_tau.AsSpan(0, n), _dAdd.AsSpan(0, n), g, external, _qdd.AsSpan(0, n))) { Array.Clear(_qdd, 0, n); }
-            // The velocity-dependent terms (Coriolis and centrifugal) are taken at the velocity half way through the kick (explicit midpoint on the velocity), which keeps the step second order.
+            // The velocity-dependent terms (Coriolis and centrifugal) are taken at the velocity half way through the kick, found by two fixed-point iterations of the implicit midpoint rule
+            // (qd_mid = qd + h/2 · qdd(qd_mid)). One iteration (explicit midpoint) amplifies the pure rotations of a whipping chain by 1 + (hω)⁴/8 a substep and blows it up; two make the
+            // amplification 1 − (hω)⁴/8 + …, stable up to hω = 2 and second order.
             Array.Copy(m.Qd, _col, n);
-            for (int d = 0; d < n; d++) { m.Qd[d] += 0.5 * h * _qdd[d]; }
-            if (!m.ForwardDynamics(_tau.AsSpan(0, n), _dAdd.AsSpan(0, n), g, external, _qdd.AsSpan(0, n))) { Array.Clear(_qdd, 0, n); }
+            for (int pass = 0; pass < 2; pass++)
+            {
+                for (int d = 0; d < n; d++) { m.Qd[d] = _col[d] + 0.5 * h * _qdd[d]; }
+                if (!m.ForwardDynamics(_tau.AsSpan(0, n), _dAdd.AsSpan(0, n), g, external, _qdd.AsSpan(0, n))) { Array.Clear(_qdd, 0, n); }
+            }
+
             Array.Copy(_col, m.Qd, n);
             for (int d = 0; d < n; d++) { m.Qd[d] += h * _qdd[d]; }
             SolveConstraints(s, h);

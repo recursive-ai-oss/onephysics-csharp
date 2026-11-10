@@ -49,6 +49,7 @@ public sealed partial class PhysicsWorld2D
         _core.AddSection(_engine.Destruction);
         _core.AddSection(_engine.ParticleFluids);
         _core.AddSection(_engine.Water);
+        _core.AddSection(_engine.Articulations);
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -345,6 +346,7 @@ public sealed partial class PhysicsWorld2D
         _engine.Cables.Shift(new Vector3D(offset.X,offset.Y,0));
         _engine.ParticleFluids.ShiftOrigin(d);
         _engine.Water.Shift(new Vector3D(offset.X,offset.Y,0));
+        _engine.ShiftArticulations(offset.X, offset.Y);
         _engine.ShiftProxies(d);
         _engine.ShiftSoft(offset.X, offset.Y);
         InvalidateQueryPad();

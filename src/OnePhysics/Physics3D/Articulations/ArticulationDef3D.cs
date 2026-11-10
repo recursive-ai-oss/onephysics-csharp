@@ -193,7 +193,8 @@ public sealed class ArticulationDef
                 Parent = i, Joint = ArticulationJointKind.Revolute, Axis = new Vector3F(0f, 0f, 1f), Origin = new Vector3F(i == 0 ? 0f : linkLength, 0f, 0f),
                 Mass = m, CenterOfMass = new Vector3F(0.5f * linkLength, 0f, 0f), InertiaTensor = new Matrix3x3F(0.5f * m * radius * radius * 0.5f, 0, 0, 0, m * linkLength * linkLength / 12f + 0.25f * m * radius * radius, 0, 0, 0, m * linkLength * linkLength / 12f + 0.25f * m * radius * radius),
             };
-            link.AddShape(ShapeSpec3D.Sphere(Math.Min(radius, 0.05f)), new ShapeDef { LocalPosition = new Vector3F(0.5f * linkLength, 0f, 0f), Density = 1f });
+            // A capsule lying along the link (its axis is Y, so it is turned a quarter about z).
+            link.AddShape(ShapeSpec3D.Capsule(0.5f * linkLength, Math.Min(radius, 0.05f)), new ShapeDef { LocalPosition = new Vector3F(0.5f * linkLength, 0f, 0f), LocalRotation = new QuaternionF(0f, 0f, -0.70710678f, 0.70710678f), Density = 1f });
             def.AddLink(link);
         }
 

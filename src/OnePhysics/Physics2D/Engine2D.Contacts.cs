@@ -12,7 +12,7 @@ internal readonly struct Stages2D : IWorldStages
 
     public Stages2D(Engine2D e) => _e = e;
 
-    public void UpdateContacts(WorldCore world) { _e.UpdateContacts(world); _e.ApplyFieldContacts(); }
+    public void UpdateContacts(WorldCore world) { _e.UpdateContacts(world); _e.ApplyFieldContacts(); _e.StepArticulations(); }
 
     public void BeginSolve(WorldCore world, int batches, in StepContext context) => _e.BeginSolve(batches, in context);
 
@@ -40,7 +40,7 @@ internal readonly struct Stages2D : IWorldStages
 
     public void FinalizeBodies(WorldCore world, ReadOnlySpan<int> bodies, in StepContext context) => _e.FinalizeBodies(bodies, in context);
 
-    public void AfterFinalize(WorldCore world, in StepContext context) => _e.RunBullets();
+    public void AfterFinalize(WorldCore world, in StepContext context) { _e.RunBullets(); _e.EndArticulations(); }
 }
 
 /// <summary>The pose of a body at the start of the contact stage and what the pair loops need to know about it, in one record so a pair reads two records instead of a dozen scattered arrays.</summary>
@@ -90,7 +90,7 @@ internal sealed partial class Engine2D
             // The table is only read while pairs are searched; it changes in the serial stage that follows.
             if (_e.PairMap.ContainsKey(shapeA < shapeB ? PairKey(shapeA, shapeB) : PairKey(shapeB, shapeA))) { return false; }
             var owner = _e.Core.Shapes.Owner;
-            return owner[shapeA] != owner[shapeB] && _e.CanCollide(shapeA, shapeB) && !_e.JointsPreventCollision(owner[shapeA], owner[shapeB]);
+            return owner[shapeA] != owner[shapeB] && _e.CanCollide(shapeA, shapeB) && !_e.JointsPreventCollision(owner[shapeA], owner[shapeB]) && !_e.ArticulationBlocks(owner[shapeA], owner[shapeB]);
         }
     }
 
@@ -168,6 +168,8 @@ internal sealed partial class Engine2D
             _fresh[np] = IsSensor(a) || IsSensor(b);
             anyFresh |= _fresh[np];
         }
+        // The broadphase never pairs a kinematic body with a static one, but the links of an articulation are kinematic bodies that must touch the ground: their pairs are found here.
+        anyFresh |= AddLinkPairs();
         Core.Profile.Mark(StepStage.Narrowphase);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Narrowphase);
@@ -375,7 +377,7 @@ internal sealed partial class Engine2D
                 ref BodyHot h = ref e.Hot[b];
                 h.X = pos[2 * b]; h.Y = pos[2 * b + 1]; h.C = rot[2 * b]; h.S = rot[2 * b + 1];
                 h.Lcx = e.LocalCenter[2 * b]; h.Lcy = e.LocalCenter[2 * b + 1]; h.Extent = e.MaxExtent[b];
-                h.Flags = (IsActive(bodies, b) ? BodyHot.Active : 0) | (bodies.IsDynamic(b) && !bodies.IsAwake(b) ? BodyHot.AsleepDynamic : 0);
+                h.Flags = (IsActive(bodies, b) || e.IsLinkBody(b) ? BodyHot.Active : 0) | (bodies.IsDynamic(b) && !bodies.IsAwake(b) ? BodyHot.AsleepDynamic : 0);
             }
         }
     }
