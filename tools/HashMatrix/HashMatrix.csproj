@@ -53,6 +53,7 @@
     <Compile Include="../../tests/Common/WaterScenes.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/VehicleKinds3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Ragdolls3DScene.cs" LinkBase="Checks" />
+    <Compile Include="../../tests/Common/Walkers3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/DestructionScenes.cs" LinkBase="Checks" />
     <Compile Include="../../bench/Bar/Scene.cs;../../bench/Bar/Gen.cs;../../bench/Bar/Gen3.cs;../../bench/Bar/GenMachines.cs;../../bench/Bar/SceneBuilder2D.cs;../../bench/Bar/SceneBuilder3D.cs;../../bench/Bar/SoftGen.cs;../../bench/Bar/SleeveRig.cs" LinkBase="Scenes" />
   </ItemGroup>

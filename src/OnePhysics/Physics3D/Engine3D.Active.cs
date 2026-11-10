@@ -56,6 +56,18 @@ internal sealed class ActiveState3D : ActiveCommon
     }
 }
 
+/// <summary>Tuned constants of the 3D walking controller's heading and turning (fixed numbers, never read from the environment).</summary>
+internal static class Turn3D
+{
+    internal const float FrameLead = 0.12f;      // how far ahead of the pelvis the gait's frame may point towards the heading, radians
+    internal const float TurnFree = 0.3f;        // heading error that costs no speed, radians
+    internal const float TurnSlow = 0.6f;        // fraction of the speed lost per radian of heading error beyond that
+    internal const float TurnMin = 0.4f;         // the slowest a turning figure goes, as a fraction of the commanded speed
+    internal const float YawRate = 2f;           // the pelvis turns towards the heading at this many 1/s times the heading error ...
+    internal const float YawRateMax = 1f;        // ... and at most this fast, rad/s
+    internal const float SwingTwistRate = 1f;    // a swinging leg turns to face the heading at most this fast, rad/s
+}
+
 internal sealed partial class Engine3D
 {
     /// <summary>Active layers by ragdoll slot (null where a ragdoll has none).</summary>
@@ -168,7 +180,7 @@ internal sealed partial class Engine3D
     private bool GroundRay(ActiveState3D a, int r, double x, double y, double z, float length, out double groundY, out Vector3F normal)
     {
         groundY = 0; normal = new Vector3F(0f, 1f, 0f);
-        a.GroundFilter ??= sh => RagdollOfBody(sh.Body.RawHandle.Index) != r;
+        a.GroundFilter ??= sh => RagdollOfBody(sh.Body.RawHandle.Index) < 0;   // no figure is ground, this one's parts or another's (a swing foot would land on a passer-by)
         var filter = new QueryFilter3D { Predicate = a.GroundFilter };
         if (!World!.Raycast(new Vector3D(x, y, z), new Vector3F(0f, -1f, 0f), out var hit, length, in filter)) { return false; }
         groundY = hit.Point.Y; normal = hit.Normal;
@@ -509,7 +521,14 @@ internal sealed partial class Engine3D
         // heading of the pelvis and the level frame
         var dp = a.Delta[pelvis];
         var fwd = dp.Rotate(new Vector3F(0f, 0f, 1f));
-        float psi = (float)Math64.Atan2(fwd.X, fwd.Z);
+        float psiPelvis = (float)Math64.Atan2(fwd.X, fwd.Z);
+        float psi = psiPelvis;
+        float headingErr = WrapAct(a.Heading - psiPelvis);
+        // While walking, the gait is planned in a frame turned towards the commanded heading (a little ahead of the pelvis at most), not in the pelvis's own frame: the pelvis yaws a few degrees with every step, and
+        // feet placed in a frame that wobbles with it land sideways of where the plan wants them.
+        float frameLead = 0f;
+        bool walkFrame = a.Mode == (byte)ActiveMode.Walk;
+        if (walkFrame) { frameLead = BipedGait.Clamp(headingErr, -Turn3D.FrameLead, Turn3D.FrameLead); psi = psiPelvis + frameLead; }
         float sinP = (float)Math64.Sin((double)psi), cosP = (float)Math64.Cos((double)psi);
         var yaw = Ry(psi); var yawInv = yaw.Conjugated();
         float fx = sinP, fz = cosP, lx = cosP, lz = -sinP;   // forward and left in the world's x-z plane
@@ -531,12 +550,23 @@ internal sealed partial class Engine3D
         float sp = float.Sqrt(cmdX * cmdX + cmdZ * cmdZ), maxSp = a.Def.Walker.MaxSpeed;
         if (sp > maxSp) { cmdX *= maxSp / sp; cmdZ *= maxSp / sp; }
         inp.CmdF = cmdX * fx + cmdZ * fz; inp.CmdL = cmdX * lx + cmdZ * lz;
+        if (walkFrame)
+        {
+            // The gait walks forward along its own heading: the speed it takes is the part of the commanded velocity that lies along the commanded heading, and it is lowered while the figure is still turned away from that heading.
+            float hs = (float)Math64.Sin((double)a.Heading), hc = (float)Math64.Cos((double)a.Heading);
+            float along = cmdX * hs + cmdZ * hc;
+            if (along < 0f) { along = 0f; }
+            float excess = Math.Max(Math.Abs(headingErr) - Turn3D.TurnFree, 0f);
+            float scale = BipedGait.Clamp(1f - Turn3D.TurnSlow * excess, Turn3D.TurnMin, 1f);
+            inp.CmdF = along * scale; inp.CmdL = 0f;
+        }
+
         inp.ComF = Fo(cx - px, cz - pz); inp.ComL = Le(cx - px, cz - pz); inp.ComU = (float)(cy - py);
         inp.VelF = (float)(vx * fx + vz * fz); inp.VelL = (float)(vx * lx + vz * lz);
         LimbAngles(a.Delta[pelvis], yawInv, true, out float pRho, out float pPhi);
         inp.PelvisRho = pRho; inp.PelvisPhi = pPhi;
-        float yawErr = WrapAct(a.Heading - psi);
-        inp.YawError = yawErr;
+        float yawErr = headingErr;
+        inp.YawError = walkFrame ? headingErr - frameLead : headingErr;
         inp.Geom = new BipedGeom { L1 = a.L1, L2 = a.L2, AnkleHeight = a.AnkleHeight, FootBack = a.FootBack, FootFront = a.FootFront, FootHalfWidth = a.FootHalfWidth, Mass = (float)mt };
 
         Span<float> partRho = stackalloc float[parts.Length], partPhi = stackalloc float[parts.Length];
@@ -591,6 +621,9 @@ internal sealed partial class Engine3D
         // World-frame limb targets, turned into rotations relative to the actual parent.
         // Only a swinging leg turns towards the heading (so its foot lands facing it); a planted leg keeps the pelvis's own yaw, because a planted foot cannot turn and a twist drive against it would spin the pelvis.
         var swingYawQ = a.Mode == (byte)ActiveMode.Walk ? Ry(psi + o.StanceYaw) : yaw;
+        bool walkingYaw = a.Mode == (byte)ActiveMode.Walk;
+        // The pelvis is turned by the planted hip: each step it moves by the turn rate times the time step (a position servo that is set to a point ahead of the actual angle turns at a rate, not by an angle).
+        float yawEps = BipedGait.Clamp(Turn3D.YawRate * yawErr, -Turn3D.YawRateMax, Turn3D.YawRateMax) * dt;
         var torsoT = TargetDelta(yaw, o.TorsoRho, o.TorsoPhi);
         Own(a, bn.Torso, Normalized(a.Delta[pelvis].Conjugated() * torsoT));
         if (bn.Head >= 0) { Own(a, bn.Head, Normalized(a.Delta[bn.Torso].Conjugated() * torsoT)); }
@@ -598,9 +631,7 @@ internal sealed partial class Engine3D
         {
             ref var lo = ref (k == 0 ? ref o.Left : ref o.Right);
             int th = bn.Leg(k, 0), sh = bn.Leg(k, 1), ft = bn.Leg(k, 2);
-            var legYawQ = k == a.SwingLeg ? swingYawQ : yaw;
-            Own(a, th, Normalized(a.Delta[pelvis].Conjugated() * TargetDelta(legYawQ, lo.ThighRho, lo.ThighPhi)));
-            Own(a, sh, Rx(lo.KneeFlex));
+            QuaternionF thighT, footT;
             float footRho = lo.FootRho, footPhi = lo.FootPhi;
             if (lo.AnkleTorque)
             {
@@ -611,7 +642,27 @@ internal sealed partial class Engine3D
                 a.TorqueMode[ft] = true;
             }
 
-            Own(a, ft, Normalized(a.Delta[sh].Conjugated() * TargetDelta(legYawQ, footRho, footPhi)));
+            if (walkingYaw)
+            {
+                // Walking: where a limb points is decided in the gait's frame, and the twist of the limb about its own axis separately. A swinging leg is twisted to face the heading; a planted leg keeps the twist it has, and its hip
+                // turns the pelvis towards the heading by a fraction of the error (the planted foot cannot turn, so the pelvis does).
+                float twA = TwistOf(a.Delta[th], partRho[th], partPhi[th], yaw), twFA = TwistOf(a.Delta[ft], partRho[ft], partPhi[ft], yaw);
+                float stepTw = Turn3D.SwingTwistRate * dt;   // a swinging leg turns to face the heading over the swing, not in one jerk (the reaction would spin the pelvis)
+                float twThigh = k == a.SwingLeg ? twA + BipedGait.Clamp(o.StanceYaw - twA, -stepTw, stepTw) : twA - yawEps;
+                float twFoot = k == a.SwingLeg ? twFA + BipedGait.Clamp(o.StanceYaw - twFA, -stepTw, stepTw) : twFA;
+                thighT = TargetDelta(yaw, lo.ThighRho, lo.ThighPhi) * Ry(twThigh);
+                footT = TargetDelta(yaw, footRho, footPhi) * Ry(twFoot);
+            }
+            else
+            {
+                var legYawQ = k == a.SwingLeg ? swingYawQ : yaw;
+                thighT = TargetDelta(legYawQ, lo.ThighRho, lo.ThighPhi);
+                footT = TargetDelta(legYawQ, footRho, footPhi);
+            }
+
+            Own(a, th, Normalized(a.Delta[pelvis].Conjugated() * thighT));
+            Own(a, sh, Rx(lo.KneeFlex));
+            Own(a, ft, Normalized(a.Delta[sh].Conjugated() * footT));
         }
 
         a.HasLanding = a.SwingLeg >= 0;
@@ -624,6 +675,14 @@ internal sealed partial class Engine3D
         a.Info = new ActiveRagdollInfo((ActiveMode)a.Mode, (GaitPhase)a.Gait.Phase, a.Gait.Steps, a.Gait.Time, (float)cx, (float)cy, (float)cz,
             (float)(px + o.CaptureF * fx + o.CaptureL * lx), (float)(pz + o.CaptureF * fz + o.CaptureL * lz),
             (float)(px + o.SupMinF * fx + o.SupMinL * lx), (float)(pz + o.SupMinF * fz + o.SupMinL * lz), (float)(px + o.SupMaxF * fx + o.SupMaxL * lx), (float)(pz + o.SupMaxF * fz + o.SupMaxL * lz), o.Grounded);
+    }
+
+    // The twist of a limb about its own axis, in the frame the limb's pitch and roll are measured in: the rotation left over once the pointing direction (rho, phi) is taken out.
+    private static float TwistOf(QuaternionF delta, float rho, float phi, QuaternionF yaw)
+    {
+        var q = TargetDelta(yaw, rho, phi).Conjugated() * delta;
+        if (q.W < 0f) { q = new QuaternionF(-q.X, -q.Y, -q.Z, -q.W); }
+        return (float)(2.0 * Math64.Atan2(q.Y, q.W));
     }
 
     private static float WrapAct(float a)

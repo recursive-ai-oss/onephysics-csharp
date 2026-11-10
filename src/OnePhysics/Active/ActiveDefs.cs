@@ -275,6 +275,21 @@ public sealed class ActiveRagdollDef
     /// </summary>
     public static ActiveRagdollDef Humanoid => new();
 
+    /// <summary>
+    /// <see cref="Humanoid"/> with the walking settings of a 3D biped: steps 15 cm apart (<see cref="WalkerDef.StepWidth"/>, the figure's feet are 12 cm wide), the legs that carry the body driven at 7 Hz (<see cref="LoadPdHertz"/>) and the torso and arms
+    /// at 2 Hz while walking (<see cref="WalkerDef.UpperBodyHertz"/>), because a stiff torso passes every reaction of the swinging legs on to the pelvis. This is what a 3D ragdoll gets from <c>EnableActive()</c>; standing and blending are
+    /// the same as <see cref="Humanoid"/>. A fresh copy each time.
+    /// </summary>
+    public static ActiveRagdollDef Humanoid3D
+    {
+        get
+        {
+            var d = new ActiveRagdollDef { LoadPdHertz = 7f };
+            d.Walker.StepWidth = 0.15f; d.Walker.UpperBodyHertz = 2f;
+            return d;
+        }
+    }
+
     internal ActiveRagdollDef Clone() => new()
     {
         PdHertz = PdHertz, LegPdHertz = LegPdHertz, LoadPdHertz = LoadPdHertz, TargetSlew = TargetSlew, SwingTorqueScale = SwingTorqueScale, PdDampingRatio = PdDampingRatio, TorqueScale = TorqueScale, RootMode = RootMode, RootTrackHertz = RootTrackHertz, HitRecoveryTime = HitRecoveryTime, HitStrength = HitStrength, HitRadius = HitRadius,
