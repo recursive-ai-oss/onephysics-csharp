@@ -406,6 +406,9 @@ public readonly struct Articulation : IEquatable<Articulation>
     /// <summary>Contact points of the links with other bodies in the last step.</summary>
     public int ContactPointCount => Resolve().ContactPoints;
 
+    /// <summary>The deepest overlap, metres, of any link contact point with another body at the end of the last step (0 when nothing overlaps or nothing touched).</summary>
+    public float DeepestPenetration => (float)Resolve().DeepestPenetration;
+
     // ------------------------------------------------------------------ pose and lifetime
 
     /// <summary>Moves the base: the placement of a fixed base, or the position and orientation of a floating base (its velocity is kept). The links follow.</summary>

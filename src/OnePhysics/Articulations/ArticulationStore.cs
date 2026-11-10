@@ -43,6 +43,12 @@ internal interface IArticulationHost
     /// </summary>
     void GatherLinkContacts(List<HostContact> into);
 
+    /// <summary>
+    /// Appends the contact points of a dynamic body with static bodies (the ground it stands on, the wall it leans against): <see cref="HostContact.Normal"/> points from the static body towards <paramref name="body"/> (the way the
+    /// contact pushes it), <see cref="HostContact.OtherArm"/> is from the body's centre of mass to the point, <see cref="HostContact.Other"/> the static body. Ascending constraint order, then point order.
+    /// </summary>
+    void GatherSupportContacts(int body, List<HostContact> into);
+
     /// <summary>Centre-of-mass position, linear and angular velocity of a body.</summary>
     void BodyMotion(int body, out D3 position, out D3 velocity, out D3 omega);
 
@@ -79,6 +85,9 @@ internal sealed class ArticulationState
     public bool AnyExternal;
     // Readback of the last step (not saved).
     public int ContactPoints;
+    public double DeepestPenetration;
+    public Debug.DebugArticulationContact[] LastContacts = Array.Empty<Debug.DebugArticulationContact>();
+    public int LastContactCount;
     public double[] JointForce = Array.Empty<double>();
 }
 

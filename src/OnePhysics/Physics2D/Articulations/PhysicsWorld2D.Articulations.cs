@@ -82,6 +82,16 @@ public sealed partial class PhysicsWorld2D
         return true;
     }
 
+    /// <summary>Every articulation in the world, by slot.</summary>
+    /// <returns>A new array.</returns>
+    public Articulation[] GetArticulations()
+    {
+        var s = _engine.Articulations;
+        var list = new List<Articulation>();
+        for (int i = 0; i < s.Handles.HighWater; i++) { if (s.Handles.IsLive(i)) { list.Add(new Articulation(this, i, s.Handles.GenerationOf(i))); } }
+        return list.ToArray();
+    }
+
     /// <summary>The number of articulations in the world.</summary>
     public int ArticulationCount => _engine.Articulations.Count;
 

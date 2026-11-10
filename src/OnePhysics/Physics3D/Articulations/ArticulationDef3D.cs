@@ -150,19 +150,20 @@ public sealed class ArticulationDef
         if (!(mass > 0f) || !float.IsFinite(mass)) { throw new ArgumentOutOfRangeException(nameof(mass), mass, "mass must be finite and above 0."); }
         var def = new ArticulationDef { FixedBase = true, GravityCompensation = true };
         float len = reach / joints, m = mass / joints, radius = Math.Min(0.04f, 0.2f * len);
-        var baseLink = new ArticulationLinkDef { Mass = 2f * m, InertiaTensor = Rod(2f * m, 0.1f, 0.06f), CenterOfMass = new Vector3F(0f, 0.025f, 0f) };
-        baseLink.AddShape(ShapeSpec3D.Capsule(0.025f, 0.06f), new ShapeDef { LocalPosition = new Vector3F(0f, 0.025f, 0f) });
+        // The base is a short fat capsule standing on the base frame's plane (its lowest point is at height 0) and the first joint sits on top of it.
+        var baseLink = new ArticulationLinkDef { Mass = 2f * m, InertiaTensor = Rod(2f * m, 0.1f, 0.06f), CenterOfMass = new Vector3F(0f, 0.085f, 0f) };
+        baseLink.AddShape(ShapeSpec3D.Capsule(0.025f, 0.06f), new ShapeDef { LocalPosition = new Vector3F(0f, 0.085f, 0f) });
         def.AddLink(baseLink);
         for (int i = 0; i < joints; i++)
         {
             // The effective inertia of what hangs beyond this joint, a thin rod each, for a drive that settles in about a third of a second.
             float beyond = (joints - i) * m, arm = 0.5f * (joints - i) * len;
-            float inertia = beyond * arm * arm / 1.5f + 0.01f;
+            float inertia = beyond * arm * arm / 1.5f + 0.01f;   // the drive's force limit is four times the torque that holds the arm out horizontally, so a push cannot crush what it meets
             var link = new ArticulationLinkDef
             {
                 Parent = i, Joint = ArticulationJointKind.Revolute, Axis = i % 2 == 0 ? new Vector3F(0f, 1f, 0f) : new Vector3F(1f, 0f, 0f),
-                Origin = new Vector3F(0f, i == 0 ? 0.05f : len, 0f), Mass = m, CenterOfMass = new Vector3F(0f, 0.5f * len, 0f), InertiaTensor = Rod(m, len, radius),
-                Drive = ArticulationDrive.Position(inertia, 0.3f), Damping = 0.02f, HasLimits = i % 2 == 1, LowerLimit = -2.4f, UpperLimit = 2.4f,
+                Origin = new Vector3F(0f, i == 0 ? 0.11f : len, 0f), Mass = m, CenterOfMass = new Vector3F(0f, 0.5f * len, 0f), InertiaTensor = Rod(m, len, radius),
+                Drive = ArticulationDrive.Position(inertia, 0.3f, maxForce: 5f + 4f * 9.81f * beyond * arm), Damping = 0.02f, HasLimits = i % 2 == 1, LowerLimit = -2.4f, UpperLimit = 2.4f,
             };
             link.AddShape(ShapeSpec3D.Capsule(0.5f * (len - 2f * radius), radius), new ShapeDef { LocalPosition = new Vector3F(0f, 0.5f * len, 0f), Density = m / (3.14159f * radius * radius * len) });
             def.AddLink(link);

@@ -71,8 +71,11 @@ public enum DebugContent
     /// <summary>The surface and depth of every shallow-water grid as plain data (<see cref="DebugGeometry.WaterSurfaces"/>, <see cref="DebugGeometry.WaterHeights"/>, <see cref="DebugGeometry.WaterDepths"/>).</summary>
     ShallowWater = 524288,
 
+    /// <summary>The joints of articulation links with their axes, positions and limits, and the contact points the articulations solved (<see cref="DebugGeometry.ArticulationJoints"/>, <see cref="DebugGeometry.ArticulationContacts"/>).</summary>
+    Articulations = 1048576,
+
     /// <summary>Everything.</summary>
-    All = 1048575,
+    All = 2097151,
 }
 
 /// <summary>The kind of a <see cref="DebugShape"/>. The same enum serves 2D and 3D worlds; a 2D world emits the first five.</summary>
@@ -626,7 +629,7 @@ public sealed partial class DebugGeometry
     public ReadOnlySpan<DebugClothWind> ClothWind => _clothWind.AsSpan(0, _nClothWind);
 
     /// <summary>Empties every list (capacity is kept).</summary>
-    public void Clear() { _nHolds=0; _nActive = 0; _nPulleySpans=0; _nPulleyWheels=0; _nAeroSurfaces=0; _nAeroForces=0; _nRodSegments=0; _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; _nTracks = _nRailContacts = 0; _nClothLinks = _nClothWind = 0; ClearFluids(); }
+    public void Clear() { _nHolds=0; _nActive = 0; _nPulleySpans=0; _nPulleyWheels=0; _nAeroSurfaces=0; _nAeroForces=0; _nRodSegments=0; _nFields=0; ClearInspection(); _nIndices = _nShapes = _nPoints = _nBounds = _nFat = _nContacts = _nBodies = _nJoints = _nCharacters = _nWheels = _nSoft = 0; _nTracks = _nRailContacts = 0; _nClothLinks = _nClothWind = 0; ClearFluids(); ClearArticulations(); }
 
     private static void Push<T>(ref T[] a, ref int n, in T v)
     {

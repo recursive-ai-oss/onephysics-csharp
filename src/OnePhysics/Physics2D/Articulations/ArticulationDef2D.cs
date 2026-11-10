@@ -125,7 +125,7 @@ public sealed class ArticulationDef
     private static float Rod(float mass, float length, float radius) => mass * (3f * radius * radius + length * length) / 12f;
 
     /// <summary>
-    /// A planar arm on a fixed base: <paramref name="joints"/> revolute joints, links as capsules along +Y, each joint with a position drive and gravity compensation on. The default is a three-joint arm 0.9 m long reaching straight up.
+    /// A planar arm on a fixed base standing on the root frame's x axis: <paramref name="joints"/> revolute joints, links as capsules along +Y, each joint with a position drive and gravity compensation on. The default is a three-joint arm 0.9 m long reaching straight up.
     /// </summary>
     /// <param name="reach">Length of the whole arm, metres; above 0.</param>
     /// <param name="joints">Number of joints, 1 to 64.</param>
@@ -138,17 +138,17 @@ public sealed class ArticulationDef
         if (!(mass > 0f) || !float.IsFinite(mass)) { throw new ArgumentOutOfRangeException(nameof(mass), mass, "mass must be finite and above 0."); }
         var def = new ArticulationDef { FixedBase = true, GravityCompensation = true };
         float len = reach / joints, m = mass / joints, radius = Math.Min(0.04f, 0.2f * len);
-        var baseLink = new ArticulationLinkDef { Mass = 2f * m, Inertia = Rod(2f * m, 0.1f, 0.06f), CenterOfMass = new Vector2F(0f, 0.025f) };
-        baseLink.AddShape(Shape2D.CreateCapsule(new Vec2(0f, 0f), new Vec2(0f, 0.05f), 0.06f));
+        var baseLink = new ArticulationLinkDef { Mass = 2f * m, Inertia = Rod(2f * m, 0.1f, 0.06f), CenterOfMass = new Vector2F(0f, 0.085f) };
+        baseLink.AddShape(Shape2D.CreateCapsule(new Vec2(0f, 0.06f), new Vec2(0f, 0.11f), 0.06f));
         def.AddLink(baseLink);
         for (int i = 0; i < joints; i++)
         {
             float beyond = (joints - i) * m, arm = 0.5f * (joints - i) * len;
-            float inertia = beyond * arm * arm / 1.5f + 0.01f;
+            float inertia = beyond * arm * arm / 1.5f + 0.01f;   // the drive's force limit is four times the torque that holds the arm out horizontally, so a push cannot crush what it meets
             var link = new ArticulationLinkDef
             {
-                Parent = i, Joint = ArticulationJointKind.Revolute, Origin = new Vector2F(0f, i == 0 ? 0.05f : len), Mass = m, CenterOfMass = new Vector2F(0f, 0.5f * len), Inertia = Rod(m, len, radius),
-                Drive = ArticulationDrive.Position(inertia, 0.3f), Damping = 0.02f, HasLimits = true, LowerLimit = -2.6f, UpperLimit = 2.6f,
+                Parent = i, Joint = ArticulationJointKind.Revolute, Origin = new Vector2F(0f, i == 0 ? 0.11f : len), Mass = m, CenterOfMass = new Vector2F(0f, 0.5f * len), Inertia = Rod(m, len, radius),
+                Drive = ArticulationDrive.Position(inertia, 0.3f, maxForce: 5f + 4f * 9.81f * beyond * arm), Damping = 0.02f, HasLimits = true, LowerLimit = -2.6f, UpperLimit = 2.6f,
             };
             link.AddShape(Shape2D.CreateCapsule(new Vec2(0f, radius), new Vec2(0f, len - radius), radius));
             def.AddLink(link);

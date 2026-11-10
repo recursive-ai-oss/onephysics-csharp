@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using RecursiveAI.OneMath;
 
 namespace RecursiveAI.OnePhysics.Articulations;
 
@@ -15,16 +16,26 @@ internal sealed partial class ArticulationStore
     {
         public RowKind Kind;
         public int Other;              // index into _others, or -1
-        public int Contact;            // index into _cp for contact rows
+        public int Contact;            // index into _cp for contact rows, or -1
+        public int Support;            // index into _sc for support rows (a pushed body against the ground), or -1
         public int NormalRow;          // for friction rows: the row of the normal impulse that bounds it
         public double InvD, Target, Lo, Hi, Lambda, Mu;
         public D3 Dir;                 // direction the row pushes the other body
+        public D3 Arm;                 // from the other body's centre of mass to the point
     }
 
     private struct ContactPt
     {
         public int Link, Other;
         public D3 Local, N, T1, T2, P0, Arm;
+        public double S0, Mu, Ln, Lt1, Lt2;
+    }
+
+    // A contact of a body the articulation pushes with the static ground or wall: the articulation's solve keeps that body from being pressed through it.
+    private struct SupportPt
+    {
+        public int Other;
+        public D3 N, T1, T2, Arm;
         public double S0, Mu, Ln, Lt1, Lt2;
     }
 
@@ -40,6 +51,9 @@ internal sealed partial class ArticulationStore
     private int _cpCount;
     private OtherBody[] _others = new OtherBody[8];
     private int _otherCount;
+    private SupportPt[] _sc = new SupportPt[16];
+    private int _scCount;
+    private readonly List<HostContact> _support = new();
     private Row[] _rows = new Row[32];
     private double[] _jRows = Array.Empty<double>(), _wRows = Array.Empty<double>(), _mDense = Array.Empty<double>(), _tau = Array.Empty<double>(), _dAdd = Array.Empty<double>(), _qdd = Array.Empty<double>(), _tauG = Array.Empty<double>(), _jlin = Array.Empty<double>(), _zero = Array.Empty<double>(), _col = Array.Empty<double>();
     private double[] _ikJ = Array.Empty<double>();
@@ -159,6 +173,23 @@ internal sealed partial class ArticulationStore
 
         if (s.AnyExternal) { Array.Clear(s.External); s.AnyExternal = false; }
         s.ContactPoints = _cpCount;
+        double deepest = 0.0;
+        for (int c = 0; c < _cpCount; c++)
+        {
+            ref var cp = ref _cp[c];
+            double sepNow = cp.S0 - D3.Dot(cp.N, m.Pw[cp.Link] + m.Rw[cp.Link] * cp.Local - cp.P0);
+            if (-sepNow > deepest) { deepest = -sepNow; }
+        }
+
+        s.DeepestPenetration = deepest;
+        if (s.LastContacts.Length < _cpCount) { s.LastContacts = new Debug.DebugArticulationContact[Math.Max(_cpCount, 8)]; }
+        for (int c = 0; c < _cpCount; c++)
+        {
+            ref var cp = ref _cp[c];
+            s.LastContacts[c] = new Debug.DebugArticulationContact(0, cp.Link, new Vector3D(cp.P0.X, cp.P0.Y, cp.P0.Z), new Vector3F((float)cp.N.X, (float)cp.N.Y, (float)cp.N.Z), (float)cp.S0, (float)cp.Ln);
+        }
+
+        s.LastContactCount = _cpCount;
     }
 
     private static void ClampVelocities(ArticulationState s)
@@ -375,6 +406,24 @@ internal sealed partial class ArticulationStore
             p.Local = m.Rw[k].Transposed() * (c.Point - m.Pw[k]);
             p.Ln = 0; p.Lt1 = 0; p.Lt2 = 0;
         }
+
+        // The bodies the links touch: their contacts with static bodies join the solve, so a body squeezed between an arm and the floor is held by the floor instead of being pushed through it.
+        _scCount = 0;
+        int touched = _otherCount;
+        for (int o = 0; o < touched; o++)
+        {
+            if (_others[o].InvM == 0.0) { continue; }
+            _support.Clear();
+            _host.GatherSupportContacts(_others[o].Body, _support);
+            foreach (var c in _support)
+            {
+                Fit(ref _sc, _scCount + 1);
+                ref var q = ref _sc[_scCount++];
+                q.Other = o; q.N = c.Normal; q.Arm = c.OtherArm; q.S0 = c.Separation; q.Mu = c.Friction;
+                Tangents(c.Normal, out q.T1, out q.T2);
+                q.Ln = 0; q.Lt1 = 0; q.Lt2 = 0;
+            }
+        }
     }
 
     // ------------------------------------------------------------------ the constraint solve
@@ -388,7 +437,7 @@ internal sealed partial class ArticulationStore
         double slop = _host.ContactSlop, pushCap = _host.PushOutVelocity;
         _applyModel = m;
         int rowCount = 0;
-        int maxRows = 6 * m.N + 3 * _cpCount + 4;
+        int maxRows = 6 * m.N + 3 * _cpCount + 3 * _scCount + 4;
         Fit(ref _rows, maxRows);
         Fit(ref _jRows, maxRows * n); Fit(ref _wRows, maxRows * n);
         // Joint friction and limits.
@@ -462,6 +511,18 @@ internal sealed partial class ArticulationStore
             _rows[first].Lambda = cp.Lt1; _rows[first + 1].Lambda = cp.Lt2; _rows[first + 2].Lambda = cp.Ln;
         }
 
+        // Support rows: a pushed body against the ground. They have no joint part; they only limit what the links can do to the body.
+        for (int c = 0; c < _scCount; c++)
+        {
+            ref var sp = ref _sc[c];
+            int first = rowCount;
+            AddSupportRow(ref rowCount, n, c, sp.T1, RowKind.Friction1, 0.0, sp.Mu, first + 2);
+            AddSupportRow(ref rowCount, n, c, sp.T2, RowKind.Friction2, 0.0, sp.Mu, first + 2);
+            double speed = sp.S0 > 0.0 ? -sp.S0 / h : 0.0;   // the rigid solver moves a body out of penetration; here it only may not be pushed deeper
+            AddSupportRow(ref rowCount, n, c, sp.N, RowKind.Normal, speed, 0.0, -1);
+            _rows[first].Lambda = sp.Lt1; _rows[first + 1].Lambda = sp.Lt2; _rows[first + 2].Lambda = sp.Ln;
+        }
+
         if (rowCount == 0) { return; }
 
         // Dense effective mass: M(q) + the implicit diagonal, factored once; W = M⁻¹ Jᵀ for every row.
@@ -483,7 +544,7 @@ internal sealed partial class ArticulationStore
                 ref var ob = ref _others[row.Other];
                 if (ob.InvM > 0.0)
                 {
-                    var rxd = D3.Cross(_cp[row.Contact].Arm, row.Dir);
+                    var rxd = D3.Cross(row.Arm, row.Dir);
                     d += ob.InvM + D3.Dot(rxd, ob.InvI * rxd);
                 }
             }
@@ -511,7 +572,7 @@ internal sealed partial class ArticulationStore
                 if (row.Other >= 0)
                 {
                     ref var ob = ref _others[row.Other];
-                    v += D3.Dot(row.Dir, ob.V + D3.Cross(ob.W, _cp[row.Contact].Arm));
+                    v += D3.Dot(row.Dir, ob.V + D3.Cross(ob.W, row.Arm));
                 }
 
                 double lo = row.Lo, hi = row.Hi;
@@ -527,9 +588,17 @@ internal sealed partial class ArticulationStore
         for (int r = 0; r < rowCount; r++)
         {
             ref var row = ref _rows[r];
-            if (row.Contact < 0 || row.Kind < RowKind.Normal) { continue; }
-            ref var cp = ref _cp[row.Contact];
-            if (row.Kind == RowKind.Normal) { cp.Ln = row.Lambda; } else if (row.Kind == RowKind.Friction1) { cp.Lt1 = row.Lambda; } else { cp.Lt2 = row.Lambda; }
+            if (row.Kind < RowKind.Normal) { continue; }
+            if (row.Contact >= 0)
+            {
+                ref var cp = ref _cp[row.Contact];
+                if (row.Kind == RowKind.Normal) { cp.Ln = row.Lambda; } else if (row.Kind == RowKind.Friction1) { cp.Lt1 = row.Lambda; } else { cp.Lt2 = row.Lambda; }
+            }
+            else if (row.Support >= 0)
+            {
+                ref var sp = ref _sc[row.Support];
+                if (row.Kind == RowKind.Normal) { sp.Ln = row.Lambda; } else if (row.Kind == RowKind.Friction1) { sp.Lt1 = row.Lambda; } else { sp.Lt2 = row.Lambda; }
+            }
         }
     }
 
@@ -545,7 +614,7 @@ internal sealed partial class ArticulationStore
             if (ob.InvM > 0.0)
             {
                 ob.V = ob.V + row.Dir * (ob.InvM * dl);
-                ob.W = ob.W + ob.InvI * D3.Cross(_cp[row.Contact].Arm, row.Dir) * dl;
+                ob.W = ob.W + ob.InvI * D3.Cross(row.Arm, row.Dir) * dl;
             }
         }
     }
@@ -556,7 +625,7 @@ internal sealed partial class ArticulationStore
     {
         ref var row = ref _rows[rowCount];
         row = default;
-        row.Kind = kind; row.Other = -1; row.Contact = -1; row.NormalRow = -1; row.Target = target; row.Lo = lo; row.Hi = hi;
+        row.Kind = kind; row.Other = -1; row.Contact = -1; row.Support = -1; row.NormalRow = -1; row.Target = target; row.Lo = lo; row.Hi = hi;
         var jr = _jRows.AsSpan(rowCount * n, n);
         jr.Clear();
         jr[dof] = sign;
@@ -568,10 +637,21 @@ internal sealed partial class ArticulationStore
         ref var row = ref _rows[rowCount];
         row = default;
         ref var cp = ref _cp[contact];
-        row.Kind = kind; row.Other = cp.Other; row.Contact = contact; row.NormalRow = normalRow; row.Target = target; row.Mu = mu; row.Dir = dir;
+        row.Kind = kind; row.Other = cp.Other; row.Contact = contact; row.Support = -1; row.NormalRow = normalRow; row.Target = target; row.Mu = mu; row.Dir = dir; row.Arm = cp.Arm;
         row.Lo = kind == RowKind.Normal ? 0.0 : double.NegativeInfinity; row.Hi = double.PositiveInfinity;
         var jr = _jRows.AsSpan(rowCount * n, n);
         for (int k = 0; k < n; k++) { jr[k] = -(dir.X * _jlin[k] + dir.Y * _jlin[n + k] + dir.Z * _jlin[2 * n + k]); }
+        rowCount++;
+    }
+
+    private void AddSupportRow(ref int rowCount, int n, int support, D3 dir, RowKind kind, double target, double mu, int normalRow)
+    {
+        ref var row = ref _rows[rowCount];
+        row = default;
+        ref var sp = ref _sc[support];
+        row.Kind = kind; row.Other = sp.Other; row.Contact = -1; row.Support = support; row.NormalRow = normalRow; row.Target = target; row.Mu = mu; row.Dir = dir; row.Arm = sp.Arm;
+        row.Lo = kind == RowKind.Normal ? 0.0 : double.NegativeInfinity; row.Hi = double.PositiveInfinity;
+        _jRows.AsSpan(rowCount * n, n).Clear();
         rowCount++;
     }
 }

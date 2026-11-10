@@ -92,6 +92,33 @@ internal sealed partial class Engine2D : IArticulationHost
         }
     }
 
+    void IArticulationHost.GatherSupportContacts(int body, List<HostContact> into)
+    {
+        var cs = Core.Constraints;
+        var bodies = Core.Bodies;
+        _edgeScratch.Clear();
+        for (int e = bodies.FirstEdge(body); e >= 0; e = cs.NextEdge(e)) { _edgeScratch.Add(e >> 1); }
+        _edgeScratch.Sort();
+        foreach (int c in _edgeScratch)
+        {
+            if (cs.KindOf(c) != ConstraintKind.Contact || cs.PointCount[c] == 0) { continue; }
+            int ba = cs.BodyA[c], bb = cs.BodyB[c];
+            bool bodyIsB = bb == body;
+            int other = bodyIsB ? ba : bb;
+            if (bodies.TypeOf(other) != BodyType.Static) { continue; }
+            var pl = cs.Payload(c);
+            var n = new D3(pl[ManifoldLayout.Normal], pl[ManifoldLayout.Normal + 1], 0.0);
+            if (!bodyIsB) { n = -n; }
+            for (int k = 0; k < cs.PointCount[c]; k++)
+            {
+                int ia = bodyIsB ? ManifoldLayout.AnchorB(k) : ManifoldLayout.AnchorA(k);
+                into.Add(new HostContact { Constraint = c, LinkBody = -1, Other = other, Normal = n, OtherArm = new D3(pl[ia], pl[ia + 1], 0.0), Separation = pl[ManifoldLayout.Separation(k)], Friction = pl[ManifoldLayout.Friction] });
+            }
+        }
+    }
+
+    private readonly List<int> _edgeScratch = new();
+
     void IArticulationHost.BodyMotion(int body, out D3 position, out D3 velocity, out D3 omega)
     {
         var p = Core.Bodies.PositionOf(body); var v = Core.Bodies.LinearVelocityOf(body);

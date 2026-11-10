@@ -27,6 +27,8 @@
     <Compile Include="../../tests/Common/Vehicles2DScene.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/RailBikeScenes2D.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/RailBikeScenes3D.cs" LinkBase="Common" />
+    <Compile Include="../../tests/Common/ArticulationScenes2D.cs" LinkBase="Common" />
+    <Compile Include="../../tests/Common/ArticulationScenes3D.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/Actuators3DScene.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/CharacterAbilityScenes3D.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/TerrainEditScenes.cs" LinkBase="Common" />

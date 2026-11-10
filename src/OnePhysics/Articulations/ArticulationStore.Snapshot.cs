@@ -221,7 +221,7 @@ internal sealed partial class ArticulationStore
                 Model = CloneModel(s.Model), Body = (int[])s.Body.Clone(), BodyGen = (int[])s.BodyGen.Clone(), Planar = s.Planar, FixedBase = s.FixedBase, Substeps = s.Substeps, Iterations = s.Iterations,
                 SelfCollision = s.SelfCollision, GravityCompensation = s.GravityCompensation, GravityScale = s.GravityScale, HasTarget = s.HasTarget, TargetLink = s.TargetLink, TargetLocal = s.TargetLocal,
                 TargetPosition = s.TargetPosition, TargetOrientation = s.TargetOrientation, TargetRotation = s.TargetRotation, IkGain = s.IkGain, IkDamping = s.IkDamping, IkMaxStep = s.IkMaxStep,
-                External = (double[])s.External.Clone(), AnyExternal = s.AnyExternal, ContactPoints = s.ContactPoints, JointForce = (double[])s.JointForce.Clone(),
+                External = (double[])s.External.Clone(), AnyExternal = s.AnyExternal, ContactPoints = s.ContactPoints, DeepestPenetration = s.DeepestPenetration, JointForce = (double[])s.JointForce.Clone(),
             };
         }
 

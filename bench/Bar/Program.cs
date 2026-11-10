@@ -38,6 +38,8 @@ public static class Program
             case "vehicles2d-stability": return Vehicles2DStability.Run(opts);
             case "active-stability": return ActiveStability.Run(opts);
             case "railbike-stability": return RailBikeStability.Run(opts);
+            case "articulation-stability": return ArticulationStability.Run(opts);
+            case "articulation-timing": return ArticulationStability.Time(opts);
             case "actuators-stability": return ActuatorStability.Run(opts);
             case "fluid-stability": return FluidStability.Run(opts);
             case "fluid-timing": return FluidStability.Time(opts);

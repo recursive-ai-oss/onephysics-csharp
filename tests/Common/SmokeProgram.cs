@@ -201,6 +201,11 @@ internal static class SmokeProgram
         ulong rb21 = RailBikeScenes2D.Run(1, false), rb23 = RailBikeScenes2D.Run(3, false), rb2r = RailBikeScenes2D.Run(1, true);
         bool railBike = rb31 == rb33 && rb31 == rb3r && rb21 == rb23 && rb21 == rb2r;
         Console.WriteLine((railBike ? "OK railbike " : "FAIL railbike ") + rb31.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) + " " + rb21.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        // Articulations in both dimensions (an arm that pushes a box, quadrupeds on a floor and a height field, a heavy chain and a whip): same state on one and three threads and after a restore.
+        ulong ar31 = ArticulationScenes3D.Run(1, false), ar33 = ArticulationScenes3D.Run(3, false), ar3r = ArticulationScenes3D.Run(1, true);
+        ulong ar21 = ArticulationScenes2D.Run(1, false), ar23 = ArticulationScenes2D.Run(3, false), ar2r = ArticulationScenes2D.Run(1, true);
+        bool articulations = ar31 == ar33 && ar31 == ar3r && ar21 == ar23 && ar21 == ar2r;
+        Console.WriteLine((articulations ? "OK articulations " : "FAIL articulations ") + ar31.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) + " " + ar21.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         // Characters that sit, hang, climb, grip ropes and stand on soft bodies, ropes and decks, in both dimensions: same state on one and three threads and after a restore.
         bool abilities = true;
         foreach (string scene in CharacterAbilityScenes3D.Names)
@@ -313,7 +318,7 @@ internal static class SmokeProgram
         Console.WriteLine((destruction ? "OK destruction " : "FAIL destruction ") + destructionHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool machines = JointMachineSmoke.Run();
         Console.WriteLine(machines ? "OK machines" : "FAIL machines");
-        return tools && destruction && active && shallowWater && railBike && abilities && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
+        return articulations && tools && destruction && active && shallowWater && railBike && abilities && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
     }
 
     private static bool MissingShapes()
