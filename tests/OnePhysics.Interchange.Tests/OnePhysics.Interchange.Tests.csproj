@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>RecursiveAI.OnePhysics.Interchange.Tests</AssemblyName>
+    <RootNamespace>RecursiveAI.OnePhysics.Interchange.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CA1707;CA1051;CA1861</NoWarn>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="../../testdata/interchange/**" Link="interchange/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OnePhysics.Interchange/OnePhysics.Interchange.csproj" />
+  </ItemGroup>
+
+</Project>
