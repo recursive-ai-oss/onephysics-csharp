@@ -70,6 +70,7 @@ Link bodies are kinematic. The narrowphase pairs them with every other body: kin
 - **Origin shift:** root translation (or fixed-base placement) loses the offset exactly, link bodies shift with the core. Because the model's contact arithmetic is double relative to absolute positions, a shifted world follows the unshifted one to rounding (about 1e-6 over seconds of motion), not bit for bit as rigid bodies do; two worlds shifted alike by the same offset at the same step stay bit-identical to each other, which is the contract.
 - **Replay:** every public mutator is recorded as a complete-state mutation (`Articulation.*`, `PhysicsWorld*.AddArticulation`).
 - **Debug geometry:** `DebugContent.Articulations` (1048576; `All` = 2097151): link frames, joint axes and limits, task targets, contact points the solve used.
+- **Step pre-check:** before a step changes anything, an articulation whose joint positions are not finite or beyond ±4194304, or whose speeds are not finite or beyond ±1e6, raises `ArticulationStateException` (the restore reader accepts any finite state, as for every section).
 - **Sleeping:** articulations never sleep; their links are always active and keep touching bodies awake.
 
 ## Determinism
