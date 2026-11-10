@@ -136,6 +136,9 @@ internal static class BipedGait
             && Ok(l.FootRho) && Ok(l.FootPhi) && Ok(l.PlaceDU) && Ok(l.PlaceSlopeRho);
     }
 
+    /// <summary>Largest magnitude of a saved velocity filter, bias or running sum.</summary>
+    internal const float StateLimit = 1e8f;
+
     private static bool Ok(float v) => Math.Abs(v) <= 1e7f;   // NaN fails
 
     internal static float Clamp(float v, float lo, float hi) => v < lo ? lo : v > hi ? hi : v;
@@ -186,6 +189,10 @@ internal static class BipedGait
         else { float al = dt / (Tun.Filt + dt); s.FVelF += al * (inn.VelF - s.FVelF); s.FVelL += al * (inn.VelL - s.FVelL); }
         if (inn.Walk) { inn.VelF = s.FVelF; inn.VelL = s.FVelL; }   // balance without walking reacts to the raw velocity: a push must be seen at once
         s.SumF += s.FVelF * dt; s.SumL += s.FVelL * dt; s.SumT += dt;
+        // Measurements are at most 1e7 (Sane), so the filter and the running sums stay far below this bound in a world the library built; it only matters for state read from damaged bytes, which could otherwise be carried
+        // past the largest float by one more addition and then be refused when the world is saved and loaded again. The snapshot reader accepts exactly this range.
+        s.FVelF = BoundTo(s.FVelF, StateLimit); s.FVelL = BoundTo(s.FVelL, StateLimit); s.SumF = BoundTo(s.SumF, StateLimit); s.SumL = BoundTo(s.SumL, StateLimit);
+        s.BiasF = BoundTo(s.BiasF, StateLimit); s.BiasL = BoundTo(s.BiasL, StateLimit);
         // The gait plans for the commanded velocity plus a slowly learned correction.
         float planF = inn.CmdF + s.BiasF, planL = inn.CmdL + s.BiasL;
         s.Time += dt;

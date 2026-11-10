@@ -428,7 +428,17 @@ internal sealed partial class Engine3D : ISnapshotSection
             for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
             {
                 var geometry = Geoms[GeomOf[s]]!;
-                if (geometry.IsConvex && geometry.Convex.Kind == ConvexShapeKind3D.Plane) continue;
+                if (geometry.IsConvex && geometry.Convex.Kind == ConvexShapeKind3D.Plane)
+                {
+                    // A half-space has no box of its own (its proxy always spans the domain), so its body's position is the only thing that can be out of range; a plane far outside would make every pair against it non-finite.
+                    var planePos = bodies.PositionOf(b);
+                    if (BoxLimits.CheckAxis(planePos[0], planePos[0], "x", out string planeReason) && BoxLimits.CheckAxis(planePos[1], planePos[1], "y", out planeReason) && BoxLimits.CheckAxis(planePos[2], planePos[2], "z", out planeReason)) { continue; }
+                    handle = Core.HandleOfBody(b);
+                    var planeCi = CultureInfo.InvariantCulture;
+                    message = "Body " + handle + " at (" + planePos[0].ToString("R", planeCi) + ", " + planePos[1].ToString("R", planeCi) + ", " + planePos[2].ToString("R", planeCi) + ") has left the supported range: " + planeReason + " Move it back, destroy it, or call ShiftOrigin.";
+                    return true;
+                }
+
                 var box = TightBox(b, s);
                 // The box the broadphase would store: margin plus the last step's displacement stretched by its default multiplier (2).
                 _dp3[0] = Dp[3 * b]; _dp3[1] = Dp[3 * b + 1]; _dp3[2] = Dp[3 * b + 2];
