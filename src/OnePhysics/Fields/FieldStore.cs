@@ -131,6 +131,15 @@ internal sealed partial class FieldStore(IFieldHost host) : ISnapshotSection
         float r = Math.Max(distance,d.Softening);
         return d.Falloff == FieldFalloff.Constant ? d.Strength : d.Falloff == FieldFalloff.InverseLinear ? d.Strength/r : d.Strength/(r*r);
     }
+    /// <summary>Checked before a step changes anything: a custom gravity field needs the host's delegate, which a fork or a restore into a fresh world does not carry, and a world that stepped without it would simulate something else without saying so.</summary>
+    internal void ValidateStep()
+    {
+        for (int f=0;f<Definitions.Length;f++)
+        {
+            var d=Definitions[f];
+            if (d != null && d.Kind == FieldKind.CustomGravity && !_callbacks.ContainsKey(d.CallbackId)) throw new FieldCallbackException(d.CallbackId);
+        }
+    }
     internal void Step(float dt)
     {
         if (Count == 0) return;
@@ -171,8 +180,7 @@ internal sealed partial class FieldStore(IFieldHost host) : ISnapshotSection
                 if (d.Kind == FieldKind.Area) a=d.Direction;
                 else if (d.Kind == FieldKind.CustomGravity)
                 {
-                    // A restored or forked world holds the field but not the host delegate; until the host rebinds it the field applies nothing, counted like any other dropped application.
-                    if (!_callbacks.TryGetValue(d.CallbackId,out var callback)) {Skipped++;continue;}
+                    if (!_callbacks.TryGetValue(d.CallbackId,out var callback)) throw new FieldCallbackException(d.CallbackId);
                     a=callback(Position(b),core.StepCount);
                     // A callback result that is not finite or is beyond the field limit is dropped, as in Apply.
                     if(!Usable(a)){Skipped++;continue;}

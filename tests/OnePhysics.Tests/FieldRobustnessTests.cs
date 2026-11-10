@@ -91,14 +91,13 @@ public sealed class FieldRobustnessTests
     public void DivergedWorldRefusesToWriteASnapshotNamingTheFieldInBothDimensions()
     {
         var w2=new P2.PhysicsWorld2D(new(){Gravity=new(0,-10),SleepEnabled=false});var b2=w2.AddCircle(0.2f);
-        b2.ApplyForce(new(3e38f,0));
-        for(int i=0;i<6;i++){try{w2.Step(0.01f);}catch(P2.BodyOutOfBoundsException){break;}}
+        // The step no longer lets a huge force carry a body to NaN (speeds are cut after the solve), so the diverged state is written directly through the raw tier.
+        w2.Core.Bodies.PositionOf(b2.RawHandle.Index)[0]=double.NaN;
         var e2=Assert.Throws<NonFiniteStateException>(()=>w2.Snapshot());Assert.Contains("position lane",e2.Message);
         Assert.Throws<NonFiniteStateException>(()=>w2.GetSnapshotSize());
         _=w2.ComputeHash();
         var w3=new P3.PhysicsWorld3D(new(){Gravity=new(0,-10,0),SleepEnabled=false});var b3=w3.AddSphere(0.2f);
-        b3.ApplyForce(new(3e38f,0,0));
-        for(int i=0;i<6;i++){try{w3.Step(0.01f);}catch(P3.BodyOutOfBoundsException){break;}}
+        w3.Core.Bodies.PositionOf(b3.RawHandle.Index)[0]=double.NaN;
         var e3=Assert.Throws<NonFiniteStateException>(()=>w3.Snapshot());Assert.Contains("position lane",e3.Message);
         _=w3.ComputeHash();
         // The host's way out still works: destroy the body, then the world saves and restores.

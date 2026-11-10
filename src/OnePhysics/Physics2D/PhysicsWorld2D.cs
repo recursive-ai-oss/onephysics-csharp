@@ -129,6 +129,7 @@ public sealed partial class PhysicsWorld2D
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="dt"/> is not finite and positive, or an option is out of range.</exception>
     /// <exception cref="BodyOutOfBoundsException">A moving body's bounds are beyond ±2^22 or not finite, or its position, velocity or rotation is not finite; nothing was changed.</exception>
+    /// <exception cref="FieldCallbackException">A custom gravity field has no delegate bound to its callback id (a fork, or a snapshot restored into a fresh world); the world is unchanged.</exception>
     /// <exception cref="ArticulationStateException">An articulation's joint coordinates or speeds are not finite or are beyond the supported range; the world is unchanged.</exception>
     public void Step(float dt)
     {
@@ -139,6 +140,7 @@ public sealed partial class PhysicsWorld2D
         _engine.CheckArticulationBounds();
         _engine.Rods.ValidateStep(dt);
         _engine.CheckSoftBounds();
+        if (_engine.Fields.Count != 0) _engine.Fields.ValidateStep();
         if (_core.Controls.Active) _engine.ValidateTargetMotion(dt);
         SyncCoreOptions();
         if (_recorder != null) { RecordPreparedStep(dt); return; }

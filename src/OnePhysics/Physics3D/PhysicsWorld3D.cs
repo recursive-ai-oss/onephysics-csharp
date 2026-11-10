@@ -133,6 +133,7 @@ public sealed partial class PhysicsWorld3D
     /// <param name="dt">Seconds; finite and positive. Use the same value every step for reproducible results.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="dt"/> is invalid or an option is out of range.</exception>
     /// <exception cref="BodyOutOfBoundsException">A moving body is outside the supported range or has a non-finite position, velocity or rotation; the world is unchanged. Move, destroy it or call <see cref="ShiftOrigin"/>.</exception>
+    /// <exception cref="FieldCallbackException">A custom gravity field has no delegate bound to its callback id (a fork, or a snapshot restored into a fresh world); the world is unchanged.</exception>
     /// <exception cref="ArticulationStateException">An articulation's joint coordinates or speeds are not finite or are beyond the supported range; the world is unchanged.</exception>
     public void Step(float dt)
     {
@@ -143,6 +144,7 @@ public sealed partial class PhysicsWorld3D
         _engine.CheckArticulationBounds();
         _engine.Rods.ValidateStep(dt);
         _engine.CheckSoftBounds();
+        if (_engine.Fields.Count != 0) _engine.Fields.ValidateStep();
         if (_core.Controls.Active) _engine.ValidateTargetMotion(dt);
         SyncCoreOptions();
         if (_recorder != null) { RecordPreparedStep(dt); return; }
