@@ -53,6 +53,13 @@ public sealed class TaskExecutor
     // A staged call needs at least this many tasks in some stage before waking the workers pays for itself.
     private const int MinParallelTasks = 4;
 
+    // Speed-only limits on how many threads join a call. A stage of a typical step is a few microseconds of work and every participant crosses every stage boundary, so past one core complex
+    // (16 logical processors on the machines measured) extra threads cost more in cache-line traffic and waiting than they add. The limits touch only calls that could use more than 16
+    // threads, so with 16 or fewer nothing changes, and a call with big stages is not limited. They look at task counts alone; which thread runs which task never reaches a result.
+    private const int TasksPerThread = 2;       // a staged call gives each participant at least this many tasks in the average stage
+    private const int SharedCacheThreads = 16;  // participants allowed in a call whose stages are small
+    private const int BigStageTasks = 512;      // average stage size from which the limit above no longer applies
+
     // Set while a throwaway world primes the process (Warmup): every call then goes through the worker pool, however few tasks it has, so that the pool's per-body-type state is created
     // before the host's steps, not at the first step that happens to be big enough. Only which thread runs a task changes; results never do.
     [ThreadStatic] private static bool s_primeParallel;
@@ -71,7 +78,9 @@ public sealed class TaskExecutor
     /// <summary>Runs <paramref name="body"/> for every task in <c>0..taskCount-1</c> and returns when all are done. Order of execution is unspecified; the result must not depend on it.</summary>
     public void For<TBody>(int taskCount, TBody body) where TBody : IParallelBody
     {
-        if (ThreadCount == 1 || taskCount <= 0 || (taskCount == 1 && !s_primeParallel) || !WorkerPool.TryRun(Math.Min(ThreadCount - 1, taskCount - 1), taskCount, in body))
+        int workers = Math.Min(ThreadCount - 1, taskCount - 1);
+        if (taskCount < BigStageTasks && workers > SharedCacheThreads - 1) { workers = SharedCacheThreads - 1; }
+        if (ThreadCount == 1 || taskCount <= 0 || (taskCount == 1 && !s_primeParallel) || !WorkerPool.TryRun(workers, taskCount, in body))
         {
             for (int i = 0; i < taskCount; i++) { body.Run(i); }
         }
@@ -90,11 +99,13 @@ public sealed class TaskExecutor
         int workers = ThreadCount - 1;
         if (workers > 0 && mostTasks >= MinParallelTasks && !s_primeParallel)
         {
-            // Every thread crosses every stage boundary, so threads beyond what the stages can keep busy only add waiting: take as many as there is one task each in the average stage.
+            // Every thread crosses every stage boundary, so threads beyond what the stages can keep busy only add waiting: take as many as there is one task each in the average stage (two each, at most 16, when more than 16 threads are allowed and stages are small).
             // This looks at the stage sizes alone; which thread runs which task never reaches a result.
             long total = 0;
             for (int s = 0; s < stageCount; s++) { total += body.TaskCount(s); }
-            long useful = total / stageCount;
+            long average = total / stageCount;
+            long useful = average;
+            if (workers >= SharedCacheThreads && average < BigStageTasks) { useful = Math.Min(average / TasksPerThread, SharedCacheThreads); }
             if (useful - 1 < workers) { workers = (int)Math.Max(useful - 1, 0); }
         }
 
