@@ -365,3 +365,7 @@ An active layer turns a ragdoll into a character that follows an animation pose,
 ## Shallow water
 
 `world.AddShallowWater(minX, maxX, level, cellSize, floor)`, `CreateShallowWater(ShallowWaterDef)`, `ShallowWater` handles, `QueryWater`, `RaycastWater`, `WaterEvents` and `BodyWaterChanged`: a row of cells along x (the water has unit depth, so volumes are areas) with the same stages, coupling and "SWTR" section as 3D; the bodies' buoyancy and drag come from the planar buoyancy routine with the surface at the local tangent. Details in `water.md`.
+
+## World scale
+
+`world.LoadTile(TileKey, TileDef2D)`, `UnloadTile(key, policy)`, `FlushTiles`, `GetTileState`, `IsTileLoaded`, `GetLoadedTiles`, `GetTileBodies`, `SetSimulationLod`, `SetLodFocus`, `ClearSimulationLod`, `SetTimeScaleRegions` and `Body.TimeScale`: streamed static terrain tiles built in key order, far islands that step every 2nd, 4th or 8th step, and islands that run in scaled time. Rules, ordering, defaults, the height-field recipe with neighbour heights and the optional "WSCL" snapshot section (registered after every other section) are in `worldscale.md`.

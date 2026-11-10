@@ -1234,3 +1234,7 @@ An active layer turns a ragdoll into a character that follows an animation pose,
 ## Shallow water
 
 `world.AddShallowWater(minX, minZ, maxX, maxZ, level, cellSize, floor)`, `CreateShallowWater(ShallowWaterDef)`, `ShallowWater` handles, `QueryWater`, `RaycastWater`, `WaterEvents` and `BodyWaterChanged`: grids of water over the x–z plane that float, push and are pushed by bodies and boats. One serial stage before the rigid step (after the fluids and before the actuators: buoyancy and drag from the surface around each body, its displaced volume recorded) and one after it (the displacement added, the water advanced). Scheme, ordering, defaults and the optional "SWTR" snapshot section (`0x52545753`, registered after every other section) are in `water.md`; `AddWater` remains the infinite flat pool.
+
+## World scale
+
+`world.LoadTile(TileKey, TileDef3D)`, `UnloadTile(key, policy)`, `FlushTiles`, `GetTileState`, `IsTileLoaded`, `GetLoadedTiles`, `GetTileBodies`, `SetSimulationLod`, `SetLodFocus`, `ClearSimulationLod`, `SetTimeScaleRegions` and `Body.TimeScale`: streamed static terrain tiles built in key order, far islands that step every 2nd, 4th or 8th step, and islands that run in scaled time. Rules, ordering, defaults, the height-field recipe with neighbour heights and the optional "WSCL" snapshot section (registered after every other section) are in `worldscale.md`.
