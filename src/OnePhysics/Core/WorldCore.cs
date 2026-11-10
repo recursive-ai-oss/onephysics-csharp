@@ -709,7 +709,7 @@ public sealed partial class WorldCore
         _events.EnsureSlots(1 + storeChunks);
         var list = _coloring.ListArray;
         bool split = _liteOn && PlanSchedules(stages, active, list);
-        _forcedCount = 0;
+        if (!_scaleOn) { _forcedCount = 0; }
         _splitActive = split;
         if (!split) { CountWholeColors(); }
 
@@ -863,7 +863,7 @@ public sealed partial class WorldCore
             if (b < bodies.HighWater && island[b] >= 0 && island[b] < ni) { _islandFull[island[b]] = 1; }
         }
 
-        _forcedCount = 0;
+        if (!_scaleOn) { _forcedCount = 0; }
         // Bodies of each program, in ascending order.
         if (_awakeFull.Length < _awakeCount) { _awakeFull = new int[Math.Max(_awakeCount, _awakeFull.Length * 2)]; }
         if (_awakeLite.Length < _awakeCount) { _awakeLite = new int[Math.Max(_awakeCount, _awakeLite.Length * 2)]; }

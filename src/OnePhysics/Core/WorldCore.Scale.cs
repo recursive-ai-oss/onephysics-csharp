@@ -308,5 +308,6 @@ public sealed partial class WorldCore
         _passKinematic = true;
         BuildAwakeBodies();
         Counters.LodIslandsSkipped = _suspendedCount;
+        _forcedCount = 0;
     }
 }

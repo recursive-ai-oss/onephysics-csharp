@@ -134,4 +134,51 @@ public sealed class LodTests
         Assert.InRange(rider.Position.X - platform.Position.X, -0.5, 0.5);
         Assert.False(far.IsAwake, "the far box falls asleep at period 8");
     }
+
+    private static double Period3D(int period)
+    {
+        var w = new P3.PhysicsWorld3D(new() { WorldId = 1366 });
+        var anchor = w.AddBox(new Vector3F(0.2f, 0.2f, 0.2f), new Vector3D(0, 10, 0), type: BodyType.Static);
+        var bob = w.AddSphere(0.2f, new Vector3D(Math.Sin(0.3) * 2, 10 - Math.Cos(0.3) * 2, 0));
+        w.AddPoint(anchor, bob, new Vector3D(0, 10, 0));
+        w.SetSimulationLod(default, default, 1, [new P3.LodRegion3D(new(-10, 0, -10), new(10, 20, 10), period)]);
+        var crossings = new List<double>();
+        double prev = bob.Position.X;
+        for (int s = 1; s < 4000 && crossings.Count < 4; s++)
+        {
+            w.Step(1f / 60f);
+            double x = bob.Position.X;
+            if (prev < 0 && x >= 0) { crossings.Add(s - 1 + (0 - prev) / (x - prev)); }
+            prev = x;
+        }
+
+        Assert.Equal(4, crossings.Count);
+        return (crossings[3] - crossings[0]) / 3.0 / 60.0;
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(4)]
+    public void JointIslandsKeepTheirPeriodAtASlowerRate(int period)
+    {
+        double full = Period3D(1), slow = Period3D(period);
+        Assert.InRange(slow / full, 0.97, 1.03);
+    }
+
+    [Fact]
+    public void VehiclesStayAtTheFullRateInsideASlowRegion()
+    {
+        ulong Run(bool lod)
+        {
+            var w = new P3.PhysicsWorld3D(new() { WorldId = 1367 });
+            w.AddBox(new Vector3F(200, 1, 60), new Vector3D(0, -0.5, 0), type: BodyType.Static);
+            var body = w.AddBox(new Vector3F(1.8f, 0.5f, 4.2f), new Vector3D(0, 1.0, 0), density: 600f);
+            var car = w.AddVehicle(body, P3.VehicleDef.Car);
+            if (lod) { w.SetSimulationLod(default, default, 1, [new P3.LodRegion3D(new(-100, -10, -30), new(100, 20, 30), 8)]); }
+            for (int s = 0; s < 150; s++) { car.Drive(0.6f, 0.1f); w.Step(1f / 60f); }
+            return (ulong)BitConverter.DoubleToInt64Bits(body.Position.X) * 31 + (ulong)BitConverter.DoubleToInt64Bits(body.Position.Z) * 17 + (ulong)BitConverter.SingleToInt32Bits(body.LinearVelocity.Length());
+        }
+
+        Assert.Equal(Run(false), Run(true));
+    }
 }
