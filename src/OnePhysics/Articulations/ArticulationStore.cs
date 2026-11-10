@@ -217,7 +217,6 @@ internal sealed partial class ArticulationStore : ISnapshotSection
     public bool Consistent()
     {
         var bodies = _host.Core.Bodies;
-        var seen = new HashSet<int>();
         for (int i = 0; i < Handles.HighWater; i++)
         {
             if (!Handles.IsLive(i)) { continue; }
@@ -225,7 +224,8 @@ internal sealed partial class ArticulationStore : ISnapshotSection
             for (int k = 0; k < s.Body.Length; k++)
             {
                 int b = s.Body[k];
-                if (!bodies.Handles.IsAlive(b, s.BodyGen[k]) || bodies.TypeOf(b) != BodyType.Kinematic || !seen.Add(b)) { return false; }
+                if (!bodies.Handles.IsAlive(b, s.BodyGen[k]) || bodies.TypeOf(b) != BodyType.Kinematic) { return false; }
+                // A body listed twice would leave the index pointing at the later entry, so this also rejects duplicates.
                 if (ArticulationOfBody(b) != i || LinkOfBody(b) != k) { return false; }
             }
         }
