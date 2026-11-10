@@ -214,4 +214,88 @@ public sealed class ArticulationWorldTests3D
 
         Assert.Equal(a.Snapshot(), b.Snapshot());
     }
+
+    [Fact]
+    public void ArmPushesABoxToATarget()
+    {
+        var world = new PhysicsWorld3D();
+        world.AddBox(new Vector3F(4f, 1f, 4f), at: new Vector3D(0, -0.5, 0), type: BodyType.Static);
+        var arm = world.AddArticulation(ArticulationDef.RobotArm(0.9f, 7, 8f), new Vector3D(0, 0.0, 0));
+        var box = world.AddBox(new Vector3F(0.12f, 0.12f, 0.12f), at: new Vector3D(0, 0.06, 0.38), material: new Material3D(0.4f, 0f), density: 300f);
+        int tip = arm.LinkCount - 1;
+        var local = new Vector3F(0, 0.1286f, 0);
+        const double goal = 0.55;
+        // A ready pose with the elbows bent, away from the straight-up singularity.
+        var ready = new[] { 0f, 0.9f, 0f, -1.4f, 0f, 1.0f, 0f };
+        for (int j = 0; j < ready.Length; j++) { arm.SetJointPosition(j + 1, ready[j]); arm.SetJointTarget(j + 1, ready[j]); }
+        // Waypoints for the tool point: over and behind the box, down to its height, then forward a little ahead of itself until the box is at the goal.
+        var target = new Vector3D(0, 0.35, 0.2);
+        bool done = false;
+        for (int i = 0; i < 900 && !done; i++)
+        {
+            var toolNow = arm.GetPointPosition(tip, local);
+            if (i < 120) { target = new Vector3D(0, 0.35, 0.2); }
+            else if (i < 300) { target = new Vector3D(0, 0.35 - (0.35 - 0.08) * Math.Min(1.0, (i - 120) / 120.0), 0.2); }
+            else if (box.Position.Z < goal - 0.006) { target = new Vector3D(0, 0.08, toolNow.Z + 0.03); }
+            else { target = toolNow; done = true; }
+            arm.SetTaskTarget(tip, local, target, gain: 1f, damping: 0.08f, maxStep: 0.06f);
+            world.Step(1f / 60f);
+            if (i % 60 == 0) { Trace(i + ": tool " + toolNow + " target " + target + " box " + box.Position); }
+        }
+
+        for (int i = 0; i < 60; i++) { world.Step(1f / 60f); }
+        Trace("box final " + box.Position);
+        Assert.True(Math.Abs(box.Position.Z - goal) < 0.01, "box at " + box.Position);
+    }
+
+    // Deepest overlap of a quadruped's feet with the ground below them, by a ray down from above each foot sphere's centre.
+    private static double FootPenetration(PhysicsWorld3D world, Articulation q)
+    {
+        double worst = 0;
+        for (int l = 1; l < q.LinkCount; l++)
+        {
+            if (l % 3 != 0) { continue; }   // the shin links: hip, thigh, shin per leg
+            var c = q.GetPointPosition(l, new Vector3F(0, -0.25f, 0));
+            var filter = new QueryFilter3D { Predicate = sh => !world.TryGetArticulation(sh.Body, out _) };
+            if (world.Raycast(new Vector3D(c.X, c.Y + 1.0, c.Z), new Vector3F(0, -1, 0), out var hit, 3f, in filter))
+            {
+                double groundY = c.Y + 1.0 - hit.Distance;
+                worst = Math.Max(worst, groundY - (c.Y - 0.039));
+            }
+        }
+
+        return worst;
+    }
+
+    private static void StandsOn(Action<PhysicsWorld3D> ground, string name, double penetrationLimit)
+    {
+        var world = new PhysicsWorld3D();
+        ground(world);
+        var q = world.AddArticulation(ArticulationDef.Quadruped(), new Vector3D(0, 0.62, 0));
+        var torso = q.GetLink(0);
+        double worst = 0, drift0 = 0;
+        for (int i = 0; i < 360; i++)
+        {
+            world.Step(1f / 60f);
+            if (i > 20) { worst = Math.Max(worst, FootPenetration(world, q)); }
+            if (i == 240) { drift0 = torso.Position.X; }
+        }
+
+        Trace(name + ": worst foot penetration " + worst + ", torso " + torso.Position + ", drift in the last 2 s " + (torso.Position.X - drift0));
+        Assert.True(worst <= penetrationLimit, name + ": penetration " + worst);
+        Assert.True(torso.Position.Y > 0.4, name + ": torso at " + torso.Position);
+        Assert.True(Math.Abs(torso.Position.X - drift0) < 0.02, name + ": still sliding");
+    }
+
+    [Fact]
+    public void QuadrupedStandsOnABoxFloorWithinTwoCentimetres() => StandsOn(w => w.AddBox(new Vector3F(20f, 1f, 20f), at: new Vector3D(0, -0.5, 0), type: BodyType.Static), "box floor", 0.02);
+
+    [Fact]
+    public void QuadrupedStandsOnAHeightFieldWithinTwoCentimetres() => StandsOn(w =>
+    {
+        const int n = 41;
+        var h = new float[n * n];
+        for (int z = 0; z < n; z++) { for (int x = 0; x < n; x++) { h[z * n + x] = 0.02f * (float)Math.Sin(x * 0.5) * (float)Math.Cos(z * 0.4); } }
+        w.AddHeightField(h, n, n, new Vector3F(0.25f, 1f, 0.25f), new Vector3D(-5, 0, -5), material: new Material3D(0.8f, 0f, 0f));
+    }, "height field", 0.02);
 }
