@@ -99,7 +99,8 @@ public sealed class FieldRobustnessTests
         var w3=new P3.PhysicsWorld3D(new(){Gravity=new(0,-10,0),SleepEnabled=false});var b3=w3.AddSphere(0.2f);
         b3.ApplyForce(new(3e38f,0,0));
         for(int i=0;i<6;i++){try{w3.Step(0.01f);}catch(P3.BodyOutOfBoundsException){break;}}
-        var e3=Assert.Throws<NonFiniteStateException>(()=>w3.Snapshot());Assert.Contains("position lane",e3.Message);
+        // 3D bounds the velocity the solve leaves (NaN becomes zero, 16 times the speed limit at most) before it moves a body, so the same force no longer diverges the world: it saves and restores.
+        var saved3=w3.Snapshot();var fresh3=new P3.PhysicsWorld3D(new(){Gravity=new(0,-10,0),SleepEnabled=false});fresh3.Restore(saved3);Assert.Equal(w3.ComputeHash(),fresh3.ComputeHash());
         _=w3.ComputeHash();
         // The host's way out still works: destroy the body, then the world saves and restores.
         b2.Destroy();var ok=w2.Snapshot();var fresh=new P2.PhysicsWorld2D(new(){Gravity=new(0,-10),SleepEnabled=false});fresh.Restore(ok);Assert.Equal(ok,fresh.Snapshot());

@@ -94,6 +94,11 @@ public static class AutoRagdoller
             if (!(h[i] > 0f) || !(h[i] <= 65536f)) { throw Fail(GeometryToolError.OutOfRange, where + ": a shape size of " + h[i].ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " m is not a positive length within 65536 m", "bindPositions"); }
         }
 
+        // The engines refuse a half size under 1e-5 m, and a 3D box or capsule more than 2^20 times longer than it is thick.
+        float shortest = float.MaxValue, longest = 0f;
+        for (int i = 0; i < used; i++) { shortest = Math.Min(shortest, h[i]); longest = Math.Max(longest, h[i]); }
+        if (!(shortest >= 1e-5f) || !(longest <= shortest * 1048576f)) { throw Fail(GeometryToolError.OutOfRange, where + ": the fitted shape is " + longest.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " m long and " + shortest.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " m thick; the engine needs a thickness of at least 1e-5 m and at least 1/1048576 of the length. Give the skeleton skinned points or bone lengths that fit its parts", "bindPositions"); }
+
         // The engine refuses a body whose mass or inertia falls outside 1e-18..1e30; mass times the smallest half size squared stands for the inertia here.
         float smallest = float.MaxValue;
         for (int i = 0; i < used; i++) { smallest = Math.Min(smallest, h[i]); }
