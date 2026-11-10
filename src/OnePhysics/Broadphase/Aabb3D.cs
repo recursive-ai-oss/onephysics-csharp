@@ -61,10 +61,12 @@ public readonly struct Aabb3D : IBox<Aabb3D>, IEquatable<Aabb3D>
         a.MaxZ > b.MaxZ ? a.MaxZ : b.MaxZ);
 
     /// <inheritdoc/>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static bool Overlaps(in Aabb3D a, in Aabb3D b) =>
         a.MinX <= b.MaxX && b.MinX <= a.MaxX && a.MinY <= b.MaxY && b.MinY <= a.MaxY && a.MinZ <= b.MaxZ && b.MinZ <= a.MaxZ;
 
     /// <inheritdoc/>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static bool Contains(in Aabb3D outer, in Aabb3D inner) =>
         outer.MinX <= inner.MinX && outer.MinY <= inner.MinY && outer.MinZ <= inner.MinZ
         && inner.MaxX <= outer.MaxX && inner.MaxY <= outer.MaxY && inner.MaxZ <= outer.MaxZ;

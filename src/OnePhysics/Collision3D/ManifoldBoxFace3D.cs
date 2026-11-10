@@ -167,7 +167,7 @@ public sealed partial class ManifoldGenerator3D
 
         // The normal points from A to B: the reference normal when A carries the face, its negation when B does.
         Vector3F nRef = k == 0 ? new Vector3F(sg, 0f, 0f) : k == 1 ? new Vector3F(0f, sg, 0f) : new Vector3F(0f, 0f, sg);
-        Vector3F nAB = useB ? -(r.Transform(nRef)) : nRef;
+        Vector3F nAB = useB ? -(r.TransformInline(nRef)) : nRef;
         result = Finish(nAB);
         return true;
     }

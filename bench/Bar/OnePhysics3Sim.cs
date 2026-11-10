@@ -18,6 +18,7 @@ using VehicleScript = RecursiveAI.OnePhysics.Scene.VehicleScript;
 sealed class OnePhysics3Sim : ISim3
 {
     P3.PhysicsWorld3D world = null!;
+    internal P3.PhysicsWorld3D World => world;
     P3.Body[] bodies = [];
     int threads;
     List<(P3.Character Character, CharacterScript Script, int Body)> characters = [];

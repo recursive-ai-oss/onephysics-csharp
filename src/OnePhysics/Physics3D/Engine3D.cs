@@ -461,6 +461,7 @@ internal sealed partial class Engine3D : ISnapshotSection
             && margin >= 0.0 && margin <= SizeLimit;
     }
 
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public QuaternionF RotationOfBody(int b)
     {
         var r = Core.Bodies.RotationOf(b);

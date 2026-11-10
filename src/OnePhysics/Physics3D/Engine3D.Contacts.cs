@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.LowLevel;
+using RecursiveAI.OnePhysics.Physics2D;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 
@@ -642,7 +643,7 @@ internal sealed partial class Engine3D
             int lo = task * 64, hi = Math.Min(lo + 64, _e._updateCount);
             var sc = _e._scratch[task];
             var e = _e;
-            int listed = 0, recycled = 0, recycledPoints = 0, soupReuse = 0;
+            int listed = 0, recycled = 0, recycledPoints = 0;
             for (int i = lo; i < hi; i++)
             {
                 e.Collide(i, sc);
@@ -651,15 +652,13 @@ internal sealed partial class Engine3D
                 {
                     recycled += count;
                     for (int k = 0; k < count; k++) { recycledPoints += sc.Out[e._resFirst[i] + k].Count; }
-                    int pair = e._updateList[i];
-                    if (e.Geoms[e.GeomOf[e.PairA[pair]]]!.Soup != null || e.Geoms[e.GeomOf[e.PairB[pair]]]!.Soup != null) { soupReuse++; }
                 }
                 // Worth the serial pass: the boxes no longer overlap (the pair goes), or the pair has points or a constraint to match.
                 // A pair whose new contacts are exactly its constraints, one for one, changes nothing the serial pass owns (no constraint is added or removed, so no color moves); it only needs its payloads written.
                 if ((e._resStatus[i] == 2 || e._resCount[i] != 0 || e.PairCons[e._updateList[i]] != -1) && !(e._deferWrite && e.MatchesInPlace(i, sc))) { e._applyIdx[lo + listed++] = i; }
             }
 
-            sc.Recycled = recycled; sc.RecycledPoints = recycledPoints; sc.FreshQueries = sc.Fresh - soupReuse;
+            sc.Recycled = recycled; sc.RecycledPoints = recycledPoints; sc.FreshQueries = sc.Fresh;
             e._applyCount[task] = listed;
         }
     }
@@ -720,11 +719,18 @@ internal sealed partial class Engine3D
     /// contact when the step starts, instead of being found after the shapes overlap (Catto, GDC 2013, continuous collision: a speculative contact has to reach as far as the motion of the step).
     /// Which of the points found are kept is decided by each point's own closing speed (see <see cref="Emit"/>). Pairs that move slowly keep the fixed distance, so a settled world is untouched.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private float PairSpeculativeDistance(int ba, int bb)
     {
         float spec = Opt.SpeculativeDistance;
         // The two bodies' own reaches bound the closing distance, so a pair of slow bodies is settled without looking at the velocities.
         if (!(ReachSum[ba] + ReachSum[bb] > (float)FastFactor * spec)) { return spec; }
+        return FastPairSpeculativeDistance(ba, bb, spec);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private float FastPairSpeculativeDistance(int ba, int bb, float spec)
+    {
         var bodies = Core.Bodies;
         if (bodies.TypeOf(ba) == BodyType.Dynamic && bodies.TypeOf(bb) == BodyType.Dynamic) { return spec; }
         var va = bodies.LinearVelocityOf(ba); var vb = bodies.LinearVelocityOf(bb);
@@ -762,19 +768,20 @@ internal sealed partial class Engine3D
             if (a0 - gap > b3 || b0 - gap > a3 || a1 - gap > b4 || b1 - gap > a4 || a2 - gap > b5 || b2 - gap > a5) { return; }
         }
 
-        var ga = Geoms[GeomOf[sa]]!;
-        var gb = Geoms[GeomOf[sb]]!;
-        if (ga.Convex.Kind == ConvexShapeKind3D.Empty || gb.Convex.Kind == ConvexShapeKind3D.Empty) { return; }
-        if (ga.Soup != null && gb.Soup != null && !(ga.Soup is SdfSoup3D && gb.Soup is SdfSoup3D)) { return; }
-        sc.Reached++;
         var owner = Core.Shapes.Owner;
         int ba = owner[sa], bb = owner[sb];
         var bodies = Core.Bodies;
         var pA = bodies.PositionOf(ba); var pB = bodies.PositionOf(bb);
         var qA = RotationOfBody(ba); var qB = RotationOfBody(bb);
-        // A pair without a constraint whose last query proved the shapes apart stays empty until their relative motion has used up the margin by which they were apart.
+        // A pair without a constraint whose last query proved the shapes apart stays empty until their relative motion has used up the margin by which they were apart. Such a record only exists for a pair
+        // that was searched, so the shapes are neither empty nor two triangle soups, and the check comes before the shapes are looked at.
         int existingCons = PairCons[p];
-        if (existingCons < 0 && _skip[p].Clear > 0f && StillApart(in _skip[p], qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]), _skip[p].Spec - pairSpec)) { return; }
+        if (existingCons < 0 && _skip[p].Clear > 0f && StillApart(in _skip[p], qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]), _skip[p].Spec - pairSpec)) { sc.Reached++; return; }
+        var ga = Geoms[GeomOf[sa]]!;
+        var gb = Geoms[GeomOf[sb]]!;
+        if (ga.Convex.Kind == ConvexShapeKind3D.Empty || gb.Convex.Kind == ConvexShapeKind3D.Empty) { return; }
+        if (ga.Soup != null && gb.Soup != null && !(ga.Soup is SdfSoup3D && gb.Soup is SdfSoup3D)) { return; }
+        sc.Reached++;
         // A touching convex pair that has barely moved reuses its manifold; this is tried before the shape frames are built, which the reuse does not need.
         if (!ContactModifications.Refresh && RecycleManifolds && existingCons >= 0 && ga.Soup == null && gb.Soup == null && ga.IsConvex && gb.IsConvex
             && !HalfSpace3D.HasPlane(ga.Convex, gb.Convex)
@@ -797,13 +804,15 @@ internal sealed partial class Engine3D
         var lcA = LocalCenterOf(ba); var lcB = LocalCenterOf(bb);
 
         // Shape frames in world axes. Positions are subtracted in double first; only the (small) difference becomes float.
-        Vector3F armA = qA.Rotate(la.Translation - lcA), armB = qB.Rotate(lb.Translation - lcB);
-        QuaternionF rwa = qA * la.Rotation, rwb = qB * lb.Rotation;
+        // A shape placed at its body's centre of mass has no arm; turning a zero vector gives a zero vector exactly, so the common single-shape body skips the two rotations.
+        Vector3F armA = la.Translation.X == lcA.X && la.Translation.Y == lcA.Y && la.Translation.Z == lcA.Z ? default : qA.RotateInline(la.Translation - lcA);
+        Vector3F armB = lb.Translation.X == lcB.X && lb.Translation.Y == lcB.Y && lb.Translation.Z == lcB.Z ? default : qB.RotateInline(lb.Translation - lcB);
+        QuaternionF rwa = qA.Times(la.Rotation), rwb = qB.Times(lb.Rotation);
         double dx = (pB[0] - pA[0]) + ((double)armB.X - (double)armA.X);
         double dy = (pB[1] - pA[1]) + ((double)armB.Y - (double)armA.Y);
         double dz = (pB[2] - pA[2]) + ((double)armB.Z - (double)armA.Z);
         var inv = rwa.Conjugated();
-        var bInA = new RigidTransformF(inv * rwb, inv.Rotate(new Vector3F((float)dx, (float)dy, (float)dz)));
+        var bInA = new RigidTransformF(inv.Times(rwb), inv.RotateInline(new Vector3F((float)dx, (float)dy, (float)dz)));
         var f = new PairFrame { Rwa = rwa, ArmA = armA, ComDiff = new Vector3F((float)(pA[0] - pB[0]), (float)(pA[1] - pB[1]), (float)(pA[2] - pB[2])) };
         if (spec > Opt.SpeculativeDistance)
         {
@@ -821,30 +830,7 @@ internal sealed partial class Engine3D
         }
         else if (ga.Soup != null || gb.Soup != null)
         {
-            bool soupIsA = ga.Soup != null;
-            var other = soupIsA ? gb : ga;
-            // Temporal coherence for a convex shape on a triangle soup: while it has hardly moved relative to the soup, every triangle contact of the pair keeps its manifold (the pair's triangle set can only
-            // change by a triangle coming within speculative range, which the next full query, at most a few millimetres of motion later, finds).
-            if (!ContactModifications.Refresh && RecycleManifolds && other.IsConvex && PairCons[p] >= 0 && TryRecycleSoup(sc, p, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])), soupIsA ? 1 : 2, spec))
-            {
-                _resCount[i] = sc.OutCount - _resFirst[i];
-                return;
-            }
-
-            sc.SdfMoves = Core.Bodies.TypeOf(soupIsA ? ba : bb) != BodyType.Static;
-            if (soupIsA) { SoupAgainst(sc, in f, ga.Soup!, true, gb, in lb, in bInA, spec); }
-            else { SoupAgainst(sc, in f, gb.Soup!, false, ga, in la, in bInA, spec); }
-            if (Core.ContactMaterials.IsPresent)
-            {
-                for (int entry = _resFirst[i]; entry < sc.OutCount; entry++)
-                {
-                    ref var output = ref sc.Out[entry];
-                    if (!output.FlatPatch) continue;
-                    if (soupIsA) output.SubA = Core.ContactMaterials.CanonicalId(sa, output.OriginalSubA, output.SubA);
-                    else output.SubB = Core.ContactMaterials.CanonicalId(sb, output.OriginalSubB, output.SubB);
-                }
-            }
-            MergeFlatPatches(sc, _resFirst[i], soupIsA, (soupIsA ? qB : qA).Conjugated());
+            FreshSoup(i, sc, p, sa, sb, ga, gb, ba, bb, pA, pB, qA, qB, in f, in la, in lb, in bInA, spec);
         }
         else if (ga.IsConvex && gb.IsConvex)
         {
@@ -858,20 +844,63 @@ internal sealed partial class Engine3D
             {
                 // The pose of B's body in A's body at this query, and how far apart the shapes were.
                 var invA = qA.Conjugated();
-                var d = invA.Rotate(new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])));
-                var qr = invA * qB;
+                var d = invA.RotateInline(new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])));
+                var qr = invA.Times(qB);
                 float sg = qr.W < 0f ? -1f : 1f;
-                var axis = la.Rotation.Rotate(gen.ClearanceAxisOut);
+                var axis = la.Rotation.RotateInline(gen.ClearanceAxisOut);
                 _skip[p] = new SkipFrame3 { Nx = axis.X, Ny = axis.Y, Nz = axis.Z, X = d.X, Y = d.Y, Z = d.Z, Qx = sg * qr.X, Qy = sg * qr.Y, Qz = sg * qr.Z, Qw = sg * qr.W, Clear = gen.ClearanceOut, Spec = spec, Reach = ReachOfShape(bb, sb) };
             }
             else { _skip[p].Clear = 0f; }
 
             int before = sc.OutCount;
-            Emit(sc, in f, 0, 0, in m, default, false, default, false, default);
+            Emit(sc, in f, 0, 0, in m, in NoTransform, false, in NoTransform, false, in NoTriangle);
             if (sc.OutCount > before) { sc.Out[before].Hint = gen.HintOut; }
         }
         else
         {
+            FreshCompound(sc, ga, gb, in f, in bInA, spec);
+        }
+
+        _resCount[i] = sc.OutCount - _resFirst[i];
+    }
+
+    // The branches below are rarely taken, so they live out of line: CollideFresh keeps a small frame (it used to hold the locals of every branch, 1.4 KB, and cleared 800 bytes of them on each call).
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void FreshSoup(int i, NarrowScratch sc, int p, int sa, int sb, Geom3D ga, Geom3D gb, int ba, int bb, ReadOnlySpan<double> pA, ReadOnlySpan<double> pB, QuaternionF qA, QuaternionF qB,
+        in PairFrame f, in RigidTransformF la, in RigidTransformF lb, in RigidTransformF bInA, float spec)
+    {
+        bool soupIsA = ga.Soup != null;
+        var other = soupIsA ? gb : ga;
+        // Temporal coherence for a convex shape on a triangle soup: while it has hardly moved relative to the soup, every triangle contact of the pair keeps its manifold (the pair's triangle set can only
+        // change by a triangle coming within speculative range, which the next full query, at most a few millimetres of motion later, finds).
+        if (!ContactModifications.Refresh && RecycleManifolds && other.IsConvex && PairCons[p] >= 0 && TryRecycleSoup(sc, p, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])), soupIsA ? 1 : 2, spec))
+        {
+            // The pair reused its manifolds, so it did not run the narrowphase after all.
+            sc.Fresh--;
+            _resCount[i] = sc.OutCount - _resFirst[i];
+            return;
+        }
+
+        sc.SdfMoves = Core.Bodies.TypeOf(soupIsA ? ba : bb) != BodyType.Static;
+        if (soupIsA) { SoupAgainst(sc, in f, ga.Soup!, true, gb, in lb, in bInA, spec); }
+        else { SoupAgainst(sc, in f, gb.Soup!, false, ga, in la, in bInA, spec); }
+        if (Core.ContactMaterials.IsPresent)
+        {
+            for (int entry = _resFirst[i]; entry < sc.OutCount; entry++)
+            {
+                ref var output = ref sc.Out[entry];
+                if (!output.FlatPatch) continue;
+                if (soupIsA) output.SubA = Core.ContactMaterials.CanonicalId(sa, output.OriginalSubA, output.SubA);
+                else output.SubB = Core.ContactMaterials.CanonicalId(sb, output.OriginalSubB, output.SubB);
+            }
+        }
+        MergeFlatPatches(sc, _resFirst[i], soupIsA, (soupIsA ? qB : qA).Conjugated());
+        _resCount[i] = sc.OutCount - _resFirst[i];
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void FreshCompound(NarrowScratch sc, Geom3D ga, Geom3D gb, in PairFrame f, in RigidTransformF bInA, float spec)
+    {
             NarrowScratch.Children.Clear();
             if (ga.Compound != null && gb.IsConvex) { NarrowScratch.Gen.CollideCompoundConvex(ga.Compound, gb.Convex, bInA, NarrowScratch.Children, spec); }
             else if (ga.IsConvex && gb.Compound != null) { NarrowScratch.Gen.CollideConvexCompound(ga.Convex, gb.Compound, bInA, NarrowScratch.Children, spec); }
@@ -879,12 +908,10 @@ internal sealed partial class Engine3D
             foreach (var cc in NarrowScratch.Children)
             {
                 var m = cc.Manifold;
-                Emit(sc, in f, cc.SubShapeA, cc.SubShapeB, in m, default, false, default, false, default);
+                Emit(sc, in f, cc.SubShapeA, cc.SubShapeB, in m, in NoTransform, false, in NoTransform, false, in NoTriangle);
             }
-        }
-
-        _resCount[i] = sc.OutCount - _resFirst[i];
     }
+
 
     /// <summary>The pose of B's body in A's body when a pair without a constraint last had no contact points, and how far apart the shapes were then (beyond the speculative distance).</summary>
     internal struct SkipFrame3
@@ -900,6 +927,11 @@ internal sealed partial class Engine3D
 
     private SkipFrame3[] _skip = new SkipFrame3[8];
 
+    // Placeholders for the arguments Emit ignores outside a triangle-soup contact, so a call does not build and clear a fresh copy of each.
+    private static readonly RigidTransformF NoTransform = Zeroed<RigidTransformF>();
+    private static readonly SoupTriangle3D NoTriangle = Zeroed<SoupTriangle3D>();
+    private static T Zeroed<T>() where T : struct => default;
+
     // The farthest point of a convex shape from its body's centre of mass, from the shape's bounds in the body frame.
     private float ReachOfShape(int b, int s)
     {
@@ -914,9 +946,9 @@ internal sealed partial class Engine3D
     internal static bool StillApart(in SkipFrame3 f, QuaternionF qA, QuaternionF qB, float dx, float dy, float dz, float searchChange = 0f)
     {
         var invA = qA.Conjugated();
-        var d = invA.Rotate(new Vector3F(dx, dy, dz));
+        var d = invA.RotateInline(new Vector3F(dx, dy, dz));
         float ex = d.X - f.X, ey = d.Y - f.Y, ez = d.Z - f.Z;
-        var qr = invA * qB;
+        var qr = invA.Times(qB);
         float sg = qr.W < 0f ? -1f : 1f;
         float x = sg * qr.X, y = sg * qr.Y, z = sg * qr.Z, w = sg * qr.W;
         // Vector part of qr * conj(q0), with q0 = (Qx, Qy, Qz, Qw) the stored relative rotation (Qw >= 0).
@@ -1016,7 +1048,7 @@ internal sealed partial class Engine3D
         bool soupIsA = false, Vector3F triNormal = default)
     {
         if (m.PointCount == 0) { return; }
-        Vector3F n = map ? mapToA.Rotation.Rotate(m.Normal) : m.Normal;
+        Vector3F n = map ? mapToA.Rotation.RotateInline(m.Normal) : m.Normal;
         int count = m.PointCount;
         if (filter)
         {
@@ -1024,7 +1056,7 @@ internal sealed partial class Engine3D
             // two edges in this triangle are both inactive, lies on a seam between flat neighbours. If the manifold's normal also leans away from the face normal, the neighbour's own
             // face contact is the right one, and this one would kick a body sliding over the seam: the manifold is dropped. Contacts on the back of a triangle are not filtered.
             Vector3F triN = triNormal;
-            Vector3F towards = soupIsA ? n : soupFromA.Rotation.Rotate(-n); // from the triangle towards the other shape, in the soup's frame
+            Vector3F towards = soupIsA ? n : soupFromA.Rotation.RotateInline(-n); // from the triangle towards the other shape, in the soup's frame
             float d = Vector3F.Dot(towards, triN);
             if (d >= -0.1f && d < FlatPatchCosine)
             {
@@ -1040,22 +1072,22 @@ internal sealed partial class Engine3D
         o.OriginalSubA = subA; o.OriginalSubB = subB; o.SubA = subA; o.SubB = subB; o.Hint = default; o.Recycled = false; o.FlatPatch = false; o.FlatPlane = 0;
         if (filter && tri.SharedPatch)
         {
-            Vector3F towards = soupIsA ? n : soupFromA.Rotation.Rotate(-n);
+            Vector3F towards = soupIsA ? n : soupFromA.Rotation.RotateInline(-n);
             if (Vector3F.Dot(towards, triNormal) >= FlatPatchCosine)
             {
                 o.FlatPatch = true; o.FlatPlane = Vector3F.Dot(triNormal, tri.V0);
                 if (soupIsA) o.SubA = tri.CoplanarPatchId; else o.SubB = tri.CoplanarPatchId;
-                n = soupIsA ? triNormal : -soupFromA.Rotation.Conjugated().Rotate(triNormal);
+                n = soupIsA ? triNormal : -soupFromA.Rotation.Conjugated().RotateInline(triNormal);
             }
         }
-        Vector3F nw = f.Rwa.Rotate(n);
+        Vector3F nw = f.Rwa.RotateInline(n);
         o.Nx = nw.X; o.Ny = nw.Y; o.Nz = nw.Z;
         int written = 0;
         for (int k = 0; k < count; k++)
         {
             var mp = m[k];
             Vector3F pt = map ? mapToA.TransformPoint(mp.Point) : mp.Point;
-            Vector3F ra = f.ArmA + f.Rwa.Rotate(pt);
+            Vector3F ra = f.ArmA + f.Rwa.RotateInline(pt);
             Vector3F rb = ra + f.ComDiff;
             if (f.Approach && mp.Separation > f.Spec)
             {
@@ -1151,31 +1183,31 @@ internal sealed partial class Engine3D
             {
                 if (ids[j] != id) { continue; }
                 matchedMask |= 1 << k;
-                old[k] = pl[ManifoldLayout.NormalImpulse(j)]; old[4 + k] = pl[ManifoldLayout.Tangent1Impulse(j)]; old[8 + k] = pl[ManifoldLayout.Tangent2Impulse(j)];
+                old[k] = Mem.At(pl, ManifoldLayout.NormalImpulse(j)); old[4 + k] = Mem.At(pl, ManifoldLayout.Tangent1Impulse(j)); old[8 + k] = Mem.At(pl, ManifoldLayout.Tangent2Impulse(j));
                 break;
             }
         }
 
         Core.InspectContactBirth(c, res.Count, matchedMask);
         float r0 = 0f, r1 = 0f, r2 = 0f;
-        if (oldCount > 0) { r0 = pl[ManifoldLayout.RollingImpulse]; r1 = pl[ManifoldLayout.RollingImpulse + 1]; r2 = pl[ManifoldLayout.RollingImpulse + 2]; }
+        if (oldCount > 0) { r0 = Mem.At(pl, ManifoldLayout.RollingImpulse); r1 = Mem.At(pl, ManifoldLayout.RollingImpulse + 1); r2 = Mem.At(pl, ManifoldLayout.RollingImpulse + 2); }
         pl.Clear();
         var mixed = Mix(sa, sb, cs.SubShapeA[c], cs.SubShapeB[c]);
-        pl[ManifoldLayout.Normal] = res.Nx; pl[ManifoldLayout.Normal + 1] = res.Ny; pl[ManifoldLayout.Normal + 2] = res.Nz;
-        pl[ManifoldLayout.Friction] = mixed.Friction;
-        pl[ManifoldLayout.Restitution] = mixed.Restitution;
-        pl[ManifoldLayout.RollingResistance] = mixed.RollingResistance;
-        pl[ManifoldLayout.RollingImpulse] = r0; pl[ManifoldLayout.RollingImpulse + 1] = r1; pl[ManifoldLayout.RollingImpulse + 2] = r2;
+        Mem.At(pl, ManifoldLayout.Normal) = res.Nx; Mem.At(pl, ManifoldLayout.Normal + 1) = res.Ny; Mem.At(pl, ManifoldLayout.Normal + 2) = res.Nz;
+        Mem.At(pl, ManifoldLayout.Friction) = mixed.Friction;
+        Mem.At(pl, ManifoldLayout.Restitution) = mixed.Restitution;
+        Mem.At(pl, ManifoldLayout.RollingResistance) = mixed.RollingResistance;
+        Mem.At(pl, ManifoldLayout.RollingImpulse) = r0; Mem.At(pl, ManifoldLayout.RollingImpulse + 1) = r1; Mem.At(pl, ManifoldLayout.RollingImpulse + 2) = r2;
         for (int k = 0; k < res.Count; k++)
         {
             int q = 7 * k;
             int a = ManifoldLayout.AnchorA(k), b = ManifoldLayout.AnchorB(k);
-            pl[a] = res.P[q]; pl[a + 1] = res.P[q + 1]; pl[a + 2] = res.P[q + 2];
-            pl[b] = res.P[q + 3]; pl[b + 1] = res.P[q + 4]; pl[b + 2] = res.P[q + 5];
-            pl[ManifoldLayout.Separation(k)] = res.P[q + 6];
-            pl[ManifoldLayout.NormalImpulse(k)] = old[k];
-            pl[ManifoldLayout.Tangent1Impulse(k)] = old[4 + k];
-            pl[ManifoldLayout.Tangent2Impulse(k)] = old[8 + k];
+            Mem.At(pl, a) = res.P[q]; Mem.At(pl, a + 1) = res.P[q + 1]; Mem.At(pl, a + 2) = res.P[q + 2];
+            Mem.At(pl, b) = res.P[q + 3]; Mem.At(pl, b + 1) = res.P[q + 4]; Mem.At(pl, b + 2) = res.P[q + 5];
+            Mem.At(pl, ManifoldLayout.Separation(k)) = res.P[q + 6];
+            Mem.At(pl, ManifoldLayout.NormalImpulse(k)) = old[k];
+            Mem.At(pl, ManifoldLayout.Tangent1Impulse(k)) = old[4 + k];
+            Mem.At(pl, ManifoldLayout.Tangent2Impulse(k)) = old[8 + k];
             ids[k] = res.Id[k];
         }
 
@@ -1243,25 +1275,25 @@ internal sealed partial class Engine3D
         // The normal belongs to the body whose face made it, the reference face: it is that face's normal and turns with that body. A normal that is no face normal (edge against edge, a ball, a capsule)
         // follows shape A; it is then right to within the relative motion the reuse allows, divided by the shapes' size.
         int frame = soup == 2 ? 2 : 1;
-        if (soup == 0 && !IsFaceNormal(ga.Convex, (qA * Local[sa].Rotation).Conjugated().Rotate(n)) && IsFaceNormal(gb.Convex, (qB * Local[sb].Rotation).Conjugated().Rotate(-n))) { frame = 2; }
-        pl[Rc.Owner] = frame;
-        var nl = (frame == 1 ? qA : qB).Conjugated().Rotate(n);
-        pl[Rc.Normal] = nl.X; pl[Rc.Normal + 1] = nl.Y; pl[Rc.Normal + 2] = nl.Z;
+        if (soup == 0 && !IsFaceNormal(ga.Convex, qA.Times(Local[sa].Rotation).Conjugated().RotateInline(n)) && IsFaceNormal(gb.Convex, qB.Times(Local[sb].Rotation).Conjugated().RotateInline(-n))) { frame = 2; }
+        Mem.At(pl, Rc.Owner) = frame;
+        var nl = (frame == 1 ? qA : qB).Conjugated().RotateInline(n);
+        Mem.At(pl, Rc.Normal) = nl.X; Mem.At(pl, Rc.Normal + 1) = nl.Y; Mem.At(pl, Rc.Normal + 2) = nl.Z;
         var invA = qA.Conjugated();
         var dW = new Vector3F((float)(pos[3 * bb] - pos[3 * ba]), (float)(pos[3 * bb + 1] - pos[3 * ba + 1]), (float)(pos[3 * bb + 2] - pos[3 * ba + 2]));
         // The relative pose is kept as the other body's in the frame of the reference body: A, or the soup's body when B is the soup (the soup's own points are fixed in its frame, so only the other body's move).
         var invR = soup == 2 ? qB.Conjugated() : invA;
-        var d = invR.Rotate(soup == 2 ? -dW : dW);
-        pl[Rc.Rel] = d.X; pl[Rc.Rel + 1] = d.Y; pl[Rc.Rel + 2] = d.Z;
-        var qr = invR * (soup == 2 ? qA : qB);
-        pl[Rc.Rel + 3] = qr.X; pl[Rc.Rel + 4] = qr.Y; pl[Rc.Rel + 5] = qr.Z; pl[Rc.Rel + 6] = qr.W;
+        var d = invR.RotateInline(soup == 2 ? -dW : dW);
+        Mem.At(pl, Rc.Rel) = d.X; Mem.At(pl, Rc.Rel + 1) = d.Y; Mem.At(pl, Rc.Rel + 2) = d.Z;
+        var qr = invR.Times(soup == 2 ? qA : qB);
+        Mem.At(pl, Rc.Rel + 3) = qr.X; Mem.At(pl, Rc.Rel + 4) = qr.Y; Mem.At(pl, Rc.Rel + 5) = qr.Z; Mem.At(pl, Rc.Rel + 6) = qr.W;
         var invB = qB.Conjugated();
         for (int k = 0; k < res.Count; k++)
         {
             int q = k * 7, o = Rc.Points + 7 * k;
-            var la = invA.Rotate(new Vector3F(res.P[q], res.P[q + 1], res.P[q + 2]));
-            var lb = invB.Rotate(new Vector3F(res.P[q + 3], res.P[q + 4], res.P[q + 5]));
-            pl[o] = la.X; pl[o + 1] = la.Y; pl[o + 2] = la.Z; pl[o + 3] = lb.X; pl[o + 4] = lb.Y; pl[o + 5] = lb.Z; pl[o + 6] = res.P[q + 6];
+            var la = invA.RotateInline(new Vector3F(res.P[q], res.P[q + 1], res.P[q + 2]));
+            var lb = invB.RotateInline(new Vector3F(res.P[q + 3], res.P[q + 4], res.P[q + 5]));
+            Mem.At(pl, o) = la.X; Mem.At(pl, o + 1) = la.Y; Mem.At(pl, o + 2) = la.Z; Mem.At(pl, o + 3) = lb.X; Mem.At(pl, o + 4) = lb.Y; Mem.At(pl, o + 5) = lb.Z; Mem.At(pl, o + 6) = res.P[q + 6];
         }
     }
 
@@ -1273,7 +1305,7 @@ internal sealed partial class Engine3D
         if (count == 0 || cs.KindOf(c) != ConstraintKind.Contact) { return false; }
         var pl = cs.Payload(c);
         // Compared as floats: snapshot bytes may hold anything here, and only 1 and 2 mean a stored frame.
-        float ownerF = pl[Rc.Owner];
+        float ownerF = Mem.At(pl, Rc.Owner);
         int owner = ownerF == 1f ? 1 : ownerF == 2f ? 2 : 0;
         if (owner == 0) { return false; }
         // The reference body is A, or the soup's body when B is the soup; the other body is the mover (see StoreRecycleFrame).
@@ -1281,24 +1313,25 @@ internal sealed partial class Engine3D
         var invR = soup == 2 ? qB.Conjugated() : invA;
         int mover = soup == 2 ? ba : bb;
         // How far the mover has moved and turned in the reference body's frame since the manifold was made.
-        var d = invR.Rotate(soup == 2 ? -dW : dW);
-        float ex = d.X - pl[Rc.Rel], ey = d.Y - pl[Rc.Rel + 1], ez = d.Z - pl[Rc.Rel + 2];
-        var q0 = new QuaternionF(pl[Rc.Rel + 3], pl[Rc.Rel + 4], pl[Rc.Rel + 5], pl[Rc.Rel + 6]);
-        var dq = (invR * (soup == 2 ? qA : qB)) * q0.Conjugated();
+        var d = invR.RotateInline(soup == 2 ? -dW : dW);
+        float ex = d.X - Mem.At(pl, Rc.Rel), ey = d.Y - Mem.At(pl, Rc.Rel + 1), ez = d.Z - Mem.At(pl, Rc.Rel + 2);
+        var q0 = new QuaternionF(Mem.At(pl, Rc.Rel + 3), Mem.At(pl, Rc.Rel + 4), Mem.At(pl, Rc.Rel + 5), Mem.At(pl, Rc.Rel + 6));
         float lim = RecycleTol - float.Sqrt(ex * ex + ey * ey + ez * ez); // what is left of the budget for the turn
+        if (!(lim >= 0f)) { return false; } // the translation alone has used the budget (false for NaN too); the turn need not be measured
+        var dq = invR.Times(soup == 2 ? qA : qB).Times(q0.Conjugated());
         float turn = 2f * float.Sqrt(dq.X * dq.X + dq.Y * dq.Y + dq.Z * dq.Z);
-        if (!(lim >= 0f && turn * MaxExtent[mover] <= lim)) { return false; } // false for NaN too
-        var nl = new Vector3F(pl[Rc.Normal], pl[Rc.Normal + 1], pl[Rc.Normal + 2]);
-        Vector3F n = (owner == 2 ? qB : qA).Rotate(nl);
+        if (!(turn * MaxExtent[mover] <= lim)) { return false; } // false for NaN too
+        var nl = new Vector3F(Mem.At(pl, Rc.Normal), Mem.At(pl, Rc.Normal + 1), Mem.At(pl, Rc.Normal + 2));
+        Vector3F n = (owner == 2 ? qB : qA).RotateInline(nl);
         ref ContactOut o = ref sc.Next();
         o.SubA = soup != 0 ? cs.SubShapeA[c] : 0; o.SubB = soup != 0 ? cs.SubShapeB[c] : 0; o.Hint = default; o.Recycled = true;
         for (int k = 0; k < count; k++)
         {
             int b = Rc.Points + 7 * k;
-            Vector3F ra = qA.Rotate(new Vector3F(pl[b], pl[b + 1], pl[b + 2]));
-            Vector3F rb = qB.Rotate(new Vector3F(pl[b + 3], pl[b + 4], pl[b + 5]));
+            Vector3F ra = qA.RotateInline(new Vector3F(Mem.At(pl, b), Mem.At(pl, b + 1), Mem.At(pl, b + 2)));
+            Vector3F rb = qB.RotateInline(new Vector3F(Mem.At(pl, b + 3), Mem.At(pl, b + 4), Mem.At(pl, b + 5)));
             // Separation now: the one when made plus the motion of B's point relative to A's point along the normal.
-            float sep = pl[b + 6] + Vector3F.Dot(dW + rb - ra, n);
+            float sep = Mem.At(pl, b + 6) + Vector3F.Dot(dW + rb - ra, n);
             if (!(sep <= spec && sep >= -RecycleDepth)) { sc.OutCount--; return false; }
             int q = k * 7;
             o.P[q] = ra.X; o.P[q + 1] = ra.Y; o.P[q + 2] = ra.Z; o.P[q + 3] = rb.X; o.P[q + 4] = rb.Y; o.P[q + 5] = rb.Z; o.P[q + 6] = sep;
@@ -1327,17 +1360,17 @@ internal sealed partial class Engine3D
         var pl = cs.Payload(c);
         // A material can change between steps (a body's friction setter), and a fresh manifold would pick that up, so a reused one does too.
         var mixed = Mix(sa, sb, cs.SubShapeA[c], cs.SubShapeB[c]);
-        pl[ManifoldLayout.Normal] = res.Nx; pl[ManifoldLayout.Normal + 1] = res.Ny; pl[ManifoldLayout.Normal + 2] = res.Nz;
-        pl[ManifoldLayout.Friction] = mixed.Friction;
-        pl[ManifoldLayout.Restitution] = mixed.Restitution;
-        pl[ManifoldLayout.RollingResistance] = mixed.RollingResistance;
+        Mem.At(pl, ManifoldLayout.Normal) = res.Nx; Mem.At(pl, ManifoldLayout.Normal + 1) = res.Ny; Mem.At(pl, ManifoldLayout.Normal + 2) = res.Nz;
+        Mem.At(pl, ManifoldLayout.Friction) = mixed.Friction;
+        Mem.At(pl, ManifoldLayout.Restitution) = mixed.Restitution;
+        Mem.At(pl, ManifoldLayout.RollingResistance) = mixed.RollingResistance;
         for (int k = 0; k < res.Count; k++)
         {
             int q = 7 * k;
             int a = ManifoldLayout.AnchorA(k), b = ManifoldLayout.AnchorB(k);
-            pl[a] = res.P[q]; pl[a + 1] = res.P[q + 1]; pl[a + 2] = res.P[q + 2];
-            pl[b] = res.P[q + 3]; pl[b + 1] = res.P[q + 4]; pl[b + 2] = res.P[q + 5];
-            pl[ManifoldLayout.Separation(k)] = res.P[q + 6];
+            Mem.At(pl, a) = res.P[q]; Mem.At(pl, a + 1) = res.P[q + 1]; Mem.At(pl, a + 2) = res.P[q + 2];
+            Mem.At(pl, b) = res.P[q + 3]; Mem.At(pl, b + 1) = res.P[q + 4]; Mem.At(pl, b + 2) = res.P[q + 5];
+            Mem.At(pl, ManifoldLayout.Separation(k)) = res.P[q + 6];
         }
     }
 

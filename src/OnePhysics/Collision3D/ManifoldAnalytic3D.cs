@@ -14,8 +14,8 @@ public sealed partial class ManifoldGenerator3D
         float rA = a.ConvexRadius, rB = b.ConvexRadius, rr = rA + rB;
         bool capA = a.Kind == ConvexShapeKind3D.Capsule, capB = b.Kind == ConvexShapeKind3D.Capsule;
         Vector3F a0 = capA ? new Vector3F(0f, a.CoreSize.Y, 0f) : default, a1 = capA ? new Vector3F(0f, -a.CoreSize.Y, 0f) : default;
-        Vector3F b0 = bInA.TransformPoint(capB ? new Vector3F(0f, b.CoreSize.Y, 0f) : default);
-        Vector3F b1 = bInA.TransformPoint(capB ? new Vector3F(0f, -b.CoreSize.Y, 0f) : default);
+        Vector3F b0 = bInA.TransformPointInline(capB ? new Vector3F(0f, b.CoreSize.Y, 0f) : default);
+        Vector3F b1 = bInA.TransformPointInline(capB ? new Vector3F(0f, -b.CoreSize.Y, 0f) : default);
         Vector3F da = a1 - a0, db = b1 - b0;
         float la2 = da.LengthSquared(), lb2 = db.LengthSquared();
         Vector3F cr = Vector3F.Cross(da, db);
@@ -135,7 +135,7 @@ public sealed partial class ManifoldGenerator3D
     // then its edges), or for a centre inside the core the nearest face plane. Exact to float rounding, unlike EPA on curved shapes.
     private Manifold3D SpherePoly(in ConvexShape3D sphere, in ConvexShape3D poly, bool sphereIsA, in RigidTransformF bInA, float margin)
     {
-        Matrix3x3F rot = bInA.Rotation.ToMatrix();
+        Matrix3x3F rot = bInA.Rotation.ToMatrixInline();
         Vector3F c = sphereIsA ? (rot.Transposed() * -bInA.Translation) : bInA.Translation;
         ConvexHull3D h = HullOf(poly);
         float rS = sphere.ConvexRadius, rP = poly.ConvexRadius;
@@ -262,7 +262,7 @@ public sealed partial class ManifoldGenerator3D
         if (sphereIsA)
         {
             // The poly is B: map the point into A's frame and flip the normal so it points from the sphere to the poly.
-            mid = bInA.TransformPoint(mid);
+            mid = bInA.TransformPointInline(mid);
             normal = -(rot * nOut);
             Push(mid, sep, FCode.Pack(FCode.Vertex(0), polyCode));
         }

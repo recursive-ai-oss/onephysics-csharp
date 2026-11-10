@@ -12,11 +12,13 @@ internal sealed partial class Engine3D
     // ------------------------------------------------------------------ small math
 
     /// <summary>Applies a symmetric tensor stored as xx xy xz yy yz zz to a vector.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     private static Vector3F Apply(ReadOnlySpan<float> m, Vector3F v) => new(
         m[0] * v.X + m[1] * v.Y + m[2] * v.Z,
         m[1] * v.X + m[3] * v.Y + m[4] * v.Z,
         m[2] * v.X + m[4] * v.Y + m[5] * v.Z);
 
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     private static Vector3F V(ReadOnlySpan<float> a, int i) => new(a[i], a[i + 1], a[i + 2]);
 
     private static void Put(Span<float> a, int i, Vector3F v) { a[i] = v.X; a[i + 1] = v.Y; a[i + 2] = v.Z; }
@@ -71,6 +73,7 @@ internal sealed partial class Engine3D
     }
 
     /// <summary>Two unit vectors perpendicular to a unit normal and to each other, chosen by a fixed rule so the same normal always gives the same pair.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     private static void Tangents(Vector3F n, out Vector3F t1, out Vector3F t2)
     {
         // Pick the axis the normal is least aligned with; cross products and square roots only.
@@ -204,6 +207,8 @@ internal sealed partial class Engine3D
         float allOnes = BitConverter.Int32BitsToSingle(-1);
         int lane = 0, jlane = 0, scalarJoints = 0;
         Span<float> rm = stackalloc float[6];
+        // Accessor bounds: a batch holds at most W3D.Lanes contacts, so lane < 8 and every field offset below is a constant inside the group (ContactGroupFloats); payload offsets are fixed layout offsets and
+        // point indices stay below the point count, which restore validates against MaxManifoldPoints. The Checked configuration verifies each access.
         foreach (int c in constraints)
         {
             if (cs.KindOf(c) == ConstraintKind.Joint)
@@ -236,32 +241,32 @@ internal sealed partial class Engine3D
                 if (extra[9] != 0) { t1 = new Vector3F(extra[4], extra[5], extra[6]); t2 = Vector3F.Cross(n, t1); }
             }
             Put3(w, W3D.N, lane, n); Put3(w, W3D.T1, lane, t1); Put3(w, W3D.T2, lane, t2);
-            w[W3D.Friction * 8 + lane] = pl[ManifoldLayout.Friction];
+            Mem.At(w, W3D.Friction * 8 + lane) = Mem.At(pl, ManifoldLayout.Friction);
             if (ContactModifications.Extended)
             {
-                w[W3D.TangentSpeed * 8 + lane] = ContactModifications.TangentSpeed(c);
-                w[W3D.ImpulseLimit * 8 + lane] = ContactModifications.ImpulseLimit(c);
+                Mem.At(w, W3D.TangentSpeed * 8 + lane) = ContactModifications.TangentSpeed(c);
+                Mem.At(w, W3D.ImpulseLimit * 8 + lane) = ContactModifications.ImpulseLimit(c);
                 var extra = ContactModifications.ExtraOf(c);
-                w[W3D.TangentSpeed2 * 8 + lane] = extra[2];
-                w[W3D.Friction2 * 8 + lane] = extra[3];
-                w[W3D.Spin * 8 + lane] = extra[7];
-                w[W3D.SpinImpulse * 8 + lane] = 0;
-                w[W3D.Anisotropic * 8 + lane] = extra[9];
+                Mem.At(w, W3D.TangentSpeed2 * 8 + lane) = extra[2];
+                Mem.At(w, W3D.Friction2 * 8 + lane) = extra[3];
+                Mem.At(w, W3D.Spin * 8 + lane) = extra[7];
+                Mem.At(w, W3D.SpinImpulse * 8 + lane) = 0;
+                Mem.At(w, W3D.Anisotropic * 8 + lane) = extra[9];
             }
-            float restitution = pl[ManifoldLayout.Restitution];
-            w[W3D.Restitution * 8 + lane] = restitution;
+            float restitution = Mem.At(pl, ManifoldLayout.Restitution);
+            Mem.At(w, W3D.Restitution * 8 + lane) = restitution;
             if (restitution != 0f) { anyRestitution = 1; }
-            float rolling = pl[ManifoldLayout.RollingResistance];
-            w[W3D.Rolling * 8 + lane] = rolling;
-            w[W3D.InvMassA * 8 + lane] = mA; w[W3D.InvMassB * 8 + lane] = mB;
+            float rolling = Mem.At(pl, ManifoldLayout.RollingResistance);
+            Mem.At(w, W3D.Rolling * 8 + lane) = rolling;
+            Mem.At(w, W3D.InvMassA * 8 + lane) = mA; Mem.At(w, W3D.InvMassB * 8 + lane) = mB;
             if (ctx.Schedule != 0)
             {
-                if (mA == 0f || mB == 0f) { w[W3D.BiasRate * 8 + lane] = _liteStBias; w[W3D.MassScale * 8 + lane] = _liteStMass; w[W3D.ImpulseScale * 8 + lane] = _liteStImpulse; }
-                else { w[W3D.BiasRate * 8 + lane] = _liteDynBias; w[W3D.MassScale * 8 + lane] = _liteDynMass; w[W3D.ImpulseScale * 8 + lane] = _liteDynImpulse; }
+                if (mA == 0f || mB == 0f) { Mem.At(w, W3D.BiasRate * 8 + lane) = _liteStBias; Mem.At(w, W3D.MassScale * 8 + lane) = _liteStMass; Mem.At(w, W3D.ImpulseScale * 8 + lane) = _liteStImpulse; }
+                else { Mem.At(w, W3D.BiasRate * 8 + lane) = _liteDynBias; Mem.At(w, W3D.MassScale * 8 + lane) = _liteDynMass; Mem.At(w, W3D.ImpulseScale * 8 + lane) = _liteDynImpulse; }
             }
-            else if (mA == 0f || mB == 0f) { w[W3D.BiasRate * 8 + lane] = _stBias; w[W3D.MassScale * 8 + lane] = _stMass; w[W3D.ImpulseScale * 8 + lane] = _stImpulse; }
-            else { w[W3D.BiasRate * 8 + lane] = _dynBias; w[W3D.MassScale * 8 + lane] = _dynMass; w[W3D.ImpulseScale * 8 + lane] = _dynImpulse; }
-            if (rolling > 0f) { anyRolling = 1; RollingMass(WInvI.AsSpan(6 * a, 6), WInvI.AsSpan(6 * b, 6), rm); for (int k = 0; k < 6; k++) { w[(W3D.RollMass + k) * 8 + lane] = rm[k]; } }
+            else if (mA == 0f || mB == 0f) { Mem.At(w, W3D.BiasRate * 8 + lane) = _stBias; Mem.At(w, W3D.MassScale * 8 + lane) = _stMass; Mem.At(w, W3D.ImpulseScale * 8 + lane) = _stImpulse; }
+            else { Mem.At(w, W3D.BiasRate * 8 + lane) = _dynBias; Mem.At(w, W3D.MassScale * 8 + lane) = _dynMass; Mem.At(w, W3D.ImpulseScale * 8 + lane) = _dynImpulse; }
+            if (rolling > 0f) { anyRolling = 1; RollingMass(WInvI.AsSpan(6 * a, 6), WInvI.AsSpan(6 * b, 6), rm); for (int k = 0; k < 6; k++) { Mem.At(w, (W3D.RollMass + k) * 8 + lane) = rm[k]; } }
             Put3(w, W3D.RollImpulse, lane, V(pl, ManifoldLayout.RollingImpulse));
 
             // The effective masses, adjusted separations and relative velocities are computed for the whole group at once afterwards (ContactKernel3D.PrepareMasses), which gathers the bodies itself.
@@ -273,19 +278,19 @@ internal sealed partial class Engine3D
                 var rB = V(pl, ManifoldLayout.AnchorB(i));
                 int f = W3D.Point0 + i * W3D.PointStride;
                 Put3(w, f + W3D.ArmA, lane, rA); Put3(w, f + W3D.ArmB, lane, rB);
-                w[(f + W3D.AdjustedSeparation) * 8 + lane] = pl[ManifoldLayout.Separation(i)];
-                w[(f + W3D.NormalImpulse) * 8 + lane] = pl[ManifoldLayout.NormalImpulse(i)];
-                w[(f + W3D.Tangent1Impulse) * 8 + lane] = pl[ManifoldLayout.Tangent1Impulse(i)];
-                w[(f + W3D.Tangent2Impulse) * 8 + lane] = pl[ManifoldLayout.Tangent2Impulse(i)];
-                w[(f + W3D.MaxNormalImpulse) * 8 + lane] = 0f;
-                w[(f + W3D.Mask) * 8 + lane] = allOnes;
+                Mem.At(w, (f + W3D.AdjustedSeparation) * 8 + lane) = Mem.At(pl, ManifoldLayout.Separation(i));
+                Mem.At(w, (f + W3D.NormalImpulse) * 8 + lane) = Mem.At(pl, ManifoldLayout.NormalImpulse(i));
+                Mem.At(w, (f + W3D.Tangent1Impulse) * 8 + lane) = Mem.At(pl, ManifoldLayout.Tangent1Impulse(i));
+                Mem.At(w, (f + W3D.Tangent2Impulse) * 8 + lane) = Mem.At(pl, ManifoldLayout.Tangent2Impulse(i));
+                Mem.At(w, (f + W3D.MaxNormalImpulse) * 8 + lane) = 0f;
+                Mem.At(w, (f + W3D.Mask) * 8 + lane) = allOnes;
             }
 
             // Slots past the manifold's points take no part: their mask is clear and their impulse reads as zero in the rolling-resistance total. Everything else in the slot is ignored under the mask.
             for (int i = count; i < W3D.MaxPoints; i++)
             {
                 int f = W3D.Point0 + i * W3D.PointStride;
-                w[(f + W3D.Mask) * 8 + lane] = 0f; w[(f + W3D.NormalImpulse) * 8 + lane] = 0f;
+                Mem.At(w, (f + W3D.Mask) * 8 + lane) = 0f; Mem.At(w, (f + W3D.NormalImpulse) * 8 + lane) = 0f;
             }
 
             lane++;
@@ -308,7 +313,8 @@ internal sealed partial class Engine3D
     private static bool WidePointBlock(byte type) =>
         type == (byte)JointType3D.Point || type == (byte)JointType3D.Fixed || type == (byte)JointType3D.Hinge || type == (byte)JointType3D.Cone || type == (byte)JointType3D.SwingTwist;
 
-    private static void Put3(Span<float> w, int field, int lane, Vector3F v) { w[field * 8 + lane] = v.X; w[(field + 1) * 8 + lane] = v.Y; w[(field + 2) * 8 + lane] = v.Z; }
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static void Put3(Span<float> w, int field, int lane, Vector3F v) { Mem.At(w, field * 8 + lane) = v.X; Mem.At(w, (field + 1) * 8 + lane) = v.Y; Mem.At(w, (field + 2) * 8 + lane) = v.Z; }
 
     /// <summary>After the last substep: the accumulated impulses go back to the payloads, where the next step's warm start and the events read them.</summary>
     public void StoreResults(ReadOnlySpan<int> constraints)
@@ -333,13 +339,13 @@ internal sealed partial class Engine3D
             for (int i = 0; i < count; i++)
             {
                 int f = W3D.Point0 + i * W3D.PointStride;
-                pl[ManifoldLayout.NormalImpulse(i)] = w[(f + W3D.NormalImpulse) * 8 + lane];
-                pl[ManifoldLayout.Tangent1Impulse(i)] = w[(f + W3D.Tangent1Impulse) * 8 + lane];
-                pl[ManifoldLayout.Tangent2Impulse(i)] = w[(f + W3D.Tangent2Impulse) * 8 + lane];
-                pl[ManifoldLayout.MaxNormalImpulse(i)] = w[(f + W3D.MaxNormalImpulse) * 8 + lane];
+                Mem.At(pl, ManifoldLayout.NormalImpulse(i)) = Mem.At(w, (f + W3D.NormalImpulse) * 8 + lane);
+                Mem.At(pl, ManifoldLayout.Tangent1Impulse(i)) = Mem.At(w, (f + W3D.Tangent1Impulse) * 8 + lane);
+                Mem.At(pl, ManifoldLayout.Tangent2Impulse(i)) = Mem.At(w, (f + W3D.Tangent2Impulse) * 8 + lane);
+                Mem.At(pl, ManifoldLayout.MaxNormalImpulse(i)) = Mem.At(w, (f + W3D.MaxNormalImpulse) * 8 + lane);
             }
 
-            for (int k = 0; k < 3; k++) { pl[ManifoldLayout.RollingImpulse + k] = w[(W3D.RollImpulse + k) * 8 + lane]; }
+            for (int k = 0; k < 3; k++) { Mem.At(pl, ManifoldLayout.RollingImpulse + k) = Mem.At(w, (W3D.RollImpulse + k) * 8 + lane); }
         }
     }
 
@@ -560,7 +566,7 @@ internal sealed partial class Engine3D
         var m = new Vector3F((float)(pos[0] - cx), (float)(pos[1] - cy), (float)(pos[2] - cz));
         var qStart = new QuaternionF(StartRot[4 * b], StartRot[4 * b + 1], StartRot[4 * b + 2], StartRot[4 * b + 3]);
         var qEnd = new QuaternionF(rot[0], rot[1], rot[2], rot[3]);
-        var rel = qStart.Conjugated() * qEnd;
+        var rel = qStart.Conjugated().Times(qEnd);
         float spin = 2f * float.Sqrt(rel.X * rel.X + rel.Y * rel.Y + rel.Z * rel.Z) * MaxExtent[b];
         float len = float.Sqrt(m.X * m.X + m.Y * m.Y + m.Z * m.Z);
         if (!float.IsFinite(len + spin) || !(len + spin > 0.5f * MinExtent[b]) || !(len > 0f)) { return; } // non-finite motion is reported by the bounds check, not cast

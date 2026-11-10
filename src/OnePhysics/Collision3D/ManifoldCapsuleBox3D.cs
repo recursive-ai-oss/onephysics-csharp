@@ -23,15 +23,15 @@ public sealed partial class ManifoldGenerator3D
         Vector3F e0, e1;
         if (capsuleIsB)
         {
-            Vector3F axis = bInA.Rotation.Rotate(new Vector3F(0f, hy, 0f));
+            Vector3F axis = bInA.Rotation.RotateInline(new Vector3F(0f, hy, 0f));
             e0 = bInA.Translation + axis;
             e1 = bInA.Translation - axis;
         }
         else
         {
             QuaternionF inv = bInA.Rotation.Conjugated();
-            e0 = inv.Rotate(new Vector3F(0f, hy, 0f) - bInA.Translation);
-            e1 = inv.Rotate(new Vector3F(0f, -hy, 0f) - bInA.Translation);
+            e0 = inv.RotateInline(new Vector3F(0f, hy, 0f) - bInA.Translation);
+            e1 = inv.RotateInline(new Vector3F(0f, -hy, 0f) - bInA.Translation);
         }
 
         Vector3F h = box.CoreSize;
@@ -108,8 +108,8 @@ public sealed partial class ManifoldGenerator3D
         else
         {
             // The box is B and its frame is B's; the contact is reported in A's frame, from A (the capsule) to B.
-            Vector3F nAB = bInA.Rotation.Rotate(-nBoxToCap);
-            contact = new ConvexContact3D(sep, nAB, bInA.TransformPoint(onSeg - (nBoxToCap * rc)), bInA.TransformPoint(onBox + (nBoxToCap * rp)));
+            Vector3F nAB = bInA.Rotation.RotateInline(-nBoxToCap);
+            contact = new ConvexContact3D(sep, nAB, bInA.TransformPointInline(onSeg - (nBoxToCap * rc)), bInA.TransformPointInline(onBox + (nBoxToCap * rp)));
         }
 
         return true;

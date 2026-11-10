@@ -66,16 +66,22 @@ public readonly struct Manifold3D
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="i"/> is not in 0 to <see cref="PointCount"/> − 1.</exception>
     public ManifoldPoint3D this[int i]
     {
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         get
         {
             if ((uint)i >= (uint)PointCount)
             {
-                throw new ArgumentOutOfRangeException(nameof(i), i, "point index must be below PointCount (" + PointCount + ")");
+                ThrowIndex(i, PointCount);
             }
 
             return i switch { 0 => _p0, 1 => _p1, 2 => _p2, _ => _p3 };
         }
     }
+
+    // Out of line so the indexer stays small enough to be inlined into the loops that read every point.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static void ThrowIndex(int i, int count) =>
+        throw new ArgumentOutOfRangeException(nameof(i), i, "point index must be below PointCount (" + count + ")");
 
     /// <summary>The smallest separation over the points, or <see cref="float.PositiveInfinity"/> when the manifold is empty.</summary>
     public float MinSeparation

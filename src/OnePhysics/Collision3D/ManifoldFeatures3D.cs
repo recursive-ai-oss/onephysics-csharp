@@ -52,7 +52,7 @@ public sealed partial class ManifoldGenerator3D
             n /= ConvexShape3D.Sqrt(len2);
         }
 
-        Matrix3x3F r = bInA.Rotation.ToMatrix();
+        Matrix3x3F r = bInA.Rotation.ToMatrixInline();
         float thick = margin + (1e-4f * (Extent(a) + Extent(b)));
         Extract(a, n, thick, _fa);
         Extract(b, r.Transposed() * -n, thick, _fb);
