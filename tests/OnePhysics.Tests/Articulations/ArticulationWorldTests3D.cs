@@ -221,21 +221,24 @@ public sealed class ArticulationWorldTests3D
         var world = new PhysicsWorld3D();
         world.AddBox(new Vector3F(4f, 1f, 4f), at: new Vector3D(0, -0.5, 0), type: BodyType.Static);
         var arm = world.AddArticulation(ArticulationDef.RobotArm(0.9f, 7, 8f), new Vector3D(0, 0.0, 0));
-        var box = world.AddBox(new Vector3F(0.12f, 0.12f, 0.12f), at: new Vector3D(0, 0.06, 0.38), material: new Material3D(0.4f, 0f), density: 300f);
+        var box = world.AddBox(new Vector3F(0.12f, 0.12f, 0.12f), at: new Vector3D(0, 0.06, 0.55), material: new Material3D(0.4f, 0f), density: 300f);
         int tip = arm.LinkCount - 1;
         var local = new Vector3F(0, 0.1286f, 0);
-        const double goal = 0.55;
+        const double goal = 0.72;
         // A ready pose with the elbows bent, away from the straight-up singularity.
         var ready = new[] { 0f, 0.9f, 0f, -1.4f, 0f, 1.0f, 0f };
         for (int j = 0; j < ready.Length; j++) { arm.SetJointPosition(j + 1, ready[j]); arm.SetJointTarget(j + 1, ready[j]); }
         // Waypoints for the tool point: over and behind the box, down to its height, then forward a little ahead of itself until the box is at the goal.
-        var target = new Vector3D(0, 0.35, 0.2);
-        bool done = false;
-        for (int i = 0; i < 900 && !done; i++)
+        var target = new Vector3D(0, 0.35, 0.38);
+        bool done = false, down = false, above = false;
+        for (int i = 0; i < 1800 && !done; i++)
         {
             var toolNow = arm.GetPointPosition(tip, local);
-            if (i < 120) { target = new Vector3D(0, 0.35, 0.2); }
-            else if (i < 300) { target = new Vector3D(0, 0.35 - (0.35 - 0.08) * Math.Min(1.0, (i - 120) / 120.0), 0.2); }
+            // Descend beside the box first; only advance once the tool is at pushing height.
+            if (!above && (toolNow - new Vector3D(0, 0.35, 0.38)).Length() < 0.03) { above = true; }
+            if (above && !down && toolNow.Y < 0.09) { down = true; }
+            if (!above) { target = new Vector3D(0, 0.35, 0.38); }
+            else if (!down) { target = new Vector3D(0, 0.08, 0.38); }
             else if (box.Position.Z < goal - 0.006) { target = new Vector3D(0, 0.08, toolNow.Z + 0.03); }
             else { target = toolNow; done = true; }
             arm.SetTaskTarget(tip, local, target, gain: 1f, damping: 0.08f, maxStep: 0.06f);

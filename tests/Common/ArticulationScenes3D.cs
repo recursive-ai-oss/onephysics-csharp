@@ -115,10 +115,10 @@ internal static class ArticulationScenes3D
         var arm = w.AddArticulation(ArticulationDef.RobotArm(0.9f, 7, 8f), new Vector3D(0, 0, 0));
         var ready = new[] { 0f, 0.9f, 0f, -1.4f, 0f, 1.0f, 0f };
         for (int j = 0; j < ready.Length; j++) { arm.SetJointPosition(j + 1, ready[j]); arm.SetJointTarget(j + 1, ready[j]); }
-        var push = w.AddBox(new Vector3F(0.12f, 0.12f, 0.12f), at: new Vector3D(0, 0.06, 0.38), material: new Material3D(0.4f, 0f), density: 300f);
-        var other = w.AddBox(new Vector3F(0.1f, 0.1f, 0.1f), at: new Vector3D(0.22, 0.05, 0.5), material: new Material3D(0.5f, 0f), density: 300f);
-        var tall = w.AddBox(new Vector3F(0.08f, 0.2f, 0.08f), at: new Vector3D(-0.25, 0.1, 0.45), material: new Material3D(0.5f, 0f), density: 300f);
-        var sc = new Scene { Name = "articulation-arm-3d", World = w, Steps = 600, Boxes = new[] { push.Handle, other.Handle, tall.Handle }, Goal = 0.55 };
+        var push = w.AddBox(new Vector3F(0.12f, 0.12f, 0.12f), at: new Vector3D(0, 0.06, 0.55), material: new Material3D(0.4f, 0f), density: 300f);
+        var other = w.AddBox(new Vector3F(0.1f, 0.1f, 0.1f), at: new Vector3D(0.22, 0.05, 0.65), material: new Material3D(0.5f, 0f), density: 300f);
+        var tall = w.AddBox(new Vector3F(0.08f, 0.2f, 0.08f), at: new Vector3D(-0.25, 0.1, 0.62), material: new Material3D(0.5f, 0f), density: 300f);
+        var sc = new Scene { Name = "articulation-arm-3d", World = w, Steps = 700, Boxes = new[] { push.Handle, other.Handle, tall.Handle }, Goal = 0.72 };
         var local = new Vector3F(0, 0.1286f, 0);
         sc.Script = step =>
         {
@@ -127,17 +127,14 @@ internal static class ArticulationScenes3D
             var toolNow = a.GetPointPosition(tip, local);
             // Closed loop on the world state alone (so a restored copy continues the same way): descend behind the box, then push forward a little ahead of the tool until the box is near the goal, then hold.
             Vector3D target;
-            if (toolNow.Z > 0.26 || toolNow.Y <= 0.10)
-            {
-                target = sc.World.GetBody(sc.Boxes[0]).Position.Z < sc.Goal - 0.012 ? new Vector3D(0, 0.075, toolNow.Z + 0.03) : toolNow;
-            }
-            else { target = new Vector3D(0, 0.075, 0.2); }
-            a.SetTaskTarget(tip, local, target, gain: 3f, damping: 0.05f, maxStep: 0.06f);
+            if (toolNow.Y > 0.10 && toolNow.Z < 0.45) { target = toolNow.Z < 0.34 ? new Vector3D(0, 0.35, 0.38) : new Vector3D(0, 0.08, 0.38); }
+            else { target = sc.World.GetBody(sc.Boxes[0]).Position.Z < sc.Goal - 0.006 ? new Vector3D(0, 0.08, toolNow.Z + 0.03) : toolNow; }
+            a.SetTaskTarget(tip, local, target, gain: 1f, damping: 0.08f, maxStep: 0.06f);
         };
         return sc;
     }
 
-    // Two quadrupeds, one on a box floor and one on a rolling height field, each pushed by a force on its torso for a tenth of a second at step 240 (about 1 m/s), with boxes dropped near them.
+    // Two quadrupeds, one on a box floor and one on a rolling height field, each pushed by a force on its torso for a tenth of a second at step 240 (about 0.5 m/s, less than the 0.8 m/s that tips a standing quadruped with no stepping), with boxes dropped near them.
     private static Scene QuadrupedScene(int threads)
     {
         var w = NewWorld(threads, 1342);
@@ -156,8 +153,8 @@ internal static class ArticulationScenes3D
         {
             if (step < 240 || step >= 246) { return; }
             var arts = sc.World.GetArticulations();
-            arts[0].ApplyForce(0, new Vector3F(120, 0, 0), arts[0].GetLink(0).Position);
-            arts[1].ApplyForce(0, new Vector3F(-100, 0, 0), arts[1].GetLink(0).Position);
+            arts[0].ApplyForce(0, new Vector3F(60, 0, 0), arts[0].GetLink(0).Position);
+            arts[1].ApplyForce(0, new Vector3F(-60, 0, 0), arts[1].GetLink(0).Position);
         };
         return sc;
     }
