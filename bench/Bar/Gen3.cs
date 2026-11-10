@@ -1,6 +1,8 @@
+using RecursiveAI.OneMath;
 using System.Globalization;
 namespace Bar;
 
+using RecursiveAI.OneMath;
 using Scene = RecursiveAI.OnePhysics.Scene.Scene;
 using BodyDef = RecursiveAI.OnePhysics.Scene.BodyDef;
 using JointDef = RecursiveAI.OnePhysics.Scene.JointDef;
@@ -593,7 +595,7 @@ public static class Gen3
         var hex = new double[18];
         for (int k = 0; k < 6; k++)
         {
-            double a = k * Math.PI / 3, x = 0.6 * Math.Cos(a), z = 0.6 * Math.Sin(a);
+            double a = k * Math.PI / 3, x = 0.6 * Math64.Cos(a), z = 0.6 * Math64.Sin(a);
             hex[3 * k] = x; hex[3 * k + 1] = -0.2; hex[3 * k + 2] = z;
         }
         var prism = new List<double>();

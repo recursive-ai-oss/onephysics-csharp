@@ -87,7 +87,7 @@ internal static class Cloth3DScene
             {
                 var v = sd.Mesh.Vertices[i];
                 double th = v.X / r;
-                start[i] = new Vector3F((float)(r * Math.Sin(th)), (float)(side * r * Math.Cos(th)), v.Z);
+                start[i] = new Vector3F((float)(r * Math64.Sin(th)), (float)(side * r * Math64.Cos(th)), v.Z);
             }
 
             sd.StartVertices = start;

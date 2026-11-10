@@ -56,7 +56,7 @@ internal static class RailBikeScenes2D
             {
                 var car = Rail[i].Car; var p = car.Position;
                 double rise = p.Y - Track.SurfaceAt(p.X, out float grade).Y - _offset[i];
-                if (Math.Abs(rise) > 0.4 || Math.Abs(car.Angle - Math.Atan(grade)) > 0.5) { off++; }
+                if (Math.Abs(rise) > 0.4 || Math.Abs(car.Angle - Math64.Atan(grade)) > 0.5) { off++; }
             }
 
             int flipped = 0;
