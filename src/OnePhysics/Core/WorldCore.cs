@@ -195,6 +195,7 @@ public sealed partial class WorldCore
         _bodySleep = new BodySleepStore(this);
         AddSection(_bodySleep);
         Controls = new BodyControlStore(this); AddSection(Controls);
+        ScaleStore = new WorldScaleStore(this);
     }
 
     /// <summary>The id stamped into this world's handles.</summary>
@@ -338,7 +339,7 @@ public sealed partial class WorldCore
         }
 
         int b = _bodies.AllocateSlot();
-        _bodySleep.Set(b, default); Controls.Set(b, default);
+        _bodySleep.Set(b, default); Controls.Set(b, default); ScaleStore.SetBodyScale(b, 1f);
         _bodies.ClearSlot(b);
         BodyReadback.Initialize(b);
         position.CopyTo(_bodies.PositionOf(b));
@@ -405,7 +406,7 @@ public sealed partial class WorldCore
         }
 
         _islands.RemoveBody(_bodies, b);
-        _bodySleep.Set(b, default); Controls.Set(b, default);
+        _bodySleep.Set(b, default); Controls.Set(b, default); ScaleStore.SetBodyScale(b, 1f); ForgetTileBody(b);
         _bodies.ClearSlot(b);
         _bodies.Handles.Free(b);
     }
@@ -451,6 +452,7 @@ public sealed partial class WorldCore
     public void WakeIsland(int island)
     {
         if (!_islands.IsAsleep(island)) { return; }
+        if (island < _suspended.Length && _suspended[island] != 0) { Unsuspend(island); return; }
         _islands.SetAsleep(island, false);
         foreach (int b in _islands.Bodies(island))
         {
@@ -623,6 +625,7 @@ public sealed partial class WorldCore
     public void Step<TStages>(TStages stages, float dt) where TStages : IWorldStages
     {
         if (!(dt > 0f) || !float.IsFinite(dt)) { throw new ArgumentOutOfRangeException(nameof(dt), dt, "dt must be finite and positive."); }
+        FlushPending();
         _options.Validate();
         _events.ClearDelivered();
         Counters.Reset();
@@ -637,86 +640,23 @@ public sealed partial class WorldCore
             StageProbe.Mark(StageProbe.Boxes);
 #endif
             ReadContactSchedule();
+            bool scaled = ScaleStore.Active;
+            float contactDt = scaled ? PlanScaleStart(dt) : dt;
             BuildAwakeBodies();
             CaptureContactsForInspection();
             if (ContactMaterials.IsPresent) ContactMaterials.Prepare();
-            ContactStepDt = dt;
+            ContactStepDt = contactDt;
             ContactModifications.SurfaceActive = Surfaces.IsPresent;
             stages.UpdateContacts(this);
-            BuildAwakeBodies();
-            Profile.Mark(StepStage.Coloring);
-#if STAGE_TIMERS
-            StageProbe.Mark(StageProbe.Coloring);
-#endif
-            _coloring.EnsureBodies(_bodies.HighWater);
-            _coloring.BuildActive(_bodies, _constraints, _newContacts, _newContactPoints, Executor, _awakeCount > 0);
-            var ctx = new StepContext(dt, _options.Substeps, 0);
-            var ctxLite = new StepContext(dt, _liteSubsteps, 1);
-            _fullIntegratedTime = (double)ctx.SubstepDt * ctx.Substeps;
-            _liteIntegratedTime = _liteOn ? (double)ctxLite.SubstepDt * ctxLite.Substeps : _fullIntegratedTime;
-            int active = _coloring.ActiveCount;
-            CaptureSolverCounters();
-            int storeChunks = (active + ChunkSize - 1) / ChunkSize;
-            _events.EnsureSlots(1 + storeChunks);
-            var list = _coloring.ListArray;
-            bool split = _liteOn && PlanSchedules(stages, active, list);
-            _forcedCount = 0;
-            _splitActive = split;
-            if (!split) { CountWholeColors(); }
-
-            Profile.Mark(StepStage.Prepare);
-#if STAGE_TIMERS
-            StageProbe.Mark(StageProbe.Prepare);
-#endif
-            Executor.For(storeChunks, new PrepareTask<TStages>(this, stages, list, 0, active, ctx));
-            PrepareBatches(stages, ctx, ctxLite, split);
-
-            Profile.Mark(StepStage.Solve);
-#if STAGE_TIMERS
-            StageProbe.Mark(StageProbe.Solve);
-#endif
-            // Each program (the joint schedule's islands, then the contact-only schedule's) runs as one staged call: the stage boundaries (integrate, then each color of each pass) are crossed by polling inside the executor
-            // instead of one fork and join per stage. Islands share no dynamic body, so running the programs one after the other gives what running them together would.
-            for (int prog = 0; prog < (split ? 2 : 1); prog++)
+            if (!scaled)
             {
-                if (split && (prog == 0 ? _awakeFullCount : _awakeLiteCount) == 0 && _progConstraints[prog] == 0) { continue; }
-                var pctx = prog == 0 ? ctx : ctxLite;
-                int subs = prog == 0 ? _options.Substeps : _liteSubsteps;
-                int vel = prog == 0 ? _options.VelocityIterations : _liteVelocity;
-                int relax = prog == 0 ? _options.RelaxIterations : _liteRelax;
-                var progBodies = split ? (prog == 0 ? _awakeFull : _awakeLite) : _awake;
-                int progCount = split ? (prog == 0 ? _awakeFullCount : _awakeLiteCount) : _awakeCount;
-                if (prog == 0) { Counters.WorldSubsteps = subs; Counters.WorldWarmStartPasses = subs; Counters.WorldRestitutionPasses = 1; Counters.WorldSolvePasses = subs * vel; Counters.WorldRelaxPasses = subs * relax; }
-                else { Counters.ContactSubsteps = subs; Counters.ContactWarmStartPasses = subs; Counters.ContactRestitutionPasses = 1; Counters.ContactSolvePasses = subs * vel; Counters.ContactRelaxPasses = subs * relax; }
-                int progChunks = (progCount + ChunkSize - 1) / ChunkSize;
-                _stageCount = 0;
-                _stageMostTasks = 0;
-                for (int s = 0; s < subs; s++)
-                {
-                    _flipSweep = (s & 1) == 1;
-                    AddStage(StageIntegrateVelocities, 0, progChunks);
-                    AddSolvePass(prog, SolvePhase.WarmStart);
-                    for (int i = 0; i < vel; i++) { AddSolvePass(prog, SolvePhase.Solve); }
-                    AddStage(StageIntegratePositions, 0, progChunks);
-                    for (int i = 0; i < relax; i++) { AddSolvePass(prog, SolvePhase.Relax); }
-                }
-
-                AddSolvePass(prog, SolvePhase.Restitution);
-                Executor.ForStages(_stageCount, new SolveProgram<TStages>(this, stages, list, pctx, prog, progBodies, progCount), _stageMostTasks);
+                BuildAwakeBodies();
+                SolveSection(stages, dt, _options.Substeps, _liteSubsteps);
             }
-
-            Profile.Mark(StepStage.Finalize);
-#if STAGE_TIMERS
-            StageProbe.Mark(StageProbe.Finalize);
-#endif
-            int bodyChunks = (_awakeCount + ChunkSize - 1) / ChunkSize;
-            Executor.For(bodyChunks, new FinalizeTask<TStages>(this, stages, _awake, _awakeCount, ctx));
-            stages.AfterFinalize(this, ctx);
-            Profile.Mark(StepStage.Store);
-#if STAGE_TIMERS
-            StageProbe.Mark(StageProbe.Store);
-#endif
-            Executor.For(storeChunks, new StoreTask<TStages>(this, stages, list, active, ctx));
+            else
+            {
+                RunScaledGroups(stages, dt);
+            }
 
             Profile.Mark(StepStage.Sleep);
 #if STAGE_TIMERS
@@ -737,10 +677,92 @@ public sealed partial class WorldCore
             StageProbe.Mark(StageProbe.End);
 #endif
             _collectTransitions = false;
+            RestoreSuspended();
             CapturePopulationCounters();
             _stepCount++;
         }
-        finally { _collectTransitions = false; }
+        finally { _collectTransitions = false; RestoreSuspended(); }
+    }
+
+    // The solve part of a step for the awake bodies and active constraints as they stand: coloring, preparation, the substep programs, finalization and storing results.
+    // A step without scaling runs it once with the world's dt; a scaled step runs it once per group of islands that share a time multiplier.
+    private void SolveSection<TStages>(TStages stages, float dt, int subs0, int subs1) where TStages : IWorldStages
+    {
+        _passSubsteps = subs0; _passLiteSubsteps = subs1;
+        Profile.Mark(StepStage.Coloring);
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Coloring);
+#endif
+        _coloring.EnsureBodies(_bodies.HighWater);
+        _coloring.BuildActive(_bodies, _constraints, _newContacts, _newContactPoints, Executor, _awakeCount > 0);
+        var ctx = new StepContext(dt, subs0, 0);
+        var ctxLite = new StepContext(dt, subs1, 1);
+        _fullIntegratedTime = (double)ctx.SubstepDt * ctx.Substeps;
+        _liteIntegratedTime = _liteOn ? (double)ctxLite.SubstepDt * ctxLite.Substeps : _fullIntegratedTime;
+        int active = _coloring.ActiveCount;
+        CaptureSolverCounters();
+        int storeChunks = (active + ChunkSize - 1) / ChunkSize;
+        _events.EnsureSlots(1 + storeChunks);
+        var list = _coloring.ListArray;
+        bool split = _liteOn && PlanSchedules(stages, active, list);
+        _forcedCount = 0;
+        _splitActive = split;
+        if (!split) { CountWholeColors(); }
+
+        Profile.Mark(StepStage.Prepare);
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Prepare);
+#endif
+        Executor.For(storeChunks, new PrepareTask<TStages>(this, stages, list, 0, active, ctx));
+        PrepareBatches(stages, ctx, ctxLite, split);
+
+        Profile.Mark(StepStage.Solve);
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Solve);
+#endif
+        // Each program (the joint schedule's islands, then the contact-only schedule's) runs as one staged call: the stage boundaries (integrate, then each color of each pass) are crossed by polling inside the executor
+        // instead of one fork and join per stage. Islands share no dynamic body, so running the programs one after the other gives what running them together would.
+        for (int prog = 0; prog < (split ? 2 : 1); prog++)
+        {
+            if (split && (prog == 0 ? _awakeFullCount : _awakeLiteCount) == 0 && _progConstraints[prog] == 0) { continue; }
+            var pctx = prog == 0 ? ctx : ctxLite;
+            int subs = prog == 0 ? subs0 : subs1;
+            int vel = prog == 0 ? _options.VelocityIterations : _liteVelocity;
+            int relax = prog == 0 ? _options.RelaxIterations : _liteRelax;
+            var progBodies = split ? (prog == 0 ? _awakeFull : _awakeLite) : _awake;
+            int progCount = split ? (prog == 0 ? _awakeFullCount : _awakeLiteCount) : _awakeCount;
+            if (prog == 0) { Counters.WorldSubsteps = subs; Counters.WorldWarmStartPasses = subs; Counters.WorldRestitutionPasses = 1; Counters.WorldSolvePasses = subs * vel; Counters.WorldRelaxPasses = subs * relax; }
+            else { Counters.ContactSubsteps = subs; Counters.ContactWarmStartPasses = subs; Counters.ContactRestitutionPasses = 1; Counters.ContactSolvePasses = subs * vel; Counters.ContactRelaxPasses = subs * relax; }
+            int progChunks = (progCount + ChunkSize - 1) / ChunkSize;
+            _stageCount = 0;
+            _stageMostTasks = 0;
+            for (int s = 0; s < subs; s++)
+            {
+                _flipSweep = (s & 1) == 1;
+                AddStage(StageIntegrateVelocities, 0, progChunks);
+                AddSolvePass(prog, SolvePhase.WarmStart);
+                for (int i = 0; i < vel; i++) { AddSolvePass(prog, SolvePhase.Solve); }
+                AddStage(StageIntegratePositions, 0, progChunks);
+                for (int i = 0; i < relax; i++) { AddSolvePass(prog, SolvePhase.Relax); }
+            }
+
+            AddSolvePass(prog, SolvePhase.Restitution);
+            Executor.ForStages(_stageCount, new SolveProgram<TStages>(this, stages, list, pctx, prog, progBodies, progCount), _stageMostTasks);
+        }
+
+        Profile.Mark(StepStage.Finalize);
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Finalize);
+#endif
+        int bodyChunks = (_awakeCount + ChunkSize - 1) / ChunkSize;
+        Executor.For(bodyChunks, new FinalizeTask<TStages>(this, stages, _awake, _awakeCount, ctx));
+        stages.AfterFinalize(this, ctx);
+        Profile.Mark(StepStage.Store);
+#if STAGE_TIMERS
+        StageProbe.Mark(StageProbe.Store);
+#endif
+        Executor.For(storeChunks, new StoreTask<TStages>(this, stages, list, active, ctx));
+
     }
 
     // ------------------------------------------------------------------ per-island schedules
@@ -776,7 +798,8 @@ public sealed partial class WorldCore
     private double _fullIntegratedTime, _liteIntegratedTime;
     internal double IntegratedTimeOfBody(int body) => _splitActive && _bodies.Island[body] >= 0 && _islandFull[_bodies.Island[body]] == 0 ? _liteIntegratedTime : _fullIntegratedTime;
 
-    internal int SubstepsOf(int constraint) => _splitActive && constraint < _consLite.Length && _consLite[constraint] != 0 ? _liteSubsteps : _options.Substeps;
+    internal int SubstepsOf(int constraint) => _splitActive && constraint < _consLite.Length && _consLite[constraint] != 0 ? _passLiteSubsteps : _passSubsteps;
+    private int _passSubsteps = 1, _passLiteSubsteps = 1;
 
     // Decides each island's schedule from its content at the start of the step: an island holds the joint schedule when any of its constraints is a joint, when it touches a kinematic body (which then moves on that schedule),
     // or when the engine asked for it; every other island runs the contact-only schedule. Returns false when no island is on the contact-only schedule (the step then runs as one program).
@@ -985,7 +1008,7 @@ public sealed partial class WorldCore
             for (int b = lo; b < hi; b++)
             {
                 if (!bodies.IsLive(b)) { continue; }
-                if (type[b] == (byte)BodyType.Kinematic || (type[b] == (byte)BodyType.Dynamic && bodies.IsAwake(b))) { w._awake[k++] = b; }
+                if ((type[b] == (byte)BodyType.Kinematic && w._passKinematic) || (type[b] == (byte)BodyType.Dynamic && bodies.IsAwake(b))) { w._awake[k++] = b; }
             }
 
             w._awakeBlockCounts[block] = k - lo;
@@ -1262,7 +1285,7 @@ public sealed partial class WorldCore
             {
                 int b = w._awake[i];
                 if (!bodies.IsLive(b) || bodies.TypeOf(b) != BodyType.Dynamic) { continue; }
-                if (_enabled && (flags[b] & (byte)BodyBits.NoSleep) == 0 && _s.BodyMotion(w, b) <= threshold) { sleep[b] += _dt; }
+                if (_enabled && (flags[b] & (byte)BodyBits.NoSleep) == 0 && _s.BodyMotion(w, b) <= threshold) { sleep[b] += w._scaleOn ? _dt * w.SleepPeriodOf(b) : _dt; }
                 else { sleep[b] = 0f; }
                 if (sleep[b] >= _limit) { rested = 1; }
             }
@@ -1281,7 +1304,7 @@ public sealed partial class WorldCore
             {
                 int b = w._awake[i];
                 if (!bodies.IsLive(b) || bodies.TypeOf(b) != BodyType.Dynamic) continue;
-                if (_enabled && (bodies.Flags[b] & (byte)BodyBits.NoSleep) == 0 && w.BodyIsAtRest(b, _s.BodyMotion(w, b), w._options.SleepThreshold)) sleep[b] += _dt;
+                if (_enabled && (bodies.Flags[b] & (byte)BodyBits.NoSleep) == 0 && w.BodyIsAtRest(b, _s.BodyMotion(w, b), w._options.SleepThreshold)) sleep[b] += w._scaleOn ? _dt * w.SleepPeriodOf(b) : _dt;
                 else sleep[b] = 0;
                 if (sleep[b] >= w.BodySleepLimit(b, _limit)) rested = 1;
             }
@@ -1395,6 +1418,7 @@ public sealed partial class WorldCore
     /// <summary>The 64-bit world hash: the hash of the canonical state in snapshot order, without the format header and without events (see <see cref="StateWriter"/> for the function). Equal states give equal hashes on every platform. The state is streamed through the hash as it is walked; no snapshot is built or copied. Allocates nothing.</summary>
     public ulong ComputeHash()
     {
+        FlushPending();
         var w = _hashWriter ??= StateWriter.ForHash();
         w.Reset();
         WriteState(w, false);
@@ -1419,6 +1443,7 @@ public sealed partial class WorldCore
 
     private void WriteSnapshot(StateWriter w)
     {
+        FlushPending();
         CheckStateFinite();
         w.Reset();
         w.NamedUInt32(Magic);
@@ -1571,7 +1596,8 @@ public sealed partial class WorldCore
         {
             // A section may have been replaced before a later one fails; the saved state is what a failed restore goes back to.
             var b = _backupWriter ??= StateWriter.ToBuffer();
-            WriteSnapshot(b);
+            _noFlush = true;
+            try { WriteSnapshot(b); } finally { _noFlush = false; }
         }
     }
 
@@ -1674,6 +1700,7 @@ public sealed partial class WorldCore
             sub.Reset(data, _sectionRange[2 * i], _sectionRange[2 * i + 1]);
             if (ReferenceEquals(_sections[i], _bodySleep)) _bodySleep.Read(sub, bodies);
             else if (ReferenceEquals(_sections[i], Controls)) Controls.Read(sub, bodies);
+            else if (ReferenceEquals(_sections[i], ScaleStore)) ScaleStore.Read(sub, bodies);
             else _sections[i].Read(sub);
             if (sub.Remaining != 0) { throw new SnapshotFormatException("section " + _sections[i].SectionId.ToString(CultureInfo.InvariantCulture) + " left unread bytes", r.Position); }
         }
@@ -1693,6 +1720,7 @@ public sealed partial class WorldCore
         _events.SwapWith(events);
         if (ContactMotion.Enabled) _events.EnrichContactMotion(ContactMotion);
         _awakeCount = 0;
+        PendingDiscard?.Invoke();
     }
 
     /// <summary>The body store being restored while sections are read (sections that refer to bodies validate against it, not the live store); null otherwise.</summary>

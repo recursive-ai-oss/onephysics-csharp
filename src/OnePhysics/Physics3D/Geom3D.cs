@@ -148,7 +148,7 @@ internal enum GeomKind : byte { Convex = 1, Compound = 2, Mesh = 3, HeightField 
 /// </summary>
 internal sealed partial class Geom3D
 {
-    public const byte KCompound = 7, KMesh = 8, KHeightField = 9;
+    public const byte KCompound = 7, KMesh = 8, KHeightField = 9, KHeightFieldEdges = 17;
 
     public byte[] Recipe = Array.Empty<byte>();
     public GeomKind Kind;
@@ -258,7 +258,7 @@ internal sealed partial class Geom3D
             // A field with no inside is a valid static shape; it carries no mass, and a dynamic body made only of it is rejected when its mass is computed.
             try { g.UnitMass = grid.ComputeMass(); } catch (InvalidShapeException) { g.UnitMass = default; }
         }
-        else if (kind == KHeightField)
+        else if (kind == KHeightField || kind == KHeightFieldEdges)
         {
             g.Kind = GeomKind.HeightField;
             double tol = r.ReadDouble();
@@ -279,7 +279,19 @@ internal sealed partial class Geom3D
                 for (int i = 0; i < holes.Length; i++) { holes[i] = r.ReadBool(); }
             }
 
-            var hf = HeightField3D.Create(h, nx, nz, scale, holes, new MeshBuildOptions { FlatEdgeTolerance = tol });
+            HeightFieldEdges3D? edges = null;
+            if (kind == KHeightFieldEdges)
+            {
+                int mask = r.ReadByte();
+                if ((mask & ~15) != 0 || mask == 0) { throw r.Error("invalid height field edge mask"); }
+                edges = new HeightFieldEdges3D();
+                if ((mask & 1) != 0) { edges.West = ReadSide(r, nz); }
+                if ((mask & 2) != 0) { edges.East = ReadSide(r, nz); }
+                if ((mask & 4) != 0) { edges.South = ReadSide(r, nx); }
+                if ((mask & 8) != 0) { edges.North = ReadSide(r, nx); }
+            }
+
+            var hf = HeightField3D.Create(h, nx, nz, scale, holes, new MeshBuildOptions { FlatEdgeTolerance = tol }, edges);
             g.Soup = hf;
             g.LocalBounds = hf.Bounds;
         }
@@ -388,16 +400,34 @@ internal sealed partial class Geom3D
         return w.ToArray();
     }
 
-    public static byte[] HeightFieldRecipe(ReadOnlySpan<float> heights, int nx, int nz, Vector3F scale, ReadOnlySpan<bool> holes, double flatTolerance)
+    private static float[] ReadSide(StateReader r, int count)
+    {
+        if (count > r.Remaining / 4) { throw r.Error("height field edge larger than the data"); }
+        var side = new float[count];
+        r.ReadSingles(side, false, "edge heights");
+        return side;
+    }
+
+    public static byte[] HeightFieldRecipe(ReadOnlySpan<float> heights, int nx, int nz, Vector3F scale, ReadOnlySpan<bool> holes, double flatTolerance, HeightFieldEdges3D? edges = null)
     {
         var w = StateWriter.ToBuffer();
-        w.NamedByte(KHeightField);
+        bool ring = edges != null && edges.Any;
+        w.NamedByte(ring ? KHeightFieldEdges : KHeightField);
         w.NamedDouble(flatTolerance);
         w.NamedInt32(nx); w.NamedInt32(nz);
         w.NamedSingle(scale.X); w.NamedSingle(scale.Y); w.NamedSingle(scale.Z);
         w.NamedBool(holes.Length > 0);
         w.NamedSingles(heights);
         foreach (bool b in holes) { w.NamedBool(b); }
+        if (ring)
+        {
+            w.NamedByte((byte)edges!.WriteMask());
+            if (edges.West != null) { w.NamedSingles(edges.West); }
+            if (edges.East != null) { w.NamedSingles(edges.East); }
+            if (edges.South != null) { w.NamedSingles(edges.South); }
+            if (edges.North != null) { w.NamedSingles(edges.North); }
+        }
+
         return w.ToArray();
     }
 }

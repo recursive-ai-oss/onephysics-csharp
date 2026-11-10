@@ -8,6 +8,7 @@ public sealed partial class WorldCore
     /// <exception cref="NotSupportedException">A custom section cannot fork.</exception>
     public WorldCore Fork()
     {
+        FlushPending();
         var copy = new WorldCore(_options);
         copy.CopyFrom(this);
         return copy;
@@ -75,8 +76,10 @@ public sealed partial class WorldCore
         _coloring.CopyForFork(s._coloring);
         SplitWhenAnyBodyRests = s.SplitWhenAnyBodyRests;
         SymmetricSweep = s.SymmetricSweep;
+        ScaleStore.CopyFrom(s.ScaleStore);
         foreach (var section in s._sections)
         {
+            if (ReferenceEquals(section, s.ScaleStore)) { AddSection(ScaleStore); continue; }
             bool present = false;
             foreach (var existing in _sections) { if (existing.SectionId == section.SectionId) { present = true; break; } }
             if (!present)
