@@ -204,7 +204,7 @@ public class DeformableQueryTests
             }
 
             results[index++] = hits;
-            // Warm: no allocation per call on this thread (the smallest of a few windows after a collection, as in the other allocation tests).
+            // Warm: no allocation per call on this thread (a window without an on-thread compile reads zero; see AllocMeter).
             var buf = new DeformableHit3D[16];
             var sphere = ConvexShape3D.Sphere(0.2f);
             void Round()
@@ -220,14 +220,7 @@ public class DeformableQueryTests
             }
 
             Round(); Round();
-            long smallest = long.MaxValue;
-            for (int attempt = 0; attempt < 4 && smallest != 0; attempt++)
-            {
-                Core.AllocMeter.Settle();
-                smallest = Math.Min(smallest, Core.AllocMeter.Of(Round));
-            }
-
-            Assert.Equal(0L, smallest);
+            Core.AllocMeter.AssertAllocatesNothing(Round, "deformable queries");
         }
 
         for (int i = 0; i < rays.Length; i++)

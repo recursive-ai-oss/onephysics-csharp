@@ -147,8 +147,6 @@ public class ContinuousQueryTests
         var source=w.AddCircle(0.25f,new Vector2D(0,3)); var shape=Shape2D.CreateCircle(default,0.25f);
         var motion=new Vector2F(0,-5); var angular=1f; var penetrating=new Vector2D(0,1.1);
         for(int i=0;i<10;i++) { source.Sweep(motion,angular,out _); w.Depenetrate(shape,penetrating,0f); }
-        long before=GC.GetAllocatedBytesForCurrentThread();
-        for(int i=0;i<100;i++) { source.Sweep(motion,angular,out _); w.Depenetrate(shape,penetrating,0f); }
-        Assert.Equal(0,GC.GetAllocatedBytesForCurrentThread()-before);
+        Core.AllocMeter.AssertAllocatesNothing(() => { for(int i=0;i<100;i++) { source.Sweep(motion,angular,out _); w.Depenetrate(shape,penetrating,0f); } }, "sweeps and depenetration");
     }
 }

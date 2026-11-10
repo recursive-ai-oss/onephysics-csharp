@@ -156,9 +156,7 @@ public class ExtendedQueryTests
         var inputs = new[] { QueryInput2D.Ray(default, new Vector2F(1, 0), 10f) };
         var hits = new QueryHit2D[1];
         for (int i = 0; i < 20; i++) { queries.QueryBatch(inputs, hits); }
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 100; i++) { queries.QueryBatch(inputs, hits); }
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Core.AllocMeter.AssertAllocatesNothing(() => { for (int i = 0; i < 100; i++) { queries.QueryBatch(inputs, hits); } }, "mixed query batches");
     }
 
     [Fact]

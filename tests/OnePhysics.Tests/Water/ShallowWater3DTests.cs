@@ -377,9 +377,6 @@ public class ShallowWater3DTests
         Run(w, 200);
         water.AddVolume(0, 0, 2, 20, 10f);
         Run(w, 20);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        Run(w, 120);
-        long after = GC.GetAllocatedBytesForCurrentThread();
-        Assert.True(after - before == 0, "allocated " + (after - before) + " bytes in 120 steps");
+        Core.AllocMeter.AssertAllocatesNothing(() => Run(w, 120), "steady steps of a tank");
     }
 }

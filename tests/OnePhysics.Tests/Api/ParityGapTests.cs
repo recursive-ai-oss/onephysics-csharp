@@ -327,6 +327,47 @@ public class ParityGapTests
         Assert.Throws<ArgumentOutOfRangeException>(() => joint.MaxMotorForce = -1f);
     }
 
+    // ------------------------------------------------------------------ 3D distance joint, spring at 0 Hz
+
+    [Fact]
+    public void AZeroHertzDistanceSpringAppliesNoForceIn3DAndIn2D()
+    {
+        // Free flight between the limits: a weight leaving at 0.5 m/s along the rope keeps its speed until the 3 m limit, as the planar joint does.
+        var w3 = new P3.PhysicsWorld3D(new P3.WorldOptions3D { Gravity = default, SleepEnabled = false });
+        var anchor3 = w3.AddBox(new Vector3F(1, 1, 1), at: default, type: BodyType.Static);
+        var ball3 = w3.AddSphere(0.25f, at: new Vector3D(2, 0, 0));
+        var joint3 = w3.CreateJoint(new P3.DistanceJointDef { BodyA = anchor3, BodyB = ball3, Length = 2f, MinLength = 0.5f, MaxLength = 3f, EnableLimit = true, EnableSpring = true, SpringHertz = 0f });
+        ball3.LinearVelocity = new Vector3F(0.5f, 0, 0);
+        var w2 = new P2.PhysicsWorld2D(new P2.WorldOptions2D { Gravity = default, SleepEnabled = false });
+        var anchor2 = w2.AddBox(new Vector2F(1, 1), at: default, type: BodyType.Static);
+        var ball2 = w2.AddCircle(0.25f, at: new Vector2D(2, 0));
+        w2.CreateJoint(new P2.DistanceJointDef { BodyA = anchor2, BodyB = ball2, Length = 2f, MinLength = 0.5f, MaxLength = 3f, EnableLimit = true, EnableSpring = true, SpringHertz = 0f });
+        ball2.LinearVelocity = new Vector2F(0.5f, 0);
+        for (int i = 0; i < 60; i++) { w3.Step(Dt); w2.Step(Dt); }
+        Assert.Equal(2.5, ball3.Position.X, 2);
+        Assert.Equal(0.5f, ball3.LinearVelocity.X, 2);
+        Assert.Equal(ball2.Position.X, ball3.Position.X, 2);
+        for (int i = 0; i < 120; i++) { w3.Step(Dt); w2.Step(Dt); }
+        Assert.InRange(ball3.Position.X, 2.9, 3.05);   // stopped by the limit
+        Assert.Equal(ball2.Position.X, ball3.Position.X, 2);
+
+        // Hanging: with gravity the weight falls out to the limit and rests there, not at its starting length.
+        var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { SleepEnabled = false });
+        var top = w.AddBox(new Vector3F(1, 1, 1), at: new Vector3D(0, 10, 0), type: BodyType.Static);
+        var mass = w.AddSphere(0.25f, at: new Vector3D(0, 8, 0));
+        w.CreateJoint(new P3.DistanceJointDef { BodyA = top, BodyB = mass, Length = 2f, MinLength = 0.5f, MaxLength = 3f, EnableLimit = true, EnableSpring = true, SpringHertz = 0f });
+        for (int i = 0; i < 240; i++) { w.Step(Dt); }
+        Assert.InRange(10.0 - mass.Position.Y, 2.9, 3.05);
+
+        // A positive frequency still gives a spring that holds the weight near its rest length (sag g / (2 pi f)^2 = 6 cm at 2 Hz).
+        var w4 = new P3.PhysicsWorld3D(new P3.WorldOptions3D { SleepEnabled = false });
+        var top4 = w4.AddBox(new Vector3F(1, 1, 1), at: new Vector3D(0, 10, 0), type: BodyType.Static);
+        var mass4 = w4.AddSphere(0.25f, at: new Vector3D(0, 8, 0));
+        w4.CreateJoint(new P3.DistanceJointDef { BodyA = top4, BodyB = mass4, Length = 2f, MinLength = 0.5f, MaxLength = 6f, EnableLimit = true, EnableSpring = true, SpringHertz = 2f, SpringDampingRatio = 1f });
+        for (int i = 0; i < 240; i++) { w4.Step(Dt); }
+        Assert.InRange(10.0 - mass4.Position.Y, 2.0, 2.5);
+    }
+
     [Fact]
     public void ADistanceMotorIsInTheSnapshotAndDeterministicIn3D()
     {

@@ -249,8 +249,6 @@ public class InspectionTests
             }
         }
         Read();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 20; i++) { w.Step(Dt); Read(); }
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        AllocMeter.AssertAllocatesNothing(() => { for (int i = 0; i < 20; i++) { w.Step(Dt); Read(); } }, "steps with counters, profile and body inspection");
     }
 }

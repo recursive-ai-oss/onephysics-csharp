@@ -259,7 +259,7 @@ public struct DistanceJointDef : IJointDef3D
     /// <summary>Replaces the rigid rod by a spring.</summary>
     public bool EnableSpring { get; set; }
 
-    /// <summary>Spring frequency, Hz, at least 0. Default 0.</summary>
+    /// <summary>Spring frequency, Hz, at least 0. Default 0. With <see cref="EnableSpring"/> on and a length range open (<see cref="MinLength"/> below <see cref="MaxLength"/>), 0 means no spring force: the length floats between the limits and only the limits and the motor act, as in the planar distance joint.</summary>
     public float SpringHertz { get; set; }
 
     /// <summary>Spring damping ratio. Default 0.5.</summary>

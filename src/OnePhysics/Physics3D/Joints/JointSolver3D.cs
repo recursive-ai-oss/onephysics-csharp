@@ -365,7 +365,10 @@ internal sealed partial class Engine3D
         if (!d.Spring || !range) { j.Row(0, row, len - d.Length, JointRowBits.Active); }
         if (d.Spring && range)
         {
-            SpringRow(ref j, p, JP.Spring, row, len - d.Length, s[JRow3.SBias], s[JRow3.SMass], s[JRow3.SImp], useBias, warm);
+            // A spring of 0 Hz applies no force (as in the hinge, the slider and the planar distance joint): the length floats between the limits. Without this the zero-frequency
+            // coefficients (mass scale 1, no bias) made the row a plain velocity lock.
+            if (d.Hertz > 0f) { SpringRow(ref j, p, JP.Spring, row, len - d.Length, s[JRow3.SBias], s[JRow3.SMass], s[JRow3.SImp], useBias, warm); }
+            else if (warm) { j.Apply(row, p[JP.Spring]); }
             if (d.Motor) { MotorRow(ref j, p, JP.Motor, row, d.MotorSpeed, s[JRow3.MaxMotorImp], warm); }
         }
         else if (warm) { j.Apply(row, p[0]); }
