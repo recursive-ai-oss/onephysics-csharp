@@ -36,12 +36,13 @@ The 2D world is the same along one axis: `world.AddShallowWater(minX, maxX, leve
 
 ## Swimming
 
+<!-- example: Guide/Swimming.cs -->
 ```csharp
 var def = new CharacterDef { SwimDensity = 900f, CanClimb = true };      // a person floats; try 1100 for one that sinks
 var swimmer = world.AddCharacter(new Vector3D(0, 2, 5), def);
-world.CharacterWaterChanged += e => Log(e.Kind);                         // EnteredWater, StartedSwimming, StoppedSwimming, LeftWater
+world.CharacterWaterChanged += e => events++;                            // EnteredWater, StartedSwimming, StoppedSwimming, LeftWater
 
-if (swimmer.IsSwimming)  swimmer.Move(strokeVelocity * dt, dt);          // while swimming, Move takes a stroke relative to the water, not a step
+if (swimmer.IsSwimming)  swimmer.Move(stroke * dt, dt);                  // while swimming, Move takes a stroke relative to the water, not a step
 else                     swimmer.Move(walkAndGravity * dt, dt);          // wading slows the walk by the depth; gravity is still yours
 ```
 
@@ -49,13 +50,14 @@ A character walks until the water is up to its chest (75% of its height; a light
 
 ## Querying deformables
 
+<!-- example: Guide/DeformableQueries.cs -->
 ```csharp
 if (world.RaycastDeformables(origin, direction, out var hit))
 {
-    // hit.Kind: SoftBody, Cloth or Rod; hit.Slot -> world.GetSoftBody(slot) / GetRod(slot); hit.Element, hit.Index; hit.Barycentric weights on hit.ParticleA/B/C
+    kind = hit.Kind; slot = hit.Slot; element = hit.Index;                // SoftBody, Cloth or Rod; GetSoftBody(slot) / GetRod(slot); the triangle or segment
 }
 world.TrackDeformableContacts = true;                                    // opt in: soft body, cloth and rod contact begin/end with rigid bodies
-world.DeformableContactChanged += e => Log(e.Kind, e.Deformable, e.Slot, e.Body);
+world.DeformableContactChanged += e => contacts++;
 ```
 
-`ShapeCastDeformables`, `OverlapDeformablesAll`, `ClosestDeformable` and the `PhysicsQuery` batches work the same way, in both dimensions.
+`ShapeCastDeformables`, `OverlapDeformablesAll`, `ClosestDeformable` and the `PhysicsQuery` batches work the same way, in both dimensions; a hit names the soft body, cloth or rod, the element (particle, surface triangle or segment) and the barycentric weights on its particles.

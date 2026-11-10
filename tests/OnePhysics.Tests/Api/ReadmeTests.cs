@@ -107,6 +107,13 @@ public class ReadmeTests
 
         var wt = GuideExamples.Water.Run();
         Assert.Equal(wt, GuideExamples.Water.Run());
+        var sw = GuideExamples.Swimming.Run();
+        Assert.Equal(sw, GuideExamples.Swimming.Run());
+        Assert.True(sw.Swimming && sw.Events > 0);
+        var dq = GuideExamples.DeformableQueries.Run();
+        Assert.Equal(dq, GuideExamples.DeformableQueries.Run());
+        Assert.Equal(DeformableKind.Cloth, dq.Kind);
+        Assert.True(dq.Contacts > 0);
         Assert.True(wt.Events >= 1);
         Assert.InRange(wt.CrateY, 1.8, 2.3);
         Assert.True(wt.Depth > 1.9f);
