@@ -93,7 +93,7 @@ internal static class WorldScaleStability
         }
 
         var r = new SortedDictionary<string, double> { ["maxSpeed"] = s.MaxSpeed, ["nan"] = s.NonFinite, ["normalPyramidDrift"] = normalDrift, ["bubblePyramidDrift"] = bubbleDrift, ["ballX"] = s.Ball.Position.X };
-        bool ok = s.NonFinite == 0 && s.MaxSpeed <= Th.ScaleSpeed && normalDrift <= Th.ScaleDrift && bubbleDrift <= Th.ScaleDrift;
+        bool ok = s.NonFinite == 0 && s.MaxSpeed <= Th.ScaleSpeed && normalDrift <= Th.NormalDrift && bubbleDrift <= Th.BubbleDrift && s.Ball.Position.X > 15;
         Report("timescale-2d", s.Steps, threads, r, ok);
         return ok ? 0 : 1;
     }
@@ -149,6 +149,7 @@ internal static class WorldScaleStability
 
     static class Th
     {
-        internal const double StreamSpeed3 = 12, StreamSpeed2 = 12, LodSpeed = 2, LodDrift = 1, LodFullDrift = 1, ScaleSpeed = 14, ScaleDrift = 1.5;
+        // 1.5 times the worst of the x64 and arm64 runs (the two agree to the last digit): streaming-3d maxSpeed 6.59, streaming-2d 6.01, lod-3d maxSpeed 0.703 / maxDrift 0.145 / driftFromFullRate 0.181, timescale-2d maxSpeed 8.92 / bubble drift 0.121 / normal drift 0.055.
+        internal const double StreamSpeed3 = 9.9, StreamSpeed2 = 9.1, LodSpeed = 1.06, LodDrift = 0.22, LodFullDrift = 0.28, ScaleSpeed = 13.4, BubbleDrift = 0.19, NormalDrift = 0.09;
     }
 }

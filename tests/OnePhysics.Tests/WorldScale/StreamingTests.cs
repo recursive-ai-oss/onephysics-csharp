@@ -292,7 +292,7 @@ public sealed class WorldScaleSceneTests
         string report = $"tiled: loads {tiled.Loads} unloads {tiled.Unloads} maxLoaded {tiled.MaxLoaded} maxSpeed {tiled.MaxSpeed:F2} tunnelled {tiled.Tunnelled} seam dvy {tiled.SeamStep:F3}; unsplit: maxSpeed {whole.MaxSpeed:F2} tunnelled {whole.Tunnelled} seam dvy {whole.SeamStep:F3}";
         Assert.True(tiled.Tunnelled == 0 && tiled.NonFinite == 0 && tiled.World.FailedTileLoads == 0, report);
         Assert.True(tiled.SeamStep <= whole.SeamStep * 1.25 + 0.1, report);
-        Assert.True(tiled.MaxSpeed < 12, report);
+        Assert.True(tiled.MaxSpeed < 9.9, report);
     }
 
     [Fact]
