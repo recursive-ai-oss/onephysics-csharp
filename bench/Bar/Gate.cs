@@ -176,8 +176,9 @@ static class Gate
             }
             if (verdict == "") continue; // a progress or detail line, not a scene's result
             string dim = DimOf(scene, sceneDir);
-            foreach (var (k, v) in kv) rows.Add(new Row(source, scene, dim, threads, k, "(in command)", v, "INFO"));
-            rows.Add(new Row(source, scene, dim, threads, "(scene)", "(in command)", verdict == "PASS" ? "" : string.Join(' ', kv.Select(x => x.k + "=" + x.v)), verdict));
+            string th = kv.FirstOrDefault(x => x.k == "threads").v ?? threads; // the command's own report wins over the item id
+            foreach (var (k, v) in kv) rows.Add(new Row(source, scene, dim, th, k, "(in command)", v, "INFO"));
+            rows.Add(new Row(source, scene, dim, th, "(scene)", "(in command)", verdict == "PASS" ? "" : string.Join(' ', kv.Select(x => x.k + "=" + x.v)), verdict));
             judged++;
         }
         if (judged == 0 || rc != 0 && !rows.Any(r => r.Source == source && r.Verdict == "FAIL"))
