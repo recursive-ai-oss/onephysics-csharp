@@ -50,6 +50,7 @@ public sealed partial class PhysicsWorld2D
         _core.AddSection(_engine.ParticleFluids);
         _core.AddSection(_engine.Water);
         _core.AddSection(_engine.Articulations);
+        _core.RegisterWorldScale();
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 

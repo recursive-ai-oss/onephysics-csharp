@@ -123,6 +123,10 @@ public class ReadmeTests
         Assert.True(art.TorsoY > 0.4 && art.TorsoY < 0.7, "the quadruped stands: " + art.TorsoY);
         var dyn = GuideExamples.Articulations.Dynamics();
         Assert.True(double.IsFinite(dyn.Torque0) && double.IsFinite(dyn.Torque1));
+        var ws = GuideExamples.WorldScale.Run();
+        Assert.Equal(ws, GuideExamples.WorldScale.Run());
+        Assert.Equal(1, ws.Tiles);
+        Assert.Equal(0.25f, ws.Scale);
 
         var t = GuideExamples.Tiers.Run();
         Assert.Equal(t, GuideExamples.Tiers.Run());

@@ -1256,3 +1256,7 @@ Characters of both kinds (and of 2D worlds, with areas for volumes) swim in buoy
 ## Deformable queries
 
 Queries against soft bodies, cloth and rods are in `queries.md`; their contact events (`TrackDeformableContacts`) are described there too.
+
+## World scale
+
+`world.LoadTile(TileKey, TileDef3D)`, `UnloadTile(key, policy)`, `FlushTiles`, `GetTileState`, `IsTileLoaded`, `GetLoadedTiles`, `GetTileBodies`, `SetSimulationLod`, `SetLodFocus`, `ClearSimulationLod`, `SetTimeScaleRegions` and `Body.TimeScale`: streamed static terrain tiles built in key order, far islands that step every 2nd, 4th or 8th step, and islands that run in scaled time. Rules, ordering, defaults, the height-field recipe with neighbour heights and the optional "WSCL" snapshot section (registered after every other section) are in `worldscale.md`.

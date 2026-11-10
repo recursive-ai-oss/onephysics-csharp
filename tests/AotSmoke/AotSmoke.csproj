@@ -47,6 +47,7 @@
     <Compile Include="../Common/Actuators2DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/WaterScenes.cs" LinkBase="Common" />
     <Compile Include="../Common/SwimScenes.cs" LinkBase="Common" />
+    <Compile Include="../Common/WorldScaleScenes.cs" LinkBase="Common" />
     <Compile Include="../Common/VehicleKinds3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Ragdolls3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/DestructionScenes.cs" LinkBase="Common" />

@@ -37,6 +37,7 @@
     <Compile Include="../../tests/Common/Actuators2DScene.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/WaterScenes.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/SwimScenes.cs" LinkBase="Common" />
+    <Compile Include="../../tests/Common/WorldScaleScenes.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/SoftFracture3DScene.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/Cloth3DScene.cs" LinkBase="Common" />
     <Compile Include="../../tests/Common/FluidScenes.cs" LinkBase="Common" />

@@ -37,12 +37,14 @@ public sealed class HeightField3D : TriangleSoup3D
     private readonly bool[] _sharedPatches = System.Array.Empty<bool>();
     private readonly int[] _patchIds = System.Array.Empty<int>();
     private readonly int _triangleCount;
+    private readonly HeightFieldEdges3D? _edges;
     private readonly int[] _levelW, _levelH;
     private readonly float[][] _levelMin, _levelMax;
     private readonly Bounds3F _bounds;
 
-    private HeightField3D(int nx, int nz, float[] heights, Vector3F scale, ulong[]? holes, int triangleCount, double tolerance)
+    private HeightField3D(int nx, int nz, float[] heights, Vector3F scale, ulong[]? holes, int triangleCount, double tolerance, HeightFieldEdges3D? edges)
     {
+        _edges = edges;
         _nx = nx;
         _nz = nz;
         _cx = nx - 1;
@@ -129,29 +131,7 @@ public sealed class HeightField3D : TriangleSoup3D
         _levelMax = maxs.ToArray();
         _bounds = new Bounds3F(new Vector3F(0f, _levelMin[^1][0], 0f), new Vector3F(_cx * _scale.X, _levelMax[^1][0], _cz * _scale.Z));
 
-        _flags = new byte[_cx * _cz];
-        for (int cell = 0; cell < _flags.Length; cell++)
-        {
-            if (IsHole(cell))
-            {
-                continue;
-            }
-
-            int f = 0;
-            for (int k = 0; k < 2; k++)
-            {
-                Tri(cell, k, out Vector3F a, out Vector3F b, out Vector3F c);
-                for (int e = 0; e < 3; e++)
-                {
-                    if (NeighbourActive(cell, k, e, a, b, c, tolerance))
-                    {
-                        f |= 1 << ((3 * k) + e);
-                    }
-                }
-            }
-
-            _flags[cell] = (byte)f;
-        }
+        _flags = ComputeFlags(tolerance);
         _patchIds = CoplanarPatchIds.Create(2 * _flags.Length);
         for (int id = 0; id < _patchIds.Length; id++)
         {
@@ -235,6 +215,85 @@ public sealed class HeightField3D : TriangleSoup3D
         }
     }
 
+    // The active-edge flags of every triangle. Each triangle's normal is computed once and shared by its three edge tests (the same arithmetic as testing each edge from scratch, which costs the normals again per edge); edges
+    // on the border of the grid, next to a hole, or in need of the ring of neighbour samples take the general test.
+    private byte[] ComputeFlags(double tolerance)
+    {
+        int cells = _cx * _cz;
+        var flags = new byte[cells];
+        var normal = new Vector3D[2 * cells];
+        var length = new double[2 * cells];
+        for (int cell = 0; cell < cells; cell++)
+        {
+            if (IsHole(cell)) { continue; }
+            for (int k = 0; k < 2; k++)
+            {
+                Tri(cell, k, out Vector3F a, out Vector3F b, out Vector3F c);
+                Vector3D da = a.ToDouble(), db = b.ToDouble(), dc = c.ToDouble();
+                Vector3D n = Vector3D.Cross(db - da, dc - da);
+                normal[(2 * cell) + k] = n;
+                length[(2 * cell) + k] = Math.Sqrt(n.LengthSquared());
+            }
+        }
+
+        for (int cell = 0; cell < cells; cell++)
+        {
+            if (IsHole(cell)) { continue; }
+            int i = cell % _cx, j = cell / _cx;
+            int f = 0;
+            for (int k = 0; k < 2; k++)
+            {
+                Tri(cell, k, out Vector3F a, out Vector3F b, out Vector3F c);
+                Vector3D da = a.ToDouble(), db = b.ToDouble(), dc = c.ToDouble();
+                for (int e = 0; e < 3; e++)
+                {
+                    int ni, nj, nk;
+                    if (k == 0) { (ni, nj, nk) = e == 0 ? (i - 1, j, 1) : e == 1 ? (i, j + 1, 1) : (i, j, 1); }
+                    else { (ni, nj, nk) = e == 0 ? (i, j, 0) : e == 1 ? (i + 1, j, 0) : (i, j - 1, 0); }
+                    bool active;
+                    if ((uint)ni < (uint)_cx && (uint)nj < (uint)_cz && !IsHole((nj * _cx) + ni))
+                    {
+                        int own = (2 * cell) + k, other = (2 * ((nj * _cx) + ni)) + nk;
+                        Vector3D eA = e == 0 ? db - da : e == 1 ? dc - db : da - dc;
+                        active = TriangleTests3D.IsActiveFromNormals(normal[own], length[own], normal[other], length[other], eA, tolerance);
+                    }
+                    else
+                    {
+                        active = NeighbourActive(cell, k, e, a, b, c, tolerance);
+                    }
+
+                    if (active) { f |= 1 << ((3 * k) + e); }
+                }
+            }
+
+            flags[cell] = (byte)f;
+        }
+
+        return flags;
+    }
+
+    /// <summary>The flags computed edge by edge with the general test, for checking <see cref="ComputeFlags"/> against it.</summary>
+    internal byte[] ReferenceFlags(double tolerance)
+    {
+        var flags = new byte[_cx * _cz];
+        for (int cell = 0; cell < flags.Length; cell++)
+        {
+            if (IsHole(cell)) { continue; }
+            int f = 0;
+            for (int k = 0; k < 2; k++)
+            {
+                Tri(cell, k, out Vector3F a, out Vector3F b, out Vector3F c);
+                for (int e = 0; e < 3; e++) { if (NeighbourActive(cell, k, e, a, b, c, tolerance)) { f |= 1 << ((3 * k) + e); } }
+            }
+
+            flags[cell] = (byte)f;
+        }
+
+        return flags;
+    }
+
+    internal byte[] FlagsForTests => _flags;
+
     // The neighbour across each edge, by the cell layout in the type's remarks: A edges 0, 1, 2 meet B of the cells (i-1, j), (i, j+1) and the same cell (edges 1, 2 and 0 of B);
     // B edges 0, 1, 2 meet A of the same cell, (i+1, j) and (i, j-1) (edges 2, 0 and 1 of A). A missing or hole neighbour makes the edge a boundary, which is active.
     private bool NeighbourActive(int cell, int k, int e, Vector3F a, Vector3F b, Vector3F c, double tol)
@@ -252,7 +311,8 @@ public sealed class HeightField3D : TriangleSoup3D
 
         if ((uint)ni >= (uint)_cx || (uint)nj >= (uint)_cz)
         {
-            return true;
+            // Across the grid's border: with the neighbouring samples supplied, the edge is judged as if the next tile were part of this field, so a seam between two fields is no ghost.
+            return _edges == null || !TryEdgeTri(ni, nj, nk, out Vector3F e0, out Vector3F e1, out Vector3F e2) || TriangleTests3D.IsEdgeActive(a, b, c, e, e0, e1, e2, tol);
         }
 
         int ncell = (nj * _cx) + ni;
@@ -265,6 +325,42 @@ public sealed class HeightField3D : TriangleSoup3D
         return TriangleTests3D.IsEdgeActive(a, b, c, e, b0, b1, b2, tol);
     }
 
+    // A sample of the grid or of the ring around it; NaN when the ring does not supply it.
+    private float RingHeight(int i, int j)
+    {
+        if ((uint)i < (uint)_nx && (uint)j < (uint)_nz) { return _heights[(j * _nx) + i]; }
+        var e = _edges!;
+        if (i == -1 && (uint)j < (uint)_nz && e.West != null) { return e.West[j]; }
+        if (i == _nx && (uint)j < (uint)_nz && e.East != null) { return e.East[j]; }
+        if (j == -1 && (uint)i < (uint)_nx && e.South != null) { return e.South[i]; }
+        if (j == _nz && (uint)i < (uint)_nx && e.North != null) { return e.North[i]; }
+        return float.NaN;
+    }
+
+    private bool TryEdgeTri(int ci, int cj, int k, out Vector3F a, out Vector3F b, out Vector3F c)
+    {
+        float h00 = RingHeight(ci, cj), h10 = RingHeight(ci + 1, cj), h01 = RingHeight(ci, cj + 1), h11 = RingHeight(ci + 1, cj + 1);
+        Vector3F v00 = new((float)ci * _scale.X, h00 * _scale.Y, (float)cj * _scale.Z), v10 = new((float)(ci + 1) * _scale.X, h10 * _scale.Y, (float)cj * _scale.Z);
+        Vector3F v01 = new((float)ci * _scale.X, h01 * _scale.Y, (float)(cj + 1) * _scale.Z), v11 = new((float)(ci + 1) * _scale.X, h11 * _scale.Y, (float)(cj + 1) * _scale.Z);
+        if (k == 0) { a = v00; b = v01; c = v11; } else { a = v00; b = v11; c = v10; }
+        return float.IsFinite(k == 0 ? h00 + h01 + h11 : h00 + h11 + h10);
+    }
+
+    /// <summary>The heights of the samples just outside this field, if any were given at construction.</summary>
+    public HeightFieldEdges3D? Edges => _edges;
+
+    /// <summary>Builds a height field with no samples beyond its border; see the overload with <c>edges</c>.</summary>
+    /// <param name="heights">Heights row by row: sample <c>(i, j)</c> is <c>heights[j * samplesX + i]</c>.</param>
+    /// <param name="samplesX">Samples along X.</param>
+    /// <param name="samplesZ">Samples along Z.</param>
+    /// <param name="scale">Spacing along X and Z and the multiplier of heights.</param>
+    /// <param name="holes">Optional hole mask, one entry per cell; true marks a hole.</param>
+    /// <param name="options">Options; the default chooses everything.</param>
+    /// <returns>The height field.</returns>
+    /// <exception cref="MeshBuildException">The input is invalid.</exception>
+    public static HeightField3D Create(ReadOnlySpan<float> heights, int samplesX, int samplesZ, Vector3F scale, ReadOnlySpan<bool> holes = default, MeshBuildOptions options = default)
+        => Create(heights, samplesX, samplesZ, scale, holes, options, null);
+
     /// <summary>Builds a height field.</summary>
     /// <param name="heights">Heights row by row: sample <c>(i, j)</c> is <c>heights[j * samplesX + i]</c>. All finite; each height times the Y scale at most 2^21 in magnitude.</param>
     /// <param name="samplesX">Samples along X, in [2, <see cref="MaxSamplesPerSide"/>].</param>
@@ -272,10 +368,12 @@ public sealed class HeightField3D : TriangleSoup3D
     /// <param name="scale">Spacing along X and Z and the multiplier of heights; each finite and positive, with the grid's extent at most 2^21.</param>
     /// <param name="holes">Optional hole mask, one entry per cell (<c>(samplesX - 1) * (samplesZ - 1)</c> entries, row by row); true marks a hole. Empty means no holes.</param>
     /// <param name="options">Options; the default chooses everything.</param>
+    /// <param name="edges">Optional heights of the samples just outside the grid (see <see cref="HeightFieldEdges3D"/>); they only decide which border edges are active, so a tile next to another tile has no ghost seam. They carry no collision themselves.</param>
     /// <returns>The height field. The same input gives the same field, bit for bit, on every platform.</returns>
     /// <exception cref="MeshBuildException">The grid size, the scale or the mask is invalid, a height is non-finite or out of range, every cell is a hole, or the options are invalid. The message names the input and what was expected.</exception>
-    public static HeightField3D Create(ReadOnlySpan<float> heights, int samplesX, int samplesZ, Vector3F scale, ReadOnlySpan<bool> holes = default, MeshBuildOptions options = default)
+    public static HeightField3D Create(ReadOnlySpan<float> heights, int samplesX, int samplesZ, Vector3F scale, ReadOnlySpan<bool> holes, MeshBuildOptions options, HeightFieldEdges3D? edges)
     {
+        edges?.Validate(samplesX, samplesZ, scale, nameof(edges));
         double tol = options.FlatEdgeTolerance;
         if (tol == 0.0)
         {
@@ -356,7 +454,7 @@ public sealed class HeightField3D : TriangleSoup3D
             }
         }
 
-        return new HeightField3D(samplesX, samplesZ, heights.ToArray(), scale, mask, 2 * (cells - holeCount), tol);
+        return new HeightField3D(samplesX, samplesZ, heights.ToArray(), scale, mask, 2 * (cells - holeCount), tol, edges?.Copy());
     }
 
     /// <inheritdoc/>
@@ -566,4 +664,50 @@ public sealed class HeightField3D : TriangleSoup3D
             }
         }
     }
+}
+
+/// <summary>
+/// Heights of the ring of samples just outside a <see cref="HeightField3D"/> grid: <see cref="West"/> is the column at <c>i = -1</c> (one entry per row, <c>SamplesZ</c> of them), <see cref="East"/> the column at <c>i = SamplesX</c>,
+/// <see cref="South"/> the row at <c>j = -1</c> (<c>SamplesX</c> entries) and <see cref="North"/> the row at <c>j = SamplesZ</c>. Corner samples are not needed. A side may be null (its border edges stay active).
+/// Streaming terrain gives each tile the heights its neighbours would have, so that the edges along a tile border are judged the same way as the edges inside the tile.
+/// </summary>
+[Experimental("OPHYS0001")]
+public sealed class HeightFieldEdges3D
+{
+    /// <summary>Heights at <c>i = -1</c>, one per row.</summary>
+    public float[]? West { get; set; }
+
+    /// <summary>Heights at <c>i = SamplesX</c>, one per row.</summary>
+    public float[]? East { get; set; }
+
+    /// <summary>Heights at <c>j = -1</c>, one per column.</summary>
+    public float[]? South { get; set; }
+
+    /// <summary>Heights at <c>j = SamplesZ</c>, one per column.</summary>
+    public float[]? North { get; set; }
+
+    /// <summary>True when at least one side is given.</summary>
+    public bool Any => West != null || East != null || South != null || North != null;
+
+    internal HeightFieldEdges3D CopyPublic() => Copy();
+
+    internal HeightFieldEdges3D Copy() => new() { West = (float[]?)West?.Clone(), East = (float[]?)East?.Clone(), South = (float[]?)South?.Clone(), North = (float[]?)North?.Clone() };
+
+    internal void Validate(int nx, int nz, Vector3F scale, string edges)
+    {
+        Check(West, nz, nameof(West), scale, nameof(edges)); Check(East, nz, nameof(East), scale, nameof(edges)); Check(South, nx, nameof(South), scale, nameof(edges)); Check(North, nx, nameof(North), scale, nameof(edges));
+    }
+
+    private static void Check(float[]? side, int expected, string name, Vector3F scale, string edges)
+    {
+        if (side == null) { return; }
+        if (side.Length != expected) { throw new MeshBuildException(MeshBuildError.InvalidGrid, $"edges.{name} has {side.Length} entries; {expected} are expected.", edges); }
+        for (int n = 0; n < side.Length; n++)
+        {
+            if (!float.IsFinite(side[n])) { throw new MeshBuildException(MeshBuildError.NonFinite, $"edges.{name}[{n}] is {side[n].ToString("R", CultureInfo.InvariantCulture)}; a finite height is expected.", edges); }
+            if (Math.Abs((double)side[n] * scale.Y) > TriangleMesh3D.MaxCoordinate) { throw new MeshBuildException(MeshBuildError.OutOfRange, $"edges.{name}[{n}] is {side[n].ToString("R", CultureInfo.InvariantCulture)}; with scale.Y = {scale.Y.ToString("R", CultureInfo.InvariantCulture)} the height is out of range.", edges); }
+        }
+    }
+
+    internal int WriteMask() => (West != null ? 1 : 0) | (East != null ? 2 : 0) | (South != null ? 4 : 0) | (North != null ? 8 : 0);
 }

@@ -11,6 +11,7 @@ public sealed class HeightField2D
     private readonly float[] _heights;
     private readonly bool[] _holes;
     private readonly float _spacing;
+    private readonly float? _ghostBefore, _ghostAfter;
 
     /// <summary>Creates terrain with sample i at (i * spacing, heights[i]). Input is copied. A true hole removes that interval, not either neighbouring sample.</summary>
     /// <param name="heights">Between 2 and 2^20 finite heights, in metres within ±2^20.</param>
@@ -19,7 +20,23 @@ public sealed class HeightField2D
     /// <exception cref="InvalidShapeException">A coordinate is invalid or a segment is too short.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The sample count, spacing or hole mask length is invalid.</exception>
     public HeightField2D(ReadOnlySpan<float> heights, float spacing = 1f, ReadOnlySpan<bool> holes = default)
+        : this(heights, spacing, holes, null, null)
     {
+    }
+
+    /// <summary>Creates terrain that continues into neighbouring terrain: the heights of the samples just before the first and just after the last, used only as ghost vertices of the end segments so that a seam between two fields is no ghost collision. Everything else as the other constructor.</summary>
+    /// <param name="heights">Between 2 and 2^20 finite heights, in metres within ±2^20.</param>
+    /// <param name="spacing">Positive spacing in metres, at least 1e-5; the full width must fit within 2^20.</param>
+    /// <param name="holes">Empty, or one flag per interval.</param>
+    /// <param name="heightBefore">Height of the sample at <c>-spacing</c>, or null for no ghost before the first segment.</param>
+    /// <param name="heightAfter">Height of the sample at <c>heights.Length * spacing</c>, or null for no ghost after the last segment.</param>
+    /// <exception cref="InvalidShapeException">A coordinate is invalid or a segment is too short.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The sample count, spacing or hole mask length is invalid.</exception>
+    public HeightField2D(ReadOnlySpan<float> heights, float spacing, ReadOnlySpan<bool> holes, float? heightBefore, float? heightAfter)
+    {
+        if (heightBefore.HasValue) { Shape2D.CheckCoordinate(heightBefore.Value, "heightBefore"); }
+        if (heightAfter.HasValue) { Shape2D.CheckCoordinate(heightAfter.Value, "heightAfter"); }
+        _ghostBefore = heightBefore; _ghostAfter = heightAfter;
         if (heights.Length < 2 || heights.Length > MaxSamples) { throw new ArgumentOutOfRangeException(nameof(heights), heights.Length, "Height field needs 2..1048576 samples."); }
         if (!float.IsFinite(spacing) || spacing < Constants2D.MinShapeExtent || (double)spacing * (heights.Length - 1) > Constants2D.MaxShapeCoordinate)
         {
@@ -48,8 +65,8 @@ public sealed class HeightField2D
     public Shape2D GetSegment(int index)
     {
         if (IsHole(index)) { throw new ArgumentException("Height-field interval is a hole.", nameof(index)); }
-        Vec2? before = index + 1 < IntervalCount && !IsHole(index + 1) ? Point(index + 2) : null;
-        Vec2? after = index > 0 && !IsHole(index - 1) ? Point(index - 1) : null;
+        Vec2? before = index + 1 < IntervalCount ? (!IsHole(index + 1) ? Point(index + 2) : null) : _ghostAfter.HasValue ? new Vec2(_heights.Length * _spacing, _ghostAfter.Value) : null;
+        Vec2? after = index > 0 ? (!IsHole(index - 1) ? Point(index - 1) : null) : _ghostBefore.HasValue ? new Vec2(-_spacing, _ghostBefore.Value) : null;
         return Shape2D.CreateChainSegment(before, Point(index + 1), Point(index), after, false);
     }
 

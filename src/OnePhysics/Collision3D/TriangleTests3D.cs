@@ -155,7 +155,13 @@ public static class TriangleTests3D
     {
         Vector3D nA = Vector3D.Cross(a1 - a0, a2 - a0), nB = Vector3D.Cross(b1 - b0, b2 - b0);
         Vector3D eA = edge == 0 ? a1 - a0 : edge == 1 ? a2 - a1 : a0 - a2;
-        double lenA = Math.Sqrt(nA.LengthSquared()), lenB = Math.Sqrt(nB.LengthSquared()), lenE = Math.Sqrt(eA.LengthSquared());
+        return IsActiveFromNormals(nA, Math.Sqrt(nA.LengthSquared()), nB, Math.Sqrt(nB.LengthSquared()), eA, tol);
+    }
+
+    // The tail of IsActive with both face normals (and their lengths) already known, so a grid computes each triangle's normal once instead of once per edge; the arithmetic is the same operations in the same order.
+    internal static bool IsActiveFromNormals(in Vector3D nA, double lenA, in Vector3D nB, double lenB, in Vector3D eA, double tol)
+    {
+        double lenE = Math.Sqrt(eA.LengthSquared());
         double denom = lenA * lenB;
         if (!(denom > 0.0) || !(lenE > 0.0))
         {

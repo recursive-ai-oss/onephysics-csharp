@@ -47,6 +47,8 @@ public static class Program
             case "water-stability": return WaterStability.Run(opts);
             case "swim-stability": return SwimStability.Run(opts);
             case "water-timing": return WaterStability.Timing(opts);
+            case "worldscale-stability": return WorldScaleStability.Run(opts);
+            case "worldscale-timing": return WorldScaleStability.Timing(opts);
             case "character-abilities-stability": return CharacterAbilityStability.Run(opts);
             case "terrain-edit-stability": return TerrainEditStability.Run(opts);
             case "terrain-edit-timing": return TerrainEditStability.Time(opts);

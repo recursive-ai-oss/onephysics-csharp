@@ -74,8 +74,11 @@ public enum DebugContent
     /// <summary>The joints of articulation links with their axes, positions and limits, and the contact points the articulations solved (<see cref="DebugGeometry.ArticulationJoints"/>, <see cref="DebugGeometry.ArticulationContacts"/>).</summary>
     Articulations = 1048576,
 
+    /// <summary>Streamed tiles, level-of-detail and time-scale regions and focus points as plain data (<see cref="DebugGeometry.Tiles"/>, <see cref="DebugGeometry.ScaleRegions"/>, <see cref="DebugGeometry.LodFocusPoints"/>).</summary>
+    WorldScale = 2097152,
+
     /// <summary>Everything.</summary>
-    All = 2097151,
+    All = 4194303,
 }
 
 /// <summary>The kind of a <see cref="DebugShape"/>. The same enum serves 2D and 3D worlds; a 2D world emits the first five.</summary>

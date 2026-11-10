@@ -6,6 +6,8 @@ namespace RecursiveAI.OnePhysics;
 public sealed class StepCounters
 {
     private readonly int[] _colors = new int[24];
+    /// <summary>Islands left out of this step because their level of detail says they step less often.</summary>
+    public int LodIslandsSkipped { get; internal set; }
     /// <summary>Awake bodies presented to the solver, including kinematic bodies.</summary>
     public int AwakeBodies { get; internal set; }
     /// <summary>Awake islands after sleeping is updated.</summary>
@@ -98,5 +100,6 @@ public sealed class StepCounters
         Manifolds = ContactPoints = Joints = SerialOverflow = 0;
         WorldSubsteps = WorldSolvePasses = WorldRelaxPasses = ContactSubsteps = ContactSolvePasses = ContactRelaxPasses = 0;
         SleepTransitions = WakeTransitions = 0;
+        LodIslandsSkipped = 0;
     }
 }

@@ -201,6 +201,13 @@ internal static class SmokeProgram
         ulong sw21 = SwimScenes.Run2D(1, false), sw23 = SwimScenes.Run2D(3, false), sw2r = SwimScenes.Run2D(1, true);
         bool swim = sw31 == sw33 && sw31 == sw3r && sw21 == sw23 && sw21 == sw2r;
         Console.WriteLine((swim ? "OK swim " : "FAIL swim ") + sw31.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) + " " + sw21.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        // World scale (streamed tiles, level of detail, local time scale): same state on one and three threads and after a restore.
+        ulong ws1 = WorldScaleScenes.RunStreaming3D(1, false, null, 120), ws3 = WorldScaleScenes.RunStreaming3D(3, false, null, 120), wsr = WorldScaleScenes.RunStreaming3D(1, true, null, 120);
+        ulong ws21 = WorldScaleScenes.RunStreaming2D(1, false, null, 120), ws23 = WorldScaleScenes.RunStreaming2D(3, false, null, 120), ws2r = WorldScaleScenes.RunStreaming2D(1, true, null, 120);
+        ulong wl1 = WorldScaleScenes.RunLod3D(1, false, null, 120), wl3 = WorldScaleScenes.RunLod3D(3, false, null, 120), wlr = WorldScaleScenes.RunLod3D(1, true, null, 120);
+        ulong wt1 = WorldScaleScenes.RunTimeScale2D(1, false, null, 120), wt3 = WorldScaleScenes.RunTimeScale2D(3, false, null, 120), wtr = WorldScaleScenes.RunTimeScale2D(1, true, null, 120);
+        bool worldScale = ws1 == ws3 && ws1 == wsr && ws21 == ws23 && ws21 == ws2r && wl1 == wl3 && wl1 == wlr && wt1 == wt3 && wt1 == wtr;
+        Console.WriteLine((worldScale ? "OK worldscale " : "FAIL worldscale ") + ws1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) + " " + ws21.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) + " " + wl1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture) + " " + wt1.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         // Rail vehicles and bicycles in both dimensions: same state on one and three threads and after a restore.
         ulong rb31 = RailBikeScenes3D.Run(1, false), rb33 = RailBikeScenes3D.Run(3, false), rb3r = RailBikeScenes3D.Run(1, true);
         ulong rb21 = RailBikeScenes2D.Run(1, false), rb23 = RailBikeScenes2D.Run(3, false), rb2r = RailBikeScenes2D.Run(1, true);
@@ -323,7 +330,7 @@ internal static class SmokeProgram
         Console.WriteLine((destruction ? "OK destruction " : "FAIL destruction ") + destructionHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool machines = JointMachineSmoke.Run();
         Console.WriteLine(machines ? "OK machines" : "FAIL machines");
-        return articulations && tools && destruction && active && shallowWater && swim && railBike && abilities && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
+        return worldScale && articulations && tools && destruction && active && shallowWater && swim && railBike && abilities && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
     }
 
     private static bool MissingShapes()

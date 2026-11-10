@@ -19,5 +19,7 @@ Task-oriented pages with examples that are compiled and run by the test suite. F
 | [Particle fluids](fluids.md) | pour, splash and float things in a liquid; query particles and see when a body gets wet |
 | [Shallow water](water.md) | make a lake or wave tank that floats bodies and boats, reads currents and takes waves |
 | [Articulations](articulations.md) | build a robot arm, a walker or a long chain that cannot come apart; drive joints, steer a tool to a point |
+
+| [Big worlds](world-scale.md) | stream terrain tiles, step far islands less often, run a region in slow motion |
 | [Input limits](limits.md) | know what is refused |
 | [Coming from Unity](unity-mapping.md) | find the name of the thing you know |

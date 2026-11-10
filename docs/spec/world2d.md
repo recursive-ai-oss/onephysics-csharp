@@ -369,3 +369,7 @@ An active layer turns a ragdoll into a character that follows an animation pose,
 ## Swimming and deformables in water
 
 The 2D world has the same swimming model as 3D (`world3d.md` → Swimming) with the character's capsule as a stadium (areas, circular segments) and the water being a shallow-water channel, a buoyancy field or a 2D particle fluid; soft bodies, strips and rods float in shallow water as in `water.md`. Deformable queries and contact events are as in `queries.md` with edges in place of triangles.
+
+## World scale
+
+`world.LoadTile(TileKey, TileDef2D)`, `UnloadTile(key, policy)`, `FlushTiles`, `GetTileState`, `IsTileLoaded`, `GetLoadedTiles`, `GetTileBodies`, `SetSimulationLod`, `SetLodFocus`, `ClearSimulationLod`, `SetTimeScaleRegions` and `Body.TimeScale`: streamed static terrain tiles built in key order, far islands that step every 2nd, 4th or 8th step, and islands that run in scaled time. Rules, ordering, defaults, the height-field recipe with neighbour heights and the optional "WSCL" snapshot section (registered after every other section) are in `worldscale.md`.
