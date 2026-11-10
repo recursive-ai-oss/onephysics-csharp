@@ -157,6 +157,9 @@ internal sealed class CharacterExtStore : ISnapshotSection
         States[c] = default;
     }
 
+    // The records written: those with something in use; for the size bound, every character that may swim.
+    private bool Recorded(int c, bool bound) => bound ? !(c < States.Length && States[c].NoSwim) || (c < States.Length && IsActive(in States[c])) : c < States.Length && IsActive(in States[c]);
+
     private static bool IsActive(in CharacterExtState s) => s.CanClimb || s.ExactCarry || s.Riding || s.Mode != CharacterMode.Free || UsesSwim(in s);
 
     private static bool UsesSwim(in CharacterExtState s) => s.NoSwim || s.Water != CharacterWaterState.Dry || s.SwimDensity != 0f || s.SwimDamping != 0f;
@@ -194,6 +197,19 @@ internal sealed class CharacterExtStore : ISnapshotSection
 
     bool ISnapshotSection.IsPresent => _active > 0 || _climbableCount > 0;
 
+    // A character that has nothing to record now records its swim state as soon as it meets water, by stepping alone, so the size bound counts a record for every character that may swim.
+    bool ISnapshotSection.IsPresentInBound => ((ISnapshotSection)this).IsPresent || AnyMaySwim();
+
+    private bool AnyMaySwim()
+    {
+        for (int c = 0; c < _host.CharacterHighWater; c++)
+        {
+            if (_host.CharacterLive(c) && !(c < States.Length && States[c].NoSwim)) { return true; }
+        }
+
+        return false;
+    }
+
     void ISnapshotSection.Reset()
     {
         if (_active == 0 && _climbableCount == 0) { return; }
@@ -205,19 +221,20 @@ internal sealed class CharacterExtStore : ISnapshotSection
 
     void ISnapshotSection.Write(StateWriter w)
     {
-        bool swim = AnySwim();
+        bool bound = w.IsBound;
+        bool swim = bound || AnySwim();
         w.NamedInt32(swim ? SwimSectionVersion : SectionVersion);
         int n = 0;
-        for (int c = 0; c < _host.CharacterHighWater && c < States.Length; c++)
+        for (int c = 0; c < _host.CharacterHighWater; c++)
         {
-            if (_host.CharacterLive(c) && IsActive(in States[c])) { n++; }
+            if (_host.CharacterLive(c) && Recorded(c, bound)) { n++; }
         }
 
         w.NamedInt32(n);
-        for (int c = 0; c < _host.CharacterHighWater && c < States.Length; c++)
+        for (int c = 0; c < _host.CharacterHighWater; c++)
         {
-            if (!_host.CharacterLive(c) || !IsActive(in States[c])) { continue; }
-            ref readonly var s = ref States[c];
+            if (!_host.CharacterLive(c) || !Recorded(c, bound)) { continue; }
+            CharacterExtState s = c < States.Length ? States[c] : default;
             w.DescribeEntity("character", c, _host.CharacterGeneration(c));
             w.NamedInt32(c); w.NamedInt32(_host.CharacterGeneration(c));
             // Every record has every field whatever the mode, so the layout of a world does not change when a character sits down or lets go (regional restores need a stable field set).

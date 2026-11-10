@@ -58,6 +58,17 @@ internal sealed partial class Engine2D : IWaterHost
 
     bool IWaterHost.HasSoftBodies => SoftHandles.Count > 0;
 
+    long IWaterHost.DeformableParticleCount
+    {
+        get
+        {
+            long n = 0;
+            for (int i = 0; i < SoftHandles.HighWater; i++) { if (SoftHandles.IsLive(i)) { n += SoftData[i]!.N; } }
+            if (_rods != null) { foreach (var r in _rods.Data) { if (r != null) { n += r.PositionData.Length; } } }
+            return n;
+        }
+    }
+
     void IWaterHost.ApplyWaterToSoftBodies(WaterStore store, WaterGrid g, float dt)
     {
         if (SoftHandles.Count == 0) { return; }

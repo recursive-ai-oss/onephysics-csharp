@@ -35,6 +35,9 @@ internal interface IWaterHost
     /// <summary>Whether the world holds soft bodies or cloth.</summary>
     bool HasSoftBodies { get; }
 
+    /// <summary>The particles of every soft body, cloth and rod: at most as many cells can hold displaced water.</summary>
+    long DeformableParticleCount { get; }
+
     /// <summary>
     /// Gives the soft bodies and cloth the buoyancy and drag of one grid as changes of particle velocity, and records what each submerged particle displaces with <see cref="WaterStore.Deposit"/>,
     /// in body slot then particle order.

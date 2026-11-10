@@ -33,7 +33,9 @@ internal sealed partial class WaterStore
 
     void ISnapshotSection.Write(StateWriter w)
     {
-        bool hold = AnyHold();
+        // For the size bound, a grid may hold displaced water as soon as a soft body or a rod floats in it, by stepping alone.
+        bool bound = w.IsBound;
+        bool hold = bound ? _host.HasSoftBodies || (_host.WaterRods != null && _host.WaterRods.Count != 0) : AnyHold();
         w.NamedInt32(hold ? HoldSectionVersion : SectionVersion);
         w.DescribeTable("shallow water");
         Handles.Write(w);
@@ -65,8 +67,16 @@ internal sealed partial class WaterStore
 
             if (hold)
             {
-                w.NamedInt32(g.HoldCount);
-                for (int k = 0; k < g.HoldCount; k++) { w.NamedInt32(g.HoldCells[k]); w.NamedSingle(g.HoldVolume[k]); }
+                if (bound)
+                {
+                    w.NamedInt32(0);
+                    w.AddBound(8L * Math.Min(g.Cells, Math.Max(_host.DeformableParticleCount, g.HoldCount)));
+                }
+                else
+                {
+                    w.NamedInt32(g.HoldCount);
+                    for (int k = 0; k < g.HoldCount; k++) { w.NamedInt32(g.HoldCells[k]); w.NamedSingle(g.HoldVolume[k]); }
+                }
             }
         }
     }

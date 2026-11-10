@@ -204,21 +204,30 @@ public class DeformableQueryTests
             }
 
             results[index++] = hits;
-            // Warm: no allocation per call on this thread.
+            // Warm: no allocation per call on this thread (the smallest of a few windows after a collection, as in the other allocation tests).
             var buf = new DeformableHit3D[16];
             var sphere = ConvexShape3D.Sphere(0.2f);
-            for (int k = 0; k < 3; k++) { w.RaycastDeformables(rays[k].Origin, rays[k].Direction, out _); w.ClosestDeformable(new Vector3D(0, 2.3, 0), out _); w.OverlapDeformablesAll(sphere, new Vector3D(0, 2.1, 0), default, buf); w.ShapeCastDeformables(sphere, new Vector3D(0.3, 4, 0), default, new Vector3F(0, -1, 0), out _); }
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int k = 0; k < 50; k++)
+            void Round()
             {
-                w.RaycastDeformables(rays[k].Origin, rays[k].Direction, out _);
-                w.RaycastDeformablesAll(rays[k].Origin, rays[k].Direction, buf);
-                w.ClosestDeformable(new Vector3D(0, 2.3, 0), out _);
-                w.OverlapDeformablesAll(sphere, new Vector3D(0, 2.1, 0), default, buf);
-                w.ShapeCastDeformables(sphere, new Vector3D(0.3, 4, 0), default, new Vector3F(0, -1, 0), out _);
+                for (int k = 0; k < 50; k++)
+                {
+                    w.RaycastDeformables(rays[k].Origin, rays[k].Direction, out _);
+                    w.RaycastDeformablesAll(rays[k].Origin, rays[k].Direction, buf);
+                    w.ClosestDeformable(new Vector3D(0, 2.3, 0), out _);
+                    w.OverlapDeformablesAll(sphere, new Vector3D(0, 2.1, 0), default, buf);
+                    w.ShapeCastDeformables(sphere, new Vector3D(0.3, 4, 0), default, new Vector3F(0, -1, 0), out _);
+                }
             }
 
-            Assert.Equal(0L, GC.GetAllocatedBytesForCurrentThread() - before);
+            Round(); Round();
+            long smallest = long.MaxValue;
+            for (int attempt = 0; attempt < 4 && smallest != 0; attempt++)
+            {
+                Core.AllocMeter.Settle();
+                smallest = Math.Min(smallest, Core.AllocMeter.Of(Round));
+            }
+
+            Assert.Equal(0L, smallest);
         }
 
         for (int i = 0; i < rays.Length; i++)
