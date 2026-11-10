@@ -1,4 +1,3 @@
-#pragma warning disable OPHYS0002
 using System;
 using System.Linq;
 using RecursiveAI.OneMath;

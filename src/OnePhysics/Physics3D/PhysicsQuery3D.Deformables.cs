@@ -8,29 +8,23 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 public sealed partial class PhysicsQuery3D
 {
     /// <summary>The filter the deformable queries of this object use. Default: all kinds, layers and categories.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public DeformableFilter3D DeformableFilter { get => _deformableFilter; set => _deformableFilter = value; }
 
     private DeformableFilter3D _deformableFilter;
 
     /// <summary>Nearest deformable element a ray hits (see <see cref="PhysicsWorld3D.RaycastDeformables"/>).</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public bool RaycastDeformables(Vector3D origin, Vector3F direction, out DeformableHit3D hit, float maxDistance = float.PositiveInfinity) => _world.RaycastDeformables(origin, direction, out hit, maxDistance, in _deformableFilter);
 
     /// <summary>All deformable elements a ray hits, nearest first, into a caller buffer.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public int RaycastDeformablesAll(Vector3D origin, Vector3F direction, Span<DeformableHit3D> results, float maxDistance = float.PositiveInfinity) => _world.RaycastDeformablesAll(origin, direction, results, maxDistance, in _deformableFilter);
 
     /// <summary>Nearest deformable element a swept shape touches.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public bool ShapeCastDeformables(in ConvexShape3D shape, Vector3D position, QuaternionF rotation, Vector3F direction, out DeformableHit3D hit, float maxDistance = float.PositiveInfinity) => _world.ShapeCastDeformables(in shape, position, rotation, direction, out hit, maxDistance, in _deformableFilter);
 
     /// <summary>All deformable elements a shape overlaps, into a caller buffer.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public int OverlapDeformablesAll(in ConvexShape3D shape, Vector3D position, QuaternionF rotation, Span<DeformableHit3D> results) => _world.OverlapDeformablesAll(in shape, position, rotation, results, in _deformableFilter);
 
     /// <summary>Nearest deformable element to a point.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public bool ClosestDeformable(Vector3D point, out DeformableHit3D hit, float maxDistance = 1000f) => _world.ClosestDeformable(point, out hit, maxDistance, in _deformableFilter);
 
     // The particle-fluid queries of the world, so a query object covers every kind of thing in the world; fluids have no element hits (see PhysicsWorld3D).
@@ -96,7 +90,6 @@ public sealed partial class PhysicsQuery3D
     /// </summary>
     /// <exception cref="ArgumentException"><paramref name="hits"/> is shorter than <paramref name="rays"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A ray is invalid (the message names the index).</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public int RaycastDeformablesBatch(RayInput3D[] rays, DeformableHit3D[] hits)
     {
         ArgumentNullException.ThrowIfNull(rays);
@@ -118,7 +111,6 @@ public sealed partial class PhysicsQuery3D
     /// <summary>Casts every sphere along its direction and stores the nearest deformable element hit per sphere; like <see cref="RaycastDeformablesBatch"/>.</summary>
     /// <exception cref="ArgumentException"><paramref name="hits"/> is shorter than <paramref name="spheres"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A sphere is invalid.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public int SphereCastDeformablesBatch(SphereInput3D[] spheres, DeformableHit3D[] hits)
     {
         ArgumentNullException.ThrowIfNull(spheres);
@@ -135,7 +127,6 @@ public sealed partial class PhysicsQuery3D
     /// <summary>For every sphere, the number of deformable elements it overlaps.</summary>
     /// <exception cref="ArgumentException"><paramref name="counts"/> is shorter than <paramref name="spheres"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A sphere is invalid.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
     public void OverlapSphereDeformablesCountBatch(SphereInput3D[] spheres, int[] counts)
     {
         ArgumentNullException.ThrowIfNull(spheres);

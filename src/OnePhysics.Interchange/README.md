@@ -15,6 +15,6 @@ var map = TiledImporter.Import(tmjText);                         // or LdtkImpor
 map.Apply(world2);                                               // tile grids (slopes, one-way platforms) and shapes
 ```
 
-Every importer returns what it could not express as warnings. The specification (unit conversions, mappings, conventions) is in [docs/spec/interchange.md](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/spec/interchange.md).
+Every importer returns what it could not express as warnings. The specification (unit conversions, mappings, conventions) is in [docs/spec/interchange.md](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v1.0.0/docs/spec/interchange.md).
 
 Licence `MIT OR Apache-2.0`. Copyright (c) Recursive AI, LLC.

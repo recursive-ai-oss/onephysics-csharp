@@ -5,7 +5,6 @@ using RecursiveAI.OneMath;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>One shape of a link: the geometry and its surface and filtering settings.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public readonly struct ArticulationShape
 {
     /// <summary>Creates a link shape.</summary>
@@ -22,7 +21,6 @@ public readonly struct ArticulationShape
 /// One link of an articulation: where it hangs from its parent, how its joint moves, its mass and its shapes. A link's frame is its joint frame: the shapes, the centre of mass and the joint axis are given in it.
 /// The layout maps one to one onto a URDF link and its parent joint (origin, axis, limits, effort and velocity limits, inertial block).
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class ArticulationLinkDef
 {
     /// <summary>Index of the parent link in <see cref="ArticulationDef.Links"/>, which must be an earlier link; -1 for the root (the first link). Default -1.</summary>
@@ -96,7 +94,6 @@ public sealed class ArticulationLinkDef
 /// A tree of rigid links joined by revolute, prismatic, spherical and fixed joints, simulated in joint coordinates so it can never come apart, with a fixed or floating base. Links are listed parents first; the first is the root.
 /// Create one with <see cref="PhysicsWorld3D.AddArticulation(ArticulationDef)"/>; the presets (<see cref="RobotArm"/>, <see cref="Quadruped"/>, <see cref="Chain"/>) fill in a complete definition.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class ArticulationDef
 {
     /// <summary>The links, parents first. At least 1, at most 2048.</summary>

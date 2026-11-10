@@ -11,7 +11,6 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// It allocates nothing and throws <see cref="StaleHandleException"/> once the body is destroyed. Positions are read without allocation, one particle at a time or into a span you own.
 /// </summary>
 /// <remarks>Particles are numbered like the mesh vertices. There is no callback anywhere on this type.</remarks>
-[Experimental("OPHYS0003")]
 public readonly struct SoftBody : IEquatable<SoftBody>
 {
     private readonly PhysicsWorld2D? _world;

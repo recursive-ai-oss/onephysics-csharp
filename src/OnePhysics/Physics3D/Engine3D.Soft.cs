@@ -8,7 +8,6 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>Raised at the start of a step when a soft-body particle is not finite or is outside the supported range; the world is unchanged.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class SoftBodyOutOfBoundsException : PhysicsException
 {
     /// <summary>The offending soft body.</summary>

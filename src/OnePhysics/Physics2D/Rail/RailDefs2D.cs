@@ -8,7 +8,6 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// (buffers and a draw gear with slack) to its neighbours in a train. A 2D world has no lateral dynamics, so the track guides the car by its profile only: the wheels sweep for the rail like the wheels of a
 /// <see cref="Vehicle"/>, with steel tyres whose friction is the track's adhesion coefficient. Axes: the car faces +X, up is +Y.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class RailDef
 {
     /// <summary>Mass of the car, kg. Default 30000.</summary>

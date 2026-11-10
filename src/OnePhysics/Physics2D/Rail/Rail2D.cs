@@ -10,7 +10,6 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// A side-view railway track in a 2D world: the vertical profile of a <see cref="TrackDef"/> laid out along +X from its start, with a static chain body for the rail surface. Like <see cref="Body"/> it is a small
 /// struct handle (world, slot, generation) that allocates nothing and fails with a <see cref="StaleHandleException"/> once the track is destroyed.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public readonly struct Track : IEquatable<Track>
 {
     private readonly PhysicsWorld2D? _world;
@@ -89,7 +88,6 @@ public readonly struct Track : IEquatable<Track>
 /// allocates nothing and fails with a <see cref="StaleHandleException"/> once the vehicle is destroyed (its car destroyed or <see cref="Destroy"/> called).
 /// </summary>
 /// <example><c>var track = world.AddTrack(TrackDef.Straight(500)); var loco = world.AddRailVehicle(track, 20, RailDef.Locomotive); loco.Drive(throttle: 1f); world.Step(1f / 60f);</c></example>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public readonly struct RailVehicle : IEquatable<RailVehicle>
 {
     private readonly PhysicsWorld2D? _world;

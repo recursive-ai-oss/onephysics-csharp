@@ -13,7 +13,6 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// The weave axes are given in the mesh's own frame. An edge of the rest mesh within about 26° of the warp axis is a <i>warp</i> edge, within 26° of the weft axis a <i>weft</i> edge, any other a <i>shear</i> edge
 /// (the diagonals of a square grid), and each class has its own compliance (Provot 1995, structural and shear springs).
 /// </remarks>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class ClothParams
 {
     /// <summary>Largest strain limit accepted.</summary>

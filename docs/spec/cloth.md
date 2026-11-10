@@ -1,6 +1,6 @@
 # Cloth (3D) and strips (2D)
 
-Normative for `ClothDef`, `ClothParams` (`SoftBodyDef.Fabric`), seams and attachments in `PhysicsWorld3D`, and `StripParams` (`SoftBodyDef.Strip`) in `PhysicsWorld2D`. A fabric is a soft body (see `softbody.md`) with a few more constraints and forces, all deterministic, saved, hashed and forked with the body. The 3D surface is `[Experimental("OPHYS0002")]`, the 2D one `OPHYS0003`.
+Normative for `ClothDef`, `ClothParams` (`SoftBodyDef.Fabric`), seams and attachments in `PhysicsWorld3D`, and `StripParams` (`SoftBodyDef.Strip`) in `PhysicsWorld2D`. A fabric is a soft body (see `softbody.md`) with a few more constraints and forces, all deterministic, saved, hashed and forked with the body.
 
 ## What a fabric adds to a soft body
 

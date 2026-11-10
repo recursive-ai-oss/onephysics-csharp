@@ -11,17 +11,9 @@ The package id is `RecursiveAI.OnePhysics`. Its only dependency is `RecursiveAI.
 - **Browser WebAssembly:** supported, single-threaded (leave `ThreadCount` at its default of 1 there). A world gives the same bits in the browser as on a desktop.
 - **Platforms:** results are bit-identical on Windows, Linux, macOS, x64 and arm64.
 
-## Preview markers
+## The experimental raw tier
 
-Three parts of the package carry `[Experimental]` and fail to compile until you opt in, so you cannot use them by accident:
-
-| Part | Diagnostic | Opt in |
-|---|---|---|
-| The 3D engine, namespace `RecursiveAI.OnePhysics.Physics3D` | `OPHYS0002` | `<NoWarn>$(NoWarn);OPHYS0002</NoWarn>` in the project, or `#pragma warning disable OPHYS0002` in a file |
-| The later features in both dimensions: active ragdolls, articulations, actuators and aerodynamics, 2D vehicles, rail vehicles, bicycles and ragdolls, 2D soft bodies and strips | `OPHYS0003` | `<NoWarn>$(NoWarn);OPHYS0003</NoWarn>` in the project, or `#pragma warning disable OPHYS0003` in a file |
-| The raw tier, namespace `RecursiveAI.OnePhysics.LowLevel`, and the rope, rod and pulley types | `OPHYS0001` | the same, with `OPHYS0001` |
-
-Each may change between previews; [the API notes](../spec/api.md) list exactly which types carry which marker. **0.x previews are not bit-compatible with each other**: do not carry snapshots, saved games or replays across a package update (the [changelog](../../CHANGELOG.md) says which previews moved results).
+One part of the package carries `[Experimental("OPHYS0001")]` and fails to compile until you opt in, so you cannot use it by accident: the raw tier, namespace `RecursiveAI.OnePhysics.LowLevel` (storage layouts, constraint batches and colours, trees, narrowphase routines). Opt in with `<NoWarn>$(NoWarn);OPHYS0001</NoWarn>` in the project, or `#pragma warning disable OPHYS0001` in a file. Its shapes follow the engine's internals and may change in a minor release; everything else, the 3D engine included, is supported under the [compatibility promise](determinism.md). [The API notes](../spec/api.md) list what is marked.
 
 ## Next
 

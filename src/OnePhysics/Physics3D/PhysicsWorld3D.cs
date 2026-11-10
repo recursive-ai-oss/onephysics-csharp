@@ -13,7 +13,6 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// <see cref="Core"/> exposes the shared storage for the raw tier. Results are bit-identical on every platform, thread count and vector width. Not thread-safe: use a world from one thread at a time.
 /// </summary>
 /// <remarks>Creation and teleport positions accept finite double components within inclusive ±2^21; invalid values throw ArgumentOutOfRangeException. Every Q31.32 position in this closed interval is exact in double, including the endpoints, although OneMath FixedBridge accepts only |v| &lt; 2^21. The wider ±2^22 simulation bound provides integration and shape headroom, not a wider creation range. Queries document their own bounds.</remarks>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed partial class PhysicsWorld3D
 {
     private readonly Engine3D _engine;

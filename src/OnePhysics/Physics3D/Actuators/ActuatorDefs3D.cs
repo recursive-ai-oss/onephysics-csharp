@@ -14,7 +14,6 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// <see cref="Up"/> is its lifting side. Flow along the third axis (the span) makes no force. With <see cref="Area"/> 0 the area is the shape's silhouette seen along <see cref="Up"/> (its planform), taken once from the shape's geometry.
 /// A <see cref="AeroSurfaceKind.Bluff"/> surface has drag only, on the shape's silhouette seen along the flow each step when <see cref="Area"/> is 0. Meshes and height fields have no silhouette; give them an area. Sleeping bodies feel no aerodynamic forces.
 /// </remarks>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class AeroSurface
 {
     /// <summary>Lifting (default) or bluff.</summary>
@@ -62,7 +61,6 @@ public sealed class AeroSurface
 }
 
 /// <summary>A thruster (rocket, jet, fan or propeller) on a body: a force along an axis at a point, with a throttle, a response time and an optional gimbal. See <see cref="PhysicsWorld3D.AddThruster"/>.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class ThrusterDef
 {
     /// <summary>Where the thrust acts, in the body's frame (relative to the body origin), metres. Default zero.</summary>
@@ -121,7 +119,6 @@ public sealed class ThrusterDef
 }
 
 /// <summary>Ready-made thruster layouts.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public static class ThrusterRig
 {
     /// <summary>
@@ -143,7 +140,6 @@ public static class ThrusterRig
 }
 
 /// <summary>A keel, rudder or hydrofoil of a boat: a lifting surface in water in the boat's own axes.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class BoatFoilDef
 {
     /// <summary>Where the force acts, in the body's frame, metres. Default zero.</summary>
@@ -173,7 +169,6 @@ public sealed class BoatFoilDef
 /// linear drag and damping for this body (the fluid's buoyancy and angular damping still apply), together with <see cref="HeaveDamping"/>. Every drag is limited so that it cannot do more than stop the motion along that axis within a step.
 /// Positions are in the body's frame. The presets assume a hull modelled with its origin at the middle of the waterline, +Z forward and +Y up.
 /// </remarks>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class BoatDef
 {
     /// <summary>Which way is forward, in the body's frame. Default (0, 0, 1).</summary>
@@ -270,7 +265,6 @@ public sealed class BoatDef
 }
 
 /// <summary>One lift fan of a hovercraft: a cushion of air under a point of the craft that pushes up against whatever shape or water surface lies along its axis.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class HoverFanDef
 {
     /// <summary>Where the fan is, in the body's frame, metres. Default zero.</summary>
@@ -301,7 +295,6 @@ public sealed class HoverFanDef
 /// <remarks>
 /// At rest a fan holds its share W of the weight at the gap h = Range · (1 − √(W / (MaxLift · lift))). A dynamic body under a fan takes the opposite force at the point under the fan. The skirt and the angular damping scale with the mean squared cushion over the fans.
 /// </remarks>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class HovercraftDef
 {
     /// <summary>Which way is forward, in the body's frame. Default (0, 0, 1).</summary>

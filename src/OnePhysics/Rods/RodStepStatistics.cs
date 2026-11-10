@@ -1,7 +1,6 @@
 namespace RecursiveAI.OnePhysics.Rods;
 
 /// <summary>Last rod step's deterministic diagnostics. No clocks; values reset each step and are included in snapshots and hashes.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0001")]
 public readonly struct RodStepStatistics
 {
     internal RodStepStatistics(float speed,double stretch,float penetration,int contacts,int stops)

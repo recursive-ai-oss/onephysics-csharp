@@ -6,7 +6,6 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>The pose of one skeleton joint for skinning: where the joint's bind position has gone and how the joint is turned, both in world coordinates.</summary>
 /// <remarks>A point that sits at <c>x</c> in the body's rest frame (the mesh scaled by <see cref="SoftBodyDef.Scale"/>) and is bound to joint <c>j</c> alone is carried to <c>Position + Rotation * (x - bindPosition_j)</c>.</remarks>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct SkinJointPose
 {
     /// <summary>Creates a joint pose.</summary>
@@ -40,7 +39,6 @@ public readonly struct SkinJointPose
 /// <para>The ideas follow the published descriptions of attachment and long-range constraints in position-based dynamics (Müller et al. 2007; Kim, Chentanez, Müller 2012, "Long Range Attachments") and skinned soft bodies in
 /// game physics engines; the solver and snapshot details are in <c>docs/spec/softbody.md</c>.</para>
 /// </remarks>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class SoftSkin
 {
     /// <summary>Most joints a skeleton may have.</summary>

@@ -9,7 +9,6 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// Definition of a body of shallow water: a regular grid of square cells in the x–z plane over a bed, holding water up to a level. The world copies it. The water obeys the shallow-water equations
 /// (waves, currents, wetting and drying), floats and pushes bodies through their buoyancy and drag, and is displaced by them. Every value is validated when the water is created.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class ShallowWaterDef
 {
     /// <summary>World x of the grid's minimum corner, metres. Within ±2^21; rounded to the 2^-32 grid. Default 0.</summary>
@@ -132,7 +131,6 @@ public sealed class ShallowWaterDef
 }
 
 /// <summary>The water at a point of a 3D world.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct WaterSample3D
 {
     internal WaterSample3D(WaterHandle water, double surface, float depth, Vector3F velocity, Vector3F normal) { Water = water; Surface = surface; Depth = depth; Velocity = velocity; Normal = normal; }
@@ -154,7 +152,6 @@ public readonly struct WaterSample3D
 }
 
 /// <summary>Where a ray met the water surface in a 3D world.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct WaterHit3D
 {
     internal WaterHit3D(WaterHandle water, float distance, Vector3D point, Vector3F normal) { Water = water; Distance = distance; Point = point; Normal = normal; }
@@ -175,7 +172,6 @@ public readonly struct WaterHit3D
 /// <summary>
 /// A body of shallow water: the handle (world, slot, generation) of a grid. It allocates nothing and throws <see cref="StaleHandleException"/> once removed.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct ShallowWater : IEquatable<ShallowWater>
 {
     private readonly PhysicsWorld3D? _world;

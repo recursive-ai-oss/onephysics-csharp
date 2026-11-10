@@ -11,7 +11,6 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// A description of a convex shape that a world can store in snapshots: the shape kind and the numbers that build it. Make one with the factory methods; they only record the numbers, and the
 /// world validates them (with the shape factories' typed errors) when it builds the shape.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct ShapeSpec3D
 {
     internal const byte KSphere = 1, KBox = 2, KCapsule = 3, KTapered = 4, KCylinder = 5, KHull = 6, KTaperedCylinder = 10, KTriangle = 11, KEmpty = 12, KMassOffset = 13, KPlane = 14, KVoxelGrid = 15, KSdf = 16;
@@ -116,7 +115,6 @@ public readonly struct ShapeSpec3D
 }
 
 /// <summary>One convex piece of a compound shape.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct CompoundPart
 {
     /// <summary>Creates a part.</summary>

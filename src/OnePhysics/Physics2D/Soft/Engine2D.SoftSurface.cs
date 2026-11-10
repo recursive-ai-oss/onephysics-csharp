@@ -8,7 +8,6 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics2D;
 
 /// <summary>An edge of a soft body broke at the end of a step (see <see cref="SoftBodyDef.TearStrain"/> and <see cref="SoftBodyDef.TearForce"/>).</summary>
-[Experimental("OPHYS0003")]
 public readonly struct SoftTearEvent
 {
     internal SoftTearEvent(SoftBody body, int a, int b, int particleCount)

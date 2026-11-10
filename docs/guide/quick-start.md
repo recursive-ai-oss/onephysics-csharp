@@ -34,9 +34,9 @@ if (world.Raycast(new Vector2D(0, 10), new Vector2F(0, -1), out var hit)) Consol
 
 `Move` takes the displacement for this frame (use `MoveVelocity` for a velocity times dt) and slides along slopes, climbs steps and pushes bodies; `CharacterDef.Humanoid`, `Child` and `Giant` are presets, and `AddCharacter(at, def)` takes your own tuned copy.
 
-## 3D, a preview
+## 3D
 
-The 3D engine is `[Experimental("OPHYS0002")]`; acknowledge it with `#pragma warning disable OPHYS0002` or a `NoWarn`. The world has the same members with 3D math types.
+The world has the same members with 3D math types.
 
 <!-- example: Guide/QuickStart3D.cs -->
 ```csharp

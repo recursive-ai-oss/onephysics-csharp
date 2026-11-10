@@ -4,7 +4,6 @@ using RecursiveAI.OnePhysics.Physics3D;
 using Xunit;
 using P2 = RecursiveAI.OnePhysics.Physics2D;
 
-#pragma warning disable OPHYS0003, OPHYS0002
 
 namespace RecursiveAI.OnePhysics.Tests.Articulations;
 

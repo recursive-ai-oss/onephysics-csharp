@@ -1,6 +1,6 @@
 # Soft bodies
 
-Cloth, rubber and jelly in the 3D world (a preview, like the rest of `Physics3D`: `#pragma warning disable OPHYS0002`). A soft body is a mesh of particles held together by edge, bend and volume constraints (position-based dynamics, XPBD). Particles are small spheres that collide with every rigid shape (static, kinematic and dynamic; compounds, meshes and height fields included), with each other, and with friction. They push dynamic rigid bodies and are pushed by them.
+Cloth, rubber and jelly in the 3D world. A soft body is a mesh of particles held together by edge, bend and volume constraints (position-based dynamics, XPBD). Particles are small spheres that collide with every rigid shape (static, kinematic and dynamic; compounds, meshes and height fields included), with each other, and with friction. They push dynamic rigid bodies and are pushed by them.
 
 ## Happy path
 

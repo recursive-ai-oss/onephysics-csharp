@@ -23,7 +23,6 @@ public sealed partial class PhysicsWorld3D
 }
 
 /// <summary>The live bodies of a world, in slot order; see <see cref="PhysicsWorld3D.Bodies"/>.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct BodyEnumerable
 {
     private readonly PhysicsWorld3D _world;
@@ -35,7 +34,6 @@ public readonly struct BodyEnumerable
 }
 
 /// <summary>Walks the live bodies of a world in slot order. Allocates nothing.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct BodyEnumerator
 {
     private readonly PhysicsWorld3D _world;
@@ -69,7 +67,6 @@ public struct BodyEnumerator
 }
 
 /// <summary>The live characters of a world, in slot order; see <see cref="PhysicsWorld3D.Characters"/>.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct CharacterEnumerable
 {
     private readonly PhysicsWorld3D _world;
@@ -81,7 +78,6 @@ public readonly struct CharacterEnumerable
 }
 
 /// <summary>Walks the live characters of a world in slot order. Allocates nothing.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public struct CharacterEnumerator
 {
     private readonly PhysicsWorld3D _world;

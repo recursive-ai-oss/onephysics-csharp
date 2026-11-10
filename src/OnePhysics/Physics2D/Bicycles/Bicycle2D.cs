@@ -11,7 +11,6 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// that allocates nothing and fails with a <see cref="StaleHandleException"/> once the bicycle is destroyed (its frame destroyed or <see cref="Destroy"/> called).
 /// </summary>
 /// <example><c>var bike = world.AddBicycle(new Vector2D(0, 0), BicycleDef.Road); bike.Ride(pedal: 1f); world.Step(1f / 60f);</c></example>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public readonly struct Bicycle : IEquatable<Bicycle>
 {
     private readonly PhysicsWorld2D? _world;

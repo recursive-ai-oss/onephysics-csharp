@@ -12,7 +12,6 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// has a quaternion (4 position values, 3 velocity values: angular velocity in the link frame). Links come in definition order, so the coordinates of link i come after those of link i − 1.
 /// </summary>
 /// <example><c>var arm = world.AddArticulation(ArticulationDef.RobotArm(), at: new Vector3D(0, 0.5, 0)); arm.SetTaskTarget(arm.LinkCount - 1, default, new Vector3D(0.3, 0.9, 0.2)); world.Step(1f / 60f);</c></example>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public readonly struct Articulation : IEquatable<Articulation>
 {
     private readonly PhysicsWorld3D? _world;

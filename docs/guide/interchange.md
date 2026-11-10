@@ -23,4 +23,4 @@ var instance = map.Apply(world2);
 
 A file the importer cannot read throws `InterchangeException`, which names the format, the place in the file and what was expected. Ask for nothing else: hostile files are refused with that exception and no other.
 
-The rules each importer follows, the unit conversions, which attributes map where, and what is left out are in [the importer specification](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/spec/interchange.md). The conventions for maps (which layers are collision layers, the `kind`, `oneway` and `body` properties) are there too.
+The rules each importer follows, the unit conversions, which attributes map where, and what is left out are in [the importer specification](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v1.0.0/docs/spec/interchange.md). The conventions for maps (which layers are collision layers, the `kind`, `oneway` and `body` properties) are there too.

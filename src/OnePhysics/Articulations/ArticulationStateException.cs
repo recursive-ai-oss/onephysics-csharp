@@ -1,7 +1,6 @@
 namespace RecursiveAI.OnePhysics;
 
 /// <summary>An articulation's joint coordinates or speeds are outside the supported domain (not finite, a position beyond ±4194304 or a speed beyond 1e6 radians or metres per second). Raised before a step changes the world; repair the state with <c>SetPositions</c>/<c>SetVelocities</c> or destroy the articulation.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class ArticulationStateException : PhysicsException
 {
     internal ArticulationStateException(int articulation, int index, string field, string message) : base(message)

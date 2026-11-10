@@ -8,7 +8,6 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>What a cloth link joins.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public enum ClothLinkKind
 {
     /// <summary>A particle of one soft body held to a particle of another (or of the same body): a seam, a stitch.</summary>

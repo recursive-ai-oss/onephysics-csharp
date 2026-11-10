@@ -5,7 +5,6 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>A point-to-body rod attachment. Anchors are in the body's authoring frame (not its centre-of-mass frame), in metres.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0001")]
 public readonly struct RodAttachment
 {
     /// <summary>Creates an attachment; validated against the destination world by AddRod. Break force is positive finite newtons, default float.MaxValue (effectively unbreakable).</summary>

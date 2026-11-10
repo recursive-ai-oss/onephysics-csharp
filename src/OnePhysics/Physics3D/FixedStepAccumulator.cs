@@ -5,7 +5,6 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>A presentation pose at a body's origin, in metres and unit quaternion orientation. Does not change simulation state.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct BodyPose
 {
     /// <summary>Creates a presentation value. Does not validate or normalize inputs; never feeds simulation.</summary>
@@ -17,7 +16,6 @@ public readonly struct BodyPose
 }
 
 /// <summary>Caller-driven fixed-step accumulator with render interpolation. Supplies a fixed dt to the world; never reads a clock. Retains previous/current poses by slot and generation. Allocate once; subsequent frames allocate only when the body-slot high-water mark grows. Presentation state is not snapshotted or hashed. Use one helper per world and call Resynchronize after external stepping, teleports, restore or origin shifting.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class FixedStepAccumulator
 {
     private readonly FixedStepClock _clock;

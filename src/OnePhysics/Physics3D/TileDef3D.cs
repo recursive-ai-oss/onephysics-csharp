@@ -6,7 +6,6 @@ using RecursiveAI.OnePhysics.LowLevel;
 namespace RecursiveAI.OnePhysics.Physics3D;
 
 /// <summary>A height field of a streamed tile. Sample <c>(i, j)</c> sits at <c>Offset + (i * Scale.X, height * Scale.Y, j * Scale.Z)</c> from the tile's origin.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class TileHeightField3D
 {
     /// <summary>Heights row by row (<c>j * SamplesX + i</c>), copied when the tile is queued.</summary>
@@ -38,7 +37,6 @@ public sealed class TileHeightField3D
 }
 
 /// <summary>A static triangle mesh of a streamed tile. Mesh borders are boundary edges: a body crossing two mesh tiles can meet a seam bump (use height fields for seamless terrain).</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class TileMesh3D
 {
     /// <summary>Vertices relative to <see cref="Offset"/>.</summary>
@@ -55,7 +53,6 @@ public sealed class TileMesh3D
 }
 
 /// <summary>A static box of a streamed tile (a wall, a platform).</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class TileBox3D
 {
     /// <summary>Full size along each axis.</summary>
@@ -72,7 +69,6 @@ public sealed class TileBox3D
 }
 
 /// <summary>Static voxel terrain of a streamed tile.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class TileVoxelGrid3D
 {
     /// <summary>Cells along X, Y and Z.</summary>
@@ -101,7 +97,6 @@ public sealed class TileVoxelGrid3D
 /// The static geometry of one tile of a streamed world: a set of height fields, meshes, boxes and voxel grids around an origin. Hand it to <see cref="PhysicsWorld3D.LoadTile"/>; the world copies it.
 /// Each part becomes one static body.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class TileDef3D
 {
     /// <summary>The tile's origin in world coordinates as of the call that queues it (the world origin may shift before the tile is built; the tile follows).</summary>

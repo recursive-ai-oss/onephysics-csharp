@@ -257,7 +257,7 @@ The same four parts in the plane (`Physics2D.AeroSurface`, `ThrusterDef`, `BoatD
 
 ## Rail vehicles and bicycles (side view)
 
-`[Experimental("OPHYS0003")]`. The same names as in 3D with 2D math types and the 2D semantics below. Optional snapshot sections `BIKE` (`0x454B4942`) and `RAIL` (`0x4C494152`) share their ids with the 3D engine (a world is one or the other), registered after the cable section, bicycles first. Step order in the pre-solve stage: rail vehicles, bicycles, wheeled vehicles, then the rest.
+The same names as in 3D with 2D math types and the 2D semantics below. Optional snapshot sections `BIKE` (`0x454B4942`) and `RAIL` (`0x4C494152`) share their ids with the 3D engine (a world is one or the other), registered after the cable section, bicycles first. Step order in the pre-solve stage: rail vehicles, bicycles, wheeled vehicles, then the rest.
 
 **Tracks.** A 2D track is a vertical profile: `TrackDef` with a plan view of exactly one straight (the length) and an `Elevation` profile (the same monotone cubic as 3D), laid along +X from `Start`; a chain static body is the rail surface (ghosted segments, so nothing catches on the vertices). `track.SurfaceAt(s, out grade)` gives the surface point and slope. No cant, switches or lateral dynamics.
 

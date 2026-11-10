@@ -1,5 +1,3 @@
-#pragma warning disable OPHYS0002
-#pragma warning disable OPHYS0003
 using System.Diagnostics;
 using System.Globalization;
 using RecursiveAI.OneMath;

@@ -1,6 +1,6 @@
 # Particle fluids
 
-Water and other liquids as particles, in the 2D and the 3D world (a preview, like the rest of `Physics3D`: `#pragma warning disable OPHYS0002`; the 2D members are the same with `Vector2D` and `Vector2F`). The fluid is position-based (Macklin and Müller 2013): every particle is held to its rest density by a constraint, so a pool stays a pool, a stream falls and splashes, and a crate floats at the waterline of its density ratio. The particles collide with every shape, push dynamic bodies and are pushed by them, and meet soft bodies, cloth and rods the same way. This is not the analytic buoyancy volume of `AddFluid`: that floats bodies on a water plane without simulating the water; the two do not interact.
+Water and other liquids as particles, in the 2D and the 3D world (the 2D members are the same with `Vector2D` and `Vector2F`). The fluid is position-based (Macklin and Müller 2013): every particle is held to its rest density by a constraint, so a pool stays a pool, a stream falls and splashes, and a crate floats at the waterline of its density ratio. The particles collide with every shape, push dynamic bodies and are pushed by them, and meet soft bodies, cloth and rods the same way. This is not the analytic buoyancy volume of `AddFluid`: that floats bodies on a water plane without simulating the water; the two do not interact.
 
 ## Happy path
 

@@ -1,10 +1,21 @@
 # Changelog
 
-What changed for hosts in each preview, newest first. "Moved results" lists the changes that alter a world's state after the same inputs (and so its snapshot bytes and world hashes).
+What changed for hosts in each release, newest first. "Moved results" lists the changes that alter a world's state after the same inputs (and so its snapshot bytes and world hashes).
 
-**0.x previews are not bit-compatible with each other: snapshots, saved games and replays from one preview do not carry to another.**
+**From 1.0:** patch releases never change a result; a minor release may, and says so here under "Moved results"; snapshots, delta snapshots, replays and scene files from any 1.x release load in every later 1.x release. The 0.x previews were not bit-compatible with each other or with 1.0.
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-11-10
+
+The first stable release of `RecursiveAI.OnePhysics`, `RecursiveAI.OnePhysics.Tools` and `RecursiveAI.OnePhysics.Interchange`, all at 1.0.0.
+
+- **A stable surface.** Every part is supported and follows semantic versioning except the raw tier (`RecursiveAI.OnePhysics.LowLevel`, with the `Core` accessors of the two worlds), which stays `[Experimental("OPHYS0001")]` because its shapes follow the engine's internals. The markers `OPHYS0002` (the 3D engine and two `.Tools` members) and `OPHYS0003` (features added after the first previews) are gone, and `OPHYS0001` no longer covers rods, ropes, cables, pulleys and belts, so code that suppressed them can drop the suppression.
+- **Compatibility across 1.x.** Results are bit-identical across operating systems, CPUs, vector widths, WebAssembly modes and thread counts in every release; patch releases never change a result; a minor release may, and this file says so; snapshots, delta snapshots, replays and scene files from any 1.x load in every later 1.x. See `docs/guide/determinism.md`.
+- **Documented 3D speed rows.** Against the fastest stable managed engine on x64, the 3D ragdoll-pile and sleep-wake scenes are slower at 1 and 8 threads (2.19x and 2.30x at 1 thread; 1.43x and 1.64x on arm64 at 1 thread), 3D queries at 8 threads (1.22x), and at all cores the large pile, queries, ragdoll pile and sleep-wake (1.19x, 1.29x, 1.64x, 1.18x); every other measured row is within 15% or faster, and every scene meets its stability thresholds on x64 and arm64. The README's Speed section has the table.
+- **New public exception:** `FieldCallbackException` (a `PhysicsException`), raised by a pre-step check when a world holds a custom gravity field whose callback is not bound (a fork, or a snapshot restored into a fresh world), before anything changes.
+
+Everything below is what changed since 0.4.0-preview.1.
 
 - **Fuzzing fixes, 2D, shared formats and fluids (no result moves for worlds that did not hit them).** A world never throws or hangs from state it accepted: a custom gravity field whose delegate is not bound (a fork, or a snapshot restored into a fresh world) now makes `Step` raise the typed `FieldCallbackException` before anything changes, instead of an `InvalidOperationException` from the middle of the step; 2D vehicle and actuator casts skip a direction that cannot be normalised; active ragdolls skip the controller (and their ground rays) when a measurement is out of any real range; drive torque limits and track wheel speeds are limited so the world they write always restores; a derived soft-body particle radius is capped at the largest a definition accepts; emitters whose pending flow exceeds one spacing are refused on restore and a flow too long to count down is dropped; fluid wetness queries no longer loop on points beyond the long range; and 2D bodies are cut back to 16 times the world's speed and spin limits after the solve, so a joint anchored hundreds of metres from a light body can no longer fling it to infinity or NaN (a huge applied force no longer diverges a world either).
 - **A 3D distance joint with its spring on and a spring frequency of 0 now applies no spring force** (the length floats between `MinLength` and `MaxLength`; limits and motor still act), as the planar distance joint and the 3D hinge, slider and wheel do. Before, it locked the relative velocity along the rod. Moved results: only worlds with a spring-enabled distance joint at 0 Hz and an open length range. `tools/fuzz.sh` gains target subsets (`all`, a list, `shard:K/N`), a `chunk` command that sizes the per-target budget to a total time, a report that counts distinct crashes on disk with a total, and runs on macOS.

@@ -12,7 +12,6 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// the base frame); each revolute or prismatic joint has one value of each. Links come in definition order, so the coordinates of link i come after those of link i − 1.
 /// </summary>
 /// <example><c>var arm = world.AddArticulation(ArticulationDef.Arm(), at: new Vector2D(0, 0.5, 0)); arm.SetTaskTarget(arm.LinkCount - 1, default, new Vector2D(0.3, 0.9)); world.Step(1f / 60f);</c></example>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public readonly struct Articulation : IEquatable<Articulation>
 {
     private readonly PhysicsWorld2D? _world;

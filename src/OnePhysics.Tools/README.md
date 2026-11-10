@@ -27,6 +27,6 @@ var pieces = PolygonDecomposer.Decompose(outline, holes);
 var sprite = SpriteOutliner.ToConvexPieces(alpha, width, height);
 ```
 
-The tools: `ConvexDecomposer`, `HullSimplifier`, `MeshCleaner`, `MeshMass`, `PolygonDecomposer`, `SpriteOutliner`, `Tetrahedralizer`, `TriangleMesher`, `AutoRagdoller`. Bad input raises `GeometryToolException` with an error kind and a message that names the value. The specification is in [docs/spec/tools.md](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/spec/tools.md).
+The tools: `ConvexDecomposer`, `HullSimplifier`, `MeshCleaner`, `MeshMass`, `PolygonDecomposer`, `SpriteOutliner`, `Tetrahedralizer`, `TriangleMesher`, `AutoRagdoller`. Bad input raises `GeometryToolException` with an error kind and a message that names the value. The specification is in [docs/spec/tools.md](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v1.0.0/docs/spec/tools.md).
 
 Licence `MIT OR Apache-2.0`. Copyright (c) Recursive AI, LLC.

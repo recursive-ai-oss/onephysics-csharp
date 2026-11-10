@@ -4,7 +4,6 @@ using System.Diagnostics.CodeAnalysis;
 namespace RecursiveAI.OnePhysics.Rods;
 
 /// <summary>Circular, homogeneous rod material in SI units. The default struct is invalid; use a preset or the constructor.</summary>
-[Experimental("OPHYS0001")]
 public readonly struct RodMaterial
 {
     /// <summary>Young's modulus, Pa; finite, 1 to 10^12.</summary>

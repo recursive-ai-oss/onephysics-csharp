@@ -16,8 +16,7 @@
     <EnablePackageValidation>false</EnablePackageValidation>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
-    <!-- Decomposition output is a compound shape of the 3D engine, whose types are marked experimental for consumers (OPHYS0002); inside this package they are simply used. -->
-    <NoWarn>$(NoWarn);OPHYS0001;OPHYS0002;OPHYS0003</NoWarn>
+    <NoWarn>$(NoWarn);OPHYS0001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

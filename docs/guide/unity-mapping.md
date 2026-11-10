@@ -47,6 +47,6 @@ OnePhysics uses Unity's vocabulary for the happy path where it can, with these d
 | `CharacterController.SimpleMove(v)` | `character.MoveVelocity(velocity, dt)` | |
 | `isGrounded`, `slopeLimit` (degrees), `stepOffset` | `IsGrounded`, `SlopeLimitRadians`, `StepOffset` | Radians. |
 | `OnControllerColliderHit` | `character.OnControllerColliderHit` | |
-| `Physics.Raycast`, `Rigidbody`, ... (3D) | the same names on `PhysicsWorld3D` and its `Body` | The 3D engine is a preview. |
+| `Physics.Raycast`, `Rigidbody`, ... (3D) | the same names on `PhysicsWorld3D` and its `Body` | |
 
 The joint one-liner to definition to view table is in [names and conventions](api-names.md). If a Unity feature you rely on is missing, the middle tier ([the tiers](tiers.md)) usually has it under the engine's own name.

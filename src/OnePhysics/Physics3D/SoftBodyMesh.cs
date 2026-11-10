@@ -59,7 +59,6 @@ public sealed class SoftBodyException : ArgumentException
 /// Triangles are counter-clockwise seen from the side the normal points to. A tetrahedron given with negative volume is repaired by swapping its last two vertices.
 /// A tetrahedral mesh also carries its outward-facing boundary triangles (<see cref="Triangles"/>), so a volume has a surface to draw and to apply pressure to.
 /// </remarks>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public sealed class SoftBodyMesh
 {
     /// <summary>Largest number of vertices in one mesh (and so particles in one body), 2^20.</summary>

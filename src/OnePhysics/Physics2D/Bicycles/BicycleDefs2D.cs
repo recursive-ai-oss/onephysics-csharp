@@ -8,7 +8,6 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// the pitch dynamics: the weight transfer under braking and driving, wheelies and stoppies, and the balance of front and rear brake. The rider shifts weight with the <c>lean</c> input of <see cref="Bicycle.Ride"/>.
 /// Axes: the bicycle faces +X, up is +Y; positions are measured from the ground under the rear wheel's contact point.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0003")]
 public sealed class BicycleDef
 {
     /// <summary>Distance between the two contact points, m. Default 1.02.</summary>

@@ -13,7 +13,6 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// Uncontrolled, the benchmark bicycle (<see cref="BicycleDef.Benchmark"/>) balances itself between its weave and capsize speeds; below and above that band the rider has to lean and steer.
 /// </summary>
 /// <example><c>var bike = world.AddBicycle(new Vector3D(0, 0, 0), BicycleDef.Benchmark, speed: 5f); bike.Ride(pedal: 0.2f); world.Step(1f / 60f);</c></example>
-[System.Diagnostics.CodeAnalysis.Experimental("OPHYS0002")]
 public readonly struct Bicycle : IEquatable<Bicycle>
 {
     private readonly PhysicsWorld3D? _world;
