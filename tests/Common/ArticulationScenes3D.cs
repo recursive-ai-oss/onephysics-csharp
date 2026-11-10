@@ -141,7 +141,7 @@ internal static class ArticulationScenes3D
         w.AddBox(new Vector3F(8, 1, 8), at: new Vector3D(0, -0.5, 0), type: BodyType.Static, material: new Material3D(0.8f, 0f, 0f));
         const int n = 41;
         var h = new float[n * n];
-        for (int z = 0; z < n; z++) { for (int x = 0; x < n; x++) { h[z * n + x] = 0.02f * (float)Math.Sin(x * 0.5) * (float)Math.Cos(z * 0.4); } }
+        for (int z = 0; z < n; z++) { for (int x = 0; x < n; x++) { h[z * n + x] = 0.02f * (float)Math64.Sin(x * 0.5) * (float)Math64.Cos(z * 0.4); } }
         w.AddHeightField(h, n, n, new Vector3F(0.25f, 1f, 0.25f), new Vector3D(4, 0, -5), material: new Material3D(0.8f, 0f, 0f));
         w.AddArticulation(ArticulationDef.Quadruped(), new Vector3D(0, 0.62, 0));
         w.AddArticulation(ArticulationDef.Quadruped(), new Vector3D(6.5, 0.62, 0));

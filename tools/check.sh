@@ -32,6 +32,14 @@ scan 'Vector<T>' 'Vector<'
 scan 'platform math' '\b(Math|MathF)\.(Sin|Cos|Tan|Asin|Acos|Atan2?|SinCos|Sinh|Cosh|Tanh|Exp|Log2?|Log10|Pow|Cbrt|Hypot)\b'
 scan 'unsafe or hardware-dependent code' 'unsafe|Unsafe\.|MemoryMarshal|ProcessorCount|IsHardwareAccelerated|Vector512'
 
+# Scenes shared with the hash matrix, and the bench scene generators, must not call the platform's transcendentals:
+# their results differ between runtimes (browser-wasm against x64) and would make the same scene differ. Use Math64/Math32.
+# Exempt by path: bench metrics, reference drivers and tests that compare against Math as a black-box reference.
+scene_files="tests/Common tools/HashMatrix bench/Bar/Gen.cs bench/Bar/Gen3.cs bench/Bar/GenMachines.cs bench/Bar/SoftGen.cs bench/Bar/SceneBuilder2D.cs bench/Bar/SceneBuilder3D.cs"
+# shellcheck disable=SC2086
+hits="$(search '\b(Math|MathF)\.(Sin|Cos|Tan|Asin|Acos|Atan2?|SinCos|Sinh|Cosh|Tanh|Exp|Log2?|Log10|Pow|Cbrt|Hypot)\b' $scene_files || true)"
+if [ -n "$hits" ]; then echo "scan failed (platform math in a shared scene; use Math64/Math32):"; echo "$hits"; fail=1; fi
+
 # The README is the package page on nuget.org, where relative links break.
 if grep -nE '\]\((\.|/|[A-Za-z0-9_-]+/|[A-Za-z0-9_-]+\.[a-z]+)' README.md | grep -vE '\]\((https?:|mailto:|#)'; then
   echo "scan failed: README.md has a relative link; use absolute https://github.com/recursive-ai-oss/onephysics-csharp/... URLs"; fail=1
