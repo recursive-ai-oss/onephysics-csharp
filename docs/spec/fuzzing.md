@@ -16,9 +16,13 @@ tools/fuzz.sh build                    # Checked build, library instrumented, in
 tools/fuzz.sh seeds                    # copy testdata/fuzz-seeds into the corpora
 tools/fuzz.sh run mesh 600             # one target for 10 minutes
 tools/fuzz.sh run all 1500 4           # every target, 25 minutes each, four at a time (niced)
+tools/fuzz.sh run mesh,hull 300 2      # a chosen subset, 5 minutes each, two at a time
+tools/fuzz.sh chunk shard:2/6 1740 4   # one sixth of the targets, sized to take about 29 minutes in all
 tools/fuzz.sh minimize world3d-snapshot $FUZZ_HOME/crashes/world3d-snapshot/crash-0123456789
-tools/fuzz.sh report                   # executions, coverage, wall time and findings per target over all chunks
+tools/fuzz.sh report                   # per target: executions, coverage, wall time, chunks run and crashes on disk; a total line; exit 1 if any crash exists
 ```
+
+`<targets>` is `all`, a comma-separated list of names from `list`, or `shard:K/N` (the K-th of N interleaved parts of the sorted list). A long campaign is a series of chunks of at most 30 minutes: each chunk names its targets (for example `shard:1/6` to `shard:6/6`, on one machine or several), each target continues from its saved corpus, and every chunk starts from a fresh seed unless `FUZZ_SEED` is set. `chunk` takes a total time and a job count and sets the per-target budget so that all the selected targets fit. `report` counts crashes from the files in `crashes/<target>/` (one per distinct finding, however many chunks found it again), so its total is the number of distinct findings; a process that dies without writing a report (stack overflow, out of memory, a hang) leaves its in-flight input as `killed-*` or `hang-*` and is counted too. Rows of `stats.tsv` that are not a known target with numeric fields are ignored and counted. The script runs on Linux and macOS.
 
 State (instrumented build, corpora, crashes, logs, `stats.tsv`) lives under `$FUZZ_HOME`, default `~/onephysics/fuzz`, never in the checkout. Corpora persist between chunks, so coverage keeps accumulating; the heap is capped at 2 GB per process so runaway allocation shows up as a finding.
 

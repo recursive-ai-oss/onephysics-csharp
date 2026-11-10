@@ -18,8 +18,6 @@ public sealed class RecordingAllocationTests
         var body=w.AddCircle(0.5f,at:new(0,4));w.Warmup();
         using IDisposable recording=history?w.StartHistory(new HistoryOptions{KeyframeInterval=3,MemoryBudgetBytes=4*1024*1024}):w.StartRecording(Stream.Null);
         for(int i=0;i<300;i++){body.ApplyImpulse(new(0.0001f,0));w.Step(1f/60);}
-        long before=GC.GetAllocatedBytesForCurrentThread();
-        for(int i=0;i<100;i++){body.ApplyImpulse(new(0.0001f,0));w.Step(1f/60);}
-        Assert.Equal(0,GC.GetAllocatedBytesForCurrentThread()-before);
+        Core.AllocMeter.AssertAllocatesNothing(() => { for(int i=0;i<100;i++){body.ApplyImpulse(new(0.0001f,0));w.Step(1f/60);} }, "recorded steps");
     }
 }

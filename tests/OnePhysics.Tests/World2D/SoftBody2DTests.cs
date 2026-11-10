@@ -617,9 +617,6 @@ public class SoftBody2DHostTests
     {
         var w = Scene();
         Run(w, 60);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        Run(w, 30);
-        long grown = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.True(grown < 2048, "allocated " + grown + " bytes in 30 steps");
+        Core.AllocMeter.AssertAllocatesNothing(() => Run(w, 30), "soft body steps");
     }
 }

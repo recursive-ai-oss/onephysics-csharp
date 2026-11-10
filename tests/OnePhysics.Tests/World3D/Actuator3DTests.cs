@@ -448,10 +448,7 @@ public class Actuator3DTests
         // No wind field here: any area field costs the field stage 432 bytes a step (a separate finding), which is not the actuators' doing.
         var w = Scene(1, 79, wind: false);
         for (int i = 0; i < 900; i++) { w.Step(Dt); }   // long enough for everything to have landed, so no contact appears or disappears below
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 120; i++) { w.Step(Dt); }
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.True(allocated <= 4096, "allocated " + allocated + " bytes over 120 steps");
+        Core.AllocMeter.AssertAllocatesNothing(() => { for (int i = 0; i < 120; i++) { w.Step(Dt); } }, "steps with actuators");
     }
 
     [Fact]

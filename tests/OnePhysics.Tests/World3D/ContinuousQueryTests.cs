@@ -146,8 +146,6 @@ public class ContinuousQueryTests
         var source=w.AddSphere(0.25f,new Vector3D(0,3,0)); var shape=ConvexShape3D.Sphere(0.25f);
         var motion=new Vector3F(0,-5,0); var angular=new Vector3F(0,0,1); var penetrating=new Vector3D(0,1.1,0);
         for(int i=0;i<10;i++) { source.Sweep(motion,angular,out _); w.Depenetrate(shape,penetrating,default); }
-        long before=GC.GetAllocatedBytesForCurrentThread();
-        for(int i=0;i<100;i++) { source.Sweep(motion,angular,out _); w.Depenetrate(shape,penetrating,default); }
-        Assert.Equal(0,GC.GetAllocatedBytesForCurrentThread()-before);
+        Core.AllocMeter.AssertAllocatesNothing(() => { for(int i=0;i<100;i++) { source.Sweep(motion,angular,out _); w.Depenetrate(shape,penetrating,default); } }, "sweeps and depenetration");
     }
 }

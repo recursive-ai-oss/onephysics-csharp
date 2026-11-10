@@ -107,9 +107,7 @@ public class InspectionDetailTests
         for (int i = 0; i < 80; i++) { w.Step(Dt); Read(); }
         Assert.Equal(2, geometry.Bodies.Length); Assert.Single(geometry.ConstraintInspection.ToArray());
         Assert.Equal(2, geometry.InspectionVectors.Length); Assert.Equal(3, geometry.JointErrors.Length);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 20; i++) { w.Step(Dt); Read(); }
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        AllocMeter.AssertAllocatesNothing(() => { for (int i = 0; i < 20; i++) { w.Step(Dt); Read(); } }, "steps with spatial inspection");
         geometry.Clear(); Assert.Empty(geometry.InspectionVectors.ToArray()); Assert.Empty(geometry.JointErrors.ToArray());
     }
 }

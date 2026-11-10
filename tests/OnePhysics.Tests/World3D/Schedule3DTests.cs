@@ -187,9 +187,7 @@ public class Schedule3DTests
         var p = Pile(w, 0); var q = Pile(w, 60);
         w.CreateJoint(new PointJointDef { BodyA = q[1], BodyB = q[2] });
         for (int i = 0; i < 60; i++) { w.Step(Dt); }
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 20; i++) { w.Step(Dt); }
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Core.AllocMeter.AssertAllocatesNothing(() => { for (int i = 0; i < 20; i++) { w.Step(Dt); } }, "steps of a pile with a joint");
     }
 
     // A short chain of boxes in a row, joined by point joints, with the given joint kind and densities; returns a hash of the bodies after some steps with the given contact-only substep count.

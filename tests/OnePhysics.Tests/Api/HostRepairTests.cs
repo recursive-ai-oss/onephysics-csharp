@@ -82,9 +82,7 @@ public class HostRepairTests
         var a = new P2.PhysicsWorld2D(); a.AddCircle(1);
         var b = new P3.PhysicsWorld3D(); b.AddSphere(1);
         for (int i = 0; i < 100; i++) { a.ShiftOrigin(new Vector2D(1, 0)); a.ShiftOrigin(new Vector2D(-1, 0)); b.ShiftOrigin(new Vector3D(1, 0, 0)); b.ShiftOrigin(new Vector3D(-1, 0, 0)); }
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 100; i++) { a.ShiftOrigin(new Vector2D(1, 0)); a.ShiftOrigin(new Vector2D(-1, 0)); b.ShiftOrigin(new Vector3D(1, 0, 0)); b.ShiftOrigin(new Vector3D(-1, 0, 0)); }
-        Assert.Equal(before, GC.GetAllocatedBytesForCurrentThread());
+        Core.AllocMeter.AssertAllocatesNothing(() => { for (int i = 0; i < 100; i++) { a.ShiftOrigin(new Vector2D(1, 0)); a.ShiftOrigin(new Vector2D(-1, 0)); b.ShiftOrigin(new Vector3D(1, 0, 0)); b.ShiftOrigin(new Vector3D(-1, 0, 0)); } }, "origin shifts");
         double grid = 1.0 / 2147483648.0;
         a.ShiftOrigin(new Vector2D(grid, 0)); b.ShiftOrigin(new Vector3D(grid, 0, 0));
         var sa = a.Snapshot(); var sb = b.Snapshot();

@@ -101,10 +101,9 @@ public sealed class WorldScaleApiTests
         for (int i = 0; i < 40; i++) { var b = w.AddBox(new Vector3F(1, 1, 1), new Vector3D(2 + (i % 8) * 1.5, WorldScaleScenes.Height(4, 10) + 3 + (i / 8) * 1.2, 10 + (i % 3))); if (i % 4 == 0) { b.TimeScale = 0.5f; b.NeverSleep = true; } }
         w.SetSimulationLod([new Vector3D(0, 0, 0)], [new LodBand(8, 1), new LodBand(16, 2)], 4);
         w.SetTimeScaleRegions([new P3.TimeScaleRegion3D(new(10, -100, 0), new(20, 100, 20), 0.25f)]);
-        for (int s = 0; s < 60; s++) { w.Step(1f / 60); }
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int s = 0; s < 60; s++) { w.Step(1f / 60); }
-        long after = GC.GetAllocatedBytesForCurrentThread();
-        Assert.True(after - before <= 4096, "steady steps allocate " + (after - before) + " bytes");
+        // The pile lands and settles over the first few hundred steps, and the world's internal buffers grow to fit that (the last growth, 54 KB, comes at step 299).
+        // Steady state is what follows, so the window is judged after it.
+        for (int s = 0; s < 450; s++) { w.Step(1f / 60); }
+        Core.AllocMeter.AssertAllocatesNothing(() => { for (int s = 0; s < 60; s++) { w.Step(1f / 60); } }, "steady steps with level of detail, time scale and tiles");
     }
 }
