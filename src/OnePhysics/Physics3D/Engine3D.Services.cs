@@ -82,7 +82,7 @@ internal sealed partial class Engine3D
     private bool PairAllowed(int a, int b)
     {
         var owner = Core.Shapes.Owner;
-        if (owner[a] == owner[b] || !CanCollide(a, b) || JointsPreventCollision(owner[a], owner[b])) { return false; }
+        if (owner[a] == owner[b] || !CanCollide(a, b) || JointsPreventCollision(owner[a], owner[b]) || ArticulationBlocks(owner[a], owner[b])) { return false; }
         var predicate = Opt.PairFilter;
         if (predicate != null && !predicate(WrapShape(a), WrapShape(b))) { return false; }
         var filter = ContactFilter;
