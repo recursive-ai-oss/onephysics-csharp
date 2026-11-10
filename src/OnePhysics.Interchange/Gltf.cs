@@ -471,6 +471,7 @@ public static class GltfPhysicsImporter
             // The shape's frame in the body's frame: the body's rotation undone, scale kept (sizes take it below).
             var relT = body.RotM.Transposed() * (nodeWorld.T - body.Pos);
             var relR = body.RotM.Transposed() * rotN;
+            var relL = body.RotM.Transposed() * nodeWorld.L;
             var relQ = Io.Normalize(QuaternionD.CreateFromRotationMatrix(relR));
             int mat = 0;
             if (collider.Get("physicsMaterial") is { } pm)
@@ -535,7 +536,8 @@ public static class GltfPhysicsImporter
                     var pts = new double[verts.Length * 3];
                     for (int i = 0; i < verts.Length; i++)
                     {
-                        var v = relR * new Vector3D(verts[i].X * scale.X, verts[i].Y * scale.Y, verts[i].Z * scale.Z) + relT;
+                        // The full linear map, so a mirrored node mirrors the mesh; the rotation and scales above only serve the implicit shapes.
+                        var v = relL * new Vector3D(verts[i].X, verts[i].Y, verts[i].Z) + relT;
                         pts[3 * i] = v.X; pts[3 * i + 1] = v.Y; pts[3 * i + 2] = v.Z;
                     }
 
@@ -821,8 +823,20 @@ public static class GltfPhysicsImporter
             scene.Materials.Add((0.6, 0.0));
             foreach (var m in _materials) { scene.Materials.Add(m); }
             var nodes = new List<int>(); var names = new List<string>();
-            foreach (var b in bodies)
+            var used = new HashSet<int>();
+            foreach (var j in joints) { used.Add(j.A); used.Add(j.B); }
+            // A node that only carried a trigger or an unsupported shape leaves a static body with nothing on it: dropped unless a joint attaches to it.
+            bool Dropped(int i, BodyAcc b) => b.Shapes.Count == 0 && b.Node >= 0 && (b.Type != "static" || !used.Contains(i));
+            var map = new Dictionary<int, int>();
+            for (int i = 0; i < bodies.Count; i++)
             {
+                var b = bodies[i];
+                if (Dropped(i, b))
+                {
+                    if (b.Type != "static") { Warn("body-no-shape", b.Name, "a moving body has no collider and cannot be simulated; it is left out of the scene."); }
+                    continue;
+                }
+
                 var bd = new SceneFormat.BodyDef { Type = b.Type, X = b.Pos.X, Y = b.Pos.Y, Z = b.Pos.Z, Qx = b.Rot.X, Qy = b.Rot.Y, Qz = b.Rot.Z, Qw = b.Rot.W };
                 // Velocities are given in node space; the scene wants world axes.
                 var lv = b.RotM * b.LinVel; var av = b.RotM * b.AngVel;
@@ -831,18 +845,8 @@ public static class GltfPhysicsImporter
                 if (b.Com is Vector3D c) { bd.CenterOverride = Io.ToF(c); }
                 if (b.InertiaDiag is Vector3D d) { bd.InertiaOverride = Io.ToF(d); bd.InertiaRotation = Io.ToF(b.InertiaRot); }
                 bd.Shapes.AddRange(b.Shapes);
-                if (b.Type != "static" && b.Shapes.Count == 0) { Warn("body-no-shape", b.Name, "a moving body has no collider and cannot be simulated; it is left out of the scene."); continue; }
+                map[i] = scene.Bodies.Count;
                 scene.Bodies.Add(bd); nodes.Add(b.Node); names.Add(b.Name);
-            }
-
-            // Bodies dropped above shift later indices; joints are mapped through the kept order.
-            var map = new Dictionary<int, int>();
-            int kept = 0;
-            for (int i = 0; i < bodies.Count; i++)
-            {
-                var b = bodies[i];
-                if (b.Type != "static" && b.Shapes.Count == 0) { continue; }
-                map[i] = kept++;
             }
 
             foreach (var j in joints)

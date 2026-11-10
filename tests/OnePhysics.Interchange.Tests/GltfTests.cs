@@ -15,6 +15,8 @@ public sealed class GltfTests
     private static string D(double v) => v.ToString("R", CultureInfo.InvariantCulture);
 
     /// <summary>A floor, nine boxes, five spheres, four capsules (every one a body with its collider on the same node) and a point joint between the last two boxes: 20 bodies in all.</summary>
+    internal static string TwentyForFuzz() => Twenty();
+
     private static string Twenty()
     {
         var sb = new StringBuilder();

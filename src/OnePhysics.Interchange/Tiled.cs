@@ -529,6 +529,7 @@ public static class TiledImporter
                 {
                     foreach (var poly in cls.Fallback)
                     {
+                        if (poly.Count < 3) { continue; }
                         double bx = col * (double)m.TW, by = row * (double)m.TH;
                         var wp = poly.Select(p => world(bx + p.X, by + p.Y)).ToList();
                         var rel = wp.Select(p => new Vector2D(p.X - wp[0].X, p.Y - wp[0].Y)).ToList();

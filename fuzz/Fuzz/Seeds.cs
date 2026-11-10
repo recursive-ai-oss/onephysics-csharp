@@ -26,6 +26,12 @@ internal static class Seeds
             }
         }
 
+        foreach (var (target, text) in new[] { ("interchange-urdf", FuzzInterchange.Urdf), ("interchange-mjcf", FuzzInterchange.Mjcf), ("interchange-gltf", FuzzInterchange.Gltf), ("interchange-tiled", FuzzInterchange.Tmj), ("interchange-ldtk", FuzzInterchange.Ldtk) })
+        {
+            File.WriteAllText(Path.Combine(root, target, "valid"), text);
+        }
+
+        File.WriteAllText(Path.Combine(root, "interchange-tiled", "valid-xml"), FuzzInterchange.Tmx);
         File.WriteAllBytes(Path.Combine(root, "snapshot-delta", "valid"), RecursiveAI.OnePhysics.SnapshotEncoding.CreateDelta(FuzzSnapshotEncoding.Base, new byte[512]));
         File.WriteAllBytes(Path.Combine(root, "snapshot-compressed", "valid"), RecursiveAI.OnePhysics.SnapshotEncoding.Compress(new byte[512]));
         var literals = new byte[256];
