@@ -45,7 +45,7 @@ public sealed class FluidDef
 }
 
 /// <summary>Generation-checked planar fluid handle. A removed or default fluid throws InvalidOperationException when accessed.</summary>
-public readonly struct Fluid
+public readonly struct Fluid : IEquatable<Fluid>
 {
     private readonly Field _field;
     internal Fluid(Field field)=>_field=field;
@@ -59,6 +59,18 @@ public readonly struct Fluid
     public double SurfaceOffset {get=>_field.Definition.SurfaceHeight;set{var d=Definition;d.SurfaceOffset=value;SetDefinition(d);}}
     /// <summary>Flow m/s; setting validates first.</summary>
     public Vector2F Flow {get{var d=_field.Definition;return new(d.Flow.X,d.Flow.Y);}set{var d=Definition;d.Flow=value;SetDefinition(d);}}
+    /// <summary>True when both handles name the same fluid of the same world (a stale handle still equals itself).</summary>
+    public bool Equals(Fluid other) => _field.SameHandle(other._field);
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => obj is Fluid f && Equals(f);
+    /// <summary>A hash of the slot and generation.</summary>
+    public override int GetHashCode() => (_field.Index * 397) ^ _field.Generation;
+    /// <summary>Equality of handles.</summary>
+    public static bool operator ==(Fluid a, Fluid b) => a.Equals(b);
+    /// <summary>Inequality of handles.</summary>
+    public static bool operator !=(Fluid a, Fluid b) => !a.Equals(b);
+    /// <summary>Text such as <c>Fluid(#0, gen 1)</c>, or <c>Fluid(default)</c> for the default handle.</summary>
+    public override string ToString() => _field.IsDefault ? "Fluid(default)" : "Fluid(#" + _field.Index.ToString(System.Globalization.CultureInfo.InvariantCulture) + ", gen " + _field.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture) + ")";
     /// <summary>Removes the fluid; stale handles throw.</summary>
     public void Remove()=>_field.Destroy();
 }

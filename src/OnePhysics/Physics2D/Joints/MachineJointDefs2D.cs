@@ -51,7 +51,7 @@ public struct JointAxisSettings
 }
 
 /// <summary>Angular velocity coupling; supporting hinges are separate joints. Invalid parameters throw on creation.</summary>
-public struct GearJointDef
+public struct GearJointDef : IJointDef2D
 {
     /// <summary>First body in the destination world.</summary>
     public Body BodyA { get; set; }
@@ -73,7 +73,7 @@ public struct GearJointDef
 }
 
 /// <summary>Pinion A drives rack B along an axis fixed in B; supporting hinge/slider joints are separate. Invalid parameters throw on creation.</summary>
-public struct RackAndPinionJointDef
+public struct RackAndPinionJointDef : IJointDef2D
 {
     /// <summary>First body in the destination world.</summary>
     public Body BodyA { get; set; }
@@ -98,7 +98,7 @@ public struct RackAndPinionJointDef
 }
 
 /// <summary>Ratio-weighted rope length conserved between two anchors and fixed world points. Invalid parameters throw on creation.</summary>
-public struct PulleyJointDef
+public struct PulleyJointDef : IJointDef2D
 {
     /// <summary>First body in the destination world.</summary>
     public Body BodyA { get; set; }
@@ -136,7 +136,7 @@ public struct PulleyJointDef
 }
 
 /// <summary>Anchor B follows a spline in A's origin frame. Invalid parameters throw on creation.</summary>
-public struct PathJointDef
+public struct PathJointDef : IJointDef2D
 {
     /// <summary>First body in the destination world.</summary>
     public Body BodyA { get; set; }
@@ -169,7 +169,7 @@ public struct PathJointDef
 }
 
 /// <summary>Planar three-degree-of-freedom constraint in a frame fixed to A. Invalid parameters throw on creation.</summary>
-public struct ConfigurableJointDef
+public struct ConfigurableJointDef : IJointDef2D
 {
     /// <summary>First body in the destination world.</summary>
     public Body BodyA { get; set; }

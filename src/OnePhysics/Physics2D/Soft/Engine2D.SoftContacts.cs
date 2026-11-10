@@ -17,7 +17,7 @@ internal sealed partial class Engine2D
     private void DetectRange(SoftBodyData d, int from, int to, SoftTaskBuf buf)
     {
         float r = d.Radius;
-        float spec = Constants2D.SpeculativeDistance;
+        float spec = Opt.SpeculativeDistance;
         float fastSq = 0.25f * r * r;
         var px2 = d.X; var pp2 = d.XP;
         double ox = d.Ox, oy = d.Oy;

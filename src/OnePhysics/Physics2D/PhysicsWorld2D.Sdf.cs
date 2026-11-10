@@ -17,29 +17,46 @@ public sealed partial class PhysicsWorld2D
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddSdf");
         ArgumentNullException.ThrowIfNull(grid);
-        var loops = grid.ExtractContours(tolerance < 0f ? 0.25f * grid.CellSize : tolerance);
         var body = CreateBody(type, at, angleRadians);
-        try
-        {
-            if (type != BodyType.Static)
-            {
-                foreach (var piece in ConvexCover2D.Cover(loops))
-                {
-                    var points = new Vector2F[piece.Length];
-                    for (int i = 0; i < points.Length; i++) points[i] = new Vector2F(piece[i].X, piece[i].Y);
-                    try { CreatePolygon(body, points, 0f, ShapeFor(material, density)); }
-                    catch (InvalidShapeException) { }   // a sliver below the minimum shape extent carries no area worth colliding with
-                }
-                return body;
-            }
-            foreach (var loop in loops)
-            {
-                var points = new Vector2F[loop.Length];
-                for (int i = 0; i < points.Length; i++) points[i] = new Vector2F(loop[i].X, loop[i].Y);
-                CreateChain(body, points, loop: true, twoSided: false, ShapeFor(material, 0f));
-            }
-        }
+        try { CreateSdf(body, grid, ShapeFor(material, type == BodyType.Static ? 0f : density), tolerance); }
         catch (Exception) { body.Destroy(); throw; }
         return body;
+    }
+
+    /// <summary>
+    /// Attaches a 2D signed distance field to a body; <see cref="AddSdf"/> describes the contour, its tolerance and how a static body (chains) and a moving body (a convex cover of the inside) collide.
+    /// <paramref name="def"/> gives the materials, filters, density and local pose of every piece (null means the defaults); <paramref name="tolerance"/> below zero means a quarter of a cell.
+    /// Returns the first shape created, or a default handle when the field has no contour (or no inside for a moving body).
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="grid"/> is null.</exception>
+    /// <exception cref="ArgumentException">The body belongs to another world.</exception>
+    public Shape CreateSdf(Body body, SdfGrid2D grid, ShapeDef? def = null, float tolerance = -1f)
+    {
+        using var replayMutation = RecordMutation("PhysicsWorld2D.CreateSdf");
+        ArgumentNullException.ThrowIfNull(grid);
+        if (body.World != this) { throw new ArgumentException("The body belongs to another world.", nameof(body)); }
+        var loops = grid.ExtractContours(tolerance < 0f ? 0.25f * grid.CellSize : tolerance);
+        var shapeDef = def ?? new ShapeDef();
+        Shape first = default;
+        bool any = false;
+        void Note(Shape s) { if (!any) { first = s; any = true; } }
+        if (body.Type != BodyType.Static)
+        {
+            foreach (var piece in ConvexCover2D.Cover(loops))
+            {
+                var points = new Vector2F[piece.Length];
+                for (int i = 0; i < points.Length; i++) points[i] = new Vector2F(piece[i].X, piece[i].Y);
+                try { Note(CreatePolygon(body, points, 0f, shapeDef)); }
+                catch (InvalidShapeException) { }   // a sliver below the minimum shape extent carries no area worth colliding with
+            }
+            return first;
+        }
+        foreach (var loop in loops)
+        {
+            var points = new Vector2F[loop.Length];
+            for (int i = 0; i < points.Length; i++) points[i] = new Vector2F(loop[i].X, loop[i].Y);
+            Note(CreateChain(body, points, loop: true, twoSided: false, shapeDef));
+        }
+        return first;
     }
 }

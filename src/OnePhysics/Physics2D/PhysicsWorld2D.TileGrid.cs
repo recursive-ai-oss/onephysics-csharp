@@ -24,6 +24,7 @@ public sealed partial class PhysicsWorld2D
         ArgumentNullException.ThrowIfNull(grid);
         if(body.World!=this) throw new ArgumentException("The body belongs to another world.",nameof(body));
         if(body.Type!=BodyType.Static) throw new StaticOnlyShapeException("Tile grids require a static body.");
+        RejectLocalPose(def, "tile grids");
         TileGridState2D.ValidateDefinition(def??new ShapeDef());
         var table=GridMaterials.Convert(materials);
         if(table.Length!=0 || grid.MaterialIndices.Length!=0)GridMaterials.Check(grid.MaterialIndices,grid.Tiles.Length,table.Length);

@@ -43,7 +43,7 @@ public struct QueryFilter2D
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1051:Do not declare visible instance fields", Justification = "Handle fields, not properties, so that `hit.Body.LinearVelocity = v` compiles: a property result is not a variable (CS1612), a readonly field is.")]
 public readonly struct QueryHit2D
 {
-    internal QueryHit2D(Shape shape, Vector2D point, Vector2F normal, float fraction, float distance)
+    internal QueryHit2D(Shape shape, Vector2D point, Vector2F normal, float fraction, float distance, int subShape)
     {
         Shape = shape;
         Body = shape.Body;
@@ -51,6 +51,7 @@ public readonly struct QueryHit2D
         Normal = normal;
         Fraction = fraction;
         Distance = distance;
+        SubShapeId = subShape;
         IsHit = true;
     }
 
@@ -74,6 +75,9 @@ public readonly struct QueryHit2D
 
     /// <summary>Ray and casts: distance travelled to the hit, in metres. Overlaps and closest point: distance from the query centre to the shape's surface (0 inside).</summary>
     public float Distance { get; }
+
+    /// <summary>The part of the shape that was hit: always 0 for rays, casts and closest points, because a 2D shape has no children (a chain, height field or tile grid is one shape per segment, and 2D contact events carry 0 as well); -1 for overlaps, which report the shape only. The same convention as the 3D hit.</summary>
+    public int SubShapeId { get; }
 
     /// <inheritdoc/>
     public override string ToString() =>

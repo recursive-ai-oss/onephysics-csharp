@@ -13,7 +13,7 @@ internal enum QueryMode : byte { Closest, Any, All }
 internal struct RawHit
 {
     public double Key;
-    public int Slot;
+    public int Slot, Sub;
     public double Px, Py;
     public float Nx, Ny, Fraction, Distance;
 }
@@ -217,6 +217,7 @@ internal sealed partial class Engine2D
                 var cache = new SimplexCache2D();
                 var d = Distance2D.Compute(in Geom[s], in q.Mover, xf, ref cache, true);
                 if (!(d.Distance <= 0f)) { return false; }
+                h.Sub = -1;
                 if (mode == QueryMode.All || mode == QueryMode.Any) { h.Key = s; return true; }
                 // Closest overlap: the shape whose surface is nearest the query shape's centre (0 when the centre is inside it).
                 Vec2 c = xf.Apply(q.Mover.Centroid);

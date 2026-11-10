@@ -114,7 +114,12 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="InvalidHandleException">A body is the default value, destroyed (<see cref="StaleHandleException"/>) or from another world.</exception>
     public FixedJoint CreateJoint(in FixedJointDef def) { using var replayMutation = RecordMutation("PhysicsWorld3D.CreateJoint"); return new(CreateFixedJointDef(in def)); }
 
-    private Joint CreateFixedJointDef(in FixedJointDef def) => Make(def.BodyA, def.BodyB, Base(JointType3D.Fixed, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque, def.LifetimeSteps));
+    private Joint CreateFixedJointDef(in FixedJointDef def)
+    {
+        var d = Base(JointType3D.Fixed, Flags(false, false, false, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
+        d.Hertz = def.LinearHertz; d.Damping = def.LinearDampingRatio; d.Swing1 = def.AngularHertz; d.Swing2 = def.AngularDampingRatio;
+        return Make(def.BodyA, def.BodyB, d);
+    }
 
     /// <summary>Creates a point (ball-and-socket) joint. Throws as <see cref="CreateJoint(in FixedJointDef)"/>.</summary>
     public PointJoint CreateJoint(in PointJointDef def) { using var replayMutation = RecordMutation("PhysicsWorld3D.CreateJoint"); return new(CreatePointJointDef(in def)); }
@@ -126,8 +131,8 @@ public sealed partial class PhysicsWorld3D
 
     private Joint CreateDistanceJointDef(in DistanceJointDef def)
     {
-        var d = Base(JointType3D.Distance, Flags(def.EnableLimit, false, def.EnableSpring, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
-        d.Length = def.Length; d.Lower = def.MinLength; d.Upper = def.MaxLength; d.Hertz = def.SpringHertz; d.Damping = def.SpringDampingRatio;
+        var d = Base(JointType3D.Distance, Flags(def.EnableLimit, def.EnableMotor, def.EnableSpring, def.CollideConnected), def.LocalFrameA, def.LocalFrameB, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
+        d.Length = def.Length; d.Lower = def.MinLength; d.Upper = def.MaxLength; d.Hertz = def.SpringHertz; d.Damping = def.SpringDampingRatio; d.MotorSpeed = def.MotorSpeed; d.MaxMotor = def.MaxMotorForce;
         return Make(def.BodyA, def.BodyB, d);
     }
 
