@@ -51,11 +51,13 @@ jobs:
         run: |
           dotnet build tests/OnePhysics.Tests -c Release
           dotnet build tests/OnePhysics.Tools.Tests -c Release
+          dotnet build tests/OnePhysics.Interchange.Tests -c Release
       - name: Test
         if: '!matrix.full'
         run: |
           dotnet test --project tests/OnePhysics.Tests -c Release --no-build
           dotnet test --project tests/OnePhysics.Tools.Tests -c Release --no-build
+          dotnet test --project tests/OnePhysics.Interchange.Tests -c Release --no-build
       - name: Native AOT toolchain (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang zlib1g-dev
@@ -162,11 +164,11 @@ jobs:
         run: |
           dotnet pack src/OnePhysics -c Release -o "$RUNNER_TEMP/packages"
           dotnet pack src/OnePhysics.Tools -c Release -o "$RUNNER_TEMP/packages"
-          # When the Interchange package ships, pack it here and add its two ls lines below:
-          # dotnet pack src/OnePhysics.Interchange -c Release -o "$RUNNER_TEMP/packages"
+          dotnet pack src/OnePhysics.Interchange -c Release -o "$RUNNER_TEMP/packages"
           ls -l "$RUNNER_TEMP/packages"
           ls "$RUNNER_TEMP/packages"/RecursiveAI.OnePhysics.[0-9]*.nupkg "$RUNNER_TEMP/packages"/RecursiveAI.OnePhysics.[0-9]*.snupkg
           ls "$RUNNER_TEMP/packages"/RecursiveAI.OnePhysics.Tools.*.nupkg "$RUNNER_TEMP/packages"/RecursiveAI.OnePhysics.Tools.*.snupkg
+          ls "$RUNNER_TEMP/packages"/RecursiveAI.OnePhysics.Interchange.*.nupkg "$RUNNER_TEMP/packages"/RecursiveAI.OnePhysics.Interchange.*.snupkg
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: packages

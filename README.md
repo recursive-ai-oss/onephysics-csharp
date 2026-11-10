@@ -74,7 +74,11 @@ ulong hash = world.ComputeHash();
 ## Related packages
 
 - `RecursiveAI.OnePhysics.Tools`: authoring-time geometry, never needed at runtime. Convex decomposition of triangle meshes, hull simplification, mesh cleaning and mass properties, tetrahedralization and quality triangulation, ragdoll fitting from a skeleton, 2D polygon decomposition and sprite outlines. See [its page](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/src/OnePhysics.Tools/README.md) and [the specification](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/spec/tools.md).
-<!-- Interchange: when RecursiveAI.OnePhysics.Interchange ships, add its line here: importers for glTF physics, URDF, MJCF, Tiled and LDtk. -->
+- `RecursiveAI.OnePhysics.Interchange`: importers for URDF and MJCF robots, glTF physics scenes, and Tiled and LDtk levels (see Importers below).
+
+## Importers
+
+`RecursiveAI.OnePhysics.Interchange` reads URDF and MJCF robots into articulations, glTF files with physics extensions into 3D scenes, and Tiled and LDtk levels into 2D tile grids, shapes and markers. It touches no file system, reports what it cannot express as warnings, and refuses hostile files with a typed error. See [the importer specification](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/docs/spec/interchange.md).
 
 ## Guide
 

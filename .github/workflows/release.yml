@@ -82,8 +82,7 @@ jobs:
         run: |
           dotnet restore tests/OnePhysics.Tests
           dotnet restore tests/OnePhysics.Tools.Tests
-          # When the Interchange package ships, restore its tests here too:
-          # dotnet restore tests/OnePhysics.Interchange.Tests
+          dotnet restore tests/OnePhysics.Interchange.Tests
 
       - name: Tag matches the package version
         env:
@@ -95,26 +94,28 @@ jobs:
         run: |
           dotnet build tests/OnePhysics.Tests -c Release --no-restore
           dotnet build tests/OnePhysics.Tools.Tests -c Release --no-restore
-          # dotnet build tests/OnePhysics.Interchange.Tests -c Release --no-restore
+          dotnet build tests/OnePhysics.Interchange.Tests -c Release --no-restore
       - name: Test
         run: |
           dotnet test --project tests/OnePhysics.Tests -c Release --no-build --results-directory "$ONEPHYSICS_ARTIFACTS/TestResults"
           dotnet test --project tests/OnePhysics.Tools.Tests -c Release --no-build --results-directory "$ONEPHYSICS_ARTIFACTS/TestResults"
-          # dotnet test --project tests/OnePhysics.Interchange.Tests -c Release --no-build --results-directory "$ONEPHYSICS_ARTIFACTS/TestResults"
+          dotnet test --project tests/OnePhysics.Interchange.Tests -c Release --no-build --results-directory "$ONEPHYSICS_ARTIFACTS/TestResults"
 
       - name: Pack
         # The shipped packages, from the binaries the tests ran on, all at the version of the tag. Symbols come out as .snupkg files.
         run: |
           dotnet pack src/OnePhysics -c Release --no-build -o "$RUNNER_TEMP/packages"
           dotnet pack src/OnePhysics.Tools -c Release --no-build -o "$RUNNER_TEMP/packages"
-          # dotnet pack src/OnePhysics.Interchange -c Release --no-build -o "$RUNNER_TEMP/packages"
+          dotnet pack src/OnePhysics.Interchange -c Release --no-build -o "$RUNNER_TEMP/packages"
           ls -l "$RUNNER_TEMP/packages"
-          # Each package must exist with its symbols, and the Tools package must depend on the same version of the runtime.
+          # Each package must exist with its symbols, and the Tools and Interchange packages must depend on the same version of the runtime.
           version="${GITHUB_REF_NAME#v}"
-          for id in RecursiveAI.OnePhysics RecursiveAI.OnePhysics.Tools; do
+          for id in RecursiveAI.OnePhysics RecursiveAI.OnePhysics.Tools RecursiveAI.OnePhysics.Interchange; do
             ls "$RUNNER_TEMP/packages/$id.$version.nupkg" "$RUNNER_TEMP/packages/$id.$version.snupkg"
           done
-          unzip -p "$RUNNER_TEMP/packages/RecursiveAI.OnePhysics.Tools.$version.nupkg" RecursiveAI.OnePhysics.Tools.nuspec | grep -q "id=\"RecursiveAI.OnePhysics\" version=\"$version\""
+          for id in RecursiveAI.OnePhysics.Tools RecursiveAI.OnePhysics.Interchange; do
+            unzip -p "$RUNNER_TEMP/packages/$id.$version.nupkg" "$id.nuspec" | grep -q "id=\"RecursiveAI.OnePhysics\" version=\"$version\""
+          done
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2

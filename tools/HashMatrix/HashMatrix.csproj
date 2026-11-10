@@ -24,6 +24,9 @@
     <EmbeddedResource Include="../../testdata/replay/*.oppr" LogicalName="replay.%(Filename)" />
     <ProjectReference Include="../../src/OnePhysics/OnePhysics.csproj" />
     <ProjectReference Include="../../src/OnePhysics.Tools/OnePhysics.Tools.csproj" />
+    <ProjectReference Include="../../src/OnePhysics.Interchange/OnePhysics.Interchange.csproj" />
+    <Compile Include="../../tests/Common/InterchangeSamples.cs" LinkBase="Checks" />
+    <EmbeddedResource Include="../../testdata/interchange/*" LogicalName="interchange.%(Filename)%(Extension)" />
     <Compile Include="../../tests/Common/ToolsMeshes.cs;../../tests/Common/DecomposedPileScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/TetBlob.cs;../../tests/Common/TestSkeleton.cs;../../tests/Common/TetDropScene.cs;../../tests/Common/AutoRagdollScenes.cs" LinkBase="Checks" />
     <!-- The batching experiment's simulation code (not its command-line program) is hashed here. -->

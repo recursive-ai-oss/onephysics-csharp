@@ -14,6 +14,7 @@
     <PackageReference Include="SharpFuzz" Version="2.3.0" />
     <ProjectReference Include="../../src/OnePhysics/OnePhysics.csproj" />
     <ProjectReference Include="../../src/OnePhysics.Tools/OnePhysics.Tools.csproj" />
+    <ProjectReference Include="../../src/OnePhysics.Interchange/OnePhysics.Interchange.csproj" />
     <InternalsVisibleTo Include="RecursiveAI.OnePhysics.Tests" />
   </ItemGroup>
 

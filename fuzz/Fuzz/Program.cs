@@ -118,6 +118,11 @@ internal static class Program
         ["tools-tetrahedralize"] = FuzzAuthoring.Tetrahedralize,
         ["tools-triangulate2d"] = FuzzAuthoring.Triangulate2D,
         ["tools-autoragdoll"] = FuzzAuthoring.AutoRagdoll,
+        ["interchange-urdf"] = FuzzInterchange.UrdfTarget,
+        ["interchange-mjcf"] = FuzzInterchange.MjcfTarget,
+        ["interchange-gltf"] = FuzzInterchange.GltfTarget,
+        ["interchange-tiled"] = FuzzInterchange.TiledTarget,
+        ["interchange-ldtk"] = FuzzInterchange.LdtkTarget,
     };
 
     private static int Main(string[] args)
