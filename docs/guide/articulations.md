@@ -50,5 +50,5 @@ arm.ComputeMassMatrix(mass);                              // M(q), row-major
 - **Task targets** (`SetTaskTarget`) steer a point of a link to a place by moving the drive targets of the joints with a position drive. They respect contacts, so an arm that meets a box pushes it. The tool must come from a direction it can reach: it is a local solver, so route it above an obstacle first and then down.
 - **Substeps are automatic.** The articulation steps itself in 4 or more substeps, more for stiff drives or long chains with heavy ends (up to 64), so it costs more than the same number of ordinary joints. Set `Substeps` to pin it.
 - **Contacts push links out and bodies away.** A box pushed by an arm is accelerated by the arm's joint-space effective mass, so a weak drive cannot push a heavy box. A body squeezed between a link and static ground is held by the ground.
-- **Not modelled:** closed loops, mimic joints, self-collision forces (a `SelfCollision` articulation raises contact events only), sleeping (articulations stay awake).
+- **Not modelled:** closed loops, mimic joints, sleeping (articulations stay awake).
 - Articulations are part of the snapshot, hash, `Fork`, regions (a region that holds one link holds the whole articulation), replays, `ShiftOrigin` and `DebugContent.Articulations`. The normative description is `docs/spec/articulations.md`.

@@ -19,10 +19,10 @@ public sealed class ArticulationHostTests
     {
         var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { WorldId = id });
         w.AddBox(new Vector3F(200f, 1f, 200f), at: new Vector3D(0, -0.5, 0), type: BodyType.Static);
-        w.AddArticulation(P3.ArticulationDef.Quadruped(), new Vector3D(0, 0.62, 0));
+        w.AddArticulation(P3.ArticulationDef.Quadruped(), new Vector3D(0, 0.625, 0));
         var arm = w.AddArticulation(P3.ArticulationDef.RobotArm(0.9f, 7, 8f), new Vector3D(3, 0, 0));
         arm.SetJointTarget(2, 0.5f);
-        w.AddBox(new Vector3F(0.2f, 0.2f, 0.2f), at: new Vector3D(0.6, 0.4, 0.1), density: 200f);
+        w.AddBox(new Vector3F(0.2f, 0.2f, 0.2f), at: new Vector3D(0.625, 0.375, 0.125), density: 200f);
         return w;
     }
 
@@ -36,27 +36,28 @@ public sealed class ArticulationHostTests
         return w;
     }
 
-    // Articulation contact arithmetic is in double relative to absolute positions, so a shifted world follows the unshifted one to rounding (not bit for bit, unlike rigid bodies); two worlds shifted alike stay bit-identical to each other.
+    // The articulation works relative to its root and on the 2^-32 grid, so a world shifted by whole grid steps steps bit for bit like the unshifted one, translated (inputs on the grid, as any Q31.32 value is).
     [Fact]
     public void ShiftingTheOriginStepsLikeTheUnshiftedWorld3D()
     {
         var a = World3D(901); var b = World3D(902);
         var shift = new Vector3D(64, 0, -32);
-        for (int i = 0; i < 90; i++) { a.Step(Dt); b.Step(Dt); }
+        for (int i = 0; i < 300; i++) { a.Step(Dt); b.Step(Dt); }
         a.ShiftOrigin(shift);
-        for (int i = 0; i < 90; i++) { a.Step(Dt); b.Step(Dt); }
+        for (int i = 0; i < 300; i++) { a.Step(Dt); b.Step(Dt); }
         var qa = a.GetArticulations(); var qb = b.GetArticulations();
         for (int k = 0; k < qa.Length; k++)
         {
             for (int l = 0; l < qa[k].LinkCount; l++)
             {
                 var pa = qa[k].GetLink(l).Position; var pb = qb[k].GetLink(l).Position;
-                Assert.Equal(pb.X - shift.X, pa.X, 6); Assert.Equal(pb.Y - shift.Y, pa.Y, 6); Assert.Equal(pb.Z - shift.Z, pa.Z, 6);
+                Assert.Equal(pb.X - shift.X, pa.X); Assert.Equal(pb.Y - shift.Y, pa.Y); Assert.Equal(pb.Z - shift.Z, pa.Z);
+                Assert.Equal(qb[k].GetLink(l).Rotation, qa[k].GetLink(l).Rotation);
             }
 
             var ja = new double[qa[k].VelocityCount]; var jb = new double[qb[k].VelocityCount];
             qa[k].GetVelocities(ja); qb[k].GetVelocities(jb);
-            for (int j = 0; j < ja.Length; j++) { Assert.Equal(jb[j], ja[j], 5); }
+            for (int j = 0; j < ja.Length; j++) { Assert.Equal(jb[j], ja[j]); }
         }
     }
 
@@ -65,16 +66,16 @@ public sealed class ArticulationHostTests
     {
         var a = World2D(903); var b = World2D(904);
         var shift = new Vector2D(64, -32);
-        for (int i = 0; i < 90; i++) { a.Step(Dt); b.Step(Dt); }
+        for (int i = 0; i < 300; i++) { a.Step(Dt); b.Step(Dt); }
         a.ShiftOrigin(shift);
-        for (int i = 0; i < 90; i++) { a.Step(Dt); b.Step(Dt); }
+        for (int i = 0; i < 300; i++) { a.Step(Dt); b.Step(Dt); }
         var qa = a.GetArticulations(); var qb = b.GetArticulations();
         for (int k = 0; k < qa.Length; k++)
         {
             for (int l = 0; l < qa[k].LinkCount; l++)
             {
                 var pa = qa[k].GetLink(l).Position; var pb = qb[k].GetLink(l).Position;
-                Assert.Equal(pb.X - shift.X, pa.X, 6); Assert.Equal(pb.Y - shift.Y, pa.Y, 6);
+                Assert.Equal(pb.X - shift.X, pa.X); Assert.Equal(pb.Y - shift.Y, pa.Y);
             }
         }
     }

@@ -138,6 +138,35 @@ internal sealed class ArticulationModel
     /// <summary>Sets the base pose of a fixed-base articulation (the placement of the root link in the world).</summary>
     public void SetBasePose(D3 p, Q4 q) { PlacePos[0] = p; PlaceRot[0] = q.Normalized(); }
 
+    /// <summary>
+    /// While <see cref="BeginRelative"/> is in effect, the model works in a frame whose origin is the root's world position at that moment (<see cref="Anchor"/>): the root's translation is measured from it and every position
+    /// the model computes is relative to it. Rounding then does not depend on how far the articulation is from the world origin, which is what lets a shifted world step bit for bit like the unshifted one.
+    /// </summary>
+    public D3 Anchor;
+    private bool _relative;
+
+    /// <summary>Moves the model into the frame of its root: the root's translation becomes zero and <see cref="Anchor"/> holds where it was.</summary>
+    public void BeginRelative()
+    {
+        if (_relative) { return; }
+        _relative = true;
+        if (Kind[0] == JointKind.Fixed) { Anchor = PlacePos[0]; PlacePos[0] = default; }
+        else { int po = PosOff[0]; Anchor = new D3(Q[po], Q[po + 1], Q[po + 2]); Q[po] = 0.0; Q[po + 1] = 0.0; Q[po + 2] = 0.0; }
+    }
+
+    /// <summary>Back to world coordinates: the root's translation (as it is now, relative to the anchor) is added to the anchor. Call <see cref="ForwardKinematics"/> to refresh the link poses.</summary>
+    public void EndRelative()
+    {
+        if (!_relative) { return; }
+        _relative = false;
+        if (Kind[0] == JointKind.Fixed) { PlacePos[0] = Anchor; }
+        else { int po = PosOff[0]; Q[po] = Anchor.X + Q[po]; Q[po + 1] = Anchor.Y + Q[po + 1]; Q[po + 2] = Anchor.Z + Q[po + 2]; }
+        Anchor = default;
+    }
+
+    /// <summary>World position of a link's origin (valid outside a relative section).</summary>
+    public D3 WorldOrigin(int link) => Anchor + Pw[link];
+
     /// <summary>Recomputes every link's pose and motion transform from the joint positions.</summary>
     public void ForwardKinematics()
     {
