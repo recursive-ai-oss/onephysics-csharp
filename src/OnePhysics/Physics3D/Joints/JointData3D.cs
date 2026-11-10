@@ -135,13 +135,17 @@ internal struct JointData3D
         switch (t)
         {
             case JointType3D.Fixed:
+                // A fixed joint keeps its angular spring in the swing fields, which no other part of a fixed joint uses.
+                AtLeastZero(Hertz, "LinearHertz", t); AtLeastZero(Damping, "LinearDampingRatio", t);
+                AtLeastZero(Swing1, "AngularHertz", t); AtLeastZero(Swing2, "AngularDampingRatio", t);
+                break;
             case JointType3D.Point:
                 break;
             case JointType3D.Distance:
                 if (!(Length >= 0.005f) || !float.IsFinite(Length)) { throw new ArgumentOutOfRangeException("Length", Length, "distance joint: Length = " + Num(Length) + " must be finite and at least 0.005."); }
                 AtLeastZero(Lower, "MinLength", t);
                 if (float.IsNaN(Upper) || Upper < Lower) { throw new InvalidJointException("distance joint: MaxLength " + Num(Upper) + " is below MinLength " + Num(Lower) + "."); }
-                AtLeastZero(Hertz, "SpringHertz", t); AtLeastZero(Damping, "SpringDampingRatio", t);
+                MotorSpring(t, "MaxMotorForce");
                 break;
             case JointType3D.Hinge:
                 if (Limit) { AngleRange(Lower, Upper, "Angle", t); }

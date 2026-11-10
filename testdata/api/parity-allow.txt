@@ -2,7 +2,7 @@
 # Line format:  Stem: member text -- why
 # Stem is the type name without its 2D/3D suffix, after the test's vocabulary table folds sphere/circle, hinge/revolute,
 # fixed/weld, slider/prismatic, rotation/angle, convex hull/polygon, soft ball/soft circle and local frame/local anchor together.
-# "*" matches any text. Entries marked "gap:" are real asymmetries that are not physics (work still to do); the rest are intentional.
+# "*" matches any text. Every entry is an intentional difference: physics that does not apply in the other dimension.
 
 # ---- shapes and terrain that exist in one dimension only
 PhysicsWorld: method *Voxel* -- voxel grids are 3D; the 2D counterpart is the tile grid
@@ -27,7 +27,6 @@ PhysicsWorld: method AddTaperedCylinder -- as AddCylinder
 PhysicsWorld: method CreateCylinder -- as AddCylinder
 PhysicsWorld: method AddCompound -- a 3D compound shape; a 2D body simply holds several shapes
 PhysicsWorld: method CreateCompound -- as AddCompound
-PhysicsWorld: method CreateSdf -- gap: the 2D world has AddSdf only
 PhysicsWorld: method AddStrip -- 2D cloth strips; 3D uses AddCloth
 PhysicsWorld: method AddCloth -- 3D cloth; 2D uses AddStrip
 PhysicsWorld: method AttachCloth* -- 3D cloth attachments; 2D strips attach through their definition
@@ -36,7 +35,6 @@ PhysicsWorld: property ClothLinkCount -- as AttachCloth
 PhysicsWorld: method AddSeam -- 3D cloth seams
 PhysicsWorld: method AddBalloon -- 2D soft-body presets; 3D soft bodies are built from tetrahedral meshes
 PhysicsWorld: method AddBlob -- as AddBalloon
-PhysicsWorld: method OverlapSoftBodies -- gap: 3D finds soft bodies through the deformable queries
 PhysicsWorld: method AddCar -- 2D side-view vehicle presets; 3D vehicles are built from VehicleDef
 PhysicsWorld: method AddKart -- as AddCar
 PhysicsWorld: method AddTruck -- as AddCar
@@ -54,11 +52,7 @@ Shape: method DigCircle -- as above
 Shape: method FillCircle -- as above
 Shape: method StampBox -- as above
 BodyDef: property InertiaAngleOverride -- 3D has a rotation of the inertia frame; a planar inertia is one number
-ShapeDef: property LocalAngle -- gap: a 2D shape's local pose is set on the shape creation call
-ShapeDef: property LocalPosition -- gap: as LocalAngle
 Joint: method SetAxis -- 2D prismatic and wheel axis; 3D joints take a frame
-Joint: method SetWeldSprings -- gap: 3D fixed joints are rigid
-WeldJoint: method SetWeldSprings -- gap: as above
 Joint: method SetPoseDrive -- 3D pose drive of swing-twist and six-DOF joints
 Joint: method ClearPoseDrive -- as SetPoseDrive
 Joint: method SetSwingTwistLimits -- swing and twist exist only in 3D
@@ -77,11 +71,6 @@ ConeJoint*: type only in 3D -- cone, swing-twist, six-DOF and point joints const
 SwingTwistJoint*: type only in 3D -- as ConeJoint
 SixDofJoint*: type only in 3D -- as ConeJoint
 PointJoint*: type only in 3D -- as ConeJoint
-GearJoint: type only in 3D -- gap: 2D gear, path, pulley and rack-and-pinion joints are returned as the general Joint
-PathJoint: type only in 3D -- gap: as GearJoint
-PulleyJoint: type only in 3D -- gap: as GearJoint
-RackAndPinionJoint: type only in 3D -- gap: as GearJoint
-IJointDef: type only in 3D -- gap: 2D definitions are separate structs without the shared interface
 JointFrame: type only in 3D -- 3D joints attach by frame (point and rotation); 2D by anchor
 PathAngle: type only in 3D -- 3D path joints orient the body along the path
 *JointDef: property LocalAnchor* -- 2D joints attach by an anchor point (3D by a frame)
@@ -91,17 +80,10 @@ PathAngle: type only in 3D -- 3D path joints orient the body along the path
 *JointDef: property Up -- 3D path joint orientation
 *JointDef: property AlignTangent -- 2D path joint option
 *JointDef: property Length -- 2D pulley rope length (3D reads it from the anchors)
-WeldJointDef: property *Hertz -- gap: 3D fixed joints are rigid
-WeldJointDef: property *DampingRatio -- gap: as above
-DistanceJoint*: property *Motor* -- gap: 3D distance joints have no motor
 
 # ---- queries, events, options
-QueryHit: property SubShapeId -- gap: 2D hits carry no triangle or sub-shape id
-Collision: property TangentImpulse -- gap: 3D reports friction through the contact manifold
-WorldOptions: property SpeculativeDistance -- gap: the 2D speculative margin is derived from the broadphase margin
 Material: field DefaultRollingResistance -- 3D default of 0.003; the 2D default is 0
 DeformableHit: property ParticleC -- 3D hits are triangles with three particles; 2D hits are edges with two
-Fluid: method * -- gap: the 3D buoyancy volume handle has value equality and text; the 2D one does not
 Buoyancy: method ComputeSubmergedArea -- 2D reports area; 3D reports volume (Submerged)
 Buoyancy: method Submerged -- as above
 SubmergedArea: type only in 2D -- 2D reports area; 3D reports volume

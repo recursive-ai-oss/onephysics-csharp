@@ -9,6 +9,9 @@ Normative, language-neutral description of `src/OnePhysics/Physics2D/`: what a 2
 * `maxExtent` = largest distance from `lc` to any core vertex plus the radius; `minExtent` = smallest of: radius (circle, capsule, segment), smallest `n·(v − centroid)` over polygon edges plus radius.
 * Rotation is stored as (cos, sin). Angles in definitions are converted with onemath's correctly rounded `SinCos` (double, rounded to float); `Body.Angle` uses its `Atan2`.
 * Bodies created with `StartAsleep` are put to sleep when created.
+* **Shape local pose.** `ShapeDef.LocalPosition` and `LocalAngle` place a shape in the body's frame: the shape's points, normals, ghost vertices and mass offset are rotated by `SinCos(LocalAngle)` (onemath, rounded to float) and then translated, once, at creation; nothing else ever sees the pose, so snapshots, queries and the hash carry the baked geometry. Each placed point is checked against the shape coordinate bound. A tile grid refuses a pose; an empty shape has nothing to move.
+* **Speculative distance.** `WorldOptions2D.SpeculativeDistance` (0..1, default 0.02 = four linear slops) is the distance within which a manifold keeps non-touching points; the narrowphase, manifold recycling, the pair-box test and soft-body contacts all read it. It is saved in the optional section "SPEC" (`0x43455053`, version 1: one f32), written only when the value is not the default and registered after "WSCL" (the last section), so a world that never changes it keeps its bytes and hash. A restore of a snapshot without the section puts the default back.
+* **Query sub-shape ids.** `QueryHit2D.SubShapeId` is 0 for rays, casts and closest points and -1 for overlaps, as in 3D; a 2D shape has no children (chains, height fields and tile grids are one shape per segment, and 2D contact events carry 0).
 
 ## Pair table
 

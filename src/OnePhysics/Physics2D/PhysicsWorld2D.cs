@@ -51,6 +51,7 @@ public sealed partial class PhysicsWorld2D
         _core.AddSection(_engine.Water);
         _core.AddSection(_engine.Articulations);
         _core.RegisterWorldScale();
+        _core.AddSection(new SpeculativeDistance2D(_engine));
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
 
@@ -463,6 +464,20 @@ public sealed partial class PhysicsWorld2D
     {
         if (body.World != this) { throw new ArgumentException("The body belongs to another world.", nameof(body)); }
         var d = def ?? new ShapeDef();
+        if (d.HasLocalPose)
+        {
+            if (!float.IsFinite(d.LocalPosition.X) || !float.IsFinite(d.LocalPosition.Y) || !float.IsFinite(d.LocalAngle))
+            {
+                throw new ArgumentOutOfRangeException(nameof(def), "ShapeDef.LocalPosition and LocalAngle must be finite (position " + d.LocalPosition + ", angle " + d.LocalAngle.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ").");
+            }
+
+            // The local pose is baked into the geometry, so the engine, snapshots and queries only ever see body-frame shapes.
+            var (sin, cos) = RecursiveAI.OneMath.Math64.SinCos(d.LocalAngle);
+            var placed = geometry.Placed(new Vec2(d.LocalPosition.X, d.LocalPosition.Y), new Rot2((float)cos, (float)sin));
+            d.LocalPosition = default; d.LocalAngle = 0f;
+            return new Shape(this, _engine.AddShape(body.Handle, in placed, in d));
+        }
+
         return new Shape(this, _engine.AddShape(body.Handle, in geometry, in d));
     }
 
@@ -557,6 +572,11 @@ public sealed partial class PhysicsWorld2D
         catch (InvalidShapeException e) { body.Destroy(); throw e.ForParameter(nameof(points)); }
         catch (ArgumentException) { body.Destroy(); throw; }
         return body;
+    }
+
+    internal static void RejectLocalPose(ShapeDef? def, string what)
+    {
+        if (def is { HasLocalPose: true }) { throw new ArgumentException("ShapeDef.LocalPosition and LocalAngle are not supported for " + what + "; place the body instead.", nameof(def)); }
     }
 
     private static ShapeDef ShapeFor(Material2D? material, float density)

@@ -1,5 +1,6 @@
 using System;
 using RecursiveAI.OneMath;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics.Physics3D;
 
@@ -111,6 +112,38 @@ public sealed partial class PhysicsWorld3D
 
     /// <summary>Number of soft bodies in the world.</summary>
     public int SoftBodyCount => _engine.SoftHandles.Count;
+
+    /// <summary>
+    /// A stateless sensor against soft bodies: writes, in ascending slot order, the soft bodies with a particle sphere that overlaps the shape placed at <paramref name="position"/> and <paramref name="rotation"/>
+    /// (touching counts), and returns how many were written. When <paramref name="results"/> is too small the lowest slots are kept. Sleeping bodies are included.
+    /// Unlike <see cref="OverlapDeformablesAll"/> it answers per body, not per surface triangle, and it tests the particle spheres the body collides with.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The position or rotation is not finite, or the position is beyond the world bound.</exception>
+    public int OverlapSoftBodies(in ConvexShape3D shape, Vector3D position, QuaternionF rotation, Span<SoftBody> results)
+    {
+        CheckPosition(position, nameof(position));
+        var q = CheckRotation(rotation);
+        var inverse = q.Conjugated();
+        var e = _engine;
+        int n = 0;
+        for (int i = 0; i < e.SoftHandles.HighWater && n < results.Length; i++)
+        {
+            if (!e.SoftHandles.IsLive(i)) { continue; }
+            var d = e.SoftData[i]!;
+            bool hit = false;
+            for (int k = 0; k < d.N && !hit; k++)
+            {
+                var rel = inverse.Rotate(new Vector3F((float)(d.Pos[3 * k] - position.X), (float)(d.Pos[3 * k + 1] - position.Y), (float)(d.Pos[3 * k + 2] - position.Z)));
+                if (!(System.Math.Abs(rel.X) < 4e6f && System.Math.Abs(rel.Y) < 4e6f && System.Math.Abs(rel.Z) < 4e6f)) { continue; }
+                var dist = Gjk3D.Distance(in shape, in d.SphereShape, new RigidTransformF(QuaternionF.Identity, rel));
+                hit = dist.Overlapping || dist.Distance <= 0f;
+            }
+
+            if (hit) { results[n++] = new SoftBody(this, i, e.SoftHandles.GenerationOf(i)); }
+        }
+
+        return n;
+    }
 
     /// <summary>The edges that tore in the last step, in body and edge order (see <see cref="SoftBodyDef.TearStrain"/>). Valid until the next <see cref="Step"/>; not part of a snapshot.</summary>
     public ReadOnlySpan<SoftTearEvent> SoftTearEvents => _engine.SoftTearEvents;

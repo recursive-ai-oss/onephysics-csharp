@@ -7,6 +7,15 @@ Removing the last collision-suppressing joint makes the bodies eligible for
 contact again. This matches the publicly documented filter-joint behaviour:
 https://box2d.org/documentation/group__filter__joint.html .
 
+## Typed views and the shared definition interface (2D)
+
+The planar world returns `GearJoint`, `RackAndPinionJoint`, `PulleyJoint` and `PathJoint` from `CreateJoint(def)` and the `Add*` shortcuts, with the same members as the spatial views (`Ratio`; the path motor's `EnableMotor`, `MotorSpeed`, `MaxMotorForce`), implicit conversion to `Joint` and an explicit cast back that throws `InvalidJointException` for another kind. Every planar definition struct (`RevoluteJointDef` ... `ConfigurableJointDef`) implements `IJointDef2D` (`BodyA`, `BodyB`), as the spatial ones implement `IJointDef3D`.
+
+## Spatial distance motor and fixed-joint springs
+
+* **Distance motor.** `DistanceJointDef.EnableMotor`, `MotorSpeed` (rate of change of the length, m/s, positive lengthens) and `MaxMotorForce` (N, at least 0), also on the `Joint` and `DistanceJoint`. As in 2D the motor acts only while the spring is on and the length range (`MinLength` < `MaxLength`) is open: after the spring row of each substep it is a velocity row along the joint axis with an accumulated impulse clamped to `MaxMotorForce` times the substep, warm started like the hinge and slider motors. The joint keeps its payload slot `JP.Motor`; the stored joint record already held the speed, limit and flag, so snapshot bytes of existing worlds do not change.
+* **Fixed-joint springs.** `FixedJointDef.LinearHertz`/`LinearDampingRatio` and `AngularHertz`/`AngularDampingRatio` (0 = rigid, the default), `Joint.SetFixedSprings` and `FixedJoint.SetFixedSprings`. A spring is Catto's soft constraint with frequency and damping ratio (as the other joint springs, `MakeSpring`): the three position rows and the three rotation rows are each solved as one block with the spring coefficients in the biased pass of a substep, and only the stored impulses are applied in the warm start; the relax pass skips them, as in 2D's weld. The linear spring is kept in the joint record's `Hertz` and `Damping`, the angular one in the `Swing1`/`Swing2` fields, which a fixed joint does not otherwise use (the snapshot record is unchanged). A fixed joint with a linear spring leaves the wide point-joint kernel (which only knows the rigid block) for the scalar path, like a joint whose body has axis locks.
+
 ## Planar machines
 
 The existing revolute joint is both a point joint and the planar cone/limb

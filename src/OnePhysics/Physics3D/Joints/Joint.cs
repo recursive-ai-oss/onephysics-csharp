@@ -46,7 +46,7 @@ public readonly partial struct Joint : IEquatable<Joint>
 {
     private const uint Hinge = 1u << (int)JointType3D.Hinge, Slider = 1u << (int)JointType3D.Slider, Distance = 1u << (int)JointType3D.Distance, Path = 1u << (int)JointType3D.Path;
     private const uint Wheel = 1u << (int)JointType3D.Wheel;
-    private const uint LimitTypes = Hinge | Slider | Distance | Wheel, MotorTypes = Hinge | Slider | Path | Wheel, SpringTypes = Hinge | Slider | Distance | Wheel;
+    private const uint LimitTypes = Hinge | Slider | Distance | Wheel, MotorTypes = Hinge | Slider | Path | Wheel | Distance, SpringTypes = Hinge | Slider | Distance | Wheel;
 
     private readonly PhysicsWorld3D? _world;
     private readonly JointHandle _handle;
@@ -196,7 +196,7 @@ public readonly partial struct Joint : IEquatable<Joint>
         set { using var replayMutation = _world?.RecordMutation("Joint.MotorSpeed");  ref var d = ref Rec(out var w, out int c); Need(in d, "motor", MotorTypes); var e = d; e.MotorSpeed = value; Commit(w, c, ref d, in e); }
     }
 
-    /// <summary>Largest motor force in newtons of a slider or path joint, at least 0. A hinge's motor takes a torque: <see cref="MaxMotorTorque"/>.</summary>
+    /// <summary>Largest motor force in newtons of a slider, path or distance joint, at least 0. A hinge's motor takes a torque: <see cref="MaxMotorTorque"/>.</summary>
     /// <exception cref="InvalidJointException">The joint's motor is rotational (hinge) or the joint has none.</exception>
     public float MaxMotorForce
     {
@@ -215,12 +215,12 @@ public readonly partial struct Joint : IEquatable<Joint>
     private static void NeedForceMotor(in JointData3D d)
     {
         if (d.Type == (byte)JointType3D.Hinge) { throw new InvalidJointException("A hinge joint's motor is rotational and takes a torque: use MaxMotorTorque."); }
-        Need(in d, "motor force", Slider | Path);
+        Need(in d, "motor force", Slider | Path | Distance);
     }
 
     private static void NeedTorqueMotor(in JointData3D d)
     {
-        if (d.Type == (byte)JointType3D.Slider || d.Type == (byte)JointType3D.Path) { throw new InvalidJointException("A " + JointData3D.Name((JointType3D)d.Type) + " joint's motor is linear and takes a force: use MaxMotorForce."); }
+        if (d.Type == (byte)JointType3D.Slider || d.Type == (byte)JointType3D.Path || d.Type == (byte)JointType3D.Distance) { throw new InvalidJointException("A " + JointData3D.Name((JointType3D)d.Type) + " joint's motor is linear and takes a force: use MaxMotorForce."); }
         Need(in d, "motor torque", Hinge | Wheel);
     }
 
@@ -289,6 +289,19 @@ public readonly partial struct Joint : IEquatable<Joint>
         Need(in d, "swing and twist limits", 1u << (int)JointType3D.SwingTwist);
         var e = d;
         e.Lower = lowerTwist; e.Upper = upperTwist; e.Swing1 = swingYHalfAngle; e.Swing2 = swingZHalfAngle;
+        Commit(w, c, ref d, in e);
+    }
+
+    /// <summary>Fixed joint: sets the linear and angular spring frequencies (Hz, 0 = rigid) and damping ratios. A spring acts once per substep, in the biased pass, like the other joint springs.</summary>
+    /// <exception cref="InvalidJointException">The joint is not a fixed joint.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A value is negative or not finite.</exception>
+    public void SetFixedSprings(float linearHertz, float linearDampingRatio, float angularHertz, float angularDampingRatio)
+    {
+        using var replayMutation = _world?.RecordMutation("Joint.SetFixedSprings");
+        ref var d = ref Rec(out var w, out int c);
+        Need(in d, "fixed spring", 1u << (int)JointType3D.Fixed);
+        var e = d;
+        e.Hertz = linearHertz; e.Damping = linearDampingRatio; e.Swing1 = angularHertz; e.Swing2 = angularDampingRatio;
         Commit(w, c, ref d, in e);
     }
 

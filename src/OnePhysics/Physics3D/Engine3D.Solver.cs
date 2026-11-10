@@ -209,8 +209,9 @@ internal sealed partial class Engine3D
             if (cs.KindOf(c) == ConstraintKind.Joint)
             {
                 byte jt = Joints[c].Type;
-                if (JointIsLocked(c)) SlotOf[c] = -1;
-                if (!JointIsLocked(c) && WidePointBlock(jt))
+                bool springFixed = jt == (byte)JointType3D.Fixed && Joints[c].Hertz > 0f;
+                if (JointIsLocked(c) || springFixed) SlotOf[c] = -1;
+                if (!JointIsLocked(c) && !springFixed && WidePointBlock(jt))
                 {
                     if (jlane == 0) { ClearJointIdx(group); }
                     PreparePointJoint(c, group, jlane++);

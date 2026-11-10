@@ -16,25 +16,25 @@ public sealed partial class PhysicsWorld2D
     { Type = (byte)type, Flags = Flags(false, false, false, collide), BreakForce = force, BreakTorque = torque, LifetimeSteps = lifetime };
 
     /// <summary>Creates angular coupling omegaA + ratio * omegaB = 0. Invalid bodies or a zero/non-finite ratio throw before mutation.</summary>
-    public Joint CreateJoint(in GearJointDef def)
+    public GearJoint CreateJoint(in GearJointDef def)
     {
         using var mutation = RecordMutation("PhysicsWorld2D.CreateJoint");
         var d = MachineBase(JointType2D.Gear, def.CollideConnected, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
         d.OffAngle = def.Ratio;
-        return Make(def.BodyA, def.BodyB, d);
+        return new GearJoint(Make(def.BodyA, def.BodyB, d));
     }
 
     /// <summary>Creates rack coupling ratio * omegaA = velocityB along B's axis. Ratio is metres/radian. Invalid bodies, ratio or axis throw before mutation.</summary>
-    public Joint CreateJoint(in RackAndPinionJointDef def)
+    public RackAndPinionJoint CreateJoint(in RackAndPinionJointDef def)
     {
         using var mutation = RecordMutation("PhysicsWorld2D.CreateJoint");
         var d = MachineBase(JointType2D.RackAndPinion, def.CollideConnected, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
         d.OffAngle = def.Ratio; d.AxX = def.LocalAxisB.X; d.AxY = def.LocalAxisB.Y;
-        return Make(def.BodyA, def.BodyB, d);
+        return new RackAndPinionJoint(Make(def.BodyA, def.BodyB, d));
     }
 
     /// <summary>Creates a pulley conserving lengthA + ratio * lengthB. Length zero derives from the initial anchors. Invalid bodies, points, length or nonpositive ratio throw.</summary>
-    public Joint CreateJoint(in PulleyJointDef def)
+    public PulleyJoint CreateJoint(in PulleyJointDef def)
     {
         using var mutation = RecordMutation("PhysicsWorld2D.CreateJoint");
         var d = MachineBase(JointType2D.Pulley, def.CollideConnected, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
@@ -48,18 +48,18 @@ public sealed partial class PhysicsWorld2D
         }
         if (!float.IsFinite(def.MinLength) || !float.IsFinite(def.MaxLength) || def.MinLength < -1f || def.MaxLength < -1f) { throw new ArgumentOutOfRangeException(nameof(def), "Pulley limits must be finite, nonnegative or -1 for derived length."); }
         d.Lower = def.MinLength < 0f ? d.Length : def.MinLength; d.Upper = def.MaxLength < 0f ? d.Length : def.MaxLength;
-        return MakeMachine(def.BodyA, def.BodyB, d, m);
+        return new PulleyJoint(MakeMachine(def.BodyA, def.BodyB, d, m));
     }
 
     /// <summary>Creates a path joint; copies 2..256 finite local points. Invalid bodies, points or motor settings throw before mutation.</summary>
-    public Joint CreateJoint(in PathJointDef def)
+    public PathJoint CreateJoint(in PathJointDef def)
     {
         using var mutation = RecordMutation("PhysicsWorld2D.CreateJoint");
         ArgumentNullException.ThrowIfNull(def.Points);
         var d = MachineBase(JointType2D.Path, def.CollideConnected, def.BreakForce, def.BreakTorque, def.LifetimeSteps);
         d.Flags = Flags(false, def.EnableMotor, false, def.CollideConnected); d.LBx = def.LocalAnchorB.X; d.LBy = def.LocalAnchorB.Y;
         d.MotorSpeed = def.MotorSpeed; d.MaxMotor = def.MaxMotorForce;
-        return MakeMachine(def.BodyA, def.BodyB, d, new MachineData2D { Points = (Vector2F[])def.Points.Clone(), Loop = def.Loop, Align = def.AlignTangent });
+        return new PathJoint(MakeMachine(def.BodyA, def.BodyB, d, new MachineData2D { Points = (Vector2F[])def.Points.Clone(), Loop = def.Loop, Align = def.AlignTangent }));
     }
 
     /// <summary>Creates a configurable joint, with x, y and angle axes. Invalid bodies, anchors, modes or axis settings throw before mutation.</summary>
@@ -73,19 +73,19 @@ public sealed partial class PhysicsWorld2D
     }
 
     /// <summary>Couples two angular speeds; ratio defaults to one, positive means opposite rotation. Invalid bodies or ratio throw.</summary>
-    public Joint AddGear(Body a, Body b, float ratio = 1f, bool collideConnected = false)
+    public GearJoint AddGear(Body a, Body b, float ratio = 1f, bool collideConnected = false)
         => CreateJoint(new GearJointDef { BodyA = a, BodyB = b, Ratio = ratio, CollideConnected = collideConnected });
 
     /// <summary>Couples pinion rotation to rack translation along a finite nonzero world direction; ratio defaults to one metre/radian. Invalid bodies or parameters throw.</summary>
-    public Joint AddRackAndPinion(Body pinion, Body rack, Vector2F rackAxis, float ratio = 1f, bool collideConnected = false)
+    public RackAndPinionJoint AddRackAndPinion(Body pinion, Body rack, Vector2F rackAxis, float ratio = 1f, bool collideConnected = false)
         => CreateJoint(new RackAndPinionJointDef { BodyA = pinion, BodyB = rack, LocalAxisB = DirToLocal(rack, rackAxis, nameof(rackAxis)), Ratio = ratio, CollideConnected = collideConnected });
 
     /// <summary>Conserves ratio-weighted rope length derived from initial world anchors and fixed points. Ratio defaults to one and must be positive; points must be finite within +-2^21.</summary>
-    public Joint AddPulley(Body a, Body b, Vector2D anchorA, Vector2D anchorB, Vector2D fixedA, Vector2D fixedB, float ratio = 1f, bool collideConnected = false)
+    public PulleyJoint AddPulley(Body a, Body b, Vector2D anchorA, Vector2D anchorB, Vector2D fixedA, Vector2D fixedB, float ratio = 1f, bool collideConnected = false)
         => CreateJoint(new PulleyJointDef { BodyA = a, BodyB = b, LocalAnchorA = ToLocal(a, anchorA, nameof(anchorA)), LocalAnchorB = ToLocal(b, anchorB, nameof(anchorB)), FixedPointA = fixedA, FixedPointB = fixedB, Ratio = ratio, CollideConnected = collideConnected });
 
     /// <summary>Follows a spline through 2..256 finite world points within +-2^21, attached to pathBody. Points are copied. Rotation is free; open endpoints clamp travel.</summary>
-    public Joint AddPath(Body pathBody, Body follower, ReadOnlySpan<Vector2D> worldPoints, bool loop = false, bool collideConnected = false)
+    public PathJoint AddPath(Body pathBody, Body follower, ReadOnlySpan<Vector2D> worldPoints, bool loop = false, bool collideConnected = false)
     {
         if (worldPoints.Length < 2 || worldPoints.Length > 256) { throw new ArgumentOutOfRangeException(nameof(worldPoints), worldPoints.Length, "Path requires 2..256 points."); }
         var points = new Vector2F[worldPoints.Length];

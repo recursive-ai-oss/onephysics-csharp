@@ -19,6 +19,7 @@ internal static class JRow3
     public const int PathP = 30, PathT = 33, PathN = 36, PathB = 39, PathEnd = 42;   // path: point (from A's centre of mass), frame in world axes, which end is clamped (-1, 0, 1)
     public const int SixSpring = 46;                             // 3 floats per axis: stiffness, mass scale, impulse scale
     public const int SixMaxMotor = 64;                           // 6 floats
+    public const int AngBias = 72, AngMass = 73, AngImp = 74;    // fixed joint: coefficients of the angular spring
     public const int SwingLimit = 70;                            // sin(half angle / 2) of swing y and z
 }
 
@@ -382,6 +383,10 @@ internal sealed partial class Engine3D
         {
             case JointType3D.Mouse:
                 Put(s, JRow3.PulleyA, new Vector3F((float)(j.FxA - pB[0]), (float)(j.FyA - pB[1]), (float)(j.FzA - pB[2])));
+                break;
+            case JointType3D.Fixed:
+                MakeSpring(j.Swing1, j.Swing2, h, out bias, out ms, out isc);
+                s[JRow3.AngBias] = bias; s[JRow3.AngMass] = ms; s[JRow3.AngImp] = isc;
                 break;
             case JointType3D.SwingTwist:
                 s[JRow3.SwingLimit] = (float)Math64.Sin(0.5 * j.Swing1);

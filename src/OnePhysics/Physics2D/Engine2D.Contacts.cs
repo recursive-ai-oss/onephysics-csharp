@@ -477,7 +477,7 @@ internal sealed partial class Engine2D
         ref PairResult res = ref _results[i];
         res = default;
         // Shapes of awake bodies have this step's tight box and a copy of their stored box in one record; any other shape (asleep, static) reads its stored box from the tree.
-        const double Gap = Constants2D.SpeculativeDistance + 0.005;
+        double Gap = (double)Opt.SpeculativeDistance + 0.005;
         double ax0, ay0, ax1, ay1, bx0, by0, bx1, by1;
         double fax0, fay0, fax1, fay1, fbx0, fby0, fbx1, fby1;
         if (_boxStamp[sa] == _stamp)
@@ -531,7 +531,7 @@ internal sealed partial class Engine2D
         double dy = (pBy - (double)wB.Y) - (pAy - (double)wA.Y);
         var xf = Transform2.InvMul(new Transform2(default, qA), new Transform2(new Vec2((float)dx, (float)dy), qB));
         tested++;
-        var m = Collide2D.Collide(in Geom[sa], in Geom[sb], xf, Constants2D.SpeculativeDistance, out float clearance);
+        var m = Collide2D.Collide(in Geom[sa], in Geom[sb], xf, Opt.SpeculativeDistance, out float clearance);
         res.Count = m.PointCount;
         if (m.PointCount == 0)
         {
@@ -796,7 +796,7 @@ internal sealed partial class Engine2D
             float rbx = cB * bx - sB * by, rby = sB * bx + cB * by;
             // Separation now: the one when made plus the motion of B's point relative to A's point along the normal.
             float sep = Mem.At(pl, PointSlot(k, 4)) + (((dx + rbx) - rax) * nx + ((dy + rby) - ray) * ny);
-            if (!(sep <= Constants2D.SpeculativeDistance && sep >= -RecycleDepth)) { return false; } // false for NaN too
+            if (!(sep <= Opt.SpeculativeDistance && sep >= -RecycleDepth)) { return false; } // false for NaN too
             if (k == 0) { res.RAx0 = rax; res.RAy0 = ray; res.RBx0 = rbx; res.RBy0 = rby; res.Sep0 = sep; }
             else { res.RAx1 = rax; res.RAy1 = ray; res.RBx1 = rbx; res.RBy1 = rby; res.Sep1 = sep; }
         }
@@ -841,7 +841,7 @@ internal sealed partial class Engine2D
             float rax = cA * ax - sA * ay, ray = sA * ax + cA * ay;
             float rbx = cB * bx - sB * by, rby = sB * bx + cB * by;
             float sep = Mem.At(pl, PointSlot(k, 4)) + (((dx + rbx) - rax) * nx + ((dy + rby) - ray) * ny);
-            if (!(sep <= Constants2D.SpeculativeDistance && sep >= -RecycleDepth)) { return false; }
+            if (!(sep <= Opt.SpeculativeDistance && sep >= -RecycleDepth)) { return false; }
             if (k == 0) { rax0 = rax; ray0 = ray; rbx0 = rbx; rby0 = rby; sep0 = sep; }
             else { rax1 = rax; ray1 = ray; rbx1 = rbx; rby1 = rby; sep1 = sep; }
         }
@@ -884,7 +884,7 @@ internal sealed partial class Engine2D
         float inv = 1f / len;
         float nx = ddx * inv, ny = ddy * inv;
         float sep = len - radii;
-        if (!(sep <= Constants2D.SpeculativeDistance && sep >= -RecycleDepth)) { return false; }
+        if (!(sep <= Opt.SpeculativeDistance && sep >= -RecycleDepth)) { return false; }
         float hAr = 0.5f * sep + radiusA, hBr = 0.5f * sep + radiusB;
         float rax = coreAx + hAr * nx, ray = coreAy + hAr * ny;
         float rbx = coreBx - hBr * nx, rby = coreBy - hBr * ny;

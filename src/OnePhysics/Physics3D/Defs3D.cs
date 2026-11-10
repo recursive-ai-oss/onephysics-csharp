@@ -534,6 +534,9 @@ public readonly struct Collision
     /// <summary>Sum of the points' normal impulses.</summary>
     public float NormalImpulse => PointCount == 0 ? 0f : ((_p0.NormalImpulse + (PointCount > 1 ? _p1.NormalImpulse : 0f)) + (PointCount > 2 ? _p2.NormalImpulse : 0f)) + (PointCount > 3 ? _p3.NormalImpulse : 0f);
 
+    /// <summary>Sum of the points' <see cref="ContactPoint3D.TangentImpulse"/> (each the length of that point's two friction impulses, so this is a total magnitude, not a vector).</summary>
+    public float TangentImpulse => PointCount == 0 ? 0f : ((_p0.TangentImpulse + (PointCount > 1 ? _p1.TangentImpulse : 0f)) + (PointCount > 2 ? _p2.TangentImpulse : 0f)) + (PointCount > 3 ? _p3.TangentImpulse : 0f);
+
     /// <summary>For hit events: the approach speed along the normal at the start of the step; 0 for other callbacks.</summary>
     public float ApproachSpeed { get; }
 

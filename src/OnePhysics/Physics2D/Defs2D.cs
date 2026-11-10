@@ -148,6 +148,14 @@ public sealed class WorldOptions2D
     public float SleepThreshold { get => _replaySleepThreshold; set { _replaySleepThreshold = value; ReplayChanged?.Invoke("WorldOptions2D.SleepThreshold"); } }
     private float _replaySleepThreshold = 0.05f;
 
+    /// <summary>
+    /// Distance at which surfaces get a speculative contact, metres: a manifold keeps points whose surfaces are apart by at most this much, so a fast body meets a surface with a contact already in place. 0..1, default 0.02 (four linear slops).
+    /// Pairs exist only while the broadphase boxes, grown by <see cref="BroadphaseMargin"/>, overlap, so a value above the margin gains nothing. Saved in snapshots and covered by the world hash when it is not the default; a restore brings the saved value back.
+    /// </summary>
+    public float SpeculativeDistance { get => _replaySpeculativeDistance; set { _replaySpeculativeDistance = value; ReplayChanged?.Invoke("WorldOptions2D.SpeculativeDistance"); } }
+    private float _replaySpeculativeDistance = DefaultSpeculativeDistance;
+    internal const float DefaultSpeculativeDistance = Constants2D.SpeculativeDistance;
+
     /// <summary>Which events the world records. Default: everything but per-step contact persist events (needed for <c>OnCollisionStay</c>).</summary>
     public EventMask Events { get => _replayEvents; set { _replayEvents = value; ReplayChanged?.Invoke("WorldOptions2D.Events"); } }
     private EventMask _replayEvents = EventMask.Default;
@@ -253,6 +261,7 @@ public sealed class WorldOptions2D
         Positive(JointDampingRatio, nameof(JointDampingRatio), true);
         Positive(MaxLinearSpeed, nameof(MaxLinearSpeed), false);
         Positive(MaxRotationPerSubstep, nameof(MaxRotationPerSubstep), false);
+        if (!(SpeculativeDistance >= 0f && SpeculativeDistance <= 1f)) { throw new ArgumentOutOfRangeException(nameof(SpeculativeDistance), SpeculativeDistance, "SpeculativeDistance must be within 0..1."); }
         if (!(BroadphaseMargin >= 0.0 && BroadphaseMargin <= 100.0)) { throw new ArgumentOutOfRangeException(nameof(BroadphaseMargin), BroadphaseMargin, "BroadphaseMargin must be within 0..100."); }
     }
 
@@ -390,6 +399,17 @@ public struct ShapeDef
 
     /// <summary>Unity-style layer, 0..31, used by the world's layer collision matrix and by query layer masks. Default 0.</summary>
     public int Layer { get; set; }
+
+    /// <summary>
+    /// Position of the shape in the body's frame, metres; the shape's own coordinates are moved by it after <see cref="LocalAngle"/> is applied. Default (0, 0).
+    /// Applies to every shape made by the Create calls (circles, capsules, polygons, boxes, segments, chains, height fields); a tile grid refuses a non-zero local pose with an <see cref="ArgumentException"/>, and an empty shape has no geometry to move. A non-finite value throws <see cref="ArgumentOutOfRangeException"/>.
+    /// </summary>
+    public Vector2F LocalPosition { get; set; }
+
+    /// <summary>Rotation of the shape about the body's origin before <see cref="LocalPosition"/> is added, radians, finite. Default 0. Same shape kinds as <see cref="LocalPosition"/>.</summary>
+    public float LocalAngle { get; set; }
+
+    internal readonly bool HasLocalPose => LocalPosition.X != 0f || LocalPosition.Y != 0f || LocalAngle != 0f;
 
     /// <summary>Sets friction, restitution and rolling resistance from a material.</summary>
     public ShapeDef WithMaterial(Material2D m)

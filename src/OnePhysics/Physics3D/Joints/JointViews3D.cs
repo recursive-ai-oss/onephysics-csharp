@@ -72,6 +72,9 @@ public readonly struct FixedJoint : IEquatable<FixedJoint>
     /// <summary>The magnitude of the joint's reaction torque at the end of the last step it was solved, N·m.</summary>
     public float ReactionTorque => _joint.ReactionTorque;
 
+    /// <summary>Sets the linear and angular spring frequencies (Hz, 0 = rigid) and damping ratios.</summary>
+    public void SetFixedSprings(float linearHertz, float linearDampingRatio, float angularHertz, float angularDampingRatio) => _joint.SetFixedSprings(linearHertz, linearDampingRatio, angularHertz, angularDampingRatio);
+
     /// <summary>Same world, slot and generation.</summary>
     public bool Equals(FixedJoint other) => _joint.Equals(other._joint);
 
@@ -271,6 +274,15 @@ public readonly struct DistanceJoint : IEquatable<DistanceJoint>
 
     /// <summary>Spring damping ratio, at least 0 (1 is critical).</summary>
     public float SpringDampingRatio { get => _joint.SpringDampingRatio; set => _joint.SpringDampingRatio = value; }
+
+    /// <summary>Whether the motor is on; it acts while the spring is on and the length range (MinLength below MaxLength) is open.</summary>
+    public bool EnableMotor { get => _joint.EnableMotor; set => _joint.EnableMotor = value; }
+
+    /// <summary>Target rate of change of the length, metres per second (positive lengthens).</summary>
+    public float MotorSpeed { get => _joint.MotorSpeed; set => _joint.MotorSpeed = value; }
+
+    /// <summary>Largest motor force in newtons, at least 0.</summary>
+    public float MaxMotorForce { get => _joint.MaxMotorForce; set => _joint.MaxMotorForce = value; }
 
     /// <summary>Same world, slot and generation.</summary>
     public bool Equals(DistanceJoint other) => _joint.Equals(other._joint);

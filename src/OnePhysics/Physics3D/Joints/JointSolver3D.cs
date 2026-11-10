@@ -299,19 +299,23 @@ internal sealed partial class Engine3D
         bool warm = phase == SolvePhase.WarmStart, useBias = phase == SolvePhase.Solve;
         float invH = ctx.InverseSubstepDt;
         var rigid = useBias ? new Soft(s[JRow3.JMass], s[JRow3.JMass] * s[JRow3.JBias], s[JRow3.JImp]) : new Soft(1f, 0f, 0f);
-        if (j.Projected && WidePointBlock(d.Type))
+        // A fixed joint with a linear spring keeps its point block here (the wide kernel only knows the rigid one); the spring acts in the biased pass only.
+        bool linearSpring = d.Type == (byte)JointType3D.Fixed && d.Hertz > 0f;
+        if ((j.Projected || linearSpring) && WidePointBlock(d.Type))
         {
             JRowBuf rows = default; JF3 errors = default;
             rows[0] = JointRow.Lin(UX, g.RA, g.RB); rows[1] = JointRow.Lin(UY, g.RA, g.RB); rows[2] = JointRow.Lin(UZ, g.RA, g.RB);
             errors[0] = g.C.X; errors[1] = g.C.Y; errors[2] = g.C.Z;
-            Block(ref j, p, 0, 3, rows, errors, rigid, warm);
+            if (!linearSpring) { Block(ref j, p, 0, 3, rows, errors, rigid, warm); }
+            else if (warm || useBias) { Block(ref j, p, 0, 3, rows, errors, new Soft(s[JRow3.SMass], s[JRow3.SBias], s[JRow3.SImp]), warm); }
+            else { j.Row(0, rows[0], errors[0], JointRowBits.Spring | JointRowBits.Active); j.Row(1, rows[1], errors[1], JointRowBits.Spring | JointRowBits.Active); j.Row(2, rows[2], errors[2], JointRowBits.Spring | JointRowBits.Active); }
         }
         switch ((JointType3D)d.Type)
         {
             case JointType3D.Wheel: SolveWheel(ref j, g, ref d, s, p, rigid, useBias, invH, warm); break;
             case JointType3D.Motor: SolveMotor(ref j, g, d, p, warm, invH); break;
             case JointType3D.Mouse: SolveMouse(ref j, g, s, p, warm, useBias); break;
-            case JointType3D.Fixed: SolveFixed(ref j, in g, p, rigid, warm); break;
+            case JointType3D.Fixed: SolveFixed(ref j, in g, ref d, s, p, rigid, useBias, warm); break;
             case JointType3D.Point: break; // solved by JointKernel3D
             case JointType3D.Distance: SolveDistance(ref j, in g, ref d, s, p, useBias, invH, warm); break;
             case JointType3D.Hinge: SolveHinge(ref j, in g, ref d, s, p, rigid, useBias, invH, warm); break;
@@ -342,9 +346,11 @@ internal sealed partial class Engine3D
 
     // ------------------------------------------------------------------ fixed, point
 
-    private static void SolveFixed(ref JS3 j, in JGeo g, Span<float> p, Soft rigid, bool warm)
+    private static void SolveFixed(ref JS3 j, in JGeo g, ref JointData3D d, ReadOnlySpan<float> s, Span<float> p, Soft rigid, bool useBias, bool warm)
     {
-        LockRotation(ref j, in g, p, 3, rigid, warm);
+        if (d.Swing1 <= 0f) { LockRotation(ref j, in g, p, 3, rigid, warm); return; }
+        // Angular spring: the same soft rows as the lock, with the spring's coefficients, once per substep in the biased pass (stored impulses are still applied in the warm start).
+        if (warm || useBias) { LockRotation(ref j, in g, p, 3, new Soft(s[JRow3.AngMass], s[JRow3.AngBias], s[JRow3.AngImp]), warm); }
     }
 
     // ------------------------------------------------------------------ distance
@@ -360,6 +366,7 @@ internal sealed partial class Engine3D
         if (d.Spring && range)
         {
             SpringRow(ref j, p, JP.Spring, row, len - d.Length, s[JRow3.SBias], s[JRow3.SMass], s[JRow3.SImp], useBias, warm);
+            if (d.Motor) { MotorRow(ref j, p, JP.Motor, row, d.MotorSpeed, s[JRow3.MaxMotorImp], warm); }
         }
         else if (warm) { j.Apply(row, p[0]); }
         else

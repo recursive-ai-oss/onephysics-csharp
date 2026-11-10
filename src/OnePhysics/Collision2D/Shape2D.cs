@@ -112,6 +112,24 @@ public struct Shape2D
         return copy;
     }
 
+    /// <summary>
+    /// Moves the shape rigidly: rotates its points, normals, ghost vertices and mass offset by <paramref name="rotation"/>, then translates by <paramref name="position"/>.
+    /// Used for a shape's local pose; the result is checked against the same coordinate limit as creation.
+    /// </summary>
+    /// <exception cref="InvalidShapeException">The placed points leave the allowed range.</exception>
+    internal readonly Shape2D Placed(Vec2 position, Rot2 rotation)
+    {
+        if (_kind == 0 || _kind == ShapeKind2D.Empty) { return this; }
+        var s = this;
+        for (int i = 0; i < _count; i++) { s._v[i] = position + rotation.Rotate(_v[i]); CheckPoint(s._v[i], "placed point"); }
+        for (int i = 0; i < _count; i++) { s._n[i] = rotation.Rotate(_n[i]); }
+        s._centroid = position + rotation.Rotate(_centroid);
+        s._massOffset = rotation.Rotate(_massOffset);
+        if (HasGhost1) { s._ghost1 = position + rotation.Rotate(_ghost1); }
+        if (HasGhost2) { s._ghost2 = position + rotation.Rotate(_ghost2); }
+        return s;
+    }
+
     /// <summary>Mass-centre offset in metres, zero by default. This does not move the vertices or geometric centroid.</summary>
     public readonly Vec2 CenterOfMassOffset => _massOffset;
 

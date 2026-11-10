@@ -162,6 +162,18 @@ public struct FixedJointDef : IJointDef3D
     /// <summary>Frame on B.</summary>
     public JointFrame3D LocalFrameB { get; set; }
 
+    /// <summary>Linear spring frequency, Hz; 0 (the default) holds the two frame positions rigidly together.</summary>
+    public float LinearHertz { get; set; }
+
+    /// <summary>Linear damping ratio, at least 0. Default 0.</summary>
+    public float LinearDampingRatio { get; set; }
+
+    /// <summary>Angular spring frequency, Hz; 0 (the default) holds the relative rotation rigidly.</summary>
+    public float AngularHertz { get; set; }
+
+    /// <summary>Angular damping ratio, at least 0. Default 0.</summary>
+    public float AngularDampingRatio { get; set; }
+
     /// <summary>When true the bodies keep colliding with each other. Default false.</summary>
     public bool CollideConnected { get; set; }
 
@@ -254,6 +266,15 @@ public struct DistanceJointDef : IJointDef3D
     public float SpringDampingRatio { readonly get => ZeroDefault.Get(_springDampingRatio, 0.5f); set => _springDampingRatio = ZeroDefault.Set(value, 0.5f); }
 
     private uint _springDampingRatio;
+
+    /// <summary>Whether a motor changes the length at <see cref="MotorSpeed"/> while the spring is on. Default false.</summary>
+    public bool EnableMotor { get; set; }
+
+    /// <summary>Target rate of change of the length, metres per second (positive lengthens), finite. Default 0.</summary>
+    public float MotorSpeed { get; set; }
+
+    /// <summary>Largest motor force, newtons, at least 0. Default 0.</summary>
+    public float MaxMotorForce { get; set; }
 
     /// <summary>When true the bodies keep colliding. Default false.</summary>
     public bool CollideConnected { get; set; }

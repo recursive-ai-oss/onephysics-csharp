@@ -63,7 +63,7 @@ public sealed partial class PhysicsWorld2D
         return new Rot2((float)c, (float)s);
     }
 
-    private QueryHit2D ToHit(in RawHit h, float length) => new(new Shape(this, _core.HandleOfShape(h.Slot)), new Vector2D(h.Px, h.Py), new Vector2F(h.Nx, h.Ny), h.Fraction, h.Fraction * length + h.Distance);
+    private QueryHit2D ToHit(in RawHit h, float length) => new(new Shape(this, _core.HandleOfShape(h.Slot)), new Vector2D(h.Px, h.Py), new Vector2F(h.Nx, h.Ny), h.Fraction, h.Fraction * length + h.Distance, h.Sub);
 
     // ------------------------------------------------------------------ the three forms, once
 

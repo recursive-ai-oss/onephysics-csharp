@@ -37,7 +37,7 @@ internal sealed partial class Engine2D
 
     private bool SoftTouch(SoftBodyData d, SoftBodyData o)
     {
-        double pad = d.Radius + o.Radius + Constants2D.SpeculativeDistance + 0.02;
+        double pad = d.Radius + o.Radius + Opt.SpeculativeDistance + 0.02;
         if (d.MinX - pad > o.MaxX || d.MaxX + pad < o.MinX || d.MinY - pad > o.MaxY || d.MaxY + pad < o.MinY) { return false; }
         return SoftPairAllowed(d.Def, o.Def);
     }
@@ -172,7 +172,7 @@ internal sealed partial class Engine2D
         for (int a = _awakeSoftCount; a < _pairSoftCount; a++) { _awakeSoft[a].MakePassive(); }
         var g = Opt.Gravity;
         float gmag = float.Sqrt(g.X * g.X + g.Y * g.Y);
-        float margin = maxTravel + 0.5f * gmag * dt * dt + Constants2D.SpeculativeDistance;
+        float margin = maxTravel + 0.5f * gmag * dt * dt + Opt.SpeculativeDistance;
         GatherCandidates(margin);
 
         int total = 0;
@@ -314,7 +314,7 @@ internal sealed partial class Engine2D
     private bool RigidNear(SoftBodyData d)
     {
         var bodies = Core.Bodies;
-        double pad = d.Radius + Constants2D.SpeculativeDistance + 0.02;
+        double pad = d.Radius + Opt.SpeculativeDistance + 0.02;
         foreach (int b in Core.AwakeBodies)
         {
             var p = bodies.PositionOf(b);

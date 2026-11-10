@@ -40,8 +40,18 @@ public enum JointType2D : byte
 
 }
 
+/// <summary>The members every joint definition has: the two bodies it connects (the same shape as the 3D interface).</summary>
+public interface IJointDef2D
+{
+    /// <summary>The first body.</summary>
+    Body BodyA { get; set; }
+
+    /// <summary>The second body.</summary>
+    Body BodyB { get; set; }
+}
+
 /// <summary>Creation parameters of a revolute (hinge) joint. Anchors are in each body's own frame (measured from the body origin); the angle is B's rotation minus A's rotation minus <see cref="ReferenceAngle"/>.</summary>
-public struct RevoluteJointDef
+public struct RevoluteJointDef : IJointDef2D
 {
     /// <summary>The first body.</summary>
     public Body BodyA { get; set; }
@@ -103,7 +113,7 @@ public struct RevoluteJointDef
 }
 
 /// <summary>Creation parameters of a prismatic (slider) joint. The axis is a direction in A's frame; the translation is measured from the anchors' coincidence along it.</summary>
-public struct PrismaticJointDef
+public struct PrismaticJointDef : IJointDef2D
 {
     /// <summary>The first body.</summary>
     public Body BodyA { get; set; }
@@ -170,7 +180,7 @@ public struct PrismaticJointDef
 }
 
 /// <summary>Creation parameters of a weld joint. With both hertz values 0 the weld is rigid; a positive value makes that part a spring.</summary>
-public struct WeldJointDef
+public struct WeldJointDef : IJointDef2D
 {
     /// <summary>The first body.</summary>
     public Body BodyA { get; set; }
@@ -217,7 +227,7 @@ public struct WeldJointDef
 }
 
 /// <summary>Creation parameters of a wheel joint: a suspension along an axis of A, with B free to spin.</summary>
-public struct WheelJointDef
+public struct WheelJointDef : IJointDef2D
 {
     /// <summary>The chassis.</summary>
     public Body BodyA { get; set; }
@@ -287,7 +297,7 @@ public struct WheelJointDef
 }
 
 /// <summary>Creation parameters of a distance joint. Rigid at <see cref="Length"/> unless <see cref="EnableSpring"/> is set and the length range is not degenerate.</summary>
-public struct DistanceJointDef
+public struct DistanceJointDef : IJointDef2D
 {
     /// <summary>The first body.</summary>
     public Body BodyA { get; set; }
@@ -353,7 +363,7 @@ public struct DistanceJointDef
 }
 
 /// <summary>Creation parameters of a motor joint: B's origin is driven to <see cref="LinearOffset"/> (in A's frame) from A's origin and B's angle to <see cref="AngularOffset"/> from A's, with capped force and torque.</summary>
-public struct MotorJointDef
+public struct MotorJointDef : IJointDef2D
 {
     /// <summary>The first body (the reference frame).</summary>
     public Body BodyA { get; set; }
@@ -396,7 +406,7 @@ public struct MotorJointDef
 }
 
 /// <summary>Creation parameters of a mouse (target) joint: an anchor on <see cref="BodyB"/> is pulled to <see cref="Target"/> by a spring with capped force. <see cref="BodyA"/> only anchors the joint in the constraint graph (a static ground body is typical) and is not moved by it.</summary>
-public struct MouseJointDef
+public struct MouseJointDef : IJointDef2D
 {
     /// <summary>The reference body, usually a static ground body.</summary>
     public Body BodyA { get; set; }

@@ -26,6 +26,9 @@ public readonly struct Field
     private readonly FieldStore? _store;
     private readonly int _generation;
     internal Field(FieldStore store, int index, int generation) { _store = store; Index = index; _generation = generation; }
+    internal bool SameHandle(Field other) => ReferenceEquals(_store, other._store) && Index == other.Index && _generation == other._generation;
+    internal int Generation => _generation;
+    internal bool IsDefault => _store == null;
     /// <summary>Stable slot, reused lowest-first after destruction.</summary>
     public int Index { get; }
     /// <summary>True while this slot and generation belong to a live field.</summary>

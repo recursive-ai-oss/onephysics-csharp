@@ -12,12 +12,9 @@ Normative for what the two worlds promise to have in common, which parts of the 
 - A short vocabulary folds the dimensions' own words together before comparing: sphere and circle, hinge and revolute, fixed and weld, slider and prismatic, rotation and angle, convex hull and polygon, soft ball and soft circle, local frame and local anchor.
 - Every remaining difference must be listed in `testdata/api/parity-allow.txt` with its reason. A listed difference that no longer exists fails the test too, so the list can only shrink or be reasoned about.
 
-Two kinds of entries exist:
+Every entry is intentional: the physics does not apply or is modelled differently: voxels and meshes are 3D, tile grids, chains and carvable terrain are 2D, a planar world has one rotation axis (no cone, swing-twist, six-degree-of-freedom or point joints), side-view and spatial vehicles report different state. Asymmetries that are not physics are closed, not listed.
 
-- **Intentional.** The physics does not apply or is modelled differently: voxels and meshes are 3D, tile grids, chains and carvable terrain are 2D, a planar world has one rotation axis (no cone, swing-twist, six-degree-of-freedom or point joints), side-view and spatial vehicles report different state.
-- **`gap:`** An asymmetry that is not physics. These are work still to do, not decisions: 2D `Joint` kinds returned as the general `Joint` where 3D has typed views, the 3D distance-joint motor, the 3D fixed-joint springs, hit sub-shape ids in 2D, and a few smaller ones. The list is the to-do list.
-
-Members added while writing the list, so the two worlds agree: 2D `Body.ApplyAngularImpulse(float)`, 2D `OverlapCapsule`/`OverlapCapsuleAny`/`OverlapCapsuleAll`, 3D `Body.IsBullet`, and a public 2D `WorldOptions2D.Validate()`.
+Members added while writing the list, so the two worlds agree: 2D `Body.ApplyAngularImpulse(float)`, 2D `OverlapCapsule`/`OverlapCapsuleAny`/`OverlapCapsuleAll`, 3D `Body.IsBullet`, and a public 2D `WorldOptions2D.Validate()`. Later, the remaining non-physics gaps were closed: 2D `ShapeDef.LocalPosition`/`LocalAngle` (baked into the shape at creation), 2D `CreateSdf`, 3D `OverlapSoftBodies`, 2D `QueryHit.SubShapeId` (0 for rays, casts and closest points, -1 for overlaps), 3D `Collision.TangentImpulse`, 2D `WorldOptions2D.SpeculativeDistance`, value equality and text on the 2D `Fluid`, typed 2D `GearJoint`, `RackAndPinionJoint`, `PulleyJoint` and `PathJoint` views and the 2D `IJointDef2D`, the 3D distance-joint motor, and 3D fixed-joint springs (`FixedJointDef.LinearHertz`, `LinearDampingRatio`, `AngularHertz`, `AngularDampingRatio` and `SetFixedSprings`, the 2D weld joint's `SetWeldSprings`).
 
 ## The happy path needs no struct callback
 
