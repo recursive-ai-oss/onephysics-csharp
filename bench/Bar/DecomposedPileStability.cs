@@ -27,7 +27,8 @@ internal static class DecomposedPileStability
 
         finalSpeeds.Sort();
         double jitter = finalSpeeds.Count == 0 ? 0 : finalSpeeds[(int)(0.99 * (finalSpeeds.Count - 1))];
-        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"decomposed-pile-3d steps=600 bodies={bodies.Length} maxSpeed={maxSpeed:R} finalJitter={jitter:R} lowestOrigin={lowest:R} escapes={escapes} nan={nan}"));
-        return nan == 0 && escapes == 0 && maxSpeed < 12 && jitter < 0.1 ? 0 : 1;
+        bool ok = nan == 0 && escapes == 0 && maxSpeed < 12 && jitter < 0.1;
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"decomposed-pile-3d steps=600 bodies={bodies.Length} maxSpeed={maxSpeed:R} finalJitter={jitter:R} lowestOrigin={lowest:R} escapes={escapes} nan={nan} {(ok ? "PASS" : "FAIL")}"));
+        return ok ? 0 : 1;
     }
 }

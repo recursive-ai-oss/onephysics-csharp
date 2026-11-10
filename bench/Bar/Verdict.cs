@@ -20,7 +20,7 @@ static class Verdict
     sealed record Cell(double Median, double Mean);
 
     /// <summary>Stability limits per scene (maximum allowed, robust metrics where they exist). Metrics not listed for a scene are not judged; nan, escapes and tunnelled must be 0 wherever they are reported.</summary>
-    static readonly Dictionary<string, (string metric, double max)[]> Limits = new()
+    internal static readonly Dictionary<string, (string metric, double max)[]> Limits = new()
     {
         ["pyramid-20"] = [("maxSpeed", 0.1), ("maxPenetration", 0.01), ("jitter", 0.01), ("restKE", 0.0001), ("finalPenetration", 0.005)],
         ["pyramid-100"] = [("maxSpeed", 3), ("maxPenetration", 0.05), ("jitter", 0.2), ("restKE", 0.005), ("finalPenetration", 0.03)],
@@ -50,7 +50,7 @@ static class Verdict
         ["soft-mesh-3d"] = [("softMaxSpeed", 10), ("softPenetration", 0.02), ("softFinalPenetration", 0.01), ("softRestKE", 0.01), ("volumeError", 0.03)],
         ["soft-skinned-3d"] = [("softMaxSpeed", 5), ("softPenetration", 0.02), ("softFinalPenetration", 0.005), ("edgeStrain", 0.15), ("skinMaxDistance", 1e-4), ("skinBackstop", 1e-4), ("skinCuffError", 1e-5)],
     };
-    static readonly string[] MustBeZero = ["nan", "escapes", "tunnelled", "softNan", "softEscapes", "softTunnelled"];
+    internal static readonly string[] MustBeZero = ["nan", "escapes", "tunnelled", "softNan", "softEscapes", "softTunnelled"];
 
     /// <summary>Engines recorded stable on a scene by the stability sweeps, used when a result set carries no metrics for that engine. Scenes not listed: every engine that runs them.</summary>
     static readonly Dictionary<string, string[]> RecordedStable = new()
