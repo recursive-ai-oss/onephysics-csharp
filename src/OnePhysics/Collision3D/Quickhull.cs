@@ -91,8 +91,14 @@ internal sealed class QuickhullBuilder
 
     // Whether point p is strictly above the plane of triangle f, decided exactly: the hull stays convex whatever the noise in the input, so every
     // visible region is one disk with a simple horizon (Barber, Dobkin, Huhdanpaa 1996 assume exactly this; floating-point planes do not give it).
-    private bool SeesFace(Face f, int p) =>
-        ExactPredicates.Orient3D(_x[f.V[0]], _y[f.V[0]], _z[f.V[0]], _x[f.V[1]], _y[f.V[1]], _z[f.V[1]], _x[f.V[2]], _y[f.V[2]], _z[f.V[2]], _x[p], _y[p], _z[p]) < 0;
+    // The coordinates are float32 values, whose subnormals (below 2^-126) the predicate refuses when it needs its exact stage; every nonzero float32 is a
+    // multiple of 2^-149, so scaling all of them by 2^10 (exact, and the sign of the determinant is unchanged) puts the whole float32 range inside the exact range.
+    private bool SeesFace(Face f, int p)
+    {
+        const double S = 1024.0;
+        int a = f.V[0], b = f.V[1], c = f.V[2];
+        return ExactPredicates.Orient3D(_x[a] * S, _y[a] * S, _z[a] * S, _x[b] * S, _y[b] * S, _z[b] * S, _x[c] * S, _y[c] * S, _z[c] * S, _x[p] * S, _y[p] * S, _z[p] * S) < 0;
+    }
 
     private double Dist(Face f, int p) => f.Nx * _x[p] + f.Ny * _y[p] + f.Nz * _z[p] - f.Off;
 

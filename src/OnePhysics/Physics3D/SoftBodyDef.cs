@@ -48,8 +48,11 @@ public sealed class SoftBodyDef
     /// 1000 kg/m³ for a volume or closed surface. Otherwise finite, above 0 and at most 10^9.</summary>
     public float Mass { get; set; }
 
-    /// <summary>Radius of the sphere each particle collides with, metres: for a cloth, half its thickness. 0 (default) uses a quarter of the mean edge length. Otherwise finite, above 0, at most 100.</summary>
+    /// <summary>Radius of the sphere each particle collides with, metres: for a cloth, half its thickness. 0 (default) uses a quarter of the mean edge length, at most 100. Otherwise finite, above 0, at most 100.</summary>
     public float ParticleRadius { get; set; }
+
+    /// <summary>The largest particle radius a definition may state, m; an automatic radius (0) is limited to it too.</summary>
+    internal const float MaxParticleRadius = 100f;
 
     /// <summary>Compliance of the edge (stretch) constraints, m/N. 0 is stiffest. Default 0 (inextensible).</summary>
     public float EdgeCompliance { get; set; }
@@ -187,7 +190,7 @@ public sealed class SoftBodyDef
         }
 
         if (Mass != 0f) { Range(Mass, nameof(Mass), float.Epsilon, 1e9f); }
-        if (ParticleRadius != 0f) { Range(ParticleRadius, nameof(ParticleRadius), float.Epsilon, 100f); }
+        if (ParticleRadius != 0f) { Range(ParticleRadius, nameof(ParticleRadius), float.Epsilon, MaxParticleRadius); }
         Range(EdgeCompliance, nameof(EdgeCompliance), 0f, MaxCompliance);
         Range(BendCompliance, nameof(BendCompliance), 0f, MaxCompliance);
         Range(VolumeCompliance, nameof(VolumeCompliance), 0f, MaxCompliance);

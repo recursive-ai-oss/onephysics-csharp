@@ -1,5 +1,4 @@
 using System;
-using RecursiveAI.OneMath.Predicates;
 
 namespace RecursiveAI.OnePhysics.Tools;
 
@@ -116,7 +115,7 @@ internal sealed class TriangleGrid
     // Side of the directed edge (a, b) the nudged point lies on, +1 or -1.
     private static int Side(double ay, double az, double by, double bz, double py, double pz)
     {
-        int o = ExactPredicates.Orient2D(ay, az, by, bz, py, pz);
+        int o = SafePredicates.Orient2D(ay, az, by, bz, py, pz);
         if (o != 0) { return o; }
         // The determinant's change when p moves by (e, e^2): e * (az - bz) + e^2 * (by - ay).
         if (az != bz) { return az > bz ? 1 : -1; }

@@ -144,8 +144,14 @@ internal static class FuzzActuators
 
     private static void StepTolerant(PhysicsWorld3D w)
     {
+        var before = w.ComputeHash();
         try { w.StepChecked(1f / 60f); s_steps++; }
         catch (RecursiveAI.OnePhysics.Physics3D.BodyOutOfBoundsException e) { e.Body.Destroy(); }
+        // Documented: a restored world whose custom gravity field has no callback bound refuses the step before it changes anything (callbacks are host context, not state).
+        catch (InvalidOperationException e) when (e.Message.StartsWith("A CustomGravity field has no host callback", StringComparison.Ordinal))
+        {
+            if (w.ComputeHash() != before) { throw new InvalidOperationException("a step refused for a missing callback changed the world"); }
+        }
     }
 
     private static void StepTolerant(PhysicsWorld2D w)

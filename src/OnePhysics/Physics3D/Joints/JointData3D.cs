@@ -38,6 +38,12 @@ internal struct JointData3D
 {
     public const byte FlagLimit = 1, FlagMotor = 2, FlagSpring = 4, FlagCollide = 8, FlagLoop = 16, FlagDrive = 32;
     public const float MaxLocal = 2097152f;
+
+    /// <summary>The farthest a joint anchor may lie from its dynamic body's centre of mass, in multiples of the body's reach (its farthest shape point), see Engine3D.CheckAnchorArm.</summary>
+    public const float MaxAnchorArmRatio = 40f;
+
+    /// <summary>Added to <see cref="MaxAnchorArmRatio"/> times the body's reach, m, so a very small body may still be hinged at a sensible offset.</summary>
+    public const float MaxAnchorArmSlack = 0.05f;
     public const int MaxPathPoints = 256;
 
     public byte Type;

@@ -241,7 +241,8 @@ internal sealed partial class SoftBodyData
 
         double edgeSum = 0.0;
         for (int i = 0; i < ne; i++) { edgeSum += EdgeRest[i]; }
-        Radius = Def.ParticleRadius != 0f ? Def.ParticleRadius : (float)Math.Max(1e-4, 0.25 * edgeSum / Math.Max(1, ne));
+        // An automatic radius is a quarter of the mean edge, but never beyond the largest radius a definition may state: a torn or rebuilt body freezes the radius into its definition, and a snapshot must read it back.
+        Radius = Def.ParticleRadius != 0f ? Def.ParticleRadius : (float)Math.Min(SoftBodyDef.MaxParticleRadius, Math.Max(1e-4, 0.25 * edgeSum / Math.Max(1, ne)));
         Lambda = new float[ConstraintCount];
         if (Def.Skin != null)
         {

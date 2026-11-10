@@ -27,7 +27,7 @@ internal sealed partial class Engine3D
     }
     public void SetCenterOverride(int b, Vector3F value)
     {
-        if (!float.IsFinite(value.X) || !float.IsFinite(value.Y) || Math.Abs(value.X) > 2097152 || Math.Abs(value.Y) > 2097152 || !float.IsFinite(value.Z) || Math.Abs(value.Z) > 2097152) throw new ArgumentOutOfRangeException(nameof(value), value, "Center must be finite within ±2097152.");
+        if (!float.IsFinite(value.X) || !float.IsFinite(value.Y) || Math.Abs(value.X) > MaxCenterOffset || Math.Abs(value.Y) > MaxCenterOffset || !float.IsFinite(value.Z) || Math.Abs(value.Z) > MaxCenterOffset) throw new ArgumentOutOfRangeException(nameof(value), value, "Center must be finite within ±2097152.");
         var s = Core.Controls.Get(b); s.Center = value; s.Overrides |= 2; CommitMassControl(b, s);
     }
     public void SetInertiaOverride(int b, Vector3F value, QuaternionF rotation)

@@ -216,6 +216,7 @@ public static class AutoRagdoller
             parts[i] = def;
         }
 
+        CheckJointReach(parts, nameof(bindPositions));
         var ragdoll = new P3.RagdollDef { Parts = parts, SelfCollision = opt.SelfCollision, AngularDamping = 0.05f };
         BipedBones? biped = null;
         if (model.Humanoid && !(opt.SplitTorso && model.Parts[model.Torso].Kind == BoneRole.Spine))
@@ -229,6 +230,37 @@ public static class AutoRagdoller
         }
 
         return new AutoRagdoll3D(ragdoll, biped, model.PartOfBone, model.Roles, model.Humanoid, (float)model.Height);
+    }
+
+    // The engine refuses a joint that lies farther from the centre of either body it joins than this many times the body's reach (plus a small slack): the joint's point block is then too ill-conditioned to solve.
+    // A skeleton whose fitted parts are that small next to its bone lengths gets a typed error here, naming the bone, instead of a refused definition.
+    private const double MaxJointReachRatio = 40.0, MaxJointReachSlack = 0.05;
+
+    private static string Num(double v) => v.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static double Reach(P3.RagdollPartDef p) => p.Shape switch
+    {
+        P3.RagdollShapeKind.Sphere => p.ShapeHalfSize.X,
+        P3.RagdollShapeKind.Capsule => (double)p.ShapeHalfSize.X + p.ShapeHalfSize.Y,
+        _ => Math.Sqrt(((double)p.ShapeHalfSize.X * p.ShapeHalfSize.X) + ((double)p.ShapeHalfSize.Y * p.ShapeHalfSize.Y) + ((double)p.ShapeHalfSize.Z * p.ShapeHalfSize.Z)),
+    };
+
+    private static void CheckJointReach(P3.RagdollPartDef[] parts, string paramName)
+    {
+        for (int i = 0; i < parts.Length; i++)
+        {
+            var p = parts[i];
+            if (p.Parent < 0) { continue; }
+            var q = parts[p.Parent];
+            double Arm(Vector3F centre) => Math.Sqrt((((double)p.JointPosition.X - centre.X) * ((double)p.JointPosition.X - centre.X)) + (((double)p.JointPosition.Y - centre.Y) * ((double)p.JointPosition.Y - centre.Y)) + (((double)p.JointPosition.Z - centre.Z) * ((double)p.JointPosition.Z - centre.Z)));
+            double own = Arm(p.Position), parent = Arm(q.Position);
+            if (own > (MaxJointReachRatio * Reach(p)) + MaxJointReachSlack || parent > (MaxJointReachRatio * Reach(q)) + MaxJointReachSlack)
+            {
+                throw new GeometryToolException(GeometryToolError.OutOfRange, "bone \"" + p.Name + "\" (part " + MeshInput.Inv(i) + ") has its joint " + Num(own) + " m from its own centre and " + Num(parent)
+                    + " m from its parent's, but the fitted shapes reach only " + Num(Reach(p)) + " m and " + Num(Reach(q)) + " m; a joint must lie within " + Num(MaxJointReachRatio) + " times a shape's reach plus " + Num(MaxJointReachSlack)
+                    + " m of its centre. Give the skeleton skinned points or bone lengths that fit its parts", paramName);
+            }
+        }
     }
 
     /// <summary>Makes a 2D ragdoll from a skeleton in a side view (x along the ground, y up).</summary>

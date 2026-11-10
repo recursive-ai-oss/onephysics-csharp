@@ -61,7 +61,7 @@ forces. An explosion explicitly wakes its impulse recipients like `ApplyImpulse`
   gravity scale applies. `CallbackId` is saved, but delegates and mutable callback
   state are host context, as collision predicates are. Bind identical callbacks
   before stepping a loaded scene, fork or replay world. Missing bindings throw a
-  clear `InvalidOperationException`; nonfinite results throw an argument error.
+  clear `InvalidOperationException` from `Step` before anything has changed (only when the field overlaps a dynamic body); nonfinite results throw an argument error.
   Middle-tier struct callbacks adapt once at binding, never once per body/step.
 * **Vortex:** project source displacement perpendicular to the axis. At unit radial
   direction `n`, acceleration is `Strength cross(Axis,n) - Inward n`. Positive

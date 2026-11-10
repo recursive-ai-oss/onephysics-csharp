@@ -272,4 +272,16 @@ public class TetrahedralizerTests
         Assert.Equal(t.Tetrahedra.Length / 4, s.TetrahedronCount);
         Assert.Equal(t.Vertices.Length, s.VertexCount);
     }
+
+    [Fact]
+    public void AMeshOfSubnormalCoordinatesIsFilledWithoutTheExactPredicatesRefusing()
+    {
+        // The inside test uses exact predicates that refuse numbers below 2^-140; every coordinate here is a float32 subnormal.
+        var m = TestMeshes.Box(2, 2, 2);
+        const float scale = 1e-41f;
+        var v = new Vector3F[m.V.Length];
+        for (int i = 0; i < v.Length; i++) { v[i] = new Vector3F(m.V[i].X * scale, m.V[i].Y * scale, m.V[i].Z * scale); }
+        var t = Tetrahedralizer.Generate(v, m.I, new TetrahedralizeOptions { TargetEdgeLength = 0.25f * scale });
+        Assert.True(t.Tetrahedra.Length >= 4);
+    }
 }

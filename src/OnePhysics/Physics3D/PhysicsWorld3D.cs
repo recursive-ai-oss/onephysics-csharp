@@ -134,6 +134,7 @@ public sealed partial class PhysicsWorld3D
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="dt"/> is invalid or an option is out of range.</exception>
     /// <exception cref="BodyOutOfBoundsException">A moving body is outside the supported range or has a non-finite position, velocity or rotation; the world is unchanged. Move, destroy it or call <see cref="ShiftOrigin"/>.</exception>
     /// <exception cref="ArticulationStateException">An articulation's joint coordinates or speeds are not finite or are beyond the supported range; the world is unchanged.</exception>
+    /// <exception cref="InvalidOperationException">A custom gravity field acts on a dynamic body but has no host callback bound (a restored or forked world needs them bound again); the world is unchanged.</exception>
     public void Step(float dt)
     {
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
@@ -141,6 +142,7 @@ public sealed partial class PhysicsWorld3D
         _engine.CheckBounds();
         _engine.Rods.CheckBounds();
         _engine.CheckArticulationBounds();
+        _engine.Fields.ValidateStep();
         _engine.Rods.ValidateStep(dt);
         _engine.CheckSoftBounds();
         if (_core.Controls.Active) _engine.ValidateTargetMotion(dt);

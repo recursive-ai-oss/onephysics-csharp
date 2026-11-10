@@ -137,6 +137,7 @@ public sealed partial class PhysicsWorld2D
         _engine.CheckBounds();
         _engine.Rods.CheckBounds();
         _engine.CheckArticulationBounds();
+        _engine.Fields.ValidateStep();
         _engine.Rods.ValidateStep(dt);
         _engine.CheckSoftBounds();
         if (_core.Controls.Active) _engine.ValidateTargetMotion(dt);

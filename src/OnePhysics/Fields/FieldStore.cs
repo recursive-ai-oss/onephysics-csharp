@@ -131,6 +131,25 @@ internal sealed partial class FieldStore(IFieldHost host) : ISnapshotSection
         float r = Math.Max(distance,d.Softening);
         return d.Falloff == FieldFalloff.Constant ? d.Strength : d.Falloff == FieldFalloff.InverseLinear ? d.Strength/r : d.Strength/(r*r);
     }
+    /// <summary>
+    /// Throws before anything has changed when a custom gravity field would act on a body but has no host callback bound: callbacks are host context, not state, so a restored or forked world needs them bound again.
+    /// Checking here keeps the step from failing halfway through the bodies.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">A custom gravity field that overlaps a dynamic body has no callback bound to its <c>CallbackId</c>.</exception>
+    internal void ValidateStep()
+    {
+        if (Count == 0) return;
+        var bodies = Host.FieldCore.Bodies;
+        for (int f=0;f<Definitions.Length;f++)
+        {
+            var d=Definitions[f];
+            if (d == null || d.Kind != FieldKind.CustomGravity || _callbacks.ContainsKey(d.CallbackId)) continue;
+            for (int b=0;b<bodies.HighWater;b++)
+            {
+                if (bodies.IsLive(b) && bodies.IsDynamic(b) && Matches(b,d)) throw new InvalidOperationException("A CustomGravity field has no host callback bound to its CallbackId " + d.CallbackId.ToString(System.Globalization.CultureInfo.InvariantCulture) + "; bind it before stepping a restored or forked world. The world is unchanged.");
+            }
+        }
+    }
     internal void Step(float dt)
     {
         if (Count == 0) return;

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using RecursiveAI.OneMath;
-using RecursiveAI.OneMath.Predicates;
 
 namespace RecursiveAI.OnePhysics.Tools;
 
@@ -150,7 +149,7 @@ public static class TriangleMesher
 
         private static long Key(int a, int b) => a < b ? ((long)a << 32) | (uint)b : ((long)b << 32) | (uint)a;
 
-        private int Orient(int a, int b, double px, double py) => ExactPredicates.Orient2D(_x[a], _y[a], _x[b], _y[b], px, py);
+        private int Orient(int a, int b, double px, double py) => SafePredicates.Orient2D(_x[a], _y[a], _x[b], _y[b], px, py);
 
         // ------------------------------------------------------------ insertion
 
@@ -190,7 +189,7 @@ public static class TriangleMesher
         private bool InCircleOf(int t, double px, double py)
         {
             int a = _v[3 * t], b = _v[3 * t + 1], c = _v[3 * t + 2];
-            return ExactPredicates.InCircle(_x[a], _y[a], _x[b], _y[b], _x[c], _y[c], px, py) > 0;
+            return SafePredicates.InCircle(_x[a], _y[a], _x[b], _y[b], _x[c], _y[c], px, py) > 0;
         }
 
         private bool IsSegmentEdge(int a, int b) => _segKeys.Contains(Key(a, b));
