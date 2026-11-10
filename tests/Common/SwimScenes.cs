@@ -56,8 +56,8 @@ internal static class SwimScenes
         var s = new Scene3D { World = w };
         // Shore: land at y = 2.4 for x < 4, a ramp down to the lake floor at y = -0.5 by x = 9, the floor, and the dock face at x = 27.
         w.AddBox(new Vector3F(10f, 1f, 16f), new Vector3D(-1, 1.9, 7), type: BodyType.Static);
-        double run = 5.0, drop = 2.9, len = Math.Sqrt(run * run + drop * drop), ang = Math.Atan2(drop, run);
-        double cx = 4.0 + 0.5 * run - Math.Sin(ang) * 0.5, cy = 2.4 - 0.5 * drop - Math.Cos(ang) * 0.5;
+        double run = 5.0, drop = 2.9, len = Math.Sqrt(run * run + drop * drop), ang = Math64.Atan2(drop, run);
+        double cx = 4.0 + 0.5 * run - Math64.Sin(ang) * 0.5, cy = 2.4 - 0.5 * drop - Math64.Cos(ang) * 0.5;
         w.AddBox(new Vector3F((float)len, 1f, 16f), new Vector3D(cx, cy, 7), QuaternionF.CreateFromAxisAngle(new Vector3F(0f, 0f, 1f), (float)-ang), BodyType.Static);
         w.AddBox(new Vector3F(26f, 1f, 16f), new Vector3D(22, -1.0, 7), type: BodyType.Static);
         w.AddBox(new Vector3F(6f, 3.45f, 16f), new Vector3D(DockFace + 3, DockTop - 1.725, 7), type: BodyType.Static);
@@ -209,8 +209,8 @@ internal static class SwimScenes
         var w = new P2.PhysicsWorld2D(new P2.WorldOptions2D { ThreadCount = threads, WorldId = 134 });
         var s = new Scene2D { World = w };
         w.AddBox(new Vector2F(10f, 1f), new Vector2D(-1, 1.9), type: BodyType.Static);
-        double run = 5.0, drop = 2.9, len = Math.Sqrt(run * run + drop * drop), ang = Math.Atan2(drop, run);
-        double cx = 4.0 + 0.5 * run - Math.Sin(ang) * 0.5, cy = 2.4 - 0.5 * drop - Math.Cos(ang) * 0.5;
+        double run = 5.0, drop = 2.9, len = Math.Sqrt(run * run + drop * drop), ang = Math64.Atan2(drop, run);
+        double cx = 4.0 + 0.5 * run - Math64.Sin(ang) * 0.5, cy = 2.4 - 0.5 * drop - Math64.Cos(ang) * 0.5;
         w.AddBox(new Vector2F((float)len, 1f), new Vector2D(cx, cy), (float)-ang, BodyType.Static);
         w.AddBox(new Vector2F(26f, 1f), new Vector2D(22, -1.0), type: BodyType.Static);
         w.AddBox(new Vector2F(6f, 3.45f), new Vector2D(DockFace + 3, DockTop - 1.725), type: BodyType.Static);
