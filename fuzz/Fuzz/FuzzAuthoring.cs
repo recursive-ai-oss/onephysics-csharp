@@ -117,7 +117,11 @@ internal static class FuzzAuthoring
             for (int t = 0; t < m.Triangles.Length / 3; t++)
             {
                 var a = m.Vertices[m.Triangles[3 * t]]; var b = m.Vertices[m.Triangles[3 * t + 1]]; var c = m.Vertices[m.Triangles[3 * t + 2]];
-                if (!(((double)b.X - a.X) * ((double)c.Y - a.Y) - ((double)b.Y - a.Y) * ((double)c.X - a.X) >= 0)) { throw new InvalidOperationException("A triangle is clockwise."); }
+                double cross = ((double)b.X - a.X) * ((double)c.Y - a.Y) - ((double)b.Y - a.Y) * ((double)c.X - a.X);
+                // The mesher orients its triangles exactly in double; its vertices are then rounded to float32, which can turn a triangle narrower than the rounding (a few ulps of the largest coordinate times its edge lengths) clockwise. That is the documented resolution of the output, not a fault.
+                double big = Math.Max(Math.Max(Math.Abs((double)a.X), Math.Abs((double)a.Y)), Math.Max(Math.Max(Math.Abs((double)b.X), Math.Abs((double)b.Y)), Math.Max(Math.Abs((double)c.X), Math.Abs((double)c.Y))));
+                double edges = Math.Sqrt(((double)b.X - a.X) * ((double)b.X - a.X) + ((double)b.Y - a.Y) * ((double)b.Y - a.Y)) + Math.Sqrt(((double)c.X - a.X) * ((double)c.X - a.X) + ((double)c.Y - a.Y) * ((double)c.Y - a.Y));
+                if (!(cross >= -(4.0 * 1.1920929e-7 * big * edges))) { throw new InvalidOperationException("A triangle is clockwise."); }
             }
         });
     }

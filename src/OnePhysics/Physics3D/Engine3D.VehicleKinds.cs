@@ -79,7 +79,7 @@ internal sealed partial class Engine3D
 
             float v = vm / mt;
             if (v > t.MaxTrackSpeed) { v = t.MaxTrackSpeed; } else if (v < -t.MaxTrackSpeed) { v = -t.MaxTrackSpeed; }
-            for (int i = a; i < z; i++) { s.Omega[i] = v / s.Def.Wheels[i].Radius; }
+            for (int i = a; i < z; i++) { s.Omega[i] = SaneSpin(v / s.Def.Wheels[i].Radius); }
         }
     }
 

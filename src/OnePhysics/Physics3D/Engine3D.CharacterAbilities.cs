@@ -40,6 +40,10 @@ internal sealed partial class Engine3D : ICharacterExtHost
     /// <summary>Puts a character's kinematic body at a pose with a velocity, without recording and without waking anything (the same placement as a teleport).</summary>
     private void PlaceCharacter(int c, Vector3D position, QuaternionF rotation, Vector3F velocity)
     {
+        // A pose carried by a body that has been flung out of the supported range (a seat, a rope grip or a ledge on a damaged world) would put the character's box outside the broadphase; the character stays where it was.
+        const double Reach = 4000000.0;
+        if (!(Math.Abs(position.X) <= Reach && Math.Abs(position.Y) <= Reach && Math.Abs(position.Z) <= Reach)) { return; }
+        if (!float.IsFinite(velocity.X + velocity.Y + velocity.Z)) { velocity = default; }
         int b = CharBody[c];
         var bodies = Core.Bodies;
         CancelKinematicDrive(b);

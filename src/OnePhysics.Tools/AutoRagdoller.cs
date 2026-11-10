@@ -98,6 +98,9 @@ public static class AutoRagdoller
         float smallest = float.MaxValue;
         for (int i = 0; i < used; i++) { smallest = Math.Min(smallest, h[i]); }
         if (!(mass * smallest * smallest >= 1e-14f) || mass > 1e12f) { throw Fail(GeometryToolError.OutOfRange, where + ": a mass of " + mass.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " kg on a shape this small (" + smallest.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " m) gives an inertia outside what the engine accepts; use a larger TotalMass or larger bones", "options"); }
+        // Both ends of the engine's limit: a mass under 1e-18 is refused outright, and an inertia tensor whose entries are beyond about 7e12 has a determinant that overflows float32, so it cannot be inverted.
+        float reach = used == 1 ? a : used == 2 ? a + b : (float)Math.Sqrt(((double)a * a) + ((double)b * b) + ((double)c * c));
+        if (!(mass >= 1e-17f) || !(mass * reach * reach <= 1e12f)) { throw Fail(GeometryToolError.OutOfRange, where + ": a mass of " + mass.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " kg on a shape reaching " + reach.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " m is outside what the engine can simulate (mass at least 1e-17 kg, mass times reach squared at most 1e12); change TotalMass or the skeleton's size", "options"); }
         if (!float.IsFinite(px) || !float.IsFinite(py) || !float.IsFinite(pz)) { throw Fail(GeometryToolError.NonFinite, where + ": the fitted position is not finite", "bindPositions"); }
     }
 

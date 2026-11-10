@@ -309,10 +309,33 @@ internal static class IntegrateKernel3D
     private static void Store<T>(Span<float> st, int k, int l0, T turning, T dynamic, T fresh, T zero) where T : struct, ILane<T> =>
         T.Select(turning, T.Select(dynamic, fresh, zero), Row<T>(st, PWInvI + k, l0)).StoreAt(st, (PWInvI + k) * Lanes + l0);
 
+    /// <summary>
+    /// A velocity the solve left absurd (a stiff constraint on a light body with a long lever arm can multiply a velocity by thousands in one pass) becomes finite and bounded before it moves anything:
+    /// NaN becomes zero, an infinite component the cap, and a vector longer than the cap is scaled to it. The cap is far above the integration's own limits (16 times), so a body that is merely fast is never touched.
+    /// </summary>
+    private static bool Sane(ref float x, ref float y, ref float z, float cap)
+    {
+        float ox = x, oy = y, oz = z;
+        if (float.IsNaN(x)) { x = 0f; } else if (x > cap) { x = cap; } else if (x < -cap) { x = -cap; }
+        if (float.IsNaN(y)) { y = 0f; } else if (y > cap) { y = cap; } else if (y < -cap) { y = -cap; }
+        if (float.IsNaN(z)) { z = 0f; } else if (z > cap) { z = cap; } else if (z < -cap) { z = -cap; }
+        float s2 = x * x + y * y + z * z;
+        if (s2 > cap * cap)
+        {
+            float m = Math.Max(Math.Abs(x), Math.Max(Math.Abs(y), Math.Abs(z)));
+            float k = cap / (m * 1.7320509f);
+            x *= k; y *= k; z *= k;
+        }
+
+        return x != ox || y != oy || z != oz;
+    }
+
     public static void Positions<T>(Engine3D e, ReadOnlySpan<int> list, float h) where T : struct, ILane<T>
     {
         int width = T.Count;
         var bodies = e.Core.Bodies;
+        Span<float> linW = bodies.LinearVelocity, angW = bodies.AngularVelocity;
+        float speedCap = Math.Min(16f * e.Opt.MaxLinearSpeed, 1e18f), spinCap = Math.Min(16f * e.Opt.MaxRotationPerSubstep / h, 1e18f);
         ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
         ReadOnlySpan<float> invMass = bodies.InverseMass, invI = bodies.InverseInertia;
         Span<double> pos = bodies.Position;
@@ -333,6 +356,13 @@ internal static class IntegrateKernel3D
 
                 int b = list[i0 + l];
                 int b3 = 3 * b, b4 = 4 * b, b6 = 6 * b;
+                if (Mem.At(invMass, b) > 0f)
+                {
+                    float vx = Mem.At(lin, b3), vy = Mem.At(lin, b3 + 1), vz = Mem.At(lin, b3 + 2), wx = Mem.At(ang, b3), wy = Mem.At(ang, b3 + 1), wz = Mem.At(ang, b3 + 2);
+                    if (Sane(ref vx, ref vy, ref vz, speedCap)) { Mem.At(linW, b3) = vx; Mem.At(linW, b3 + 1) = vy; Mem.At(linW, b3 + 2) = vz; }
+                    if (Sane(ref wx, ref wy, ref wz, spinCap)) { Mem.At(angW, b3) = wx; Mem.At(angW, b3 + 1) = wy; Mem.At(angW, b3 + 2) = wz; }
+                }
+
                 for (int k = 0; k < 3; k++)
                 {
                     st[(PLin + k) * Lanes + l] = Mem.At(lin, b3 + k); st[(PAng + k) * Lanes + l] = Mem.At(ang, b3 + k); st[(PDp + k) * Lanes + l] = Mem.At(dp, b3 + k);

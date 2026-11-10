@@ -78,6 +78,8 @@ Stated accuracy on the test meshes (sphere, torus, a generated character-like bl
 
 ## 2D quality triangulation (`TriangleMesher`)
 
+**Output resolution.** Triangles are oriented counter-clockwise exactly in double; the vertices are then rounded to float32, so a triangle narrower than that rounding (a few ulps of its largest coordinate times its edge lengths) may come out degenerate or marginally clockwise. Input outlines with vertices closer than that resolution are the usual cause.
+
 Delaunay refinement of a polygon with holes: Ruppert (J. Algorithms 1995), Chew's size rule, Shewchuk's handling of encroached segments (2002).
 
 1. The polygon is validated as for `PolygonDecomposer` (outline counter-clockwise, holes clockwise; simple, not touching; each hole inside the outline and in no other hole). The size bound is the area of an equilateral triangle of edge `TargetEdgeLength` (default extent over 16); the angle bound `MinAngleDegrees` (default 25, at most 34) gives the radius-edge bound `1 / (2 sin angle)`; `MaxVertices` (default 50 000) caps the output.
