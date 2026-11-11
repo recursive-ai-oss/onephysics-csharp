@@ -1,13 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The physics module for the family viewer. It is built against the OneScope SDK, which is not on nuget.org yet, so this project is
-       not in the solution and is not built by CI. The release workflow builds, tests and packs it on a scope-v<version> tag, once the SDK is
-       on nuget.org. See README.md in this folder for the build command. -->
+  <!-- The physics module for the family viewer, built against the OneScope SDK. It is not in the solution and CI does not build it. The
+       release workflow builds, tests and packs it on a scope-v<version> tag. See README.md in this folder for the build command. -->
   <PropertyGroup>
     <AssemblyName>$(PackageBaseName).Scope</AssemblyName>
     <RootNamespace>RecursiveAI.OnePhysics.Scope</RootNamespace>
     <PackageId>$(PackageBaseName).Scope</PackageId>
-    <Version>1.1.0-preview.2</Version>
+    <Version>1.1.0</Version>
     <Description>The RecursiveAI.OnePhysics module for the OneScope viewer: opens OnePhysics replays, snapshots and scenes in 2D and 3D, and lets the viewer play, seek, fork, diff and inspect them.</Description>
     <PackageTags>physics;replay;viewer;deterministic;determinism;onescope</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -20,7 +19,7 @@
     <NoWarn>$(NoWarn);OPHYS0001</NoWarn>
   </PropertyGroup>
 
-  <!-- Where the OneScope SDK package comes from: a folder or feed given as ONESCOPE_SDK_FEED (environment or -p:). -->
+  <!-- Optional: a folder or feed to restore the SDK package from instead of nuget.org, given as ONESCOPE_SDK_FEED (environment or -p:). -->
   <PropertyGroup Condition="'$(ONESCOPE_SDK_FEED)' != ''">
     <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(ONESCOPE_SDK_FEED)</RestoreAdditionalProjectSources>
   </PropertyGroup>
@@ -33,7 +32,7 @@
 
   <ItemGroup>
     <PackageReference Include="RecursiveAI.OnePhysics" Version="1.0.0" />
-    <PackageReference Include="RecursiveAI.OneScope.Sdk" Version="0.2.0-preview.1" />
+    <PackageReference Include="RecursiveAI.OneScope.Sdk" Version="1.0.0" />
   </ItemGroup>
 
 </Project>

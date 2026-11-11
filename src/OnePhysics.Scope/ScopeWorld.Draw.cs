@@ -34,7 +34,7 @@ internal sealed partial class ScopeWorld
 
         if (request.IsOn(ScopeInfo.OverlayContacts))
         {
-            content |= DebugContent.Contacts;
+            content |= DebugContent.Contacts | DebugContent.Bounds; // the bounds give the arrows their size
         }
 
         if (request.IsOn(ScopeInfo.OverlayJoints) || request.IsOn(ScopeInfo.OverlayLimits))
@@ -82,14 +82,16 @@ internal sealed partial class ScopeWorld
 
         if (request.IsOn(ScopeInfo.OverlayContacts))
         {
+            // Arrows scale with the bodies: the geometric mean of the bounds' longest sides (a few huge statics hardly move it), 1 when there are none.
+            float unit = BodyUnit();
             foreach (DebugContact c in _geometry.Contacts)
             {
                 var style = new DrawStyle(new Color32(240, 80, 60), ScopeInfo.OverlayContacts, 2, DrawFlags.OnTop, EntityIds.Of(c.BodyA));
                 Vector3 at = P(c.Point, ox, oy, oz);
-                // The normal points from A to B. Its length grows with the impulse the solver applied: 0.15 m at rest up to 0.65 m for a hard hit.
+                // The normal points from A to B. Its length grows with the impulse the solver applied: 0.15 to 0.65 body units, a unit being the typical body size.
                 float impulse = c.NormalImpulse > 0f ? c.NormalImpulse : 0f;
-                float length = 0.15f + 0.5f * (impulse / (impulse + 1f));
-                into.Arrow(at, at + new Vector3(c.Normal.X, c.Normal.Y, c.Normal.Z) * length, 0.05f, style);
+                float length = unit * (0.15f + 0.5f * (impulse / (impulse + 1f)));
+                into.Arrow(at, at + new Vector3(c.Normal.X, c.Normal.Y, c.Normal.Z) * length, 0.05f * unit, style);
                 into.Point(at, 4f, style);
             }
         }
@@ -298,6 +300,23 @@ internal sealed partial class ScopeWorld
     private static float Cos(float x) => (float)RecursiveAI.OneMath.Math64.Cos(x);
 
     private static float Sin(float x) => (float)RecursiveAI.OneMath.Math64.Sin(x);
+
+    private float BodyUnit()
+    {
+        float sumLog = 0f;
+        int count = 0;
+        foreach (DebugBox b in _geometry.Bounds)
+        {
+            double size = Math.Max(b.Max.X - b.Min.X, Math.Max(b.Max.Y - b.Min.Y, b.Max.Z - b.Min.Z));
+            if (size > 1e-4 && size < 1e9)
+            {
+                sumLog += MathF.Log((float)size);
+                count++;
+            }
+        }
+
+        return count == 0 ? 1f : MathF.Exp(sumLog / count);
+    }
 
     private static Vector3 P(Vector3D v, double ox, double oy, double oz) => new((float)(v.X + ox), (float)(v.Y + oy), (float)(v.Z + oz));
 }
