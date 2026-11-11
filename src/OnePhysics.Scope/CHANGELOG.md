@@ -7,7 +7,7 @@ repository's top-level `CHANGELOG.md`. Each release has a `## [<version>]` headi
 
 ## [1.1.0]
 
-The first release of the OnePhysics module for the OneScope viewer, on OneScope SDK 1.0 and RecursiveAI.OnePhysics 1.0.0.
+The first release of the OnePhysics module for the OneScope viewer, on OneScope SDK 1.0 and RecursiveAI.OnePhysics 1.0.0. It follows the 1.1.0-preview builds, which were never published to nuget.org; the module's version number follows the RecursiveAI.OnePhysics 1.x line.
 
 - **Files:** opens OnePhysics replays (versions 1 and 2, checkpoint or command, 2D or 3D), world snapshots and scene text. Seeking to any
   step through the viewer's keyframes gives the replay's own per-step hashes; the first step that does not reproduce raises
