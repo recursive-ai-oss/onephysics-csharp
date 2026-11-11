@@ -14,11 +14,18 @@ ulong hash = history.StateHash;      // OnePhysics' world hash at step 120
 
 ## What it supports
 
-- **Sources:** replays (version 1 and 2), world snapshots, scene text (authored or exact-state). The first state builds the world; later recorded
-  state changes are replayed as written. Live-option records after the first one are not applied.
-- **Pokes on a fork:** `impulse`, `set_velocity`, `set_position` and `wake`, on a body entity.
+- **Sources:** replays (version 1 and 2), world snapshots, scene text (authored or exact-state). The first state builds the world and is
+  the recording's start step; later recorded state changes are held in the step inputs and replayed as written. Live-option records after
+  the first one are not applied. The replay's recorded per-step hashes are passed to the history, which raises `replay.hash-mismatch` at
+  the first step that does not reproduce.
+- **Live:** `OnePhysicsModule` is an `ILiveModule`. On the host, `world.StartRecording(feed)` with a `LiveFeedStream`, set `feed.Record` to
+  the probe's record call and use `feed.WriteSnapshot` as its snapshot source. The viewer then re-simulates the host's steps from the
+  attach point, with the host's step numbers and hashes.
+- **Pokes on a fork:** `impulse`, `set_velocity`, `set_position` and `wake`, on a body entity; the first and third are drag-to-point.
 - **Entities:** the world, every body and every joint, with inspector rows from the library's per-body and per-joint inspection.
-- **Overlays:** shapes (coloured by body state), bounds, contacts, joints and centres of mass. Soft bodies, fluids, rods and the other
+- **Overlays:** shapes (coloured by body state), bounds, contact normals (longer for harder contacts), joints, joint limits (3D:
+  hinge arcs, slider ranges, cone and swing cones) and centres of mass. Every item names its body or joint, so picking works. The hinge
+  arc shows the limit span from a fixed direction: the debug geometry has no zero direction for the angle. 2D limits are not exposed. Soft bodies, fluids, rods and the other
   deformable stores are not drawn yet.
 - **Timeline:** awake bodies and contact points as series; contact begin, sleep and wake and joint break as events.
 - **Units and axes:** metres; the time axis only.

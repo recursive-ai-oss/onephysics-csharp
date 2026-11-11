@@ -1,21 +1,24 @@
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using OneScope.Sdk;
 using RecursiveAI.OnePhysics.Replay;
 
 namespace RecursiveAI.OnePhysics.Scope;
 
 /// <summary>
-/// Reads a OnePhysics replay into a world setup and one input per step. The initial snapshot (and live options) build the world;
-/// every later snapshot or named mutation becomes a stored state a step input refers to; our own pokes are read back as pokes.
-/// The recorded hashes are not kept: the viewer's history computes them again, which is what detects a replay that does not reproduce.
+/// Reads a OnePhysics replay into a world setup, one input per step and the recorded per-step hashes. The initial snapshot (and live
+/// options) build the world; every later snapshot or named mutation is held inside the step input it belongs to.
 /// </summary>
 internal static class ReplayImport
 {
-    public static IScopeSource Open(byte[] data, string name, int threads)
+    /// <summary>Most steps one replay may hold. A step record is at least 5 bytes, so this also bounds the work a small file can ask for.</summary>
+    public const int MaxSteps = 1 << 22;
+
+    /// <summary>Most bytes all step inputs of one replay may hold together.</summary>
+    public const long MaxTotalInputBytes = 1L << 30;
+
+    public static PhysicsSource Open(byte[] data, string name, int threads)
     {
         try
         {
@@ -50,83 +53,76 @@ internal static class ReplayImport
             }
         }
 
-        var states = new List<StoredState>();
+        // The first step's time step is the world's starting one, so a replay at a constant dt carries no time-step operations.
         var inputs = new List<ReadOnlyMemory<byte>>();
-        var pre = new ArrayBufferWriter<byte>();
-        var post = new ArrayBufferWriter<byte>();
-        bool framed = false;
-        float frameDt = 0f;
-        float current = 0f;
-        float first = 0f;
+        var hashes = new List<ulong>();
+        StepAssembler? assembler = null;
+        long total = 0;
+        float firstDt = 0f;
+        bool allHashed = reader.HasHashTrack;
+        var pendingStates = new List<(ReplayRecordKind Kind, byte[] Payload)>();
 
         while (pending || reader.ReadNext())
         {
             pending = false;
-            switch (reader.Kind)
+            ReplayRecordKind kind = reader.Kind;
+            if (kind is ReplayRecordKind.BeginStep or ReplayRecordKind.Step && firstDt == 0f)
             {
-                case ReplayRecordKind.Snapshot:
-                    StepOps.WriteState(pre, OpKind.State, Store(states, "Snapshot", reader.Payload));
-                    break;
-                case ReplayRecordKind.Mutation:
-                    string op = Encoding.ASCII.GetString(reader.OperationName);
-                    if (!framed && StepOps.TryParsePokeName(op, out StepOp poke))
-                    {
-                        StepOps.WritePoke(pre, poke);
-                    }
-                    else
-                    {
-                        StepOps.WriteState(framed ? post : pre, framed ? OpKind.PostState : OpKind.State, Store(states, op, reader.SnapshotPayload));
-                    }
+                firstDt = reader.StepTime;
+                assembler = new StepAssembler(firstDt);
+                foreach ((ReplayRecordKind k, byte[] p) in pendingStates)
+                {
+                    assembler.Accept(k, p, out _);
+                }
 
-                    break;
-                case ReplayRecordKind.BeginStep:
-                    framed = true;
-                    frameDt = reader.StepTime;
-                    break;
-                case ReplayRecordKind.Step:
-                case ReplayRecordKind.EndStep:
-                    float dt = reader.Kind == ReplayRecordKind.Step ? reader.StepTime : frameDt;
-                    framed = false;
-                    if (inputs.Count == 0)
-                    {
-                        first = current = dt;
-                    }
-
-                    var input = new ArrayBufferWriter<byte>(pre.WrittenCount + post.WrittenCount + 5);
-                    if (BitConverter.SingleToUInt32Bits(dt) != BitConverter.SingleToUInt32Bits(current))
-                    {
-                        StepOps.WriteDt(input, dt);
-                        current = dt;
-                    }
-
-                    input.Write(pre.WrittenSpan);
-                    input.Write(post.WrittenSpan);
-                    inputs.Add(input.WrittenSpan.ToArray());
-                    pre.ResetWrittenCount();
-                    post.ResetWrittenCount();
-                    break;
+                pendingStates.Clear();
             }
+
+            if (assembler is null)
+            {
+                if (kind is ReplayRecordKind.Snapshot or ReplayRecordKind.Mutation)
+                {
+                    pendingStates.Add((kind, reader.Payload.ToArray()));
+                }
+
+                continue;
+            }
+
+            byte[]? input = assembler.Accept(kind, reader.Payload, out ulong? hash);
+            if (input is null)
+            {
+                continue;
+            }
+
+            if (inputs.Count >= MaxSteps || (total += input.Length) > MaxTotalInputBytes)
+            {
+                throw new ScopeFormatException(name, $"expected at most {MaxSteps} steps and {MaxTotalInputBytes} bytes of step input.");
+            }
+
+            inputs.Add(input);
+            allHashed &= hash.HasValue;
+            hashes.Add(hash.GetValueOrDefault());
         }
 
-        int dimension = reader.Dimension;
         var setup = new WorldSetup
         {
             Name = name,
-            Dimension = dimension,
+            Dimension = reader.Dimension,
             Kind = options is null ? SetupKind.Snapshot : SetupKind.SnapshotWithOptions,
             Data = initial,
             Options = options,
             InitialStep = reader.InitialStep,
-            DefaultDt = first > 0f ? first : 1f / 60f,
-            States = states,
+            DefaultDt = firstDt > 0f ? firstDt : 1f / 60f,
         };
-        setup.CreateWorld(threads);
-        return new OnePhysicsModule(threads).Make(setup, Recording.Create(setup.Header(), inputs));
-    }
+        ulong startHash = setup.CreateWorld(threads).Hash();
+        ulong[] expected = [];
+        if (allHashed && inputs.Count > 0)
+        {
+            expected = new ulong[inputs.Count + 1];
+            expected[0] = startHash;
+            hashes.CopyTo(expected, 1);
+        }
 
-    private static uint Store(List<StoredState> states, string name, ReadOnlySpan<byte> snapshot)
-    {
-        states.Add(new StoredState(name, snapshot.ToArray()));
-        return (uint)(states.Count - 1);
+        return new OnePhysicsModule(threads).Make(setup, Recording.Create(setup.Header(), inputs, setup.InitialStep, expected));
     }
 }

@@ -21,6 +21,7 @@ internal static class ScopeInfo
     public const int OverlayContacts = 2;
     public const int OverlayJoints = 3;
     public const int OverlayCentres = 4;
+    public const int OverlayLimits = 5;
 
     public static SourceInfo Make(string name, int dimension) => new()
     {
@@ -42,12 +43,13 @@ internal static class ScopeInfo
             new OverlayInfo(OverlayContacts, "Contacts", true),
             new OverlayInfo(OverlayJoints, "Joints", true),
             new OverlayInfo(OverlayCentres, "Centres of mass", false),
+            new OverlayInfo(OverlayLimits, "Joint limits", true),
         ],
         Pokes =
         [
-            new PokeInfo(PokeImpulse, "Impulse", [new ParamInfo("target", ValueKind.Entity), new ParamInfo("impulse", ValueKind.Vector)]),
+            new PokeInfo(PokeImpulse, "Impulse", [new ParamInfo("target", ValueKind.Entity), new ParamInfo("impulse", ValueKind.Vector)]) { Role = PokeRole.DragToPoint },
             new PokeInfo(PokeSetVelocity, "Set velocity", [new ParamInfo("target", ValueKind.Entity), new ParamInfo("velocity", ValueKind.Vector)]),
-            new PokeInfo(PokeSetPosition, "Set position", [new ParamInfo("target", ValueKind.Entity), new ParamInfo("position", ValueKind.Vector)]),
+            new PokeInfo(PokeSetPosition, "Set position", [new ParamInfo("target", ValueKind.Entity), new ParamInfo("position", ValueKind.Vector)]) { Role = PokeRole.DragToPoint },
             new PokeInfo(PokeWake, "Wake", [new ParamInfo("target", ValueKind.Entity)]),
         ],
         Tracks =

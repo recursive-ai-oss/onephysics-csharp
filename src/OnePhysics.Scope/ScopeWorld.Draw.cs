@@ -37,7 +37,7 @@ internal sealed partial class ScopeWorld
             content |= DebugContent.Contacts;
         }
 
-        if (request.IsOn(ScopeInfo.OverlayJoints))
+        if (request.IsOn(ScopeInfo.OverlayJoints) || request.IsOn(ScopeInfo.OverlayLimits))
         {
             content |= DebugContent.Joints;
         }
@@ -71,9 +71,9 @@ internal sealed partial class ScopeWorld
 
         if (request.IsOn(ScopeInfo.OverlayBounds))
         {
-            var style = new DrawStyle(new Color32(200, 200, 90, 160), ScopeInfo.OverlayBounds, 1, DrawFlags.Wireframe);
             foreach (DebugBox b in _geometry.Bounds)
             {
+                var style = new DrawStyle(new Color32(200, 200, 90, 160), ScopeInfo.OverlayBounds, 1, DrawFlags.Wireframe, EntityIds.Of(b.Body));
                 Vector3 lo = P(b.Min, ox, oy, oz);
                 Vector3 hi = P(b.Max, ox, oy, oz);
                 into.Box((lo + hi) * 0.5f, (hi - lo) * 0.5f, Quaternion.Identity, style);
@@ -82,19 +82,23 @@ internal sealed partial class ScopeWorld
 
         if (request.IsOn(ScopeInfo.OverlayContacts))
         {
-            var style = new DrawStyle(new Color32(240, 80, 60), ScopeInfo.OverlayContacts, 2, DrawFlags.OnTop);
             foreach (DebugContact c in _geometry.Contacts)
             {
+                var style = new DrawStyle(new Color32(240, 80, 60), ScopeInfo.OverlayContacts, 2, DrawFlags.OnTop, EntityIds.Of(c.BodyA));
                 Vector3 at = P(c.Point, ox, oy, oz);
-                into.Arrow(at, at + new Vector3(c.Normal.X, c.Normal.Y, c.Normal.Z) * 0.25f, 0.05f, style);
+                // The normal points from A to B. Its length grows with the impulse the solver applied: 0.15 m at rest up to 0.65 m for a hard hit.
+                float impulse = c.NormalImpulse > 0f ? c.NormalImpulse : 0f;
+                float length = 0.15f + 0.5f * (impulse / (impulse + 1f));
+                into.Arrow(at, at + new Vector3(c.Normal.X, c.Normal.Y, c.Normal.Z) * length, 0.05f, style);
+                into.Point(at, 4f, style);
             }
         }
 
         if (request.IsOn(ScopeInfo.OverlayJoints))
         {
-            var style = new DrawStyle(new Color32(250, 170, 40), ScopeInfo.OverlayJoints, 2, DrawFlags.OnTop);
             foreach (DebugJoint j in _geometry.Joints)
             {
+                var style = new DrawStyle(new Color32(250, 170, 40), ScopeInfo.OverlayJoints, 2, DrawFlags.OnTop, EntityIds.Of(j.Joint));
                 Vector3 a = P(j.AnchorA, ox, oy, oz);
                 Vector3 b = P(j.AnchorB, ox, oy, oz);
                 into.Line(a, b, style);
@@ -103,11 +107,19 @@ internal sealed partial class ScopeWorld
             }
         }
 
+        if (request.IsOn(ScopeInfo.OverlayLimits))
+        {
+            foreach (DebugJoint j in _geometry.Joints)
+            {
+                DrawLimits(into, j, ox, oy, oz);
+            }
+        }
+
         if (request.IsOn(ScopeInfo.OverlayCentres))
         {
-            var style = new DrawStyle(new Color32(255, 255, 255), ScopeInfo.OverlayCentres, 2, DrawFlags.OnTop);
             foreach (DebugBody b in _geometry.Bodies)
             {
+                var style = new DrawStyle(new Color32(255, 255, 255), ScopeInfo.OverlayCentres, 2, DrawFlags.OnTop, EntityIds.Of(b.Body));
                 into.Point(P(b.CenterOfMass, ox, oy, oz), 4f, style);
             }
         }
@@ -128,8 +140,9 @@ internal sealed partial class ScopeWorld
             };
         }
 
-        var style = new DrawStyle(color, ScopeInfo.OverlayShapes, 0, s.IsSensor ? DrawFlags.Wireframe : DrawFlags.None);
-        var line = new DrawStyle(color, ScopeInfo.OverlayShapes, 0, DrawFlags.Wireframe);
+        EntityId owner = EntityIds.Of(s.Body);
+        var style = new DrawStyle(color, ScopeInfo.OverlayShapes, 0, s.IsSensor ? DrawFlags.Wireframe : DrawFlags.None, owner);
+        var line = new DrawStyle(color, ScopeInfo.OverlayShapes, 0, DrawFlags.Wireframe, owner);
         if (s.PointCount == 0 || s.FirstPoint < 0 || s.FirstPoint + s.PointCount > points.Length)
         {
             return;
@@ -202,6 +215,89 @@ internal sealed partial class ScopeWorld
             into.Point(_scratch[i], 3f, style);
         }
     }
+
+    private const int ArcSegments = 24;
+    private const int ConeRays = 12;
+
+    // Limits as the joint's debug entry reports them (3D only; the planar engine's debug entry carries no limit or joint type).
+    // Hinge: an arc of the limit range around the axis. The entry has no zero direction of the hinge angle, so the arc starts at a fixed
+    // direction perpendicular to the axis: its span is the limit range, its orientation is not the joint's.
+    // Slider: the allowed travel along the axis. Cone and swing-twist: the swing cone about the axis.
+    private static void DrawLimits(DrawList into, in DebugJoint j, double ox, double oy, double oz)
+    {
+        Vector3 axis = new((float)j.Axis.X, (float)j.Axis.Y, (float)j.Axis.Z);
+        float axisLength = axis.Length();
+        if (j.Type == 0 || axisLength < 0.5f)
+        {
+            return;
+        }
+
+        axis /= axisLength;
+        Vector3 at = P(j.AnchorA, ox, oy, oz);
+        var style = new DrawStyle(new Color32(255, 120, 200), ScopeInfo.OverlayLimits, 3, DrawFlags.OnTop, EntityIds.Of(j.Joint));
+        const float Radius = 0.4f;
+        switch ((Physics3D.JointType3D)j.Type)
+        {
+            case Physics3D.JointType3D.Hinge when j.UpperLimit > j.LowerLimit:
+                Vector3 u = Perpendicular(axis);
+                Vector3 v = Vector3.Cross(axis, u);
+                Vector3 previous = at + u * Radius;
+                for (int i = 0; i <= ArcSegments; i++)
+                {
+                    float angle = j.LowerLimit + (j.UpperLimit - j.LowerLimit) * i / ArcSegments;
+                    Vector3 p = at + (u * Cos(angle) + v * Sin(angle)) * Radius;
+                    into.Line(previous, p, style);
+                    previous = p;
+                }
+
+                into.Line(at, at + (u * Cos(j.LowerLimit) + v * Sin(j.LowerLimit)) * Radius, style);
+                into.Line(at, previous, style);
+                break;
+            case Physics3D.JointType3D.Slider when j.UpperLimit > j.LowerLimit:
+                Vector3 lo = at + axis * j.LowerLimit;
+                Vector3 hi = at + axis * j.UpperLimit;
+                Vector3 side = Perpendicular(axis) * 0.1f;
+                into.Line(lo, hi, style);
+                into.Line(lo - side, lo + side, style);
+                into.Line(hi - side, hi + side, style);
+                break;
+            case Physics3D.JointType3D.Cone or Physics3D.JointType3D.SwingTwist when j.ConeAngle > 0f:
+                Vector3 a = Perpendicular(axis);
+                Vector3 b = Vector3.Cross(axis, a);
+                float rim = Sin(j.ConeAngle) * Radius;
+                float height = Cos(j.ConeAngle) * Radius;
+                Vector3 last = default;
+                for (int i = 0; i <= ConeRays * 2; i++)
+                {
+                    float angle = 2f * (float)Math.PI * i / (ConeRays * 2);
+                    Vector3 p = at + axis * height + (a * Cos(angle) + b * Sin(angle)) * rim;
+                    if (i > 0)
+                    {
+                        into.Line(last, p, style);
+                    }
+
+                    if (i % 2 == 0)
+                    {
+                        into.Line(at, p, style);
+                    }
+
+                    last = p;
+                }
+
+                break;
+        }
+    }
+
+    private static Vector3 Perpendicular(Vector3 axis)
+    {
+        Vector3 other = float.Abs(axis.X) < 0.9f ? Vector3.UnitX : Vector3.UnitY;
+        return Vector3.Normalize(Vector3.Cross(axis, other));
+    }
+
+    // Onemath's correctly rounded functions keep the drawing identical on every platform.
+    private static float Cos(float x) => (float)RecursiveAI.OneMath.Math64.Cos(x);
+
+    private static float Sin(float x) => (float)RecursiveAI.OneMath.Math64.Sin(x);
 
     private static Vector3 P(Vector3D v, double ox, double oy, double oz) => new((float)(v.X + ox), (float)(v.Y + oy), (float)(v.Z + oz));
 }

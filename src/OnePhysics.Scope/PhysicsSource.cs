@@ -24,9 +24,6 @@ internal enum SetupKind : byte
     Snapshot = 2,
 }
 
-/// <summary>A full world state that a step input refers to by number (a replay's mutation effects can be large, and an input holds at most 1 MiB).</summary>
-internal sealed record StoredState(string Name, byte[] Bytes);
-
 /// <summary>Everything a world is built from. Immutable and shared by a source and its forks.</summary>
 internal sealed class WorldSetup
 {
@@ -42,13 +39,11 @@ internal sealed class WorldSetup
     /// <summary>The recorded live options of a replay's first record, for <see cref="SetupKind.SnapshotWithOptions"/>.</summary>
     public byte[]? Options { get; init; }
 
-    /// <summary>The initial completed step count of the replay the snapshot came from.</summary>
+    /// <summary>The world's completed step count at the start, which is the recording's start step.</summary>
     public long InitialStep { get; init; }
 
     /// <summary>The time step a world uses until an input says otherwise.</summary>
     public required float DefaultDt { get; init; }
-
-    public required IReadOnlyList<StoredState> States { get; init; }
 
     /// <summary>The small, fixed header kept as the recording's setup bytes.</summary>
     public byte[] Header()
@@ -137,7 +132,7 @@ internal sealed class PhysicsSource : IScopeSource
             emit.LiveOptions(options);
         }
 
-        for (long s = 0; s < Recording.StepCount; s++)
+        for (long s = Recording.StartStep; s < Recording.EndStep; s++)
         {
             world.Run(Recording.InputAt(s).Span, TimelineSink.None, emit);
         }
