@@ -46,7 +46,8 @@ if grep -nE '\]\((\.|/|[A-Za-z0-9_-]+/|[A-Za-z0-9_-]+\.[a-z]+)' README.md | grep
 fi
 
 # The package has exactly one dependency: onemath.
-refs="$(search '<PackageReference' src | grep '\.csproj:' || true)"
+# (the OneScope module, src/OnePhysics.Scope, is built outside CI against the OneScope SDK and has its own reference.)
+refs="$(search '<PackageReference' src | grep '\.csproj:' | grep -v '^src/OnePhysics\.Scope/' || true)"
 count="$(printf '%s\n' "$refs" | grep -c . || true)"
 if [ "$count" -ne 1 ] || ! printf '%s' "$refs" | grep -q 'Include="RecursiveAI.OneMath"'; then
   echo "scan failed: src must have exactly one PackageReference, RecursiveAI.OneMath; found:"; echo "$refs"; fail=1
