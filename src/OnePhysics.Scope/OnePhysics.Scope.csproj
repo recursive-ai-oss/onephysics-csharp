@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The physics module for the family viewer. It is built against the OneScope SDK, which is not on nuget.org yet, so this project is
+       not in the solution and is not built by CI or the release workflow. See README.md in this folder for the build command. -->
+  <PropertyGroup>
+    <AssemblyName>$(PackageBaseName).Scope</AssemblyName>
+    <RootNamespace>RecursiveAI.OnePhysics.Scope</RootNamespace>
+    <PackageId>$(PackageBaseName).Scope</PackageId>
+    <Version>1.1.0-preview.1</Version>
+    <Description>The RecursiveAI.OnePhysics module for the OneScope viewer: opens OnePhysics replays, snapshots and scenes in 2D and 3D, and lets the viewer play, seek, fork, diff and inspect them.</Description>
+    <PackageTags>physics;replay;viewer;deterministic;determinism;onescope</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <EnablePackageValidation>false</EnablePackageValidation>
+    <NoWarn>$(NoWarn);OPHYS0001</NoWarn>
+  </PropertyGroup>
+
+  <!-- Where the OneScope SDK package comes from: a folder or feed given as ONESCOPE_SDK_FEED (environment or -p:). -->
+  <PropertyGroup Condition="'$(ONESCOPE_SDK_FEED)' != ''">
+    <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(ONESCOPE_SDK_FEED)</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="../../LICENSE-MIT" Pack="true" PackagePath="/" Visible="false" />
+    <None Include="../../LICENSE-APACHE" Pack="true" PackagePath="/" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OnePhysics/OnePhysics.csproj" />
+    <PackageReference Include="RecursiveAI.OneScope.Sdk" Version="0.1.0-preview.1" />
+  </ItemGroup>
+
+</Project>
