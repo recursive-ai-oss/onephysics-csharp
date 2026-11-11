@@ -10,7 +10,7 @@ namespace RecursiveAI.OnePhysics.Scope;
 /// or a scene (authored or exact-state), and plays it with the library's own stepping, snapshots and world hash.
 /// A step's input is any pokes made on a fork plus the recorded state changes; the time step is carried in the input only when it changes.
 /// </summary>
-public sealed class OnePhysicsModule : IScopeModule
+public sealed class OnePhysicsModule : ILiveModule
 {
     /// <summary>The module id, <c>"onephysics"</c>.</summary>
     public const string ModuleId = "onephysics";
@@ -106,10 +106,36 @@ public sealed class OnePhysicsModule : IScopeModule
         Kind = kind,
         Data = data,
         DefaultDt = 1f / 60f,
-        States = [],
     };
 
-    private PhysicsSource Make(WorldSetup setup) => new(setup, Recording.Create(setup.Header(), []), _threads);
+    private PhysicsSource Make(WorldSetup setup) =>
+        new(setup, Recording.Create(setup.Header(), [], setup.CreateWorld(_threads).Step), _threads);
+
+    /// <inheritdoc />
+    /// <exception cref="ScopeFormatException">The stream's first bytes are not what <see cref="LiveFeedStream"/> writes, or the world in them is not valid.</exception>
+    public ILiveSource OpenLive(string libraryVersion, int formatVersion, ReadOnlyMemory<byte> snapshot, string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        if (formatVersion != 2)
+        {
+            throw new ScopeFormatException(name, $"expected replay format version 2 from the host, found {formatVersion}.");
+        }
+
+        (int dimension, long step, byte[] options, byte[] world) = LiveFeedStream.ParseSnapshot(snapshot.Span, name);
+        var setup = new WorldSetup
+        {
+            Name = name,
+            Dimension = dimension,
+            Kind = SetupKind.SnapshotWithOptions,
+            Data = world,
+            Options = options,
+            InitialStep = step,
+            DefaultDt = 1f / 60f,
+        };
+        setup.CreateWorld(_threads);
+        Recording recording = Recording.Create(setup.Header(), [], step).Fork(step);
+        return new LiveSource(new PhysicsSource(setup, recording, _threads), setup.DefaultDt);
+    }
 
     internal PhysicsSource Make(WorldSetup setup, Recording recording) => new(setup, recording, _threads);
 }

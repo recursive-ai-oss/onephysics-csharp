@@ -28,6 +28,7 @@ internal sealed partial class ScopeWorld : IScopeWorld
         _host = host;
         _setup = setup;
         _dt = setup.DefaultDt;
+        Step = host.StepCount;
     }
 
     public long Step { get; private set; }
@@ -46,7 +47,7 @@ internal sealed partial class ScopeWorld : IScopeWorld
     /// <summary>Runs one step: state changes and pokes in order, then the step, then changes made after it. When <paramref name="emit"/> is given, writes them as replay records.</summary>
     internal void Run(ReadOnlySpan<byte> input, TimelineSink sink, ReplayEmitter? emit)
     {
-        StepOps.Parse(input, _setup.States.Count, _ops);
+        StepOps.Parse(input, _ops);
         foreach (StepOp op in _ops)
         {
             switch (op.Kind)
@@ -55,7 +56,7 @@ internal sealed partial class ScopeWorld : IScopeWorld
                     _dt = op.Dt;
                     break;
                 case OpKind.State:
-                    ApplyState(op, emit);
+                    ApplyState(op, input, emit);
                     break;
                 case OpKind.PostState:
                     break;
@@ -77,18 +78,18 @@ internal sealed partial class ScopeWorld : IScopeWorld
         {
             if (op.Kind == OpKind.PostState)
             {
-                ApplyState(op, emit);
+                ApplyState(op, input, emit);
             }
         }
 
         emit?.EndStep(_host.StepCount, _host.Hash());
     }
 
-    private void ApplyState(in StepOp op, ReplayEmitter? emit)
+    private void ApplyState(in StepOp op, ReadOnlySpan<byte> input, ReplayEmitter? emit)
     {
-        StoredState state = _setup.States[(int)op.Index];
-        RestoreState(state.Bytes);
-        emit?.Mutation(state.Name, _host.StepCount, state.Bytes);
+        ReadOnlySpan<byte> state = input.Slice(op.Offset, op.Length);
+        RestoreState(state);
+        emit?.Mutation(op.Name!, _host.StepCount, state);
     }
 
     private void ApplyPoke(in StepOp op, ReplayEmitter? emit)
@@ -239,18 +240,43 @@ internal sealed partial class ScopeWorld : IScopeWorld
             return null;
         }
 
-        SnapshotDifference? d = SnapshotDesync.Compare(a, b).First;
+        // Bodies and joints first, since a difference there is what a user can look at; then the first of everything else (allocator
+        // counts, broadphase nodes, contacts), which are consequences. World-level fields are named "section entity field".
+        SnapshotDiffReport report = SnapshotDesync.Compare(a, b);
+        SnapshotDifference? d = null;
+        foreach (SnapshotDifference candidate in report.Differences)
+        {
+            if (candidate.Index >= 0 && candidate.Entity is "body" or "joint")
+            {
+                d = candidate;
+                break;
+            }
+        }
+
+        d ??= report.First;
         if (d is null)
         {
             return null;
         }
 
-        EntityId entity = d.Index >= 0 && d.Entity == "body"
-            ? new EntityId((1UL << 56) | (((ulong)(uint)d.Generation & 0xFFFFFF) << 32) | (uint)d.Index)
-            : d.Index >= 0 && d.Entity == "joint"
-                ? new EntityId((2UL << 56) | (((ulong)(uint)d.Generation & 0xFFFFFF) << 32) | (uint)d.Index)
-                : EntityIds.World;
-        string field = d.Occurrence > 0 ? d.Field + "[" + d.Occurrence.ToString(CultureInfo.InvariantCulture) + "]" : d.Field;
+        bool entityField = d.Index >= 0 && d.Entity is "body" or "joint";
+        EntityId entity = !entityField
+            ? EntityIds.World
+            : d.Entity == "body"
+                ? new EntityId((1UL << 56) | (((ulong)(uint)d.Generation & 0xFFFFFF) << 32) | (uint)d.Index)
+                : new EntityId((2UL << 56) | (((ulong)(uint)d.Generation & 0xFFFFFF) << 32) | (uint)d.Index);
+        string field = entityField ? d.Field : d.Section + " " + d.Entity + " " + d.Field;
+        // The planar engine stores a body's angular velocity in the first lane of a vector; it is a single number.
+        if (_host.Dimension == 2 && field == "angular velocity x")
+        {
+            field = "angular velocity";
+        }
+
+        if (d.Occurrence > 0)
+        {
+            field += "[" + d.Occurrence.ToString(CultureInfo.InvariantCulture) + "]";
+        }
+
         return new Difference(entity, field, d.A?.Value ?? "(absent)", d.B?.Value ?? "(absent)");
     }
 
