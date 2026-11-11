@@ -12,8 +12,9 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <!-- There is no published version to compare with yet; turn validation on at the first release. -->
-    <EnablePackageValidation>false</EnablePackageValidation>
+    <!-- Packing compares the public API with the last published release and fails on a break. -->
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
     <!-- Importers produce definitions of the 3D engine, whose types are marked experimental for consumers; inside this package they are simply used. -->

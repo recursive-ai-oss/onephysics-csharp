@@ -12,9 +12,9 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <!-- Packing compares the public API with the last published preview and fails on a break that is not listed in a suppression file. -->
+    <!-- Packing compares the public API with the last published release and fails on a break that is not listed in a suppression file. -->
     <EnablePackageValidation>true</EnablePackageValidation>
-    <PackageValidationBaselineVersion>0.4.0-preview.1</PackageValidationBaselineVersion>
+    <PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
     <!-- The raw tier is marked experimental for consumers (OPHYS0001); inside the package it is simply used. -->
