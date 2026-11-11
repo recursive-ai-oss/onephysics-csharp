@@ -82,7 +82,7 @@ internal sealed partial class ScopeWorld
 
         if (request.IsOn(ScopeInfo.OverlayContacts))
         {
-            // Arrows scale with the bodies: the geometric mean of the bounds' longest sides (a few huge statics hardly move it), 1 when there are none.
+            // Arrows scale with the bodies: the median of the bounds' longest sides (a few huge statics cannot move it), 1 when there are none.
             float unit = BodyUnit();
             foreach (DebugContact c in _geometry.Contacts)
             {
@@ -301,21 +301,33 @@ internal sealed partial class ScopeWorld
 
     private static float Sin(float x) => (float)RecursiveAI.OneMath.Math64.Sin(x);
 
+    private float[] _sizes = new float[64];
+
+    // The median of the bounds' longest sides: a few huge statics cannot move it, and it needs no transcendental math. 1 when there are none.
     private float BodyUnit()
     {
-        float sumLog = 0f;
         int count = 0;
         foreach (DebugBox b in _geometry.Bounds)
         {
             double size = Math.Max(b.Max.X - b.Min.X, Math.Max(b.Max.Y - b.Min.Y, b.Max.Z - b.Min.Z));
             if (size > 1e-4 && size < 1e9)
             {
-                sumLog += MathF.Log((float)size);
-                count++;
+                if (count == _sizes.Length)
+                {
+                    Array.Resize(ref _sizes, count * 2);
+                }
+
+                _sizes[count++] = (float)size;
             }
         }
 
-        return count == 0 ? 1f : MathF.Exp(sumLog / count);
+        if (count == 0)
+        {
+            return 1f;
+        }
+
+        Array.Sort(_sizes, 0, count);
+        return _sizes[count / 2];
     }
 
     private static Vector3 P(Vector3D v, double ox, double oy, double oz) => new((float)(v.X + ox), (float)(v.Y + oy), (float)(v.Z + oz));
