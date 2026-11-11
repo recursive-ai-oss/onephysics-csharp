@@ -2,7 +2,7 @@
 
 Deterministic 2D and 3D physics for .NET (`RecursiveAI.OnePhysics`), written from first principles: the same world state, bit for bit, on every OS, CPU, vector width, WebAssembly mode and thread count. Rigid bodies, shapes, contacts and joints; rods, ropes, cables, cloth and soft bodies; fracture and carving; particle fluids, shallow water and granular matter; articulations; fields; characters, vehicles and ragdolls; rollback tooling. No dependencies beyond the .NET base class library and [onemath](https://github.com/recursive-ai-oss/onemath-csharp), which supplies the deterministic math. NativeAOT and trimming compatible.
 
-**Status.** 1.0. Everything is supported except the raw tier (`LowLevel`: storage layouts, constraint batches and colours, trees), which stays `[Experimental("OPHYS0001")]` because its shapes follow the engine's internals; [docs/spec/api.md](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v1.0.0/docs/spec/api.md) lists it.
+**Status.** Stable (1.x). Everything is supported except the raw tier (`LowLevel`: storage layouts, constraint batches and colours, trees), which stays `[Experimental("OPHYS0001")]` because its shapes follow the engine's internals; [docs/spec/api.md](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v1.0.0/docs/spec/api.md) lists it.
 
 **Compatibility across 1.x.**
 - Results are bit-identical across operating systems, CPUs, vector widths, WebAssembly modes and thread counts in every release.
@@ -101,6 +101,7 @@ Measured against the managed .NET engines in their default configurations (BepuP
 
 - `RecursiveAI.OnePhysics.Tools`: authoring-time geometry, never needed at runtime. Convex decomposition of triangle meshes, hull simplification, mesh cleaning and mass properties, tetrahedralization and quality triangulation, ragdoll fitting from a skeleton, 2D polygon decomposition and sprite outlines. See [its page](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v1.0.0/src/OnePhysics.Tools/README.md) and [the specification](https://github.com/recursive-ai-oss/onephysics-csharp/blob/v1.0.0/docs/spec/tools.md).
 - `RecursiveAI.OnePhysics.Interchange`: importers for URDF and MJCF robots, glTF physics scenes, and Tiled and LDtk levels (see Importers below).
+- `RecursiveAI.OnePhysics.Scope`: the OnePhysics module for the OneScope viewer. It plays, forks, pokes and diffs replays, snapshots and scenes, and attaches to a live world. It is released on its own `scope-v` tags; see [its page](https://github.com/recursive-ai-oss/onephysics-csharp/blob/main/src/OnePhysics.Scope/README.md).
 
 ## Importers
 
