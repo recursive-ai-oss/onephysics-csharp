@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- The physics module for the family viewer. It is built against the OneScope SDK, which is not on nuget.org yet, so this project is
-       not in the solution and is not built by CI or the release workflow. See README.md in this folder for the build command. -->
+       not in the solution and is not built by CI. The release workflow builds, tests and packs it on a scope-v<version> tag, once the SDK is
+       on nuget.org. See README.md in this folder for the build command. -->
   <PropertyGroup>
     <AssemblyName>$(PackageBaseName).Scope</AssemblyName>
     <RootNamespace>RecursiveAI.OnePhysics.Scope</RootNamespace>
@@ -10,6 +11,9 @@
     <Description>The RecursiveAI.OnePhysics module for the OneScope viewer: opens OnePhysics replays, snapshots and scenes in 2D and 3D, and lets the viewer play, seek, fork, diff and inspect them.</Description>
     <PackageTags>physics;replay;viewer;deterministic;determinism;onescope</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
     <EnablePackageValidation>false</EnablePackageValidation>

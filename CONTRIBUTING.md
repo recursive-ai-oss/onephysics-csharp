@@ -26,6 +26,15 @@ Build output goes to `$ONEPHYSICS_ARTIFACTS` (default `~/.cache/onephysics-artif
 
 `tools/check-allow.txt` is the allow-list for the source scans in `tools/check.sh`; it starts empty and every entry needs a reason.
 
+## Releasing
+
+Releases are tag-driven (`.github/workflows/release.yml`); the checks it runs are in `tools/release-checks.sh` and can be run by hand (`tag-form`, `changelog`, `version`, `notes`).
+
+- `v<version>` (for example `v1.0.1`) publishes `RecursiveAI.OnePhysics`, `.Tools` and `.Interchange` at the version in `Directory.Build.props`; the notes come from `CHANGELOG.md`.
+- `scope-v<version>` (for example `scope-v1.1.0` or `scope-v1.1.0-preview.3`) publishes `RecursiveAI.OnePhysics.Scope` alone, at the `Version` in `src/OnePhysics.Scope/OnePhysics.Scope.csproj`; the notes come from `src/OnePhysics.Scope/CHANGELOG.md`. It never packs a library package, and a `v` tag never packs the module. The module restores only from nuget.org, so the OneScope SDK version it references must be published before the tag.
+
+Either tag must be on main with a green CI run, have a `## [<version>]` section in its changelog, and equal the version its project builds as. Tests of the module run in the release job, not in CI.
+
 ## Rules the scans enforce
 
 Only IEEE-exact `+ - * /` and square root decide a result; transcendental functions come from onemath. No fused multiply-add, estimate instructions, clocks, `Vector<T>`, hardware-width queries or unsafe code in `src/` without a recorded exception. The package has one dependency: onemath.
