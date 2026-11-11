@@ -28,7 +28,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../OnePhysics/OnePhysics.csproj" />
+    <PackageReference Include="RecursiveAI.OnePhysics" Version="1.0.0" />
     <PackageReference Include="RecursiveAI.OneScope.Sdk" Version="0.1.0-preview.1" />
   </ItemGroup>
 
