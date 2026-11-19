@@ -723,6 +723,7 @@ public sealed partial class WorldCore
     private void SolveSection<TStages>(TStages stages, float dt, int subs0, int subs1) where TStages : IWorldStages
     {
         _passSubsteps = subs0; _passLiteSubsteps = subs1;
+        StatSolveStages = 0; StatSolveTasks = 0;
         Profile.Mark(StepStage.Coloring);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Coloring);
@@ -770,6 +771,7 @@ public sealed partial class WorldCore
             int progChunks = (progCount + ChunkSize - 1) / ChunkSize;
             _stageCount = 0;
             _stageMostTasks = 0;
+            _runCount = 0;
             for (int s = 0; s < subs; s++)
             {
                 _flipSweep = (s & 1) == 1;
@@ -783,9 +785,12 @@ public sealed partial class WorldCore
             // [perf-lab r4 h02] The restitution pass is a no-op when no prepared batch of this program has a contact with restitution (the kernel returns at once for every batch, joints always do),
             // so it is left out of the program: its stages cost a boundary crossing each for nothing. Leaving out a no-op cannot change a bit.
             if (stages.NeedsRestitutionPass(this, in pctx)) { AddSolvePass(prog, SolvePhase.Restitution); }
+            StatSolveStages += _stageCount;
+            for (int st = 0; st < _stageCount; st++) { StatSolveTasks += _stageTasks[st]; }
             Executor.ForStages(_stageCount, new SolveProgram<TStages>(this, stages, list, pctx, prog, progBodies, progCount), _stageMostTasks);
         }
 
+        RestoreTailOverlapOrder();   // [perf-lab r4 h25] the active list back in the library's order before anything walks it again
         Profile.Mark(StepStage.Finalize);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Finalize);
@@ -1064,7 +1069,7 @@ public sealed partial class WorldCore
         ReadContactSchedule();
         int passes = _options.VelocityIterations + _options.RelaxIterations + 2;
         int stages = Math.Max(_options.Substeps, _liteOn ? _liteSubsteps : 1) * (3 + Math.Max(passes, _liteVelocity + _liteRelax + 2) * (ConstraintColoring.ColorCount + 1)) + 8;
-        if (_stageKind.Length < stages) { Array.Resize(ref _stageKind, stages); Array.Resize(ref _stageArg, stages); Array.Resize(ref _stageTasks, stages); }
+        if (_stageKind.Length < stages) { Array.Resize(ref _stageKind, stages); Array.Resize(ref _stageArg, stages); Array.Resize(ref _stageTasks, stages); Array.Resize(ref _stageAux, stages); }
         Executor.Reserve(stages);
     }
 
@@ -1192,6 +1197,19 @@ public sealed partial class WorldCore
             PartitionColors();
         }
 
+        // [perf-lab r4 h15] The colours are final now (point-count grouping in BeginSolve, the program split); the tail overlap reorders its colour C before any batch is prepared.
+        // [perf-lab r4 h25] Not planned on one thread: the serial schedule has nothing to run beside T, so the planning (stamping, partition, save and restore of C) would be pure cost.
+        // The thread count therefore decides the stage layout only; body state, the list StoreTask walks and the delivered events are the same either way (RestoreTailOverlapOrder).
+        StatOverlapIndep = 0; StatOverlapDep = 0; StatOverlapTail = 0;
+        if (Executor.ThreadCount > 1)
+        {
+            if (_ovMark.Length < _bodies.HighWater) { _ovMark = new int[Math.Max(_bodies.HighWater, _ovMark.Length * 2)]; }
+            if (++_ovEpoch == int.MaxValue) { Array.Clear(_ovMark); _ovEpoch = 1; }
+            PlanTailOverlap(0);
+            if (split) { PlanTailOverlap(1); } else { NoTailOverlap(1); }
+        }
+        else { NoTailOverlap(0); NoTailOverlap(1); }
+
         // One parallel call for every batch of every color: a call per color pays a fork and join for each of up to 24 small colors.
         int tasks = (batches + ConstraintColoring.BatchesPerTask - 1) / ConstraintColoring.BatchesPerTask;
         Executor.For(tasks, new PrepareBatchTask<TStages>(this, stages, list, groups, batches, ctx, ctxLite));
@@ -1226,43 +1244,238 @@ public sealed partial class WorldCore
     public bool SymmetricSweep { get; set; }
     private bool _flipSweep;
 
-    private const int StageIntegrateVelocities = 0, StageIntegratePositions = 1, StageOverflow = 2, StageColor = 3;
+    private const int StageIntegrateVelocities = 0, StageIntegratePositions = 1, StageOverflow = 2, StageColor = 3, StageColorRun = 4, StageTailOverlap = 5, StageColorFrom = 6;
+
+    // [perf-lab r4 h02] A colour of at most this many batches is too small to share: crossing its stage boundary (every participating thread waits on every other) costs more than its work.
+    // A maximal run of such colours, consecutive in pass order, becomes one StageColorRun stage with one task, which runs the colours in order, batch by batch, on one thread. The colour order
+    // of the pass is unchanged and batches of a colour are independent, so the bits are the same. 1 (only colours that are one batch, which could not be shared anyway): swept 1, 2, 4, 8 on
+    // ragdoll and sleep-wake t8; 1 and 2 tied within noise, 4 gave less, 8 was slower than no merge (runs of up to 24 batches on one thread).
+    // [perf-lab r4 h15] Now the limit of a program without a tail overlap; with one, TailColorBatches.
+    private const int SmallColorBatches = 1;
+
+    // [perf-lab r4 h15] With a tail overlap (PlanTailOverlap) the runs of the program are formed with this larger limit instead: the chosen run T then costs no serial wall of its own,
+    // it runs at the same time as the independent part of its big neighbour C. Swept 1, 4, 8 (ragdoll t8 best at 8).
+    private const int TailColorBatches = 8;
+
+    // [perf-lab r4 h15] The overlap is taken only when C can hide T: T's batches x (threads - 1) <= TailSlack x C's batches (T on one thread, C shared by the others).
+    // Otherwise the program keeps SmallColorBatches runs and no overlap (a long serial T over a small C is what made threshold 8 lose in h02).
+    private const float TailSlack = 1.5f;
+
+    // [perf-lab r4 h15] The run limit AddSolvePass uses for each program this step: TailColorBatches with an overlap, SmallColorBatches without.
+    private readonly int[] _runSmall = { SmallColorBatches, SmallColorBatches };
+
+    // [perf-lab r4 h02] The colours of the StageColorRun stages of the program being built, in run order: phase | color << 8. A run stage's argument is its first item | item count << 16.
+    private int[] _runItem = new int[64];
+    private int _runCount;
+
+    /// <summary>[perf-lab r4 h02] Stages and tasks of the last step's solve programs (summed over programs); diagnostics for the harness, never read by the step.</summary>
+    internal int StatSolveStages, StatSolveTasks;
     private int[] _stageKind = new int[64];
     private int[] _stageArg = new int[64];
     private int[] _stageTasks = new int[64];
+    private int[] _stageAux = new int[64]; // [perf-lab r4 h15] second argument of StageTailOverlap / StageColorFrom
     private int _stageCount;
     private int _stageMostTasks;
 
-    private void AddStage(int kind, int arg, int tasks)
+    private void AddStage(int kind, int arg, int tasks, int aux = 0)
     {
         if (_stageCount == _stageKind.Length)
         {
-            Array.Resize(ref _stageKind, _stageCount * 2); Array.Resize(ref _stageArg, _stageCount * 2); Array.Resize(ref _stageTasks, _stageCount * 2);
+            Array.Resize(ref _stageKind, _stageCount * 2); Array.Resize(ref _stageArg, _stageCount * 2); Array.Resize(ref _stageTasks, _stageCount * 2); Array.Resize(ref _stageAux, _stageCount * 2);
         }
 
-        _stageKind[_stageCount] = kind; _stageArg[_stageCount] = arg; _stageTasks[_stageCount] = tasks;
+        _stageKind[_stageCount] = kind; _stageArg[_stageCount] = arg; _stageTasks[_stageCount] = tasks; _stageAux[_stageCount] = aux;
         if (tasks > _stageMostTasks) { _stageMostTasks = tasks; }
         _stageCount++;
     }
 
     // One pass over every constraint of one program in one phase: the overflow constraints first, serially and in order, then each color (the constraints of a color share no dynamic body, so their order cannot matter).
+    // [perf-lab r4 h15] With a tail overlap planned for the program (PlanTailOverlap), the chosen run T of small colours and its big neighbour C become two stages instead of two-plus:
+    // one StageTailOverlap stage (task 0 = the run T, tasks 1.. = the first _ovIndep batches of C, which touch no dynamic body of T) and one StageColorFrom stage (the rest of C).
+    // The StageColorFrom stage goes on C's side of the overlap stage: after it when the pass meets T first, before it when the pass meets C first. Every dynamic body therefore still sees
+    // its constraints of T and of C in the pass order of today; the independent part of C shares no dynamic body with T, so solving it at the same time as T cannot change a bit.
     private void AddSolvePass(int prog, SolvePhase phase)
     {
         bool reverse = SymmetricSweep && phase != SolvePhase.WarmStart && ((phase == SolvePhase.Relax) != _flipSweep);
         int overflow = _tCount[prog * GroupSlots];
         if (!reverse && overflow > 0) { AddStage(StageOverflow, (int)phase, 1); }
+        int ovColor = _ovColor[prog], ovLo = _ovRunLo[prog], ovHi = _ovRunHi[prog], ovIndep = _ovIndep[prog], runSmall = _runSmall[prog];
+        int runStart = -1;
+        bool runChosen = false, cDone = false;
         for (int k = 0; k < ConstraintColoring.ColorCount; k++)
         {
             int color = reverse ? ConstraintColoring.ColorCount - 1 - k : k;
             int n = _tCount[prog * GroupSlots + 1 + color];
             if (n == 0) { continue; }
             int batches = (n + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
+            // [perf-lab r4 h02] A small colour joins the run of small colours before it (empty colours do not break a run: they have no stage).
+            if (batches <= runSmall)
+            {
+                if (runStart < 0) { runStart = _runCount; runChosen = color >= ovLo && color <= ovHi; }
+                if (_runCount == _runItem.Length) { Array.Resize(ref _runItem, _runCount * 2); }
+                _runItem[_runCount++] = (int)phase | (color << 8);
+                continue;
+            }
+
+            if (color == ovColor)
+            {
+                // [perf-lab r4 h15] The pass meets C. If the run T is open it is T's end (T then C): overlap stage, then the rest of C. Otherwise C comes first: the rest of C now, the overlap when T ends.
+                if (runStart >= 0 && runChosen) { EndOverlap(ref runStart, phase, ovColor, ovIndep); }
+                else { EndRun(ref runStart); }
+                if (ovIndep < batches) { AddStage(StageColorFrom, (int)phase | (color << 8), batches - ovIndep, ovIndep); }
+                cDone = true;
+                runChosen = false;
+                continue;
+            }
+
+            if (runStart >= 0 && runChosen && cDone) { EndOverlap(ref runStart, phase, ovColor, ovIndep); } else { EndRun(ref runStart); }
+            runChosen = false;
             // One task per batch: stages are short, and a stage cut into a few multi-batch tasks leaves most threads waiting at its boundary.
             // Batches of a color are independent, so how they are shared out cannot change a result.
             AddStage(StageColor, (int)phase | (color << 8), batches);
         }
 
+        if (runStart >= 0 && runChosen && cDone) { EndOverlap(ref runStart, phase, ovColor, ovIndep); } else { EndRun(ref runStart); }
         if (reverse && overflow > 0) { AddStage(StageOverflow, (int)phase, 1); }
+    }
+
+    // [perf-lab r4 h02] Closes the open run of small colours, if any, as one single-task stage.
+    private void EndRun(ref int runStart)
+    {
+        if (runStart < 0) { return; }
+        AddStage(StageColorRun, runStart | ((_runCount - runStart) << 16), 1);
+        runStart = -1;
+    }
+
+    // [perf-lab r4 h15] Closes the open run T as task 0 of one stage whose tasks 1 .. indep are the independent batches 0 .. indep - 1 of colour c.
+    private void EndOverlap(ref int runStart, SolvePhase phase, int c, int indep)
+    {
+        AddStage(StageTailOverlap, runStart | ((_runCount - runStart) << 16), 1 + indep, (int)phase | (c << 8));
+        runStart = -1;
+    }
+
+    // [perf-lab r4 h15] The tail overlap of each program for this step: the chosen run T of small colours (colour indices _ovRunLo .. _ovRunHi; every non-empty colour in between is small),
+    // its big neighbour C (_ovColor, -1 = no overlap) and how many of C's first batches touch no dynamic body of T (_ovIndep). _ovMark[b] == _ovEpoch: body b is a dynamic body of T.
+    private readonly int[] _ovColor = { -1, -1 }, _ovRunLo = new int[2], _ovRunHi = new int[2], _ovIndep = new int[2];
+    private int[] _ovMark = new int[64];
+    private int _ovEpoch;
+
+    // [perf-lab r4 h25] C's constraints of each program in the order they had before PlanTailOverlap partitioned them (_ovSaveCount[prog] == 0: C was not reordered this step).
+    private readonly int[][] _ovSave = { new int[64], new int[64] };
+    private readonly int[] _ovSaveStart = new int[2], _ovSaveCount = new int[2];
+
+    // [perf-lab r4 h25] No tail overlap for the program this step: SmallColorBatches runs, C untouched.
+    private void NoTailOverlap(int prog)
+    {
+        _ovColor[prog] = -1;
+        _runSmall[prog] = SmallColorBatches;
+        _ovSaveCount[prog] = 0;
+    }
+
+    // [perf-lab r4 h25] After the last solve program and before FinalizeTask / StoreTask: puts C's constraints back in the order the library has them. The partition only had to hold while
+    // batches are prepared and solved (they find their wide slot through SlotOf, not by list position), so from here on everything that walks the active list (StoreTask: impulses,
+    // joint results, EmitHits' per-chunk event slots; the next reader of Coloring.Active) sees the library's order at every thread count, whether or not the overlap was taken.
+    // (The delivered events never depended on it: EventCollector.Deliver sorts them by a key total on every field.) One copy of C per program, about 1,160 ints on ragdoll.
+    private void RestoreTailOverlapOrder()
+    {
+        var list = _coloring.ListArray;
+        for (int prog = 0; prog < 2; prog++)
+        {
+            if (_ovSaveCount[prog] == 0) { continue; }
+            Array.Copy(_ovSave[prog], 0, list, _ovSaveStart[prog], _ovSaveCount[prog]);
+            _ovSaveCount[prog] = 0;
+        }
+    }
+
+    /// <summary>[perf-lab r4 h15] Diagnostics: batches of T, of C in the overlap stage and of C in its other stage, last step, summed over programs; never read by the step.</summary>
+    internal int StatOverlapIndep, StatOverlapDep, StatOverlapTail;
+
+    // [perf-lab r4 h15] After the point-count grouping and the program split, before any batch is prepared (it reorders C; [r4 h25] only on more than one thread, and RestoreTailOverlapOrder puts C back after the solve programs).
+    // T = the run of colours of at most TailColorBatches batches (as AddSolvePass then forms them) with the most batches; C = the bigger of its two non-empty neighbours in colour order (in pass
+    // order C is next to T in both sweep directions). Taken only if C can hide T (TailSlack). The dynamic bodies of T are stamped; C's constraints are then partitioned stably, those touching
+    // no stamped body first: order inside a colour is free, and a stable partition of a list grouped by point count leaves each part grouped by point count, so the batches stay uniform.
+    // A batch that straddles the two parts goes with the dependent part. Serial, about 3 us per step on ragdoll (probes/caller; 1,160 constraints of c20 partitioned, 170 of T stamped).
+    // (Tried: the partition folded into C's point-count grouping task, which runs in parallel with the other colours': no measurable difference, h15-grp, commit 4ec9ffa.)
+    private void PlanTailOverlap(int prog)
+    {
+        NoTailOverlap(prog);
+        int bestLo = -1, bestHi = -1, bestBatches = 0, bestBefore = -1, bestAfter = -1;
+        int runLo = -1, runHi = -1, runBatches = 0, runBefore = -1, prevBig = -1;
+        int baseSlot = prog * GroupSlots + 1;
+        for (int c = 0; c <= ConstraintColoring.ColorCount; c++)
+        {
+            int n = c < ConstraintColoring.ColorCount ? _tCount[baseSlot + c] : int.MaxValue;
+            if (n == 0) { continue; }
+            int b = c < ConstraintColoring.ColorCount ? (n + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes : int.MaxValue;
+            if (b <= TailColorBatches)
+            {
+                if (runLo < 0) { runLo = c; runBefore = prevBig; runBatches = 0; }
+                runHi = c; runBatches += b;
+                continue;
+            }
+
+            if (runLo >= 0 && runBatches > bestBatches)
+            {
+                bestLo = runLo; bestHi = runHi; bestBatches = runBatches; bestBefore = runBefore; bestAfter = c < ConstraintColoring.ColorCount ? c : -1;
+            }
+
+            runLo = -1;
+            prevBig = c;
+        }
+
+        if (bestLo < 0) { return; }
+        int nAfter = bestAfter < 0 ? 0 : _tCount[baseSlot + bestAfter], nBefore = bestBefore < 0 ? 0 : _tCount[baseSlot + bestBefore];
+        int cc = nAfter >= nBefore ? bestAfter : bestBefore;
+        if (cc < 0) { return; }
+        int ccBatches = (Math.Max(nAfter, nBefore) + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
+        if (bestBatches * (Math.Max(2, Executor.ThreadCount) - 1) > TailSlack * ccBatches) { return; }
+
+        var list = _coloring.ListArray;
+        var bodyA = _constraints.BodyA;
+        var bodyB = _constraints.BodyB;
+        var mark = _ovMark;
+        int epoch = _ovEpoch;
+        for (int c = bestLo; c <= bestHi; c++)
+        {
+            int s0 = _tStart[baseSlot + c], n = _tCount[baseSlot + c];
+            for (int i = s0; i < s0 + n; i++)
+            {
+                int k = list[i];
+                int a = bodyA[k], b = bodyB[k];
+                if (_bodies.IsDynamic(a)) { mark[a] = epoch; }
+                if (_bodies.IsDynamic(b)) { mark[b] = epoch; }
+            }
+        }
+
+        // Stable partition of C: independent constraints compacted in place, dependent ones through _partTmp (free here: PartitionColors is done with it).
+        int start = _tStart[baseSlot + cc], total = _tCount[baseSlot + cc];
+        if (_partTmp.Length < total) { _partTmp = new int[Math.Max(total, _partTmp.Length * 2)]; }
+        var tmp = _partTmp;
+        // [perf-lab r4 h25] C's order as the library has it, put back by RestoreTailOverlapOrder once the solve programs are done.
+        if (_ovSave[prog].Length < total) { _ovSave[prog] = new int[Math.Max(total, _ovSave[prog].Length * 2)]; }
+        Array.Copy(list, start, _ovSave[prog], 0, total);
+        int f = 0, d = 0;
+        for (int i = 0; i < total; i++)
+        {
+            int k = list[start + i];
+            // Only dynamic bodies are ever stamped, so a static or kinematic body (the ground every contact of C may share with T) never makes a constraint dependent.
+            if (mark[bodyA[k]] == epoch || mark[bodyB[k]] == epoch) { tmp[d++] = k; } else { list[start + f++] = k; }
+        }
+
+        if (d > 0) { Array.Copy(tmp, 0, list, start + f, d); }
+        int nb = (total + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
+        int indep = d == 0 ? nb : f / ConstraintColoring.Lanes;
+        StatOverlapIndep += indep; StatOverlapDep += nb - indep; StatOverlapTail += bestBatches;
+        // [perf-lab r4 h25] The order changed only if both parts are non-empty. No overlap (fewer than Lanes independent constraints): put C back now, nothing is prepared yet.
+        if (d > 0 && f > 0)
+        {
+            if (indep == 0) { Array.Copy(_ovSave[prog], 0, list, start, total); }
+            else { _ovSaveStart[prog] = start; _ovSaveCount[prog] = total; }
+        }
+
+        if (indep == 0) { return; }
+        _runSmall[prog] = TailColorBatches;
+        _ovColor[prog] = cc; _ovRunLo[prog] = bestLo; _ovRunHi[prog] = bestHi; _ovIndep[prog] = indep;
     }
 
     private readonly struct SolveProgram<TStages> : IStagedBody where TStages : IWorldStages
@@ -1279,6 +1492,37 @@ public sealed partial class WorldCore
         {
 #if STAGE_TIMERS
             int k = _w._stageKind[stage], a = _w._stageArg[stage];
+            if (k == StageColorFrom) { k = StageColor; }
+            if (k == StageTailOverlap)
+            {
+                // [perf-lab r4 h15] Task 0 is the run (reported colour by colour, below), the others are batches of the overlapped colour.
+                if (first > 0 || count > 1)
+                {
+                    int ax = _w._stageAux[stage], f1 = first == 0 ? 1 : first;
+                    StageProbe.OnSolveRun?.Invoke(StageColor, ax & 0xFF, first + count - f1, true);
+                    RunColor(ax & 0xFF, ax >> 8, f1 - 1, first + count - f1);
+                    StageProbe.OnSolveRun?.Invoke(StageColor, ax & 0xFF, first + count - f1, false);
+                }
+
+                if (first != 0) { return; }
+                k = StageColorRun;
+            }
+
+            if (k == StageColorRun)
+            {
+                // [perf-lab r4 h02] Reported colour by colour, as the colour stages it replaces were, so the sub-stage labels keep their meaning.
+                for (int r = a & 0xFFFF, end = r + (a >> 16); r < end; r++)
+                {
+                    int item = _w._runItem[r];
+                    int nb = (_w._tCount[_prog * GroupSlots + 1 + (item >> 8)] + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
+                    StageProbe.OnSolveRun?.Invoke(StageColor, item & 0xFF, nb, true);
+                    RunColor(item & 0xFF, item >> 8, 0, nb);
+                    StageProbe.OnSolveRun?.Invoke(StageColor, item & 0xFF, nb, false);
+                }
+
+                return;
+            }
+
             int ph = k <= StageIntegratePositions ? 0 : (k == StageOverflow ? a : a & 0xFF);
             StageProbe.OnSolveRun?.Invoke(k, ph, count, true);
             RunRangeCore(stage, first, count);
@@ -1310,16 +1554,40 @@ public sealed partial class WorldCore
                     _s.SolveBatch(w, _list.AsSpan(os + lo, Math.Min(ConstraintColoring.Lanes, on - lo)), (SolvePhase)arg, in _ctx);
                 }
             }
+            else if (kind == StageColor) { RunColor(arg & 0xFF, arg >> 8, first, count); }
+            else if (kind == StageColorFrom) { RunColor(arg & 0xFF, arg >> 8, w._stageAux[stage] + first, count); }
             else
             {
-                int color = arg >> 8;
-                int start = w._tStart[_prog * GroupSlots + 1 + color], total = w._tCount[_prog * GroupSlots + 1 + color];
-                var phase = (SolvePhase)(arg & 0xFF);
-                for (int task = first; task < first + count; task++)
+                // [perf-lab r4 h02] A run of small colours (task 0 of its stage): every colour in pass order, each batch by batch.
+                int t = first, end = first + count;
+                if (t == 0)
                 {
-                    int lo = task * ConstraintColoring.Lanes;
-                    _s.SolveBatch(w, _list.AsSpan(start + lo, Math.Min(ConstraintColoring.Lanes, total - lo)), phase, in _ctx);
+                    for (int r = arg & 0xFFFF, rEnd = r + (arg >> 16); r < rEnd; r++)
+                    {
+                        int item = w._runItem[r];
+                        RunColor(item & 0xFF, item >> 8, 0, int.MaxValue);
+                    }
+
+                    t = 1;
                 }
+
+                // [perf-lab r4 h15] StageTailOverlap: task t >= 1 is batch t - 1 of the overlapped colour.
+                if (t < end) { int aux = w._stageAux[stage]; RunColor(aux & 0xFF, aux >> 8, t - 1, end - t); }
+            }
+        }
+
+        // Batches first .. first + count - 1 of one colour in one phase (count is clipped to the colour's batches).
+        private void RunColor(int phaseBits, int color, int first, int count)
+        {
+            var w = _w;
+            int start = w._tStart[_prog * GroupSlots + 1 + color], total = w._tCount[_prog * GroupSlots + 1 + color];
+            var phase = (SolvePhase)phaseBits;
+            int batches = (total + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
+            int last = count >= batches - first ? batches : first + count;
+            for (int task = first; task < last; task++)
+            {
+                int lo = task * ConstraintColoring.Lanes;
+                _s.SolveBatch(w, _list.AsSpan(start + lo, Math.Min(ConstraintColoring.Lanes, total - lo)), phase, in _ctx);
             }
         }
     }
