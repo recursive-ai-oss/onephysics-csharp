@@ -25,6 +25,7 @@ public sealed partial class PhysicsWorld3D
         var o = (options ?? new WorldOptions3D()).Clone();
         o.Validate();
         _core = new WorldCore(o.ToCore()) { SymmetricSweep = true, SplitWhenAnyBodyRests = true }; // alternating sweep order keeps one-iteration friction from drifting tall stacks sideways
+        _core.PostStepFlush = MaterializeEvents;
         o.WorldId = _core.Id;
         var bp = new Broadphase3D(new BroadphaseOptions
         {
@@ -122,7 +123,15 @@ public sealed partial class PhysicsWorld3D
     public WorldCore Core => _core;
 
     /// <summary>The events of the last step in the core's deterministic order, with contact and hit events collapsed to one per pair of shapes (see docs/spec/world3d.md). Valid until the next <see cref="Step"/>.</summary>
-    public ReadOnlySpan<PhysicsEvent> Events => _publicEvents.AsSpan(0, _publicEventCount);
+    /// <remarks>Built on the first read after a step, or before the first change to the world after it. After a step that threw part-way it is empty.</remarks>
+    public ReadOnlySpan<PhysicsEvent> Events
+    {
+        get
+        {
+            if (_eventsPending) { MaterializeEvents(); }
+            return _publicEvents.AsSpan(0, _publicEventCount);
+        }
+    }
 
     internal Engine3D Engine => _engine;
 
@@ -154,6 +163,7 @@ public sealed partial class PhysicsWorld3D
     private void StepPrepared(float dt)
     {
         if (!(dt > 0) || !float.IsFinite(dt)) throw new ArgumentOutOfRangeException(nameof(dt));
+        _eventsPending = false; _publicEventCount = 0;
         _engine.DeformableContacts.Begin(_engine, _engine);
         BeginDestruction();
         _engine.BeginBodyControls(dt);
@@ -187,12 +197,14 @@ public sealed partial class PhysicsWorld3D
         _engine.ReconcileJoints();
         UpdateInspectionCounters();
         InvalidateQueryPad();
-        BuildPublicEvents();
+        // The public events are built by their first reader: Events, the dispatch below, or the first change to the world after the step (WorldCore.FlushPostStep).
+        _eventsPending = true;
+        _core.MarkViewPending();
         _recorder?.SimulationEnded();
         if (ContactModifier != null || _core.ContactBatchModifier != null) { _recorder?.SimulationEffect("ContactModification"); }
         if (_suppressed == 0)
         {
-            if (_handlers.Count > 0 || _jointHandlers.Count > 0) { DispatchEvents(); }
+            if (_handlers.Count > 0 || _jointHandlers.Count > 0) { MaterializeEvents(); DispatchEvents(); }
             if (_engine.SoftTearEvents.Length > 0) { DispatchSoftTears(); }
             if (_engine.Water.Events.Count > 0) { DispatchWaterEvents(); }
             if (_engine.CharacterWaterEvents.Count > 0) { DispatchCharacterWaterEvents(); }
@@ -333,6 +345,7 @@ public sealed partial class PhysicsWorld3D
 
         ReconcileHandlersAfterRestore();
         InvalidateQueryPad();
+        _eventsPending = false;
         BuildPublicEvents();
         return changed;
     }

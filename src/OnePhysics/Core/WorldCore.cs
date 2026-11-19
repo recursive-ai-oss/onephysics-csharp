@@ -80,7 +80,7 @@ public interface IWorldStages
     /// <summary>Advances the positions and rotations of a chunk of awake bodies (ascending), kinematic bodies included.</summary>
     void IntegratePositions(WorldCore world, ReadOnlySpan<int> bodies, in StepContext context);
 
-    /// <summary>After the last substep: stores results for the next step's warm start, and may request joint breaks by setting <see cref="ConstraintBits.BreakRequested"/> and writing the break value. <paramref name="eventSlot"/> is this call's own slot for <see cref="EventCollector.Emit"/>.</summary>
+    /// <summary>After the last substep: stores results for the next step's warm start, and may request joint breaks with <see cref="ConstraintStore.RequestBreak"/>. <paramref name="eventSlot"/> is this call's own slot for <see cref="EventCollector.Emit"/>.</summary>
     void StoreResults(WorldCore world, ReadOnlySpan<int> constraints, int eventSlot, in StepContext context);
 
     /// <summary>How much a body moves, in the units of <see cref="WorldOptions.SleepThreshold"/> (typically a speed). Called serially for each awake dynamic body in ascending order.</summary>
@@ -170,6 +170,7 @@ public sealed partial class WorldCore
     /// <summary>Creates a world. The options are copied and validated (<see cref="WorldOptions.Validate"/>).</summary>
     public WorldCore(WorldOptions? options = null)
     {
+        Counters = new StepCounters { Owner = this };
         JointReadback = new JointReadback(this);
         BodyReadback = new BodyReadback(this);
         _options = (options ?? new WorldOptions()).Clone();
@@ -306,6 +307,7 @@ public sealed partial class WorldCore
     public BodyHandle CreateBody(BodyType type, ReadOnlySpan<double> position, ReadOnlySpan<float> rotation = default, ReadOnlySpan<float> linearVelocity = default,
         ReadOnlySpan<float> angularVelocity = default, float inverseMass = 1f, ReadOnlySpan<float> inverseInertia = default, BodyBits flags = BodyBits.None)
     {
+        FlushPostStep();
         FlushPending();
         var l = Layout;
         if (type != BodyType.Static && type != BodyType.Kinematic && type != BodyType.Dynamic) { throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown body type."); }
@@ -384,6 +386,7 @@ public sealed partial class WorldCore
     /// <summary>Destroys a body, its shapes and every constraint touching it (their end events are queued). Islands touching it wake. Cost: proportional to the body's constraints if it is dynamic, to all constraints and shapes otherwise.</summary>
     public void DestroyBody(BodyHandle handle)
     {
+        FlushPostStep();
         FlushPending();
         int b = Resolve(handle);
         _scratch.Clear();
@@ -416,6 +419,7 @@ public sealed partial class WorldCore
     /// <summary>Attaches a shape slot to a body. The geometry itself lives in the engine's own arrays indexed by the returned slot.</summary>
     public ShapeHandle CreateShape(BodyHandle owner)
     {
+        FlushPostStep();
         FlushPending();
         int b = Resolve(owner);
         return HandleOfShape(_shapes.AllocateSlot(b));
@@ -424,6 +428,7 @@ public sealed partial class WorldCore
     /// <summary>Destroys a shape and the constraints that reference it (cost: all constraints).</summary>
     public void DestroyShape(ShapeHandle handle)
     {
+        FlushPostStep();
         FlushPending();
         int s = Resolve(handle);
         _scratch.Clear();
@@ -441,6 +446,7 @@ public sealed partial class WorldCore
     /// <summary>Wakes the island of a body (a no-op for static and kinematic bodies and for bodies already awake).</summary>
     public void Wake(BodyHandle handle)
     {
+        FlushPostStep();
         int b = Resolve(handle);
         if (_bodies.IsDynamic(b)) { WakeIsland(_bodies.Island[b]); }
     }
@@ -448,6 +454,7 @@ public sealed partial class WorldCore
     /// <summary>Puts the island of a dynamic body to sleep now (a no-op for static and kinematic bodies and for islands already asleep): velocities are zeroed and one sleep event per body is queued.  The island wakes again as soon as anything touches it.</summary>
     public void Sleep(BodyHandle handle)
     {
+        FlushPostStep();
         int b = Resolve(handle);
         if (_bodies.IsDynamic(b) && !_islands.IsAsleep(_bodies.Island[b])) { SleepIsland(_bodies.Island[b]); }
     }
@@ -455,6 +462,7 @@ public sealed partial class WorldCore
     /// <summary>Wakes an island: its bodies become awake with sleep timers reset, and one wake event per body is queued.</summary>
     public void WakeIsland(int island)
     {
+        FlushPostStep();
         if (!_islands.IsAsleep(island)) { return; }
         if (island < _suspended.Length && _suspended[island] != 0) { Unsuspend(island); return; }
         _islands.SetAsleep(island, false);
@@ -488,6 +496,7 @@ public sealed partial class WorldCore
     /// </summary>
     public int AddConstraint(in ConstraintDesc desc)
     {
+        FlushPostStep();
         if (desc.Kind < ConstraintKind.Contact || desc.Kind > ConstraintKind.Joint) { throw new ArgumentOutOfRangeException(nameof(desc), desc.Kind, "Unknown constraint kind."); }
         int a = Resolve(desc.BodyA), b = Resolve(desc.BodyB);
         if (a == b) { throw new ArgumentException("A constraint needs two different bodies.", nameof(desc)); }
@@ -522,6 +531,7 @@ public sealed partial class WorldCore
     /// </summary>
     public void RemoveConstraint(int constraint)
     {
+        FlushPostStep();
         if (!_constraints.IsLive(constraint)) { throw new StaleHandleException("Constraint " + constraint.ToString(CultureInfo.InvariantCulture) + " is not live."); }
         RemoveInternal(constraint, 0f, false);
     }
@@ -592,6 +602,7 @@ public sealed partial class WorldCore
     public void ShiftOrigin(ReadOnlySpan<double> offset)
     {
         ValidateShift(offset);
+        FlushPostStep();
         int lanes = Layout.PositionLanes;
         var pos = _bodies.Position;
         // Dead slots stay zeroed: the snapshot reader rejects a destroyed body whose position is not zero.
@@ -631,6 +642,8 @@ public sealed partial class WorldCore
         if (!(dt > 0f) || !float.IsFinite(dt)) { throw new ArgumentOutOfRangeException(nameof(dt), dt, "dt must be finite and positive."); }
         FlushPending();
         _options.Validate();
+        // Whatever the last step left for its first reader is out of date now: it is dropped, not computed.
+        _countersPending = false; _viewPending = false;
         _events.ClearDelivered();
         Counters.Reset();
         JointReadback.Begin(dt);
@@ -682,7 +695,7 @@ public sealed partial class WorldCore
 #endif
             _collectTransitions = false;
             RestoreSuspended();
-            CapturePopulationCounters();
+            _countersPending = true; // CapturePopulationCounters runs on the first read of one of its counters, or before the next change to the world (FlushPostStep)
             _stepCount++;
         }
         finally { _collectTransitions = false; RestoreSuspended(); }
@@ -801,12 +814,14 @@ public sealed partial class WorldCore
     /// <summary>Substeps the constraint ran in the last step: the contact-only schedule's when it belonged to an island on it, else the world's.</summary>
     private double _fullIntegratedTime, _liteIntegratedTime;
     internal double IntegratedTimeOfBody(int body) => _splitActive && _bodies.Island[body] >= 0 && _islandFull[_bodies.Island[body]] == 0 ? _liteIntegratedTime : _fullIntegratedTime;
-
     internal int SubstepsOf(int constraint) => _splitActive && constraint < _consLite.Length && _consLite[constraint] != 0 ? _passLiteSubsteps : _passSubsteps;
     private int _passSubsteps = 1, _passLiteSubsteps = 1;
 
     // Decides each island's schedule from its content at the start of the step: an island holds the joint schedule when any of its constraints is a joint, when it touches a kinematic body (which then moves on that schedule),
     // or when the engine asked for it; every other island runs the contact-only schedule. Returns false when no island is on the contact-only schedule (the step then runs as one program).
+    // Both per-constraint loops run as Executor.For over fixed pieces of the active list (PlanChunk constraints; the split depends on the list alone). The first loop's writes are order-free (an island
+    // is marked full by storing 1, a mild joint is counted by an atomic increment), so any interleaving gives the serial loop's _islandFull and _islandJoints; a world without active joints and without an awake
+    // kinematic body skips it (every constraint would be passed over). The second loop's pieces write their own constraints' _consLite and their own lite count, which the serial tail sums per group.
     private bool PlanSchedules<TStages>(TStages stages, int active, int[] list) where TStages : IWorldStages
     {
         var bodies = _bodies;
@@ -814,39 +829,19 @@ public sealed partial class WorldCore
         int ni = _islands.HighWater;
         if (_islandFull.Length < ni) { _islandFull = new byte[Math.Max(ni, _islandFull.Length * 2)]; }
         Array.Clear(_islandFull, 0, ni);
-        bool anyJoint = false;
         bool anyKinematic = false;
         for (int i = 0; i < _awakeCount; i++) { if (bodies.TypeOf(_awake[i]) == BodyType.Kinematic) { anyKinematic = true; break; } }
         var island = bodies.Island;
-        var kind = cons.Kind;
-        var bodyA = cons.BodyA;
-        var bodyB = cons.BodyB;
-        for (int k = 0; k < active; k++)
+        // Counters.Joints is the number of joints in the active list (ConstraintColoring.CaptureCounts, just before this call). Mild joints are counted per island only when there is a joint:
+        // sized and cleared then, so worlds without joints never touch the array. With joints but no mild one the counts stay zero and the loop check below marks nothing, as when the serial loop never set anyJoint.
+        bool anyJoint = Counters.Joints > 0;
+        if (anyJoint)
         {
-            int c = list[k];
-            bool joint = kind[c] == (byte)ConstraintKind.Joint;
-            if (!joint && !anyKinematic) { continue; }
-            int a = bodyA[c], b = bodyB[c];
-            if (joint && !stages.JointNeedsFullSchedule(this, c))
-            {
-                // A mild joint keeps its island on the contact-only schedule; the joints of the island are counted to spot loops below.
-                int ia = bodies.IsDynamic(a) ? island[a] : island[b];
-                if (!anyJoint)
-                {
-                    // Sized and cleared on first use, so worlds without mild joints never touch it.
-                    if (_islandJoints.Length < ni) { _islandJoints = new int[Math.Max(ni, _islandJoints.Length * 2)]; }
-                    Array.Clear(_islandJoints, 0, ni);
-                    anyJoint = true;
-                }
-
-                if (ia >= 0) { _islandJoints[ia]++; }
-                continue;
-            }
-
-            if (!joint && bodies.TypeOf(a) != BodyType.Kinematic && bodies.TypeOf(b) != BodyType.Kinematic) { continue; }
-            if (island[a] >= 0) { _islandFull[island[a]] = 1; }
-            if (island[b] >= 0) { _islandFull[island[b]] = 1; }
+            if (_islandJoints.Length < ni) { _islandJoints = new int[Math.Max(ni, _islandJoints.Length * 2)]; }
+            Array.Clear(_islandJoints, 0, ni);
         }
+
+        if (anyJoint || anyKinematic) { Executor.For((active + PlanChunk - 1) / PlanChunk, new PlanMarkTask<TStages>(this, stages, list, active, anyKinematic)); }
 
         if (anyJoint)
         {
@@ -881,25 +876,117 @@ public sealed partial class WorldCore
         int nc = cons.HighWater;
         if (_consLite.Length < nc) { _consLite = new byte[Math.Max(nc, _consLite.Length * 2)]; }
         Array.Clear(_consLite, 0, nc);
+        // Pieces of at most PlanChunk constraints, none spanning two groups.
+        int pieces = 0;
+        for (int g = 0; g < GroupSlots; g++) { pieces += (GroupSize(g) + PlanChunk - 1) / PlanChunk; }
+        if (_planPieceStart.Length < pieces) { int cap = Math.Max(pieces, _planPieceStart.Length * 2); _planPieceStart = new int[cap]; _planPieceCount = new int[cap]; _planPieceLite = new int[cap]; }
+        pieces = 0;
+        for (int g = 0; g < GroupSlots; g++)
+        {
+            int start = GroupStart(g), n = GroupSize(g);
+            for (int o = 0; o < n; o += PlanChunk) { _planPieceStart[pieces] = start + o; _planPieceCount[pieces] = Math.Min(PlanChunk, n - o); pieces++; }
+        }
+
+        Executor.For(pieces, new PlanLiteTask(this, list));
         _progConstraints[0] = 0; _progConstraints[1] = 0;
+        pieces = 0;
         for (int g = 0; g < GroupSlots; g++)
         {
             int start = GroupStart(g), n = GroupSize(g);
             int lite = 0;
-            for (int k = 0; k < n; k++)
-            {
-                int c = list[start + k];
-                int a = bodyA[c];
-                int isl = bodies.IsDynamic(a) ? island[a] : island[bodyB[c]];
-                if (isl >= 0 && _islandFull[isl] == 0) { _consLite[c] = 1; lite++; }
-            }
-
+            for (int o = 0; o < n; o += PlanChunk) { lite += _planPieceLite[pieces++]; }
             _tStart[g] = start; _tCount[g] = n - lite;
             _tStart[GroupSlots + g] = start + n - lite; _tCount[GroupSlots + g] = lite;
             _progConstraints[0] += n - lite; _progConstraints[1] += lite;
         }
 
         return true;
+    }
+
+    /// <summary>Constraints per task of <see cref="PlanSchedules"/>' two parallel loops.</summary>
+    private const int PlanChunk = 256;
+    private int[] _planPieceStart = new int[32], _planPieceCount = new int[32], _planPieceLite = new int[32];
+
+    // PlanSchedules' first loop over list[task * PlanChunk ..]: marks the islands that need the world's schedule and counts each island's mild joints.
+    private readonly struct PlanMarkTask<TStages> : IParallelBody where TStages : IWorldStages
+    {
+        private readonly WorldCore _w;
+        private readonly TStages _stages;
+        private readonly int[] _list;
+        private readonly int _active;
+        private readonly bool _anyKinematic;
+        public PlanMarkTask(WorldCore w, TStages stages, int[] list, int active, bool anyKinematic) { _w = w; _stages = stages; _list = list; _active = active; _anyKinematic = anyKinematic; }
+        public void Run(int task)
+        {
+            var w = _w;
+            var bodies = w._bodies;
+            var cons = w._constraints;
+            var island = bodies.Island;
+            var kind = cons.Kind;
+            var bodyA = cons.BodyA;
+            var bodyB = cons.BodyB;
+            var full = w._islandFull;
+            var counts = w._islandJoints;
+            int lo = task * PlanChunk, hi = Math.Min(_active, lo + PlanChunk);
+            // Mild joints are counted in runs of one island and added once per run: a pile is often one island, and one atomic add per joint from every thread on the same counter was most of the loop.
+            int runIsland = -1, run = 0;
+            for (int k = lo; k < hi; k++)
+            {
+                int c = _list[k];
+                bool joint = kind[c] == (byte)ConstraintKind.Joint;
+                if (!joint && !_anyKinematic) { continue; }
+                int a = bodyA[c], b = bodyB[c];
+                if (joint && !_stages.JointNeedsFullSchedule(w, c))
+                {
+                    // A mild joint keeps its island on the contact-only schedule; the joints of the island are counted to spot loops.
+                    int ia = bodies.IsDynamic(a) ? island[a] : island[b];
+                    if (ia >= 0 && ia == runIsland) { run++; }
+                    else if (ia >= 0)
+                    {
+                        if (run > 0) { System.Threading.Interlocked.Add(ref counts[runIsland], run); }
+                        runIsland = ia; run = 1;
+                    }
+                    continue;
+                }
+
+                if (!joint && bodies.TypeOf(a) != BodyType.Kinematic && bodies.TypeOf(b) != BodyType.Kinematic) { continue; }
+                // Stored only when still 0, so threads do not keep writing the same cache line.
+                if (island[a] >= 0 && full[island[a]] == 0) { full[island[a]] = 1; }
+                if (island[b] >= 0 && full[island[b]] == 0) { full[island[b]] = 1; }
+            }
+
+            if (run > 0) { System.Threading.Interlocked.Add(ref counts[runIsland], run); }
+        }
+    }
+
+    // PlanSchedules' second loop over one piece of a group: flags the piece's contact-only constraints and counts them.
+    private readonly struct PlanLiteTask : IParallelBody
+    {
+        private readonly WorldCore _w;
+        private readonly int[] _list;
+        public PlanLiteTask(WorldCore w, int[] list) { _w = w; _list = list; }
+        public void Run(int task)
+        {
+            var w = _w;
+            var bodies = w._bodies;
+            var cons = w._constraints;
+            var island = bodies.Island;
+            var bodyA = cons.BodyA;
+            var bodyB = cons.BodyB;
+            var full = w._islandFull;
+            var consLite = w._consLite;
+            int start = w._planPieceStart[task], n = w._planPieceCount[task];
+            int lite = 0;
+            for (int k = 0; k < n; k++)
+            {
+                int c = _list[start + k];
+                int a = bodyA[c];
+                int isl = bodies.IsDynamic(a) ? island[a] : island[bodyB[c]];
+                if (isl >= 0 && full[isl] == 0) { consLite[c] = 1; lite++; }
+            }
+
+            w._planPieceLite[task] = lite;
+        }
     }
 
     // Moves the contact-only constraints of every group behind the others, each part keeping its order.
@@ -1240,9 +1327,12 @@ public sealed partial class WorldCore
         }
     }
 
+    // The scan below finds something only for a joint with a lifetime or a slot with BreakRequested; ConstraintStore counts the first and flags the second (RequestBreak), so a step without either skips it.
     private void ProcessBreaks()
     {
         _scratch.Clear();
+        if (_constraints.LifetimeJoints == 0 && !_constraints.BreaksRequested) { return; }
+        _constraints.BreaksRequested = false;
         var flags = _constraints.Flags;
         for (int c = 0; c < _constraints.HighWater; c++)
         {
@@ -1593,6 +1683,8 @@ public sealed partial class WorldCore
     /// <summary>First step of a restore a caller wants to check further before keeping: copies the input into a world-owned buffer and saves the current state so <see cref="RollbackRestore"/> can put it back.</summary>
     internal void BeginRestore(ReadOnlySpan<byte> snapshot)
     {
+        // The counters are not part of a snapshot: what the last step left to count is counted from the state it ended in, not the restored one.
+        FlushPostStep();
         if (_inputBuffer.Length < snapshot.Length) { _inputBuffer = new byte[Math.Max(snapshot.Length, _inputBuffer.Length * 2)]; }
         snapshot.CopyTo(_inputBuffer);
         _inputLength = snapshot.Length;

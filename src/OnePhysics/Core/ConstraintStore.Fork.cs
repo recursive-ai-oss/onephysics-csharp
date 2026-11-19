@@ -24,5 +24,6 @@ public sealed partial class ConstraintStore
         _edgeNext = (int[])s._edgeNext.Clone();
         _edgePrev = (int[])s._edgePrev.Clone();
         Handles.CopyFrom(s.Handles);
+        JointRemovals = s.JointRemovals; LifetimeJoints = s.LifetimeJoints; BreaksRequested = s.BreaksRequested;
     }
 }

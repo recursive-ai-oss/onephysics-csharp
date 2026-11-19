@@ -226,8 +226,39 @@ public sealed partial class ConstraintStore
         _edgePrev[2 * c] = -2; _edgePrev[2 * c + 1] = -2; _edgeNext[2 * c] = -1; _edgeNext[2 * c + 1] = -1;
     }
 
+    /// <summary>
+    /// Joint slots cleared so far. Every removal of a joint clears its slot before freeing it (WorldCore.RemoveInternal), so a joint slot can have gone stale, freed or reused only when this changed;
+    /// the 3D engine's ReconcileJoints scans only then. A restore replaces the store, so the engine scans once after one whatever the count says.
+    /// </summary>
+    internal long JointRemovals;
+
+    /// <summary>
+    /// Live slots with <see cref="ConstraintBits.HasLifetime"/> set. Kept by <see cref="JointLifetime.Set"/> (the one place that sets or clears the bit), <see cref="ClearSlot"/> and a restore;
+    /// WorldCore.ProcessBreaks skips its scan while it is zero and <see cref="BreaksRequested"/> is false.
+    /// </summary>
+    internal int LifetimeJoints;
+
+    /// <summary>
+    /// Set (only ever to true; tasks of a parallel stage may race on it) by <see cref="RequestBreak"/>; WorldCore.ProcessBreaks clears it when it scans, which handles every request.
+    /// </summary>
+    internal bool BreaksRequested;
+
+    /// <summary>
+    /// Asks for a joint to break at the end of the step: sets <see cref="ConstraintBits.BreakRequested"/> and the value reported with the break event. This is how a stage requests a break
+    /// (see <see cref="IWorldStages.StoreResults"/>); the step looks for requests only when one was made here, so setting the flag through <see cref="Flags"/> alone is not seen.
+    /// A task of a parallel stage may call it for the constraints it was handed.
+    /// </summary>
+    public void RequestBreak(int constraint, float value)
+    {
+        _flags[constraint] |= (byte)ConstraintBits.BreakRequested;
+        _breakValue[constraint] = value;
+        BreaksRequested = true;
+    }
+
     internal void ClearSlot(int c)
     {
+        if (_kind[c] == (byte)ConstraintKind.Joint) { JointRemovals++; }
+        if ((_flags[c] & (byte)ConstraintBits.HasLifetime) != 0) { LifetimeJoints--; }
         _kind[c] = 0; _bodyA[c] = 0; _bodyB[c] = 0; _shapeA[c] = 0; _shapeAGen[c] = 0; _shapeB[c] = 0; _shapeBGen[c] = 0;
         _subA[c] = 0; _subB[c] = 0; _flags[c] = 0; _color[c] = 0; _points[c] = 0; _breakValue[c] = 0;
         FeatureIdsOf(c).Clear(); Payload(c).Clear();
@@ -320,6 +351,8 @@ public sealed partial class ConstraintStore
         r.ReadSingles(s.BreakValue, true, "joint break values");
         r.ReadSingles(s.PayloadAll, true, "constraint payloads");
         if (r.ReadInt32() != n) { throw r.Error("constraint column framing mismatch"); }
+        // The lifetime count follows the restored flags, and the first step after a restore scans for break requests the snapshot may carry.
+        s.LifetimeJoints = 0; s.BreaksRequested = true; s.JointRemovals++;
         for (int c = 0; c < n; c++)
         {
             s._edgePrev[2 * c] = -2; s._edgePrev[2 * c + 1] = -2; s._edgeNext[2 * c] = -1; s._edgeNext[2 * c + 1] = -1;
@@ -346,6 +379,7 @@ public sealed partial class ConstraintStore
                 if (lifetime != ((s._flags[c] & (byte)ConstraintBits.HasLifetime) != 0)) { throw r.Error("joint lifetime flag disagrees with remaining steps"); }
             }
             if (s._bodyA[c] == s._bodyB[c]) { throw r.Error("constraint joins a body to itself"); }
+            if ((s._flags[c] & (byte)ConstraintBits.HasLifetime) != 0) { s.LifetimeJoints++; }
         }
     }
 }

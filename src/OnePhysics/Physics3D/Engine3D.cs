@@ -373,6 +373,7 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     public void DestroyShape(ShapeHandle handle)
     {
+        Core.FlushPostStep();   // r4 h09: the lazy post-step view reads the pairs and constraints this removes
         int s = Core.Resolve(handle);
         int b = Core.Shapes.Owner[s];
         DropShapePairs(s);
@@ -393,9 +394,56 @@ internal sealed partial class Engine3D : ISnapshotSection
     }
 
     /// <summary>Fails before a step when a moving body's bounds are outside what the broadphase accepts, so a step never stops half way. Lowest slot first.</summary>
+    /// <remarks>
+    /// r4 h09: the cheap per-body tests run in parallel over fixed chunks of <see cref="BoundsChunk"/> slots (the split depends on the body count alone). Each chunk records its lowest body that the
+    /// serial scan would not pass at once (a non-finite velocity, or a body that needs the exact box test); then the serial <see cref="FindOutOfBounds"/> runs, in chunk order, from that body to the end of
+    /// its chunk. Every body it skips would have passed the serial scan, so the first failure, its exception and its message are the serial scan's.
+    /// </remarks>
     public void CheckBounds()
     {
-        if (FindOutOfBounds(false, out var h, out string message, true)) { throw new BodyOutOfBoundsException(new Body(World!, h), message); }
+        int nb = Core.Bodies.HighWater;
+        int chunks = (nb + BoundsChunk - 1) / BoundsChunk;
+        if (_boundsFirst.Length < chunks) { _boundsFirst = new int[Math.Max(chunks, _boundsFirst.Length * 2)]; }
+        Core.Executor.For(chunks, new BoundsScanTask(this, nb, _boundsFirst));
+        for (int k = 0; k < chunks; k++)
+        {
+            int first = _boundsFirst[k];
+            if (first < 0) { continue; }
+            if (FindOutOfBounds(false, out var h, out string message, true, first, Math.Min(nb, (k + 1) * BoundsChunk))) { throw new BodyOutOfBoundsException(new Body(World!, h), message); }
+        }
+    }
+
+    /// <summary>Bodies per task of the parallel part of <see cref="CheckBounds"/>.</summary>
+    private const int BoundsChunk = 64;
+    private int[] _boundsFirst = new int[16];
+
+    private readonly struct BoundsScanTask : IParallelBody
+    {
+        private readonly Engine3D _e;
+        private readonly int _nb;
+        private readonly int[] _first;
+        public BoundsScanTask(Engine3D e, int nb, int[] first) { _e = e; _nb = nb; _first = first; }
+        public void Run(int task)
+        {
+            int lo = task * BoundsChunk, hi = Math.Min(_nb, lo + BoundsChunk);
+            int first = -1;
+            for (int b = lo; b < hi; b++) { if (_e.NeedsSerialBoundsCheck(b)) { first = b; break; } }
+            _first[task] = first;
+        }
+    }
+
+    /// <summary>
+    /// False when <see cref="FindOutOfBounds"/> (moving bodies only, no static ones) passes body <paramref name="b"/> without building a box: the same tests in the same order, read-only, so it may run on
+    /// worker threads. True for a body with a non-finite velocity, position or rotation and for one that would take the exact box test.
+    /// </summary>
+    private bool NeedsSerialBoundsCheck(int b)
+    {
+        var bodies = Core.Bodies;
+        if (!bodies.IsLive(b) || bodies.TypeOf(b) == BodyType.Static) { return false; }
+        if (bodies.IsDynamic(b) && !bodies.IsAwake(b) && IsNearOrigin(b)) { return false; }
+        if (bodies.TypeOf(b) == BodyType.Dynamic && !VelocityFinite(b)) { return true; }
+        if (bodies.IsDynamic(b) && WellInsideRange(b)) { return false; }
+        return ShapeHead[b] >= 0;
     }
 
     private readonly double[] _dp3 = new double[3];
@@ -410,11 +458,12 @@ internal sealed partial class Engine3D : ISnapshotSection
     }
 
     /// <summary>Finds the first body (lowest slot) whose bounds, as the broadphase would store them, are not valid. With <paramref name="movingOnly"/>, sleeping bodies are skipped.</summary>
-    public bool FindOutOfBounds(bool includeStatic, out BodyHandle handle, out string message, bool movingOnly = false)
+    /// <remarks>r4 h09: <paramref name="from"/> and <paramref name="to"/> limit the scan to a range of slots (<see cref="CheckBounds"/> scans only the chunks its parallel pass flagged).</remarks>
+    public bool FindOutOfBounds(bool includeStatic, out BodyHandle handle, out string message, bool movingOnly = false, int from = 0, int to = int.MaxValue)
     {
         var bodies = Core.Bodies;
-        int nb = bodies.HighWater;
-        for (int b = 0; b < nb; b++)
+        int nb = Math.Min(bodies.HighWater, to);
+        for (int b = from; b < nb; b++)
         {
             if (!bodies.IsLive(b) || (!includeStatic && bodies.TypeOf(b) == BodyType.Static)) { continue; }
             // A sleeping body has not moved since it was last checked (teleporting wakes it), and building the box of thousands of resting bodies every step is most of the cost of a sleeping world.

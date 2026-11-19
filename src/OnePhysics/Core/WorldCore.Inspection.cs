@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OnePhysics.LowLevel;
 
@@ -13,7 +14,40 @@ public sealed partial class WorldCore
     public JointReadback JointReadback { get; }
 
     /// <summary>Always-on diagnostics of the last step. Reused; not saved or hashed.</summary>
-    public StepCounters Counters { get; } = new();
+    /// <remarks>The population counters (awake and asleep islands, continuous-collision and bullet bodies) are counted on their first read after a step, or before the first change to the world after it.</remarks>
+    public StepCounters Counters { get; }
+
+    // Post-step work left for the first reader. _countersPending: CapturePopulationCounters is owed (set at the end of Step; the counters' getters ask through CapturePendingCounters). _viewPending: the
+    // engine's world owes a view built from the state after the step (PhysicsWorld3D's public events), built by PostStepFlush. Both are dropped at the start of the next step. Everything that changes
+    // what they read (bodies, shapes, constraints, islands, sleep) calls FlushPostStep first, so a late result equals the one computed at the end of the step: the core's own mutators do, and the
+    // worlds' public mutators do through RecordMutation. Raw writes to the stores' spans are not seen.
+    private bool _countersPending, _viewPending;
+
+    /// <summary>Builds the engine world's post-step view; called at most once per step, before the first change to the world after it.</summary>
+    internal Action? PostStepFlush;
+
+    /// <summary>The engine world has a view of the step that just ended still to build (see <see cref="PostStepFlush"/>).</summary>
+    internal void MarkViewPending() => _viewPending = true;
+
+    /// <summary>Counts the population counters of the last step if nothing has read them yet.</summary>
+    internal void CapturePendingCounters()
+    {
+        if (_countersPending) { _countersPending = false; CapturePopulationCounters(); }
+    }
+
+    /// <summary>Computes whatever post-step result is still owed, before the world changes.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void FlushPostStep()
+    {
+        if (_countersPending | _viewPending) { FlushPostStepSlow(); }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void FlushPostStepSlow()
+    {
+        CapturePendingCounters();
+        if (_viewPending) { _viewPending = false; PostStepFlush?.Invoke(); }
+    }
 
     /// <summary>Per-world stage durations using an optional host timestamp source. Not saved or hashed.</summary>
     public StepProfile Profile { get; } = new();

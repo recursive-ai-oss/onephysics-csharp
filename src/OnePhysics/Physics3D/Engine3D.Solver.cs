@@ -191,28 +191,40 @@ internal sealed partial class Engine3D
     /// Reorders each color's constraints, stably, by contact point count (most points first, joints last), so the contacts of a batch have similar point counts: a group runs as many point passes as its
     /// largest lane needs, and a pile is mostly one-point contacts with a few four-point ones that would otherwise stretch every batch they land in. The constraints of a color share no dynamic body,
     /// so the order they are solved in cannot change a result; the new order depends only on the data.
+    /// r4 h09: one task per color (Executor.For over ColorCount). A color sorts through its own range of <see cref="_sortTmp"/> (the same offsets as in the list), so tasks share no scratch.
     /// </summary>
     private void GroupColorsByPointCount()
     {
+        var list = Core.Coloring.ListArray;
+        if (_sortTmp.Length < list.Length) { _sortTmp = new int[Math.Max(list.Length, _sortTmp.Length * 2)]; }
+        Core.Executor.For(ConstraintColoring.ColorCount, new GroupColorTask(this, list));
+    }
+
+    private readonly struct GroupColorTask : IParallelBody
+    {
+        private readonly Engine3D _e;
+        private readonly int[] _list;
+        public GroupColorTask(Engine3D e, int[] list) { _e = e; _list = list; }
+        public void Run(int g) => _e.GroupColorByPointCount(g, _list);
+    }
+
+    private void GroupColorByPointCount(int g, int[] list)
+    {
         var coloring = Core.Coloring;
-        var list = coloring.ListArray;
         var cs = Core.Constraints;
         ReadOnlySpan<byte> points = cs.PointCount;
+        int n = coloring.Color(g).Length;
+        if (n <= ConstraintColoring.Lanes) { return; }
+        int off = coloring.ColorStart(g);
+        // Bucket 0 holds four points, 1 three, 2 two, 3 one, 4 none, 5 joints (and any other kind).
         Span<int> start = stackalloc int[W3D.MaxPoints + 3];
-        for (int g = 0; g < ConstraintColoring.ColorCount; g++)
-        {
-            int n = coloring.Color(g).Length;
-            if (n <= ConstraintColoring.Lanes) { continue; }
-            int off = coloring.ColorStart(g);
-            // Bucket 0 holds four points, 1 three, 2 two, 3 one, 4 none, 5 joints (and any other kind).
-            start.Clear();
-            for (int i = 0; i < n; i++) { start[1 + Bucket(cs, points, list[off + i])]++; }
-            if (start[1 + 5] == n || start[1] == n || start[1 + 3] == n) { continue; }
-            for (int k = 1; k < start.Length; k++) { start[k] += start[k - 1]; }
-            if (_sortTmp.Length < n) { _sortTmp = new int[Math.Max(n, _sortTmp.Length * 2)]; }
-            for (int i = 0; i < n; i++) { int c = list[off + i]; _sortTmp[start[Bucket(cs, points, c)]++] = c; }
-            Array.Copy(_sortTmp, 0, list, off, n);
-        }
+        start.Clear();
+        for (int i = 0; i < n; i++) { start[1 + Bucket(cs, points, list[off + i])]++; }
+        if (start[1 + 5] == n || start[1] == n || start[1 + 3] == n) { return; }
+        for (int k = 1; k < start.Length; k++) { start[k] += start[k - 1]; }
+        var tmp = _sortTmp.AsSpan(off, n);
+        for (int i = 0; i < n; i++) { int c = list[off + i]; tmp[start[Bucket(cs, points, c)]++] = c; }
+        tmp.CopyTo(list.AsSpan(off, n));
     }
 
     private static int Bucket(ConstraintStore cs, ReadOnlySpan<byte> points, int c) => cs.KindOf(c) == ConstraintKind.Contact ? W3D.MaxPoints - Math.Min((int)points[c], W3D.MaxPoints) : 5;

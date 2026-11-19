@@ -15,6 +15,7 @@ public sealed partial class WorldCore
     /// <exception cref="BodyTypeException">The body is not dynamic.</exception>
     public void SetBodySleepSettings(BodyHandle body, BodySleepSettings settings)
     {
+        FlushPostStep();
         int b = Resolve(body);
         if (!_bodies.IsDynamic(b)) throw new BodyTypeException(nameof(SetBodySleepSettings), body, _bodies.TypeOf(b), true);
         _bodySleep.Set(b, settings); Wake(body); _bodies.SleepTime[b] = 0;

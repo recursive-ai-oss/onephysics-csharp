@@ -22,7 +22,8 @@ public sealed partial class PhysicsWorld3D : IRecordedWorld
         if (_recorder != null) throw new InvalidOperationException("This world already has an active recorder.");
         return new HistoryRecorder(this, options ?? new HistoryOptions());
     }
-    internal ReplayMutationScope RecordMutation(string operation) => _recorder?.Enter(operation) ?? default;
+    // Every public mutator of the world enters here first, which makes it the place where what the last step left for its first reader (events, population counters) is built before the world changes.
+    internal ReplayMutationScope RecordMutation(string operation) { _core.FlushPostStep(); return _recorder?.Enter(operation) ?? default; }
     private void RecordPreparedStep(float dt) { using var step = _recorder?.BeginStep(dt) ?? default; StepPrepared(dt); }
     void IRecordedWorld.PrepareHistory() => _remembersDestroyed = true;
     int IRecordedWorld.ReplayDimension => 3;

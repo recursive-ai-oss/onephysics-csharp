@@ -424,8 +424,7 @@ internal readonly struct ParticleStages : IWorldStages
             float used = Math.Abs(p[JointImpulse]);
             if (limit > 0f && used > limit)
             {
-                cons.Flags[c] |= (byte)ConstraintBits.BreakRequested;
-                cons.BreakValue[c] = used;
+                cons.RequestBreak(c, used);
             }
         }
     }
