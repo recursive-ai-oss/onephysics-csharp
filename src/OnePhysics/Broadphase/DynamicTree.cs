@@ -716,9 +716,13 @@ public partial class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     /// the enlarged ancestors become as tight as the boxes below them again, but the nodes are not regrouped, so a tree that is only refitted slowly loses quality as proxies move.
     /// Does nothing when nothing is flagged.
     /// </summary>
-    /// <param name="executor">When given and enough nodes are flagged, the flagged subtrees below the top <see cref="RefitTopLevels"/> levels are refitted on several threads and the top last.
-    /// A refit is a union of child boxes and a max of child heights, so every node ends with the same box, height and flags as in the serial walk.</param>
-    public void RefitEnlarged(TaskExecutor? executor = null)
+    public void RefitEnlarged() => RefitEnlarged(null);
+
+    /// <summary>
+    /// <see cref="RefitEnlarged()"/> with an executor: when one is given and enough nodes are flagged, the flagged subtrees below the top <see cref="RefitTopLevels"/> levels are refitted on
+    /// several threads and the top last. A refit is a union of child boxes and a max of child heights, so every node ends with the same box, height and flags as in the serial walk.
+    /// </summary>
+    public void RefitEnlarged(TaskExecutor? executor)
     {
         if (_enlarged == 0) { return; }
         if (_root == NullNode || _nodes[_root].Height == 0 || (_nodes[_root].Flags & EnlargedFlag) == 0) { _enlarged = 0; return; }
