@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Diagnostics.CodeAnalysis;
+using RecursiveAI.OnePhysics.Physics2D;
 
 namespace RecursiveAI.OnePhysics.LowLevel;
 
@@ -80,11 +81,21 @@ public interface IWorldStages
     /// <summary>Advances the positions and rotations of a chunk of awake bodies (ascending), kinematic bodies included.</summary>
     void IntegratePositions(WorldCore world, ReadOnlySpan<int> bodies, in StepContext context);
 
-    /// <summary>After the last substep: stores results for the next step's warm start, and may request joint breaks by setting <see cref="ConstraintBits.BreakRequested"/> and writing the break value. <paramref name="eventSlot"/> is this call's own slot for <see cref="EventCollector.Emit"/>.</summary>
+    /// <summary>After the last substep: stores results for the next step's warm start, and may request joint breaks with <see cref="ConstraintStore.RequestBreak"/>. <paramref name="eventSlot"/> is this call's own slot for <see cref="EventCollector.Emit"/>.</summary>
     void StoreResults(WorldCore world, ReadOnlySpan<int> constraints, int eventSlot, in StepContext context);
 
     /// <summary>How much a body moves, in the units of <see cref="WorldOptions.SleepThreshold"/> (typically a speed). Called serially for each awake dynamic body in ascending order.</summary>
     float BodyMotion(WorldCore world, int body);
+
+    /// <summary>
+    /// For an engine whose <see cref="BodyMotion"/> is exactly <c>|v| + |w| * extent[body]</c> (body velocities from the body store, the two square roots added in that order), or
+    /// <c>float.MaxValue</c> when <see cref="TouchesMovingKinematic"/> says so, the extent array; the sleep timers then compute the speed term inline and ask about kinematic partners only for a body
+    /// slow enough to rest. Null (the default) calls <see cref="BodyMotion"/> for every body.
+    /// </summary>
+    float[]? MotionExtent(WorldCore world) => null;
+
+    /// <summary>When <see cref="MotionExtent"/> is not null, whether <see cref="BodyMotion"/> of this body is <c>float.MaxValue</c> (it touches a moving kinematic body).</summary>
+    bool TouchesMovingKinematic(WorldCore world, int body) => false;
 
     /// <summary>
     /// After the restitution pass and before <see cref="StoreResults"/>: per-body work that needs the final pose of the step, such as continuous collision against static geometry or clearing applied forces.
@@ -120,6 +131,12 @@ public interface IWorldStages
     /// Whether <see cref="BodyMotion"/> only reads world data and may be called from several threads at once for different bodies. When true the sleep timers are updated in parallel blocks; the default (false) keeps the serial loop.
     /// </summary>
     bool BodyMotionIsConcurrent => false;
+
+    /// <summary>
+    /// After every <see cref="PrepareBatch"/> of the step: whether the restitution pass of the program with this context's schedule can change anything. When false the core
+    /// leaves the pass out of the program (it would only visit every batch and return). The default says yes.
+    /// </summary>
+    bool NeedsRestitutionPass(WorldCore world, in StepContext context) => true;
 }
 
 /// <summary>
@@ -170,6 +187,7 @@ public sealed partial class WorldCore
     /// <summary>Creates a world. The options are copied and validated (<see cref="WorldOptions.Validate"/>).</summary>
     public WorldCore(WorldOptions? options = null)
     {
+        Counters = new StepCounters { Owner = this };
         JointReadback = new JointReadback(this);
         BodyReadback = new BodyReadback(this);
         _options = (options ?? new WorldOptions()).Clone();
@@ -306,6 +324,7 @@ public sealed partial class WorldCore
     public BodyHandle CreateBody(BodyType type, ReadOnlySpan<double> position, ReadOnlySpan<float> rotation = default, ReadOnlySpan<float> linearVelocity = default,
         ReadOnlySpan<float> angularVelocity = default, float inverseMass = 1f, ReadOnlySpan<float> inverseInertia = default, BodyBits flags = BodyBits.None)
     {
+        FlushPostStep();
         FlushPending();
         var l = Layout;
         if (type != BodyType.Static && type != BodyType.Kinematic && type != BodyType.Dynamic) { throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown body type."); }
@@ -384,6 +403,7 @@ public sealed partial class WorldCore
     /// <summary>Destroys a body, its shapes and every constraint touching it (their end events are queued). Islands touching it wake. Cost: proportional to the body's constraints if it is dynamic, to all constraints and shapes otherwise.</summary>
     public void DestroyBody(BodyHandle handle)
     {
+        FlushPostStep();
         FlushPending();
         int b = Resolve(handle);
         _scratch.Clear();
@@ -416,6 +436,7 @@ public sealed partial class WorldCore
     /// <summary>Attaches a shape slot to a body. The geometry itself lives in the engine's own arrays indexed by the returned slot.</summary>
     public ShapeHandle CreateShape(BodyHandle owner)
     {
+        FlushPostStep();
         FlushPending();
         int b = Resolve(owner);
         return HandleOfShape(_shapes.AllocateSlot(b));
@@ -424,6 +445,7 @@ public sealed partial class WorldCore
     /// <summary>Destroys a shape and the constraints that reference it (cost: all constraints).</summary>
     public void DestroyShape(ShapeHandle handle)
     {
+        FlushPostStep();
         FlushPending();
         int s = Resolve(handle);
         _scratch.Clear();
@@ -441,6 +463,7 @@ public sealed partial class WorldCore
     /// <summary>Wakes the island of a body (a no-op for static and kinematic bodies and for bodies already awake).</summary>
     public void Wake(BodyHandle handle)
     {
+        FlushPostStep();
         int b = Resolve(handle);
         if (_bodies.IsDynamic(b)) { WakeIsland(_bodies.Island[b]); }
     }
@@ -448,6 +471,7 @@ public sealed partial class WorldCore
     /// <summary>Puts the island of a dynamic body to sleep now (a no-op for static and kinematic bodies and for islands already asleep): velocities are zeroed and one sleep event per body is queued.  The island wakes again as soon as anything touches it.</summary>
     public void Sleep(BodyHandle handle)
     {
+        FlushPostStep();
         int b = Resolve(handle);
         if (_bodies.IsDynamic(b) && !_islands.IsAsleep(_bodies.Island[b])) { SleepIsland(_bodies.Island[b]); }
     }
@@ -455,6 +479,7 @@ public sealed partial class WorldCore
     /// <summary>Wakes an island: its bodies become awake with sleep timers reset, and one wake event per body is queued.</summary>
     public void WakeIsland(int island)
     {
+        FlushPostStep();
         if (!_islands.IsAsleep(island)) { return; }
         if (island < _suspended.Length && _suspended[island] != 0) { Unsuspend(island); return; }
         _islands.SetAsleep(island, false);
@@ -488,6 +513,7 @@ public sealed partial class WorldCore
     /// </summary>
     public int AddConstraint(in ConstraintDesc desc)
     {
+        FlushPostStep();
         if (desc.Kind < ConstraintKind.Contact || desc.Kind > ConstraintKind.Joint) { throw new ArgumentOutOfRangeException(nameof(desc), desc.Kind, "Unknown constraint kind."); }
         int a = Resolve(desc.BodyA), b = Resolve(desc.BodyB);
         if (a == b) { throw new ArgumentException("A constraint needs two different bodies.", nameof(desc)); }
@@ -522,6 +548,7 @@ public sealed partial class WorldCore
     /// </summary>
     public void RemoveConstraint(int constraint)
     {
+        FlushPostStep();
         if (!_constraints.IsLive(constraint)) { throw new StaleHandleException("Constraint " + constraint.ToString(CultureInfo.InvariantCulture) + " is not live."); }
         RemoveInternal(constraint, 0f, false);
     }
@@ -592,6 +619,7 @@ public sealed partial class WorldCore
     public void ShiftOrigin(ReadOnlySpan<double> offset)
     {
         ValidateShift(offset);
+        FlushPostStep();
         int lanes = Layout.PositionLanes;
         var pos = _bodies.Position;
         // Dead slots stay zeroed: the snapshot reader rejects a destroyed body whose position is not zero.
@@ -631,6 +659,8 @@ public sealed partial class WorldCore
         if (!(dt > 0f) || !float.IsFinite(dt)) { throw new ArgumentOutOfRangeException(nameof(dt), dt, "dt must be finite and positive."); }
         FlushPending();
         _options.Validate();
+        // Whatever the last step left for its first reader is out of date now: it is dropped, not computed.
+        _countersPending = false; _viewPending = false;
         _events.ClearDelivered();
         Counters.Reset();
         JointReadback.Begin(dt);
@@ -682,7 +712,7 @@ public sealed partial class WorldCore
 #endif
             _collectTransitions = false;
             RestoreSuspended();
-            CapturePopulationCounters();
+            _countersPending = true; // CapturePopulationCounters runs on the first read of one of its counters, or before the next change to the world (FlushPostStep)
             _stepCount++;
         }
         finally { _collectTransitions = false; RestoreSuspended(); }
@@ -740,6 +770,7 @@ public sealed partial class WorldCore
             int progChunks = (progCount + ChunkSize - 1) / ChunkSize;
             _stageCount = 0;
             _stageMostTasks = 0;
+            _runCount = 0;
             for (int s = 0; s < subs; s++)
             {
                 _flipSweep = (s & 1) == 1;
@@ -750,10 +781,13 @@ public sealed partial class WorldCore
                 for (int i = 0; i < relax; i++) { AddSolvePass(prog, SolvePhase.Relax); }
             }
 
-            AddSolvePass(prog, SolvePhase.Restitution);
+            // The restitution pass is a no-op when no prepared batch of this program has a contact with restitution (the kernel returns at once for every batch, joints always do),
+            // so it is left out of the program: its stages cost a boundary crossing each for nothing. Leaving out a no-op cannot change a bit.
+            if (stages.NeedsRestitutionPass(this, in pctx)) { AddSolvePass(prog, SolvePhase.Restitution); }
             Executor.ForStages(_stageCount, new SolveProgram<TStages>(this, stages, list, pctx, prog, progBodies, progCount), _stageMostTasks);
         }
 
+        RestoreTailOverlapOrder();   // the active list back in its own order before anything walks it again
         Profile.Mark(StepStage.Finalize);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Finalize);
@@ -801,12 +835,14 @@ public sealed partial class WorldCore
     /// <summary>Substeps the constraint ran in the last step: the contact-only schedule's when it belonged to an island on it, else the world's.</summary>
     private double _fullIntegratedTime, _liteIntegratedTime;
     internal double IntegratedTimeOfBody(int body) => _splitActive && _bodies.Island[body] >= 0 && _islandFull[_bodies.Island[body]] == 0 ? _liteIntegratedTime : _fullIntegratedTime;
-
     internal int SubstepsOf(int constraint) => _splitActive && constraint < _consLite.Length && _consLite[constraint] != 0 ? _passLiteSubsteps : _passSubsteps;
     private int _passSubsteps = 1, _passLiteSubsteps = 1;
 
     // Decides each island's schedule from its content at the start of the step: an island holds the joint schedule when any of its constraints is a joint, when it touches a kinematic body (which then moves on that schedule),
     // or when the engine asked for it; every other island runs the contact-only schedule. Returns false when no island is on the contact-only schedule (the step then runs as one program).
+    // Both per-constraint loops run as Executor.For over fixed pieces of the active list (PlanChunk constraints; the split depends on the list alone). The first loop's writes are order-free (an island
+    // is marked full by storing 1, a mild joint is counted by an atomic increment), so any interleaving gives the serial loop's _islandFull and _islandJoints; a world without active joints and without an awake
+    // kinematic body skips it (every constraint would be passed over). The second loop's pieces write their own constraints' _consLite and their own lite count, which the serial tail sums per group.
     private bool PlanSchedules<TStages>(TStages stages, int active, int[] list) where TStages : IWorldStages
     {
         var bodies = _bodies;
@@ -814,39 +850,19 @@ public sealed partial class WorldCore
         int ni = _islands.HighWater;
         if (_islandFull.Length < ni) { _islandFull = new byte[Math.Max(ni, _islandFull.Length * 2)]; }
         Array.Clear(_islandFull, 0, ni);
-        bool anyJoint = false;
         bool anyKinematic = false;
         for (int i = 0; i < _awakeCount; i++) { if (bodies.TypeOf(_awake[i]) == BodyType.Kinematic) { anyKinematic = true; break; } }
         var island = bodies.Island;
-        var kind = cons.Kind;
-        var bodyA = cons.BodyA;
-        var bodyB = cons.BodyB;
-        for (int k = 0; k < active; k++)
+        // Counters.Joints is the number of joints in the active list (ConstraintColoring.CaptureCounts, just before this call). Mild joints are counted per island only when there is a joint:
+        // sized and cleared then, so worlds without joints never touch the array. With joints but no mild one the counts stay zero and the loop check below marks nothing, as when the serial loop never set anyJoint.
+        bool anyJoint = Counters.Joints > 0;
+        if (anyJoint)
         {
-            int c = list[k];
-            bool joint = kind[c] == (byte)ConstraintKind.Joint;
-            if (!joint && !anyKinematic) { continue; }
-            int a = bodyA[c], b = bodyB[c];
-            if (joint && !stages.JointNeedsFullSchedule(this, c))
-            {
-                // A mild joint keeps its island on the contact-only schedule; the joints of the island are counted to spot loops below.
-                int ia = bodies.IsDynamic(a) ? island[a] : island[b];
-                if (!anyJoint)
-                {
-                    // Sized and cleared on first use, so worlds without mild joints never touch it.
-                    if (_islandJoints.Length < ni) { _islandJoints = new int[Math.Max(ni, _islandJoints.Length * 2)]; }
-                    Array.Clear(_islandJoints, 0, ni);
-                    anyJoint = true;
-                }
-
-                if (ia >= 0) { _islandJoints[ia]++; }
-                continue;
-            }
-
-            if (!joint && bodies.TypeOf(a) != BodyType.Kinematic && bodies.TypeOf(b) != BodyType.Kinematic) { continue; }
-            if (island[a] >= 0) { _islandFull[island[a]] = 1; }
-            if (island[b] >= 0) { _islandFull[island[b]] = 1; }
+            if (_islandJoints.Length < ni) { _islandJoints = new int[Math.Max(ni, _islandJoints.Length * 2)]; }
+            Array.Clear(_islandJoints, 0, ni);
         }
+
+        if (anyJoint || anyKinematic) { Executor.For((active + PlanChunk - 1) / PlanChunk, new PlanMarkTask<TStages>(this, stages, list, active, anyKinematic)); }
 
         if (anyJoint)
         {
@@ -881,25 +897,117 @@ public sealed partial class WorldCore
         int nc = cons.HighWater;
         if (_consLite.Length < nc) { _consLite = new byte[Math.Max(nc, _consLite.Length * 2)]; }
         Array.Clear(_consLite, 0, nc);
+        // Pieces of at most PlanChunk constraints, none spanning two groups.
+        int pieces = 0;
+        for (int g = 0; g < GroupSlots; g++) { pieces += (GroupSize(g) + PlanChunk - 1) / PlanChunk; }
+        if (_planPieceStart.Length < pieces) { int cap = Math.Max(pieces, _planPieceStart.Length * 2); _planPieceStart = new int[cap]; _planPieceCount = new int[cap]; _planPieceLite = new int[cap]; }
+        pieces = 0;
+        for (int g = 0; g < GroupSlots; g++)
+        {
+            int start = GroupStart(g), n = GroupSize(g);
+            for (int o = 0; o < n; o += PlanChunk) { _planPieceStart[pieces] = start + o; _planPieceCount[pieces] = Math.Min(PlanChunk, n - o); pieces++; }
+        }
+
+        Executor.For(pieces, new PlanLiteTask(this, list));
         _progConstraints[0] = 0; _progConstraints[1] = 0;
+        pieces = 0;
         for (int g = 0; g < GroupSlots; g++)
         {
             int start = GroupStart(g), n = GroupSize(g);
             int lite = 0;
-            for (int k = 0; k < n; k++)
-            {
-                int c = list[start + k];
-                int a = bodyA[c];
-                int isl = bodies.IsDynamic(a) ? island[a] : island[bodyB[c]];
-                if (isl >= 0 && _islandFull[isl] == 0) { _consLite[c] = 1; lite++; }
-            }
-
+            for (int o = 0; o < n; o += PlanChunk) { lite += _planPieceLite[pieces++]; }
             _tStart[g] = start; _tCount[g] = n - lite;
             _tStart[GroupSlots + g] = start + n - lite; _tCount[GroupSlots + g] = lite;
             _progConstraints[0] += n - lite; _progConstraints[1] += lite;
         }
 
         return true;
+    }
+
+    /// <summary>Constraints per task of <see cref="PlanSchedules"/>' two parallel loops.</summary>
+    private const int PlanChunk = 256;
+    private int[] _planPieceStart = new int[32], _planPieceCount = new int[32], _planPieceLite = new int[32];
+
+    // PlanSchedules' first loop over list[task * PlanChunk ..]: marks the islands that need the world's schedule and counts each island's mild joints.
+    private readonly struct PlanMarkTask<TStages> : IParallelBody where TStages : IWorldStages
+    {
+        private readonly WorldCore _w;
+        private readonly TStages _stages;
+        private readonly int[] _list;
+        private readonly int _active;
+        private readonly bool _anyKinematic;
+        public PlanMarkTask(WorldCore w, TStages stages, int[] list, int active, bool anyKinematic) { _w = w; _stages = stages; _list = list; _active = active; _anyKinematic = anyKinematic; }
+        public void Run(int task)
+        {
+            var w = _w;
+            var bodies = w._bodies;
+            var cons = w._constraints;
+            var island = bodies.Island;
+            var kind = cons.Kind;
+            var bodyA = cons.BodyA;
+            var bodyB = cons.BodyB;
+            var full = w._islandFull;
+            var counts = w._islandJoints;
+            int lo = task * PlanChunk, hi = Math.Min(_active, lo + PlanChunk);
+            // Mild joints are counted in runs of one island and added once per run: a pile is often one island, and one atomic add per joint from every thread on the same counter was most of the loop.
+            int runIsland = -1, run = 0;
+            for (int k = lo; k < hi; k++)
+            {
+                int c = _list[k];
+                bool joint = kind[c] == (byte)ConstraintKind.Joint;
+                if (!joint && !_anyKinematic) { continue; }
+                int a = bodyA[c], b = bodyB[c];
+                if (joint && !_stages.JointNeedsFullSchedule(w, c))
+                {
+                    // A mild joint keeps its island on the contact-only schedule; the joints of the island are counted to spot loops.
+                    int ia = bodies.IsDynamic(a) ? island[a] : island[b];
+                    if (ia >= 0 && ia == runIsland) { run++; }
+                    else if (ia >= 0)
+                    {
+                        if (run > 0) { System.Threading.Interlocked.Add(ref counts[runIsland], run); }
+                        runIsland = ia; run = 1;
+                    }
+                    continue;
+                }
+
+                if (!joint && bodies.TypeOf(a) != BodyType.Kinematic && bodies.TypeOf(b) != BodyType.Kinematic) { continue; }
+                // Stored only when still 0, so threads do not keep writing the same cache line.
+                if (island[a] >= 0 && full[island[a]] == 0) { full[island[a]] = 1; }
+                if (island[b] >= 0 && full[island[b]] == 0) { full[island[b]] = 1; }
+            }
+
+            if (run > 0) { System.Threading.Interlocked.Add(ref counts[runIsland], run); }
+        }
+    }
+
+    // PlanSchedules' second loop over one piece of a group: flags the piece's contact-only constraints and counts them.
+    private readonly struct PlanLiteTask : IParallelBody
+    {
+        private readonly WorldCore _w;
+        private readonly int[] _list;
+        public PlanLiteTask(WorldCore w, int[] list) { _w = w; _list = list; }
+        public void Run(int task)
+        {
+            var w = _w;
+            var bodies = w._bodies;
+            var cons = w._constraints;
+            var island = bodies.Island;
+            var bodyA = cons.BodyA;
+            var bodyB = cons.BodyB;
+            var full = w._islandFull;
+            var consLite = w._consLite;
+            int start = w._planPieceStart[task], n = w._planPieceCount[task];
+            int lite = 0;
+            for (int k = 0; k < n; k++)
+            {
+                int c = _list[start + k];
+                int a = bodyA[c];
+                int isl = bodies.IsDynamic(a) ? island[a] : island[bodyB[c]];
+                if (isl >= 0 && full[isl] == 0) { consLite[c] = 1; lite++; }
+            }
+
+            w._planPieceLite[task] = lite;
+        }
     }
 
     // Moves the contact-only constraints of every group behind the others, each part keeping its order.
@@ -927,6 +1035,10 @@ public sealed partial class WorldCore
     // Bodies per block when the awake list is built in parallel; below two blocks the loop is serial.
     private const int AwakeBlock = 2048;
     private int[] _awakeBlockCounts = new int[4];
+    // Per block whether it listed a kinematic body, and whether the awake list holds any (every live kinematic body is listed, moving or not), so the sleep timers can skip the
+    // kinematic-partner walk in a world without one. Valid exactly as long as the awake list it was built with.
+    private byte[] _awakeBlockKinematic = new byte[4];
+    internal bool AwakeHasKinematic;
 
     /// <summary>
     /// Sizes the core's per-step storage for up to <paramref name="contacts"/> constraints, <paramref name="islands"/> islands and <paramref name="bodies"/> bodies, and starts the pool threads,
@@ -950,11 +1062,16 @@ public sealed partial class WorldCore
         if (_islandFull.Length < islands) { _islandFull = new byte[islands]; }
         if (_consLite.Length < contacts) { _consLite = new byte[contacts]; }
         if (_partTmp.Length < contacts) { _partTmp = new int[contacts]; }
+        // The tail overlap's body stamps and its saved copy of one color per program.
+        if (_ovMark.Length < bodies) { _ovMark = new int[bodies]; }
+        if (_ovSave[0].Length < contacts) { _ovSave[0] = new int[contacts]; _ovSave[1] = new int[contacts]; }
         // Stages of one step: per substep the two integrations and a pass over every color for warm starting, each solve and each relax pass (plus the restitution pass).
         ReadContactSchedule();
         int passes = _options.VelocityIterations + _options.RelaxIterations + 2;
         int stages = Math.Max(_options.Substeps, _liteOn ? _liteSubsteps : 1) * (3 + Math.Max(passes, _liteVelocity + _liteRelax + 2) * (ConstraintColoring.ColorCount + 1)) + 8;
-        if (_stageKind.Length < stages) { Array.Resize(ref _stageKind, stages); Array.Resize(ref _stageArg, stages); Array.Resize(ref _stageTasks, stages); }
+        if (_stageKind.Length < stages) { Array.Resize(ref _stageKind, stages); Array.Resize(ref _stageArg, stages); Array.Resize(ref _stageTasks, stages); Array.Resize(ref _stageAux, stages); }
+        // A run item is one color of one pass, so the stage bound holds for them too.
+        if (_runItem.Length < stages) { Array.Resize(ref _runItem, stages); }
         Executor.Reserve(stages);
     }
 
@@ -983,18 +1100,21 @@ public sealed partial class WorldCore
         int need = Math.Max(blocks, 1) * AwakeBlock;
         if (_awake.Length < need) { _awake = new int[Math.Max(need, _awake.Length * 2)]; }
         if (_awakeBlockCounts.Length < blocks) { _awakeBlockCounts = new int[Math.Max(blocks, _awakeBlockCounts.Length * 2)]; }
+        if (_awakeBlockKinematic.Length < blocks) { _awakeBlockKinematic = new byte[Math.Max(blocks, _awakeBlockKinematic.Length * 2)]; }
 
         // Every block lists its awake bodies at the start of its own slots in index order; closing the gaps in block order gives the list one serial loop would build.
         Executor.For(blocks, new AwakeBlockTask(this));
-        int k = 0;
+        int k = 0, kinematic = 0;
         for (int blk = 0; blk < blocks; blk++)
         {
             int count = _awakeBlockCounts[blk];
             if (count > 0 && k != blk * AwakeBlock) { Array.Copy(_awake, blk * AwakeBlock, _awake, k, count); }
             k += count;
+            kinematic |= _awakeBlockKinematic[blk];
         }
 
         _awakeCount = k;
+        AwakeHasKinematic = kinematic != 0;
     }
 
     private readonly struct AwakeBlockTask : IParallelBody
@@ -1009,13 +1129,17 @@ public sealed partial class WorldCore
             var type = bodies.Type;
             int lo = block * AwakeBlock, hi = Math.Min(lo + AwakeBlock, bodies.HighWater);
             int k = lo;
+            byte kinematic = 0;
             for (int b = lo; b < hi; b++)
             {
                 if (!bodies.IsLive(b)) { continue; }
-                if ((type[b] == (byte)BodyType.Kinematic && w._passKinematic) || (type[b] == (byte)BodyType.Dynamic && bodies.IsAwake(b))) { w._awake[k++] = b; }
+                // The flag counts every live kinematic body, also in a scaled group that leaves them out of the list.
+                if (type[b] == (byte)BodyType.Kinematic) { kinematic = 1; if (w._passKinematic) { w._awake[k++] = b; } }
+                else if (type[b] == (byte)BodyType.Dynamic && bodies.IsAwake(b)) { w._awake[k++] = b; }
             }
 
             w._awakeBlockCounts[block] = k - lo;
+            w._awakeBlockKinematic[block] = kinematic;
         }
     }
 
@@ -1075,6 +1199,18 @@ public sealed partial class WorldCore
             PartitionColors();
         }
 
+        // The colors are final now (point-count grouping in BeginSolve, the program split); the tail overlap reorders its color C before any batch is prepared.
+        // Not planned on one thread: the serial schedule has nothing to run beside T, so the planning (stamping, partition, save and restore of C) would be pure cost.
+        // The thread count therefore decides the stage layout only; body state, the list StoreTask walks and the delivered events are the same either way (RestoreTailOverlapOrder).
+        if (Executor.ThreadCount > 1)
+        {
+            if (_ovMark.Length < _bodies.HighWater) { _ovMark = new int[Math.Max(_bodies.HighWater, _ovMark.Length * 2)]; }
+            if (++_ovEpoch == int.MaxValue) { Array.Clear(_ovMark); _ovEpoch = 1; }
+            PlanTailOverlap(0);
+            if (split) { PlanTailOverlap(1); } else { NoTailOverlap(1); }
+        }
+        else { NoTailOverlap(0); NoTailOverlap(1); }
+
         // One parallel call for every batch of every color: a call per color pays a fork and join for each of up to 24 small colors.
         int tasks = (batches + ConstraintColoring.BatchesPerTask - 1) / ConstraintColoring.BatchesPerTask;
         Executor.For(tasks, new PrepareBatchTask<TStages>(this, stages, list, groups, batches, ctx, ctxLite));
@@ -1109,43 +1245,232 @@ public sealed partial class WorldCore
     public bool SymmetricSweep { get; set; }
     private bool _flipSweep;
 
-    private const int StageIntegrateVelocities = 0, StageIntegratePositions = 1, StageOverflow = 2, StageColor = 3;
+    private const int StageIntegrateVelocities = 0, StageIntegratePositions = 1, StageOverflow = 2, StageColor = 3, StageColorRun = 4, StageTailOverlap = 5, StageColorFrom = 6;
+
+    // A color of at most this many batches is too small to share: crossing its stage boundary (every participating thread waits on every other) costs more than its work.
+    // A maximal run of such colors, consecutive in pass order, becomes one StageColorRun stage with one task, which runs the colors in order, batch by batch, on one thread. The color order
+    // of the pass is unchanged and batches of a color are independent, so the bits are the same. 1 (only colors that are one batch, which could not be shared anyway): swept 1, 2, 4, 8 on
+    // ragdoll and sleep-wake t8; 1 and 2 tied within noise, 4 gave less, 8 was slower than no merge (runs of up to 24 batches on one thread).
+    // Now the limit of a program without a tail overlap; with one, TailColorBatches.
+    private const int SmallColorBatches = 1;
+
+    // With a tail overlap (PlanTailOverlap) the runs of the program are formed with this larger limit instead: the chosen run T then costs no serial wall of its own,
+    // it runs at the same time as the independent part of its big neighbour C. Swept 1, 4, 8 (ragdoll t8 best at 8).
+    private const int TailColorBatches = 8;
+
+    // The overlap is taken only when C can hide T: T's batches x (threads - 1) <= TailSlack x C's batches (T on one thread, C shared by the others).
+    // Otherwise the program keeps SmallColorBatches runs and no overlap (a long serial T over a small C is what made a run limit of 8 lose without the overlap).
+    private const float TailSlack = 1.5f;
+
+    // The run limit AddSolvePass uses for each program this step: TailColorBatches with an overlap, SmallColorBatches without.
+    private readonly int[] _runSmall = { SmallColorBatches, SmallColorBatches };
+
+    // The colors of the StageColorRun stages of the program being built, in run order: phase | color << 8. A run stage's argument is its first item | item count << 16.
+    private int[] _runItem = new int[64];
+    private int _runCount;
+
     private int[] _stageKind = new int[64];
     private int[] _stageArg = new int[64];
     private int[] _stageTasks = new int[64];
+    private int[] _stageAux = new int[64]; // second argument of StageTailOverlap / StageColorFrom
     private int _stageCount;
     private int _stageMostTasks;
 
-    private void AddStage(int kind, int arg, int tasks)
+    private void AddStage(int kind, int arg, int tasks, int aux = 0)
     {
         if (_stageCount == _stageKind.Length)
         {
-            Array.Resize(ref _stageKind, _stageCount * 2); Array.Resize(ref _stageArg, _stageCount * 2); Array.Resize(ref _stageTasks, _stageCount * 2);
+            Array.Resize(ref _stageKind, _stageCount * 2); Array.Resize(ref _stageArg, _stageCount * 2); Array.Resize(ref _stageTasks, _stageCount * 2); Array.Resize(ref _stageAux, _stageCount * 2);
         }
 
-        _stageKind[_stageCount] = kind; _stageArg[_stageCount] = arg; _stageTasks[_stageCount] = tasks;
+        _stageKind[_stageCount] = kind; _stageArg[_stageCount] = arg; _stageTasks[_stageCount] = tasks; _stageAux[_stageCount] = aux;
         if (tasks > _stageMostTasks) { _stageMostTasks = tasks; }
         _stageCount++;
     }
 
     // One pass over every constraint of one program in one phase: the overflow constraints first, serially and in order, then each color (the constraints of a color share no dynamic body, so their order cannot matter).
+    // With a tail overlap planned for the program (PlanTailOverlap), the chosen run T of small colors and its big neighbour C become two stages instead of two-plus:
+    // one StageTailOverlap stage (task 0 = the run T, tasks 1.. = the first _ovIndep batches of C, which touch no dynamic body of T) and one StageColorFrom stage (the rest of C).
+    // The StageColorFrom stage goes on C's side of the overlap stage: after it when the pass meets T first, before it when the pass meets C first. Every dynamic body therefore still sees
+    // its constraints of T and of C in the pass order of today; the independent part of C shares no dynamic body with T, so solving it at the same time as T cannot change a bit.
     private void AddSolvePass(int prog, SolvePhase phase)
     {
         bool reverse = SymmetricSweep && phase != SolvePhase.WarmStart && ((phase == SolvePhase.Relax) != _flipSweep);
         int overflow = _tCount[prog * GroupSlots];
         if (!reverse && overflow > 0) { AddStage(StageOverflow, (int)phase, 1); }
+        int ovColor = _ovColor[prog], ovLo = _ovRunLo[prog], ovHi = _ovRunHi[prog], ovIndep = _ovIndep[prog], runSmall = _runSmall[prog];
+        int runStart = -1;
+        bool runChosen = false, cDone = false;
         for (int k = 0; k < ConstraintColoring.ColorCount; k++)
         {
             int color = reverse ? ConstraintColoring.ColorCount - 1 - k : k;
             int n = _tCount[prog * GroupSlots + 1 + color];
             if (n == 0) { continue; }
             int batches = (n + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
+            // A small color joins the run of small colors before it (empty colors do not break a run: they have no stage).
+            if (batches <= runSmall)
+            {
+                if (runStart < 0) { runStart = _runCount; runChosen = color >= ovLo && color <= ovHi; }
+                if (_runCount == _runItem.Length) { Array.Resize(ref _runItem, _runCount * 2); }
+                _runItem[_runCount++] = (int)phase | (color << 8);
+                continue;
+            }
+
+            if (color == ovColor)
+            {
+                // The pass meets C. If the run T is open it is T's end (T then C): overlap stage, then the rest of C. Otherwise C comes first: the rest of C now, the overlap when T ends.
+                if (runStart >= 0 && runChosen) { EndOverlap(ref runStart, phase, ovColor, ovIndep); }
+                else { EndRun(ref runStart); }
+                if (ovIndep < batches) { AddStage(StageColorFrom, (int)phase | (color << 8), batches - ovIndep, ovIndep); }
+                cDone = true;
+                runChosen = false;
+                continue;
+            }
+
+            if (runStart >= 0 && runChosen && cDone) { EndOverlap(ref runStart, phase, ovColor, ovIndep); } else { EndRun(ref runStart); }
+            runChosen = false;
             // One task per batch: stages are short, and a stage cut into a few multi-batch tasks leaves most threads waiting at its boundary.
             // Batches of a color are independent, so how they are shared out cannot change a result.
             AddStage(StageColor, (int)phase | (color << 8), batches);
         }
 
+        if (runStart >= 0 && runChosen && cDone) { EndOverlap(ref runStart, phase, ovColor, ovIndep); } else { EndRun(ref runStart); }
         if (reverse && overflow > 0) { AddStage(StageOverflow, (int)phase, 1); }
+    }
+
+    // Closes the open run of small colors, if any, as one single-task stage.
+    private void EndRun(ref int runStart)
+    {
+        if (runStart < 0) { return; }
+        AddStage(StageColorRun, runStart | ((_runCount - runStart) << 16), 1);
+        runStart = -1;
+    }
+
+    // Closes the open run T as task 0 of one stage whose tasks 1 .. indep are the independent batches 0 .. indep - 1 of color c.
+    private void EndOverlap(ref int runStart, SolvePhase phase, int c, int indep)
+    {
+        AddStage(StageTailOverlap, runStart | ((_runCount - runStart) << 16), 1 + indep, (int)phase | (c << 8));
+        runStart = -1;
+    }
+
+    // The tail overlap of each program for this step: the chosen run T of small colors (color indices _ovRunLo .. _ovRunHi; every non-empty color in between is small),
+    // its big neighbour C (_ovColor, -1 = no overlap) and how many of C's first batches touch no dynamic body of T (_ovIndep). _ovMark[b] == _ovEpoch: body b is a dynamic body of T.
+    private readonly int[] _ovColor = { -1, -1 }, _ovRunLo = new int[2], _ovRunHi = new int[2], _ovIndep = new int[2];
+    private int[] _ovMark = new int[64];
+    private int _ovEpoch;
+
+    // C's constraints of each program in the order they had before PlanTailOverlap partitioned them (_ovSaveCount[prog] == 0: C was not reordered this step).
+    private readonly int[][] _ovSave = { new int[64], new int[64] };
+    private readonly int[] _ovSaveStart = new int[2], _ovSaveCount = new int[2];
+
+    // No tail overlap for the program this step: SmallColorBatches runs, C untouched.
+    private void NoTailOverlap(int prog)
+    {
+        _ovColor[prog] = -1;
+        _runSmall[prog] = SmallColorBatches;
+        _ovSaveCount[prog] = 0;
+    }
+
+    // After the last solve program and before FinalizeTask / StoreTask: puts C's constraints back in the order the coloring gave them. The partition only had to hold while
+    // batches are prepared and solved (they find their wide slot through SlotOf, not by list position), so from here on everything that walks the active list (StoreTask: impulses,
+    // joint results, EmitHits' per-chunk event slots; the next reader of Coloring.Active) sees the same order at every thread count, whether or not the overlap was taken.
+    // (The delivered events never depended on it: EventCollector.Deliver sorts them by a key total on every field.) One copy of C per program, about 1,160 ints on ragdoll.
+    private void RestoreTailOverlapOrder()
+    {
+        var list = _coloring.ListArray;
+        for (int prog = 0; prog < 2; prog++)
+        {
+            if (_ovSaveCount[prog] == 0) { continue; }
+            Array.Copy(_ovSave[prog], 0, list, _ovSaveStart[prog], _ovSaveCount[prog]);
+            _ovSaveCount[prog] = 0;
+        }
+    }
+
+    // After the point-count grouping and the program split, before any batch is prepared (it reorders C; only on more than one thread, and RestoreTailOverlapOrder puts C back after the solve programs).
+    // T = the run of colors of at most TailColorBatches batches (as AddSolvePass then forms them) with the most batches; C = the bigger of its two non-empty neighbours in color order (in pass
+    // order C is next to T in both sweep directions). Taken only if C can hide T (TailSlack). The dynamic bodies of T are stamped; C's constraints are then partitioned stably, those touching
+    // no stamped body first: order inside a color is free, and a stable partition of a list grouped by point count leaves each part grouped by point count, so the batches stay uniform.
+    // A batch that straddles the two parts goes with the dependent part. Serial, about 3 us per step on ragdoll (1,160 constraints of C partitioned, 170 of T stamped).
+    // (Tried: the partition folded into C's point-count grouping task, which runs in parallel with the other colors': no measurable difference.)
+    private void PlanTailOverlap(int prog)
+    {
+        NoTailOverlap(prog);
+        int bestLo = -1, bestHi = -1, bestBatches = 0, bestBefore = -1, bestAfter = -1;
+        int runLo = -1, runHi = -1, runBatches = 0, runBefore = -1, prevBig = -1;
+        int baseSlot = prog * GroupSlots + 1;
+        for (int c = 0; c <= ConstraintColoring.ColorCount; c++)
+        {
+            int n = c < ConstraintColoring.ColorCount ? _tCount[baseSlot + c] : int.MaxValue;
+            if (n == 0) { continue; }
+            int b = c < ConstraintColoring.ColorCount ? (n + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes : int.MaxValue;
+            if (b <= TailColorBatches)
+            {
+                if (runLo < 0) { runLo = c; runBefore = prevBig; runBatches = 0; }
+                runHi = c; runBatches += b;
+                continue;
+            }
+
+            if (runLo >= 0 && runBatches > bestBatches)
+            {
+                bestLo = runLo; bestHi = runHi; bestBatches = runBatches; bestBefore = runBefore; bestAfter = c < ConstraintColoring.ColorCount ? c : -1;
+            }
+
+            runLo = -1;
+            prevBig = c;
+        }
+
+        if (bestLo < 0) { return; }
+        int nAfter = bestAfter < 0 ? 0 : _tCount[baseSlot + bestAfter], nBefore = bestBefore < 0 ? 0 : _tCount[baseSlot + bestBefore];
+        int cc = nAfter >= nBefore ? bestAfter : bestBefore;
+        if (cc < 0) { return; }
+        int ccBatches = (Math.Max(nAfter, nBefore) + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
+        if (bestBatches * (Math.Max(2, Executor.ThreadCount) - 1) > TailSlack * ccBatches) { return; }
+
+        var list = _coloring.ListArray;
+        var bodyA = _constraints.BodyA;
+        var bodyB = _constraints.BodyB;
+        var mark = _ovMark;
+        int epoch = _ovEpoch;
+        for (int c = bestLo; c <= bestHi; c++)
+        {
+            int s0 = _tStart[baseSlot + c], n = _tCount[baseSlot + c];
+            for (int i = s0; i < s0 + n; i++)
+            {
+                int k = list[i];
+                int a = bodyA[k], b = bodyB[k];
+                if (_bodies.IsDynamic(a)) { mark[a] = epoch; }
+                if (_bodies.IsDynamic(b)) { mark[b] = epoch; }
+            }
+        }
+
+        // Stable partition of C: independent constraints compacted in place, dependent ones through _partTmp (free here: PartitionColors is done with it).
+        int start = _tStart[baseSlot + cc], total = _tCount[baseSlot + cc];
+        if (_partTmp.Length < total) { _partTmp = new int[Math.Max(total, _partTmp.Length * 2)]; }
+        var tmp = _partTmp;
+        // C's order as the coloring gave it, put back by RestoreTailOverlapOrder once the solve programs are done.
+        if (_ovSave[prog].Length < total) { _ovSave[prog] = new int[Math.Max(total, _ovSave[prog].Length * 2)]; }
+        Array.Copy(list, start, _ovSave[prog], 0, total);
+        int f = 0, d = 0;
+        for (int i = 0; i < total; i++)
+        {
+            int k = list[start + i];
+            // Only dynamic bodies are ever stamped, so a static or kinematic body (the ground every contact of C may share with T) never makes a constraint dependent.
+            if (mark[bodyA[k]] == epoch || mark[bodyB[k]] == epoch) { tmp[d++] = k; } else { list[start + f++] = k; }
+        }
+
+        if (d > 0) { Array.Copy(tmp, 0, list, start + f, d); }
+        int nb = (total + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
+        int indep = d == 0 ? nb : f / ConstraintColoring.Lanes;
+        // The order changed only if both parts are non-empty. No overlap (fewer than Lanes independent constraints): put C back now, nothing is prepared yet.
+        if (d > 0 && f > 0)
+        {
+            if (indep == 0) { Array.Copy(_ovSave[prog], 0, list, start, total); }
+            else { _ovSaveStart[prog] = start; _ovSaveCount[prog] = total; }
+        }
+
+        if (indep == 0) { return; }
+        _runSmall[prog] = TailColorBatches;
+        _ovColor[prog] = cc; _ovRunLo[prog] = bestLo; _ovRunHi[prog] = bestHi; _ovIndep[prog] = indep;
     }
 
     private readonly struct SolveProgram<TStages> : IStagedBody where TStages : IWorldStages
@@ -1162,6 +1487,37 @@ public sealed partial class WorldCore
         {
 #if STAGE_TIMERS
             int k = _w._stageKind[stage], a = _w._stageArg[stage];
+            if (k == StageColorFrom) { k = StageColor; }
+            if (k == StageTailOverlap)
+            {
+                // Task 0 is the run (reported color by color, below), the others are batches of the overlapped color.
+                if (first > 0 || count > 1)
+                {
+                    int ax = _w._stageAux[stage], f1 = first == 0 ? 1 : first;
+                    StageProbe.OnSolveRun?.Invoke(StageColor, ax & 0xFF, first + count - f1, true);
+                    RunColor(ax & 0xFF, ax >> 8, f1 - 1, first + count - f1);
+                    StageProbe.OnSolveRun?.Invoke(StageColor, ax & 0xFF, first + count - f1, false);
+                }
+
+                if (first != 0) { return; }
+                k = StageColorRun;
+            }
+
+            if (k == StageColorRun)
+            {
+                // Reported color by color, as the color stages it replaces were, so the sub-stage labels keep their meaning.
+                for (int r = a & 0xFFFF, end = r + (a >> 16); r < end; r++)
+                {
+                    int item = _w._runItem[r];
+                    int nb = (_w._tCount[_prog * GroupSlots + 1 + (item >> 8)] + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
+                    StageProbe.OnSolveRun?.Invoke(StageColor, item & 0xFF, nb, true);
+                    RunColor(item & 0xFF, item >> 8, 0, nb);
+                    StageProbe.OnSolveRun?.Invoke(StageColor, item & 0xFF, nb, false);
+                }
+
+                return;
+            }
+
             int ph = k <= StageIntegratePositions ? 0 : (k == StageOverflow ? a : a & 0xFF);
             StageProbe.OnSolveRun?.Invoke(k, ph, count, true);
             RunRangeCore(stage, first, count);
@@ -1193,16 +1549,40 @@ public sealed partial class WorldCore
                     _s.SolveBatch(w, _list.AsSpan(os + lo, Math.Min(ConstraintColoring.Lanes, on - lo)), (SolvePhase)arg, in _ctx);
                 }
             }
+            else if (kind == StageColor) { RunColor(arg & 0xFF, arg >> 8, first, count); }
+            else if (kind == StageColorFrom) { RunColor(arg & 0xFF, arg >> 8, w._stageAux[stage] + first, count); }
             else
             {
-                int color = arg >> 8;
-                int start = w._tStart[_prog * GroupSlots + 1 + color], total = w._tCount[_prog * GroupSlots + 1 + color];
-                var phase = (SolvePhase)(arg & 0xFF);
-                for (int task = first; task < first + count; task++)
+                // A run of small colors (task 0 of its stage): every color in pass order, each batch by batch.
+                int t = first, end = first + count;
+                if (t == 0)
                 {
-                    int lo = task * ConstraintColoring.Lanes;
-                    _s.SolveBatch(w, _list.AsSpan(start + lo, Math.Min(ConstraintColoring.Lanes, total - lo)), phase, in _ctx);
+                    for (int r = arg & 0xFFFF, rEnd = r + (arg >> 16); r < rEnd; r++)
+                    {
+                        int item = w._runItem[r];
+                        RunColor(item & 0xFF, item >> 8, 0, int.MaxValue);
+                    }
+
+                    t = 1;
                 }
+
+                // StageTailOverlap: task t >= 1 is batch t - 1 of the overlapped color.
+                if (t < end) { int aux = w._stageAux[stage]; RunColor(aux & 0xFF, aux >> 8, t - 1, end - t); }
+            }
+        }
+
+        // Batches first .. first + count - 1 of one color in one phase (count is clipped to the color's batches).
+        private void RunColor(int phaseBits, int color, int first, int count)
+        {
+            var w = _w;
+            int start = w._tStart[_prog * GroupSlots + 1 + color], total = w._tCount[_prog * GroupSlots + 1 + color];
+            var phase = (SolvePhase)phaseBits;
+            int batches = (total + ConstraintColoring.Lanes - 1) / ConstraintColoring.Lanes;
+            int last = count >= batches - first ? batches : first + count;
+            for (int task = first; task < last; task++)
+            {
+                int lo = task * ConstraintColoring.Lanes;
+                _s.SolveBatch(w, _list.AsSpan(start + lo, Math.Min(ConstraintColoring.Lanes, total - lo)), phase, in _ctx);
             }
         }
     }
@@ -1240,9 +1620,12 @@ public sealed partial class WorldCore
         }
     }
 
+    // The scan below finds something only for a joint with a lifetime or a slot with BreakRequested; ConstraintStore counts the first and flags the second (RequestBreak), so a step without either skips it.
     private void ProcessBreaks()
     {
         _scratch.Clear();
+        if (_constraints.LifetimeJoints == 0 && !_constraints.BreaksRequested) { return; }
+        _constraints.BreaksRequested = false;
         var flags = _constraints.Flags;
         for (int c = 0; c < _constraints.HighWater; c++)
         {
@@ -1285,6 +1668,38 @@ public sealed partial class WorldCore
             int lo = block * SleepBlock, hi = Math.Min(lo + SleepBlock, w._awakeCount);
             float threshold = w._options.SleepThreshold;
             int rested = 0;
+            float[]? ext = _s.MotionExtent(w);
+            if (ext != null)
+            {
+                // BodyMotion inline (see IWorldStages.MotionExtent): the speed term from hoisted spans, the kinematic-partner walk only for a body whose speed term is at rest. The result is
+                // the same test: a body touching a moving kinematic body has motion float.MaxValue, at rest only if the threshold is that large.
+                ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity, extent = ext;
+                ReadOnlySpan<byte> type = bodies.Type, fl = flags;
+                ReadOnlySpan<int> awake = w._awake;
+                bool kinematicRests = float.MaxValue <= threshold;
+                // No kinematic body in the awake list (it holds every live one): no body has a kinematic partner, and the walk is skipped.
+                bool walk = w.AwakeHasKinematic;
+                for (int i = lo; i < hi; i++)
+                {
+                    int b = awake[i];
+                    if (!bodies.IsLive(b) || (BodyType)Mem.At(type, b) != BodyType.Dynamic) { continue; }
+                    bool rest = false;
+                    if (_enabled && (Mem.At(fl, b) & (byte)BodyBits.NoSleep) == 0)
+                    {
+                        int b3 = 3 * b;
+                        float vx = Mem.At(lin, b3), vy = Mem.At(lin, b3 + 1), vz = Mem.At(lin, b3 + 2), wx = Mem.At(ang, b3), wy = Mem.At(ang, b3 + 1), wz = Mem.At(ang, b3 + 2);
+                        rest = float.Sqrt(vx * vx + vy * vy + vz * vz) + float.Sqrt(wx * wx + wy * wy + wz * wz) * Mem.At(extent, b) <= threshold;
+                        if (walk && rest != kinematicRests && _s.TouchesMovingKinematic(w, b)) { rest = kinematicRests; }
+                    }
+
+                    if (rest) { sleep[b] += w._scaleOn ? _dt * w.SleepPeriodOf(b) : _dt; } else { sleep[b] = 0f; }
+                    if (sleep[b] >= _limit) { rested = 1; }
+                }
+
+                w._sleepRested[block] = rested;
+                return;
+            }
+
             for (int i = lo; i < hi; i++)
             {
                 int b = w._awake[i];
@@ -1593,6 +2008,8 @@ public sealed partial class WorldCore
     /// <summary>First step of a restore a caller wants to check further before keeping: copies the input into a world-owned buffer and saves the current state so <see cref="RollbackRestore"/> can put it back.</summary>
     internal void BeginRestore(ReadOnlySpan<byte> snapshot)
     {
+        // The counters are not part of a snapshot: what the last step left to count is counted from the state it ended in, not the restored one.
+        FlushPostStep();
         if (_inputBuffer.Length < snapshot.Length) { _inputBuffer = new byte[Math.Max(snapshot.Length, _inputBuffer.Length * 2)]; }
         snapshot.CopyTo(_inputBuffer);
         _inputLength = snapshot.Length;

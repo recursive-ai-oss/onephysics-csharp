@@ -20,8 +20,10 @@ public static class JointLifetime
         if (steps < 0) { throw new ArgumentOutOfRangeException(nameof(steps), steps, "Lifetime steps must be at least zero."); }
         Check(constraints, slot);
         var p = constraints.Payload(slot); p[32] = steps & 65535; p[33] = steps >> 16;
-        if (steps > 0) { constraints.Flags[slot] |= (byte)ConstraintBits.HasLifetime; }
-        else { constraints.Flags[slot] &= unchecked((byte)~(byte)ConstraintBits.HasLifetime); }
+        // ConstraintStore.LifetimeJoints follows the bit.
+        bool had = (constraints.Flags[slot] & (byte)ConstraintBits.HasLifetime) != 0;
+        if (steps > 0) { constraints.Flags[slot] |= (byte)ConstraintBits.HasLifetime; if (!had) { constraints.LifetimeJoints++; } }
+        else { constraints.Flags[slot] &= unchecked((byte)~(byte)ConstraintBits.HasLifetime); if (had) { constraints.LifetimeJoints--; } }
     }
     private static void Check(ConstraintStore constraints, int slot)
     {

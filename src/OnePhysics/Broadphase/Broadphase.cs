@@ -294,6 +294,9 @@ public partial class Broadphase<TBox> : ISnapshotSection where TBox : struct, IB
     /// <summary>The fat bounds of a proxy the caller knows is live, without the liveness check (for per-pair inner loops; a stale key reads some other node or throws an index error).</summary>
     internal ref readonly TBox FatBoundsOfLive(int key) => ref _trees[key & 3].BoundsOfLive(key >> 2);
 
+    /// <summary>Tree <paramref name="t"/> of the three (a proxy key's low two bits), for loops that hoist the node arrays.</summary>
+    internal DynamicTree<TBox> TreeAt(int t) => _trees[t];
+
     /// <summary>The user id stored with a live proxy.</summary>
     public int GetUserId(int key)
     {
@@ -372,6 +375,36 @@ public partial class Broadphase<TBox> : ISnapshotSection where TBox : struct, IB
     {
         if (offset.Length != TBox.Axes) { throw new ArgumentException("Offset must have " + TBox.Axes.ToString(CultureInfo.InvariantCulture) + " components, got " + offset.Length.ToString(CultureInfo.InvariantCulture) + ".", nameof(offset)); }
         foreach (var t in _trees) { t.Translate(offset); }
+    }
+
+    /// <summary>
+    /// The pure half of <see cref="MoveProxy(int, in TBox, ReadOnlySpan{double})"/>: every check and the fat box, with nothing changed, so it may run on several threads while no tree changes.
+    /// Returns 0 when the tight box still fits the stored box (MoveProxy would return false), 1 when <paramref name="fat"/> is the box MoveProxy would store (finish with <see cref="CommitMove"/>),
+    /// and 2 when a check fails (MoveProxy throws; call it serially at the same point so the same exception is raised after the same earlier moves).
+    /// </summary>
+    internal int PrepareMove(int key, in TBox tight, ReadOnlySpan<double> displacement, out TBox fat)
+    {
+        fat = default;
+        if (!TryResolve(key, out var tree, out int node) || !tight.IsValid(out _)) { return 2; }
+        if (displacement.Length != 0 && displacement.Length != TBox.Axes) { return 2; }
+        foreach (double d in displacement)
+        {
+            if (!double.IsFinite(d)) { return 2; }
+        }
+
+        if (TBox.Contains(tree.BoundsOfLive(node), tight)) { return 0; }
+        int t = key & 3;
+        fat = tight.Fatten(MarginOf(t), displacement, t == 0 ? 0.0 : _options.DisplacementMultiplier);
+        return fat.IsValid(out _) ? 1 : 2;
+    }
+
+    /// <summary>The serial half of a move prepared by <see cref="PrepareMove"/> that returned 1: enlarges the proxy to <paramref name="fat"/> and puts it in the move buffer, as MoveProxy does.</summary>
+    internal void CommitMove(int key, in TBox fat)
+    {
+        var tree = _trees[key & 3];
+        int node = key >> 2;
+        tree.EnlargeChecked(node, fat);
+        MarkMoved(tree, node, key);
     }
 
     /// <summary>Puts a live proxy in the move buffer without changing it (for example after its filter changed), so the next update re-queries its pairs.</summary>
@@ -565,7 +598,7 @@ public partial class Broadphase<TBox> : ISnapshotSection where TBox : struct, IB
             var tree = _trees[t];
             if (tree.EnlargedCount > RebuildThreshold(tree))
             {
-                if (_refitsSinceRebuild[t] < _options.EnlargedRefitSteps) { _refitsSinceRebuild[t]++; tree.RefitEnlarged(); }
+                if (_refitsSinceRebuild[t] < _options.EnlargedRefitSteps) { _refitsSinceRebuild[t]++; tree.RefitEnlarged(executor); }
                 else { _refitsSinceRebuild[t] = 0; tree.RebuildEnlarged(executor); }
             }
         }

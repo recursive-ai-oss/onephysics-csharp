@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 
@@ -31,6 +32,12 @@ internal interface ILane<T> where T : struct, ILane<T>
 
     /// <summary>Lane i takes the eight floats at <c>source[offsets[i]..]</c>; field k of every lane comes back together as <c>Rk</c> (a transpose: the rows are loaded whole, not float by float).</summary>
     static abstract Rows8<T> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> offsets);
+
+    /// <summary>
+    /// <see cref="GatherRows(ReadOnlySpan{float}, ReadOnlySpan{int})"/> with the offset of lane i computed here as <c>rows[i] * stride + skip</c>: the row numbers are read once and scaled in registers,
+    /// so a caller that has row numbers does not write an offset table first.
+    /// </summary>
+    static abstract Rows8<T> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> rows, int stride, int skip);
 
     /// <summary>
     /// Lane i writes its three values to <c>destination[offsets[i]..+3]</c>, unless the offset is negative (a body that keeps its velocity). Slot 3 of a row is padding and may be overwritten with zero.
@@ -138,6 +145,13 @@ internal readonly struct Lanes1 : ILane<Lanes1>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Rows8<Lanes1> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> rows, int stride, int skip)
+    {
+        var r = source.Slice((rows[0] * stride + skip), 8);
+        return new Rows8<Lanes1> { R0 = new(r[0]), R1 = new(r[1]), R2 = new(r[2]), R3 = new(r[3]), R4 = new(r[4]), R5 = new(r[5]), R6 = new(r[6]), R7 = new(r[7]) };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes1 operator +(Lanes1 a, Lanes1 b) => new(a._v + b._v);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -209,6 +223,17 @@ internal readonly struct Lanes128 : ILane<Lanes128>
     public static Rows8<Lanes128> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> offsets)
     {
         var a = source.Slice(offsets[0], 8); var b = source.Slice(offsets[1], 8); var c = source.Slice(offsets[2], 8); var d = source.Slice(offsets[3], 8);
+        return new Rows8<Lanes128>
+        {
+            R0 = new(Vector128.Create(a[0], b[0], c[0], d[0])), R1 = new(Vector128.Create(a[1], b[1], c[1], d[1])), R2 = new(Vector128.Create(a[2], b[2], c[2], d[2])), R3 = new(Vector128.Create(a[3], b[3], c[3], d[3])),
+            R4 = new(Vector128.Create(a[4], b[4], c[4], d[4])), R5 = new(Vector128.Create(a[5], b[5], c[5], d[5])), R6 = new(Vector128.Create(a[6], b[6], c[6], d[6])), R7 = new(Vector128.Create(a[7], b[7], c[7], d[7])),
+        };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Rows8<Lanes128> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> rows, int stride, int skip)
+    {
+        var a = source.Slice((rows[0] * stride + skip), 8); var b = source.Slice((rows[1] * stride + skip), 8); var c = source.Slice((rows[2] * stride + skip), 8); var d = source.Slice((rows[3] * stride + skip), 8);
         return new Rows8<Lanes128>
         {
             R0 = new(Vector128.Create(a[0], b[0], c[0], d[0])), R1 = new(Vector128.Create(a[1], b[1], c[1], d[1])), R2 = new(Vector128.Create(a[2], b[2], c[2], d[2])), R3 = new(Vector128.Create(a[3], b[3], c[3], d[3])),
@@ -309,6 +334,40 @@ internal readonly struct Lanes256 : ILane<Lanes256>
         row.StoreUnsafe(ref Mem.At(destination, offset));
     }
 
+    /// <summary>
+    /// Four consecutive floats of eight rows as four lane vectors: lane i of <paramref name="c0"/> is <c>source[rows[i] * stride + skip]</c>, of <paramref name="c1"/> the float after it, and so on.
+    /// Each row is read with one exact four-float load (nothing past the fourth float is touched, so the source needs no padding) and the rows are transposed in registers. Pure data movement.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void GatherRows4(ReadOnlySpan<float> source, ReadOnlySpan<int> rows, int stride, int skip, out Lanes256 c0, out Lanes256 c1, out Lanes256 c2, out Lanes256 c3)
+    {
+        int o0 = rows[0] * stride + skip, o1 = rows[1] * stride + skip, o2 = rows[2] * stride + skip, o3 = rows[3] * stride + skip;
+        int o4 = rows[4] * stride + skip, o5 = rows[5] * stride + skip, o6 = rows[6] * stride + skip, o7 = rows[7] * stride + skip;
+        Mem.Range(source, o0, 4); Mem.Range(source, o1, 4); Mem.Range(source, o2, 4); Mem.Range(source, o3, 4); Mem.Range(source, o4, 4); Mem.Range(source, o5, 4); Mem.Range(source, o6, 4); Mem.Range(source, o7, 4);
+        if (Avx.IsSupported)
+        {
+            // Rows i and i + 4 share a vector (low and high half); the 4x4 transpose then works inside each half and leaves the lanes in order.
+            var y0 = Vector256.Create(Vector128.LoadUnsafe(in Mem.At(source, o0)), Vector128.LoadUnsafe(in Mem.At(source, o4)));
+            var y1 = Vector256.Create(Vector128.LoadUnsafe(in Mem.At(source, o1)), Vector128.LoadUnsafe(in Mem.At(source, o5)));
+            var y2 = Vector256.Create(Vector128.LoadUnsafe(in Mem.At(source, o2)), Vector128.LoadUnsafe(in Mem.At(source, o6)));
+            var y3 = Vector256.Create(Vector128.LoadUnsafe(in Mem.At(source, o3)), Vector128.LoadUnsafe(in Mem.At(source, o7)));
+            var t0 = Avx.UnpackLow(y0, y1); var t1 = Avx.UnpackHigh(y0, y1); var t2 = Avx.UnpackLow(y2, y3); var t3 = Avx.UnpackHigh(y2, y3);
+            c0 = new(Avx.Shuffle(t0, t2, 0x44)); c1 = new(Avx.Shuffle(t0, t2, 0xEE)); c2 = new(Avx.Shuffle(t1, t3, 0x44)); c3 = new(Avx.Shuffle(t1, t3, 0xEE));
+            return;
+        }
+
+        c0 = new(Vector256.Create(Mem.At(source, o0), Mem.At(source, o1), Mem.At(source, o2), Mem.At(source, o3), Mem.At(source, o4), Mem.At(source, o5), Mem.At(source, o6), Mem.At(source, o7)));
+        c1 = new(Vector256.Create(Mem.At(source, o0 + 1), Mem.At(source, o1 + 1), Mem.At(source, o2 + 1), Mem.At(source, o3 + 1), Mem.At(source, o4 + 1), Mem.At(source, o5 + 1), Mem.At(source, o6 + 1), Mem.At(source, o7 + 1)));
+        c2 = new(Vector256.Create(Mem.At(source, o0 + 2), Mem.At(source, o1 + 2), Mem.At(source, o2 + 2), Mem.At(source, o3 + 2), Mem.At(source, o4 + 2), Mem.At(source, o5 + 2), Mem.At(source, o6 + 2), Mem.At(source, o7 + 2)));
+        c3 = new(Vector256.Create(Mem.At(source, o0 + 3), Mem.At(source, o1 + 3), Mem.At(source, o2 + 3), Mem.At(source, o3 + 3), Mem.At(source, o4 + 3), Mem.At(source, o5 + 3), Mem.At(source, o6 + 3), Mem.At(source, o7 + 3)));
+    }
+
+    /// <summary>One float of eight rows as a lane vector: lane i is <c>source[rows[i] * stride + skip]</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Lanes256 GatherOne(ReadOnlySpan<float> source, ReadOnlySpan<int> rows, int stride = 1, int skip = 0) =>
+        new(Vector256.Create(Mem.At(source, rows[0] * stride + skip), Mem.At(source, rows[1] * stride + skip), Mem.At(source, rows[2] * stride + skip), Mem.At(source, rows[3] * stride + skip),
+            Mem.At(source, rows[4] * stride + skip), Mem.At(source, rows[5] * stride + skip), Mem.At(source, rows[6] * stride + skip), Mem.At(source, rows[7] * stride + skip)));
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Rows8<Lanes256> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> offsets)
     {
@@ -343,6 +402,71 @@ internal readonly struct Lanes256 : ILane<Lanes256>
             R6 = new(Vector256.Create(a[6], b[6], c[6], d[6], e[6], f[6], g[6], h[6])), R7 = new(Vector256.Create(a[7], b[7], c[7], d[7], e[7], f[7], g[7], h[7])),
         };
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Rows8<Lanes256> GatherRows(ReadOnlySpan<float> source, ReadOnlySpan<int> rows, int stride, int skip)
+    {
+        if (Avx.IsSupported)
+        {
+            // The usual 8x8 transpose: interleave pairs of rows, then quads, then swap the 128-bit halves. Pure data movement, so the bits are those of the scalar loads below.
+            // The offsets name whole body rows that the preparation wrote, so each row is in range.
+            Mem.Range(source, (rows[0] * stride + skip), 8); Mem.Range(source, (rows[1] * stride + skip), 8); Mem.Range(source, (rows[2] * stride + skip), 8); Mem.Range(source, (rows[3] * stride + skip), 8);
+            Mem.Range(source, (rows[4] * stride + skip), 8); Mem.Range(source, (rows[5] * stride + skip), 8); Mem.Range(source, (rows[6] * stride + skip), 8); Mem.Range(source, (rows[7] * stride + skip), 8);
+            var r0 = Vector256.LoadUnsafe(in Mem.At(source, (rows[0] * stride + skip))); var r1 = Vector256.LoadUnsafe(in Mem.At(source, (rows[1] * stride + skip)));
+            var r2 = Vector256.LoadUnsafe(in Mem.At(source, (rows[2] * stride + skip))); var r3 = Vector256.LoadUnsafe(in Mem.At(source, (rows[3] * stride + skip)));
+            var r4 = Vector256.LoadUnsafe(in Mem.At(source, (rows[4] * stride + skip))); var r5 = Vector256.LoadUnsafe(in Mem.At(source, (rows[5] * stride + skip)));
+            var r6 = Vector256.LoadUnsafe(in Mem.At(source, (rows[6] * stride + skip))); var r7 = Vector256.LoadUnsafe(in Mem.At(source, (rows[7] * stride + skip)));
+            var t0 = Avx.UnpackLow(r0, r1); var t1 = Avx.UnpackHigh(r0, r1); var t2 = Avx.UnpackLow(r2, r3); var t3 = Avx.UnpackHigh(r2, r3);
+            var t4 = Avx.UnpackLow(r4, r5); var t5 = Avx.UnpackHigh(r4, r5); var t6 = Avx.UnpackLow(r6, r7); var t7 = Avx.UnpackHigh(r6, r7);
+            var u0 = Avx.Shuffle(t0, t2, 0x44); var u1 = Avx.Shuffle(t0, t2, 0xEE); var u2 = Avx.Shuffle(t1, t3, 0x44); var u3 = Avx.Shuffle(t1, t3, 0xEE);
+            var u4 = Avx.Shuffle(t4, t6, 0x44); var u5 = Avx.Shuffle(t4, t6, 0xEE); var u6 = Avx.Shuffle(t5, t7, 0x44); var u7 = Avx.Shuffle(t5, t7, 0xEE);
+            return new Rows8<Lanes256>
+            {
+                R0 = new(Avx.Permute2x128(u0, u4, 0x20)), R1 = new(Avx.Permute2x128(u1, u5, 0x20)), R2 = new(Avx.Permute2x128(u2, u6, 0x20)), R3 = new(Avx.Permute2x128(u3, u7, 0x20)),
+                R4 = new(Avx.Permute2x128(u0, u4, 0x31)), R5 = new(Avx.Permute2x128(u1, u5, 0x31)), R6 = new(Avx.Permute2x128(u2, u6, 0x31)), R7 = new(Avx.Permute2x128(u3, u7, 0x31)),
+            };
+        }
+
+        var a = source.Slice((rows[0] * stride + skip), 8); var b = source.Slice((rows[1] * stride + skip), 8); var c = source.Slice((rows[2] * stride + skip), 8); var d = source.Slice((rows[3] * stride + skip), 8);
+        var e = source.Slice((rows[4] * stride + skip), 8); var f = source.Slice((rows[5] * stride + skip), 8); var g = source.Slice((rows[6] * stride + skip), 8); var h = source.Slice((rows[7] * stride + skip), 8);
+        return new Rows8<Lanes256>
+        {
+            R0 = new(Vector256.Create(a[0], b[0], c[0], d[0], e[0], f[0], g[0], h[0])), R1 = new(Vector256.Create(a[1], b[1], c[1], d[1], e[1], f[1], g[1], h[1])),
+            R2 = new(Vector256.Create(a[2], b[2], c[2], d[2], e[2], f[2], g[2], h[2])), R3 = new(Vector256.Create(a[3], b[3], c[3], d[3], e[3], f[3], g[3], h[3])),
+            R4 = new(Vector256.Create(a[4], b[4], c[4], d[4], e[4], f[4], g[4], h[4])), R5 = new(Vector256.Create(a[5], b[5], c[5], d[5], e[5], f[5], g[5], h[5])),
+            R6 = new(Vector256.Create(a[6], b[6], c[6], d[6], e[6], f[6], g[6], h[6])), R7 = new(Vector256.Create(a[7], b[7], c[7], d[7], e[7], f[7], g[7], h[7])),
+        };
+    }
+
+    /// <summary>
+    /// The inverse of <see cref="GatherRows(ReadOnlySpan{float}, ReadOnlySpan{int}, int, int)"/>. Lane i of <paramref name="f0"/> to <paramref name="f7"/> (eight fields of eight bodies) becomes the row
+    /// <c>[f0[i], f1[i], ..., f7[i]]</c>, stored whole (one 32-byte store) at <c>dest[rows[i] * stride + skip]</c>, for every lane i below <paramref name="n"/> whose row number is not negative (row −1 means
+    /// "this lane's body keeps its row"). The same 8x8 transpose as the gather (a transpose is its own inverse), pure data movement, so the stored bits are the lanes' bits. The next gather of these rows
+    /// loads exactly what one store wrote, so its loads forward from the store buffer instead of waiting on several narrow stores. AVX only: the callers test <see cref="Avx.IsSupported"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void ScatterRows(Vector256<float> f0, Vector256<float> f1, Vector256<float> f2, Vector256<float> f3, Vector256<float> f4, Vector256<float> f5, Vector256<float> f6, Vector256<float> f7,
+        Span<float> dest, ref int rows, int n, int stride, int skip)
+    {
+        var t0 = Avx.UnpackLow(f0, f1); var t1 = Avx.UnpackHigh(f0, f1); var t2 = Avx.UnpackLow(f2, f3); var t3 = Avx.UnpackHigh(f2, f3);
+        var t4 = Avx.UnpackLow(f4, f5); var t5 = Avx.UnpackHigh(f4, f5); var t6 = Avx.UnpackLow(f6, f7); var t7 = Avx.UnpackHigh(f6, f7);
+        var u0 = Avx.Shuffle(t0, t2, 0x44); var u1 = Avx.Shuffle(t0, t2, 0xEE); var u2 = Avx.Shuffle(t1, t3, 0x44); var u3 = Avx.Shuffle(t1, t3, 0xEE);
+        var u4 = Avx.Shuffle(t4, t6, 0x44); var u5 = Avx.Shuffle(t4, t6, 0xEE); var u6 = Avx.Shuffle(t5, t7, 0x44); var u7 = Avx.Shuffle(t5, t7, 0xEE);
+        ref float d = ref Mem.Ref(dest);
+        int r;
+        // Each stored row is a whole body row of the destination (rows[i] names a body below the high-water mark the destination was sized for); the Checked build verifies it.
+        if (n > 0 && (r = rows) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u0, u4, 0x20).StoreUnsafe(ref Mem.Add(ref d, r * stride + skip)); }
+        if (n > 1 && (r = Mem.Add(ref rows, 1)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u1, u5, 0x20).StoreUnsafe(ref Mem.Add(ref d, r * stride + skip)); }
+        if (n > 2 && (r = Mem.Add(ref rows, 2)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u2, u6, 0x20).StoreUnsafe(ref Mem.Add(ref d, r * stride + skip)); }
+        if (n > 3 && (r = Mem.Add(ref rows, 3)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u3, u7, 0x20).StoreUnsafe(ref Mem.Add(ref d, r * stride + skip)); }
+        if (n > 4 && (r = Mem.Add(ref rows, 4)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u0, u4, 0x31).StoreUnsafe(ref Mem.Add(ref d, r * stride + skip)); }
+        if (n > 5 && (r = Mem.Add(ref rows, 5)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u1, u5, 0x31).StoreUnsafe(ref Mem.Add(ref d, r * stride + skip)); }
+        if (n > 6 && (r = Mem.Add(ref rows, 6)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u2, u6, 0x31).StoreUnsafe(ref Mem.Add(ref d, r * stride + skip)); }
+        if (n > 7 && (r = Mem.Add(ref rows, 7)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u3, u7, 0x31).StoreUnsafe(ref Mem.Add(ref d, r * stride + skip)); }
+    }
+
+    /// <summary>The vector of a lane value (for <see cref="ScatterRows"/>).</summary>
+    public Vector256<float> AsVector256 { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => _v; }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Lanes256 operator +(Lanes256 a, Lanes256 b) => new(Vector256.Add(a._v, b._v));

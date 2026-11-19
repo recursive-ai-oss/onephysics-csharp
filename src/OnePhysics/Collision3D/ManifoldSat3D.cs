@@ -171,7 +171,8 @@ public sealed partial class ManifoldGenerator3D
         if (boxes)
         {
             // Two boxes: the face axes come from the boxes' half extents and the relative rotation; neither box is expanded into vertices unless the test finds a contact to build.
-            BoxFaces(a.CoreSize, b.CoreSize, r, tB, out sepA, out faceA, out sepB, out faceB);
+            if (HavePre && Pre.FacesDone) { sepA = Pre.SepA; faceA = Pre.FaceA; sepB = Pre.SepB; faceB = Pre.FaceB; } // Computed ahead (BoxAxesBatch)
+            else { BoxFaces(a.CoreSize, b.CoreSize, r, tB, out sepA, out faceA, out sepB, out faceB); }
             radA = ConvexShape3D.Sqrt(a.CoreSize.LengthSquared()); radB = ConvexShape3D.Sqrt(b.CoreSize.LengthSquared());
             centreGap = tB.Length();
         }
@@ -209,11 +210,17 @@ public sealed partial class ManifoldGenerator3D
         Vector3F axisE;
         // The edge search is skipped while the relative motion since the last full query (translation plus rotation times the shapes' radii) stays below an eighth of the margin by which
         // the face axes led; an edge axis moves with the pose about as fast as the pose itself, so it cannot close that margin unnoticed.
-        bool skipEdges = _edgeHint.Gap > 0f && _edgeHint.Gap > EdgeSkipSafety * _edgeHint.PoseChange(bInA, radA + radB);
+        // A queued box pair had this decided ahead with the same operations on the same hint and pose (BoxAxesNeed).
+        bool skipEdges = HavePre && Pre.FacesDone ? Pre.SkipEdges : _edgeHint.Gap > 0f && _edgeHint.Gap > EdgeSkipSafety * _edgeHint.PoseChange(bInA, radA + radB);
         if (skipEdges)
         {
             sepE = float.NegativeInfinity; edgeA = -1; edgeB = -1; axisE = default;
             HintOut = _edgeHint;
+        }
+        else if (boxes && HavePre && Pre.EdgesDone)
+        {
+            sepE = Pre.SepE; edgeA = Pre.EdgeA; edgeB = Pre.EdgeB; axisE = Pre.AxisE; // Computed ahead (BoxAxesBatch), used only where BoxEdges would have run
+            HintOut = default;
         }
         else
         {

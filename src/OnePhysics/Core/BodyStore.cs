@@ -77,15 +77,6 @@ public sealed partial class BodyStore
     /// <summary>Angular velocities: <see cref="DimensionLayout.AngularLanes"/> floats per body.</summary>
     public Span<float> AngularVelocity => _angular.AsSpan(0, HighWater * _layout.AngularLanes);
 
-    // Spare floats after the last velocity slot, so a kernel may load a whole eight-float window starting at any body's lanes (it uses the first three and ignores the rest).
-    private const int VelocityPadding = 8;
-
-    /// <summary>The linear velocity array including its padding (see <c>VelocityPadding</c>): body b's lanes start at b * LinearLanes and eight floats can be read from there. Read-only for kernels that gather rows.</summary>
-    internal ReadOnlySpan<float> LinearVelocityPadded => _linear;
-
-    /// <summary>The angular velocity array including its padding; see <see cref="LinearVelocityPadded"/>.</summary>
-    internal ReadOnlySpan<float> AngularVelocityPadded => _angular;
-
     /// <summary>Inverse mass per body; zero for static and kinematic bodies.</summary>
     public Span<float> InverseMass => _invMass.AsSpan(0, HighWater);
 
@@ -129,6 +120,10 @@ public sealed partial class BodyStore
     /// <summary>Rotation lanes of one body.</summary>
     public Span<float> RotationOf(int body) => _rotation.AsSpan(body * _layout.RotationLanes, _layout.RotationLanes);
 
+    /// <summary>The position and rotation arrays themselves (lanes per body as in the layout: 3 and 4 in 3D), for a per-pair loop that reads poses without span checks.</summary>
+    internal double[] PositionArray => _position;
+    internal float[] RotationArray => _rotation;
+
     /// <summary>Linear velocity lanes of one body.</summary>
     public Span<float> LinearVelocityOf(int body) => _linear.AsSpan(body * _layout.LinearLanes, _layout.LinearLanes);
 
@@ -142,8 +137,8 @@ public sealed partial class BodyStore
     {
         _position = new double[capacity * _layout.PositionLanes];
         _rotation = new float[capacity * _layout.RotationLanes];
-        _linear = new float[capacity * _layout.LinearLanes + VelocityPadding];
-        _angular = new float[capacity * _layout.AngularLanes + VelocityPadding];
+        _linear = new float[capacity * _layout.LinearLanes];
+        _angular = new float[capacity * _layout.AngularLanes];
         _invMass = new float[capacity];
         _invInertia = new float[capacity * _layout.InertiaLanes];
         _sleepTime = new float[capacity];
@@ -163,8 +158,8 @@ public sealed partial class BodyStore
             int cap = Capacity * 2;
             Array.Resize(ref _position, cap * _layout.PositionLanes);
             Array.Resize(ref _rotation, cap * _layout.RotationLanes);
-            Array.Resize(ref _linear, cap * _layout.LinearLanes + VelocityPadding);
-            Array.Resize(ref _angular, cap * _layout.AngularLanes + VelocityPadding);
+            Array.Resize(ref _linear, cap * _layout.LinearLanes);
+            Array.Resize(ref _angular, cap * _layout.AngularLanes);
             Array.Resize(ref _invMass, cap);
             Array.Resize(ref _invInertia, cap * _layout.InertiaLanes);
             Array.Resize(ref _sleepTime, cap);

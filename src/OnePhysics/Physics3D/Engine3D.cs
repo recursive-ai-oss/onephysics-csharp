@@ -51,7 +51,14 @@ internal sealed partial class Engine3D : ISnapshotSection
     /// <summary>Per body, for the step's contact stage: how far its centre travels in the step (speed times the step) and how far its farthest point swings round the centre (angular speed times extent times the step; dynamic bodies only).</summary>
     internal float[] ReachLinear = new float[8], ReachTurn = new float[8], ReachSum = new float[8];
     public float[] Dq = new float[32];            // accumulated rotation over the step as a quaternion (x, y, z, w)
-    public float[] Pk = new float[16 * 8];        // per-step copy of Dp, Dq and WInvI side by side (16 floats a body) so the contact kernel reads one row per body; valid between the start of a step's contacts and its end
+    // The packed solver row, three 8-float rows a body (PkStride floats): row 0 (PkVelocity) the linear and angular velocity [v.xyz, w.xyz, 0, 0], row 1 (PkInertia) the world inverse inertia
+    // [xx xy xz yy yz zz, 0, 0], row 2 (PkPose) the displacement and accumulated rotation [dp.xyz, dq.xyzw, 0]. Written by PackBody when a step's contact stage initialises the body.
+    // Row 0 is THE velocity of every awake body while the solve runs: the integration passes, both solver kernels and the scalar parts of the solve (joint rows, rail forces, body controls) read and
+    // write it there (SolveVelocity; the kernels with one 32-byte row store per body), and BodyStore's velocity arrays are stale from the first integration pass until FinalizeBodies copies row 0 back.
+    // Between the contact stage's body initialisation and the solve both hold the same velocity: whatever changes a velocity or wakes a body there writes the body store and calls PackVelocity
+    // (the articulation step, PackLateWakes). Rows 1 and 2 hold the same floats as WInvI, Dp and Dq throughout the solve.
+    public float[] Pk = new float[PkStride * 8];
+    public const int PkStride = 24, PkVelocity = 0, PkInertia = 8, PkPose = 16;
     public float[] WInvI = new float[48];         // inverse inertia in world axes, refreshed whenever a body turns
     public float[] Wide = Array.Empty<float>();   // contact solver groups, one per batch (see W3D)
     public int[] WideIdx = Array.Empty<int>();
@@ -119,7 +126,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         Grow(ref LocalCenter, 3 * n); Grow(ref Mass, n); Grow(ref Inertia, 6 * n); Grow(ref MaxExtent, n); Grow(ref MinExtent, n);
         Grow(ref LinearDamping, n); Grow(ref AngularDamping, n); Grow(ref GravityScale, n); Grow(ref Force, 3 * n); Grow(ref Torque, 3 * n);
         Grow(ref BodyFlags, n); Grow(ref ShapeHead, n); Grow(ref ShapeTail, n); Grow(ref Dp, 3 * n);
-        Grow(ref ReachLinear, n); Grow(ref ReachTurn, n); Grow(ref ReachSum, n); Grow(ref StartPos, 3 * n); Grow(ref StartRot, 4 * n); Grow(ref Dq, 4 * n); Grow(ref WInvI, 6 * n); Grow(ref Pk, 16 * n);
+        Grow(ref ReachLinear, n); Grow(ref ReachTurn, n); Grow(ref ReachSum, n); Grow(ref StartPos, 3 * n); Grow(ref StartRot, 4 * n); Grow(ref Dq, 4 * n); Grow(ref WInvI, 6 * n); Grow(ref Pk, PkStride * n);
     }
 
     public void EnsureShapes(int n)
@@ -366,6 +373,7 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     public void DestroyShape(ShapeHandle handle)
     {
+        Core.FlushPostStep();   // The lazy post-step view reads the pairs and constraints this removes
         int s = Core.Resolve(handle);
         int b = Core.Shapes.Owner[s];
         DropShapePairs(s);
@@ -386,9 +394,56 @@ internal sealed partial class Engine3D : ISnapshotSection
     }
 
     /// <summary>Fails before a step when a moving body's bounds are outside what the broadphase accepts, so a step never stops half way. Lowest slot first.</summary>
+    /// <remarks>
+    /// The cheap per-body tests run in parallel over fixed chunks of <see cref="BoundsChunk"/> slots (the split depends on the body count alone). Each chunk records its lowest body that the
+    /// serial scan would not pass at once (a non-finite velocity, or a body that needs the exact box test); then the serial <see cref="FindOutOfBounds"/> runs, in chunk order, from that body to the end of
+    /// its chunk. Every body it skips would have passed the serial scan, so the first failure, its exception and its message are the serial scan's.
+    /// </remarks>
     public void CheckBounds()
     {
-        if (FindOutOfBounds(false, out var h, out string message, true)) { throw new BodyOutOfBoundsException(new Body(World!, h), message); }
+        int nb = Core.Bodies.HighWater;
+        int chunks = (nb + BoundsChunk - 1) / BoundsChunk;
+        if (_boundsFirst.Length < chunks) { _boundsFirst = new int[Math.Max(chunks, _boundsFirst.Length * 2)]; }
+        Core.Executor.For(chunks, new BoundsScanTask(this, nb, _boundsFirst));
+        for (int k = 0; k < chunks; k++)
+        {
+            int first = _boundsFirst[k];
+            if (first < 0) { continue; }
+            if (FindOutOfBounds(false, out var h, out string message, true, first, Math.Min(nb, (k + 1) * BoundsChunk))) { throw new BodyOutOfBoundsException(new Body(World!, h), message); }
+        }
+    }
+
+    /// <summary>Bodies per task of the parallel part of <see cref="CheckBounds"/>.</summary>
+    private const int BoundsChunk = 64;
+    private int[] _boundsFirst = new int[16];
+
+    private readonly struct BoundsScanTask : IParallelBody
+    {
+        private readonly Engine3D _e;
+        private readonly int _nb;
+        private readonly int[] _first;
+        public BoundsScanTask(Engine3D e, int nb, int[] first) { _e = e; _nb = nb; _first = first; }
+        public void Run(int task)
+        {
+            int lo = task * BoundsChunk, hi = Math.Min(_nb, lo + BoundsChunk);
+            int first = -1;
+            for (int b = lo; b < hi; b++) { if (_e.NeedsSerialBoundsCheck(b)) { first = b; break; } }
+            _first[task] = first;
+        }
+    }
+
+    /// <summary>
+    /// False when <see cref="FindOutOfBounds"/> (moving bodies only, no static ones) passes body <paramref name="b"/> without building a box: the same tests in the same order, read-only, so it may run on
+    /// worker threads. True for a body with a non-finite velocity, position or rotation and for one that would take the exact box test.
+    /// </summary>
+    private bool NeedsSerialBoundsCheck(int b)
+    {
+        var bodies = Core.Bodies;
+        if (!bodies.IsLive(b) || bodies.TypeOf(b) == BodyType.Static) { return false; }
+        if (bodies.IsDynamic(b) && !bodies.IsAwake(b) && IsNearOrigin(b)) { return false; }
+        if (bodies.TypeOf(b) == BodyType.Dynamic && !VelocityFinite(b)) { return true; }
+        if (bodies.IsDynamic(b) && WellInsideRange(b)) { return false; }
+        return ShapeHead[b] >= 0;
     }
 
     private readonly double[] _dp3 = new double[3];
@@ -403,11 +458,12 @@ internal sealed partial class Engine3D : ISnapshotSection
     }
 
     /// <summary>Finds the first body (lowest slot) whose bounds, as the broadphase would store them, are not valid. With <paramref name="movingOnly"/>, sleeping bodies are skipped.</summary>
-    public bool FindOutOfBounds(bool includeStatic, out BodyHandle handle, out string message, bool movingOnly = false)
+    /// <remarks><paramref name="from"/> and <paramref name="to"/> limit the scan to a range of slots (<see cref="CheckBounds"/> scans only the chunks its parallel pass flagged).</remarks>
+    public bool FindOutOfBounds(bool includeStatic, out BodyHandle handle, out string message, bool movingOnly = false, int from = 0, int to = int.MaxValue)
     {
         var bodies = Core.Bodies;
-        int nb = bodies.HighWater;
-        for (int b = 0; b < nb; b++)
+        int nb = Math.Min(bodies.HighWater, to);
+        for (int b = from; b < nb; b++)
         {
             if (!bodies.IsLive(b) || (!includeStatic && bodies.TypeOf(b) == BodyType.Static)) { continue; }
             // A sleeping body has not moved since it was last checked (teleporting wakes it), and building the box of thousands of resting bodies every step is most of the cost of a sleeping world.

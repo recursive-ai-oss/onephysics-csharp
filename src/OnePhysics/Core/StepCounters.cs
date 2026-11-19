@@ -1,4 +1,5 @@
 using System;
+using RecursiveAI.OnePhysics.LowLevel;
 
 namespace RecursiveAI.OnePhysics;
 
@@ -6,14 +7,16 @@ namespace RecursiveAI.OnePhysics;
 public sealed class StepCounters
 {
     private readonly int[] _colors = new int[24];
+    /// <summary>The world these counters belong to: it counts the population counters (islands, continuous-collision and bullet bodies) of a step when one of them is first read.</summary>
+    internal WorldCore? Owner;
     /// <summary>Islands left out of this step because their level of detail says they step less often.</summary>
     public int LodIslandsSkipped { get; internal set; }
     /// <summary>Awake bodies presented to the solver, including kinematic bodies.</summary>
     public int AwakeBodies { get; internal set; }
     /// <summary>Awake islands after sleeping is updated.</summary>
-    public int AwakeIslands { get; internal set; }
+    public int AwakeIslands { get { Owner?.CapturePendingCounters(); return field; } internal set; }
     /// <summary>Sleeping islands after sleeping is updated.</summary>
-    public int AsleepIslands { get; internal set; }
+    public int AsleepIslands { get { Owner?.CapturePendingCounters(); return field; } internal set; }
     /// <summary>Candidate pairs returned by the broadphase in this step, not all persistent pairs.</summary>
     public int BroadphasePairs { get; internal set; }
     /// <summary>Pairs selected for collision update, including manifold reuse.</summary>
@@ -68,11 +71,11 @@ public sealed class StepCounters
     /// <summary>Restitution passes executed by the contact-only schedule.</summary>
     public int ContactRestitutionPasses { get; internal set; }
     /// <summary>Bodies selected for a continuous sweep.</summary>
-    public int CcdBodies { get; internal set; }
+    public int CcdBodies { get { Owner?.CapturePendingCounters(); return field; } internal set; }
     /// <summary>Bodies stopped by a continuous sweep, counted once per body.</summary>
-    public int CcdHits { get; internal set; }
+    public int CcdHits { get { Owner?.CapturePendingCounters(); return field; } internal set; }
     /// <summary>Bullet bodies selected for continuous collision.</summary>
-    public int BulletBodies { get; internal set; }
+    public int BulletBodies { get { Owner?.CapturePendingCounters(); return field; } internal set; }
     /// <summary>Particles in awake soft bodies selected for the soft solve.</summary>
     public int SoftParticles { get; internal set; }
     /// <summary>Blocks in awake soft bodies selected for the soft solve.</summary>

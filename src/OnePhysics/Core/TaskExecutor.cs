@@ -340,6 +340,26 @@ internal static class WorkerPool
             if (n <= 0) { continue; }
             int size = (n + slots - 1) / slots;
             int baseIndex = s * slots * CounterStride;
+            if (n == 1)
+            {
+                // A single-task stage (a run of small colors, the overflow set) is the caller's (slot 0, always inside the call): it runs it without a claim, so its constraint
+                // groups stay in one core's cache from pass to pass, and the others go straight to the wait instead of racing it for the claim word's cache line. (Measured: with the claim race
+                // kept, merging small colors gave nothing on ragdoll t8.)
+                if (slot == 0)
+                {
+                    try { job.RunStage(s, 0); }
+                    catch (Exception e) { Interlocked.CompareExchange(ref _error, e, null); }
+                    Volatile.Write(ref counters[baseIndex + 1], 1);
+                }
+                else if (Volatile.Read(ref counters[baseIndex + 1]) < 1)
+                {
+                    int spins = 0;
+                    while (Volatile.Read(ref counters[baseIndex + 1]) < 1) { Pause(ref spins); }
+                }
+
+                continue;
+            }
+
             for (int k = 0; k < slots; k++)
             {
                 int owner = slot + k;

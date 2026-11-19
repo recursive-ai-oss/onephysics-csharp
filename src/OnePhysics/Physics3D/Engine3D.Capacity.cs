@@ -30,7 +30,7 @@ internal sealed partial class Engine3D
         int pchunks = (pairs + PairListChunk - 1) / PairListChunk;
         if (_pairChunkCount.Length < pchunks) { _pairChunkCount = new int[pchunks]; }
         int chunks = (pairs + 63) / 64;
-        if (_applyCount.Length < chunks) { _applyCount = new int[chunks]; }
+        if (_applyCount.Length < chunks) { _applyCount = new int[chunks]; _writeMask = new ulong[chunks]; }
         if (_applyIdx.Length < chunks * 64) { _applyIdx = new int[chunks * 64]; }
         if (_scratch.Length < chunks)
         {
@@ -39,7 +39,19 @@ internal sealed partial class Engine3D
             for (int i = old; i < _scratch.Length; i++) { _scratch[i] = new NarrowScratch(); }
         }
 
-        if (_boxStamp.Length < shapes) { _boxes = new double[shapes * 6]; _boxStamp = new int[shapes]; _boxInside = new byte[shapes]; }
+        if (_boxStamp.Length < shapes) { _boxes = new double[shapes * 6 + 2]; _boxStamp = new int[shapes]; _boxInside = new byte[shapes]; _moveState = new byte[shapes]; _moveBox = new Aabb3D[shapes]; }
+        // The contact stage's per-chunk move lists (see TightBoxTask): one per BoxChunk awake bodies, each with room for the chunk's shapes at the world's average shapes per body.
+        int boxChunks = (bodies + BoxChunk - 1) / BoxChunk;
+        int perChunk = BoxChunk * Math.Max(1, (shapes + Math.Max(bodies, 1) - 1) / Math.Max(bodies, 1));
+        if (_moveLists.Length < boxChunks)
+        {
+            int old = _moveLists.Length;
+            Array.Resize(ref _moveLists, boxChunks);
+            _moveCount = new int[boxChunks];
+            for (int i = old; i < boxChunks; i++) { _moveLists[i] = new int[perChunk]; }
+        }
+
+        for (int i = 0; i < _moveLists.Length; i++) { if (_moveLists[i].Length < perChunk) { _moveLists[i] = new int[perChunk]; } }
         if (_active.Length < bodies) { _active = new byte[bodies]; _isSleeper = new byte[bodies]; }
         if (_sleepers.Length < bodies) { _sleepers = new int[bodies]; }
 

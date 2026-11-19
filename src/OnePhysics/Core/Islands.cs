@@ -235,6 +235,12 @@ public sealed partial class IslandSet
         return lo;
     }
 
+    private static bool IsAscending(int[] list, int n)
+    {
+        for (int k = 1; k < n; k++) { if (list[k - 1] >= list[k]) { return false; } }
+        return true;
+    }
+
     /// <summary>
     /// Splits an island into its connected components over the constraints that link two dynamic bodies. Returns the number of islands the body set now forms.
     /// </summary>
@@ -251,6 +257,8 @@ public sealed partial class IslandSet
         if (_snapshot.Length < n) { _snapshot = new int[Math.Max(n, _snapshot.Length * 2)]; }
         var snapshot = _snapshot;
         Array.Copy(list, snapshot, n);
+        // Every body an edge can reach is a body of this island, so once all n are seen no edge can find a new one and the rest of the search only empties the stack.
+        int reached = 0;
         for (int s = 0; s < n; s++)
         {
             int seed = snapshot[s];
@@ -259,11 +267,13 @@ public sealed partial class IslandSet
             _stack.Clear();
             _stack.Add(seed);
             seen[seed] = true;
+            reached++;
             while (_stack.Count > 0)
             {
                 int body = _stack[_stack.Count - 1];
                 _stack.RemoveAt(_stack.Count - 1);
                 _component.Add(body);
+                if (reached == n) { continue; }
                 for (int e = bodies.FirstEdge(body); e >= 0; e = cons.NextEdge(e))
                 {
                     int c = e >> 1;
@@ -271,8 +281,18 @@ public sealed partial class IslandSet
                     int other = (e & 1) == 0 ? cons.BodyB[c] : cons.BodyA[c];
                     if (!bodies.IsDynamic(other) || seen[other]) { continue; }
                     seen[other] = true;
+                    reached++;
                     _stack.Add(other);
                 }
+            }
+
+            // The island is still one piece (the usual answer for a pile that keeps losing and gaining contacts) and its list is already in ascending order: the list, the bodies' island ids and the
+            // sleep flag are what the general path below would write again, so only the removal count is cleared.
+            if (components == 0 && _component.Count == n && IsAscending(list, n))
+            {
+                components = 1;
+                _removed[island] = 0;
+                break;
             }
 
             _component.Sort();

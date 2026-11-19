@@ -32,6 +32,7 @@ internal sealed partial class Engine3D
     public float[] JointTorque = new float[16];
     private int _noCollideJoints;
     private int _trackedJoints;
+    private long _reconciledJointRemovals = -1; // ConstraintStore.JointRemovals at the last ReconcileJoints scan; -1 forces one (a restore swaps the store, so its count says nothing)
     private bool _needBind;
     private float _pendingJointHertz, _pendingJointDamping;
 
@@ -169,11 +170,17 @@ internal sealed partial class Engine3D
     /// Notices joints the core removed (a break, a destroyed body or joint) and lets the bodies of a joint that kept them from colliding find each other again. It runs as soon as such a removal can have happened
     /// (the end of a step, destroying a joint or a body) and at the start of a step, for removals made through the raw tier.
     /// </summary>
+    /// <remarks>
+    /// A tracked joint can fail the test below only after its slot was cleared (removed, then maybe reused), so the scan runs only when <see cref="ConstraintStore.JointRemovals"/> moved since the
+    /// last scan. Joints created since then carry their slot's current generation and pass.
+    /// </remarks>
     internal void ReconcileJoints()
     {
         EnsureBound();
         if (_trackedJoints == 0) { return; }
         var cs = Core.Constraints;
+        if (cs.JointRemovals == _reconciledJointRemovals) { return; }
+        _reconciledJointRemovals = cs.JointRemovals;
         int n = Math.Min(cs.HighWater, Joints.Length);
         for (int c = 0; c < n; c++)
         {
@@ -198,6 +205,7 @@ internal sealed partial class Engine3D
     {
         if (!_needBind) { return; }
         _needBind = false;
+        _reconciledJointRemovals = -1;
         var cs = Core.Constraints;
         var bodies = Core.Bodies;
         _noCollideJoints = 0;
@@ -442,7 +450,7 @@ internal sealed partial class Engine3D
         for (int l = 0; l < J3D.Lanes; l++) { idx[l] = 0; idx[8 + l] = 0; idx[16 + l] = -1; idx[24 + l] = -1; }
     }
 
-    /// <summary>Once per step: a point joint's start-of-step anchors, centre-of-mass offset, inverse masses and warm-start impulse into one lane of its batch's joint group.</summary>
+    /// <summary>Once per step: a point joint's start-of-step anchors, centre-of-mass offset, inverse masses and warm-start impulse into one lane of its batch's joint group. The narrower kernel widths only; the 8-lane width builds whole joint groups (Engine3D.BuildJoints256).</summary>
     private void PreparePointJoint(int c, int group, int lane)
     {
         var core = Core;
@@ -509,8 +517,8 @@ internal sealed partial class Engine3D
             if (float.IsFinite(j.BreakForce) || float.IsFinite(j.BreakTorque))
             {
                 Core.JointReadback.Reaction(c, out double meanForce, out double meanTorque);
-                if (meanForce > j.BreakForce) { cs.Flags[c] |= (byte)ConstraintBits.BreakRequested; cs.BreakValue[c] = meanForce > float.MaxValue ? float.MaxValue : (float)meanForce; }
-                else if (meanTorque > j.BreakTorque) { cs.Flags[c] |= (byte)ConstraintBits.BreakRequested; cs.BreakValue[c] = meanTorque > float.MaxValue ? float.MaxValue : (float)meanTorque; }
+                if (meanForce > j.BreakForce) { cs.RequestBreak(c, meanForce > float.MaxValue ? float.MaxValue : (float)meanForce); }
+                else if (meanTorque > j.BreakTorque) { cs.RequestBreak(c, meanTorque > float.MaxValue ? float.MaxValue : (float)meanTorque); }
             }
         }
     }

@@ -1,5 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.LowLevel;
@@ -23,17 +27,45 @@ internal sealed partial class Engine3D
 
     private static void Put(Span<float> a, int i, Vector3F v) { a[i] = v.X; a[i + 1] = v.Y; a[i + 2] = v.Z; }
 
-    /// <summary>Copies the displacement, accumulated rotation and world inverse inertia of a body into its packed row (see <see cref="Pk"/>).</summary>
+    /// <summary>Copies the velocities, world inverse inertia, displacement and accumulated rotation of a body into its packed rows (see <see cref="Pk"/>); from here to FinalizeBodies row 0 is the body's velocity.</summary>
     public void PackBody(int b)
     {
         // Every per-body array was sized for the world's high-water mark before any step or call that reaches here (EnsureBodies), so the unchecked accessors stay in range; the Checked build verifies each access.
         Span<float> r = Pk;
-        ReadOnlySpan<float> dp = Dp, dq = Dq, w = WInvI;
-        int o = 16 * b, p3 = 3 * b, p4 = 4 * b, p6 = 6 * b;
+        var bodies = Core.Bodies;
+        ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity, dp = Dp, dq = Dq, w = WInvI;
+        int o = PkStride * b, p3 = 3 * b, p4 = 4 * b, p6 = 6 * b;
+        Mem.At(r, o) = Mem.At(lin, p3); Mem.At(r, o + 1) = Mem.At(lin, p3 + 1); Mem.At(r, o + 2) = Mem.At(lin, p3 + 2);
+        Mem.At(r, o + 3) = Mem.At(ang, p3); Mem.At(r, o + 4) = Mem.At(ang, p3 + 1); Mem.At(r, o + 5) = Mem.At(ang, p3 + 2); Mem.At(r, o + 6) = 0f; Mem.At(r, o + 7) = 0f;
+        o += PkInertia;
+        Mem.At(r, o) = Mem.At(w, p6); Mem.At(r, o + 1) = Mem.At(w, p6 + 1); Mem.At(r, o + 2) = Mem.At(w, p6 + 2); Mem.At(r, o + 3) = Mem.At(w, p6 + 3); Mem.At(r, o + 4) = Mem.At(w, p6 + 4); Mem.At(r, o + 5) = Mem.At(w, p6 + 5); Mem.At(r, o + 6) = 0f; Mem.At(r, o + 7) = 0f;
+        o += PkPose - PkInertia;
         Mem.At(r, o) = Mem.At(dp, p3); Mem.At(r, o + 1) = Mem.At(dp, p3 + 1); Mem.At(r, o + 2) = Mem.At(dp, p3 + 2);
-        Mem.At(r, o + 3) = Mem.At(dq, p4); Mem.At(r, o + 4) = Mem.At(dq, p4 + 1); Mem.At(r, o + 5) = Mem.At(dq, p4 + 2); Mem.At(r, o + 6) = Mem.At(dq, p4 + 3);
-        Mem.At(r, o + 7) = Mem.At(w, p6); Mem.At(r, o + 8) = Mem.At(w, p6 + 1); Mem.At(r, o + 9) = Mem.At(w, p6 + 2); Mem.At(r, o + 10) = Mem.At(w, p6 + 3); Mem.At(r, o + 11) = Mem.At(w, p6 + 4); Mem.At(r, o + 12) = Mem.At(w, p6 + 5);
+        Mem.At(r, o + 3) = Mem.At(dq, p4); Mem.At(r, o + 4) = Mem.At(dq, p4 + 1); Mem.At(r, o + 5) = Mem.At(dq, p4 + 2); Mem.At(r, o + 6) = Mem.At(dq, p4 + 3); Mem.At(r, o + 7) = 0f;
     }
+
+    /// <summary>Copies a body's velocities from the body store into row 0 of its packed rows: for code that changes a velocity in the body store, or wakes a body, between the contact stage's body initialisation and the solve (see <see cref="Pk"/>).</summary>
+    internal void PackVelocity(int b)
+    {
+        Span<float> r = Pk;
+        var bodies = Core.Bodies;
+        ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
+        int o = PkStride * b, p3 = 3 * b;
+        Mem.At(r, o) = Mem.At(lin, p3); Mem.At(r, o + 1) = Mem.At(lin, p3 + 1); Mem.At(r, o + 2) = Mem.At(lin, p3 + 2);
+        Mem.At(r, o + 3) = Mem.At(ang, p3); Mem.At(r, o + 4) = Mem.At(ang, p3 + 1); Mem.At(r, o + 5) = Mem.At(ang, p3 + 2); Mem.At(r, o + 6) = 0f; Mem.At(r, o + 7) = 0f;
+    }
+
+    /// <summary>Copies a body's world inverse inertia into row 1 of its packed rows, after something other than the position pass changed it (axis locks).</summary>
+    private void PackInertia(int b)
+    {
+        Span<float> r = Pk;
+        ReadOnlySpan<float> w = WInvI;
+        int o = PkStride * b + PkInertia, p6 = 6 * b;
+        Mem.At(r, o) = Mem.At(w, p6); Mem.At(r, o + 1) = Mem.At(w, p6 + 1); Mem.At(r, o + 2) = Mem.At(w, p6 + 2); Mem.At(r, o + 3) = Mem.At(w, p6 + 3); Mem.At(r, o + 4) = Mem.At(w, p6 + 4); Mem.At(r, o + 5) = Mem.At(w, p6 + 5);
+    }
+
+    /// <summary>A body's velocity while a step's solve runs: the linear (0 to 2) and angular (3 to 5) lanes of row 0 of its packed rows (see <see cref="Pk"/>). The scalar parts of the solve read and write it here.</summary>
+    internal Span<float> SolveVelocity(int b) => Pk.AsSpan(PkStride * b + PkVelocity, 6);
 
     /// <summary>Refreshes one body's world-axes inverse inertia from the current rotation (for impulses applied between steps).</summary>
     public void RefreshWorldInertia(int b)
@@ -109,9 +141,18 @@ internal sealed partial class Engine3D
     private float _liteDynBias, _liteDynMass, _liteDynImpulse, _liteStBias, _liteStMass, _liteStImpulse;
     private JointKernelParams _jointParams, _liteJointParams;
 
+    // Whether any batch prepared this step for the world's schedule (0) / the contact-only schedule (1) has a contact with restitution. Batches are prepared in parallel; every
+    // writer stores 1, so the races are benign, and the core reads the flags after the parallel call has joined.
+    private int _restitution, _restitutionLite;
+
+    /// <summary>Whether the restitution pass of the given schedule has anything to do this step (see <see cref="IWorldStages.NeedsRestitutionPass"/>).</summary>
+    public bool NeedsRestitutionPass(int schedule) => (schedule != 0 ? _restitutionLite : _restitution) != 0;
+
     /// <summary>Once per step before anything is prepared: sizes the wide groups (one per batch) and the constraint-to-lane map, and computes the soft-constraint coefficients.</summary>
     public void BeginSolve(int batches, in StepContext ctx)
     {
+        // Cleared here, set by PrepareBatch for any batch of the schedule with restitution, read by the core when it builds that schedule's solve program.
+        if (ctx.Schedule != 0) { _restitutionLite = 0; } else { _restitution = 0; }
         if (ctx.Schedule != 0)
         {
             // The contact-only schedule has its own substep length, so its contacts get their own soft-constraint coefficients; nothing else is sized or ordered twice.
@@ -163,28 +204,40 @@ internal sealed partial class Engine3D
     /// Reorders each color's constraints, stably, by contact point count (most points first, joints last), so the contacts of a batch have similar point counts: a group runs as many point passes as its
     /// largest lane needs, and a pile is mostly one-point contacts with a few four-point ones that would otherwise stretch every batch they land in. The constraints of a color share no dynamic body,
     /// so the order they are solved in cannot change a result; the new order depends only on the data.
+    /// One task per color (Executor.For over ColorCount). A color sorts through its own range of <see cref="_sortTmp"/> (the same offsets as in the list), so tasks share no scratch.
     /// </summary>
     private void GroupColorsByPointCount()
     {
+        var list = Core.Coloring.ListArray;
+        if (_sortTmp.Length < list.Length) { _sortTmp = new int[Math.Max(list.Length, _sortTmp.Length * 2)]; }
+        Core.Executor.For(ConstraintColoring.ColorCount, new GroupColorTask(this, list));
+    }
+
+    private readonly struct GroupColorTask : IParallelBody
+    {
+        private readonly Engine3D _e;
+        private readonly int[] _list;
+        public GroupColorTask(Engine3D e, int[] list) { _e = e; _list = list; }
+        public void Run(int g) => _e.GroupColorByPointCount(g, _list);
+    }
+
+    private void GroupColorByPointCount(int g, int[] list)
+    {
         var coloring = Core.Coloring;
-        var list = coloring.ListArray;
         var cs = Core.Constraints;
         ReadOnlySpan<byte> points = cs.PointCount;
+        int n = coloring.Color(g).Length;
+        if (n <= ConstraintColoring.Lanes) { return; }
+        int off = coloring.ColorStart(g);
+        // Bucket 0 holds four points, 1 three, 2 two, 3 one, 4 none, 5 joints (and any other kind).
         Span<int> start = stackalloc int[W3D.MaxPoints + 3];
-        for (int g = 0; g < ConstraintColoring.ColorCount; g++)
-        {
-            int n = coloring.Color(g).Length;
-            if (n <= ConstraintColoring.Lanes) { continue; }
-            int off = coloring.ColorStart(g);
-            // Bucket 0 holds four points, 1 three, 2 two, 3 one, 4 none, 5 joints (and any other kind).
-            start.Clear();
-            for (int i = 0; i < n; i++) { start[1 + Bucket(cs, points, list[off + i])]++; }
-            if (start[1 + 5] == n || start[1] == n || start[1 + 3] == n) { continue; }
-            for (int k = 1; k < start.Length; k++) { start[k] += start[k - 1]; }
-            if (_sortTmp.Length < n) { _sortTmp = new int[Math.Max(n, _sortTmp.Length * 2)]; }
-            for (int i = 0; i < n; i++) { int c = list[off + i]; _sortTmp[start[Bucket(cs, points, c)]++] = c; }
-            Array.Copy(_sortTmp, 0, list, off, n);
-        }
+        start.Clear();
+        for (int i = 0; i < n; i++) { start[1 + Bucket(cs, points, list[off + i])]++; }
+        if (start[1 + 5] == n || start[1] == n || start[1 + 3] == n) { return; }
+        for (int k = 1; k < start.Length; k++) { start[k] += start[k - 1]; }
+        var tmp = _sortTmp.AsSpan(off, n);
+        for (int i = 0; i < n; i++) { int c = list[off + i]; tmp[start[Bucket(cs, points, c)]++] = c; }
+        tmp.CopyTo(list.AsSpan(off, n));
     }
 
     private static int Bucket(ConstraintStore cs, ReadOnlySpan<byte> points, int c) => cs.KindOf(c) == ConstraintKind.Contact ? W3D.MaxPoints - Math.Min((int)points[c], W3D.MaxPoints) : 5;
@@ -195,6 +248,9 @@ internal sealed partial class Engine3D
     /// </summary>
     public void PrepareBatch(ReadOnlySpan<int> constraints, int group, in StepContext ctx)
     {
+        // At the 8-lane width the group is built by whole-window gathers and 32-byte field stores (PrepareBatch256); the narrower widths keep the per-lane writes below, and so does a step with
+        // contact modification data (its extra fields and tangent overrides are written per lane).
+        if (KernelWidth == 8 && Avx2.IsSupported && !ContactModifications.Extended) { PrepareBatch256(constraints, group, in ctx); return; }
         var core = Core;
         var cs = core.Constraints;
         var bodies = core.Bodies;
@@ -298,15 +354,407 @@ internal sealed partial class Engine3D
 
         if (lane > 0)
         {
-            ReadOnlySpan<float> linP = bodies.LinearVelocityPadded, angP = bodies.AngularVelocityPadded;
-            if (KernelWidth == 1) { ContactKernel3D.PrepareMasses<Lanes1>(w, idx, linP, angP, Pk, maxPoints); }
-            else if (KernelWidth == 4) { ContactKernel3D.PrepareMasses<Lanes128>(w, idx, linP, angP, Pk, maxPoints); }
-            else { ContactKernel3D.PrepareMasses<Lanes256>(w, idx, linP, angP, Pk, maxPoints); }
+            // The velocities come from the packed rows, which hold the start-of-step velocities here (no solve pass has run yet).
+            if (KernelWidth == 1) { ContactKernel3D.PrepareMasses<Lanes1>(w, idx, Pk, maxPoints); }
+            else if (KernelWidth == 4) { ContactKernel3D.PrepareMasses<Lanes128>(w, idx, Pk, maxPoints); }
+            else { ContactKernel3D.PrepareMasses<Lanes256>(w, idx, Pk, maxPoints); }
         }
 
         if (Core.Controls.Active) PrepareControlledContacts(constraints);
         if (constraints.Length > 0) { var bi = BatchInfo.AsSpan(4 * constraints[0], 4); bi[0] = group; bi[1] = lane; bi[2] = jlane; bi[3] = scalarJoints; }
         idx[W3D.MaxPointsSlot] = maxPoints; idx[W3D.AnyRollingSlot] = anyRolling; idx[W3D.AnyRestitutionSlot] = anyRestitution;
+        if (anyRestitution != 0) { if (ctx.Schedule != 0) { _restitutionLite = 1; } else { _restitution = 1; } }
+    }
+
+    /// <summary>
+    /// <see cref="PrepareBatch"/> at the 8-lane width. The scalar loop keeps only what is per constraint (the joints, the slots, the body rows, the point counts and payload offsets); the group's fields
+    /// are then built for all eight lanes at once (<see cref="BuildContacts256"/>): the eight payloads are read as 8-float windows at the same <see cref="ManifoldLayout"/> offsets (eight 32-byte loads and an
+    /// 8x8 transpose per window; the windows at 0, 8, ..., 48 cover the header and the points up to the group's largest point count, and a 3D payload is 104 floats, so the last window ends inside its own
+    /// payload and needs no padding) and every field is written with one 32-byte store, so <see cref="PrepareMasses256"/> (the register-resident form of ContactKernel3D.PrepareMasses) and the solver
+    /// load each field from one store instead of eight.
+    /// Every value is a copy of the scalar path's or the same IEEE operation on the same inputs (the tangents, the soft-coefficient choice by a select on mA == 0 || mB == 0, the point masks and zeroed
+    /// impulses by a compare with the point count, the rolling mass), so the bits are the scalar path's in every lane the scalar path writes. Lanes past the batch read the first constraint's payload with a
+    /// point count of zero; nothing reads them back (as before, when they held stale values). Masked point slots (past a lane's point count) and the rolling mass of lanes without rolling resistance hold
+    /// computed values instead of stale ones; every reader selects them out (the normal impulse, which the rolling total reads unmasked, is zeroed as before).
+    /// The point joints of the batch get the same treatment: the loop writes their slots and body rows, and <see cref="BuildJoints256"/> builds their group's fields eight lanes at a time (this replaces
+    /// <see cref="PreparePointJoint"/>, which the narrower widths still use).
+    /// </summary>
+    [System.Runtime.CompilerServices.SkipLocalsInit]
+    private void PrepareBatch256(ReadOnlySpan<int> constraints, int group, in StepContext ctx)
+    {
+        var core = Core;
+        var cs = core.Constraints;
+        var bodies = core.Bodies;
+        ReadOnlySpan<int> bodyA = cs.BodyA, bodyB = cs.BodyB;
+        ReadOnlySpan<float> invMass = bodies.InverseMass;
+        ReadOnlySpan<byte> pointCount = cs.PointCount;
+        var idx = WideIdx.AsSpan(group * W3D.IdxPerGroup, W3D.IdxPerGroup);
+        Vector256<int>.Zero.StoreUnsafe(ref idx[0]); Vector256<int>.Zero.StoreUnsafe(ref idx[8]); Vector256<int>.AllBitsSet.StoreUnsafe(ref idx[16]); Vector256<int>.AllBitsSet.StoreUnsafe(ref idx[24]);
+        // Per-lane scalars in fixed buffers (no GC references, so nothing to zero in the prolog); the vectors are built element by element from them, each element load forwarding from its own store.
+        // Every lane of them is written (by the loop, then the padding) before it is read.
+        Mem.SkipInit(out Lane8Int off); Mem.SkipInit(out Lane8Int cnt); Mem.SkipInit(out Lane8Float msA); Mem.SkipInit(out Lane8Float msB);
+        Mem.SkipInit(out Lane8Int jc); Mem.SkipInit(out Lane8Float jmA); Mem.SkipInit(out Lane8Float jmB);
+        int ps = cs.PayloadStride;
+        int maxPoints = 1, lane = 0, jlane = 0, scalarJoints = 0;
+        foreach (int c in constraints)
+        {
+            if (cs.KindOf(c) == ConstraintKind.Joint)
+            {
+                byte jt = Joints[c].Type;
+                bool springFixed = jt == (byte)JointType3D.Fixed && Joints[c].Hertz > 0f;
+                if (JointIsLocked(c) || springFixed) SlotOf[c] = -1;
+                if (!JointIsLocked(c) && !springFixed && WidePointBlock(jt))
+                {
+                    // PreparePointJoint's per-joint part (slot, readback slot, body rows); its fields are built for the whole joint group by BuildJoints256 after the loop.
+                    if (jlane == 0) { ClearJointIdx(group); }
+                    var jidx = WideJIdx.AsSpan(group * J3D.IdxPerGroup, J3D.IdxPerGroup);
+                    int ja = bodyA[c], jb = bodyB[c];
+                    SlotOf[c] = group * J3D.Lanes + jlane;
+                    if (core.JointReadback.Enabled) { core.JointReadback.WideSlots[group * 8 + jlane] = c; }
+                    float jA = invMass[ja], jB = invMass[jb];
+                    jidx[jlane] = ja; jidx[8 + jlane] = jb;
+                    jidx[16 + jlane] = jA > 0f ? ja : -1; jidx[24 + jlane] = jB > 0f ? jb : -1;
+                    jc[jlane] = c; jmA[jlane] = jA; jmB[jlane] = jB;
+                    jlane++;
+                }
+
+                if (jt != (byte)JointType3D.Point || JointIsLocked(c)) { PrepareJoint(c, in ctx); scalarJoints = 1; }
+
+                continue;
+            }
+
+            int a = bodyA[c], b = bodyB[c];
+            SlotOf[c] = group * W3D.Lanes + lane;
+            float mA = invMass[a], mB = invMass[b];
+            idx[lane] = a; idx[8 + lane] = b;
+            idx[16 + lane] = mA > 0f ? a : -1; idx[24 + lane] = mB > 0f ? b : -1;
+            int count = pointCount[c];
+            if (count > maxPoints) { maxPoints = count; }
+            off[lane] = c * ps; cnt[lane] = count; msA[lane] = mA; msB[lane] = mB;
+            lane++;
+        }
+
+        if (jlane > 0) { BuildJoints256(group, jlane, ref jc, ref jmA, ref jmB); }
+
+        int anyRolling = 0, anyRestitution = 0;
+        if (lane > 0)
+        {
+            for (int l = lane; l < W3D.Lanes; l++) { off[l] = off[0]; cnt[l] = 0; msA[l] = msA[0]; msB[l] = msB[0]; }
+            var soft = ctx.Schedule != 0
+                ? new SoftPair(_liteStBias, _liteStMass, _liteStImpulse, _liteDynBias, _liteDynMass, _liteDynImpulse)
+                : new SoftPair(_stBias, _stMass, _stImpulse, _dynBias, _dynMass, _dynImpulse);
+            var w = Wide.AsSpan(group * ContactGroupFloats, ContactGroupFloats);
+            int flags = BuildContacts256(ref Mem.Ref(w), ref idx[0], cs.PayloadArray, Pk, ref off, ref cnt, ref msA, ref msB, lane, maxPoints, in soft);
+            anyRestitution = flags & 1; anyRolling = flags >> 1;
+
+            // The velocities come from the packed rows, which hold the start-of-step velocities here (no solve pass has run yet).
+            PrepareMasses256(ref Mem.Ref(w), idx, Pk, maxPoints);
+        }
+
+        if (Core.Controls.Active) PrepareControlledContacts(constraints);
+
+        if (constraints.Length > 0) { var bi = BatchInfo.AsSpan(4 * constraints[0], 4); bi[0] = group; bi[1] = lane; bi[2] = jlane; bi[3] = scalarJoints; }
+        idx[W3D.MaxPointsSlot] = maxPoints; idx[W3D.AnyRollingSlot] = anyRolling; idx[W3D.AnyRestitutionSlot] = anyRestitution;
+        // The same per-schedule restitution flag as at the end of PrepareBatch's per-lane path, which this path never reaches (anyRestitution is BuildContacts256's bit 0: restitution != 0 on a
+        // real lane, NaN included, as the scalar test).
+        if (anyRestitution != 0) { if (ctx.Schedule != 0) { _restitutionLite = 1; } else { _restitution = 1; } }
+    }
+
+    /// <summary>
+    /// <see cref="PreparePointJoint"/> at the 8-lane width, for the <paramref name="n"/> point joints <paramref name="jc"/> of joint group <paramref name="group"/> (their slots, readback slots and
+    /// body rows were written by the caller, <paramref name="jmA"/> and <paramref name="jmB"/> are their inverse masses). Every lane's inputs are loaded straight into vector lanes (the rotations by 16-byte
+    /// row loads and a 4x4 transpose, the anchors, centres of mass and positions element by element), the anchor arms are rotated with the same operations as <see cref="QuaternionF.Rotate"/>, the
+    /// separation is the same double difference rounded to float (one conversion per four lanes), and each of the fourteen fields is written with one 32-byte store. Lanes past the batch repeat lane 0's
+    /// joint and read body 0 (their body rows are 0 and −1, so nothing is written back from them).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    [System.Runtime.CompilerServices.SkipLocalsInit]
+    private void BuildJoints256(int group, int n, ref Lane8Int jc, ref Lane8Float jmA, ref Lane8Float jmB)
+    {
+        for (int l = n; l < J3D.Lanes; l++) { jc[l] = jc[0]; jmA[l] = jmA[0]; jmB[l] = jmB[0]; }
+        var core = Core;
+        var bodies = core.Bodies;
+        var cs = core.Constraints;
+        ReadOnlySpan<int> jidx = WideJIdx.AsSpan(group * J3D.IdxPerGroup, J3D.IdxPerGroup);
+        int a0 = jidx[0], a1 = jidx[1], a2 = jidx[2], a3 = jidx[3], a4 = jidx[4], a5 = jidx[5], a6 = jidx[6], a7 = jidx[7];
+        int b0 = jidx[8], b1 = jidx[9], b2 = jidx[10], b3 = jidx[11], b4 = jidx[12], b5 = jidx[13], b6 = jidx[14], b7 = jidx[15];
+        ref JointData3D jd = ref Mem.Ref(Joints);
+        ref JointData3D j0 = ref Mem.Add(ref jd, jc[0]), j1 = ref Mem.Add(ref jd, jc[1]), j2 = ref Mem.Add(ref jd, jc[2]), j3 = ref Mem.Add(ref jd, jc[3]);
+        ref JointData3D j4 = ref Mem.Add(ref jd, jc[4]), j5 = ref Mem.Add(ref jd, jc[5]), j6 = ref Mem.Add(ref jd, jc[6]), j7 = ref Mem.Add(ref jd, jc[7]);
+        ReadOnlySpan<float> lc = LocalCenter;
+
+        // Anchor minus centre of mass, in each body's frame (the scalar path's j.LAx - lcA.X, ...).
+        var vAx = Vector256.Create(j0.LAx, j1.LAx, j2.LAx, j3.LAx, j4.LAx, j5.LAx, j6.LAx, j7.LAx) - Lc8(lc, a0, a1, a2, a3, a4, a5, a6, a7, 0);
+        var vAy = Vector256.Create(j0.LAy, j1.LAy, j2.LAy, j3.LAy, j4.LAy, j5.LAy, j6.LAy, j7.LAy) - Lc8(lc, a0, a1, a2, a3, a4, a5, a6, a7, 1);
+        var vAz = Vector256.Create(j0.LAz, j1.LAz, j2.LAz, j3.LAz, j4.LAz, j5.LAz, j6.LAz, j7.LAz) - Lc8(lc, a0, a1, a2, a3, a4, a5, a6, a7, 2);
+        var vBx = Vector256.Create(j0.LBx, j1.LBx, j2.LBx, j3.LBx, j4.LBx, j5.LBx, j6.LBx, j7.LBx) - Lc8(lc, b0, b1, b2, b3, b4, b5, b6, b7, 0);
+        var vBy = Vector256.Create(j0.LBy, j1.LBy, j2.LBy, j3.LBy, j4.LBy, j5.LBy, j6.LBy, j7.LBy) - Lc8(lc, b0, b1, b2, b3, b4, b5, b6, b7, 1);
+        var vBz = Vector256.Create(j0.LBz, j1.LBz, j2.LBz, j3.LBz, j4.LBz, j5.LBz, j6.LBz, j7.LBz) - Lc8(lc, b0, b1, b2, b3, b4, b5, b6, b7, 2);
+
+        ReadOnlySpan<float> rot = bodies.Rotation;
+        Rot8(rot, a0, a1, a2, a3, a4, a5, a6, a7, out var qAx, out var qAy, out var qAz, out var qAw);
+        Rot8(rot, b0, b1, b2, b3, b4, b5, b6, b7, out var qBx, out var qBy, out var qBz, out var qBw);
+
+        ref float w = ref WideJ[group * J3D.GroupFloats];
+        Mem.Range(WideJ, group * J3D.GroupFloats, J3D.GroupFloats);
+        RotateStore(ref w, J3D.RA, qAx, qAy, qAz, qAw, vAx, vAy, vAz);
+        RotateStore(ref w, J3D.RB, qBx, qBy, qBz, qBw, vBx, vBy, vBz);
+
+        // pB - pA in double, rounded to float (the scalar path's (float)(pB[k] - pA[k])).
+        ReadOnlySpan<double> pos = bodies.Position;
+        for (int k = 0; k < 3; k++)
+        {
+            var lo = Vector256.Create(pos[3 * b0 + k], pos[3 * b1 + k], pos[3 * b2 + k], pos[3 * b3 + k]) - Vector256.Create(pos[3 * a0 + k], pos[3 * a1 + k], pos[3 * a2 + k], pos[3 * a3 + k]);
+            var hi = Vector256.Create(pos[3 * b4 + k], pos[3 * b5 + k], pos[3 * b6 + k], pos[3 * b7 + k]) - Vector256.Create(pos[3 * a4 + k], pos[3 * a5 + k], pos[3 * a6 + k], pos[3 * a7 + k]);
+            St(ref w, J3D.D + k, Vector256.Create(Avx.ConvertToVector128Single(lo), Avx.ConvertToVector128Single(hi)));
+        }
+
+        St(ref w, J3D.InvMassA, Vector256.Create(jmA[0], jmA[1], jmA[2], jmA[3], jmA[4], jmA[5], jmA[6], jmA[7]));
+        St(ref w, J3D.InvMassB, Vector256.Create(jmB[0], jmB[1], jmB[2], jmB[3], jmB[4], jmB[5], jmB[6], jmB[7]));
+
+        // The warm-start impulse: the first three payload floats, from one 8-float window per lane.
+        int ps = cs.PayloadStride;
+        ReadOnlySpan<float> payload = cs.PayloadArray;
+        Window(payload, ref Mem.Ref(payload), jc[0] * ps, jc[1] * ps, jc[2] * ps, jc[3] * ps, jc[4] * ps, jc[5] * ps, jc[6] * ps, jc[7] * ps, 0,
+            out var i0, out var i1, out var i2, out _, out _, out _, out _, out _);
+        St(ref w, J3D.Impulse, i0); St(ref w, J3D.Impulse + 1, i1); St(ref w, J3D.Impulse + 2, i2);
+    }
+
+    /// <summary>Component <paramref name="k"/> of eight bodies' local centres of mass as one vector.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector256<float> Lc8(ReadOnlySpan<float> lc, int b0, int b1, int b2, int b3, int b4, int b5, int b6, int b7, int k) =>
+        Vector256.Create(lc[3 * b0 + k], lc[3 * b1 + k], lc[3 * b2 + k], lc[3 * b3 + k], lc[3 * b4 + k], lc[3 * b5 + k], lc[3 * b6 + k], lc[3 * b7 + k]);
+
+    /// <summary>Eight bodies' rotations (x, y, z, w) as four vectors: one exact 16-byte load per body and a 4x4 transpose in each half, as <see cref="Lanes256.GatherRows4"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Rot8(ReadOnlySpan<float> rot, int b0, int b1, int b2, int b3, int b4, int b5, int b6, int b7, out Vector256<float> x, out Vector256<float> y, out Vector256<float> z, out Vector256<float> w)
+    {
+        Mem.Range(rot, 4 * b0, 4); Mem.Range(rot, 4 * b1, 4); Mem.Range(rot, 4 * b2, 4); Mem.Range(rot, 4 * b3, 4); Mem.Range(rot, 4 * b4, 4); Mem.Range(rot, 4 * b5, 4); Mem.Range(rot, 4 * b6, 4); Mem.Range(rot, 4 * b7, 4);
+        ref float r = ref Mem.Ref(rot);
+        var y0 = Vector256.Create(Vector128.LoadUnsafe(ref r, (nuint)(4 * b0)), Vector128.LoadUnsafe(ref r, (nuint)(4 * b4)));
+        var y1 = Vector256.Create(Vector128.LoadUnsafe(ref r, (nuint)(4 * b1)), Vector128.LoadUnsafe(ref r, (nuint)(4 * b5)));
+        var y2 = Vector256.Create(Vector128.LoadUnsafe(ref r, (nuint)(4 * b2)), Vector128.LoadUnsafe(ref r, (nuint)(4 * b6)));
+        var y3 = Vector256.Create(Vector128.LoadUnsafe(ref r, (nuint)(4 * b3)), Vector128.LoadUnsafe(ref r, (nuint)(4 * b7)));
+        var t0 = Avx.UnpackLow(y0, y1); var t1 = Avx.UnpackHigh(y0, y1); var t2 = Avx.UnpackLow(y2, y3); var t3 = Avx.UnpackHigh(y2, y3);
+        x = Avx.Shuffle(t0, t2, 0x44); y = Avx.Shuffle(t0, t2, 0xEE); z = Avx.Shuffle(t1, t3, 0x44); w = Avx.Shuffle(t1, t3, 0xEE);
+    }
+
+    /// <summary>Q v q⁻¹ per lane with the operations of <see cref="QuaternionF.Rotate"/> (t = 2 (q × v); v + t·w + q × t), stored as three fields from <paramref name="field"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void RotateStore(ref float g, int field, Vector256<float> qx, Vector256<float> qy, Vector256<float> qz, Vector256<float> qw, Vector256<float> vx, Vector256<float> vy, Vector256<float> vz)
+    {
+        var two = Vector256.Create(2f);
+        var tx = (qy * vz - qz * vy) * two; var ty = (qz * vx - qx * vz) * two; var tz = (qx * vy - qy * vx) * two;
+        St(ref g, field, vx + tx * qw + (qy * tz - qz * ty));
+        St(ref g, field + 1, vy + ty * qw + (qz * tx - qx * tz));
+        St(ref g, field + 2, vz + tz * qw + (qx * ty - qy * tx));
+    }
+
+    /// <summary>
+    /// <see cref="ContactKernel3D.PrepareMasses{T}"/> at the 8-lane width with everything in registers: the bodies' velocity and inverse-inertia rows by the same row gathers as GatherBody, the
+    /// group's fields by 32-byte loads of what <see cref="BuildContacts256"/> just stored whole (so each load forwards from one store), and per point the adjusted separation, the three effective masses and
+    /// the relative normal velocity with the generic kernel's operations in the generic kernel's order (PreparePoint, EffectiveMass, Sym.Apply, V3.Cross, V3.Dot, RelativeNormalVelocity). The generic
+    /// version passes about twenty-five vectors by value to each of its per-direction calls (EffectiveMassAt), which is where its store-to-load stalls were.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    [System.Runtime.CompilerServices.SkipLocalsInit]
+    private static void PrepareMasses256(ref float g, ReadOnlySpan<int> idx, ReadOnlySpan<float> pk, int maxPoints)
+    {
+        ref float p = ref Mem.Ref(pk);
+        const int s = PkStride;
+        int a0 = idx[0] * s, a1 = idx[1] * s, a2 = idx[2] * s, a3 = idx[3] * s, a4 = idx[4] * s, a5 = idx[5] * s, a6 = idx[6] * s, a7 = idx[7] * s;
+        int b0 = idx[8] * s, b1 = idx[9] * s, b2 = idx[10] * s, b3 = idx[11] * s, b4 = idx[12] * s, b5 = idx[13] * s, b6 = idx[14] * s, b7 = idx[15] * s;
+        Window(pk, ref p, a0, a1, a2, a3, a4, a5, a6, a7, PkVelocity, out var vAx, out var vAy, out var vAz, out var wAx, out var wAy, out var wAz, out _, out _);
+        Window(pk, ref p, a0, a1, a2, a3, a4, a5, a6, a7, PkInertia, out var iA0, out var iA1, out var iA2, out var iA3, out var iA4, out var iA5, out _, out _);
+        Window(pk, ref p, b0, b1, b2, b3, b4, b5, b6, b7, PkVelocity, out var vBx, out var vBy, out var vBz, out var wBx, out var wBy, out var wBz, out _, out _);
+        Window(pk, ref p, b0, b1, b2, b3, b4, b5, b6, b7, PkInertia, out var iB0, out var iB1, out var iB2, out var iB3, out var iB4, out var iB5, out _, out _);
+        var mAB = Ld(ref g, W3D.InvMassA) + Ld(ref g, W3D.InvMassB);
+        Vector256<float> nx = Ld(ref g, W3D.N), ny = Ld(ref g, W3D.N + 1), nz = Ld(ref g, W3D.N + 2);
+        for (int i = 0; i < maxPoints; i++)
+        {
+            int f = W3D.Point0 + i * W3D.PointStride;
+            Vector256<float> rAx = Ld(ref g, f + W3D.ArmA), rAy = Ld(ref g, f + W3D.ArmA + 1), rAz = Ld(ref g, f + W3D.ArmA + 2);
+            Vector256<float> rBx = Ld(ref g, f + W3D.ArmB), rBy = Ld(ref g, f + W3D.ArmB + 1), rBz = Ld(ref g, f + W3D.ArmB + 2);
+            St(ref g, f + W3D.AdjustedSeparation, Ld(ref g, f + W3D.AdjustedSeparation) - ((rBx - rAx) * nx + (rBy - rAy) * ny + (rBz - rAz) * nz));
+            St(ref g, f + W3D.NormalMass, Mass256(mAB, iA0, iA1, iA2, iA3, iA4, iA5, iB0, iB1, iB2, iB3, iB4, iB5, rAx, rAy, rAz, rBx, rBy, rBz, nx, ny, nz));
+            St(ref g, f + W3D.Tangent1Mass, Mass256(mAB, iA0, iA1, iA2, iA3, iA4, iA5, iB0, iB1, iB2, iB3, iB4, iB5, rAx, rAy, rAz, rBx, rBy, rBz, Ld(ref g, W3D.T1), Ld(ref g, W3D.T1 + 1), Ld(ref g, W3D.T1 + 2)));
+            St(ref g, f + W3D.Tangent2Mass, Mass256(mAB, iA0, iA1, iA2, iA3, iA4, iA5, iB0, iB1, iB2, iB3, iB4, iB5, rAx, rAy, rAz, rBx, rBy, rBz, Ld(ref g, W3D.T2), Ld(ref g, W3D.T2 + 1), Ld(ref g, W3D.T2 + 2)));
+            // (vB + wB × rB) − (vA + wA × rA), dotted with the normal.
+            var dvx = (vBx + (wBy * rBz - wBz * rBy)) - (vAx + (wAy * rAz - wAz * rAy));
+            var dvy = (vBy + (wBz * rBx - wBx * rBz)) - (vAy + (wAz * rAx - wAx * rAz));
+            var dvz = (vBz + (wBx * rBy - wBy * rBx)) - (vAz + (wAx * rAy - wAy * rAx));
+            St(ref g, f + W3D.RelativeVelocity, dvx * nx + dvy * ny + dvz * nz);
+        }
+    }
+
+    /// <summary>ContactKernel3D.EffectiveMass on Vector256: k = mA + mB + (rA × d)·IA(rA × d) + (rB × d)·IB(rB × d), and 1/k where k &gt; 0, else 0.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector256<float> Mass256(Vector256<float> mAB, Vector256<float> iA0, Vector256<float> iA1, Vector256<float> iA2, Vector256<float> iA3, Vector256<float> iA4, Vector256<float> iA5,
+        Vector256<float> iB0, Vector256<float> iB1, Vector256<float> iB2, Vector256<float> iB3, Vector256<float> iB4, Vector256<float> iB5,
+        Vector256<float> rAx, Vector256<float> rAy, Vector256<float> rAz, Vector256<float> rBx, Vector256<float> rBy, Vector256<float> rBz, Vector256<float> dx, Vector256<float> dy, Vector256<float> dz)
+    {
+        var ax = rAy * dz - rAz * dy; var ay = rAz * dx - rAx * dz; var az = rAx * dy - rAy * dx;
+        var bx = rBy * dz - rBz * dy; var by = rBz * dx - rBx * dz; var bz = rBx * dy - rBy * dx;
+        var k = mAB
+            + (ax * (iA0 * ax + iA1 * ay + iA2 * az) + ay * (iA1 * ax + iA3 * ay + iA4 * az) + az * (iA2 * ax + iA4 * ay + iA5 * az))
+            + (bx * (iB0 * bx + iB1 * by + iB2 * bz) + by * (iB1 * bx + iB3 * by + iB4 * bz) + bz * (iB2 * bx + iB4 * by + iB5 * bz));
+        return Vector256.ConditionalSelect(Vector256.GreaterThan(k, Vector256<float>.Zero), Vector256.Create(1f) / k, Vector256<float>.Zero);
+    }
+
+    /// <summary>One 32-byte load of a group field (eight lanes).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector256<float> Ld(ref float g, int field) => Vector256.LoadUnsafe(ref g, (nuint)(field * 8));
+
+    [InlineArray(8)]
+    private struct Lane8Int { private int _e; }
+
+    [InlineArray(8)]
+    private struct Lane8Float { private float _e; }
+
+    /// <summary>The soft coefficients of a contact against a static or kinematic body (S) and between two dynamic bodies (D), of the schedule the batch runs on.</summary>
+    private readonly struct SoftPair(float sBias, float sMass, float sImp, float dBias, float dMass, float dImp)
+    {
+        public readonly float SBias = sBias, SMass = sMass, SImp = sImp, DBias = dBias, DMass = dMass, DImp = dImp;
+    }
+
+    /// <summary>
+    /// The fields of one contact group from the lanes' payloads (see <see cref="PrepareBatch256"/>). <paramref name="g"/> is the group's first float, <paramref name="idx"/> its body rows (A at 0,
+    /// B at 8), <paramref name="off"/> the lanes' payload offsets, <paramref name="cnt"/> their point counts, <paramref name="msA"/> and <paramref name="msB"/> their inverse masses. Returns bit 0 = some
+    /// lane of the batch has restitution, bit 1 = some lane has rolling resistance. Plain refs, no span temporaries, so the prolog zeroes nothing.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    [System.Runtime.CompilerServices.SkipLocalsInit]
+    private static int BuildContacts256(ref float g, ref int idx, ReadOnlySpan<float> payload, ReadOnlySpan<float> pk, ref Lane8Int off, ref Lane8Int cnt, ref Lane8Float msA, ref Lane8Float msB, int lane, int maxPoints, in SoftPair soft)
+    {
+        ref float pay = ref Mem.Ref(payload);
+        var counts = Vector256.Create(cnt[0], cnt[1], cnt[2], cnt[3], cnt[4], cnt[5], cnt[6], cnt[7]);
+        var vmA = Vector256.Create(msA[0], msA[1], msA[2], msA[3], msA[4], msA[5], msA[6], msA[7]);
+        var vmB = Vector256.Create(msB[0], msB[1], msB[2], msB[3], msB[4], msB[5], msB[6], msB[7]);
+        int o0 = off[0], o1 = off[1], o2 = off[2], o3 = off[3], o4 = off[4], o5 = off[5], o6 = off[6], o7 = off[7];
+        Vector256<float> zero = Vector256<float>.Zero, one = Vector256.Create(1f), sign = Vector256.Create(-0f);
+        int real = (1 << lane) - 1;
+
+        // Window 0: normal xyz, friction, restitution, rolling resistance, rolling impulse x y. Window 1: rolling impulse z, point 0's anchors on A and B, its separation.
+        Window(payload, ref pay, o0, o1, o2, o3, o4, o5, o6, o7, 0, out var nx, out var ny, out var nz, out var friction, out var restitution, out var rolling, out var rix, out var riy);
+        Window(payload, ref pay, o0, o1, o2, o3, o4, o5, o6, o7, 8, out var riz, out var p0ax, out var p0ay, out var p0az, out var p0bx, out var p0by, out var p0bz, out var p0s);
+        St(ref g, W3D.N, nx); St(ref g, W3D.N + 1, ny); St(ref g, W3D.N + 2, nz);
+
+        // Tangents (the scalar Tangents' rule and operations, per lane; negation flips the sign bit as the scalar unary minus does).
+        var pickX = Vector256.GreaterThanOrEqual(Vector256.Abs(nx), Vector256.Create(0.57735f));
+        var tx = Vector256.ConditionalSelect(pickX, ny, zero);
+        var ty = Vector256.ConditionalSelect(pickX, Vector256.Xor(nx, sign), nz);
+        var tz = Vector256.ConditionalSelect(pickX, zero, Vector256.Xor(ny, sign));
+        var len = Vector256.Sqrt(tx * tx + ty * ty + tz * tz);
+        var inv = one / len;
+        var pos = Vector256.GreaterThan(len, zero);
+        var t1x = Vector256.ConditionalSelect(pos, tx * inv, one);
+        var t1y = Vector256.ConditionalSelect(pos, ty * inv, zero);
+        var t1z = Vector256.ConditionalSelect(pos, tz * inv, zero);
+        St(ref g, W3D.T1, t1x); St(ref g, W3D.T1 + 1, t1y); St(ref g, W3D.T1 + 2, t1z);
+        St(ref g, W3D.T2, ny * t1z - nz * t1y); St(ref g, W3D.T2 + 1, nz * t1x - nx * t1z); St(ref g, W3D.T2 + 2, nx * t1y - ny * t1x);
+
+        St(ref g, W3D.Friction, friction); St(ref g, W3D.Restitution, restitution); St(ref g, W3D.Rolling, rolling);
+        St(ref g, W3D.InvMassA, vmA); St(ref g, W3D.InvMassB, vmB);
+        var stat = Vector256.Equals(vmA, zero) | Vector256.Equals(vmB, zero);
+        St(ref g, W3D.BiasRate, Vector256.ConditionalSelect(stat, Vector256.Create(soft.SBias), Vector256.Create(soft.DBias)));
+        St(ref g, W3D.MassScale, Vector256.ConditionalSelect(stat, Vector256.Create(soft.SMass), Vector256.Create(soft.DMass)));
+        St(ref g, W3D.ImpulseScale, Vector256.ConditionalSelect(stat, Vector256.Create(soft.SImp), Vector256.Create(soft.DImp)));
+        St(ref g, W3D.RollImpulse, rix); St(ref g, W3D.RollImpulse + 1, riy); St(ref g, W3D.RollImpulse + 2, riz);
+        int flags = ((int)(~Vector256.Equals(restitution, zero)).ExtractMostSignificantBits() & real) != 0 ? 1 : 0;
+        if (((int)Vector256.GreaterThan(rolling, zero).ExtractMostSignificantBits() & real) != 0)
+        {
+            // RollingMass for all lanes: the inverse of IA + IB from the bodies' packed inertia rows (the same floats as WInvI), zero where the sum is singular. Only the lanes with rolling resistance read it.
+            flags |= 2;
+            ref float pkr = ref Mem.Ref(pk);
+            const int s = Engine3D.PkStride, k = Engine3D.PkInertia;
+            Window(pk, ref pkr, idx * s + k, Mem.Add(ref idx, 1) * s + k, Mem.Add(ref idx, 2) * s + k, Mem.Add(ref idx, 3) * s + k, Mem.Add(ref idx, 4) * s + k, Mem.Add(ref idx, 5) * s + k,
+                Mem.Add(ref idx, 6) * s + k, Mem.Add(ref idx, 7) * s + k, 0, out var a0, out var a1, out var a2, out var a3, out var a4, out var a5, out _, out _);
+            Window(pk, ref pkr, Mem.Add(ref idx, 8) * s + k, Mem.Add(ref idx, 9) * s + k, Mem.Add(ref idx, 10) * s + k, Mem.Add(ref idx, 11) * s + k, Mem.Add(ref idx, 12) * s + k,
+                Mem.Add(ref idx, 13) * s + k, Mem.Add(ref idx, 14) * s + k, Mem.Add(ref idx, 15) * s + k, 0, out var b0, out var b1, out var b2, out var b3, out var b4, out var b5, out _, out _);
+            Vector256<float> ia = a0 + b0, ib = a1 + b1, ic = a2 + b2, id = a3 + b3, ie = a4 + b4, iff = a5 + b5;
+            var c00 = id * iff - ie * ie; var c01 = ic * ie - ib * iff; var c02 = ib * ie - ic * id;
+            var det = ia * c00 + ib * c01 + ic * c02;
+            var ok = Vector256.GreaterThan(det, zero) & Vector256.LessThan(Vector256.Abs(det), Vector256.Create(float.PositiveInfinity));
+            var dinv = one / det;
+            St(ref g, W3D.RollMass, Vector256.ConditionalSelect(ok, c00 * dinv, zero));
+            St(ref g, W3D.RollMass + 1, Vector256.ConditionalSelect(ok, c01 * dinv, zero));
+            St(ref g, W3D.RollMass + 2, Vector256.ConditionalSelect(ok, c02 * dinv, zero));
+            St(ref g, W3D.RollMass + 3, Vector256.ConditionalSelect(ok, (ia * iff - ic * ic) * dinv, zero));
+            St(ref g, W3D.RollMass + 4, Vector256.ConditionalSelect(ok, (ib * ic - ia * ie) * dinv, zero));
+            St(ref g, W3D.RollMass + 5, Vector256.ConditionalSelect(ok, (ia * id - ib * ib) * dinv, zero));
+        }
+
+        // Points: point i's payload floats start at 9 + 12i (anchor A, anchor B, separation, normal, tangent 1 and tangent 2 impulse); points 0 and 2 start one float into a window, 1 and 3 five.
+        Window(payload, ref pay, o0, o1, o2, o3, o4, o5, o6, o7, 16, out var p0n, out var p0t1, out var p0t2, out _, out _, out var p1ax, out var p1ay, out var p1az);
+        StorePoint256(ref g, 0, p0ax, p0ay, p0az, p0bx, p0by, p0bz, p0s, p0n, p0t1, p0t2, counts);
+        if (maxPoints >= 2)
+        {
+            Window(payload, ref pay, o0, o1, o2, o3, o4, o5, o6, o7, 24, out var p1bx, out var p1by, out var p1bz, out var p1s, out var p1n, out var p1t1, out var p1t2, out _);
+            StorePoint256(ref g, 1, p1ax, p1ay, p1az, p1bx, p1by, p1bz, p1s, p1n, p1t1, p1t2, counts);
+            if (maxPoints >= 3)
+            {
+                Window(payload, ref pay, o0, o1, o2, o3, o4, o5, o6, o7, 32, out _, out var p2ax, out var p2ay, out var p2az, out var p2bx, out var p2by, out var p2bz, out var p2s);
+                Window(payload, ref pay, o0, o1, o2, o3, o4, o5, o6, o7, 40, out var p2n, out var p2t1, out var p2t2, out _, out _, out var p3ax, out var p3ay, out var p3az);
+                StorePoint256(ref g, 2, p2ax, p2ay, p2az, p2bx, p2by, p2bz, p2s, p2n, p2t1, p2t2, counts);
+                if (maxPoints >= 4)
+                {
+                    Window(payload, ref pay, o0, o1, o2, o3, o4, o5, o6, o7, 48, out var p3bx, out var p3by, out var p3bz, out var p3s, out var p3n, out var p3t1, out var p3t2, out _);
+                    StorePoint256(ref g, 3, p3ax, p3ay, p3az, p3bx, p3by, p3bz, p3s, p3n, p3t1, p3t2, counts);
+                }
+            }
+        }
+
+        // Points past the group's largest count: mask clear and impulse zero in every lane (the rolling total reads the impulse).
+        for (int i = maxPoints; i < W3D.MaxPoints; i++)
+        {
+            int f = W3D.Point0 + i * W3D.PointStride;
+            St(ref g, f + W3D.Mask, zero); St(ref g, f + W3D.NormalImpulse, zero);
+        }
+
+        return flags;
+    }
+
+    /// <summary>
+    /// Eight floats at <c>offset_i + skip</c> of <paramref name="source"/> for the eight lanes i, transposed: <paramref name="f0"/> holds the first float of every lane's window, and so on. One 32-byte
+    /// load per lane and the 8x8 transpose of <see cref="Lanes256.GatherRows(ReadOnlySpan{float}, ReadOnlySpan{int})"/>; pure data movement.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Window(ReadOnlySpan<float> source, ref float src, int o0, int o1, int o2, int o3, int o4, int o5, int o6, int o7, int skip,
+        out Vector256<float> f0, out Vector256<float> f1, out Vector256<float> f2, out Vector256<float> f3, out Vector256<float> f4, out Vector256<float> f5, out Vector256<float> f6, out Vector256<float> f7)
+    {
+        // Every window lies inside its lane's payload (or packed body row); the Checked build verifies it.
+        Mem.Range(source, o0 + skip, 8); Mem.Range(source, o1 + skip, 8); Mem.Range(source, o2 + skip, 8); Mem.Range(source, o3 + skip, 8);
+        Mem.Range(source, o4 + skip, 8); Mem.Range(source, o5 + skip, 8); Mem.Range(source, o6 + skip, 8); Mem.Range(source, o7 + skip, 8);
+        var r0 = Vector256.LoadUnsafe(ref src, (nuint)(o0 + skip)); var r1 = Vector256.LoadUnsafe(ref src, (nuint)(o1 + skip));
+        var r2 = Vector256.LoadUnsafe(ref src, (nuint)(o2 + skip)); var r3 = Vector256.LoadUnsafe(ref src, (nuint)(o3 + skip));
+        var r4 = Vector256.LoadUnsafe(ref src, (nuint)(o4 + skip)); var r5 = Vector256.LoadUnsafe(ref src, (nuint)(o5 + skip));
+        var r6 = Vector256.LoadUnsafe(ref src, (nuint)(o6 + skip)); var r7 = Vector256.LoadUnsafe(ref src, (nuint)(o7 + skip));
+        var t0 = Avx.UnpackLow(r0, r1); var t1 = Avx.UnpackHigh(r0, r1); var t2 = Avx.UnpackLow(r2, r3); var t3 = Avx.UnpackHigh(r2, r3);
+        var t4 = Avx.UnpackLow(r4, r5); var t5 = Avx.UnpackHigh(r4, r5); var t6 = Avx.UnpackLow(r6, r7); var t7 = Avx.UnpackHigh(r6, r7);
+        var u0 = Avx.Shuffle(t0, t2, 0x44); var u1 = Avx.Shuffle(t0, t2, 0xEE); var u2 = Avx.Shuffle(t1, t3, 0x44); var u3 = Avx.Shuffle(t1, t3, 0xEE);
+        var u4 = Avx.Shuffle(t4, t6, 0x44); var u5 = Avx.Shuffle(t4, t6, 0xEE); var u6 = Avx.Shuffle(t5, t7, 0x44); var u7 = Avx.Shuffle(t5, t7, 0xEE);
+        f0 = Avx.Permute2x128(u0, u4, 0x20); f1 = Avx.Permute2x128(u1, u5, 0x20); f2 = Avx.Permute2x128(u2, u6, 0x20); f3 = Avx.Permute2x128(u3, u7, 0x20);
+        f4 = Avx.Permute2x128(u0, u4, 0x31); f5 = Avx.Permute2x128(u1, u5, 0x31); f6 = Avx.Permute2x128(u2, u6, 0x31); f7 = Avx.Permute2x128(u3, u7, 0x31);
+    }
+
+    /// <summary>One 32-byte store of a group field (eight lanes).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void St(ref float g, int field, Vector256<float> v) => v.StoreUnsafe(ref g, (nuint)(field * 8));
+
+    /// <summary>Point <paramref name="i"/> of all eight lanes from its gathered payload rows; the mask is set where the lane's point count exceeds <paramref name="i"/>, and the normal impulse is zero where it is clear.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void StorePoint256(ref float g, int i, Vector256<float> ax, Vector256<float> ay, Vector256<float> az, Vector256<float> bx, Vector256<float> by, Vector256<float> bz, Vector256<float> sep,
+        Vector256<float> nImp, Vector256<float> t1Imp, Vector256<float> t2Imp, Vector256<int> counts)
+    {
+        int f = W3D.Point0 + i * W3D.PointStride;
+        var mask = Vector256.GreaterThan(counts, Vector256.Create(i)).AsSingle();
+        St(ref g, f + W3D.ArmA, ax); St(ref g, f + W3D.ArmA + 1, ay); St(ref g, f + W3D.ArmA + 2, az);
+        St(ref g, f + W3D.ArmB, bx); St(ref g, f + W3D.ArmB + 1, by); St(ref g, f + W3D.ArmB + 2, bz);
+        St(ref g, f + W3D.AdjustedSeparation, sep);
+        St(ref g, f + W3D.NormalImpulse, Vector256.ConditionalSelect(mask, nImp, Vector256<float>.Zero));
+        St(ref g, f + W3D.Tangent1Impulse, t1Imp); St(ref g, f + W3D.Tangent2Impulse, t2Imp);
+        St(ref g, f + W3D.MaxNormalImpulse, Vector256<float>.Zero);
+        St(ref g, f + W3D.Mask, mask);
     }
 
     /// <summary>The joint types whose three-row point block (always their last rows) is solved by <see cref="JointKernel3D"/>; their other rows stay in <see cref="SolveJoint"/>.</summary>
@@ -444,31 +892,57 @@ internal sealed partial class Engine3D
         else if (KernelWidth == 4) { IntegrateKernel3D.Velocities<Lanes128>(this, list, ctx.SubstepDt); }
         else { IntegrateKernel3D.Velocities<Lanes256>(this, list, ctx.SubstepDt); }
         if (RailHandles.Count != 0) { RailSubstep(list, ctx.SubstepDt); }
-        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitBodyControls(b);
+        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitSolveVelocity(b);
     }
 
     /// <summary>Displacement, rotations, world inverse inertia and the packed rows of the bodies of the list, eight at a time (see <see cref="IntegrateKernel3D"/>).</summary>
     public void IntegratePositions(ReadOnlySpan<int> list, in StepContext ctx)
     {
-        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitBodyControls(b);
+        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitSolveVelocity(b);
         if (KernelWidth == 1) { IntegrateKernel3D.Positions<Lanes1>(this, list, ctx.SubstepDt); }
         else if (KernelWidth == 4) { IntegrateKernel3D.Positions<Lanes128>(this, list, ctx.SubstepDt); }
         else { IntegrateKernel3D.Positions<Lanes256>(this, list, ctx.SubstepDt); }
-        if (Core.Controls.HasLocks) foreach (int b in list) { ProjectInertia(b); PackBody(b); }
+        if (Core.Controls.HasLocks) foreach (int b in list) { ProjectInertia(b); PackInertia(b); }
     }
 
     // ------------------------------------------------------------------ finalize: forces and continuous collision
 
     public void FinalizeBodies(ReadOnlySpan<int> list, in StepContext ctx)
     {
-        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitBodyControls(b);
+        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitSolveVelocity(b);
         var bodies = Core.Bodies;
+        // The solve kept every awake body's velocity in its packed row 0 (see Pk); it goes back to the body store here, before anything after the solve reads it.
+        Span<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
+        ReadOnlySpan<float> pk = Pk;
         foreach (int b in list)
         {
-            if (bodies.TypeOf(b) != BodyType.Dynamic) { continue; }
-            if (Opt.DetailedInspection) { Core.BodyReadback.Inputs(b, bodies.InverseMass[b], GravityScale[b], new(Force[3 * b], Force[3 * b + 1], Force[3 * b + 2]), new(Torque[3 * b], Torque[3 * b + 1], Torque[3 * b + 2]), Core.IntegratedTimeOfBody(b)); }
-            Force[3 * b] = 0f; Force[3 * b + 1] = 0f; Force[3 * b + 2] = 0f; Torque[3 * b] = 0f; Torque[3 * b + 1] = 0f; Torque[3 * b + 2] = 0f;
-            if (Opt.ContinuousEnabled) { Continuous(b); }
+            int b3 = 3 * b, o = PkStride * b;
+            Mem.At(lin, b3) = Mem.At(pk, o); Mem.At(lin, b3 + 1) = Mem.At(pk, o + 1); Mem.At(lin, b3 + 2) = Mem.At(pk, o + 2);
+            Mem.At(ang, b3) = Mem.At(pk, o + 3); Mem.At(ang, b3 + 1) = Mem.At(pk, o + 4); Mem.At(ang, b3 + 2) = Mem.At(pk, o + 5);
+        }
+
+        // The arrays are hoisted and Continuous's early-out (does the body move far enough, compared with its size, to need a cast) runs here, with the same arithmetic; only the bodies that pass
+        // it (a few dozen per step) enter the out-of-line Continuous, which takes the values computed here.
+        ReadOnlySpan<byte> type = bodies.Type;
+        ReadOnlySpan<double> pos = bodies.Position, sp = StartPos;
+        ReadOnlySpan<float> rot = bodies.Rotation, sr = StartRot, maxExt = MaxExtent, minExt = MinExtent;
+        Span<float> force = Force, torque = Torque;
+        bool inspect = Opt.DetailedInspection, ccd = Opt.ContinuousEnabled;
+        foreach (int b in list)
+        {
+            if ((BodyType)Mem.At(type, b) != BodyType.Dynamic) { continue; }
+            int b3 = 3 * b, b4 = 4 * b;
+            if (inspect) { Core.BodyReadback.Inputs(b, bodies.InverseMass[b], GravityScale[b], new(Force[b3], Force[b3 + 1], Force[b3 + 2]), new(Torque[b3], Torque[b3 + 1], Torque[b3 + 2]), Core.IntegratedTimeOfBody(b)); }
+            Mem.At(force, b3) = 0f; Mem.At(force, b3 + 1) = 0f; Mem.At(force, b3 + 2) = 0f; Mem.At(torque, b3) = 0f; Mem.At(torque, b3 + 1) = 0f; Mem.At(torque, b3 + 2) = 0f;
+            if (!ccd) { continue; }
+            var m = new Vector3F((float)(Mem.At(pos, b3) - Mem.At(sp, b3)), (float)(Mem.At(pos, b3 + 1) - Mem.At(sp, b3 + 1)), (float)(Mem.At(pos, b3 + 2) - Mem.At(sp, b3 + 2)));
+            var qStart = new QuaternionF(Mem.At(sr, b4), Mem.At(sr, b4 + 1), Mem.At(sr, b4 + 2), Mem.At(sr, b4 + 3));
+            var qEnd = new QuaternionF(Mem.At(rot, b4), Mem.At(rot, b4 + 1), Mem.At(rot, b4 + 2), Mem.At(rot, b4 + 3));
+            var rel = qStart.Conjugated().Times(qEnd);
+            float spin = 2f * float.Sqrt(rel.X * rel.X + rel.Y * rel.Y + rel.Z * rel.Z) * Mem.At(maxExt, b);
+            float len = float.Sqrt(m.X * m.X + m.Y * m.Y + m.Z * m.Z);
+            if (!float.IsFinite(len + spin) || !(len + spin > 0.5f * Mem.At(minExt, b)) || !(len > 0f)) { continue; } // non-finite motion is reported by the bounds check, not cast
+            Continuous(b, m, qStart, qEnd, spin, len);
         }
     }
 
@@ -557,20 +1031,14 @@ internal sealed partial class Engine3D
     /// speculative contact. The rotation is not part of these casts (it counts towards deciding that the body moved far enough to need one); the corners of boxes and hulls are swept through the turn
     /// separately, see <see cref="CornerSweep"/>.
     /// </summary>
-    private void Continuous(int b)
+    // Entered only for a body FinalizeBodies found moving far enough: the early-out test on m, spin and len lives there, and it hands over the values it computed.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void Continuous(int b, Vector3F m, QuaternionF qStart, QuaternionF qEnd, float spin, float len)
     {
         var bodies = Core.Bodies;
         var pos = bodies.PositionOf(b);
         var rot = bodies.RotationOf(b);
         double cx = StartPos[3 * b], cy = StartPos[3 * b + 1], cz = StartPos[3 * b + 2];
-        var m = new Vector3F((float)(pos[0] - cx), (float)(pos[1] - cy), (float)(pos[2] - cz));
-        var qStart = new QuaternionF(StartRot[4 * b], StartRot[4 * b + 1], StartRot[4 * b + 2], StartRot[4 * b + 3]);
-        var qEnd = new QuaternionF(rot[0], rot[1], rot[2], rot[3]);
-        var rel = qStart.Conjugated().Times(qEnd);
-        float spin = 2f * float.Sqrt(rel.X * rel.X + rel.Y * rel.Y + rel.Z * rel.Z) * MaxExtent[b];
-        float len = float.Sqrt(m.X * m.X + m.Y * m.Y + m.Z * m.Z);
-        if (!float.IsFinite(len + spin) || !(len + spin > 0.5f * MinExtent[b]) || !(len > 0f)) { return; } // non-finite motion is reported by the bounds check, not cast
-
         Core.BodyReadback.CcdState[b] = (byte)(1 | ((Core.Bodies.Flags[b] & (byte)BodyBits.Bullet) != 0 ? 4 : 0));
 
         // Nothing static near the whole sweep: no shape can touch anything, so skip the per-shape bounds and casts. The box holds every point of every shape at the start and the end pose
@@ -639,20 +1107,30 @@ internal sealed partial class Engine3D
 
     // ------------------------------------------------------------------ sleeping
 
+    // The sleep timers use MaxExtent and TouchesMovingKinematic directly (IWorldStages.MotionExtent); a change to this formula must change both or drop MotionExtent.
     public float BodyMotion(int b)
     {
         var bodies = Core.Bodies;
         // A body touching a moving kinematic body is not at rest.
+        if (TouchesMovingKinematic(b)) { return float.MaxValue; }
+        var v = bodies.LinearVelocityOf(b);
+        var w = bodies.AngularVelocityOf(b);
+        return float.Sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) + float.Sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]) * MaxExtent[b];
+    }
+
+    /// <summary>Whether the body touches (a contact with points) a kinematic body that moves; such a body is never at rest.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool TouchesMovingKinematic(int b)
+    {
+        var bodies = Core.Bodies;
         var cs = Core.Constraints;
         for (int e = bodies.FirstEdge(b); e >= 0; e = cs.NextEdge(e))
         {
             int c = e >> 1;
             int other = (e & 1) == 0 ? cs.BodyB[c] : cs.BodyA[c];
-            if (bodies.TypeOf(other) == BodyType.Kinematic && cs.PointCount[c] > 0 && IsActive(bodies, other)) { return float.MaxValue; }
+            if (bodies.TypeOf(other) == BodyType.Kinematic && cs.PointCount[c] > 0 && IsActive(bodies, other)) { return true; }
         }
 
-        var v = bodies.LinearVelocityOf(b);
-        var w = bodies.AngularVelocityOf(b);
-        return float.Sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) + float.Sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]) * MaxExtent[b];
+        return false;
     }
 }

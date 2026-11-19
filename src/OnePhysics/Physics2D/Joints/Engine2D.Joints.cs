@@ -431,8 +431,8 @@ internal sealed partial class Engine2D
             if (float.IsFinite(j.BreakForce) || float.IsFinite(j.BreakTorque))
             {
                 Core.JointReadback.Reaction(c, out double meanForce, out double meanTorque);
-                if (meanForce > j.BreakForce) { cs.Flags[c] |= (byte)ConstraintBits.BreakRequested; cs.BreakValue[c] = meanForce > float.MaxValue ? float.MaxValue : (float)meanForce; }
-                else if (meanTorque > j.BreakTorque) { cs.Flags[c] |= (byte)ConstraintBits.BreakRequested; cs.BreakValue[c] = meanTorque > float.MaxValue ? float.MaxValue : (float)meanTorque; }
+                if (meanForce > j.BreakForce) { cs.RequestBreak(c, meanForce > float.MaxValue ? float.MaxValue : (float)meanForce); }
+                else if (meanTorque > j.BreakTorque) { cs.RequestBreak(c, meanTorque > float.MaxValue ? float.MaxValue : (float)meanTorque); }
             }
         }
     }

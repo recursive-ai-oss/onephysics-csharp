@@ -39,7 +39,7 @@ internal readonly struct JointKernelParams
 /// K = (mA + mB)·1 + [rA]ᵀ·IA·[rA] + [rB]ᵀ·IB·[rB], where [r] is the cross-product matrix. The joints of a batch touch disjoint dynamic bodies, so lanes never depend on each other.
 /// </summary>
 [System.Runtime.CompilerServices.SkipLocalsInit]
-internal static class JointKernel3D
+internal static partial class JointKernel3D
 {
     private struct V3<T> where T : struct, ILane<T>
     {
@@ -88,36 +88,46 @@ internal static class JointKernel3D
     private static V3<T> Vec<T>(ReadOnlySpan<float> wide, int f, int lane0) where T : struct, ILane<T> => new(Field<T>(wide, f, lane0), Field<T>(wide, f + 1, lane0), Field<T>(wide, f + 2, lane0));
 
     /// <summary>
-    /// The state of the bodies on one side of a batch, one body per lane, by whole-row loads and a transpose (the same data movement as the contact kernel's): velocities from the velocity arrays,
-    /// displacement, accumulated rotation and world inverse inertia from the packed rows (<see cref="Engine3D.Pk"/>).
+    /// The state of the bodies on one side of a batch, one body per lane, by whole-row loads and a transpose (the same data movement as the contact kernel's) of the three packed rows
+    /// (<see cref="Engine3D.Pk"/>): velocities, world inverse inertia, displacement and accumulated rotation. Every joint pass needs all three (warm start turns the anchors to build the block inverse).
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void GatherBody<T>(out BodyLanes<T> r, ReadOnlySpan<float> lin, ReadOnlySpan<float> ang, ReadOnlySpan<float> pk, ReadOnlySpan<int> bodyIds, Span<int> offs, T invMass) where T : struct, ILane<T>
+    private static void GatherBody<T>(out BodyLanes<T> r, ReadOnlySpan<float> pk, ReadOnlySpan<int> bodyIds, T invMass) where T : struct, ILane<T>
     {
-        int width = T.Count;
-        for (int l = 0; l < width; l++) { offs[l] = 3 * bodyIds[l]; }
-        var v = T.GatherRows(lin, offs);
-        var w = T.GatherRows(ang, offs);
-        for (int l = 0; l < width; l++) { offs[l] = 16 * bodyIds[l]; }
-        var g0 = T.GatherRows(pk, offs);
-        for (int l = 0; l < width; l++) { offs[l] += 8; }
-        var g1 = T.GatherRows(pk, offs);
+        // Offsets are scaled from the body numbers inside the gathers (no offset table written and read back per gather).
+        var v = T.GatherRows(pk, bodyIds, Engine3D.PkStride, Engine3D.PkVelocity);
+        var i = T.GatherRows(pk, bodyIds, Engine3D.PkStride, Engine3D.PkInertia);
+        var p = T.GatherRows(pk, bodyIds, Engine3D.PkStride, Engine3D.PkPose);
         r = new BodyLanes<T>
         {
-            V = new V3<T>(v.R0, v.R1, v.R2), W = new V3<T>(w.R0, w.R1, w.R2), Dp = new V3<T>(g0.R0, g0.R1, g0.R2),
-            Qx = g0.R3, Qy = g0.R4, Qz = g0.R5, Qw = g0.R6,
-            I = new Sym<T> { M0 = g0.R7, M1 = g1.R0, M2 = g1.R1, M3 = g1.R2, M4 = g1.R3, M5 = g1.R4 },
+            V = new V3<T>(v.R0, v.R1, v.R2), W = new V3<T>(v.R3, v.R4, v.R5), Dp = new V3<T>(p.R0, p.R1, p.R2),
+            Qx = p.R3, Qy = p.R4, Qz = p.R5, Qw = p.R6,
+            I = new Sym<T> { M0 = i.R0, M1 = i.R1, M2 = i.R2, M3 = i.R3, M4 = i.R4, M5 = i.R5 },
             InvMass = invMass,
         };
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ScatterBody(Span<float> lin, Span<float> ang, ReadOnlySpan<float> os, int at, int first, int width)
+    private static void ScatterBody(Span<float> pk, ReadOnlySpan<float> os, int at, int first, int width)
     {
-        // at is a live dynamic body's slot (3 floats a body, set when the batch was prepared) and first + 5 * width + 1 stays inside the group's output rows.
-        Mem.Range(lin, at, 3); Mem.Range(ang, at, 3); Mem.Range(os, first, 5 * width + 1);
-        Mem.At(lin, at) = Mem.At(os, first); Mem.At(lin, at + 1) = Mem.At(os, first + width); Mem.At(lin, at + 2) = Mem.At(os, first + 2 * width);
-        Mem.At(ang, at) = Mem.At(os, first + 3 * width); Mem.At(ang, at + 1) = Mem.At(os, first + 4 * width); Mem.At(ang, at + 2) = Mem.At(os, first + 5 * width);
+        // at is a live dynamic body's packed velocity row (PkStride floats a body, set when the batch was prepared) and first + 5 * width + 1 stays inside the group's output rows.
+        Mem.Range(pk, at, 6); Mem.Range(os, first, 5 * width + 1);
+        Mem.At(pk, at) = Mem.At(os, first); Mem.At(pk, at + 1) = Mem.At(os, first + width); Mem.At(pk, at + 2) = Mem.At(os, first + 2 * width);
+        Mem.At(pk, at + 3) = Mem.At(os, first + 3 * width); Mem.At(pk, at + 4) = Mem.At(os, first + 4 * width); Mem.At(pk, at + 5) = Mem.At(os, first + 5 * width);
+    }
+
+    /// <summary>Writes the velocities of the lanes from <paramref name="l0"/> up to <paramref name="end"/> (at most <paramref name="width"/> of them) from the output rows to their bodies' packed velocity rows.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ScatterLanes(Span<float> pk, ReadOnlySpan<float> os, ReadOnlySpan<int> idx, int l0, int end, int width)
+    {
+        for (int l = 0; l < width && l0 + l < end; l++)
+        {
+            // Scatter offsets are body indices of dynamic bodies, or -1 for a body that keeps its velocity.
+            int ia = idx[16 + l0 + l];
+            if (ia >= 0) { ScatterBody(pk, os, Engine3D.PkStride * ia, l, width); }
+            int ib = idx[24 + l0 + l];
+            if (ib >= 0) { ScatterBody(pk, os, Engine3D.PkStride * ib, l + 6 * width, width); }
+        }
     }
 
     /// <summary>q v q⁻¹ for a unit quaternion: v + w·t + u × t with t = 2 u × v.</summary>
@@ -257,11 +267,8 @@ internal static class JointKernel3D
         var diagnostics = e.Core.JointReadback.Enabled ? e.Core.JointReadback.WideScratch.AsSpan(group * 96, 96) : Span<float>.Empty;
         var wide = e.WideJ.AsSpan(group * J3D.GroupFloats, J3D.GroupFloats);
         var idx = e.WideJIdx.AsSpan(group * J3D.IdxPerGroup, J3D.IdxPerGroup);
-        var bodies = e.Core.Bodies;
-        ReadOnlySpan<float> lin = bodies.LinearVelocityPadded, ang = bodies.AngularVelocityPadded;
-        ReadOnlySpan<float> pk = e.Pk;
-        Span<int> offs = stackalloc int[8];
-        Span<float> linW = bodies.LinearVelocity, angW = bodies.AngularVelocity;
+        // The bodies' velocities live in their packed rows for the whole solve (see Engine3D.Pk).
+        Span<float> pk = e.Pk;
         Span<float> os = e.WideJ.AsSpan(group * J3D.GroupFloats + J3D.OutOffset, J3D.OutFloats);
         T two = T.Broadcast(2f);
         bool warm = phase == SolvePhase.WarmStart;
@@ -271,9 +278,16 @@ internal static class JointKernel3D
 
         for (int l0 = lane0; l0 < lane0 + n; l0 += width)
         {
-            GatherBody<T>(out var a, lin, ang, pk, idx.Slice(l0, width), offs, Field<T>(wide, J3D.InvMassA, l0));
-            GatherBody<T>(out var b2, lin, ang, pk, idx.Slice(8 + l0, width), offs, Field<T>(wide, J3D.InvMassB, l0));
+            GatherBody<T>(out var a, pk, idx.Slice(l0, width), Field<T>(wide, J3D.InvMassA, l0));
+            GatherBody<T>(out var b2, pk, idx.Slice(8 + l0, width), Field<T>(wide, J3D.InvMassB, l0));
             var imp = Vec<T>(wide, J3D.Impulse, l0);
+            // Eight lanes with the readback off take the rows written directly on 256-bit vectors (same operations in the same order, see Rows256); it also writes the output rows and the impulse.
+            if (typeof(T) == typeof(Lanes256) && diagnostics.IsEmpty && System.Runtime.Intrinsics.X86.Avx.IsSupported)
+            {
+                Rows256(ref Mem.AsRows(ref a), ref Mem.AsRows(ref b2), ref Mem.Base(wide, J3D.GroupFloats), pk, ref idx[16 + l0], lane0 + n - l0, warm, useBias ? kp.MassScale : 1f, useBias ? kp.BiasTerm : 0f, useBias ? kp.ImpulseScale : 0f);
+                continue;
+            }
+
             if (warm) { WarmStart(ref a, ref b2, wide, l0, imp, two, diagnostics); }
             else { SolveBlock(ref a, ref b2, wide, l0, ref imp, ms, kk, isc, two, diagnostics); }
 
@@ -281,14 +295,7 @@ internal static class JointKernel3D
             a.W.X.StoreAt(os, 3 * width); a.W.Y.StoreAt(os, 4 * width); a.W.Z.StoreAt(os, 5 * width);
             b2.V.X.StoreAt(os, 6 * width); b2.V.Y.StoreAt(os, 7 * width); b2.V.Z.StoreAt(os, 8 * width);
             b2.W.X.StoreAt(os, 9 * width); b2.W.Y.StoreAt(os, 10 * width); b2.W.Z.StoreAt(os, 11 * width);
-            for (int l = 0; l < width && l0 + l < lane0 + n; l++)
-            {
-                // Scatter offsets are body indices of dynamic bodies, or -1 for a body that keeps its velocity.
-                int ia = idx[16 + l0 + l];
-                if (ia >= 0) { ScatterBody(linW, angW, os, 3 * ia, l, width); }
-                int ib = idx[24 + l0 + l];
-                if (ib >= 0) { ScatterBody(linW, angW, os, 3 * ib, l + 6 * width, width); }
-            }
+            ScatterLanes(pk, os, idx, l0, lane0 + n, width);
 
             if (warm) { continue; }
             imp.X.StoreAt(wide, (J3D.Impulse + 0) * 8 + l0); imp.Y.StoreAt(wide, (J3D.Impulse + 1) * 8 + l0); imp.Z.StoreAt(wide, (J3D.Impulse + 2) * 8 + l0);

@@ -39,6 +39,8 @@ internal sealed partial class Engine3D
         _active = (byte[])s._active.Clone();
         _boxStamp = (int[])s._boxStamp.Clone();
         _boxInside = (byte[])s._boxInside.Clone();
+        // The prepared-move scratch of the contact stage holds nothing between steps; it only has to be as long as the stamps.
+        _moveState = new byte[s._moveState.Length]; _moveBox = new Aabb3D[s._moveBox.Length];
         _stamp = s._stamp;
         _boxes = (double[])s._boxes.Clone();
         _updateList = (int[])s._updateList.Clone();
@@ -53,6 +55,7 @@ internal sealed partial class Engine3D
         _initCount = s._initCount;
         _applyIdx = (int[])s._applyIdx.Clone();
         _applyCount = (int[])s._applyCount.Clone();
+        _writeMask = (ulong[])s._writeMask.Clone();
         _pairChunkCount = (int[])s._pairChunkCount.Clone();
         _skip = (SkipFrame3[])s._skip.Clone();
         RecycleManifolds = s.RecycleManifolds;

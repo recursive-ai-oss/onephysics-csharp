@@ -43,6 +43,7 @@ public sealed partial class PhysicsWorld3D
     {
         _core = core; _engine = engine; engine.World = this; BindBodyControlOptions();
         _mixedQueries = new PhysicsQuery3D(this);
+        _core.PostStepFlush = MaterializeEvents;
         BuildPublicEvents();
     }
 

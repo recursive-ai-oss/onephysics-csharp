@@ -101,6 +101,46 @@ internal static class Mem
         return ref Unsafe.Add(ref MemoryMarshal.GetReference(s), offset);
     }
 
+    /// <summary>Element <paramref name="offset"/> of a double span without a bounds check; the caller has established the range (for FinalizeBodies' positions).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref readonly double At(ReadOnlySpan<double> s, int offset)
+    {
+        RangeIndex(offset, s.Length);
+        return ref Unsafe.Add(ref MemoryMarshal.GetReference(s), offset);
+    }
+
+    /// <summary>Element <paramref name="index"/> of an array without a bounds check; the caller has established the range (the narrowphase box phase: indices taken from the pair table and the update list, which were validated when the pairs were made).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref T At<T>(T[] a, int index)
+    {
+        RangeIndex(index, a.Length);
+        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(a), index);
+    }
+
+    /// <summary>A reference to the first element of an array, the base for <see cref="Add"/> in a loop that hoists its arrays. No check at all: the caller owns every index it adds.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref T Ref<T>(T[] a) => ref MemoryMarshal.GetArrayDataReference(a);
+
+    /// <summary>A reference to the first element of a span (see <see cref="Ref{T}(T[])"/>).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref T Ref<T>(Span<T> s) => ref MemoryMarshal.GetReference(s);
+
+    /// <summary>A reference to the first element of a read-only span (see <see cref="Ref{T}(T[])"/>).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref T Ref<T>(ReadOnlySpan<T> s) => ref MemoryMarshal.GetReference(s);
+
+    /// <summary>The element <paramref name="offset"/> places after <paramref name="r"/>, unchecked.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref T Add<T>(ref T r, int offset) => ref Unsafe.Add(ref r, offset);
+
+    /// <summary>The same memory read as another type (a struct of floats as its first float, a row block as its first row); the caller knows the layout.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref TTo As<TFrom, TTo>(ref TFrom r) => ref Unsafe.As<TFrom, TTo>(ref r);
+
+    /// <summary><paramref name="count"/> elements starting at <paramref name="r"/> as a read-only span, unchecked.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ReadOnlySpan<T> ReadOnly<T>(ref T r, int count) => MemoryMarshal.CreateReadOnlySpan(ref r, count);
+
     [Conditional("CHECKED")]
     private static void RangeIndex(int offset, int length)
     {
@@ -125,6 +165,32 @@ internal static class Mem
     private static void CheckItem(int i)
     {
         if ((uint)i >= 32u) { throw new InvalidOperationException("kernel table index " + i + " outside a group"); }
+    }
+
+    /// <summary>A reference to row <paramref name="row"/> of a 3D wide group (rows of eight floats, one per lane) that starts at <paramref name="group"/>; the caller keeps the row below the group's row count, which the group's <see cref="Base(Span{float}, int)"/> covered.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref float Row(ref float group, int row)
+    {
+        CheckRow(row);
+        return ref Unsafe.Add(ref group, row * 8);
+    }
+
+    /// <summary>Vector <paramref name="row"/> of a block of 256-bit vectors (a 3D kernel's gathered bodies, twenty vectors a side); the caller keeps the row inside the block.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Vector256<float> Row(ref Vector256<float> block, int row)
+    {
+        CheckItem(row);
+        return Unsafe.Add(ref block, row);
+    }
+
+    /// <summary>A block of 256-bit lane vectors seen as its first vector (see <see cref="Row(ref Vector256{float}, int)"/>). <typeparamref name="TBlock"/> is a struct made of nothing but eight-lane vectors.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref Vector256<float> AsRows<TBlock>(ref TBlock block) where TBlock : struct => ref Unsafe.As<TBlock, Vector256<float>>(ref block);
+
+    [Conditional("CHECKED")]
+    private static void CheckRow(int row)
+    {
+        if ((uint)row >= 128u) { throw new InvalidOperationException("kernel row " + row + " outside a group"); }
     }
 
     /// <summary>Declares a scratch buffer without clearing it; the caller writes every element it reads.</summary>

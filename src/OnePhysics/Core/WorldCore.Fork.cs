@@ -50,6 +50,8 @@ public sealed partial class WorldCore
         _forcedCount = s._forcedCount;
         _partTmp = (int[])s._partTmp.Clone();
         _awakeBlockCounts = (int[])s._awakeBlockCounts.Clone();
+        _awakeBlockKinematic = (byte[])s._awakeBlockKinematic.Clone();
+        AwakeHasKinematic = s.AwakeHasKinematic;
         s._tStart.CopyTo(_tStart, 0);
         s._tCount.CopyTo(_tCount, 0);
         s._progConstraints.CopyTo(_progConstraints, 0);
@@ -61,6 +63,9 @@ public sealed partial class WorldCore
         _stageKind = (int[])s._stageKind.Clone();
         _stageArg = (int[])s._stageArg.Clone();
         _stageTasks = (int[])s._stageTasks.Clone();
+        _stageAux = (int[])s._stageAux.Clone();
+        _runItem = (int[])s._runItem.Clone();
+        _runCount = s._runCount;
         _stageCount = s._stageCount;
         _stageMostTasks = s._stageMostTasks;
         _sleepRested = (int[])s._sleepRested.Clone();

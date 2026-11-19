@@ -107,7 +107,7 @@ internal sealed partial class Engine3D
     }
     public void EndBodyControls()
     {
-        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in Core.AwakeBodies) LimitBodyControls(b);
+        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in Core.AwakeBodies) LimitBodyControls(b, Core.Bodies.LinearVelocityOf(b), Core.Bodies.AngularVelocityOf(b));
         if (!Core.Controls.Active) return;
         for (int b = 0; b < Core.Bodies.HighWater; b++)
         {
@@ -124,12 +124,14 @@ internal sealed partial class Engine3D
         double length2 = 0; for (int k = 0; k < v.Length; k++) length2 += (double)v[k] * v[k];
         if (length2 > (double)limit * limit) { float scale = (float)(limit / double.Sqrt(length2)); if (scale > 0) scale = float.BitDecrement(scale); for (int k = 0; k < v.Length; k++) v[k] *= scale; }
     }
-    private void LimitBodyControls(int b)
+    // The locks and speed caps of one body applied to its velocity where it currently lives: the body store between steps, the packed row inside the solve (LimitSolveVelocity).
+    private void LimitBodyControls(int b, Span<float> v, Span<float> w)
     {
-        Core.ProjectBodyVelocity(b); var s = Core.Controls.Get(b).Settings;
-        LimitVector(Core.Bodies.LinearVelocityOf(b), Math.Min(Opt.MaxLinearSpeed, s.MaxLinearSpeed));
-        LimitVector(Core.Bodies.AngularVelocityOf(b), Math.Min(Core.Controls.DefaultAngularSpeed, s.MaxAngularSpeed));
+        Core.ProjectBodyVelocity(b, v, w); var s = Core.Controls.Get(b).Settings;
+        LimitVector(v, Math.Min(Opt.MaxLinearSpeed, s.MaxLinearSpeed));
+        LimitVector(w, Math.Min(Core.Controls.DefaultAngularSpeed, s.MaxAngularSpeed));
     }
+    private void LimitSolveVelocity(int b) { var vw = SolveVelocity(b); LimitBodyControls(b, vw.Slice(0, 3), vw.Slice(3, 3)); }
     private bool JointIsLocked(int c) => Core.Controls.HasLocks && (Core.Controls.ConstraintsOf(Core.Constraints.BodyA[c]) | Core.Controls.ConstraintsOf(Core.Constraints.BodyB[c])) != 0;
     private void ProjectInertia(int b)
     {

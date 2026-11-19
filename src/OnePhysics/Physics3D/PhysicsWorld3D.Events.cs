@@ -11,6 +11,14 @@ public sealed partial class PhysicsWorld3D : ICallbackGate
     private readonly Dictionary<int, Handlers> _handlers = new();
     private PhysicsEvent[] _publicEvents = new PhysicsEvent[16];
     private int _publicEventCount;
+    private bool _eventsPending; // _publicEvents is owed for the last step: built by the first read of Events, a dispatch, or the first change to the world (WorldCore.FlushPostStep)
+
+    private void MaterializeEvents()
+    {
+        if (!_eventsPending) { return; }
+        _eventsPending = false;
+        BuildPublicEvents();
+    }
     private readonly Dictionary<(int, int, int, int), int> _pairIndex = new();
     private PairAgg[] _aggs = new PairAgg[16];
 
