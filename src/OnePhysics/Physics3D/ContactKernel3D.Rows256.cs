@@ -15,10 +15,11 @@ internal static partial class ContactKernel3D
     /// method needs few registers and no spills. The generic kernel reaches the same rows through methods that each take the bodies by reference, because the runtime
     /// stops inlining lane operations in a method that large; here there are no lane calls to inline. Every expression is the generic kernel's, operation for operation in the same order, so the bits are
     /// those of every other width (the hash matrix compares them). <paramref name="a"/> and <paramref name="b"/> are the gathered bodies (the twenty vectors of BodyLanes in declaration order);
-    /// the velocities go to the group's output rows <paramref name="os"/>, impulses to the group <paramref name="g"/>.
+    /// impulses go to the group <paramref name="g"/>. r4 h06: the velocities go straight back to the bodies' packed velocity rows in <paramref name="pk"/> (<see cref="Engine3D.Pk"/>): the twelve velocity
+    /// vectors are transposed in registers and every written body (scatter row numbers from <paramref name="scatter"/>: A's eight, then B's eight; −1 keeps the body's row) takes one 32-byte store.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void Rows256(ref Vector256<float> a, ref Vector256<float> b, ref float g, ref float os, int maxPts, SolvePhase phase, bool anyRolling, float inverseSubstepDt, float linearSlop, float pushOutVelocity)
+    private static void Rows256(ref Vector256<float> a, ref Vector256<float> b, ref float g, Span<float> pk, ref int scatter, int lanes, int maxPts, SolvePhase phase, bool anyRolling, float inverseSubstepDt, float linearSlop, float pushOutVelocity)
     {
         Vector256<float> aVx = a, aVy = Mem.Row(ref a, 1), aVz = Mem.Row(ref a, 2), aWx = Mem.Row(ref a, 3), aWy = Mem.Row(ref a, 4), aWz = Mem.Row(ref a, 5);
         Vector256<float> bVx = b, bVy = Mem.Row(ref b, 1), bVz = Mem.Row(ref b, 2), bWx = Mem.Row(ref b, 3), bWy = Mem.Row(ref b, 4), bWz = Mem.Row(ref b, 5);
@@ -199,7 +200,8 @@ internal static partial class ContactKernel3D
             rx.StoreUnsafe(ref g, W3D.RollImpulse * 8); ry.StoreUnsafe(ref g, (W3D.RollImpulse + 1) * 8); rz.StoreUnsafe(ref g, (W3D.RollImpulse + 2) * 8);
         }
 
-        aVx.StoreUnsafe(ref os, 0 * 8); aVy.StoreUnsafe(ref os, 1 * 8); aVz.StoreUnsafe(ref os, 2 * 8); aWx.StoreUnsafe(ref os, 3 * 8); aWy.StoreUnsafe(ref os, 4 * 8); aWz.StoreUnsafe(ref os, 5 * 8);
-        bVx.StoreUnsafe(ref os, 6 * 8); bVy.StoreUnsafe(ref os, 7 * 8); bVz.StoreUnsafe(ref os, 8 * 8); bWx.StoreUnsafe(ref os, 9 * 8); bWy.StoreUnsafe(ref os, 10 * 8); bWz.StoreUnsafe(ref os, 11 * 8);
+        // Rows [v.xyz, w.xyz, 0, 0], as PackBody wrote them.
+        Lanes256.ScatterRows(aVx, aVy, aVz, aWx, aWy, aWz, zero, zero, pk, ref scatter, lanes, Engine3D.PkStride, Engine3D.PkVelocity);
+        Lanes256.ScatterRows(bVx, bVy, bVz, bWx, bWy, bWz, zero, zero, pk, ref Unsafe.Add(ref scatter, 8), lanes, Engine3D.PkStride, Engine3D.PkVelocity);
     }
 }

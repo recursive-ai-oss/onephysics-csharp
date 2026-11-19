@@ -129,24 +129,25 @@ internal static partial class ContactKernel3D
     private static V3<T> StageVec<T>(ReadOnlySpan<float> stage, int f) where T : struct, ILane<T> => new(Stage<T>(stage, f), Stage<T>(stage, f + 1), Stage<T>(stage, f + 2));
 
     /// <summary>
-    /// The state of the bodies on one side of a batch, one body per lane, by whole-row loads and a transpose: velocities from the velocity arrays (three floats a body, read through an eight-float window whose
-    /// first three are the ones used), displacement, accumulated rotation and world inverse inertia from the packed rows (<see cref="Engine3D.Pk"/>).
+    /// The state of the bodies on one side of a batch, one body per lane, by whole-row loads and a transpose of the packed rows (<see cref="Engine3D.Pk"/>): row 0 the velocities, row 1 the world inverse
+    /// inertia and, with <paramref name="pose"/>, row 2 the displacement and accumulated rotation. Only the solve and relax rows read the pose (the separation update); warm start, restitution and the
+    /// preparation leave it out, and their Dp and Q lanes are then unassigned and never read.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void GatherBody<T, TMass>(out BodyLanes<T, TMass> r, ReadOnlySpan<float> lin, ReadOnlySpan<float> ang, ReadOnlySpan<float> pk, ReadOnlySpan<int> bodyIds, Span<int> offs, TMass invMass) where T : struct, ILane<T> where TMass : struct, ILinearMass<T, TMass>
+    private static void GatherBody<T, TMass>(out BodyLanes<T, TMass> r, ReadOnlySpan<float> pk, ReadOnlySpan<int> bodyIds, TMass invMass, bool pose) where T : struct, ILane<T> where TMass : struct, ILinearMass<T, TMass>
     {
         // Offsets are scaled from the body numbers inside the gathers (no offset table written and read back per gather).
-        var v = T.GatherRows(lin, bodyIds, 3, 0);
-        var w = T.GatherRows(ang, bodyIds, 3, 0);
-        var g0 = T.GatherRows(pk, bodyIds, 16, 0);
-        var g1 = T.GatherRows(pk, bodyIds, 16, 8);
-        r = new BodyLanes<T, TMass>
+        Unsafe.SkipInit(out r);
+        var v = T.GatherRows(pk, bodyIds, Engine3D.PkStride, Engine3D.PkVelocity);
+        var i = T.GatherRows(pk, bodyIds, Engine3D.PkStride, Engine3D.PkInertia);
+        r.V = new V3<T>(v.R0, v.R1, v.R2); r.W = new V3<T>(v.R3, v.R4, v.R5);
+        r.I = new Sym<T> { M0 = i.R0, M1 = i.R1, M2 = i.R2, M3 = i.R3, M4 = i.R4, M5 = i.R5 };
+        r.InvMass = invMass;
+        if (pose)
         {
-            V = new V3<T>(v.R0, v.R1, v.R2), W = new V3<T>(w.R0, w.R1, w.R2), Dp = new V3<T>(g0.R0, g0.R1, g0.R2),
-            Qx = g0.R3, Qy = g0.R4, Qz = g0.R5, Qw = g0.R6,
-            I = new Sym<T> { M0 = g0.R7, M1 = g1.R0, M2 = g1.R1, M3 = g1.R2, M4 = g1.R3, M5 = g1.R4 },
-            InvMass = invMass,
-        };
+            var p = T.GatherRows(pk, bodyIds, Engine3D.PkStride, Engine3D.PkPose);
+            r.Dp = new V3<T>(p.R0, p.R1, p.R2); r.Qx = p.R3; r.Qy = p.R4; r.Qz = p.R5; r.Qw = p.R6;
+        }
     }
 
     /// <summary>q v q⁻¹ for a unit quaternion: v + w·t + u × t with t = 2 u × v.</summary>
@@ -180,16 +181,15 @@ internal static partial class ContactKernel3D
     /// The per-point quantities of a freshly prepared group, for all eight lanes at once: the separation adjusted for the anchors' offset along the normal, the effective masses along the normal and both
     /// tangents, and the relative normal velocity. The bodies come from the same gathers the solver uses; the separation as made sits in the adjusted-separation row. Every lane does what one scalar lane does, in the same order.
     /// </summary>
-    public static void PrepareMasses<T>(Span<float> wide, ReadOnlySpan<int> idx, ReadOnlySpan<float> lin, ReadOnlySpan<float> ang, ReadOnlySpan<float> pk, int maxPoints) where T : struct, ILane<T>
+    public static void PrepareMasses<T>(Span<float> wide, ReadOnlySpan<int> idx, ReadOnlySpan<float> pk, int maxPoints) where T : struct, ILane<T>
     {
         int width = T.Count;
         T zero = T.Zero, one = T.Broadcast(1f);
-        Span<int> offs = stackalloc int[8];
         for (int l0 = 0; l0 < W3D.Lanes; l0 += width)
         {
-            // The bodies' world inverse inertias and velocities, gathered as the solver gathers them.
-            GatherBody<T, ScalarMass<T>>(out var ba, lin, ang, pk, idx.Slice(l0, width), offs, new ScalarMass<T> { Value = zero });
-            GatherBody<T, ScalarMass<T>>(out var bb, lin, ang, pk, idx.Slice(8 + l0, width), offs, new ScalarMass<T> { Value = zero });
+            // The bodies' world inverse inertias and velocities, gathered as the solver gathers them (the packed velocity rows hold the start-of-step velocities: no solve pass has run yet).
+            GatherBody<T, ScalarMass<T>>(out var ba, pk, idx.Slice(l0, width), new ScalarMass<T> { Value = zero }, false);
+            GatherBody<T, ScalarMass<T>>(out var bb, pk, idx.Slice(8 + l0, width), new ScalarMass<T> { Value = zero }, false);
             var iA = ba.I; var iB = bb.I;
             V3<T> vA = ba.V, wA = ba.W, vB = bb.V, wB = bb.W;
             T mA = Field<T>(wide, W3D.InvMassA, l0), mB = Field<T>(wide, W3D.InvMassB, l0);
@@ -264,18 +264,16 @@ internal static partial class ContactKernel3D
         // With no restitution in any lane the pass changes nothing (every lane's mask is clear and the selects keep the old bits), so the gather and scatter are skipped.
         if (phase == SolvePhase.Restitution && idx[W3D.AnyRestitutionSlot] == 0) { return; }
         var wide = e.Wide.AsSpan(group * stride, stride);
-        var bodies = e.Core.Bodies;
-        ReadOnlySpan<float> lin = bodies.LinearVelocityPadded, ang = bodies.AngularVelocityPadded;
-        ReadOnlySpan<float> pk = e.Pk;
-        Span<int> offs = stackalloc int[8];
-        Span<float> linW = bodies.LinearVelocity, angW = bodies.AngularVelocity;
+        // r4 h06: the bodies' velocities live in their packed rows for the whole solve (see Engine3D.Pk); they are gathered from and scattered back to row 0 there.
+        Span<float> pk = e.Pk;
         Span<float> os = e.Wide.AsSpan(group * stride + W3D.OutOffset, W3D.OutFloats);
         T two = T.Broadcast(2f), zero = T.Zero;
+        bool pose = phase == SolvePhase.Solve || phase == SolvePhase.Relax;
 
         for (int l0 = lane0; l0 < lane0 + n; l0 += width)
         {
-            GatherBody<T, TMass>(out var a, lin, ang, pk, idx.Slice(l0, width), offs, TMass.Read(wide, l0, false));
-            GatherBody<T, TMass>(out var b2, lin, ang, pk, idx.Slice(8 + l0, width), offs, TMass.Read(wide, l0, true));
+            GatherBody<T, TMass>(out var a, pk, idx.Slice(l0, width), TMass.Read(wide, l0, false), pose);
+            GatherBody<T, TMass>(out var b2, pk, idx.Slice(8 + l0, width), TMass.Read(wide, l0, true), pose);
             var nrm = Vec<T>(wide, W3D.N, l0);
             var t1 = Vec<T>(wide, W3D.T1, l0);
             var t2 = Vec<T>(wide, W3D.T2, l0);
@@ -286,7 +284,9 @@ internal static partial class ContactKernel3D
             bool direct = typeof(T) == typeof(Lanes256) && typeof(TMass) == typeof(ScalarMass<Lanes256>) && !TMode.Extended && phase != SolvePhase.Restitution && System.Runtime.Intrinsics.X86.Avx.IsSupported;
             if (direct)
             {
-                Rows256(ref Mem.AsRows(ref a), ref Mem.AsRows(ref b2), ref Mem.Base(wide, W3D.GroupFloats), ref Mem.Base(os, W3D.OutFloats), maxPts, phase, idx[W3D.AnyRollingSlot] != 0, kp.InverseSubstepDt, kp.LinearSlop, kp.PushOutVelocity);
+                // It also stores the velocities straight back to the packed rows (one row store per written body), so the scatter below is skipped.
+                Rows256(ref Mem.AsRows(ref a), ref Mem.AsRows(ref b2), ref Mem.Base(wide, W3D.GroupFloats), pk, ref idx[16 + l0], lane0 + n - l0, maxPts, phase, idx[W3D.AnyRollingSlot] != 0, kp.InverseSubstepDt, kp.LinearSlop, kp.PushOutVelocity);
+                continue;
             }
             else if (phase == SolvePhase.WarmStart)
             {
@@ -318,26 +318,23 @@ internal static partial class ContactKernel3D
                 for (int i = 0; i < maxPts; i++) { NormalPoint<T, TMass, TMode>(ref a, ref b2, wide, i, l0, nrm, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, zero, two); }
             }
 
-            // Velocities back out.
-            if (!direct)
-            {
-                a.V.X.StoreAt(os, 0 * width); a.V.Y.StoreAt(os, 1 * width); a.V.Z.StoreAt(os, 2 * width);
-                a.W.X.StoreAt(os, 3 * width); a.W.Y.StoreAt(os, 4 * width); a.W.Z.StoreAt(os, 5 * width);
-                b2.V.X.StoreAt(os, 6 * width); b2.V.Y.StoreAt(os, 7 * width); b2.V.Z.StoreAt(os, 8 * width);
-                b2.W.X.StoreAt(os, 9 * width); b2.W.Y.StoreAt(os, 10 * width); b2.W.Z.StoreAt(os, 11 * width);
-            }
+            // Velocities back out (the direct rows stored their own and continued above).
+            a.V.X.StoreAt(os, 0 * width); a.V.Y.StoreAt(os, 1 * width); a.V.Z.StoreAt(os, 2 * width);
+            a.W.X.StoreAt(os, 3 * width); a.W.Y.StoreAt(os, 4 * width); a.W.Z.StoreAt(os, 5 * width);
+            b2.V.X.StoreAt(os, 6 * width); b2.V.Y.StoreAt(os, 7 * width); b2.V.Z.StoreAt(os, 8 * width);
+            b2.W.X.StoreAt(os, 9 * width); b2.W.Y.StoreAt(os, 10 * width); b2.W.Z.StoreAt(os, 11 * width);
 
             for (int l = 0; l < width && l0 + l < lane0 + n; l++)
             {
                 // Scatter offsets are body indices of dynamic bodies, or -1 for a body that keeps its velocity.
                 int ia = idx[16 + l0 + l];
-                if (ia >= 0) { ScatterBody(linW, angW, os, 3 * ia, l, width); }
+                if (ia >= 0) { ScatterBody(pk, os, Engine3D.PkStride * ia, l, width); }
                 int ib = idx[24 + l0 + l];
-                if (ib >= 0) { ScatterBody(linW, angW, os, 3 * ib, l + 6 * width, width); }
+                if (ib >= 0) { ScatterBody(pk, os, Engine3D.PkStride * ib, l + 6 * width, width); }
             }
 
             // Point impulses were stored by the point methods. Restitution leaves the friction and rolling impulses alone.
-            if (phase == SolvePhase.WarmStart || direct) { continue; }
+            if (phase == SolvePhase.WarmStart) { continue; }
             if (phase != SolvePhase.Restitution)
             {
                 roll.X.StoreAt(wide, (W3D.RollImpulse + 0) * 8 + l0); roll.Y.StoreAt(wide, (W3D.RollImpulse + 1) * 8 + l0); roll.Z.StoreAt(wide, (W3D.RollImpulse + 2) * 8 + l0);
@@ -398,14 +395,14 @@ internal static partial class ContactKernel3D
         b2.W = V3<T>.Select(rollMask, bW, b2.W);
     }
 
-    /// <summary>Writes the velocities of one lane from the staged rows (<paramref name="first"/> is the lane's slot in the linear rows; the angular rows follow three rows later) to a body's three-float slots. The offset is a live dynamic body's, set when the batch was prepared.</summary>
+    /// <summary>Writes the velocities of one lane from the staged rows (<paramref name="first"/> is the lane's slot in the linear rows; the angular rows follow three rows later) to the first six floats of a body's packed velocity row. The offset is a live dynamic body's, set when the batch was prepared.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ScatterBody(Span<float> lin, Span<float> ang, ReadOnlySpan<float> os, int at, int first, int width)
+    private static void ScatterBody(Span<float> pk, ReadOnlySpan<float> os, int at, int first, int width)
     {
-        // at is a live dynamic body's slot (3 floats a body, set when the batch was prepared) and first + 5 * width + 1 stays inside the group's output rows.
-        Mem.Range(lin, at, 3); Mem.Range(ang, at, 3); Mem.Range(os, first, 5 * width + 1);
-        Mem.At(lin, at) = Mem.At(os, first); Mem.At(lin, at + 1) = Mem.At(os, first + width); Mem.At(lin, at + 2) = Mem.At(os, first + 2 * width);
-        Mem.At(ang, at) = Mem.At(os, first + 3 * width); Mem.At(ang, at + 1) = Mem.At(os, first + 4 * width); Mem.At(ang, at + 2) = Mem.At(os, first + 5 * width);
+        // at is a live dynamic body's velocity row (PkStride floats a body, set when the batch was prepared) and first + 5 * width + 1 stays inside the group's output rows.
+        Mem.Range(pk, at, 6); Mem.Range(os, first, 5 * width + 1);
+        Mem.At(pk, at) = Mem.At(os, first); Mem.At(pk, at + 1) = Mem.At(os, first + width); Mem.At(pk, at + 2) = Mem.At(os, first + 2 * width);
+        Mem.At(pk, at + 3) = Mem.At(os, first + 3 * width); Mem.At(pk, at + 4) = Mem.At(os, first + 4 * width); Mem.At(pk, at + 5) = Mem.At(os, first + 5 * width);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

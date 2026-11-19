@@ -1,4 +1,5 @@
 // The rows of the generic kernel in JointKernel3D.cs, expanded by hand for eight lanes on Vector256<float>; edit both together (the hash matrix's scalar and jit columns differ if they drift apart).
+using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using RecursiveAI.OnePhysics.Physics2D;
@@ -12,11 +13,12 @@ internal static partial class JointKernel3D
     /// <c>Rows256</c>: the bodies' velocities and the turned anchors stay in registers, everything else (inertia, masses, rotation, displacement, the group's fields) is read from memory where it is
     /// used. Every expression is the generic kernel's (<c>WarmStart</c>, <c>BuildInverse</c>, <c>Matrix</c>, <c>SolveBlock</c>, <c>Anchors</c>, <c>Block</c>, <c>Apply</c>), operation for operation in
     /// the same order, so the bits are those of every other width. <paramref name="a"/> and <paramref name="b"/> are the gathered bodies (the twenty vectors of BodyLanes in declaration order); the
-    /// velocities go to the output rows <paramref name="os"/>, the inverse block or the accumulated impulse to the group <paramref name="g"/>. The joint readback is not written here: the caller
-    /// takes the generic rows when it is on.
+    /// inverse block or the accumulated impulse go to the group <paramref name="g"/>. The joint readback is not written here: the caller takes the generic rows when it is on.
+    /// r4 h06: the velocities go straight back to the bodies' packed velocity rows in <paramref name="pk"/> (<see cref="Engine3D.Pk"/>), one 32-byte store per written body (scatter row numbers from
+    /// <paramref name="scatter"/>: A's eight, then B's eight; −1 keeps the body's row), as in the contact kernel's rows.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void Rows256(ref Vector256<float> a, ref Vector256<float> b, ref float g, ref float os, bool warm, float massScale, float biasTerm, float impulseScale)
+    private static void Rows256(ref Vector256<float> a, ref Vector256<float> b, ref float g, Span<float> pk, ref int scatter, int lanes, bool warm, float massScale, float biasTerm, float impulseScale)
     {
         Vector256<float> aVx = a, aVy = Mem.Row(ref a, 1), aVz = Mem.Row(ref a, 2), aWx = Mem.Row(ref a, 3), aWy = Mem.Row(ref a, 4), aWz = Mem.Row(ref a, 5);
         Vector256<float> bVx = b, bVy = Mem.Row(ref b, 1), bVz = Mem.Row(ref b, 2), bWx = Mem.Row(ref b, 3), bWy = Mem.Row(ref b, 4), bWz = Mem.Row(ref b, 5);
@@ -113,7 +115,9 @@ internal static partial class JointKernel3D
             Mem.StoreLanes(ref g, J3D.KInv + 3, inv * c11); Mem.StoreLanes(ref g, J3D.KInv + 4, inv * c12); Mem.StoreLanes(ref g, J3D.KInv + 5, inv * c22);
         }
 
-        aVx.StoreUnsafe(ref os, 0 * 8); aVy.StoreUnsafe(ref os, 1 * 8); aVz.StoreUnsafe(ref os, 2 * 8); aWx.StoreUnsafe(ref os, 3 * 8); aWy.StoreUnsafe(ref os, 4 * 8); aWz.StoreUnsafe(ref os, 5 * 8);
-        bVx.StoreUnsafe(ref os, 6 * 8); bVy.StoreUnsafe(ref os, 7 * 8); bVz.StoreUnsafe(ref os, 8 * 8); bWx.StoreUnsafe(ref os, 9 * 8); bWy.StoreUnsafe(ref os, 10 * 8); bWz.StoreUnsafe(ref os, 11 * 8);
+        // Rows [v.xyz, w.xyz, 0, 0], as PackBody wrote them.
+        Vector256<float> z = Vector256<float>.Zero;
+        Lanes256.ScatterRows(aVx, aVy, aVz, aWx, aWy, aWz, z, z, pk, ref scatter, lanes, Engine3D.PkStride, Engine3D.PkVelocity);
+        Lanes256.ScatterRows(bVx, bVy, bVz, bWx, bWy, bWz, z, z, pk, ref Unsafe.Add(ref scatter, 8), lanes, Engine3D.PkStride, Engine3D.PkVelocity);
     }
 }

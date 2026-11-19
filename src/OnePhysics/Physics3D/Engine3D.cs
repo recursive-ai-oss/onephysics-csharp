@@ -51,7 +51,12 @@ internal sealed partial class Engine3D : ISnapshotSection
     /// <summary>Per body, for the step's contact stage: how far its centre travels in the step (speed times the step) and how far its farthest point swings round the centre (angular speed times extent times the step; dynamic bodies only).</summary>
     internal float[] ReachLinear = new float[8], ReachTurn = new float[8], ReachSum = new float[8];
     public float[] Dq = new float[32];            // accumulated rotation over the step as a quaternion (x, y, z, w)
-    public float[] Pk = new float[16 * 8];        // per-step copy of Dp, Dq and WInvI side by side (16 floats a body) so the contact kernel reads one row per body; valid between the start of a step's contacts and its end
+    // r4 h06: the packed solver row, three 8-float rows a body (PkStride floats): row 0 (PkVelocity) the linear and angular velocity [v.xyz, w.xyz, 0, 0], row 1 (PkInertia) the world inverse inertia
+    // [xx xy xz yy yz zz, 0, 0], row 2 (PkPose) the displacement and accumulated rotation [dp.xyz, dq.xyzw, 0]. Written by PackBody when a step's contact stage initialises the body. Between then and
+    // FinalizeBodies row 0 is THE velocity of every awake body: the integration passes and both solver kernels read and write it there (one 32-byte row store per body), and BodyStore's velocity arrays
+    // are stale until FinalizeBodies copies row 0 back. Rows 1 and 2 hold the same floats as WInvI, Dp and Dq throughout the solve.
+    public float[] Pk = new float[PkStride * 8];
+    public const int PkStride = 24, PkVelocity = 0, PkInertia = 8, PkPose = 16;
     public float[] WInvI = new float[48];         // inverse inertia in world axes, refreshed whenever a body turns
     public float[] Wide = Array.Empty<float>();   // contact solver groups, one per batch (see W3D)
     public int[] WideIdx = Array.Empty<int>();
@@ -119,7 +124,7 @@ internal sealed partial class Engine3D : ISnapshotSection
         Grow(ref LocalCenter, 3 * n); Grow(ref Mass, n); Grow(ref Inertia, 6 * n); Grow(ref MaxExtent, n); Grow(ref MinExtent, n);
         Grow(ref LinearDamping, n); Grow(ref AngularDamping, n); Grow(ref GravityScale, n); Grow(ref Force, 3 * n); Grow(ref Torque, 3 * n);
         Grow(ref BodyFlags, n); Grow(ref ShapeHead, n); Grow(ref ShapeTail, n); Grow(ref Dp, 3 * n);
-        Grow(ref ReachLinear, n); Grow(ref ReachTurn, n); Grow(ref ReachSum, n); Grow(ref StartPos, 3 * n); Grow(ref StartRot, 4 * n); Grow(ref Dq, 4 * n); Grow(ref WInvI, 6 * n); Grow(ref Pk, 16 * n);
+        Grow(ref ReachLinear, n); Grow(ref ReachTurn, n); Grow(ref ReachSum, n); Grow(ref StartPos, 3 * n); Grow(ref StartRot, 4 * n); Grow(ref Dq, 4 * n); Grow(ref WInvI, 6 * n); Grow(ref Pk, PkStride * n);
     }
 
     public void EnsureShapes(int n)

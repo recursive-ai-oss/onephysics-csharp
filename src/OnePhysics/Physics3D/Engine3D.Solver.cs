@@ -23,16 +23,21 @@ internal sealed partial class Engine3D
 
     private static void Put(Span<float> a, int i, Vector3F v) { a[i] = v.X; a[i + 1] = v.Y; a[i + 2] = v.Z; }
 
-    /// <summary>Copies the displacement, accumulated rotation and world inverse inertia of a body into its packed row (see <see cref="Pk"/>).</summary>
+    /// <summary>Copies the velocities, world inverse inertia, displacement and accumulated rotation of a body into its packed rows (see <see cref="Pk"/>); from here to FinalizeBodies row 0 is the body's velocity.</summary>
     public void PackBody(int b)
     {
         // Every per-body array was sized for the world's high-water mark before any step or call that reaches here (EnsureBodies), so the unchecked accessors stay in range; the Checked build verifies each access.
         Span<float> r = Pk;
-        ReadOnlySpan<float> dp = Dp, dq = Dq, w = WInvI;
-        int o = 16 * b, p3 = 3 * b, p4 = 4 * b, p6 = 6 * b;
+        var bodies = Core.Bodies;
+        ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity, dp = Dp, dq = Dq, w = WInvI;
+        int o = PkStride * b, p3 = 3 * b, p4 = 4 * b, p6 = 6 * b;
+        Mem.At(r, o) = Mem.At(lin, p3); Mem.At(r, o + 1) = Mem.At(lin, p3 + 1); Mem.At(r, o + 2) = Mem.At(lin, p3 + 2);
+        Mem.At(r, o + 3) = Mem.At(ang, p3); Mem.At(r, o + 4) = Mem.At(ang, p3 + 1); Mem.At(r, o + 5) = Mem.At(ang, p3 + 2); Mem.At(r, o + 6) = 0f; Mem.At(r, o + 7) = 0f;
+        o += PkInertia;
+        Mem.At(r, o) = Mem.At(w, p6); Mem.At(r, o + 1) = Mem.At(w, p6 + 1); Mem.At(r, o + 2) = Mem.At(w, p6 + 2); Mem.At(r, o + 3) = Mem.At(w, p6 + 3); Mem.At(r, o + 4) = Mem.At(w, p6 + 4); Mem.At(r, o + 5) = Mem.At(w, p6 + 5); Mem.At(r, o + 6) = 0f; Mem.At(r, o + 7) = 0f;
+        o += PkPose - PkInertia;
         Mem.At(r, o) = Mem.At(dp, p3); Mem.At(r, o + 1) = Mem.At(dp, p3 + 1); Mem.At(r, o + 2) = Mem.At(dp, p3 + 2);
-        Mem.At(r, o + 3) = Mem.At(dq, p4); Mem.At(r, o + 4) = Mem.At(dq, p4 + 1); Mem.At(r, o + 5) = Mem.At(dq, p4 + 2); Mem.At(r, o + 6) = Mem.At(dq, p4 + 3);
-        Mem.At(r, o + 7) = Mem.At(w, p6); Mem.At(r, o + 8) = Mem.At(w, p6 + 1); Mem.At(r, o + 9) = Mem.At(w, p6 + 2); Mem.At(r, o + 10) = Mem.At(w, p6 + 3); Mem.At(r, o + 11) = Mem.At(w, p6 + 4); Mem.At(r, o + 12) = Mem.At(w, p6 + 5);
+        Mem.At(r, o + 3) = Mem.At(dq, p4); Mem.At(r, o + 4) = Mem.At(dq, p4 + 1); Mem.At(r, o + 5) = Mem.At(dq, p4 + 2); Mem.At(r, o + 6) = Mem.At(dq, p4 + 3); Mem.At(r, o + 7) = 0f;
     }
 
     /// <summary>Refreshes one body's world-axes inverse inertia from the current rotation (for impulses applied between steps).</summary>
@@ -298,10 +303,10 @@ internal sealed partial class Engine3D
 
         if (lane > 0)
         {
-            ReadOnlySpan<float> linP = bodies.LinearVelocityPadded, angP = bodies.AngularVelocityPadded;
-            if (KernelWidth == 1) { ContactKernel3D.PrepareMasses<Lanes1>(w, idx, linP, angP, Pk, maxPoints); }
-            else if (KernelWidth == 4) { ContactKernel3D.PrepareMasses<Lanes128>(w, idx, linP, angP, Pk, maxPoints); }
-            else { ContactKernel3D.PrepareMasses<Lanes256>(w, idx, linP, angP, Pk, maxPoints); }
+            // The velocities come from the packed rows, which hold the start-of-step velocities here (no solve pass has run yet).
+            if (KernelWidth == 1) { ContactKernel3D.PrepareMasses<Lanes1>(w, idx, Pk, maxPoints); }
+            else if (KernelWidth == 4) { ContactKernel3D.PrepareMasses<Lanes128>(w, idx, Pk, maxPoints); }
+            else { ContactKernel3D.PrepareMasses<Lanes256>(w, idx, Pk, maxPoints); }
         }
 
         if (Core.Controls.Active) PrepareControlledContacts(constraints);
@@ -463,6 +468,16 @@ internal sealed partial class Engine3D
     {
         if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitBodyControls(b);
         var bodies = Core.Bodies;
+        // r4 h06: the solve kept every awake body's velocity in its packed row 0 (see Pk); it goes back to the body store here, before anything after the solve reads it.
+        Span<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
+        ReadOnlySpan<float> pk = Pk;
+        foreach (int b in list)
+        {
+            int b3 = 3 * b, o = PkStride * b;
+            Mem.At(lin, b3) = Mem.At(pk, o); Mem.At(lin, b3 + 1) = Mem.At(pk, o + 1); Mem.At(lin, b3 + 2) = Mem.At(pk, o + 2);
+            Mem.At(ang, b3) = Mem.At(pk, o + 3); Mem.At(ang, b3 + 1) = Mem.At(pk, o + 4); Mem.At(ang, b3 + 2) = Mem.At(pk, o + 5);
+        }
+
         foreach (int b in list)
         {
             if (bodies.TypeOf(b) != BodyType.Dynamic) { continue; }
