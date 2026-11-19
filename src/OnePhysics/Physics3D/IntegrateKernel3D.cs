@@ -383,11 +383,16 @@ internal static class IntegrateKernel3D
     /// The position pass's staging rows for eight bodies, by whole-row loads and transposes: velocities, world inverse inertia, displacement and accumulated rotation from the three packed rows
     /// (<see cref="Engine3D.Pk"/>: row 0 is the velocity through the solve, rows 1 and 2 hold the same floats as WInvI, Dp and Dq, and this pass is what writes them), rotation and local inverse inertia by
     /// exact four-float loads, the inverse mass lane by lane.
+    /// Returns the mask of lanes (bit l = ids[l]) whose body is dynamic and whose velocity <see cref="SaneRow"/> could change: a component NaN or beyond its cap, or a squared length above
+    /// (a hair under) the squared cap. Sane changes nothing for any other lane, so the caller only runs SaneRow for these and gathers again (r4 h14; the test is conservative, never short).
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void GatherPositions256(Span<float> st, ReadOnlySpan<int> ids, ReadOnlySpan<float> pk, ReadOnlySpan<float> rot, ReadOnlySpan<float> invI, ReadOnlySpan<float> invMass)
+    private static int GatherPositions256(Span<float> st, ReadOnlySpan<int> ids, ReadOnlySpan<float> pk, ReadOnlySpan<float> rot, ReadOnlySpan<float> invI, ReadOnlySpan<float> invMass, float speedCap, float spinCap)
     {
         var v = Lanes256.GatherRows(pk, ids, Engine3D.PkStride, Engine3D.PkVelocity);
+        var im = Lanes256.GatherOne(invMass, ids);
+        Vector256<float> bad = Vector256.BitwiseOr(Unsane(v.R0.AsVector256, v.R1.AsVector256, v.R2.AsVector256, speedCap), Unsane(v.R3.AsVector256, v.R4.AsVector256, v.R5.AsVector256, spinCap));
+        int mask = (int)Vector256.ExtractMostSignificantBits(Vector256.BitwiseAnd(bad, Vector256.GreaterThan(im.AsVector256, Vector256<float>.Zero)));
         v.R0.StoreAt(st, PLin * Lanes); v.R1.StoreAt(st, (PLin + 1) * Lanes); v.R2.StoreAt(st, (PLin + 2) * Lanes);
         v.R3.StoreAt(st, PAng * Lanes); v.R4.StoreAt(st, (PAng + 1) * Lanes); v.R5.StoreAt(st, (PAng + 2) * Lanes);
         var p = Lanes256.GatherRows(pk, ids, Engine3D.PkStride, Engine3D.PkPose);
@@ -401,7 +406,18 @@ internal static class IntegrateKernel3D
         Lanes256.GatherRows4(invI, ids, 6, 0, out var i0, out var i1, out var i2, out var i3);
         Lanes256.GatherRows4(invI, ids, 6, 2, out _, out _, out var i4, out var i5);
         i0.StoreAt(st, PInvI * Lanes); i1.StoreAt(st, (PInvI + 1) * Lanes); i2.StoreAt(st, (PInvI + 2) * Lanes); i3.StoreAt(st, (PInvI + 3) * Lanes); i4.StoreAt(st, (PInvI + 4) * Lanes); i5.StoreAt(st, (PInvI + 5) * Lanes);
-        Lanes256.GatherOne(invMass, ids).StoreAt(st, PInvMass * Lanes);
+        im.StoreAt(st, PInvMass * Lanes);
+        return mask;
+    }
+
+    /// <summary>Lanes where <see cref="Sane"/> with this cap could change the vector: !(|c| &lt;= cap) catches NaN and a component past the cap; the length test uses a cap squared a hair low, so rounding can only add lanes.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector256<float> Unsane(Vector256<float> x, Vector256<float> y, Vector256<float> z, float cap)
+    {
+        var c = Vector256.Create(cap);
+        var ok = Vector256.BitwiseAnd(Vector256.BitwiseAnd(Vector256.LessThanOrEqual(Vector256.Abs(x), c), Vector256.LessThanOrEqual(Vector256.Abs(y), c)), Vector256.LessThanOrEqual(Vector256.Abs(z), c));
+        var s2 = x * x + y * y + z * z;
+        return Vector256.BitwiseOr(Vector256.OnesComplement(ok), Vector256.GreaterThan(s2, Vector256.Create(cap * cap * 0.999f)));
     }
 
     /// <summary>
@@ -444,15 +460,15 @@ internal static class IntegrateKernel3D
             bool rows = typeof(T) == typeof(Lanes256) && n == Lanes && System.Runtime.Intrinsics.X86.Avx.IsSupported;
             if (rows)
             {
+                // r4 h14: gather first and test the eight velocities in lanes; only a chunk with a lane Sane could change runs the scalar clamp on those lanes and gathers again (same staged values
+                // as clamping every body first, which is what the scalar path below does).
                 var ids = list.Slice(i0, Lanes);
-                for (int l = 0; l < Lanes; l++)
+                int bad = GatherPositions256(st, ids, pk, rot, invI, invMass, speedCap, spinCap);
+                if (bad != 0)
                 {
-                    int b = ids[l];
-                    if (!(Mem.At(invMass, b) > 0f)) { continue; }
-                    SaneRow(pk, Engine3D.PkStride * b + Engine3D.PkVelocity, speedCap, spinCap);
+                    for (int l = 0; l < Lanes; l++) { if ((bad & (1 << l)) != 0) { SaneRow(pk, Engine3D.PkStride * ids[l] + Engine3D.PkVelocity, speedCap, spinCap); } }
+                    GatherPositions256(st, ids, pk, rot, invI, invMass, speedCap, spinCap);
                 }
-
-                GatherPositions256(st, ids, pk, rot, invI, invMass);
             }
             else
             {

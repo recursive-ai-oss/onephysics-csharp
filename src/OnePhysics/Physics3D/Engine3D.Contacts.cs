@@ -43,6 +43,10 @@ internal readonly struct Stages3D : IWorldStages
 
     public float BodyMotion(WorldCore world, int body) => _e.BodyMotion(body);
 
+    public float[]? MotionExtent(WorldCore world) => _e.MaxExtent;
+
+    public bool TouchesMovingKinematic(WorldCore world, int body) => _e.TouchesMovingKinematic(body);
+
     public void FinalizeBodies(WorldCore world, ReadOnlySpan<int> bodies, in StepContext context) => _e.FinalizeBodies(bodies, in context);
 
     // Spelled out because calling a default interface member on a struct boxes it: that was 48 bytes allocated by every step.

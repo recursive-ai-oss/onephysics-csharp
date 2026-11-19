@@ -921,12 +921,28 @@ internal sealed partial class Engine3D
             Mem.At(ang, b3) = Mem.At(pk, o + 3); Mem.At(ang, b3 + 1) = Mem.At(pk, o + 4); Mem.At(ang, b3 + 2) = Mem.At(pk, o + 5);
         }
 
+        // r4 h14: the arrays are hoisted and Continuous's early-out (does the body move far enough, compared with its size, to need a cast) runs here, with the same arithmetic; only the bodies that pass
+        // it (a few dozen per step) enter the out-of-line Continuous, which takes the values computed here.
+        ReadOnlySpan<byte> type = bodies.Type;
+        ReadOnlySpan<double> pos = bodies.Position, sp = StartPos;
+        ReadOnlySpan<float> rot = bodies.Rotation, sr = StartRot, maxExt = MaxExtent, minExt = MinExtent;
+        Span<float> force = Force, torque = Torque;
+        bool inspect = Opt.DetailedInspection, ccd = Opt.ContinuousEnabled;
         foreach (int b in list)
         {
-            if (bodies.TypeOf(b) != BodyType.Dynamic) { continue; }
-            if (Opt.DetailedInspection) { Core.BodyReadback.Inputs(b, bodies.InverseMass[b], GravityScale[b], new(Force[3 * b], Force[3 * b + 1], Force[3 * b + 2]), new(Torque[3 * b], Torque[3 * b + 1], Torque[3 * b + 2]), Core.IntegratedTimeOfBody(b)); }
-            Force[3 * b] = 0f; Force[3 * b + 1] = 0f; Force[3 * b + 2] = 0f; Torque[3 * b] = 0f; Torque[3 * b + 1] = 0f; Torque[3 * b + 2] = 0f;
-            if (Opt.ContinuousEnabled) { Continuous(b); }
+            if ((BodyType)Mem.At(type, b) != BodyType.Dynamic) { continue; }
+            int b3 = 3 * b, b4 = 4 * b;
+            if (inspect) { Core.BodyReadback.Inputs(b, bodies.InverseMass[b], GravityScale[b], new(Force[b3], Force[b3 + 1], Force[b3 + 2]), new(Torque[b3], Torque[b3 + 1], Torque[b3 + 2]), Core.IntegratedTimeOfBody(b)); }
+            Mem.At(force, b3) = 0f; Mem.At(force, b3 + 1) = 0f; Mem.At(force, b3 + 2) = 0f; Mem.At(torque, b3) = 0f; Mem.At(torque, b3 + 1) = 0f; Mem.At(torque, b3 + 2) = 0f;
+            if (!ccd) { continue; }
+            var m = new Vector3F((float)(Mem.At(pos, b3) - Mem.At(sp, b3)), (float)(Mem.At(pos, b3 + 1) - Mem.At(sp, b3 + 1)), (float)(Mem.At(pos, b3 + 2) - Mem.At(sp, b3 + 2)));
+            var qStart = new QuaternionF(Mem.At(sr, b4), Mem.At(sr, b4 + 1), Mem.At(sr, b4 + 2), Mem.At(sr, b4 + 3));
+            var qEnd = new QuaternionF(Mem.At(rot, b4), Mem.At(rot, b4 + 1), Mem.At(rot, b4 + 2), Mem.At(rot, b4 + 3));
+            var rel = qStart.Conjugated().Times(qEnd);
+            float spin = 2f * float.Sqrt(rel.X * rel.X + rel.Y * rel.Y + rel.Z * rel.Z) * Mem.At(maxExt, b);
+            float len = float.Sqrt(m.X * m.X + m.Y * m.Y + m.Z * m.Z);
+            if (!float.IsFinite(len + spin) || !(len + spin > 0.5f * Mem.At(minExt, b)) || !(len > 0f)) { continue; } // non-finite motion is reported by the bounds check, not cast
+            Continuous(b, m, qStart, qEnd, spin, len);
         }
     }
 
@@ -1015,20 +1031,14 @@ internal sealed partial class Engine3D
     /// speculative contact. The rotation is not part of these casts (it counts towards deciding that the body moved far enough to need one); the corners of boxes and hulls are swept through the turn
     /// separately, see <see cref="CornerSweep"/>.
     /// </summary>
-    private void Continuous(int b)
+    // Entered only for a body FinalizeBodies found moving far enough: the early-out test on m, spin and len lives there, and it hands over the values it computed.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void Continuous(int b, Vector3F m, QuaternionF qStart, QuaternionF qEnd, float spin, float len)
     {
         var bodies = Core.Bodies;
         var pos = bodies.PositionOf(b);
         var rot = bodies.RotationOf(b);
         double cx = StartPos[3 * b], cy = StartPos[3 * b + 1], cz = StartPos[3 * b + 2];
-        var m = new Vector3F((float)(pos[0] - cx), (float)(pos[1] - cy), (float)(pos[2] - cz));
-        var qStart = new QuaternionF(StartRot[4 * b], StartRot[4 * b + 1], StartRot[4 * b + 2], StartRot[4 * b + 3]);
-        var qEnd = new QuaternionF(rot[0], rot[1], rot[2], rot[3]);
-        var rel = qStart.Conjugated().Times(qEnd);
-        float spin = 2f * float.Sqrt(rel.X * rel.X + rel.Y * rel.Y + rel.Z * rel.Z) * MaxExtent[b];
-        float len = float.Sqrt(m.X * m.X + m.Y * m.Y + m.Z * m.Z);
-        if (!float.IsFinite(len + spin) || !(len + spin > 0.5f * MinExtent[b]) || !(len > 0f)) { return; } // non-finite motion is reported by the bounds check, not cast
-
         Core.BodyReadback.CcdState[b] = (byte)(1 | ((Core.Bodies.Flags[b] & (byte)BodyBits.Bullet) != 0 ? 4 : 0));
 
         // Nothing static near the whole sweep: no shape can touch anything, so skip the per-shape bounds and casts. The box holds every point of every shape at the start and the end pose
@@ -1097,20 +1107,30 @@ internal sealed partial class Engine3D
 
     // ------------------------------------------------------------------ sleeping
 
+    // r4 h14: the sleep timers use MaxExtent and TouchesMovingKinematic directly (IWorldStages.MotionExtent); a change to this formula must change both or drop MotionExtent.
     public float BodyMotion(int b)
     {
         var bodies = Core.Bodies;
         // A body touching a moving kinematic body is not at rest.
+        if (TouchesMovingKinematic(b)) { return float.MaxValue; }
+        var v = bodies.LinearVelocityOf(b);
+        var w = bodies.AngularVelocityOf(b);
+        return float.Sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) + float.Sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]) * MaxExtent[b];
+    }
+
+    /// <summary>Whether the body touches (a contact with points) a kinematic body that moves; such a body is never at rest.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool TouchesMovingKinematic(int b)
+    {
+        var bodies = Core.Bodies;
         var cs = Core.Constraints;
         for (int e = bodies.FirstEdge(b); e >= 0; e = cs.NextEdge(e))
         {
             int c = e >> 1;
             int other = (e & 1) == 0 ? cs.BodyB[c] : cs.BodyA[c];
-            if (bodies.TypeOf(other) == BodyType.Kinematic && cs.PointCount[c] > 0 && IsActive(bodies, other)) { return float.MaxValue; }
+            if (bodies.TypeOf(other) == BodyType.Kinematic && cs.PointCount[c] > 0 && IsActive(bodies, other)) { return true; }
         }
 
-        var v = bodies.LinearVelocityOf(b);
-        var w = bodies.AngularVelocityOf(b);
-        return float.Sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) + float.Sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]) * MaxExtent[b];
+        return false;
     }
 }

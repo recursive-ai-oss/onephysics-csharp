@@ -101,6 +101,14 @@ internal static class Mem
         return ref Unsafe.Add(ref MemoryMarshal.GetReference(s), offset);
     }
 
+    /// <summary>Element <paramref name="offset"/> of a double span without a bounds check; the caller has established the range (r4 h14, for FinalizeBodies' positions).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref readonly double At(ReadOnlySpan<double> s, int offset)
+    {
+        RangeIndex(offset, s.Length);
+        return ref Unsafe.Add(ref MemoryMarshal.GetReference(s), offset);
+    }
+
     [Conditional("CHECKED")]
     private static void RangeIndex(int offset, int length)
     {

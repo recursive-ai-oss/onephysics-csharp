@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Diagnostics.CodeAnalysis;
+using RecursiveAI.OnePhysics.Physics2D;
 
 namespace RecursiveAI.OnePhysics.LowLevel;
 
@@ -85,6 +86,16 @@ public interface IWorldStages
 
     /// <summary>How much a body moves, in the units of <see cref="WorldOptions.SleepThreshold"/> (typically a speed). Called serially for each awake dynamic body in ascending order.</summary>
     float BodyMotion(WorldCore world, int body);
+
+    /// <summary>
+    /// r4 h14: for an engine whose <see cref="BodyMotion"/> is exactly <c>|v| + |w| * extent[body]</c> (body velocities from the body store, the two square roots added in that order), or
+    /// <c>float.MaxValue</c> when <see cref="TouchesMovingKinematic"/> says so, the extent array; the sleep timers then compute the speed term inline and ask about kinematic partners only for a body
+    /// slow enough to rest. Null (the default) calls <see cref="BodyMotion"/> for every body.
+    /// </summary>
+    float[]? MotionExtent(WorldCore world) => null;
+
+    /// <summary>r4 h14: when <see cref="MotionExtent"/> is not null, whether <see cref="BodyMotion"/> of this body is <c>float.MaxValue</c> (it touches a moving kinematic body).</summary>
+    bool TouchesMovingKinematic(WorldCore world, int body) => false;
 
     /// <summary>
     /// After the restitution pass and before <see cref="StoreResults"/>: per-body work that needs the final pose of the step, such as continuous collision against static geometry or clearing applied forces.
@@ -1022,6 +1033,10 @@ public sealed partial class WorldCore
     // Bodies per block when the awake list is built in parallel; below two blocks the loop is serial.
     private const int AwakeBlock = 2048;
     private int[] _awakeBlockCounts = new int[4];
+    // r4 h14: per block whether it listed a kinematic body, and whether the awake list holds any (every live kinematic body is listed, moving or not), so the sleep timers can skip the
+    // kinematic-partner walk in a world without one. Valid exactly as long as the awake list it was built with.
+    private byte[] _awakeBlockKinematic = new byte[4];
+    internal bool AwakeHasKinematic;
 
     /// <summary>
     /// Sizes the core's per-step storage for up to <paramref name="contacts"/> constraints, <paramref name="islands"/> islands and <paramref name="bodies"/> bodies, and starts the pool threads,
@@ -1078,18 +1093,21 @@ public sealed partial class WorldCore
         int need = Math.Max(blocks, 1) * AwakeBlock;
         if (_awake.Length < need) { _awake = new int[Math.Max(need, _awake.Length * 2)]; }
         if (_awakeBlockCounts.Length < blocks) { _awakeBlockCounts = new int[Math.Max(blocks, _awakeBlockCounts.Length * 2)]; }
+        if (_awakeBlockKinematic.Length < blocks) { _awakeBlockKinematic = new byte[Math.Max(blocks, _awakeBlockKinematic.Length * 2)]; }
 
         // Every block lists its awake bodies at the start of its own slots in index order; closing the gaps in block order gives the list one serial loop would build.
         Executor.For(blocks, new AwakeBlockTask(this));
-        int k = 0;
+        int k = 0, kinematic = 0;
         for (int blk = 0; blk < blocks; blk++)
         {
             int count = _awakeBlockCounts[blk];
             if (count > 0 && k != blk * AwakeBlock) { Array.Copy(_awake, blk * AwakeBlock, _awake, k, count); }
             k += count;
+            kinematic |= _awakeBlockKinematic[blk];
         }
 
         _awakeCount = k;
+        AwakeHasKinematic = kinematic != 0;
     }
 
     private readonly struct AwakeBlockTask : IParallelBody
@@ -1104,13 +1122,17 @@ public sealed partial class WorldCore
             var type = bodies.Type;
             int lo = block * AwakeBlock, hi = Math.Min(lo + AwakeBlock, bodies.HighWater);
             int k = lo;
+            byte kinematic = 0;
             for (int b = lo; b < hi; b++)
             {
                 if (!bodies.IsLive(b)) { continue; }
-                if ((type[b] == (byte)BodyType.Kinematic && w._passKinematic) || (type[b] == (byte)BodyType.Dynamic && bodies.IsAwake(b))) { w._awake[k++] = b; }
+                // The flag counts every live kinematic body, also in a scaled group that leaves them out of the list.
+                if (type[b] == (byte)BodyType.Kinematic) { kinematic = 1; if (w._passKinematic) { w._awake[k++] = b; } }
+                else if (type[b] == (byte)BodyType.Dynamic && bodies.IsAwake(b)) { w._awake[k++] = b; }
             }
 
             w._awakeBlockCounts[block] = k - lo;
+            w._awakeBlockKinematic[block] = kinematic;
         }
     }
 
@@ -1383,6 +1405,38 @@ public sealed partial class WorldCore
             int lo = block * SleepBlock, hi = Math.Min(lo + SleepBlock, w._awakeCount);
             float threshold = w._options.SleepThreshold;
             int rested = 0;
+            float[]? ext = _s.MotionExtent(w);
+            if (ext != null)
+            {
+                // r4 h14: BodyMotion inline (see IWorldStages.MotionExtent): the speed term from hoisted spans, the kinematic-partner walk only for a body whose speed term is at rest. The result is
+                // the same test: a body touching a moving kinematic body has motion float.MaxValue, at rest only if the threshold is that large.
+                ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity, extent = ext;
+                ReadOnlySpan<byte> type = bodies.Type, fl = flags;
+                ReadOnlySpan<int> awake = w._awake;
+                bool kinematicRests = float.MaxValue <= threshold;
+                // No kinematic body in the awake list (it holds every live one): no body has a kinematic partner, and the walk is skipped.
+                bool walk = w.AwakeHasKinematic;
+                for (int i = lo; i < hi; i++)
+                {
+                    int b = awake[i];
+                    if (!bodies.IsLive(b) || (BodyType)Mem.At(type, b) != BodyType.Dynamic) { continue; }
+                    bool rest = false;
+                    if (_enabled && (Mem.At(fl, b) & (byte)BodyBits.NoSleep) == 0)
+                    {
+                        int b3 = 3 * b;
+                        float vx = Mem.At(lin, b3), vy = Mem.At(lin, b3 + 1), vz = Mem.At(lin, b3 + 2), wx = Mem.At(ang, b3), wy = Mem.At(ang, b3 + 1), wz = Mem.At(ang, b3 + 2);
+                        rest = float.Sqrt(vx * vx + vy * vy + vz * vz) + float.Sqrt(wx * wx + wy * wy + wz * wz) * Mem.At(extent, b) <= threshold;
+                        if (walk && rest != kinematicRests && _s.TouchesMovingKinematic(w, b)) { rest = kinematicRests; }
+                    }
+
+                    if (rest) { sleep[b] += w._scaleOn ? _dt * w.SleepPeriodOf(b) : _dt; } else { sleep[b] = 0f; }
+                    if (sleep[b] >= _limit) { rested = 1; }
+                }
+
+                w._sleepRested[block] = rested;
+                return;
+            }
+
             for (int i = lo; i < hi; i++)
             {
                 int b = w._awake[i];
