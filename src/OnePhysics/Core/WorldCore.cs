@@ -120,6 +120,12 @@ public interface IWorldStages
     /// Whether <see cref="BodyMotion"/> only reads world data and may be called from several threads at once for different bodies. When true the sleep timers are updated in parallel blocks; the default (false) keeps the serial loop.
     /// </summary>
     bool BodyMotionIsConcurrent => false;
+
+    /// <summary>
+    /// [perf-lab r4 h02] After every <see cref="PrepareBatch"/> of the step: whether the restitution pass of the program with this context's schedule can change anything. When false the core
+    /// leaves the pass out of the program (it would only visit every batch and return). The default says yes.
+    /// </summary>
+    bool NeedsRestitutionPass(WorldCore world, in StepContext context) => true;
 }
 
 /// <summary>
@@ -763,7 +769,9 @@ public sealed partial class WorldCore
                 for (int i = 0; i < relax; i++) { AddSolvePass(prog, SolvePhase.Relax); }
             }
 
-            AddSolvePass(prog, SolvePhase.Restitution);
+            // [perf-lab r4 h02] The restitution pass is a no-op when no prepared batch of this program has a contact with restitution (the kernel returns at once for every batch, joints always do),
+            // so it is left out of the program: its stages cost a boundary crossing each for nothing. Leaving out a no-op cannot change a bit.
+            if (stages.NeedsRestitutionPass(this, in pctx)) { AddSolvePass(prog, SolvePhase.Restitution); }
             Executor.ForStages(_stageCount, new SolveProgram<TStages>(this, stages, list, pctx, prog, progBodies, progCount), _stageMostTasks);
         }
 

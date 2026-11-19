@@ -169,8 +169,11 @@ public sealed partial class ManifoldGenerator3D
                 float mx = m0 * m0, my = m1 * m1, mz = m2 * m2;
                 if (j == 0 ? (my < cut || mz < cut) : j == 1 ? (mx < cut || mz < cut) : (mx < cut || my < cut)) { continue; }
                 float du = Vector3F.Dot(l, t);
-                float s = 1f;
-                if (du < 0f) { du = -du; s = -1f; }
+                // [perf-lab h07b] The sign of du depends on the pair's geometry and mispredicted as a branch; this is the same result without one: du < 0 flips du's sign bit (so -0 stays -0, as
+                // the branch left it) and gives s = -1 exactly.
+                int neg = du < 0f ? 1 : 0;
+                du = BitConverter.Int32BitsToSingle(BitConverter.SingleToInt32Bits(du) ^ (neg << 31));
+                float s = 1f - 2f * neg;
                 float reachA = (Math.Abs(l.X) * hA.X) + (Math.Abs(l.Y) * hA.Y) + (Math.Abs(l.Z) * hA.Z);
                 float reachB = (Math.Abs(m0) * hB.X) + (Math.Abs(m1) * hB.Y) + (Math.Abs(m2) * hB.Z);
                 float len = ConvexShape3D.Sqrt(l2);

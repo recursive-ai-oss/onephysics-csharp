@@ -49,6 +49,9 @@ internal readonly struct Stages3D : IWorldStages
     public void AfterFinalize(WorldCore world, in StepContext context) { _e.EndArticulations(); }
 
     public bool BodyMotionIsConcurrent => true;
+
+    // Spelled out for the same reason as AfterFinalize.
+    public bool NeedsRestitutionPass(WorldCore world, in StepContext context) => _e.NeedsRestitutionPass(context.Schedule);
 }
 
 [InlineArray(28)]

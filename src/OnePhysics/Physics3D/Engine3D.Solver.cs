@@ -141,9 +141,18 @@ internal sealed partial class Engine3D
     private float _liteDynBias, _liteDynMass, _liteDynImpulse, _liteStBias, _liteStMass, _liteStImpulse;
     private JointKernelParams _jointParams, _liteJointParams;
 
+    // [perf-lab r4 h02] Whether any batch prepared this step for the world's schedule (0) / the contact-only schedule (1) has a contact with restitution. Batches are prepared in parallel; every
+    // writer stores 1, so the races are benign, and the core reads the flags after the parallel call has joined.
+    private int _restitution, _restitutionLite;
+
+    /// <summary>[perf-lab r4 h02] Whether the restitution pass of the given schedule has anything to do this step (see <see cref="IWorldStages.NeedsRestitutionPass"/>).</summary>
+    public bool NeedsRestitutionPass(int schedule) => (schedule != 0 ? _restitutionLite : _restitution) != 0;
+
     /// <summary>Once per step before anything is prepared: sizes the wide groups (one per batch) and the constraint-to-lane map, and computes the soft-constraint coefficients.</summary>
     public void BeginSolve(int batches, in StepContext ctx)
     {
+        // [perf-lab r4 h02] Cleared here, set by PrepareBatch for any batch of the schedule with restitution, read by the core when it builds that schedule's solve program.
+        if (ctx.Schedule != 0) { _restitutionLite = 0; } else { _restitution = 0; }
         if (ctx.Schedule != 0)
         {
             // The contact-only schedule has its own substep length, so its contacts get their own soft-constraint coefficients; nothing else is sized or ordered twice.
@@ -354,6 +363,7 @@ internal sealed partial class Engine3D
         if (Core.Controls.Active) PrepareControlledContacts(constraints);
         if (constraints.Length > 0) { var bi = BatchInfo.AsSpan(4 * constraints[0], 4); bi[0] = group; bi[1] = lane; bi[2] = jlane; bi[3] = scalarJoints; }
         idx[W3D.MaxPointsSlot] = maxPoints; idx[W3D.AnyRollingSlot] = anyRolling; idx[W3D.AnyRestitutionSlot] = anyRestitution;
+        if (anyRestitution != 0) { if (ctx.Schedule != 0) { _restitutionLite = 1; } else { _restitution = 1; } }
     }
 
     /// <summary>
@@ -445,6 +455,9 @@ internal sealed partial class Engine3D
 
         if (constraints.Length > 0) { var bi = BatchInfo.AsSpan(4 * constraints[0], 4); bi[0] = group; bi[1] = lane; bi[2] = jlane; bi[3] = scalarJoints; }
         idx[W3D.MaxPointsSlot] = maxPoints; idx[W3D.AnyRollingSlot] = anyRolling; idx[W3D.AnyRestitutionSlot] = anyRestitution;
+        // The same per-schedule restitution flag as at the end of PrepareBatch's per-lane path, which this path never reaches (anyRestitution is BuildContacts256's bit 0: restitution != 0 on a
+        // real lane, NaN included, as the scalar test).
+        if (anyRestitution != 0) { if (ctx.Schedule != 0) { _restitutionLite = 1; } else { _restitution = 1; } }
     }
 
     /// <summary>
