@@ -167,6 +167,12 @@ public sealed partial class ConstraintStore
     /// <summary>The persistent payload of all constraints, <see cref="PayloadFloats"/> floats each.</summary>
     public Span<float> PayloadAll => _payload.AsSpan(0, HighWater * _layout.PayloadFloats);
 
+    /// <summary>Every payload, <see cref="PayloadStride"/> floats per constraint (constraint c's payload starts at c times the stride), for the preparation's whole-window row gathers (Engine3D.BuildContacts256).</summary>
+    internal ReadOnlySpan<float> PayloadArray => _payload;
+
+    /// <summary>Floats per payload in <see cref="PayloadArray"/>.</summary>
+    internal int PayloadStride => _layout.PayloadFloats;
+
     /// <summary>Feature ids of one contact.</summary>
     public Span<uint> FeatureIdsOf(int constraint) => _feature.AsSpan(constraint * _layout.MaxManifoldPoints, _layout.MaxManifoldPoints);
 

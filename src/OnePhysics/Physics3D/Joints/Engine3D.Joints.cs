@@ -450,7 +450,7 @@ internal sealed partial class Engine3D
         for (int l = 0; l < J3D.Lanes; l++) { idx[l] = 0; idx[8 + l] = 0; idx[16 + l] = -1; idx[24 + l] = -1; }
     }
 
-    /// <summary>Once per step: a point joint's start-of-step anchors, centre-of-mass offset, inverse masses and warm-start impulse into one lane of its batch's joint group.</summary>
+    /// <summary>Once per step: a point joint's start-of-step anchors, centre-of-mass offset, inverse masses and warm-start impulse into one lane of its batch's joint group. r4 h10: the narrower kernel widths only; the 8-lane width builds whole joint groups (Engine3D.BuildJoints256).</summary>
     private void PreparePointJoint(int c, int group, int lane)
     {
         var core = Core;
