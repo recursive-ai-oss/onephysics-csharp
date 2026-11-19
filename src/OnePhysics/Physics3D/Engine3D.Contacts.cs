@@ -109,6 +109,8 @@ internal sealed class NarrowScratch
         public readonly List<int> Ids = new();
         public readonly TriangleShapeBuffer3D TriBuf = new();
         public readonly Engine3D.SdfProbeBuffer Sdf = new();
+        public readonly Engine3D.BoxJob[] BoxJobs = new Engine3D.BoxJob[64];
+        public readonly ManifoldGenerator3D.BoxAxes[] BoxRes = new ManifoldGenerator3D.BoxAxes[64];
     }
 
     [ThreadStatic]
@@ -120,6 +122,9 @@ internal sealed class NarrowScratch
     public static List<ChildContact3D> Children => H.Children;
     public static List<SoupTriangle3D> Tris => H.Tris;
     public static List<int> Ids => H.Ids;
+    /// <summary>Hands a chunk the thread's box queue and its axis results (a chunk has at most 64 pairs, so 64 entries always suffice). One set per thread, like Gen: a chunk fills and empties it
+    /// inside its own task, and a set per chunk was a cold 16 KB on every chunk at one thread.</summary>
+    public static void TakeBoxQueue(NarrowScratch sc) { var h = H; sc.BoxJobs = h.BoxJobs; sc.BoxRes = h.BoxRes; }
     public static TriangleShapeBuffer3D TriBuf => H.TriBuf;
     internal static Engine3D.SdfProbeBuffer Sdf => H.Sdf;
     public ContactOut[] Out = new ContactOut[128];
@@ -135,6 +140,10 @@ internal sealed class NarrowScratch
     public readonly int[] Survivor = new int[64];
     public readonly float[] SurvivorSpec = new float[64];
     public int SurvivorCount;
+    /// <summary>r4 h22: the chunk's fresh box–box pairs, queued in phase 2 (Engine3D.QueueBoxPair) and run by Engine3D.RunBoxJobs; BoxRes holds their axis tests.</summary>
+    public Engine3D.BoxJob[] BoxJobs = null!;
+    public ManifoldGenerator3D.BoxAxes[] BoxRes = null!;
+    public int BoxCount;
 
     public ref ContactOut Next()
     {
@@ -720,25 +729,25 @@ internal sealed partial class Engine3D
             var sc = e._scratch[task];
             ulong listed = e.KernelWidth == 8 ? BoxPhase256(e, lo, hi, sc) : BoxPhase(e, lo, hi, sc);
             int recycled = 0, recycledPoints = 0, n = sc.SurvivorCount;
+            // A survivor that needs a fresh box-box query is queued by CollideSurvivor (sc.BoxJobs) and run after the loop by RunBoxJobs, whose axis tests take the queue eight pairs at a time.
+            // A pair's contacts are a contiguous run of sc.Out found through _resFirst/_resCount only (nothing reads sc.Out in order), so running the queued pairs later changes no result.
+            // A pair that is not queued is accounted for at once, right after its CollideSurvivor call. That matters for a reuse written in place (status 3): it handed its scratch slot back
+            // (OutCount--), and Account must read the slot's Recycled and Count before the next survivor (or a sphere-apart box pair finishing at once in QueueBoxPair) writes there. Queued pairs
+            // write sc.Out only in RunBoxJobs, after the loop, when no reuse can hand back a slot any more; FinishBoxJob sets their _resFirst then, so it never points at a handed-back slot.
+            sc.BoxCount = 0;
             ulong write = 0;
+            if (n != 0) { NarrowScratch.TakeBoxQueue(sc); }
             for (int k = 0; k < n; k++)
             {
                 int i = sc.Survivor[k];
-                e.CollideSurvivor(i, sc, sc.SurvivorSpec[k]);
-                int count = e._resCount[i];
-                if (count != 0 && sc.Out[e._resFirst[i]].Recycled)
-                {
-                    recycled += count;
-                    for (int c = 0; c < count; c++) { recycledPoints += sc.Out[e._resFirst[i] + c].Count; }
-                    // A convex reuse that CollideSurvivor found to match in place (status 3) is already written: nothing for the serial pass, nothing for WriteTask. Any other reuse (a convex one
-                    // that does not match in place, a triangle-soup pair's set of reused manifolds) is judged below like a fresh result.
-                    if (e._resStatus[i] == 3) { continue; }
-                }
+                if (e.CollideSurvivor(i, sc, sc.SurvivorSpec[k])) { continue; } // queued: accounted for below, after RunBoxJobs
+                Account(e, sc, i, lo, ref listed, ref write, ref recycled, ref recycledPoints);
+            }
 
-                if (count != 0) { write |= 1UL << (i - lo); }
-                // Worth the serial pass: the pair has points or a constraint to match (a survivor's boxes overlap, so it is never a pair that goes).
-                // A pair whose new contacts are exactly its constraints, one for one, changes nothing the serial pass owns (no constraint is added or removed, so no color moves); it only needs its payloads written.
-                if ((count != 0 || e.PairCons[e._updateList[i]] != -1) && !(e._deferWrite && e.MatchesInPlace(i, sc))) { listed |= 1UL << (i - lo); }
+            if (sc.BoxCount != 0)
+            {
+                e.RunBoxJobs(sc);
+                for (int k = 0; k < sc.BoxCount; k++) { Account(e, sc, sc.BoxJobs[k].I, lo, ref listed, ref write, ref recycled, ref recycledPoints); }
             }
 
             int m = 0;
@@ -753,12 +762,34 @@ internal sealed partial class Engine3D
             e._applyCount[task] = m;
             e._writeMask[task] = write;
         }
+
+        // A pair's share of the chunk's counts, its bit in the apply mask and its bit in the write mask (the bits' positions fix the order of the serial pass and of WriteTask, so pairs may be
+        // accounted for in any order). r4 h27 (c7): h19's survivor-loop body, moved here from c6's loop for h22's deferred accounting of queued pairs.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Account(Engine3D e, NarrowScratch sc, int i, int lo, ref ulong listed, ref ulong write, ref int recycled, ref int recycledPoints)
+        {
+            int count = e._resCount[i];
+            if (count != 0 && sc.Out[e._resFirst[i]].Recycled)
+            {
+                recycled += count;
+                for (int c = 0; c < count; c++) { recycledPoints += sc.Out[e._resFirst[i] + c].Count; }
+                // A convex reuse that CollideSurvivor found to match in place (status 3) is already written: nothing for the serial pass, nothing for WriteTask. A reuse is never queued, so this
+                // runs right after its CollideSurvivor call, while its handed-back slot is intact. Any other reuse (a convex one that does not match in place, a triangle-soup pair's set of
+                // reused manifolds) is judged below like a fresh result.
+                if (e._resStatus[i] == 3) { return; }
+            }
+
+            if (count != 0) { write |= 1UL << (i - lo); }
+            // Worth the serial pass: the pair has points or a constraint to match (a survivor's boxes overlap, so it is never a pair that goes).
+            // A pair whose new contacts are exactly its constraints, one for one, changes nothing the serial pass owns (no constraint is added or removed, so no color moves); it only needs its payloads written.
+            if ((count != 0 || e.PairCons[e._updateList[i]] != -1) && !(e._deferWrite && e.MatchesInPlace(i, sc))) { listed |= 1UL << (i - lo); }
+        }
     }
 
     // ------------------------------------------------------------------ narrowphase
 
     /// <summary>The placement of a pair in world terms: A's shape orientation, the arm from A's centre of mass to A's shape origin, and the centre-of-mass offset between the bodies.</summary>
-    private struct PairFrame
+    internal struct PairFrame
     {
         public QuaternionF Rwa;
         public Vector3F ArmA;
@@ -972,7 +1003,7 @@ internal sealed partial class Engine3D
 
     // r4 h12: phase 2 of a narrowphase chunk, for a pair that survived BoxPhase (its boxes overlap; status 1, count 0 already written): the library's Collide from the pose loads on.
     // The index and pose loads are unchecked (Mem.At): the indices are the ones BoxPhase used, and a live body's pose lanes lie inside the store's arrays (3 and 4 lanes a body in 3D).
-    private void CollideSurvivor(int i, NarrowScratch sc, float pairSpec)
+    private bool CollideSurvivor(int i, NarrowScratch sc, float pairSpec)
     {
         int p = Mem.At(_updateList, i);
         Mem.At(_resFirst, i) = sc.OutCount;
@@ -992,13 +1023,13 @@ internal sealed partial class Engine3D
         if (existingCons < 0)
         {
             ref SkipFrame3 skip = ref Mem.At(_skip, p);
-            if (skip.Clear > 0f && StillApart(in skip, qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]), skip.Spec - pairSpec)) { sc.Reached++; return; }
+            if (skip.Clear > 0f && StillApart(in skip, qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]), skip.Spec - pairSpec)) { sc.Reached++; return false; }
         }
 
         var ga = Geoms[GeomOf[sa]]!;
         var gb = Geoms[GeomOf[sb]]!;
-        if (ga.Convex.Kind == ConvexShapeKind3D.Empty || gb.Convex.Kind == ConvexShapeKind3D.Empty) { return; }
-        if (ga.Soup != null && gb.Soup != null && !(ga.Soup is SdfSoup3D && gb.Soup is SdfSoup3D)) { return; }
+        if (ga.Convex.Kind == ConvexShapeKind3D.Empty || gb.Convex.Kind == ConvexShapeKind3D.Empty) { return false; }
+        if (ga.Soup != null && gb.Soup != null && !(ga.Soup is SdfSoup3D && gb.Soup is SdfSoup3D)) { return false; }
         sc.Reached++;
         // A touching convex pair that has barely moved reuses its manifold; this is tried before the shape frames are built, which the reuse does not need.
         if (!ContactModifications.Refresh && RecycleManifolds && existingCons >= 0 && ga.Soup == null && gb.Soup == null && ga.IsConvex && gb.IsConvex
@@ -1012,7 +1043,7 @@ internal sealed partial class Engine3D
             // the serial pass; its scratch slot is handed back (OutCount--), so the reuses of a chunk all go through one hot slot. This is safe because between here and WriteTask nothing reads or
             // moves this constraint's payload: the other pairs' narrowphase reads only their own constraints, the serial pass does not visit the pair (not listed) and only adds, removes and wakes
             // other pairs' constraints (slots are stable: removal clears only the removed slot), and the write reads only the shapes' materials, which no stage changes. CollideTask still reads the
-            // slot's Recycled and Count right after this call, before the next survivor can reuse it; _resFirst / _resCount of a status-3 pair are not read after that.
+            // slot's Recycled and Count right after this call (Account; a reuse is never queued, r4 h27), before the next survivor can reuse it; _resFirst / _resCount of a status-3 pair are not read after that.
             if (_deferWrite && Mem.At(ConsNext, existingCons) < 0 && !IsSensor(sa) && !IsSensor(sb)
                 && !(bodies.IsDynamic(ba) && !bodies.IsAwake(ba)) && !(bodies.IsDynamic(bb) && !bodies.IsAwake(bb)))
             {
@@ -1025,10 +1056,114 @@ internal sealed partial class Engine3D
                 }
             }
 
-            return;
+            return false;
         }
 
+        // r4 h22: two boxes go to the chunk's box queue (RunBoxJobs); every other fresh pair runs now.
+        if (ga.Soup == null && gb.Soup == null && ga.IsConvex && gb.IsConvex && ga.Convex.Kind == ConvexShapeKind3D.Box && gb.Convex.Kind == ConvexShapeKind3D.Box) { return QueueBoxPair(i, sc, p, sa, sb, ga, gb, ba, bb, pA, pB, qA, qB, pairSpec); }
         CollideFresh(i, sc, p, sa, sb, ga, gb, ba, bb, pA, pB, qA, qB, pairSpec);
+        return false;
+    }
+
+    // r4 h22: a fresh box–box pair, queued with what the scalar CollideFresh needs after its pose block.
+    internal struct BoxJob
+    {
+        public int I, P, Sa, Sb, Ba, Bb;
+        public float Spec;
+        public QuaternionF QA, QB;
+        public Geom3D Ga, Gb;
+        public QuaternionF Rwa;
+        public Vector3F ArmA, ComDiff;
+        public RigidTransformF BInA;
+        public EdgeHint3D Hint;
+        public int Need;
+        public float Limit;
+    }
+
+    // r4 h22: CollideFresh's pose block for a box–box pair; the rest of the query runs in RunBoxJobs once the chunk's axis tests are done.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool QueueBoxPair(int i, NarrowScratch sc, int p, int sa, int sb, Geom3D ga, Geom3D gb, int ba, int bb, ReadOnlySpan<double> pA, ReadOnlySpan<double> pB, QuaternionF qA, QuaternionF qB, float spec)
+    {
+        sc.Fresh++;
+        var la = Local[sa]; var lb = Local[sb];
+        var lcA = LocalCenterOf(ba); var lcB = LocalCenterOf(bb);
+        Vector3F armA = la.Translation.X == lcA.X && la.Translation.Y == lcA.Y && la.Translation.Z == lcA.Z ? default : qA.RotateInline(la.Translation - lcA);
+        Vector3F armB = lb.Translation.X == lcB.X && lb.Translation.Y == lcB.Y && lb.Translation.Z == lcB.Z ? default : qB.RotateInline(lb.Translation - lcB);
+        QuaternionF rwa = qA.Times(la.Rotation), rwb = qB.Times(lb.Rotation);
+        double dx = (pB[0] - pA[0]) + ((double)armB.X - (double)armA.X);
+        double dy = (pB[1] - pA[1]) + ((double)armB.Y - (double)armA.Y);
+        double dz = (pB[2] - pA[2]) + ((double)armB.Z - (double)armA.Z);
+        var inv = rwa.Conjugated();
+        ref BoxJob j = ref sc.BoxJobs[sc.BoxCount++];
+        j.I = i; j.P = p; j.Sa = sa; j.Sb = sb; j.Ba = ba; j.Bb = bb; j.Spec = spec; j.QA = qA; j.QB = qB; j.Ga = ga; j.Gb = gb;
+        j.BInA = new RigidTransformF(inv.Times(rwb), inv.RotateInline(new Vector3F((float)dx, (float)dy, (float)dz)));
+        j.Rwa = rwa; j.ArmA = armA; j.ComDiff = new Vector3F((float)(pA[0] - pB[0]), (float)(pA[1] - pB[1]), (float)(pA[2] - pB[2]));
+        // Temporal coherence, as in CollideFresh: the hint from the pair's contact of the last step (constraints do not change during the narrowphase).
+        int oldCons = PairCons[p];
+        var cstore = Core.Constraints;
+        j.Hint = oldCons >= 0 && cstore.PointCount[oldCons] > 0 ? new EdgeHint3D(cstore.Payload(oldCons).Slice(ManifoldLayout.HintOffset, 7)) : default;
+        j.Need = ManifoldGenerator3D.BoxAxesNeed(ga.Convex, gb.Convex, j.BInA, spec, j.Hint, out j.Limit);
+        // A pair whose bounding spheres are apart reads no axes (Collide returns before PolyPoly): it finishes now and leaves the queue, so it is not written to and read from it again.
+        if (j.Need == 0) { sc.BoxCount--; FinishBoxJob(sc, ref j, NarrowScratch.Gen); return false; }
+        return true;
+    }
+
+    // r4 h22: the chunk's queued box–box pairs. First the axis tests of every pair (faces of both boxes and the nine edge axes; ManifoldGenerator3D.BoxAxes), then per pair in queue order the rest of
+    // CollideFresh with the generator taking the precomputed axes (Gen.Pre) instead of running BoxFaces/BoxEdges. The edge axes are computed for every pair; the generator still applies its edge hint
+    // and ignores them when the hint skips the edge search, exactly as when it skipped computing them.
+    private void RunBoxJobs(NarrowScratch sc)
+    {
+        int n = sc.BoxCount;
+        BoxJob[] jobs = sc.BoxJobs;
+        ManifoldGenerator3D.BoxAxes[] res = sc.BoxRes;
+        ManifoldGenerator3D.BoxAxesBatch(jobs, res, n, KernelWidth == 8);
+        var gen = NarrowScratch.Gen;
+        for (int k = 0; k < n; k++)
+        {
+            gen.Pre = res[k]; gen.HavePre = true;
+            FinishBoxJob(sc, ref jobs[k], gen);
+        }
+    }
+
+    // r4 h22: the rest of CollideFresh for a queued box pair whose pose is in the job (with gen.Pre/HavePre set when its axes were computed ahead).
+    private void FinishBoxJob(NarrowScratch sc, ref BoxJob j, ManifoldGenerator3D gen)
+    {
+        {
+            int i = j.I, p = j.P;
+            _resFirst[i] = sc.OutCount;
+            var f = new PairFrame { Rwa = j.Rwa, ArmA = j.ArmA, ComDiff = j.ComDiff };
+            float spec = j.Spec;
+            if (spec > Opt.SpeculativeDistance)
+            {
+                var bodies = Core.Bodies;
+                int ba = j.Ba, bb = j.Bb;
+                var va = bodies.LinearVelocityOf(ba); var wa = bodies.AngularVelocityOf(ba); var vb = bodies.LinearVelocityOf(bb); var wb = bodies.AngularVelocityOf(bb);
+                f.Approach = true; f.Spec = Opt.SpeculativeDistance; f.Dt = Core.ContactStepDt;
+                f.VA = new Vector3F(va[0], va[1], va[2]); f.VB = new Vector3F(vb[0], vb[1], vb[2]);
+                f.WA = bodies.TypeOf(ba) == BodyType.Dynamic ? new Vector3F(wa[0], wa[1], wa[2]) : default; f.WB = bodies.TypeOf(bb) == BodyType.Dynamic ? new Vector3F(wb[0], wb[1], wb[2]) : default;
+            }
+
+            gen.HintIn = j.Hint;
+            var m = gen.Collide(j.Ga.Convex, j.Gb.Convex, j.BInA, spec);
+            gen.HavePre = false;
+            if (m.PointCount == 0 && gen.ClearanceOut > 0f)
+            {
+                var pos = Core.Bodies.PositionArray;
+                int ba = j.Ba, bb = j.Bb;
+                var invA = j.QA.Conjugated();
+                var d = invA.RotateInline(new Vector3F((float)(pos[3 * bb] - pos[3 * ba]), (float)(pos[3 * bb + 1] - pos[3 * ba + 1]), (float)(pos[3 * bb + 2] - pos[3 * ba + 2])));
+                var qr = invA.Times(j.QB);
+                float sg = qr.W < 0f ? -1f : 1f;
+                var axis = Local[j.Sa].Rotation.RotateInline(gen.ClearanceAxisOut);
+                _skip[p] = new SkipFrame3 { Nx = axis.X, Ny = axis.Y, Nz = axis.Z, X = d.X, Y = d.Y, Z = d.Z, Qx = sg * qr.X, Qy = sg * qr.Y, Qz = sg * qr.Z, Qw = sg * qr.W, Clear = gen.ClearanceOut, Spec = spec, Reach = ReachOfShape(bb, j.Sb) };
+            }
+            else { _skip[p].Clear = 0f; }
+
+            int before = sc.OutCount;
+            Emit(sc, in f, 0, 0, in m, in NoTransform, false, in NoTransform, false, in NoTriangle);
+            if (sc.OutCount > before) { sc.Out[before].Hint = gen.HintOut; }
+            _resCount[i] = sc.OutCount - _resFirst[i];
+        }
     }
 
     // The pairs that need a narrowphase run are a minority (most are skipped, found apart by their boxes or reuse their manifold), so the work for them is out of line: the early exits above
