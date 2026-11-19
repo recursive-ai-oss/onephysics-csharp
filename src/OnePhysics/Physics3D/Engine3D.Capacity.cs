@@ -39,7 +39,7 @@ internal sealed partial class Engine3D
             for (int i = old; i < _scratch.Length; i++) { _scratch[i] = new NarrowScratch(); }
         }
 
-        if (_boxStamp.Length < shapes) { _boxes = new double[shapes * 6]; _boxStamp = new int[shapes]; _boxInside = new byte[shapes]; _moveState = new byte[shapes]; _moveBox = new Aabb3D[shapes]; }
+        if (_boxStamp.Length < shapes) { _boxes = new double[shapes * 6 + 2]; _boxStamp = new int[shapes]; _boxInside = new byte[shapes]; _moveState = new byte[shapes]; _moveBox = new Aabb3D[shapes]; }
         // The contact stage's per-chunk move lists (see TightBoxTask): one per BoxChunk awake bodies, each with room for the chunk's shapes at the world's average shapes per body.
         int boxChunks = (bodies + BoxChunk - 1) / BoxChunk;
         int perChunk = BoxChunk * Math.Max(1, (shapes + Math.Max(bodies, 1) - 1) / Math.Max(bodies, 1));

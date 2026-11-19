@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics;
 using RecursiveAI.OnePhysics.LowLevel;
@@ -128,6 +130,11 @@ internal sealed class NarrowScratch
     public bool SdfMoves;
     /// <summary>Pairs of this chunk that passed the tight-box test, and those among them that ran the narrowphase (not skipped as apart, not reusing a manifold); read by the work counters.</summary>
     public int Reached, Fresh;
+    /// <summary>r4 h12: the chunk's survivors of the box phase (pairs whose fat and tight boxes overlap), as positions in the update list in ascending order, with each pair's speculative distance;
+    /// <see cref="SurvivorCount"/> of them are valid. Phase 2 of <c>CollideTask</c> runs the pose-level work on exactly these, so a later pass can take them in batches (e.g. eight at a time).</summary>
+    public readonly int[] Survivor = new int[64];
+    public readonly float[] SurvivorSpec = new float[64];
+    public int SurvivorCount;
 
     public ref ContactOut Next()
     {
@@ -173,7 +180,7 @@ internal sealed partial class Engine3D
     private int[] _moveCount = Array.Empty<int>();
     private int _stamp;
     private int _skipMarginBits;
-    private double[] _boxes = new double[48];
+    private double[] _boxes = new double[48 + 2]; // six doubles a shape, plus two of padding so BoxPhase256 can load a box's upper half (offset 3) as four doubles
     private int[] _updateList = new int[64];
     private byte[] _resStatus = new byte[64]; // 0 untouched, 1 manifolds computed, 2 boxes no longer overlap
     private int[] _resFirst = new int[64];
@@ -199,7 +206,7 @@ internal sealed partial class Engine3D
         // The tight box of every shape of a moving body is kept for this step: a pair whose shapes are farther apart than the speculative distance has no contact points, and two box comparisons say so
         // without loading either shape.
         int shapeHigh = world.Shapes.HighWater;
-        if (_boxStamp.Length < shapeHigh) { int cap = Math.Max(shapeHigh, _boxStamp.Length * 2); _boxes = new double[cap * 6]; _boxStamp = new int[cap]; _boxInside = new byte[cap]; _moveState = new byte[cap]; _moveBox = new Aabb3D[cap]; }
+        if (_boxStamp.Length < shapeHigh) { int cap = Math.Max(shapeHigh, _boxStamp.Length * 2); _boxes = new double[cap * 6 + 2]; _boxStamp = new int[cap]; _boxInside = new byte[cap]; _moveState = new byte[cap]; _moveBox = new Aabb3D[cap]; }
         _stamp++;
         // 1. Broadphase boxes of every body that moved last step. The displacement stretches the box ahead of the motion.
         // The tight boxes, and for a shape that left its stored box the stretched box, MoveProxy's checks and the new fat box, are pure functions of body state and the shape's own leaf: they are computed
@@ -692,6 +699,10 @@ internal sealed partial class Engine3D
         }
     }
 
+    // r4 h12: the chunk runs in three phases. Phase 1 (BoxPhase) is a call-free loop over the chunk's pairs: fat-box test, speculative distance, tight-box test; it writes the result arrays of the
+    // pairs that leave there and lists the survivors in the scratch. Phase 2 runs the pose-level work (StillApart, recycle, CollideFresh) on the survivors only. Phase 3 writes the chunk's apply list in
+    // ascending order from a 64-bit mask (bit k = update-list position lo + k), so the serial pass sees the same list as when every pair ran start to finish in turn. Results are identical: an early-out
+    // pair touches no shared state but its own result slots, and the survivors run in their original order.
     private readonly struct CollideTask : IParallelBody
     {
         private readonly Engine3D _e;
@@ -700,26 +711,36 @@ internal sealed partial class Engine3D
 
         public void Run(int task)
         {
-            int lo = task * 64, hi = Math.Min(lo + 64, _e._updateCount);
-            var sc = _e._scratch[task];
             var e = _e;
-            int listed = 0, recycled = 0, recycledPoints = 0;
-            for (int i = lo; i < hi; i++)
+            int lo = task * 64, hi = Math.Min(lo + 64, e._updateCount);
+            var sc = e._scratch[task];
+            ulong listed = e.KernelWidth == 8 ? BoxPhase256(e, lo, hi, sc) : BoxPhase(e, lo, hi, sc);
+            int recycled = 0, recycledPoints = 0, n = sc.SurvivorCount;
+            for (int k = 0; k < n; k++)
             {
-                e.Collide(i, sc);
+                int i = sc.Survivor[k];
+                e.CollideSurvivor(i, sc, sc.SurvivorSpec[k]);
                 int count = e._resCount[i];
                 if (count != 0 && sc.Out[e._resFirst[i]].Recycled)
                 {
                     recycled += count;
-                    for (int k = 0; k < count; k++) { recycledPoints += sc.Out[e._resFirst[i] + k].Count; }
+                    for (int c = 0; c < count; c++) { recycledPoints += sc.Out[e._resFirst[i] + c].Count; }
                 }
-                // Worth the serial pass: the boxes no longer overlap (the pair goes), or the pair has points or a constraint to match.
+                // Worth the serial pass: the pair has points or a constraint to match (a survivor's boxes overlap, so it is never a pair that goes).
                 // A pair whose new contacts are exactly its constraints, one for one, changes nothing the serial pass owns (no constraint is added or removed, so no color moves); it only needs its payloads written.
-                if ((e._resStatus[i] == 2 || e._resCount[i] != 0 || e.PairCons[e._updateList[i]] != -1) && !(e._deferWrite && e.MatchesInPlace(i, sc))) { e._applyIdx[lo + listed++] = i; }
+                if ((count != 0 || e.PairCons[e._updateList[i]] != -1) && !(e._deferWrite && e.MatchesInPlace(i, sc))) { listed |= 1UL << (i - lo); }
+            }
+
+            int m = 0;
+            int[] apply = e._applyIdx;
+            while (listed != 0)
+            {
+                apply[lo + m++] = lo + BitOperations.TrailingZeroCount(listed);
+                listed &= listed - 1;
             }
 
             sc.Recycled = recycled; sc.RecycledPoints = recycledPoints; sc.FreshQueries = sc.Fresh;
-            e._applyCount[task] = listed;
+            e._applyCount[task] = m;
         }
     }
 
@@ -779,6 +800,7 @@ internal sealed partial class Engine3D
     /// contact when the step starts, instead of being found after the shapes overlap (Catto, GDC 2013, continuous collision: a speculative contact has to reach as far as the motion of the step).
     /// Which of the points found are kept is decided by each point's own closing speed (see <see cref="Emit"/>). Pairs that move slowly keep the fixed distance, so a settled world is untouched.
     /// </summary>
+    /// r4 h12: BoxPhase carries this method's fast path inline (and calls FastPairSpeculativeDistance for the rest); this method is the reference form.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private float PairSpeculativeDistance(int ba, int bb)
     {
@@ -806,37 +828,162 @@ internal sealed partial class Engine3D
     // A body counts as fast when it can travel or swing more than this many times the speculative distance in a step (about 4.8 m/s at 60 Hz with the default distance).
     private const double FastFactor = 4.0;
 
-    private void Collide(int i, NarrowScratch sc)
+    // r4 h12: phase 1 of a narrowphase chunk (the library's Collide up to the tight-box test, for the pairs lo..hi-1 of the update list). No calls on the common path (the rare fast pair calls
+    // FastPairSpeculativeDistance), arrays hoisted once and read without bounds checks (every index comes from the update list and the pair table, checked when the pairs were made), so the loads of
+    // consecutive pairs overlap. Writes each pair's status/count/first; the survivors go to sc.Survivor/SurvivorSpec. Returns the apply-list mask of the pairs that left here: a pair whose fat boxes
+    // no longer overlap (status 2, it goes) and a tight-box exit that still has a constraint (or sensor overlap) to remove.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ulong BoxPhase(Engine3D e, int lo, int hi, NarrowScratch sc)
     {
-        int p = _updateList[i];
-        _resStatus[i] = 0; _resCount[i] = 0; _resFirst[i] = sc.OutCount;
-        int sa = PairA[p], sb = PairB[p];
-        ref readonly Aabb3D fa = ref Bp.FatBoundsOfLive(Proxy[sa]);
-        ref readonly Aabb3D fb = ref Bp.FatBoundsOfLive(Proxy[sb]);
-        if (!Aabb3D.Overlaps(fa, fb)) { _resStatus[i] = 2; return; }
-        _resStatus[i] = 1;
-        float pairSpec = PairSpeculativeDistance(Core.Shapes.Owner[sa], Core.Shapes.Owner[sb]);
-        // Tight boxes (this step's for a shape that moved, the stored fat box for one that did not); the extra margin keeps the shortcut clear of rounding at the threshold.
+        // Base references of the arrays, taken once (a byref spilled to the stack reloads without the null check an array reference needs).
+        ref int upd = ref Mem.Ref(e._updateList);
+        ref int pairA = ref Mem.Ref(e.PairA), pairB = ref Mem.Ref(e.PairB);
+        ref int proxy = ref Mem.Ref(e.Proxy), pairCons = ref Mem.Ref(e.PairCons);
+        ref int boxStamp = ref Mem.Ref(e._boxStamp);
+        ref int resCount = ref Mem.Ref(e._resCount), resFirst = ref Mem.Ref(e._resFirst);
+        ref byte resStatus = ref Mem.Ref(e._resStatus);
+        ref int surv = ref Mem.Ref(sc.Survivor);
+        ref float survSpec = ref Mem.Ref(sc.SurvivorSpec);
+        ref float reachSum = ref Mem.Ref(e.ReachSum);
+        ref double boxes = ref Mem.Ref(e._boxes);
+        ref int owner = ref Mem.Ref(e.Core.Shapes.Owner);
+        var bp = e.Bp;
+        var trees = new TreeNodes();
+        trees[0] = bp.TreeAt(0).NodeArray; trees[1] = bp.TreeAt(1).NodeArray; trees[2] = bp.TreeAt(2).NodeArray;
+        int stamp = e._stamp, n = 0;
+        float spec = e.Opt.SpeculativeDistance, fast = (float)FastFactor * spec;
+        ulong listed = 0;
+        for (int i = lo; i < hi; i++)
         {
+            int p = Mem.Add(ref upd, i);
+            int sa = Mem.Add(ref pairA, p), sb = Mem.Add(ref pairB, p);
+            int ka = Mem.Add(ref proxy, sa), kb = Mem.Add(ref proxy, sb);
+            // fa, fb: the fat boxes, six doubles MinX MinY MinZ MaxX MaxY MaxZ (Aabb3D's field order, and the order of _boxes).
+            ref double fa = ref Mem.As<Aabb3D, double>(ref Mem.At(Mem.Add(ref trees[0], ka & 3), ka >> 2).Box);
+            ref double fb = ref Mem.As<Aabb3D, double>(ref Mem.At(Mem.Add(ref trees[0], kb & 3), kb >> 2).Box);
+            // Every comparison is evaluated (non-short-circuit & and |): they are pure, and one flag per test replaces a chain of up to six branches whose exit varies from pair to pair.
+            bool fatOk = (fa <= Mem.Add(ref fb, 3)) & (fb <= Mem.Add(ref fa, 3)) & (Mem.Add(ref fa, 1) <= Mem.Add(ref fb, 4)) & (Mem.Add(ref fb, 1) <= Mem.Add(ref fa, 4))
+                & (Mem.Add(ref fa, 2) <= Mem.Add(ref fb, 5)) & (Mem.Add(ref fb, 2) <= Mem.Add(ref fa, 5));
+            int ba = Mem.Add(ref owner, sa), bb = Mem.Add(ref owner, sb);
+            // PairSpeculativeDistance, its fast path inline: the two bodies' own reaches bound the closing distance.
+            float pairSpec = spec;
+            if (fatOk && Mem.Add(ref reachSum, ba) + Mem.Add(ref reachSum, bb) > fast) { pairSpec = e.FastPairSpeculativeDistance(ba, bb, spec); }
+            // Tight boxes (this step's for a shape that moved, the stored fat box for one that did not); the extra margin keeps the shortcut clear of rounding at the threshold.
             const double Gap = 0.005;
             double gap = pairSpec + Gap;
-            double a0, a1, a2, a3, a4, a5, b0, b1, b2, b3, b4, b5;
-            if (_boxStamp[sa] == _stamp) { int o = 6 * sa; a0 = _boxes[o]; a1 = _boxes[o + 1]; a2 = _boxes[o + 2]; a3 = _boxes[o + 3]; a4 = _boxes[o + 4]; a5 = _boxes[o + 5]; }
-            else { a0 = fa.MinX; a1 = fa.MinY; a2 = fa.MinZ; a3 = fa.MaxX; a4 = fa.MaxY; a5 = fa.MaxZ; }
-            if (_boxStamp[sb] == _stamp) { int o = 6 * sb; b0 = _boxes[o]; b1 = _boxes[o + 1]; b2 = _boxes[o + 2]; b3 = _boxes[o + 3]; b4 = _boxes[o + 4]; b5 = _boxes[o + 5]; }
-            else { b0 = fb.MinX; b1 = fb.MinY; b2 = fb.MinZ; b3 = fb.MaxX; b4 = fb.MaxY; b5 = fb.MaxZ; }
-            if (a0 - gap > b3 || b0 - gap > a3 || a1 - gap > b4 || b1 - gap > a4 || a2 - gap > b5 || b2 - gap > a5) { return; }
+            ref double a = ref fa, b = ref fb;
+            if (Mem.Add(ref boxStamp, sa) == stamp) { a = ref Mem.Add(ref boxes, 6 * sa); }
+            if (Mem.Add(ref boxStamp, sb) == stamp) { b = ref Mem.Add(ref boxes, 6 * sb); }
+            bool apart = (a - gap > Mem.Add(ref b, 3)) | (b - gap > Mem.Add(ref a, 3))
+                | (Mem.Add(ref a, 1) - gap > Mem.Add(ref b, 4)) | (Mem.Add(ref b, 1) - gap > Mem.Add(ref a, 4))
+                | (Mem.Add(ref a, 2) - gap > Mem.Add(ref b, 5)) | (Mem.Add(ref b, 2) - gap > Mem.Add(ref a, 5));
+            // Status 2 when the fat boxes no longer overlap (the pair goes), else 1; count 0 (a survivor's count and first are set in phase 2; first is never read for a count of 0).
+            Mem.Add(ref resStatus, i) = (byte)(fatOk ? 1 : 2);
+            Mem.Add(ref resCount, i) = 0; Mem.Add(ref resFirst, i) = 0;
+            // The apply list takes a pair that goes, and a tight-box exit with a constraint (or sensor overlap) to remove; survivors are decided in phase 2.
+            bool list = !fatOk | (apart & Mem.Add(ref pairCons, p) != -1);
+            listed |= (ulong)(list ? 1 : 0) << (i - lo);
+            // Survivors: written unconditionally, kept by advancing n.
+            Mem.Add(ref surv, n) = i; Mem.Add(ref survSpec, n) = pairSpec;
+            n += fatOk & !apart ? 1 : 0;
         }
 
-        var owner = Core.Shapes.Owner;
-        int ba = owner[sa], bb = owner[sb];
+        sc.SurvivorCount = n;
+        return listed;
+    }
+
+    // r4 h12: BoxPhase with both box tests on four lanes (x, y, z and one lane that is masked off). A box's six doubles load as two overlapping quads: Min = (MinX MinY MinZ MaxX) at offset 0,
+    // Max = (MaxX MaxY MaxZ next) at offset 3, which stays inside a tree node (the Box is followed by the node's ints) and inside _boxes (two doubles of padding). The lane compares are the scalar
+    // ones (ordered, so a NaN compares false either way) on the same doubles, so the decisions are identical to BoxPhase's.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ulong BoxPhase256(Engine3D e, int lo, int hi, NarrowScratch sc)
+    {
+        ref int upd = ref Mem.Ref(e._updateList);
+        ref int pairA = ref Mem.Ref(e.PairA), pairB = ref Mem.Ref(e.PairB);
+        ref int proxy = ref Mem.Ref(e.Proxy), pairCons = ref Mem.Ref(e.PairCons);
+        ref int boxStamp = ref Mem.Ref(e._boxStamp);
+        ref int resCount = ref Mem.Ref(e._resCount);
+        ref byte resStatus = ref Mem.Ref(e._resStatus);
+        ref int surv = ref Mem.Ref(sc.Survivor);
+        ref float survSpec = ref Mem.Ref(sc.SurvivorSpec);
+        ref float reachSum = ref Mem.Ref(e.ReachSum);
+        ref double boxes = ref Mem.Ref(e._boxes);
+        ref int owner = ref Mem.Ref(e.Core.Shapes.Owner);
+        var bp = e.Bp;
+        var trees = new TreeNodes();
+        trees[0] = bp.TreeAt(0).NodeArray; trees[1] = bp.TreeAt(1).NodeArray; trees[2] = bp.TreeAt(2).NodeArray;
+        int stamp = e._stamp, n = 0;
+        float spec = e.Opt.SpeculativeDistance, fast = (float)FastFactor * spec;
+        const double Gap = 0.005;
+        var gap = Vector256.Create(spec + Gap);
+        ulong listed = 0;
+        for (int i = lo; i < hi; i++)
+        {
+            int p = Mem.Add(ref upd, i);
+            int sa = Mem.Add(ref pairA, p), sb = Mem.Add(ref pairB, p);
+            int ka = Mem.Add(ref proxy, sa), kb = Mem.Add(ref proxy, sb);
+            float pairSpec = spec;
+            ref double fa = ref Mem.As<Aabb3D, double>(ref Mem.At(Mem.Add(ref trees[0], ka & 3), ka >> 2).Box);
+            ref double fb = ref Mem.As<Aabb3D, double>(ref Mem.At(Mem.Add(ref trees[0], kb & 3), kb >> 2).Box);
+            // 1 when the fat boxes overlap on x, y and z (bits 0-2 all set), else 0.
+            int fatOk = (int)((Vector256.ExtractMostSignificantBits(Vector256.LessThanOrEqual(Vector256.LoadUnsafe(ref fa), Vector256.LoadUnsafe(ref fb, 3))
+                & Vector256.LessThanOrEqual(Vector256.LoadUnsafe(ref fb), Vector256.LoadUnsafe(ref fa, 3))) & 7) + 1) >> 3;
+            int ba = Mem.Add(ref owner, sa), bb = Mem.Add(ref owner, sb);
+            // PairSpeculativeDistance, its fast path inline: a pair of slow bodies is searched to the fixed distance. The rare call comes before any vector is loaded for the tight test, so no
+            // vector is live across it (a live one would be spilled on every pair).
+            var g = gap;
+            if (fatOk != 0 && Mem.Add(ref reachSum, ba) + Mem.Add(ref reachSum, bb) > fast) { pairSpec = e.FastPairSpeculativeDistance(ba, bb, spec); g = Vector256.Create(pairSpec + Gap); }
+            // Tight boxes (this step's for a shape that moved, the stored fat box for one that did not); the extra margin keeps the shortcut clear of rounding at the threshold.
+            ref double a = ref fa, b = ref fb;
+            if (Mem.Add(ref boxStamp, sa) == stamp) { a = ref Mem.Add(ref boxes, 6 * sa); }
+            if (Mem.Add(ref boxStamp, sb) == stamp) { b = ref Mem.Add(ref boxes, 6 * sb); }
+            // 1 when the tight boxes are apart by more than the gap on some axis (any of bits 0-2), else 0.
+            int apart = (int)((Vector256.ExtractMostSignificantBits(Vector256.GreaterThan(Vector256.LoadUnsafe(ref a) - g, Vector256.LoadUnsafe(ref b, 3))
+                | Vector256.GreaterThan(Vector256.LoadUnsafe(ref b) - g, Vector256.LoadUnsafe(ref a, 3))) & 7) + 7) >> 3;
+            // Status 2 when the fat boxes no longer overlap (the pair goes), else 1; count 0. A survivor's first slot is set in phase 2; an early-out's is never read (its count is 0).
+            Mem.Add(ref resStatus, i) = (byte)(2 - fatOk);
+            Mem.Add(ref resCount, i) = 0;
+            // The apply list takes a pair that goes, and a tight-box exit with a constraint (or sensor overlap) to remove; survivors are decided in phase 2.
+            int hasCons = Mem.Add(ref pairCons, p) != -1 ? 1 : 0;
+            listed |= (ulong)((fatOk ^ 1) | (fatOk & apart & hasCons)) << (i - lo);
+            // Survivors: written unconditionally, kept by advancing n.
+            Mem.Add(ref surv, n) = i; Mem.Add(ref survSpec, n) = pairSpec;
+            n += fatOk & (apart ^ 1);
+        }
+
+        sc.SurvivorCount = n;
+        return listed;
+    }
+
+    // r4 h12: the three trees' node arrays of the box phase, indexed by a proxy key's low two bits (slot 3 unused).
+    [InlineArray(4)]
+    private struct TreeNodes { private DynamicTree<Aabb3D>.Node[] _e; }
+
+    // r4 h12: phase 2 of a narrowphase chunk, for a pair that survived BoxPhase (its boxes overlap; status 1, count 0 already written): the library's Collide from the pose loads on.
+    // The index and pose loads are unchecked (Mem.At): the indices are the ones BoxPhase used, and a live body's pose lanes lie inside the store's arrays (3 and 4 lanes a body in 3D).
+    private void CollideSurvivor(int i, NarrowScratch sc, float pairSpec)
+    {
+        int p = Mem.At(_updateList, i);
+        Mem.At(_resFirst, i) = sc.OutCount;
+        int sa = Mem.At(PairA, p), sb = Mem.At(PairB, p);
+        ref int owner = ref Mem.Ref(Core.Shapes.Owner);
+        int ba = Mem.Add(ref owner, sa), bb = Mem.Add(ref owner, sb);
         var bodies = Core.Bodies;
-        var pA = bodies.PositionOf(ba); var pB = bodies.PositionOf(bb);
-        var qA = RotationOfBody(ba); var qB = RotationOfBody(bb);
+        double[] pos = bodies.PositionArray;
+        float[] rot = bodies.RotationArray;
+        ReadOnlySpan<double> pA = Mem.ReadOnly(ref Mem.At(pos, 3 * ba), 3), pB = Mem.ReadOnly(ref Mem.At(pos, 3 * bb), 3);
+        ref float ra = ref Mem.At(rot, 4 * ba), rb = ref Mem.At(rot, 4 * bb);
+        var qA = new QuaternionF(ra, Mem.Add(ref ra, 1), Mem.Add(ref ra, 2), Mem.Add(ref ra, 3));
+        var qB = new QuaternionF(rb, Mem.Add(ref rb, 1), Mem.Add(ref rb, 2), Mem.Add(ref rb, 3));
         // A pair without a constraint whose last query proved the shapes apart stays empty until their relative motion has used up the margin by which they were apart. Such a record only exists for a pair
         // that was searched, so the shapes are neither empty nor two triangle soups, and the check comes before the shapes are looked at.
-        int existingCons = PairCons[p];
-        if (existingCons < 0 && _skip[p].Clear > 0f && StillApart(in _skip[p], qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]), _skip[p].Spec - pairSpec)) { sc.Reached++; return; }
+        int existingCons = Mem.At(PairCons, p);
+        if (existingCons < 0)
+        {
+            ref SkipFrame3 skip = ref Mem.At(_skip, p);
+            if (skip.Clear > 0f && StillApart(in skip, qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]), skip.Spec - pairSpec)) { sc.Reached++; return; }
+        }
+
         var ga = Geoms[GeomOf[sa]]!;
         var gb = Geoms[GeomOf[sb]]!;
         if (ga.Convex.Kind == ConvexShapeKind3D.Empty || gb.Convex.Kind == ConvexShapeKind3D.Empty) { return; }
@@ -853,6 +1000,8 @@ internal sealed partial class Engine3D
 
         CollideFresh(i, sc, p, sa, sb, ga, gb, ba, bb, pA, pB, qA, qB, pairSpec);
     }
+
+    // The pairs that need a narrowphase run are a minority (most are skipped, found apart by their boxes or reuse their manifold), so the work for them is out of line: the early exits above
 
     // The pairs that need a narrowphase run are a minority (most are skipped, found apart by their boxes or reuse their manifold), so the work for them is out of line: the early exits above
     // then run in a frame that holds none of the shape frames and manifolds this part needs.

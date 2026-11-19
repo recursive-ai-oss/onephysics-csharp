@@ -141,7 +141,8 @@ public partial class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     private const int EnlargedFlag = 2; // internal nodes only: this node's box grew, or a descendant's did, since the last rebuild of the enlarged region
     private const int BinCount = 16;
 
-    private struct Node
+    // Internal so the 3D narrowphase box phase can read a proxy's fat box straight from the node array (Engine3D.BoxPhase256 relies on Box being the first field, with at least 8 bytes of node after it).
+    internal struct Node
     {
         public TBox Box;
         public int Parent;   // free node: next free index
@@ -237,6 +238,9 @@ public partial class DynamicTree<TBox> where TBox : struct, IBox<TBox>
 
     /// <summary>The stored bounds of a node the caller knows is live (taken from a proxy key that was checked when the proxy was made): no validation, for per-pair inner loops.</summary>
     internal ref readonly TBox BoundsOfLive(int node) => ref _nodes[node].Box;
+
+    /// <summary>r4 h12: the node array itself, for a loop that reads many live proxies' boxes (hoisted once; valid until the tree next grows, so not across a tree update).</summary>
+    internal Node[] NodeArray => _nodes;
 
     /// <summary>The user id stored with a proxy. Throws <see cref="ArgumentException"/> unless <paramref name="proxy"/> is a live proxy.</summary>
     public int GetUserId(int proxy) => _nodes[CheckProxy(proxy)].UserId;
