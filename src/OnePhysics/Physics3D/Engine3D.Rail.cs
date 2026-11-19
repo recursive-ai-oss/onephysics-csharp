@@ -170,21 +170,20 @@ internal sealed partial class Engine3D
         var bodies = Core.Bodies;
         float m = bodies.InverseMass[b];
         if (!(m > 0f)) { return; }
-        var v = bodies.LinearVelocityOf(b);
-        v[0] += m * j.X; v[1] += m * j.Y; v[2] += m * j.Z;
+        // The wheel-rail forces act inside the solve, where the body's velocity is its packed row (see Pk).
+        var vw = SolveVelocity(b);
+        vw[0] += m * j.X; vw[1] += m * j.Y; vw[2] += m * j.Z;
         var tq = Vector3F.Cross(arm, j);
         float ax = Vector3F.Dot(tq, axle);
         var dw = ApplyWorldInertia(b, tq - axle * ax);
-        var w = bodies.AngularVelocityOf(b);
-        w[0] += dw.X; w[1] += dw.Y; w[2] += dw.Z;
+        vw[3] += dw.X; vw[4] += dw.Y; vw[5] += dw.Z;
         spin += ax / iAx;
     }
 
     private Vector3F RailPointVelocity(int b, Vector3F arm, Vector3F axle, float spin)
     {
-        var bodies = Core.Bodies;
-        var v = bodies.LinearVelocityOf(b); var w = bodies.AngularVelocityOf(b);
-        return new Vector3F(v[0], v[1], v[2]) + Vector3F.Cross(new Vector3F(w[0], w[1], w[2]), arm) + Vector3F.Cross(axle, arm) * spin;
+        var vw = SolveVelocity(b);
+        return new Vector3F(vw[0], vw[1], vw[2]) + Vector3F.Cross(new Vector3F(vw[3], vw[4], vw[5]), arm) + Vector3F.Cross(axle, arm) * spin;
     }
 
     // Kalker coefficient scale: G a b C, with G = 8.1e10 Pa and the contact patch a b = (c N^(1/3))^2 with c = 1.49e-4 (a 100 kN load gives a patch of 4.8e-5 m²), C11 = 4.1, C22 = 3.7, C23 = 1.5 for a/b near 1 (Kalker 1990, table of coefficients).
@@ -387,7 +386,7 @@ internal sealed partial class Engine3D
             float bw = 0.5f * def.TreadSpan, br = 0.5f * (tr.Def.Gauge + RailHeadWidth);
             float mu = tr.Def.Friction;
             float sprungWheel = 0.5f * carried;
-            var vBody = new Vector3F(bodies.LinearVelocityOf(b)[0], bodies.LinearVelocityOf(b)[1], bodies.LinearVelocityOf(b)[2]);
+            var vBody = new Vector3F(SolveVelocity(b)[0], SolveVelocity(b)[1], SolveVelocity(b)[2]);
             float vAlong = Vector3F.Dot(vBody, t);
             float vRef = Math.Max(Math.Abs(vAlong), 1f);
             float flangePlay = def.FlangeClearance + (br - bw);
@@ -448,7 +447,7 @@ internal sealed partial class Engine3D
                             // Contact patch tangent frame: rolling direction and lateral direction.
                             var lat = Vector3F.Cross(nrm, l);
                             var vw = vP - nrm * Vector3F.Dot(vP, nrm);
-                            var bodyW = bodies.AngularVelocityOf(b);
+                            var bodyW = SolveVelocity(b).Slice(3);
                             float spinCreep = (Vector3F.Dot(new Vector3F(bodyW[0], bodyW[1], bodyW[2]), nrm) + spin * Vector3F.Dot(axle, nrm)) / vRef;
                             float xx = Vector3F.Dot(vw, l) / vRef, eta = Vector3F.Dot(vw, lat) / vRef;
                             float cN = PatchC * Math32.Cbrt(load);
@@ -498,8 +497,12 @@ internal sealed partial class Engine3D
             if (spin != 0f)
             {
                 var hv = axle * (iAx * spin);
-                var wv = bodies.AngularVelocityOf(b);
-                AddAngularImpulse(b, Vector3F.Cross(new Vector3F(wv[0], wv[1], wv[2]), hv) * -h);
+                var wv = SolveVelocity(b).Slice(3);
+                if (bodies.InverseMass[b] > 0f)
+                {
+                    var dw = ApplyWorldInertia(b, Vector3F.Cross(new Vector3F(wv[0], wv[1], wv[2]), hv) * -h);
+                    wv[0] += dw.X; wv[1] += dw.Y; wv[2] += dw.Z;
+                }
             }
 
             r.Spin[k] = float.IsNaN(spin) ? 0f : spin > 1e9f ? 1e9f : spin < -1e9f ? -1e9f : spin;

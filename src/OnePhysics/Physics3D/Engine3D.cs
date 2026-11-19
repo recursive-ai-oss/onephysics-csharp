@@ -51,10 +51,12 @@ internal sealed partial class Engine3D : ISnapshotSection
     /// <summary>Per body, for the step's contact stage: how far its centre travels in the step (speed times the step) and how far its farthest point swings round the centre (angular speed times extent times the step; dynamic bodies only).</summary>
     internal float[] ReachLinear = new float[8], ReachTurn = new float[8], ReachSum = new float[8];
     public float[] Dq = new float[32];            // accumulated rotation over the step as a quaternion (x, y, z, w)
-    // r4 h06: the packed solver row, three 8-float rows a body (PkStride floats): row 0 (PkVelocity) the linear and angular velocity [v.xyz, w.xyz, 0, 0], row 1 (PkInertia) the world inverse inertia
-    // [xx xy xz yy yz zz, 0, 0], row 2 (PkPose) the displacement and accumulated rotation [dp.xyz, dq.xyzw, 0]. Written by PackBody when a step's contact stage initialises the body. Between then and
-    // FinalizeBodies row 0 is THE velocity of every awake body: the integration passes and both solver kernels read and write it there (one 32-byte row store per body), and BodyStore's velocity arrays
-    // are stale until FinalizeBodies copies row 0 back. Rows 1 and 2 hold the same floats as WInvI, Dp and Dq throughout the solve.
+    // The packed solver row, three 8-float rows a body (PkStride floats): row 0 (PkVelocity) the linear and angular velocity [v.xyz, w.xyz, 0, 0], row 1 (PkInertia) the world inverse inertia
+    // [xx xy xz yy yz zz, 0, 0], row 2 (PkPose) the displacement and accumulated rotation [dp.xyz, dq.xyzw, 0]. Written by PackBody when a step's contact stage initialises the body.
+    // Row 0 is THE velocity of every awake body while the solve runs: the integration passes, both solver kernels and the scalar parts of the solve (joint rows, rail forces, body controls) read and
+    // write it there (SolveVelocity; the kernels with one 32-byte row store per body), and BodyStore's velocity arrays are stale from the first integration pass until FinalizeBodies copies row 0 back.
+    // Between the contact stage's body initialisation and the solve both hold the same velocity: whatever changes a velocity or wakes a body there writes the body store and calls PackVelocity
+    // (the articulation step, PackLateWakes). Rows 1 and 2 hold the same floats as WInvI, Dp and Dq throughout the solve.
     public float[] Pk = new float[PkStride * 8];
     public const int PkStride = 24, PkVelocity = 0, PkInertia = 8, PkPose = 16;
     public float[] WInvI = new float[48];         // inverse inertia in world axes, refreshed whenever a body turns

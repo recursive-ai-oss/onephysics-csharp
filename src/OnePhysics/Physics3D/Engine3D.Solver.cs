@@ -40,6 +40,29 @@ internal sealed partial class Engine3D
         Mem.At(r, o + 3) = Mem.At(dq, p4); Mem.At(r, o + 4) = Mem.At(dq, p4 + 1); Mem.At(r, o + 5) = Mem.At(dq, p4 + 2); Mem.At(r, o + 6) = Mem.At(dq, p4 + 3); Mem.At(r, o + 7) = 0f;
     }
 
+    /// <summary>Copies a body's velocities from the body store into row 0 of its packed rows: for code that changes a velocity in the body store, or wakes a body, between the contact stage's body initialisation and the solve (see <see cref="Pk"/>).</summary>
+    internal void PackVelocity(int b)
+    {
+        Span<float> r = Pk;
+        var bodies = Core.Bodies;
+        ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
+        int o = PkStride * b, p3 = 3 * b;
+        Mem.At(r, o) = Mem.At(lin, p3); Mem.At(r, o + 1) = Mem.At(lin, p3 + 1); Mem.At(r, o + 2) = Mem.At(lin, p3 + 2);
+        Mem.At(r, o + 3) = Mem.At(ang, p3); Mem.At(r, o + 4) = Mem.At(ang, p3 + 1); Mem.At(r, o + 5) = Mem.At(ang, p3 + 2); Mem.At(r, o + 6) = 0f; Mem.At(r, o + 7) = 0f;
+    }
+
+    /// <summary>Copies a body's world inverse inertia into row 1 of its packed rows, after something other than the position pass changed it (axis locks).</summary>
+    private void PackInertia(int b)
+    {
+        Span<float> r = Pk;
+        ReadOnlySpan<float> w = WInvI;
+        int o = PkStride * b + PkInertia, p6 = 6 * b;
+        Mem.At(r, o) = Mem.At(w, p6); Mem.At(r, o + 1) = Mem.At(w, p6 + 1); Mem.At(r, o + 2) = Mem.At(w, p6 + 2); Mem.At(r, o + 3) = Mem.At(w, p6 + 3); Mem.At(r, o + 4) = Mem.At(w, p6 + 4); Mem.At(r, o + 5) = Mem.At(w, p6 + 5);
+    }
+
+    /// <summary>A body's velocity while a step's solve runs: the linear (0 to 2) and angular (3 to 5) lanes of row 0 of its packed rows (see <see cref="Pk"/>). The scalar parts of the solve read and write it here.</summary>
+    internal Span<float> SolveVelocity(int b) => Pk.AsSpan(PkStride * b + PkVelocity, 6);
+
     /// <summary>Refreshes one body's world-axes inverse inertia from the current rotation (for impulses applied between steps).</summary>
     public void RefreshWorldInertia(int b)
     {
@@ -449,24 +472,24 @@ internal sealed partial class Engine3D
         else if (KernelWidth == 4) { IntegrateKernel3D.Velocities<Lanes128>(this, list, ctx.SubstepDt); }
         else { IntegrateKernel3D.Velocities<Lanes256>(this, list, ctx.SubstepDt); }
         if (RailHandles.Count != 0) { RailSubstep(list, ctx.SubstepDt); }
-        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitBodyControls(b);
+        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitSolveVelocity(b);
     }
 
     /// <summary>Displacement, rotations, world inverse inertia and the packed rows of the bodies of the list, eight at a time (see <see cref="IntegrateKernel3D"/>).</summary>
     public void IntegratePositions(ReadOnlySpan<int> list, in StepContext ctx)
     {
-        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitBodyControls(b);
+        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitSolveVelocity(b);
         if (KernelWidth == 1) { IntegrateKernel3D.Positions<Lanes1>(this, list, ctx.SubstepDt); }
         else if (KernelWidth == 4) { IntegrateKernel3D.Positions<Lanes128>(this, list, ctx.SubstepDt); }
         else { IntegrateKernel3D.Positions<Lanes256>(this, list, ctx.SubstepDt); }
-        if (Core.Controls.HasLocks) foreach (int b in list) { ProjectInertia(b); PackBody(b); }
+        if (Core.Controls.HasLocks) foreach (int b in list) { ProjectInertia(b); PackInertia(b); }
     }
 
     // ------------------------------------------------------------------ finalize: forces and continuous collision
 
     public void FinalizeBodies(ReadOnlySpan<int> list, in StepContext ctx)
     {
-        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitBodyControls(b);
+        if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitSolveVelocity(b);
         var bodies = Core.Bodies;
         // r4 h06: the solve kept every awake body's velocity in its packed row 0 (see Pk); it goes back to the body store here, before anything after the solve reads it.
         Span<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;

@@ -115,10 +115,11 @@ internal sealed partial class Engine3D
     private void LoadJoint(int a, int b, ReadOnlySpan<float> s, out JS3 j, out JGeo g)
     {
         var bodies = Core.Bodies;
-        ReadOnlySpan<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity, invMass = bodies.InverseMass;
+        // The joint rows run inside the solve, where a body's velocity is row 0 of its packed rows (see Pk).
+        ReadOnlySpan<float> pk = Pk, invMass = bodies.InverseMass;
         j = default;
         j.Readback = Core.JointReadback; j.Constraint = -1;
-        j.VA = V(lin, 3 * a); j.WA = V(ang, 3 * a); j.VB = V(lin, 3 * b); j.WB = V(ang, 3 * b);
+        j.VA = V(pk, PkStride * a); j.WA = V(pk, PkStride * a + 3); j.VB = V(pk, PkStride * b); j.WB = V(pk, PkStride * b + 3);
         j.MA = invMass[a]; j.MB = invMass[b];
         j.Projected = Core.Controls.HasLocks && (Core.Controls.ConstraintsOf(a) | Core.Controls.ConstraintsOf(b)) != 0;
         if (j.Projected) { j.DA = new(Core.AxisMass(a,0), Core.AxisMass(a,1), Core.AxisMass(a,2)); j.DB = new(Core.AxisMass(b,0), Core.AxisMass(b,1), Core.AxisMass(b,2)); }
@@ -140,10 +141,9 @@ internal sealed partial class Engine3D
 
     private void StoreJoint(int a, int b, in JS3 j)
     {
-        var bodies = Core.Bodies;
-        Span<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
-        if (j.MA > 0f) { Put(lin, 3 * a, j.VA); Put(ang, 3 * a, j.WA); }
-        if (j.MB > 0f) { Put(lin, 3 * b, j.VB); Put(ang, 3 * b, j.WB); }
+        Span<float> pk = Pk;
+        if (j.MA > 0f) { Put(pk, PkStride * a, j.VA); Put(pk, PkStride * a + 3, j.WA); }
+        if (j.MB > 0f) { Put(pk, PkStride * b, j.VB); Put(pk, PkStride * b + 3, j.WB); }
     }
 
     /// <summary>B's rotation relative to A in A's frame, with its sign chosen so the scalar part is not negative: the rotation vector is then about twice its vector part for small angles.</summary>

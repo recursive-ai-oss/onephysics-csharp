@@ -52,6 +52,8 @@ internal sealed partial class Engine3D : IArticulationHost
         v[0] = (float)com.X; v[1] = (float)com.Y; v[2] = (float)com.Z;
         var w = Core.Bodies.AngularVelocityOf(body);
         w[0] = (float)omega.X; w[1] = (float)omega.Y; w[2] = (float)omega.Z;
+        // The articulation step runs after the contact stage packed the bodies, so the solve's copy follows.
+        PackVelocity(body);
     }
 
     void IArticulationHost.GatherLinkContacts(List<HostContact> into)
@@ -143,6 +145,7 @@ internal sealed partial class Engine3D : IArticulationHost
         v[0] += (float)dv.X; v[1] += (float)dv.Y; v[2] += (float)dv.Z;
         var w = bodies.AngularVelocityOf(body);
         w[0] += (float)dw.X; w[1] += (float)dw.Y; w[2] += (float)dw.Z;
+        PackVelocity(body);
     }
 
     private struct LinkPairQuery : IOverlapCallback

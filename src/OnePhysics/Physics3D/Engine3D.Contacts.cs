@@ -15,7 +15,7 @@ internal readonly struct Stages3D : IWorldStages
 
     public Stages3D(Engine3D e) => _e = e;
 
-    public void UpdateContacts(WorldCore world) { _e.UpdateContacts(world); _e.ApplyFieldContacts(); _e.StepArticulations(); }
+    public void UpdateContacts(WorldCore world) { _e.UpdateContacts(world); _e.ApplyFieldContacts(); _e.StepArticulations(); _e.PackLateWakes(); }
 
     public void Prepare(WorldCore world, ReadOnlySpan<int> constraints, in StepContext context) {
         // Contacts are prepared per batch (PrepareBatch); nothing else needs chunk-wise preparation yet.
@@ -488,6 +488,21 @@ internal sealed partial class Engine3D
     private bool _deferWrite;
     private int[] _sleepers = new int[64];
     private int _sleeperCount;
+
+    /// <summary>
+    /// Field contacts and the articulation step run after the contact stage and may wake islands. A body they woke was asleep when the stage packed the bodies, so its velocity row is copied here, before
+    /// the solve reads it (see <see cref="Pk"/>). The bodies the stage itself woke were packed at its end; copying those again changes nothing.
+    /// </summary>
+    internal void PackLateWakes()
+    {
+        if ((_fields == null || _fields.Count == 0) && (_articulations == null || _articulations.Count == 0)) { return; }
+        var bodies = Core.Bodies;
+        for (int i = 0; i < _sleeperCount; i++)
+        {
+            int b = _sleepers[i];
+            if (bodies.IsAwake(b)) { PackVelocity(b); }
+        }
+    }
 
     private const int BodyInitChunk = 128;
     private byte[] _isSleeper = new byte[8];
