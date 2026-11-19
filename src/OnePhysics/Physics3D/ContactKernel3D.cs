@@ -45,7 +45,7 @@ internal static class W3D
 // The kernels' locals are large vector structs (a batch's bodies and points, several kilobytes of frame); clearing them at every call cost about a twelfth of a step. Every local is assigned before it is read
 // (the compiler checks that for ordinary locals), and the one stack buffer, the gather offsets, is written for every lane before it is read, so nothing depends on what the stack held.
 [System.Runtime.CompilerServices.SkipLocalsInit]
-internal static class ContactKernel3D
+internal static partial class ContactKernel3D
 {
     private struct V3<T> where T : struct, ILane<T>
     {
@@ -135,14 +135,11 @@ internal static class ContactKernel3D
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void GatherBody<T, TMass>(out BodyLanes<T, TMass> r, ReadOnlySpan<float> lin, ReadOnlySpan<float> ang, ReadOnlySpan<float> pk, ReadOnlySpan<int> bodyIds, Span<int> offs, TMass invMass) where T : struct, ILane<T> where TMass : struct, ILinearMass<T, TMass>
     {
-        int width = T.Count;
-        for (int l = 0; l < width; l++) { offs[l] = 3 * bodyIds[l]; }
-        var v = T.GatherRows(lin, offs);
-        var w = T.GatherRows(ang, offs);
-        for (int l = 0; l < width; l++) { offs[l] = 16 * bodyIds[l]; }
-        var g0 = T.GatherRows(pk, offs);
-        for (int l = 0; l < width; l++) { offs[l] += 8; }
-        var g1 = T.GatherRows(pk, offs);
+        // Offsets are scaled from the body numbers inside the gathers (no offset table written and read back per gather).
+        var v = T.GatherRows(lin, bodyIds, 3, 0);
+        var w = T.GatherRows(ang, bodyIds, 3, 0);
+        var g0 = T.GatherRows(pk, bodyIds, 16, 0);
+        var g1 = T.GatherRows(pk, bodyIds, 16, 8);
         r = new BodyLanes<T, TMass>
         {
             V = new V3<T>(v.R0, v.R1, v.R2), W = new V3<T>(w.R0, w.R1, w.R2), Dp = new V3<T>(g0.R0, g0.R1, g0.R2),
@@ -285,7 +282,13 @@ internal static class ContactKernel3D
             V3<T> roll = Vec<T>(wide, W3D.RollImpulse, l0);
             int maxPts = idx[W3D.MaxPointsSlot];
 
-            if (phase == SolvePhase.WarmStart)
+            // Eight ordinary lanes with scalar masses take the rows written directly on 256-bit vectors (same operations in the same order, see Rows256); it also writes the output rows and the rolling impulse.
+            bool direct = typeof(T) == typeof(Lanes256) && typeof(TMass) == typeof(ScalarMass<Lanes256>) && !TMode.Extended && phase != SolvePhase.Restitution && System.Runtime.Intrinsics.X86.Avx.IsSupported;
+            if (direct)
+            {
+                Rows256(ref Mem.AsRows(ref a), ref Mem.AsRows(ref b2), ref Mem.Base(wide, W3D.GroupFloats), ref Mem.Base(os, W3D.OutFloats), maxPts, phase, idx[W3D.AnyRollingSlot] != 0, kp.InverseSubstepDt, kp.LinearSlop, kp.PushOutVelocity);
+            }
+            else if (phase == SolvePhase.WarmStart)
             {
                 for (int i = 0; i < maxPts; i++) { WarmPoint(ref a, ref b2, wide, i, l0, nrm, t1, t2); }
                 ApplyRoll(ref a, ref b2, roll);
@@ -316,10 +319,14 @@ internal static class ContactKernel3D
             }
 
             // Velocities back out.
-            a.V.X.StoreAt(os, 0 * width); a.V.Y.StoreAt(os, 1 * width); a.V.Z.StoreAt(os, 2 * width);
-            a.W.X.StoreAt(os, 3 * width); a.W.Y.StoreAt(os, 4 * width); a.W.Z.StoreAt(os, 5 * width);
-            b2.V.X.StoreAt(os, 6 * width); b2.V.Y.StoreAt(os, 7 * width); b2.V.Z.StoreAt(os, 8 * width);
-            b2.W.X.StoreAt(os, 9 * width); b2.W.Y.StoreAt(os, 10 * width); b2.W.Z.StoreAt(os, 11 * width);
+            if (!direct)
+            {
+                a.V.X.StoreAt(os, 0 * width); a.V.Y.StoreAt(os, 1 * width); a.V.Z.StoreAt(os, 2 * width);
+                a.W.X.StoreAt(os, 3 * width); a.W.Y.StoreAt(os, 4 * width); a.W.Z.StoreAt(os, 5 * width);
+                b2.V.X.StoreAt(os, 6 * width); b2.V.Y.StoreAt(os, 7 * width); b2.V.Z.StoreAt(os, 8 * width);
+                b2.W.X.StoreAt(os, 9 * width); b2.W.Y.StoreAt(os, 10 * width); b2.W.Z.StoreAt(os, 11 * width);
+            }
+
             for (int l = 0; l < width && l0 + l < lane0 + n; l++)
             {
                 // Scatter offsets are body indices of dynamic bodies, or -1 for a body that keeps its velocity.
@@ -330,7 +337,7 @@ internal static class ContactKernel3D
             }
 
             // Point impulses were stored by the point methods. Restitution leaves the friction and rolling impulses alone.
-            if (phase == SolvePhase.WarmStart) { continue; }
+            if (phase == SolvePhase.WarmStart || direct) { continue; }
             if (phase != SolvePhase.Restitution)
             {
                 roll.X.StoreAt(wide, (W3D.RollImpulse + 0) * 8 + l0); roll.Y.StoreAt(wide, (W3D.RollImpulse + 1) * 8 + l0); roll.Z.StoreAt(wide, (W3D.RollImpulse + 2) * 8 + l0);

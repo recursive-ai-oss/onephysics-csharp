@@ -127,6 +127,32 @@ internal static class Mem
         if ((uint)i >= 32u) { throw new InvalidOperationException("kernel table index " + i + " outside a group"); }
     }
 
+    /// <summary>A reference to row <paramref name="row"/> of a 3D wide group (rows of eight floats, one per lane) that starts at <paramref name="group"/>; the caller keeps the row below the group's row count, which the group's <see cref="Base(Span{float}, int)"/> covered.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref float Row(ref float group, int row)
+    {
+        CheckRow(row);
+        return ref Unsafe.Add(ref group, row * 8);
+    }
+
+    /// <summary>Vector <paramref name="row"/> of a block of 256-bit vectors (a 3D kernel's gathered bodies, twenty vectors a side); the caller keeps the row inside the block.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Vector256<float> Row(ref Vector256<float> block, int row)
+    {
+        CheckItem(row);
+        return Unsafe.Add(ref block, row);
+    }
+
+    /// <summary>A block of 256-bit lane vectors seen as its first vector (see <see cref="Row(ref Vector256{float}, int)"/>). <typeparamref name="TBlock"/> is a struct made of nothing but eight-lane vectors.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref Vector256<float> AsRows<TBlock>(ref TBlock block) where TBlock : struct => ref Unsafe.As<TBlock, Vector256<float>>(ref block);
+
+    [Conditional("CHECKED")]
+    private static void CheckRow(int row)
+    {
+        if ((uint)row >= 128u) { throw new InvalidOperationException("kernel row " + row + " outside a group"); }
+    }
+
     /// <summary>Declares a scratch buffer without clearing it; the caller writes every element it reads.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void SkipInit<TBuffer>(out TBuffer buffer) => Unsafe.SkipInit(out buffer);

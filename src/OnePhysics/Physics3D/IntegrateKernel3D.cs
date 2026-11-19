@@ -110,6 +110,48 @@ internal static class IntegrateKernel3D
         return new V3<T>(T.Select(ok, back.X, w.X), T.Select(ok, back.Y, w.Y), T.Select(ok, back.Z, w.Z));
     }
 
+    private static bool AllDynamic(ReadOnlySpan<byte> type, ReadOnlySpan<int> chunk)
+    {
+        foreach (int b in chunk) { if (Mem.At(type, b) != (byte)BodyType.Dynamic) { return false; } }
+        return true;
+    }
+
+    /// <summary>
+    /// The velocity pass's staging rows for eight dynamic bodies, by row loads and transposes where a body's floats sit together (velocities from the padded arrays, the world inverse inertia from the
+    /// packed rows, which hold the same floats as WInvI throughout the solve, rotation and local inertia by exact four-float loads) and lane by lane for the rest. The gyroscopic rows are zero in the
+    /// lanes whose mask in the VGyro row (written by the caller) is clear, as in the scalar staging.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void GatherVelocities256(Span<float> st, ReadOnlySpan<int> ids, ReadOnlySpan<float> lin, ReadOnlySpan<float> ang, ReadOnlySpan<float> pk, ReadOnlySpan<float> gravityScale, ReadOnlySpan<float> invMass,
+        ReadOnlySpan<float> force, ReadOnlySpan<float> torque, ReadOnlySpan<float> linDamping, ReadOnlySpan<float> angDamping, ReadOnlySpan<float> rot, ReadOnlySpan<float> inertia, bool anyGyro)
+    {
+        var v = Lanes256.GatherRows(lin, ids, 3, 0);
+        v.R0.StoreAt(st, VLinX * Lanes); v.R1.StoreAt(st, (VLinX + 1) * Lanes); v.R2.StoreAt(st, (VLinX + 2) * Lanes);
+        var w = Lanes256.GatherRows(ang, ids, 3, 0);
+        w.R0.StoreAt(st, VAngX * Lanes); w.R1.StoreAt(st, (VAngX + 1) * Lanes); w.R2.StoreAt(st, (VAngX + 2) * Lanes);
+        Lanes256.GatherOne(gravityScale, ids).StoreAt(st, VGravityScale * Lanes); Lanes256.GatherOne(invMass, ids).StoreAt(st, VInvMass * Lanes);
+        Lanes256.GatherOne(force, ids, 3, 0).StoreAt(st, VForce * Lanes); Lanes256.GatherOne(force, ids, 3, 1).StoreAt(st, (VForce + 1) * Lanes); Lanes256.GatherOne(force, ids, 3, 2).StoreAt(st, (VForce + 2) * Lanes);
+        Lanes256.GatherOne(torque, ids, 3, 0).StoreAt(st, VTorque * Lanes); Lanes256.GatherOne(torque, ids, 3, 1).StoreAt(st, (VTorque + 1) * Lanes); Lanes256.GatherOne(torque, ids, 3, 2).StoreAt(st, (VTorque + 2) * Lanes);
+        Lanes256.GatherOne(linDamping, ids).StoreAt(st, VLinDamp * Lanes); Lanes256.GatherOne(angDamping, ids).StoreAt(st, VAngDamp * Lanes);
+        var g0 = Lanes256.GatherRows(pk, ids, 16, 0);
+        var g1 = Lanes256.GatherRows(pk, ids, 16, 8);
+        g0.R7.StoreAt(st, VWInvI * Lanes); g1.R0.StoreAt(st, (VWInvI + 1) * Lanes); g1.R1.StoreAt(st, (VWInvI + 2) * Lanes);
+        g1.R2.StoreAt(st, (VWInvI + 3) * Lanes); g1.R3.StoreAt(st, (VWInvI + 4) * Lanes); g1.R4.StoreAt(st, (VWInvI + 5) * Lanes);
+        if (!anyGyro)
+        {
+            for (int f = VRot; f < VInertia + 6; f++) { Lanes256.Zero.StoreAt(st, f * Lanes); }
+            return;
+        }
+
+        Lanes256 gyro = Lanes256.LoadAt(st, VGyro * Lanes);
+        Lanes256.GatherRows4(rot, ids, 4, 0, out var r0, out var r1, out var r2, out var r3);
+        Lane.And(gyro, r0).StoreAt(st, VRot * Lanes); Lane.And(gyro, r1).StoreAt(st, (VRot + 1) * Lanes); Lane.And(gyro, r2).StoreAt(st, (VRot + 2) * Lanes); Lane.And(gyro, r3).StoreAt(st, (VRot + 3) * Lanes);
+        Lanes256.GatherRows4(inertia, ids, 6, 0, out var i0, out var i1, out var i2, out var i3);
+        Lanes256.GatherRows4(inertia, ids, 6, 2, out _, out _, out var i4, out var i5);
+        Lane.And(gyro, i0).StoreAt(st, VInertia * Lanes); Lane.And(gyro, i1).StoreAt(st, (VInertia + 1) * Lanes); Lane.And(gyro, i2).StoreAt(st, (VInertia + 2) * Lanes);
+        Lane.And(gyro, i3).StoreAt(st, (VInertia + 3) * Lanes); Lane.And(gyro, i4).StoreAt(st, (VInertia + 4) * Lanes); Lane.And(gyro, i5).StoreAt(st, (VInertia + 5) * Lanes);
+    }
+
     /// <summary>One group of up to eight bodies: velocities after gravity, forces, torque, the gyroscopic term, damping and the speed limits. Lanes with <c>write[lane]</c> false are not written back.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void VelocityLanes<T>(Span<float> st, int l0, T hh, T maxSpeed, T maxSpeed2, T maxSpin, T maxSpin2, T gx, T gy, T gz, bool observeDamping) where T : struct, ILane<T>
@@ -180,35 +222,55 @@ internal static class IntegrateKernel3D
             int n = Math.Min(Lanes, list.Length - i0);
             int live = 0;
             bool observeDamping = false;
-            for (int l = 0; l < Lanes; l++)
+            // A full chunk of dynamic bodies at eight lanes gathers whole rows and transposes them in registers (same values as the scalar staging below, which every other case uses).
+            if (typeof(T) == typeof(Lanes256) && n == Lanes && System.Runtime.Intrinsics.X86.Avx.IsSupported && !e.Opt.DetailedInspection && AllDynamic(type, list.Slice(i0, Lanes)))
             {
-                int b = -1;
-                if (l < n)
+                var chunk = list.Slice(i0, Lanes);
+                bool anyGyro = false;
+                for (int l = 0; l < Lanes; l++)
                 {
-                    int cand = list[i0 + l];
-                    if (Mem.At(type, cand) == (byte)BodyType.Dynamic) { b = cand; live++; }
+                    int b = chunk[l];
+                    ids[l] = b;
+                    bool gyro = (flags[b] & 2) != 0;
+                    st[VGyro * Lanes + l] = gyro ? allOnes : 0f;
+                    anyGyro |= gyro;
                 }
 
-                ids[l] = b;
-                if (b < 0)
+                live = Lanes;
+                GatherVelocities256(st, chunk, bodies.LinearVelocityPadded, bodies.AngularVelocityPadded, e.Pk, gravityScale, invMass, force, torque, linDamping, angDamping, rot, inertia, anyGyro);
+            }
+            else
+            {
+                for (int l = 0; l < Lanes; l++)
                 {
-                    for (int f = 0; f < VFields; f++) { st[f * Lanes + l] = 0f; }
-                    continue;
-                }
+                    int b = -1;
+                    if (l < n)
+                    {
+                        int cand = list[i0 + l];
+                        if (Mem.At(type, cand) == (byte)BodyType.Dynamic) { b = cand; live++; }
+                    }
 
-                int b3 = 3 * b, b6 = 6 * b, b4 = 4 * b;
-                st[VLinX * Lanes + l] = Mem.At(lin, b3); st[(VLinX + 1) * Lanes + l] = Mem.At(lin, b3 + 1); st[(VLinX + 2) * Lanes + l] = Mem.At(lin, b3 + 2);
-                st[VAngX * Lanes + l] = Mem.At(ang, b3); st[(VAngX + 1) * Lanes + l] = Mem.At(ang, b3 + 1); st[(VAngX + 2) * Lanes + l] = Mem.At(ang, b3 + 2);
-                st[VGravityScale * Lanes + l] = Mem.At(gravityScale, b); st[VInvMass * Lanes + l] = Mem.At(invMass, b);
-                st[VForce * Lanes + l] = Mem.At(force, b3); st[(VForce + 1) * Lanes + l] = Mem.At(force, b3 + 1); st[(VForce + 2) * Lanes + l] = Mem.At(force, b3 + 2);
-                st[VTorque * Lanes + l] = Mem.At(torque, b3); st[(VTorque + 1) * Lanes + l] = Mem.At(torque, b3 + 1); st[(VTorque + 2) * Lanes + l] = Mem.At(torque, b3 + 2);
-                st[VLinDamp * Lanes + l] = Mem.At(linDamping, b); st[VAngDamp * Lanes + l] = Mem.At(angDamping, b);
-                observeDamping |= e.Opt.DetailedInspection && (st[VLinDamp * Lanes + l] != 0f || st[VAngDamp * Lanes + l] != 0f);
-                for (int k = 0; k < 6; k++) { st[(VWInvI + k) * Lanes + l] = Mem.At(wInvI, b6 + k); }
-                bool gyro = (flags[b] & 2) != 0;
-                st[VGyro * Lanes + l] = gyro ? allOnes : 0f;
-                for (int k = 0; k < 4; k++) { st[(VRot + k) * Lanes + l] = gyro ? Mem.At(rot, b4 + k) : 0f; }
-                for (int k = 0; k < 6; k++) { st[(VInertia + k) * Lanes + l] = gyro ? Mem.At(inertia, b6 + k) : 0f; }
+                    ids[l] = b;
+                    if (b < 0)
+                    {
+                        for (int f = 0; f < VFields; f++) { st[f * Lanes + l] = 0f; }
+                        continue;
+                    }
+
+                    int b3 = 3 * b, b6 = 6 * b, b4 = 4 * b;
+                    st[VLinX * Lanes + l] = Mem.At(lin, b3); st[(VLinX + 1) * Lanes + l] = Mem.At(lin, b3 + 1); st[(VLinX + 2) * Lanes + l] = Mem.At(lin, b3 + 2);
+                    st[VAngX * Lanes + l] = Mem.At(ang, b3); st[(VAngX + 1) * Lanes + l] = Mem.At(ang, b3 + 1); st[(VAngX + 2) * Lanes + l] = Mem.At(ang, b3 + 2);
+                    st[VGravityScale * Lanes + l] = Mem.At(gravityScale, b); st[VInvMass * Lanes + l] = Mem.At(invMass, b);
+                    st[VForce * Lanes + l] = Mem.At(force, b3); st[(VForce + 1) * Lanes + l] = Mem.At(force, b3 + 1); st[(VForce + 2) * Lanes + l] = Mem.At(force, b3 + 2);
+                    st[VTorque * Lanes + l] = Mem.At(torque, b3); st[(VTorque + 1) * Lanes + l] = Mem.At(torque, b3 + 1); st[(VTorque + 2) * Lanes + l] = Mem.At(torque, b3 + 2);
+                    st[VLinDamp * Lanes + l] = Mem.At(linDamping, b); st[VAngDamp * Lanes + l] = Mem.At(angDamping, b);
+                    observeDamping |= e.Opt.DetailedInspection && (st[VLinDamp * Lanes + l] != 0f || st[VAngDamp * Lanes + l] != 0f);
+                    for (int k = 0; k < 6; k++) { st[(VWInvI + k) * Lanes + l] = Mem.At(wInvI, b6 + k); }
+                    bool gyro = (flags[b] & 2) != 0;
+                    st[VGyro * Lanes + l] = gyro ? allOnes : 0f;
+                    for (int k = 0; k < 4; k++) { st[(VRot + k) * Lanes + l] = gyro ? Mem.At(rot, b4 + k) : 0f; }
+                    for (int k = 0; k < 6; k++) { st[(VInertia + k) * Lanes + l] = gyro ? Mem.At(inertia, b6 + k) : 0f; }
+                }
             }
 
             if (live == 0) { continue; }
@@ -310,6 +372,32 @@ internal static class IntegrateKernel3D
         T.Select(turning, T.Select(dynamic, fresh, zero), Row<T>(st, PWInvI + k, l0)).StoreAt(st, (PWInvI + k) * Lanes + l0);
 
     /// <summary>
+    /// The position pass's staging rows for eight bodies, by whole-row loads and transposes: velocities from the padded velocity arrays, displacement, accumulated rotation and world inverse inertia from
+    /// the packed rows (<see cref="Engine3D.Pk"/>, which holds the same floats as Dp, Dq and WInvI throughout the solve: this pass is what writes all four), rotation and local inverse inertia by exact
+    /// four-float loads, the inverse mass lane by lane.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void GatherPositions256(Span<float> st, ReadOnlySpan<int> ids, ReadOnlySpan<float> lin, ReadOnlySpan<float> ang, ReadOnlySpan<float> pk, ReadOnlySpan<float> rot, ReadOnlySpan<float> invI, ReadOnlySpan<float> invMass)
+    {
+        var v = Lanes256.GatherRows(lin, ids, 3, 0);
+        v.R0.StoreAt(st, PLin * Lanes); v.R1.StoreAt(st, (PLin + 1) * Lanes); v.R2.StoreAt(st, (PLin + 2) * Lanes);
+        var w = Lanes256.GatherRows(ang, ids, 3, 0);
+        w.R0.StoreAt(st, PAng * Lanes); w.R1.StoreAt(st, (PAng + 1) * Lanes); w.R2.StoreAt(st, (PAng + 2) * Lanes);
+        var g0 = Lanes256.GatherRows(pk, ids, 16, 0);
+        g0.R0.StoreAt(st, PDp * Lanes); g0.R1.StoreAt(st, (PDp + 1) * Lanes); g0.R2.StoreAt(st, (PDp + 2) * Lanes);
+        g0.R3.StoreAt(st, PDq * Lanes); g0.R4.StoreAt(st, (PDq + 1) * Lanes); g0.R5.StoreAt(st, (PDq + 2) * Lanes); g0.R6.StoreAt(st, (PDq + 3) * Lanes);
+        var g1 = Lanes256.GatherRows(pk, ids, 16, 8);
+        g0.R7.StoreAt(st, PWInvI * Lanes); g1.R0.StoreAt(st, (PWInvI + 1) * Lanes); g1.R1.StoreAt(st, (PWInvI + 2) * Lanes);
+        g1.R2.StoreAt(st, (PWInvI + 3) * Lanes); g1.R3.StoreAt(st, (PWInvI + 4) * Lanes); g1.R4.StoreAt(st, (PWInvI + 5) * Lanes);
+        Lanes256.GatherRows4(rot, ids, 4, 0, out var r0, out var r1, out var r2, out var r3);
+        r0.StoreAt(st, PRot * Lanes); r1.StoreAt(st, (PRot + 1) * Lanes); r2.StoreAt(st, (PRot + 2) * Lanes); r3.StoreAt(st, (PRot + 3) * Lanes);
+        Lanes256.GatherRows4(invI, ids, 6, 0, out var i0, out var i1, out var i2, out var i3);
+        Lanes256.GatherRows4(invI, ids, 6, 2, out _, out _, out var i4, out var i5);
+        i0.StoreAt(st, PInvI * Lanes); i1.StoreAt(st, (PInvI + 1) * Lanes); i2.StoreAt(st, (PInvI + 2) * Lanes); i3.StoreAt(st, (PInvI + 3) * Lanes); i4.StoreAt(st, (PInvI + 4) * Lanes); i5.StoreAt(st, (PInvI + 5) * Lanes);
+        Lanes256.GatherOne(invMass, ids).StoreAt(st, PInvMass * Lanes);
+    }
+
+    /// <summary>
     /// A velocity the solve left absurd (a stiff constraint on a light body with a long lever arm can multiply a velocity by thousands in one pass) becomes finite and bounded before it moves anything:
     /// NaN becomes zero, an infinite component the cap, and a vector longer than the cap is scaled to it. The cap is far above the integration's own limits (16 times), so a body that is merely fast is never touched.
     /// </summary>
@@ -346,31 +434,50 @@ internal static class IntegrateKernel3D
         for (int i0 = 0; i0 < list.Length; i0 += Lanes)
         {
             int n = Math.Min(Lanes, list.Length - i0);
-            for (int l = 0; l < Lanes; l++)
+            // A full chunk at eight lanes gathers whole rows and transposes them in registers (same values as the scalar staging below, which every other width and the last partial chunk use).
+            if (typeof(T) == typeof(Lanes256) && n == Lanes && System.Runtime.Intrinsics.X86.Avx.IsSupported)
             {
-                if (l >= n)
+                var ids = list.Slice(i0, Lanes);
+                for (int l = 0; l < Lanes; l++)
                 {
-                    for (int f = 0; f < PFields; f++) { st[f * Lanes + l] = 0f; }
-                    continue;
-                }
-
-                int b = list[i0 + l];
-                int b3 = 3 * b, b4 = 4 * b, b6 = 6 * b;
-                if (Mem.At(invMass, b) > 0f)
-                {
+                    int b = ids[l];
+                    if (!(Mem.At(invMass, b) > 0f)) { continue; }
+                    int b3 = 3 * b;
                     float vx = Mem.At(lin, b3), vy = Mem.At(lin, b3 + 1), vz = Mem.At(lin, b3 + 2), wx = Mem.At(ang, b3), wy = Mem.At(ang, b3 + 1), wz = Mem.At(ang, b3 + 2);
                     if (Sane(ref vx, ref vy, ref vz, speedCap)) { Mem.At(linW, b3) = vx; Mem.At(linW, b3 + 1) = vy; Mem.At(linW, b3 + 2) = vz; }
                     if (Sane(ref wx, ref wy, ref wz, spinCap)) { Mem.At(angW, b3) = wx; Mem.At(angW, b3 + 1) = wy; Mem.At(angW, b3 + 2) = wz; }
                 }
 
-                for (int k = 0; k < 3; k++)
+                GatherPositions256(st, ids, bodies.LinearVelocityPadded, bodies.AngularVelocityPadded, pk, rot, invI, invMass);
+            }
+            else
+            {
+                for (int l = 0; l < Lanes; l++)
                 {
-                    st[(PLin + k) * Lanes + l] = Mem.At(lin, b3 + k); st[(PAng + k) * Lanes + l] = Mem.At(ang, b3 + k); st[(PDp + k) * Lanes + l] = Mem.At(dp, b3 + k);
-                }
+                    if (l >= n)
+                    {
+                        for (int f = 0; f < PFields; f++) { st[f * Lanes + l] = 0f; }
+                        continue;
+                    }
 
-                for (int k = 0; k < 4; k++) { st[(PDq + k) * Lanes + l] = Mem.At(dq, b4 + k); st[(PRot + k) * Lanes + l] = Mem.At(rot, b4 + k); }
-                for (int k = 0; k < 6; k++) { st[(PInvI + k) * Lanes + l] = Mem.At(invI, b6 + k); st[(PWInvI + k) * Lanes + l] = Mem.At(wInvI, b6 + k); }
-                st[PInvMass * Lanes + l] = Mem.At(invMass, b);
+                    int b = list[i0 + l];
+                    int b3 = 3 * b, b4 = 4 * b, b6 = 6 * b;
+                    if (Mem.At(invMass, b) > 0f)
+                    {
+                        float vx = Mem.At(lin, b3), vy = Mem.At(lin, b3 + 1), vz = Mem.At(lin, b3 + 2), wx = Mem.At(ang, b3), wy = Mem.At(ang, b3 + 1), wz = Mem.At(ang, b3 + 2);
+                        if (Sane(ref vx, ref vy, ref vz, speedCap)) { Mem.At(linW, b3) = vx; Mem.At(linW, b3 + 1) = vy; Mem.At(linW, b3 + 2) = vz; }
+                        if (Sane(ref wx, ref wy, ref wz, spinCap)) { Mem.At(angW, b3) = wx; Mem.At(angW, b3 + 1) = wy; Mem.At(angW, b3 + 2) = wz; }
+                    }
+
+                    for (int k = 0; k < 3; k++)
+                    {
+                        st[(PLin + k) * Lanes + l] = Mem.At(lin, b3 + k); st[(PAng + k) * Lanes + l] = Mem.At(ang, b3 + k); st[(PDp + k) * Lanes + l] = Mem.At(dp, b3 + k);
+                    }
+
+                    for (int k = 0; k < 4; k++) { st[(PDq + k) * Lanes + l] = Mem.At(dq, b4 + k); st[(PRot + k) * Lanes + l] = Mem.At(rot, b4 + k); }
+                    for (int k = 0; k < 6; k++) { st[(PInvI + k) * Lanes + l] = Mem.At(invI, b6 + k); st[(PWInvI + k) * Lanes + l] = Mem.At(wInvI, b6 + k); }
+                    st[PInvMass * Lanes + l] = Mem.At(invMass, b);
+                }
             }
 
             for (int l0 = 0; l0 < Lanes; l0 += width) { PositionLanes<T>(st, l0, th); }
