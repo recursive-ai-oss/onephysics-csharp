@@ -87,7 +87,7 @@ public sealed partial class ManifoldGenerator3D
 
     private static readonly BoxTopology s_boxTopo = new();
 
-    /// <summary>r4 h22: the axis tests of a box–box pair, computed ahead of the query (BoxAxesBatch): what BoxFaces and BoxEdges return for the pair's pose.</summary>
+    /// <summary>The axis tests of a box–box pair, computed ahead of the query (BoxAxesBatch): what BoxFaces and BoxEdges return for the pair's pose.</summary>
     internal struct BoxAxes
     {
         public float SepA, SepB, SepE;
@@ -96,7 +96,7 @@ public sealed partial class ManifoldGenerator3D
         public bool FacesDone, EdgesDone, SkipEdges;
     }
 
-    // r4 h22: BoxFaces (edges false) or BoxEdges (edges true) for the queued pairs idx[t0 .. t0+w-1], one pair a lane (lanes past w repeat the first pair and are not stored). Every lane does the scalar code's operations in the scalar
+    // BoxFaces (edges false) or BoxEdges (edges true) for the queued pairs idx[t0 .. t0+w-1], one pair a lane (lanes past w repeat the first pair and are not stored). Every lane does the scalar code's operations in the scalar
     // order on the same floats, so the results are the same bits: ToMatrixInline, the reaches and offsets of BoxFaces, and for each of the nine edge axes l2, the cone tests, m, du, the reaches and sep.
     // Negation is a sign-bit flip (as the scalar unary minus), the products by +-1 are kept, sqrt is correctly rounded in both (the scalar one rounds a double sqrt of a float, which is the same).
     // The `continue` tests become a lane mask, and each best-axis choice is a select under (mask and sep > best) taken in the scalar loop's order, so ties and NaN go the same way.
@@ -211,7 +211,7 @@ public sealed partial class ManifoldGenerator3D
         }
     }
 
-    // r4 h22: BoxFaces on eight lanes (see BoxAxes256).
+    // BoxFaces on eight lanes (see BoxAxes256).
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void BoxFaces256(BoxAxes[] res, ReadOnlySpan<int> idx, int t0, int w, Vector256<float> m11, Vector256<float> m12, Vector256<float> m13, Vector256<float> m21, Vector256<float> m22,
         Vector256<float> m23, Vector256<float> m31, Vector256<float> m32, Vector256<float> m33, Vector256<float> tx, Vector256<float> ty, Vector256<float> tz,
@@ -271,11 +271,11 @@ public sealed partial class ManifoldGenerator3D
         }
     }
 
-    /// <summary>r4 h22: set by the caller for one Collide call of a box–box pair whose axis tests are already in <see cref="Pre"/>; PolyPoly then takes them instead of running BoxFaces and BoxEdges.</summary>
+    /// <summary>Set by the caller for one Collide call of a box–box pair whose axis tests are already in <see cref="Pre"/>; PolyPoly then takes them instead of running BoxFaces and BoxEdges.</summary>
     internal BoxAxes Pre;
     internal bool HavePre;
 
-    /// <summary>r4 h22: the axis tests each queued box–box pair's query will read (for the pose it will get: bInA's rotation as a matrix, its translation, the two core sizes). A pair whose bounding
+    /// <summary>The axis tests each queued box–box pair's query will read (for the pose it will get: bInA's rotation as a matrix, its translation, the two core sizes). A pair whose bounding
     /// spheres are apart (Need 0) gets none, since Collide returns before PolyPoly; the others get the face axes, and the edge axes too when PolyPoly will search them: the edge hint does not skip them
     /// (Need 2) and neither face axis separates by more than the limit. A pair without edge axes has EdgesDone false, and PolyPoly then runs BoxEdges itself if it needs them, so the choice only ever
     /// saves work. With Vector256 the pairs go eight at a time through BoxAxes256 (one pair a lane); otherwise, and as the reference, each pair runs the scalar BoxFaces and BoxEdges.</summary>
@@ -320,7 +320,7 @@ public sealed partial class ManifoldGenerator3D
         }
     }
 
-    /// <summary>r4 h22: what Collide and PolyPoly decide for a box–box pair before they read its axes, worked out with their operations: 0 when the bounding spheres are apart (Collide returns before
+    /// <summary>What Collide and PolyPoly decide for a box–box pair before they read its axes, worked out with their operations: 0 when the bounding spheres are apart (Collide returns before
     /// PolyPoly), 1 when the edge hint skips the edge search, else 2. <paramref name="limit"/> is PolyPoly's (rA + rB) + margin.</summary>
     internal static int BoxAxesNeed(in ConvexShape3D a, in ConvexShape3D b, in RigidTransformF bInA, float spec, in EdgeHint3D hint, out float limit)
     {
@@ -419,7 +419,7 @@ public sealed partial class ManifoldGenerator3D
                 float mx = m0 * m0, my = m1 * m1, mz = m2 * m2;
                 if (j == 0 ? (my < cut || mz < cut) : j == 1 ? (mx < cut || mz < cut) : (mx < cut || my < cut)) { continue; }
                 float du = Vector3F.Dot(l, t);
-                // [perf-lab h07b] The sign of du depends on the pair's geometry and mispredicted as a branch; this is the same result without one: du < 0 flips du's sign bit (so -0 stays -0, as
+                // The sign of du depends on the pair's geometry and mispredicted as a branch; this is the same result without one: du < 0 flips du's sign bit (so -0 stays -0, as
                 // the branch left it) and gives s = -1 exactly.
                 int neg = du < 0f ? 1 : 0;
                 du = BitConverter.Int32BitsToSingle(BitConverter.SingleToInt32Bits(du) ^ (neg << 31));

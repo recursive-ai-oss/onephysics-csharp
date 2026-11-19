@@ -119,7 +119,7 @@ internal static class IntegrateKernel3D
     }
 
     /// <summary>
-    /// The velocity pass's staging rows for eight dynamic bodies, by row loads and transposes where a body's floats sit together (r4 h06: the velocities from the packed velocity rows, the world inverse
+    /// The velocity pass's staging rows for eight dynamic bodies, by row loads and transposes where a body's floats sit together (the velocities from the packed velocity rows, the world inverse
     /// inertia from the packed inertia rows, which hold the same floats as WInvI throughout the solve, rotation and local inertia by exact four-float loads) and lane by lane for the rest. The gyroscopic
     /// rows are zero in the lanes whose mask in the VGyro row (written by the caller) is clear, as in the scalar staging.
     /// </summary>
@@ -203,7 +203,7 @@ internal static class IntegrateKernel3D
     {
         int width = T.Count;
         var bodies = e.Core.Bodies;
-        // r4 h06: the velocities are read from and written to the bodies' packed velocity rows (see Engine3D.Pk), not the body store.
+        // The velocities are read from and written to the bodies' packed velocity rows (see Engine3D.Pk), not the body store.
         Span<float> pk = e.Pk;
         ReadOnlySpan<float> invMass = bodies.InverseMass, rot = bodies.Rotation;
         ReadOnlySpan<byte> type = bodies.Type;
@@ -384,7 +384,7 @@ internal static class IntegrateKernel3D
     /// (<see cref="Engine3D.Pk"/>: row 0 is the velocity through the solve, rows 1 and 2 hold the same floats as WInvI, Dp and Dq, and this pass is what writes them), rotation and local inverse inertia by
     /// exact four-float loads, the inverse mass lane by lane.
     /// Returns the mask of lanes (bit l = ids[l]) whose body is dynamic and whose velocity <see cref="SaneRow"/> could change: a component NaN or beyond its cap, or a squared length above
-    /// (a hair under) the squared cap. Sane changes nothing for any other lane, so the caller only runs SaneRow for these and gathers again (r4 h14; the test is conservative, never short).
+    /// (a hair under) the squared cap. Sane changes nothing for any other lane, so the caller only runs SaneRow for these and gathers again (the test is conservative, never short).
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static int GatherPositions256(Span<float> st, ReadOnlySpan<int> ids, ReadOnlySpan<float> pk, ReadOnlySpan<float> rot, ReadOnlySpan<float> invI, ReadOnlySpan<float> invMass, float speedCap, float spinCap)
@@ -446,7 +446,7 @@ internal static class IntegrateKernel3D
         int width = T.Count;
         var bodies = e.Core.Bodies;
         float speedCap = Math.Min(16f * e.Opt.MaxLinearSpeed, 1e18f), spinCap = Math.Min(16f * e.Opt.MaxRotationPerSubstep / h, 1e18f);
-        // r4 h06: the velocities are the packed velocity rows (see Engine3D.Pk); the clamp below reads and writes them there.
+        // The velocities are the packed velocity rows (see Engine3D.Pk); the clamp below reads and writes them there.
         ReadOnlySpan<float> invMass = bodies.InverseMass, invI = bodies.InverseInertia;
         Span<double> pos = bodies.Position;
         Span<float> rot = bodies.Rotation, dp = e.Dp, dq = e.Dq, wInvI = e.WInvI, pk = e.Pk;
@@ -460,7 +460,7 @@ internal static class IntegrateKernel3D
             bool rows = typeof(T) == typeof(Lanes256) && n == Lanes && System.Runtime.Intrinsics.X86.Avx.IsSupported;
             if (rows)
             {
-                // r4 h14: gather first and test the eight velocities in lanes; only a chunk with a lane Sane could change runs the scalar clamp on those lanes and gathers again (same staged values
+                // Gather first and test the eight velocities in lanes; only a chunk with a lane Sane could change runs the scalar clamp on those lanes and gathers again (same staged values
                 // as clamping every body first, which is what the scalar path below does).
                 var ids = list.Slice(i0, Lanes);
                 int bad = GatherPositions256(st, ids, pk, rot, invI, invMass, speedCap, spinCap);

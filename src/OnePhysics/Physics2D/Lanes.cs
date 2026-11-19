@@ -439,7 +439,7 @@ internal readonly struct Lanes256 : ILane<Lanes256>
     }
 
     /// <summary>
-    /// r4 h06: the inverse of <see cref="GatherRows(ReadOnlySpan{float}, ReadOnlySpan{int}, int, int)"/>. Lane i of <paramref name="f0"/> to <paramref name="f7"/> (eight fields of eight bodies) becomes the row
+    /// The inverse of <see cref="GatherRows(ReadOnlySpan{float}, ReadOnlySpan{int}, int, int)"/>. Lane i of <paramref name="f0"/> to <paramref name="f7"/> (eight fields of eight bodies) becomes the row
     /// <c>[f0[i], f1[i], ..., f7[i]]</c>, stored whole (one 32-byte store) at <c>dest[rows[i] * stride + skip]</c>, for every lane i below <paramref name="n"/> whose row number is not negative (row −1 means
     /// "this lane's body keeps its row"). The same 8x8 transpose as the gather (a transpose is its own inverse), pure data movement, so the stored bits are the lanes' bits. The next gather of these rows
     /// loads exactly what one store wrote, so its loads forward from the store buffer instead of waiting on several narrow stores. AVX only: the callers test <see cref="Avx.IsSupported"/>.

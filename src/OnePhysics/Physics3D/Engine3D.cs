@@ -373,7 +373,7 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     public void DestroyShape(ShapeHandle handle)
     {
-        Core.FlushPostStep();   // r4 h09: the lazy post-step view reads the pairs and constraints this removes
+        Core.FlushPostStep();   // The lazy post-step view reads the pairs and constraints this removes
         int s = Core.Resolve(handle);
         int b = Core.Shapes.Owner[s];
         DropShapePairs(s);
@@ -395,7 +395,7 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     /// <summary>Fails before a step when a moving body's bounds are outside what the broadphase accepts, so a step never stops half way. Lowest slot first.</summary>
     /// <remarks>
-    /// r4 h09: the cheap per-body tests run in parallel over fixed chunks of <see cref="BoundsChunk"/> slots (the split depends on the body count alone). Each chunk records its lowest body that the
+    /// The cheap per-body tests run in parallel over fixed chunks of <see cref="BoundsChunk"/> slots (the split depends on the body count alone). Each chunk records its lowest body that the
     /// serial scan would not pass at once (a non-finite velocity, or a body that needs the exact box test); then the serial <see cref="FindOutOfBounds"/> runs, in chunk order, from that body to the end of
     /// its chunk. Every body it skips would have passed the serial scan, so the first failure, its exception and its message are the serial scan's.
     /// </remarks>
@@ -458,7 +458,7 @@ internal sealed partial class Engine3D : ISnapshotSection
     }
 
     /// <summary>Finds the first body (lowest slot) whose bounds, as the broadphase would store them, are not valid. With <paramref name="movingOnly"/>, sleeping bodies are skipped.</summary>
-    /// <remarks>r4 h09: <paramref name="from"/> and <paramref name="to"/> limit the scan to a range of slots (<see cref="CheckBounds"/> scans only the chunks its parallel pass flagged).</remarks>
+    /// <remarks><paramref name="from"/> and <paramref name="to"/> limit the scan to a range of slots (<see cref="CheckBounds"/> scans only the chunks its parallel pass flagged).</remarks>
     public bool FindOutOfBounds(bool includeStatic, out BodyHandle handle, out string message, bool movingOnly = false, int from = 0, int to = int.MaxValue)
     {
         var bodies = Core.Bodies;

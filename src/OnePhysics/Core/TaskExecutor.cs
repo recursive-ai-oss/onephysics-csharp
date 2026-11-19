@@ -342,9 +342,9 @@ internal static class WorkerPool
             int baseIndex = s * slots * CounterStride;
             if (n == 1)
             {
-                // [perf-lab r4 h02] A single-task stage (a run of small colours, the overflow set) is the caller's (slot 0, always inside the call): it runs it without a claim, so its constraint
+                // A single-task stage (a run of small colors, the overflow set) is the caller's (slot 0, always inside the call): it runs it without a claim, so its constraint
                 // groups stay in one core's cache from pass to pass, and the others go straight to the wait instead of racing it for the claim word's cache line. (Measured: with the claim race
-                // kept, merging small colours gave nothing on ragdoll t8.)
+                // kept, merging small colors gave nothing on ragdoll t8.)
                 if (slot == 0)
                 {
                     try { job.RunStage(s, 0); }

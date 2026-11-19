@@ -141,17 +141,17 @@ internal sealed partial class Engine3D
     private float _liteDynBias, _liteDynMass, _liteDynImpulse, _liteStBias, _liteStMass, _liteStImpulse;
     private JointKernelParams _jointParams, _liteJointParams;
 
-    // [perf-lab r4 h02] Whether any batch prepared this step for the world's schedule (0) / the contact-only schedule (1) has a contact with restitution. Batches are prepared in parallel; every
+    // Whether any batch prepared this step for the world's schedule (0) / the contact-only schedule (1) has a contact with restitution. Batches are prepared in parallel; every
     // writer stores 1, so the races are benign, and the core reads the flags after the parallel call has joined.
     private int _restitution, _restitutionLite;
 
-    /// <summary>[perf-lab r4 h02] Whether the restitution pass of the given schedule has anything to do this step (see <see cref="IWorldStages.NeedsRestitutionPass"/>).</summary>
+    /// <summary>Whether the restitution pass of the given schedule has anything to do this step (see <see cref="IWorldStages.NeedsRestitutionPass"/>).</summary>
     public bool NeedsRestitutionPass(int schedule) => (schedule != 0 ? _restitutionLite : _restitution) != 0;
 
     /// <summary>Once per step before anything is prepared: sizes the wide groups (one per batch) and the constraint-to-lane map, and computes the soft-constraint coefficients.</summary>
     public void BeginSolve(int batches, in StepContext ctx)
     {
-        // [perf-lab r4 h02] Cleared here, set by PrepareBatch for any batch of the schedule with restitution, read by the core when it builds that schedule's solve program.
+        // Cleared here, set by PrepareBatch for any batch of the schedule with restitution, read by the core when it builds that schedule's solve program.
         if (ctx.Schedule != 0) { _restitutionLite = 0; } else { _restitution = 0; }
         if (ctx.Schedule != 0)
         {
@@ -204,7 +204,7 @@ internal sealed partial class Engine3D
     /// Reorders each color's constraints, stably, by contact point count (most points first, joints last), so the contacts of a batch have similar point counts: a group runs as many point passes as its
     /// largest lane needs, and a pile is mostly one-point contacts with a few four-point ones that would otherwise stretch every batch they land in. The constraints of a color share no dynamic body,
     /// so the order they are solved in cannot change a result; the new order depends only on the data.
-    /// r4 h09: one task per color (Executor.For over ColorCount). A color sorts through its own range of <see cref="_sortTmp"/> (the same offsets as in the list), so tasks share no scratch.
+    /// One task per color (Executor.For over ColorCount). A color sorts through its own range of <see cref="_sortTmp"/> (the same offsets as in the list), so tasks share no scratch.
     /// </summary>
     private void GroupColorsByPointCount()
     {
@@ -367,7 +367,7 @@ internal sealed partial class Engine3D
     }
 
     /// <summary>
-    /// r4 h10: <see cref="PrepareBatch"/> at the 8-lane width. The scalar loop keeps only what is per constraint (the joints, the slots, the body rows, the point counts and payload offsets); the group's fields
+    /// <see cref="PrepareBatch"/> at the 8-lane width. The scalar loop keeps only what is per constraint (the joints, the slots, the body rows, the point counts and payload offsets); the group's fields
     /// are then built for all eight lanes at once (<see cref="BuildContacts256"/>): the eight payloads are read as 8-float windows at the same <see cref="ManifoldLayout"/> offsets (eight 32-byte loads and an
     /// 8x8 transpose per window; the windows at 0, 8, ..., 48 cover the header and the points up to the group's largest point count, and a 3D payload is 104 floats, so the last window ends inside its own
     /// payload and needs no padding) and every field is written with one 32-byte store, so <see cref="PrepareMasses256"/> (the register-resident form of ContactKernel3D.PrepareMasses) and the solver
@@ -461,7 +461,7 @@ internal sealed partial class Engine3D
     }
 
     /// <summary>
-    /// r4 h10: <see cref="PreparePointJoint"/> at the 8-lane width, for the <paramref name="n"/> point joints <paramref name="jc"/> of joint group <paramref name="group"/> (their slots, readback slots and
+    /// <see cref="PreparePointJoint"/> at the 8-lane width, for the <paramref name="n"/> point joints <paramref name="jc"/> of joint group <paramref name="group"/> (their slots, readback slots and
     /// body rows were written by the caller, <paramref name="jmA"/> and <paramref name="jmB"/> are their inverse masses). Every lane's inputs are loaded straight into vector lanes (the rotations by 16-byte
     /// row loads and a 4x4 transpose, the anchors, centres of mass and positions element by element), the anchor arms are rotated with the same operations as <see cref="QuaternionF.Rotate"/>, the
     /// separation is the same double difference rounded to float (one conversion per four lanes), and each of the fourteen fields is written with one 32-byte store. Lanes past the batch repeat lane 0's
@@ -520,12 +520,12 @@ internal sealed partial class Engine3D
         St(ref w, J3D.Impulse, i0); St(ref w, J3D.Impulse + 1, i1); St(ref w, J3D.Impulse + 2, i2);
     }
 
-    /// <summary>r4 h10: component <paramref name="k"/> of eight bodies' local centres of mass as one vector.</summary>
+    /// <summary>Component <paramref name="k"/> of eight bodies' local centres of mass as one vector.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Vector256<float> Lc8(ReadOnlySpan<float> lc, int b0, int b1, int b2, int b3, int b4, int b5, int b6, int b7, int k) =>
         Vector256.Create(lc[3 * b0 + k], lc[3 * b1 + k], lc[3 * b2 + k], lc[3 * b3 + k], lc[3 * b4 + k], lc[3 * b5 + k], lc[3 * b6 + k], lc[3 * b7 + k]);
 
-    /// <summary>r4 h10: eight bodies' rotations (x, y, z, w) as four vectors: one exact 16-byte load per body and a 4x4 transpose in each half, as <see cref="Lanes256.GatherRows4"/>.</summary>
+    /// <summary>Eight bodies' rotations (x, y, z, w) as four vectors: one exact 16-byte load per body and a 4x4 transpose in each half, as <see cref="Lanes256.GatherRows4"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Rot8(ReadOnlySpan<float> rot, int b0, int b1, int b2, int b3, int b4, int b5, int b6, int b7, out Vector256<float> x, out Vector256<float> y, out Vector256<float> z, out Vector256<float> w)
     {
@@ -539,7 +539,7 @@ internal sealed partial class Engine3D
         x = Avx.Shuffle(t0, t2, 0x44); y = Avx.Shuffle(t0, t2, 0xEE); z = Avx.Shuffle(t1, t3, 0x44); w = Avx.Shuffle(t1, t3, 0xEE);
     }
 
-    /// <summary>r4 h10: q v q⁻¹ per lane with the operations of <see cref="QuaternionF.Rotate"/> (t = 2 (q × v); v + t·w + q × t), stored as three fields from <paramref name="field"/>.</summary>
+    /// <summary>Q v q⁻¹ per lane with the operations of <see cref="QuaternionF.Rotate"/> (t = 2 (q × v); v + t·w + q × t), stored as three fields from <paramref name="field"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void RotateStore(ref float g, int field, Vector256<float> qx, Vector256<float> qy, Vector256<float> qz, Vector256<float> qw, Vector256<float> vx, Vector256<float> vy, Vector256<float> vz)
     {
@@ -551,7 +551,7 @@ internal sealed partial class Engine3D
     }
 
     /// <summary>
-    /// r4 h10: <see cref="ContactKernel3D.PrepareMasses{T}"/> at the 8-lane width with everything in registers: the bodies' velocity and inverse-inertia rows by the same row gathers as GatherBody, the
+    /// <see cref="ContactKernel3D.PrepareMasses{T}"/> at the 8-lane width with everything in registers: the bodies' velocity and inverse-inertia rows by the same row gathers as GatherBody, the
     /// group's fields by 32-byte loads of what <see cref="BuildContacts256"/> just stored whole (so each load forwards from one store), and per point the adjusted separation, the three effective masses and
     /// the relative normal velocity with the generic kernel's operations in the generic kernel's order (PreparePoint, EffectiveMass, Sym.Apply, V3.Cross, V3.Dot, RelativeNormalVelocity). The generic
     /// version passes about twenty-five vectors by value to each of its per-direction calls (EffectiveMassAt), which is where its store-to-load stalls were.
@@ -587,7 +587,7 @@ internal sealed partial class Engine3D
         }
     }
 
-    /// <summary>r4 h10: ContactKernel3D.EffectiveMass on Vector256: k = mA + mB + (rA × d)·IA(rA × d) + (rB × d)·IB(rB × d), and 1/k where k &gt; 0, else 0.</summary>
+    /// <summary>ContactKernel3D.EffectiveMass on Vector256: k = mA + mB + (rA × d)·IA(rA × d) + (rB × d)·IB(rB × d), and 1/k where k &gt; 0, else 0.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Vector256<float> Mass256(Vector256<float> mAB, Vector256<float> iA0, Vector256<float> iA1, Vector256<float> iA2, Vector256<float> iA3, Vector256<float> iA4, Vector256<float> iA5,
         Vector256<float> iB0, Vector256<float> iB1, Vector256<float> iB2, Vector256<float> iB3, Vector256<float> iB4, Vector256<float> iB5,
@@ -601,7 +601,7 @@ internal sealed partial class Engine3D
         return Vector256.ConditionalSelect(Vector256.GreaterThan(k, Vector256<float>.Zero), Vector256.Create(1f) / k, Vector256<float>.Zero);
     }
 
-    /// <summary>r4 h10: one 32-byte load of a group field (eight lanes).</summary>
+    /// <summary>One 32-byte load of a group field (eight lanes).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Vector256<float> Ld(ref float g, int field) => Vector256.LoadUnsafe(ref g, (nuint)(field * 8));
 
@@ -618,7 +618,7 @@ internal sealed partial class Engine3D
     }
 
     /// <summary>
-    /// r4 h10: the fields of one contact group from the lanes' payloads (see <see cref="PrepareBatch256"/>). <paramref name="g"/> is the group's first float, <paramref name="idx"/> its body rows (A at 0,
+    /// The fields of one contact group from the lanes' payloads (see <see cref="PrepareBatch256"/>). <paramref name="g"/> is the group's first float, <paramref name="idx"/> its body rows (A at 0,
     /// B at 8), <paramref name="off"/> the lanes' payload offsets, <paramref name="cnt"/> their point counts, <paramref name="msA"/> and <paramref name="msB"/> their inverse masses. Returns bit 0 = some
     /// lane of the batch has restitution, bit 1 = some lane has rolling resistance. Plain refs, no span temporaries, so the prolog zeroes nothing.
     /// </summary>
@@ -715,7 +715,7 @@ internal sealed partial class Engine3D
     }
 
     /// <summary>
-    /// r4 h10: eight floats at <c>offset_i + skip</c> of <paramref name="source"/> for the eight lanes i, transposed: <paramref name="f0"/> holds the first float of every lane's window, and so on. One 32-byte
+    /// Eight floats at <c>offset_i + skip</c> of <paramref name="source"/> for the eight lanes i, transposed: <paramref name="f0"/> holds the first float of every lane's window, and so on. One 32-byte
     /// load per lane and the 8x8 transpose of <see cref="Lanes256.GatherRows(ReadOnlySpan{float}, ReadOnlySpan{int})"/>; pure data movement.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -737,11 +737,11 @@ internal sealed partial class Engine3D
         f4 = Avx.Permute2x128(u0, u4, 0x31); f5 = Avx.Permute2x128(u1, u5, 0x31); f6 = Avx.Permute2x128(u2, u6, 0x31); f7 = Avx.Permute2x128(u3, u7, 0x31);
     }
 
-    /// <summary>r4 h10: one 32-byte store of a group field (eight lanes).</summary>
+    /// <summary>One 32-byte store of a group field (eight lanes).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void St(ref float g, int field, Vector256<float> v) => v.StoreUnsafe(ref g, (nuint)(field * 8));
 
-    /// <summary>r4 h10: point <paramref name="i"/> of all eight lanes from its gathered payload rows; the mask is set where the lane's point count exceeds <paramref name="i"/>, and the normal impulse is zero where it is clear.</summary>
+    /// <summary>Point <paramref name="i"/> of all eight lanes from its gathered payload rows; the mask is set where the lane's point count exceeds <paramref name="i"/>, and the normal impulse is zero where it is clear.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void StorePoint256(ref float g, int i, Vector256<float> ax, Vector256<float> ay, Vector256<float> az, Vector256<float> bx, Vector256<float> by, Vector256<float> bz, Vector256<float> sep,
         Vector256<float> nImp, Vector256<float> t1Imp, Vector256<float> t2Imp, Vector256<int> counts)
@@ -911,7 +911,7 @@ internal sealed partial class Engine3D
     {
         if (Core.Controls.Active || Opt.MaxLinearSpeed != 400f) foreach (int b in list) LimitSolveVelocity(b);
         var bodies = Core.Bodies;
-        // r4 h06: the solve kept every awake body's velocity in its packed row 0 (see Pk); it goes back to the body store here, before anything after the solve reads it.
+        // The solve kept every awake body's velocity in its packed row 0 (see Pk); it goes back to the body store here, before anything after the solve reads it.
         Span<float> lin = bodies.LinearVelocity, ang = bodies.AngularVelocity;
         ReadOnlySpan<float> pk = Pk;
         foreach (int b in list)
@@ -921,7 +921,7 @@ internal sealed partial class Engine3D
             Mem.At(ang, b3) = Mem.At(pk, o + 3); Mem.At(ang, b3 + 1) = Mem.At(pk, o + 4); Mem.At(ang, b3 + 2) = Mem.At(pk, o + 5);
         }
 
-        // r4 h14: the arrays are hoisted and Continuous's early-out (does the body move far enough, compared with its size, to need a cast) runs here, with the same arithmetic; only the bodies that pass
+        // The arrays are hoisted and Continuous's early-out (does the body move far enough, compared with its size, to need a cast) runs here, with the same arithmetic; only the bodies that pass
         // it (a few dozen per step) enter the out-of-line Continuous, which takes the values computed here.
         ReadOnlySpan<byte> type = bodies.Type;
         ReadOnlySpan<double> pos = bodies.Position, sp = StartPos;
@@ -1107,7 +1107,7 @@ internal sealed partial class Engine3D
 
     // ------------------------------------------------------------------ sleeping
 
-    // r4 h14: the sleep timers use MaxExtent and TouchesMovingKinematic directly (IWorldStages.MotionExtent); a change to this formula must change both or drop MotionExtent.
+    // The sleep timers use MaxExtent and TouchesMovingKinematic directly (IWorldStages.MotionExtent); a change to this formula must change both or drop MotionExtent.
     public float BodyMotion(int b)
     {
         var bodies = Core.Bodies;

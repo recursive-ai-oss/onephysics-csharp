@@ -101,7 +101,7 @@ internal static class Mem
         return ref Unsafe.Add(ref MemoryMarshal.GetReference(s), offset);
     }
 
-    /// <summary>Element <paramref name="offset"/> of a double span without a bounds check; the caller has established the range (r4 h14, for FinalizeBodies' positions).</summary>
+    /// <summary>Element <paramref name="offset"/> of a double span without a bounds check; the caller has established the range (for FinalizeBodies' positions).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ref readonly double At(ReadOnlySpan<double> s, int offset)
     {
@@ -109,7 +109,7 @@ internal static class Mem
         return ref Unsafe.Add(ref MemoryMarshal.GetReference(s), offset);
     }
 
-    /// <summary>r4 h12: element <paramref name="index"/> of an array without a bounds check; the caller has established the range (the narrowphase box phase: indices taken from the pair table and the update list, which were validated when the pairs were made).</summary>
+    /// <summary>Element <paramref name="index"/> of an array without a bounds check; the caller has established the range (the narrowphase box phase: indices taken from the pair table and the update list, which were validated when the pairs were made).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ref T At<T>(T[] a, int index)
     {

@@ -14,7 +14,7 @@ internal static partial class JointKernel3D
     /// used. Every expression is the generic kernel's (<c>WarmStart</c>, <c>BuildInverse</c>, <c>Matrix</c>, <c>SolveBlock</c>, <c>Anchors</c>, <c>Block</c>, <c>Apply</c>), operation for operation in
     /// the same order, so the bits are those of every other width. <paramref name="a"/> and <paramref name="b"/> are the gathered bodies (the twenty vectors of BodyLanes in declaration order); the
     /// inverse block or the accumulated impulse go to the group <paramref name="g"/>. The joint readback is not written here: the caller takes the generic rows when it is on.
-    /// r4 h06: the velocities go straight back to the bodies' packed velocity rows in <paramref name="pk"/> (<see cref="Engine3D.Pk"/>), one 32-byte store per written body (scatter row numbers from
+    /// The velocities go straight back to the bodies' packed velocity rows in <paramref name="pk"/> (<see cref="Engine3D.Pk"/>), one 32-byte store per written body (scatter row numbers from
     /// <paramref name="scatter"/>: A's eight, then B's eight; −1 keeps the body's row), as in the contact kernel's rows.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]

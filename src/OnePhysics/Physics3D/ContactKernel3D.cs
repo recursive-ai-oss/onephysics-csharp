@@ -264,7 +264,7 @@ internal static partial class ContactKernel3D
         // With no restitution in any lane the pass changes nothing (every lane's mask is clear and the selects keep the old bits), so the gather and scatter are skipped.
         if (phase == SolvePhase.Restitution && idx[W3D.AnyRestitutionSlot] == 0) { return; }
         var wide = e.Wide.AsSpan(group * stride, stride);
-        // r4 h06: the bodies' velocities live in their packed rows for the whole solve (see Engine3D.Pk); they are gathered from and scattered back to row 0 there.
+        // The bodies' velocities live in their packed rows for the whole solve (see Engine3D.Pk); they are gathered from and scattered back to row 0 there.
         Span<float> pk = e.Pk;
         Span<float> os = e.Wide.AsSpan(group * stride + W3D.OutOffset, W3D.OutFloats);
         T two = T.Broadcast(2f), zero = T.Zero;

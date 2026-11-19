@@ -267,7 +267,7 @@ internal static partial class JointKernel3D
         var diagnostics = e.Core.JointReadback.Enabled ? e.Core.JointReadback.WideScratch.AsSpan(group * 96, 96) : Span<float>.Empty;
         var wide = e.WideJ.AsSpan(group * J3D.GroupFloats, J3D.GroupFloats);
         var idx = e.WideJIdx.AsSpan(group * J3D.IdxPerGroup, J3D.IdxPerGroup);
-        // r4 h06: the bodies' velocities live in their packed rows for the whole solve (see Engine3D.Pk).
+        // The bodies' velocities live in their packed rows for the whole solve (see Engine3D.Pk).
         Span<float> pk = e.Pk;
         Span<float> os = e.WideJ.AsSpan(group * J3D.GroupFloats + J3D.OutOffset, J3D.OutFloats);
         T two = T.Broadcast(2f);

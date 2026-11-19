@@ -135,12 +135,12 @@ internal sealed class NarrowScratch
     public bool SdfMoves;
     /// <summary>Pairs of this chunk that passed the tight-box test, and those among them that ran the narrowphase (not skipped as apart, not reusing a manifold); read by the work counters.</summary>
     public int Reached, Fresh;
-    /// <summary>r4 h12: the chunk's survivors of the box phase (pairs whose fat and tight boxes overlap), as positions in the update list in ascending order, with each pair's speculative distance;
+    /// <summary>The chunk's survivors of the box phase (pairs whose fat and tight boxes overlap), as positions in the update list in ascending order, with each pair's speculative distance;
     /// <see cref="SurvivorCount"/> of them are valid. Phase 2 of <c>CollideTask</c> runs the pose-level work on exactly these, so a later pass can take them in batches (e.g. eight at a time).</summary>
     public readonly int[] Survivor = new int[64];
     public readonly float[] SurvivorSpec = new float[64];
     public int SurvivorCount;
-    /// <summary>r4 h22: the chunk's fresh box–box pairs, queued in phase 2 (Engine3D.QueueBoxPair) and run by Engine3D.RunBoxJobs; BoxRes holds their axis tests.</summary>
+    /// <summary>The chunk's fresh box–box pairs, queued in phase 2 (Engine3D.QueueBoxPair) and run by Engine3D.RunBoxJobs; BoxRes holds their axis tests.</summary>
     public Engine3D.BoxJob[] BoxJobs = null!;
     public ManifoldGenerator3D.BoxAxes[] BoxRes = null!;
     public int BoxCount;
@@ -191,7 +191,7 @@ internal sealed partial class Engine3D
     private int _skipMarginBits;
     private double[] _boxes = new double[48 + 2]; // six doubles a shape, plus two of padding so BoxPhase256 can load a box's upper half (offset 3) as four doubles
     private int[] _updateList = new int[64];
-    private byte[] _resStatus = new byte[64]; // 0 untouched, 1 manifolds computed, 2 boxes no longer overlap, 3 (r4 h19b/c) a reused manifold that replaced the pair's one constraint in place, payload already written
+    private byte[] _resStatus = new byte[64]; // 0 untouched, 1 manifolds computed, 2 boxes no longer overlap, 3 a reused manifold that replaced the pair's one constraint in place, payload already written
     private int[] _resFirst = new int[64];
     private int[] _resCount = new int[64];
     private int _updateCount;
@@ -654,7 +654,7 @@ internal sealed partial class Engine3D
 
     private int[] _applyIdx = new int[64];
     private int[] _applyCount = new int[1];
-    // r4 h19c: per chunk, the update-list positions (bit k = lo + k) whose results WriteTask writes: survivors with results that CollideSurvivor did not write itself (status 1, count > 0).
+    // Per chunk, the update-list positions (bit k = lo + k) whose results WriteTask writes: survivors with results that CollideSurvivor did not write itself (status 1, count > 0).
     private ulong[] _writeMask = new ulong[1];
 
     private const int PairListChunk = 1024;
@@ -695,7 +695,7 @@ internal sealed partial class Engine3D
         {
             int lo = task * 64;
             var sc = _e._scratch[task];
-            // r4 h19c: only the chunk's pairs in the write mask (status 1 with results, ascending); a reuse that matched in place (status 3) was written by CollideSurvivor already, and the
+            // Only the chunk's pairs in the write mask (status 1 with results, ascending); a reuse that matched in place (status 3) was written by CollideSurvivor already, and the
             // pairs without results have nothing to write. Same set and order as walking the chunk and skipping status != 1 and count 0.
             for (ulong w = _e._writeMask[task]; w != 0; w &= w - 1)
             {
@@ -712,7 +712,7 @@ internal sealed partial class Engine3D
         }
     }
 
-    // r4 h12: the chunk runs in three phases. Phase 1 (BoxPhase) is a call-free loop over the chunk's pairs: fat-box test, speculative distance, tight-box test; it writes the result arrays of the
+    // The chunk runs in three phases. Phase 1 (BoxPhase) is a call-free loop over the chunk's pairs: fat-box test, speculative distance, tight-box test; it writes the result arrays of the
     // pairs that leave there and lists the survivors in the scratch. Phase 2 runs the pose-level work (StillApart, recycle, CollideFresh) on the survivors only. Phase 3 writes the chunk's apply list in
     // ascending order from a 64-bit mask (bit k = update-list position lo + k), so the serial pass sees the same list as when every pair ran start to finish in turn. Results are identical: an early-out
     // pair touches no shared state but its own result slots, and the survivors run in their original order.
@@ -764,7 +764,7 @@ internal sealed partial class Engine3D
         }
 
         // A pair's share of the chunk's counts, its bit in the apply mask and its bit in the write mask (the bits' positions fix the order of the serial pass and of WriteTask, so pairs may be
-        // accounted for in any order). r4 h27 (c7): h19's survivor-loop body, moved here from c6's loop for h22's deferred accounting of queued pairs.
+        // accounted for in any order).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Account(Engine3D e, NarrowScratch sc, int i, int lo, ref ulong listed, ref ulong write, ref int recycled, ref int recycledPoints)
         {
@@ -842,7 +842,7 @@ internal sealed partial class Engine3D
     /// contact when the step starts, instead of being found after the shapes overlap (Catto, GDC 2013, continuous collision: a speculative contact has to reach as far as the motion of the step).
     /// Which of the points found are kept is decided by each point's own closing speed (see <see cref="Emit"/>). Pairs that move slowly keep the fixed distance, so a settled world is untouched.
     /// </summary>
-    /// r4 h12: BoxPhase carries this method's fast path inline (and calls FastPairSpeculativeDistance for the rest); this method is the reference form.
+    /// BoxPhase carries this method's fast path inline (and calls FastPairSpeculativeDistance for the rest); this method is the reference form.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private float PairSpeculativeDistance(int ba, int bb)
     {
@@ -870,7 +870,7 @@ internal sealed partial class Engine3D
     // A body counts as fast when it can travel or swing more than this many times the speculative distance in a step (about 4.8 m/s at 60 Hz with the default distance).
     private const double FastFactor = 4.0;
 
-    // r4 h12: phase 1 of a narrowphase chunk (the library's Collide up to the tight-box test, for the pairs lo..hi-1 of the update list). No calls on the common path (the rare fast pair calls
+    // Phase 1 of a narrowphase chunk (a pair's collide step up to the tight-box test, for the pairs lo..hi-1 of the update list). No calls on the common path (the rare fast pair calls
     // FastPairSpeculativeDistance), arrays hoisted once and read without bounds checks (every index comes from the update list and the pair table, checked when the pairs were made), so the loads of
     // consecutive pairs overlap. Writes each pair's status/count/first; the survivors go to sc.Survivor/SurvivorSpec. Returns the apply-list mask of the pairs that left here: a pair whose fat boxes
     // no longer overlap (status 2, it goes) and a tight-box exit that still has a constraint (or sensor overlap) to remove.
@@ -934,7 +934,7 @@ internal sealed partial class Engine3D
         return listed;
     }
 
-    // r4 h12: BoxPhase with both box tests on four lanes (x, y, z and one lane that is masked off). A box's six doubles load as two overlapping quads: Min = (MinX MinY MinZ MaxX) at offset 0,
+    // BoxPhase with both box tests on four lanes (x, y, z and one lane that is masked off). A box's six doubles load as two overlapping quads: Min = (MinX MinY MinZ MaxX) at offset 0,
     // Max = (MaxX MaxY MaxZ next) at offset 3, which stays inside a tree node (the Box is followed by the node's ints) and inside _boxes (two doubles of padding). The lane compares are the scalar
     // ones (ordered, so a NaN compares false either way) on the same doubles, so the decisions are identical to BoxPhase's.
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -997,11 +997,11 @@ internal sealed partial class Engine3D
         return listed;
     }
 
-    // r4 h12: the three trees' node arrays of the box phase, indexed by a proxy key's low two bits (slot 3 unused).
+    // The three trees' node arrays of the box phase, indexed by a proxy key's low two bits (slot 3 unused).
     [InlineArray(4)]
     private struct TreeNodes { private DynamicTree<Aabb3D>.Node[] _e; }
 
-    // r4 h12: phase 2 of a narrowphase chunk, for a pair that survived BoxPhase (its boxes overlap; status 1, count 0 already written): the library's Collide from the pose loads on.
+    // Phase 2 of a narrowphase chunk, for a pair that survived BoxPhase (its boxes overlap; status 1, count 0 already written): a pair's collide step from the pose loads on.
     // The index and pose loads are unchecked (Mem.At): the indices are the ones BoxPhase used, and a live body's pose lanes lie inside the store's arrays (3 and 4 lanes a body in 3D).
     private bool CollideSurvivor(int i, NarrowScratch sc, float pairSpec)
     {
@@ -1037,13 +1037,13 @@ internal sealed partial class Engine3D
             && TryRecycle(sc, existingCons, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])), pairSpec))
         {
             _resCount[i] = 1;
-            // r4 h19b: MatchesInPlace decided here, from what is already loaded: the reuse is one contact on sub-shapes (0, 0) and replaces the pair's constraint in place when that is the pair's only
+            // MatchesInPlace decided here, from what is already loaded: the reuse is one contact on sub-shapes (0, 0) and replaces the pair's constraint in place when that is the pair's only
             // constraint, with the same sub-shape keys, neither shape is a sensor and no dynamic body of the pair sleeps (exactly MatchesInPlace's tests for a single result). Status 3 records it.
-            // r4 h19c: such a pair is also written here, straight into its constraint's payload (WriteRecycled, while the payload is still in cache from TryRecycle), instead of by WriteTask after
+            // Such a pair is also written here, straight into its constraint's payload (WriteRecycled, while the payload is still in cache from TryRecycle), instead of by WriteTask after
             // the serial pass; its scratch slot is handed back (OutCount--), so the reuses of a chunk all go through one hot slot. This is safe because between here and WriteTask nothing reads or
             // moves this constraint's payload: the other pairs' narrowphase reads only their own constraints, the serial pass does not visit the pair (not listed) and only adds, removes and wakes
             // other pairs' constraints (slots are stable: removal clears only the removed slot), and the write reads only the shapes' materials, which no stage changes. CollideTask still reads the
-            // slot's Recycled and Count right after this call (Account; a reuse is never queued, r4 h27), before the next survivor can reuse it; _resFirst / _resCount of a status-3 pair are not read after that.
+            // slot's Recycled and Count right after this call (Account; a reuse is never queued), before the next survivor can reuse it; _resFirst / _resCount of a status-3 pair are not read after that.
             if (_deferWrite && Mem.At(ConsNext, existingCons) < 0 && !IsSensor(sa) && !IsSensor(sb)
                 && !(bodies.IsDynamic(ba) && !bodies.IsAwake(ba)) && !(bodies.IsDynamic(bb) && !bodies.IsAwake(bb)))
             {
@@ -1059,13 +1059,13 @@ internal sealed partial class Engine3D
             return false;
         }
 
-        // r4 h22: two boxes go to the chunk's box queue (RunBoxJobs); every other fresh pair runs now.
+        // Two boxes go to the chunk's box queue (RunBoxJobs); every other fresh pair runs now.
         if (ga.Soup == null && gb.Soup == null && ga.IsConvex && gb.IsConvex && ga.Convex.Kind == ConvexShapeKind3D.Box && gb.Convex.Kind == ConvexShapeKind3D.Box) { return QueueBoxPair(i, sc, p, sa, sb, ga, gb, ba, bb, pA, pB, qA, qB, pairSpec); }
         CollideFresh(i, sc, p, sa, sb, ga, gb, ba, bb, pA, pB, qA, qB, pairSpec);
         return false;
     }
 
-    // r4 h22: a fresh box–box pair, queued with what the scalar CollideFresh needs after its pose block.
+    // A fresh box–box pair, queued with what the scalar CollideFresh needs after its pose block.
     internal struct BoxJob
     {
         public int I, P, Sa, Sb, Ba, Bb;
@@ -1080,7 +1080,7 @@ internal sealed partial class Engine3D
         public float Limit;
     }
 
-    // r4 h22: CollideFresh's pose block for a box–box pair; the rest of the query runs in RunBoxJobs once the chunk's axis tests are done.
+    // CollideFresh's pose block for a box–box pair; the rest of the query runs in RunBoxJobs once the chunk's axis tests are done.
     [MethodImpl(MethodImplOptions.NoInlining)]
     private bool QueueBoxPair(int i, NarrowScratch sc, int p, int sa, int sb, Geom3D ga, Geom3D gb, int ba, int bb, ReadOnlySpan<double> pA, ReadOnlySpan<double> pB, QuaternionF qA, QuaternionF qB, float spec)
     {
@@ -1108,7 +1108,7 @@ internal sealed partial class Engine3D
         return true;
     }
 
-    // r4 h22: the chunk's queued box–box pairs. First the axis tests of every pair (faces of both boxes and the nine edge axes; ManifoldGenerator3D.BoxAxes), then per pair in queue order the rest of
+    // The chunk's queued box–box pairs. First the axis tests of every pair (faces of both boxes and the nine edge axes; ManifoldGenerator3D.BoxAxes), then per pair in queue order the rest of
     // CollideFresh with the generator taking the precomputed axes (Gen.Pre) instead of running BoxFaces/BoxEdges. The edge axes are computed for every pair; the generator still applies its edge hint
     // and ignores them when the hint skips the edge search, exactly as when it skipped computing them.
     private void RunBoxJobs(NarrowScratch sc)
@@ -1125,7 +1125,7 @@ internal sealed partial class Engine3D
         }
     }
 
-    // r4 h22: the rest of CollideFresh for a queued box pair whose pose is in the job (with gen.Pre/HavePre set when its axes were computed ahead).
+    // The rest of CollideFresh for a queued box pair whose pose is in the job (with gen.Pre/HavePre set when its axes were computed ahead).
     private void FinishBoxJob(NarrowScratch sc, ref BoxJob j, ManifoldGenerator3D gen)
     {
         {

@@ -15,7 +15,7 @@ internal static partial class ContactKernel3D
     /// method needs few registers and no spills. The generic kernel reaches the same rows through methods that each take the bodies by reference, because the runtime
     /// stops inlining lane operations in a method that large; here there are no lane calls to inline. Every expression is the generic kernel's, operation for operation in the same order, so the bits are
     /// those of every other width (the hash matrix compares them). <paramref name="a"/> and <paramref name="b"/> are the gathered bodies (the twenty vectors of BodyLanes in declaration order);
-    /// impulses go to the group <paramref name="g"/>. r4 h06: the velocities go straight back to the bodies' packed velocity rows in <paramref name="pk"/> (<see cref="Engine3D.Pk"/>): the twelve velocity
+    /// impulses go to the group <paramref name="g"/>. The velocities go straight back to the bodies' packed velocity rows in <paramref name="pk"/> (<see cref="Engine3D.Pk"/>): the twelve velocity
     /// vectors are transposed in registers and every written body (scatter row numbers from <paramref name="scatter"/>: A's eight, then B's eight; −1 keeps the body's row) takes one 32-byte store.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]

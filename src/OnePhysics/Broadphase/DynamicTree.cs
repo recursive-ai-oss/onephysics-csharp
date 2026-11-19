@@ -239,7 +239,7 @@ public partial class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     /// <summary>The stored bounds of a node the caller knows is live (taken from a proxy key that was checked when the proxy was made): no validation, for per-pair inner loops.</summary>
     internal ref readonly TBox BoundsOfLive(int node) => ref _nodes[node].Box;
 
-    /// <summary>r4 h12: the node array itself, for a loop that reads many live proxies' boxes (hoisted once; valid until the tree next grows, so not across a tree update).</summary>
+    /// <summary>The node array itself, for a loop that reads many live proxies' boxes (hoisted once; valid until the tree next grows, so not across a tree update).</summary>
     internal Node[] NodeArray => _nodes;
 
     /// <summary>The user id stored with a proxy. Throws <see cref="ArgumentException"/> unless <paramref name="proxy"/> is a live proxy.</summary>

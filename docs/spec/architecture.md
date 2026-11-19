@@ -60,7 +60,7 @@ Per constraint (one index space for contacts, sensor overlaps and joints):
 | body A, body B | body slots (different; either may be static or kinematic) |
 | shape A, shape B (+ generations) | shape slots, −1 / 0 for none |
 | sub-shape A, B | compound child or mesh triangle id; part of the contact key |
-| flags | bit 0 ReportPersist, bit 1 BreakRequested |
+| flags | bit 0 ReportPersist, bit 1 BreakRequested (set through `ConstraintStore.RequestBreak`, which also tells the step to look) |
 | color | 0..23, 255 overflow, 254 uncolored (sensors, constraints with no dynamic body) |
 | point count | manifold points in use (contacts) |
 | feature ids | `MaxManifoldPoints` uint per constraint, matches points across frames |

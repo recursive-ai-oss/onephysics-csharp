@@ -120,7 +120,7 @@ public sealed partial class BodyStore
     /// <summary>Rotation lanes of one body.</summary>
     public Span<float> RotationOf(int body) => _rotation.AsSpan(body * _layout.RotationLanes, _layout.RotationLanes);
 
-    /// <summary>r4 h12: the position and rotation arrays themselves (lanes per body as in the layout: 3 and 4 in 3D), for a per-pair loop that reads poses without span checks.</summary>
+    /// <summary>The position and rotation arrays themselves (lanes per body as in the layout: 3 and 4 in 3D), for a per-pair loop that reads poses without span checks.</summary>
     internal double[] PositionArray => _position;
     internal float[] RotationArray => _rotation;
 
