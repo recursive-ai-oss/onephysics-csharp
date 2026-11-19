@@ -82,6 +82,12 @@ internal sealed partial class Engine3D
     {
         var owner = Core.Shapes.Owner;
         if (owner[a] == owner[b] || !CanCollide(a, b) || JointsPreventCollision(owner[a], owner[b]) || ArticulationBlocks(owner[a], owner[b])) { return false; }
+        return PairCallbacksAllow(a, b);
+    }
+
+    /// <summary>The serial part of <see cref="PairAllowed"/>: the pair predicate, then the struct contact filter. For a pair whose pure part the broadphase's pair filter has already passed.</summary>
+    private bool PairCallbacksAllow(int a, int b)
+    {
         var predicate = Opt.PairFilter;
         if (predicate != null && !predicate(WrapShape(a), WrapShape(b))) { return false; }
         var filter = ContactFilter;

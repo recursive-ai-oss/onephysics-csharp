@@ -345,6 +345,12 @@ public partial class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     {
         CheckProxy(proxy);
         CheckBox(box);
+        EnlargeChecked(proxy, box);
+    }
+
+    /// <summary><see cref="EnlargeProxy"/> for a proxy and box the caller has already checked (Broadphase.PrepareMove).</summary>
+    internal void EnlargeChecked(int proxy, in TBox box)
+    {
         _nodes[proxy].Box = box;
         int p = _nodes[proxy].Parent;
         bool growing = true;
@@ -706,10 +712,13 @@ public partial class DynamicTree<TBox> where TBox : struct, IBox<TBox>
     /// the enlarged ancestors become as tight as the boxes below them again, but the nodes are not regrouped, so a tree that is only refitted slowly loses quality as proxies move.
     /// Does nothing when nothing is flagged.
     /// </summary>
-    public void RefitEnlarged()
+    /// <param name="executor">When given and enough nodes are flagged, the flagged subtrees below the top <see cref="RefitTopLevels"/> levels are refitted on several threads and the top last.
+    /// A refit is a union of child boxes and a max of child heights, so every node ends with the same box, height and flags as in the serial walk.</param>
+    public void RefitEnlarged(TaskExecutor? executor = null)
     {
         if (_enlarged == 0) { return; }
         if (_root == NullNode || _nodes[_root].Height == 0 || (_nodes[_root].Flags & EnlargedFlag) == 0) { _enlarged = 0; return; }
+        if (executor != null && _enlarged >= ParallelRefitNodes) { RefitParallel(executor); _enlarged = 0; return; }
         if (_rbWalk.Length < _used) { _rbWalk = new int[Math.Max(_used, _rbWalk.Length * 2)]; }
         if (_rbRegion.Length < _used) { _rbRegion = new int[Math.Max(_used, _rbRegion.Length * 2)]; }
         int walk = 0, regionCount = 0;
@@ -734,8 +743,87 @@ public partial class DynamicTree<TBox> where TBox : struct, IBox<TBox>
         _enlarged = 0;
     }
 
-    private const int ParallelRebuildItems = 1024;
-    private const int RebuildUnitItems = 256;
+    private const int ParallelRefitNodes = 256;
+    private const int RefitTopLevels = 5; // up to 32 subtree tasks
+    private int[] _rfTop = new int[64], _rfLevel = new int[32], _rfNext = new int[32], _rfRoots = new int[32];
+    private int[][] _rfStacks = Array.Empty<int[]>();
+
+    // The flagged region's top RefitTopLevels levels are listed breadth first; the flagged internal nodes one level below are the task roots. Each task refits its subtree children first and
+    // clears its flags; then the top is refitted backwards (later levels before earlier ones, so children before parents).
+    private void RefitParallel(TaskExecutor executor)
+    {
+        int topCount = 0, levelCount = 1;
+        _rfLevel[0] = _root;
+        for (int depth = 0; depth < RefitTopLevels && levelCount > 0; depth++)
+        {
+            int nextCount = 0;
+            for (int i = 0; i < levelCount; i++)
+            {
+                int node = _rfLevel[i];
+                if (topCount == _rfTop.Length) { Array.Resize(ref _rfTop, topCount * 2); }
+                _rfTop[topCount++] = node;
+                int c1 = _nodes[node].Child1, c2 = _nodes[node].Child2;
+                if (nextCount + 2 > _rfNext.Length) { Array.Resize(ref _rfNext, _rfNext.Length * 2); }
+                if (_nodes[c1].Height > 0 && (_nodes[c1].Flags & EnlargedFlag) != 0) { _rfNext[nextCount++] = c1; }
+                if (_nodes[c2].Height > 0 && (_nodes[c2].Flags & EnlargedFlag) != 0) { _rfNext[nextCount++] = c2; }
+            }
+
+            (_rfLevel, _rfNext) = (_rfNext, _rfLevel);
+            levelCount = nextCount;
+        }
+
+        if (_rfRoots.Length < levelCount) { _rfRoots = new int[Math.Max(levelCount, _rfRoots.Length * 2)]; }
+        Array.Copy(_rfLevel, _rfRoots, levelCount);
+        if (_rfStacks.Length < levelCount)
+        {
+            int old = _rfStacks.Length;
+            Array.Resize(ref _rfStacks, Math.Max(levelCount, old * 2));
+            for (int i = old; i < _rfStacks.Length; i++) { _rfStacks[i] = new int[64]; }
+        }
+
+        if (levelCount > 0) { executor.For(levelCount, new RefitTask(this)); }
+        for (int i = topCount - 1; i >= 0; i--)
+        {
+            int node = _rfTop[i];
+            _nodes[node].Flags = 0;
+            Refit(node);
+        }
+    }
+
+    private readonly struct RefitTask : IParallelBody
+    {
+        private readonly DynamicTree<TBox> _t;
+
+        public RefitTask(DynamicTree<TBox> t) { _t = t; }
+
+        // Post-order over the flagged subtree with an explicit stack: a node is pushed, then its complement (meaning "refit me") below its flagged children, so children are refitted first.
+        public void Run(int task)
+        {
+            var t = _t;
+            var nodes = t._nodes;
+            int root = t._rfRoots[task];
+            int[] stack = t._rfStacks[task];
+            int need = (3 * nodes[root].Height) + 4;
+            if (stack.Length < need) { stack = new int[need]; t._rfStacks[task] = stack; }
+            int sp = 0;
+            stack[sp++] = root;
+            while (sp > 0)
+            {
+                int node = stack[--sp];
+                if (node < 0) { t.Refit(~node); continue; }
+                nodes[node].Flags = 0;
+                stack[sp++] = ~node;
+                int c1 = nodes[node].Child1, c2 = nodes[node].Child2;
+                if (nodes[c2].Height > 0 && (nodes[c2].Flags & EnlargedFlag) != 0) { stack[sp++] = c2; }
+                if (nodes[c1].Height > 0 && (nodes[c1].Flags & EnlargedFlag) != 0) { stack[sp++] = c1; }
+            }
+        }
+    }
+
+    // A pile of ~1,400 moving proxies rebuilds a top of ~600-1,400 items every fourth step; with the old 1024 / 256 it mostly ran serially (sleep-wake t8: 0.016 ms of SplitAtMidpoint per step on the
+    // stepping thread). 128 / 64 runs it as 10-20 tasks; the tree does not depend on these two numbers.
+    private const int ParallelRebuildItems = 128;
+    private const int RebuildUnitItems = 64;
     private const int UnitStack = RebuildUnitItems + 2;
     private BuildItem[] _rbUnits = new BuildItem[16];
     private BuildItem[] _rbUnitStacks = new BuildItem[16];

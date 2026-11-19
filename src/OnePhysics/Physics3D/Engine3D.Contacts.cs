@@ -162,6 +162,11 @@ internal sealed partial class Engine3D
     private byte[] _active = new byte[8]; // per body: awake and dynamic, or a kinematic body in motion (see IsActive); valid for the contact stage that filled it
     private int[] _boxStamp = new int[8];
     private byte[] _boxInside = new byte[8]; // per shape, set with the tight box: 1 when the box lies inside the proxy's stored box, so the tree update has nothing to do
+    // The move prepared by TightBoxTask for a shape it listed: _moveState 1 = _moveBox is the new fat box (Broadphase.CommitMove), 2 = a check failed and _moveBox is the tight box for MoveProxy to reject.
+    private byte[] _moveState = new byte[8];
+    private Aabb3D[] _moveBox = new Aabb3D[8];
+    private int[][] _moveLists = Array.Empty<int[]>(); // per box chunk: the shapes whose proxy grows, in awake-list and shape order
+    private int[] _moveCount = Array.Empty<int>();
     private int _stamp;
     private int _skipMarginBits;
     private double[] _boxes = new double[48];
@@ -190,35 +195,40 @@ internal sealed partial class Engine3D
         // The tight box of every shape of a moving body is kept for this step: a pair whose shapes are farther apart than the speculative distance has no contact points, and two box comparisons say so
         // without loading either shape.
         int shapeHigh = world.Shapes.HighWater;
-        if (_boxStamp.Length < shapeHigh) { int cap = Math.Max(shapeHigh, _boxStamp.Length * 2); _boxes = new double[cap * 6]; _boxStamp = new int[cap]; _boxInside = new byte[cap]; }
+        if (_boxStamp.Length < shapeHigh) { int cap = Math.Max(shapeHigh, _boxStamp.Length * 2); _boxes = new double[cap * 6]; _boxStamp = new int[cap]; _boxInside = new byte[cap]; _moveState = new byte[cap]; _moveBox = new Aabb3D[cap]; }
         _stamp++;
         // 1. Broadphase boxes of every body that moved last step. The displacement stretches the box ahead of the motion.
-        // The tight boxes are pure functions of body state and are computed in parallel over fixed chunks of the awake list; the tree is then updated serially in list order.
+        // The tight boxes, and for a shape that left its stored box the stretched box, MoveProxy's checks and the new fat box, are pure functions of body state and the shape's own leaf: they are computed
+        // in parallel over fixed chunks of the awake list. The tree is then changed serially in list order.
         var awakeList = world.AwakeBodies;
         int boxChunks = (awakeList.Length + BoxChunk - 1) / BoxChunk;
+        if (_moveLists.Length < boxChunks)
+        {
+            int old = _moveLists.Length;
+            Array.Resize(ref _moveLists, Math.Max(boxChunks, old * 2));
+            _moveCount = new int[_moveLists.Length];
+            for (int i = old; i < _moveLists.Length; i++) { _moveLists[i] = new int[BoxChunk]; }
+        }
+
         world.Executor.For(boxChunks, new TightBoxTask(this, boxChunks));
         Core.Profile.Mark(StepStage.Move);
 #if STAGE_TIMERS
         StageProbe.Mark(StageProbe.Move);
 #endif
-        foreach (int b in awakeList)
+        // The tasks did everything of the move but the tree change: each chunk lists, in awake-list and shape order, the shapes whose proxy must grow, with the new fat box. Walking the chunks in order
+        // makes the same EnlargeProxy / MarkMoved calls in the same order as one serial pass. A shape whose checks failed is handed to MoveProxy here, which throws the exception it always did.
+        var owner0 = world.Shapes.Owner;
+        for (int ck = 0; ck < boxChunks; ck++)
         {
-            if (!bodies.IsLive(b)) { continue; }
-            for (int s = ShapeHead[b]; s >= 0; s = NextShape[s])
+            int listed = _moveCount[ck];
+            if (listed == 0) { continue; }
+            int[] list = _moveLists[ck];
+            for (int j = 0; j < listed; j++)
             {
-                if (_boxInside[s] != 0) { continue; }
-                int o = 6 * s;
-                var tight = new Aabb3D(_boxes[o], _boxes[o + 1], _boxes[o + 2], _boxes[o + 3], _boxes[o + 4], _boxes[o + 5]);
-                if (FastTravel(b, out double tx, out double ty, out double tz))
-                {
-                    // The stored box is made around the box grown by the body's travel on the side it moves towards, so the test above holds for the whole of the next step. It never shrinks the box and
-                    // stays far enough inside the range the broadphase accepts for the margin the broadphase adds.
-                    double lim = BoxLimits.MaxCoordinate - Opt.BroadphaseMargin - 1.0;
-                    tight = new Aabb3D(Math.Min(tight.MinX, Math.Max(-lim, tight.MinX - Math.Max(0.0, -tx))), Math.Min(tight.MinY, Math.Max(-lim, tight.MinY - Math.Max(0.0, -ty))), Math.Min(tight.MinZ, Math.Max(-lim, tight.MinZ - Math.Max(0.0, -tz))),
-                        Math.Max(tight.MaxX, Math.Min(lim, tight.MaxX + Math.Max(0.0, tx))), Math.Max(tight.MaxY, Math.Min(lim, tight.MaxY + Math.Max(0.0, ty))), Math.Max(tight.MaxZ, Math.Min(lim, tight.MaxZ + Math.Max(0.0, tz))));
-                }
-
-                Bp.MoveProxy(Proxy[s], tight, WorldCore.Grid(Dp[3 * b]), WorldCore.Grid(Dp[3 * b + 1]), WorldCore.Grid(Dp[3 * b + 2]));
+                int s = list[j];
+                if (_moveState[s] == 1) { Bp.CommitMove(Proxy[s], _moveBox[s]); continue; }
+                int b = owner0[s];
+                Bp.MoveProxy(Proxy[s], _moveBox[s], WorldCore.Grid(Dp[3 * b]), WorldCore.Grid(Dp[3 * b + 1]), WorldCore.Grid(Dp[3 * b + 2]));
             }
         }
 
@@ -250,12 +260,15 @@ internal sealed partial class Engine3D
         var found = Bp.UpdatePairs(new PairFilter(this), world.Executor);
         world.Counters.BroadphasePairs = found.Length;
         bool anyFresh = false;
+        bool userFilters = Opt.PairFilter != null || ContactFilter != null;
         for (int i = 0; i < found.Length; i++)
         {
             int a = found[i].UserA, b = found[i].UserB;
             if (a > b) { (a, b) = (b, a); }
             // The pair filter already dropped every pair with a table entry, and the broadphase reports each pair of shapes once, so none of these is in the table yet.
-            if (!PairAllowed(a, b)) { continue; }
+            // It also already applied the pure part of PairAllowed (different bodies, CanCollide, joints, articulations; all symmetric, and nothing they read changes between the search and here), so only the
+            // user callbacks are left, and they are called here serially in the sorted pair order as before.
+            if (userFilters && !PairCallbacksAllow(a, b)) { continue; }
             int np = AllocatePair(a, b);
             if (_fresh.Length < PairHigh) { Array.Resize(ref _fresh, Math.Max(PairHigh, _fresh.Length * 2)); }
             // A pair with a sensor is evaluated once when found even if both bodies are asleep, so a sleeping body inside a sensor still gets its enter event.
@@ -558,6 +571,9 @@ internal sealed partial class Engine3D
             var list = e.Core.AwakeBodies;
             var bodies = e.Core.Bodies;
             int lo = task * BoxChunk, hi = Math.Min(lo + BoxChunk, list.Length);
+            int[] list0 = e._moveLists[task];
+            int listed = 0;
+            Span<double> disp = stackalloc double[3];
             for (int i = lo; i < hi; i++)
             {
                 int b = list[i];
@@ -589,8 +605,30 @@ internal sealed partial class Engine3D
                     }
 
                     e._boxInside[s] = inside;
+                    if (inside != 0) { continue; }
+                    // Not inside: the broadphase move of the serial pass, up to the tree change. The box is grown by the travel exactly as before, then Broadphase.PrepareMove does MoveProxy's checks,
+                    // its containment test and its fat box without touching the tree (each shape reads only its own leaf, which no task changes).
+                    var tight = new Aabb3D(x0, y0, z0, x1, y1, z1);
+                    if (e.FastTravel(b, out double mx, out double my, out double mz))
+                    {
+                        // The stored box is made around the box grown by the body's travel on the side it moves towards, so the test above holds for the whole of the next step. It never shrinks the box and
+                        // stays far enough inside the range the broadphase accepts for the margin the broadphase adds.
+                        double lim = BoxLimits.MaxCoordinate - e.Opt.BroadphaseMargin - 1.0;
+                        tight = new Aabb3D(Math.Min(tight.MinX, Math.Max(-lim, tight.MinX - Math.Max(0.0, -mx))), Math.Min(tight.MinY, Math.Max(-lim, tight.MinY - Math.Max(0.0, -my))), Math.Min(tight.MinZ, Math.Max(-lim, tight.MinZ - Math.Max(0.0, -mz))),
+                            Math.Max(tight.MaxX, Math.Min(lim, tight.MaxX + Math.Max(0.0, mx))), Math.Max(tight.MaxY, Math.Min(lim, tight.MaxY + Math.Max(0.0, my))), Math.Max(tight.MaxZ, Math.Min(lim, tight.MaxZ + Math.Max(0.0, mz))));
+                    }
+
+                    disp[0] = WorldCore.Grid(dp[b3]); disp[1] = WorldCore.Grid(dp[b3 + 1]); disp[2] = WorldCore.Grid(dp[b3 + 2]);
+                    int state = e.Bp.PrepareMove(e.Proxy[s], tight, disp, out Aabb3D grown);
+                    if (state == 0) { continue; }
+                    e._moveState[s] = (byte)state;
+                    e._moveBox[s] = state == 1 ? grown : tight;
+                    if (listed == list0.Length) { Array.Resize(ref list0, listed * 2); e._moveLists[task] = list0; }
+                    list0[listed++] = s;
                 }
             }
+
+            e._moveCount[task] = listed;
         }
     }
 
