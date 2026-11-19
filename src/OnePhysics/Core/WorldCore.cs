@@ -1065,11 +1065,16 @@ public sealed partial class WorldCore
         if (_islandFull.Length < islands) { _islandFull = new byte[islands]; }
         if (_consLite.Length < contacts) { _consLite = new byte[contacts]; }
         if (_partTmp.Length < contacts) { _partTmp = new int[contacts]; }
+        // The tail overlap's body stamps and its saved copy of one color per program.
+        if (_ovMark.Length < bodies) { _ovMark = new int[bodies]; }
+        if (_ovSave[0].Length < contacts) { _ovSave[0] = new int[contacts]; _ovSave[1] = new int[contacts]; }
         // Stages of one step: per substep the two integrations and a pass over every color for warm starting, each solve and each relax pass (plus the restitution pass).
         ReadContactSchedule();
         int passes = _options.VelocityIterations + _options.RelaxIterations + 2;
         int stages = Math.Max(_options.Substeps, _liteOn ? _liteSubsteps : 1) * (3 + Math.Max(passes, _liteVelocity + _liteRelax + 2) * (ConstraintColoring.ColorCount + 1)) + 8;
         if (_stageKind.Length < stages) { Array.Resize(ref _stageKind, stages); Array.Resize(ref _stageArg, stages); Array.Resize(ref _stageTasks, stages); Array.Resize(ref _stageAux, stages); }
+        // A run item is one color of one pass, so the stage bound holds for them too.
+        if (_runItem.Length < stages) { Array.Resize(ref _runItem, stages); }
         Executor.Reserve(stages);
     }
 
