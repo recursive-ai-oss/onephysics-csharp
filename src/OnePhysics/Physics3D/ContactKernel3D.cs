@@ -137,7 +137,7 @@ internal static partial class ContactKernel3D
     private static void GatherBody<T, TMass>(out BodyLanes<T, TMass> r, ReadOnlySpan<float> pk, ReadOnlySpan<int> bodyIds, TMass invMass, bool pose) where T : struct, ILane<T> where TMass : struct, ILinearMass<T, TMass>
     {
         // Offsets are scaled from the body numbers inside the gathers (no offset table written and read back per gather).
-        Unsafe.SkipInit(out r);
+        Mem.SkipInit(out r);
         var v = T.GatherRows(pk, bodyIds, Engine3D.PkStride, Engine3D.PkVelocity);
         var i = T.GatherRows(pk, bodyIds, Engine3D.PkStride, Engine3D.PkInertia);
         r.V = new V3<T>(v.R0, v.R1, v.R2); r.W = new V3<T>(v.R3, v.R4, v.R5);

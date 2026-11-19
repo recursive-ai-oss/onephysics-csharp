@@ -244,7 +244,7 @@ internal static class IntegrateKernel3D
                 Lanes256 zero = Lanes256.Zero;
                 Lanes256.ScatterRows(Lanes256.LoadAt(st, VLinX * Lanes).AsVector256, Lanes256.LoadAt(st, (VLinX + 1) * Lanes).AsVector256, Lanes256.LoadAt(st, (VLinX + 2) * Lanes).AsVector256,
                     Lanes256.LoadAt(st, VAngX * Lanes).AsVector256, Lanes256.LoadAt(st, (VAngX + 1) * Lanes).AsVector256, Lanes256.LoadAt(st, (VAngX + 2) * Lanes).AsVector256, zero.AsVector256, zero.AsVector256,
-                    pk, ref MemoryMarshal.GetReference(chunk), Lanes, Engine3D.PkStride, Engine3D.PkVelocity);
+                    pk, ref Mem.Ref(chunk), Lanes, Engine3D.PkStride, Engine3D.PkVelocity);
                 continue;
             }
             else
@@ -513,10 +513,10 @@ internal static class IntegrateKernel3D
                 Vector256<float> z = Vector256<float>.Zero;
                 Lanes256.ScatterRows(Lanes256.LoadAt(st, PWInvI * Lanes).AsVector256, Lanes256.LoadAt(st, (PWInvI + 1) * Lanes).AsVector256, Lanes256.LoadAt(st, (PWInvI + 2) * Lanes).AsVector256,
                     Lanes256.LoadAt(st, (PWInvI + 3) * Lanes).AsVector256, Lanes256.LoadAt(st, (PWInvI + 4) * Lanes).AsVector256, Lanes256.LoadAt(st, (PWInvI + 5) * Lanes).AsVector256, z, z,
-                    pk, ref MemoryMarshal.GetReference(ids), Lanes, Engine3D.PkStride, Engine3D.PkInertia);
+                    pk, ref Mem.Ref(ids), Lanes, Engine3D.PkStride, Engine3D.PkInertia);
                 Lanes256.ScatterRows(Lanes256.LoadAt(st, PDp * Lanes).AsVector256, Lanes256.LoadAt(st, (PDp + 1) * Lanes).AsVector256, Lanes256.LoadAt(st, (PDp + 2) * Lanes).AsVector256,
                     Lanes256.LoadAt(st, PDq * Lanes).AsVector256, Lanes256.LoadAt(st, (PDq + 1) * Lanes).AsVector256, Lanes256.LoadAt(st, (PDq + 2) * Lanes).AsVector256, Lanes256.LoadAt(st, (PDq + 3) * Lanes).AsVector256, z,
-                    pk, ref MemoryMarshal.GetReference(ids), Lanes, Engine3D.PkStride, Engine3D.PkPose);
+                    pk, ref Mem.Ref(ids), Lanes, Engine3D.PkStride, Engine3D.PkPose);
             }
             else
             {

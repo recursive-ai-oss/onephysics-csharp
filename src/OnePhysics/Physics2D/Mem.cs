@@ -109,6 +109,38 @@ internal static class Mem
         return ref Unsafe.Add(ref MemoryMarshal.GetReference(s), offset);
     }
 
+    /// <summary>r4 h12: element <paramref name="index"/> of an array without a bounds check; the caller has established the range (the narrowphase box phase: indices taken from the pair table and the update list, which were validated when the pairs were made).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref T At<T>(T[] a, int index)
+    {
+        RangeIndex(index, a.Length);
+        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(a), index);
+    }
+
+    /// <summary>A reference to the first element of an array, the base for <see cref="Add"/> in a loop that hoists its arrays. No check at all: the caller owns every index it adds.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref T Ref<T>(T[] a) => ref MemoryMarshal.GetArrayDataReference(a);
+
+    /// <summary>A reference to the first element of a span (see <see cref="Ref{T}(T[])"/>).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref T Ref<T>(Span<T> s) => ref MemoryMarshal.GetReference(s);
+
+    /// <summary>A reference to the first element of a read-only span (see <see cref="Ref{T}(T[])"/>).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref T Ref<T>(ReadOnlySpan<T> s) => ref MemoryMarshal.GetReference(s);
+
+    /// <summary>The element <paramref name="offset"/> places after <paramref name="r"/>, unchecked.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref T Add<T>(ref T r, int offset) => ref Unsafe.Add(ref r, offset);
+
+    /// <summary>The same memory read as another type (a struct of floats as its first float, a row block as its first row); the caller knows the layout.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref TTo As<TFrom, TTo>(ref TFrom r) => ref Unsafe.As<TFrom, TTo>(ref r);
+
+    /// <summary><paramref name="count"/> elements starting at <paramref name="r"/> as a read-only span, unchecked.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ReadOnlySpan<T> ReadOnly<T>(ref T r, int count) => MemoryMarshal.CreateReadOnlySpan(ref r, count);
+
     [Conditional("CHECKED")]
     private static void RangeIndex(int offset, int length)
     {

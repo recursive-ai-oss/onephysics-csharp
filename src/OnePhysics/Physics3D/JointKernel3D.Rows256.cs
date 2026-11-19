@@ -118,6 +118,6 @@ internal static partial class JointKernel3D
         // Rows [v.xyz, w.xyz, 0, 0], as PackBody wrote them.
         Vector256<float> z = Vector256<float>.Zero;
         Lanes256.ScatterRows(aVx, aVy, aVz, aWx, aWy, aWz, z, z, pk, ref scatter, lanes, Engine3D.PkStride, Engine3D.PkVelocity);
-        Lanes256.ScatterRows(bVx, bVy, bVz, bWx, bWy, bWz, z, z, pk, ref Unsafe.Add(ref scatter, 8), lanes, Engine3D.PkStride, Engine3D.PkVelocity);
+        Lanes256.ScatterRows(bVx, bVy, bVz, bWx, bWy, bWz, z, z, pk, ref Mem.Add(ref scatter, 8), lanes, Engine3D.PkStride, Engine3D.PkVelocity);
     }
 }

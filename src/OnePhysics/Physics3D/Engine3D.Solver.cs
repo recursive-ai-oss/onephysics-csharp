@@ -392,8 +392,8 @@ internal sealed partial class Engine3D
         Vector256<int>.Zero.StoreUnsafe(ref idx[0]); Vector256<int>.Zero.StoreUnsafe(ref idx[8]); Vector256<int>.AllBitsSet.StoreUnsafe(ref idx[16]); Vector256<int>.AllBitsSet.StoreUnsafe(ref idx[24]);
         // Per-lane scalars in fixed buffers (no GC references, so nothing to zero in the prolog); the vectors are built element by element from them, each element load forwarding from its own store.
         // Every lane of them is written (by the loop, then the padding) before it is read.
-        Unsafe.SkipInit(out Lane8Int off); Unsafe.SkipInit(out Lane8Int cnt); Unsafe.SkipInit(out Lane8Float msA); Unsafe.SkipInit(out Lane8Float msB);
-        Unsafe.SkipInit(out Lane8Int jc); Unsafe.SkipInit(out Lane8Float jmA); Unsafe.SkipInit(out Lane8Float jmB);
+        Mem.SkipInit(out Lane8Int off); Mem.SkipInit(out Lane8Int cnt); Mem.SkipInit(out Lane8Float msA); Mem.SkipInit(out Lane8Float msB);
+        Mem.SkipInit(out Lane8Int jc); Mem.SkipInit(out Lane8Float jmA); Mem.SkipInit(out Lane8Float jmB);
         int ps = cs.PayloadStride;
         int maxPoints = 1, lane = 0, jlane = 0, scalarJoints = 0;
         foreach (int c in constraints)
@@ -444,11 +444,11 @@ internal sealed partial class Engine3D
                 ? new SoftPair(_liteStBias, _liteStMass, _liteStImpulse, _liteDynBias, _liteDynMass, _liteDynImpulse)
                 : new SoftPair(_stBias, _stMass, _stImpulse, _dynBias, _dynMass, _dynImpulse);
             var w = Wide.AsSpan(group * ContactGroupFloats, ContactGroupFloats);
-            int flags = BuildContacts256(ref MemoryMarshal.GetReference(w), ref idx[0], cs.PayloadArray, Pk, ref off, ref cnt, ref msA, ref msB, lane, maxPoints, in soft);
+            int flags = BuildContacts256(ref Mem.Ref(w), ref idx[0], cs.PayloadArray, Pk, ref off, ref cnt, ref msA, ref msB, lane, maxPoints, in soft);
             anyRestitution = flags & 1; anyRolling = flags >> 1;
 
             // The velocities come from the packed rows, which hold the start-of-step velocities here (no solve pass has run yet).
-            PrepareMasses256(ref MemoryMarshal.GetReference(w), idx, Pk, maxPoints);
+            PrepareMasses256(ref Mem.Ref(w), idx, Pk, maxPoints);
         }
 
         if (Core.Controls.Active) PrepareControlledContacts(constraints);
@@ -478,9 +478,9 @@ internal sealed partial class Engine3D
         ReadOnlySpan<int> jidx = WideJIdx.AsSpan(group * J3D.IdxPerGroup, J3D.IdxPerGroup);
         int a0 = jidx[0], a1 = jidx[1], a2 = jidx[2], a3 = jidx[3], a4 = jidx[4], a5 = jidx[5], a6 = jidx[6], a7 = jidx[7];
         int b0 = jidx[8], b1 = jidx[9], b2 = jidx[10], b3 = jidx[11], b4 = jidx[12], b5 = jidx[13], b6 = jidx[14], b7 = jidx[15];
-        ref JointData3D jd = ref MemoryMarshal.GetArrayDataReference(Joints);
-        ref JointData3D j0 = ref Unsafe.Add(ref jd, jc[0]), j1 = ref Unsafe.Add(ref jd, jc[1]), j2 = ref Unsafe.Add(ref jd, jc[2]), j3 = ref Unsafe.Add(ref jd, jc[3]);
-        ref JointData3D j4 = ref Unsafe.Add(ref jd, jc[4]), j5 = ref Unsafe.Add(ref jd, jc[5]), j6 = ref Unsafe.Add(ref jd, jc[6]), j7 = ref Unsafe.Add(ref jd, jc[7]);
+        ref JointData3D jd = ref Mem.Ref(Joints);
+        ref JointData3D j0 = ref Mem.Add(ref jd, jc[0]), j1 = ref Mem.Add(ref jd, jc[1]), j2 = ref Mem.Add(ref jd, jc[2]), j3 = ref Mem.Add(ref jd, jc[3]);
+        ref JointData3D j4 = ref Mem.Add(ref jd, jc[4]), j5 = ref Mem.Add(ref jd, jc[5]), j6 = ref Mem.Add(ref jd, jc[6]), j7 = ref Mem.Add(ref jd, jc[7]);
         ReadOnlySpan<float> lc = LocalCenter;
 
         // Anchor minus centre of mass, in each body's frame (the scalar path's j.LAx - lcA.X, ...).
@@ -515,7 +515,7 @@ internal sealed partial class Engine3D
         // The warm-start impulse: the first three payload floats, from one 8-float window per lane.
         int ps = cs.PayloadStride;
         ReadOnlySpan<float> payload = cs.PayloadArray;
-        Window(payload, ref MemoryMarshal.GetReference(payload), jc[0] * ps, jc[1] * ps, jc[2] * ps, jc[3] * ps, jc[4] * ps, jc[5] * ps, jc[6] * ps, jc[7] * ps, 0,
+        Window(payload, ref Mem.Ref(payload), jc[0] * ps, jc[1] * ps, jc[2] * ps, jc[3] * ps, jc[4] * ps, jc[5] * ps, jc[6] * ps, jc[7] * ps, 0,
             out var i0, out var i1, out var i2, out _, out _, out _, out _, out _);
         St(ref w, J3D.Impulse, i0); St(ref w, J3D.Impulse + 1, i1); St(ref w, J3D.Impulse + 2, i2);
     }
@@ -530,7 +530,7 @@ internal sealed partial class Engine3D
     private static void Rot8(ReadOnlySpan<float> rot, int b0, int b1, int b2, int b3, int b4, int b5, int b6, int b7, out Vector256<float> x, out Vector256<float> y, out Vector256<float> z, out Vector256<float> w)
     {
         Mem.Range(rot, 4 * b0, 4); Mem.Range(rot, 4 * b1, 4); Mem.Range(rot, 4 * b2, 4); Mem.Range(rot, 4 * b3, 4); Mem.Range(rot, 4 * b4, 4); Mem.Range(rot, 4 * b5, 4); Mem.Range(rot, 4 * b6, 4); Mem.Range(rot, 4 * b7, 4);
-        ref float r = ref MemoryMarshal.GetReference(rot);
+        ref float r = ref Mem.Ref(rot);
         var y0 = Vector256.Create(Vector128.LoadUnsafe(ref r, (nuint)(4 * b0)), Vector128.LoadUnsafe(ref r, (nuint)(4 * b4)));
         var y1 = Vector256.Create(Vector128.LoadUnsafe(ref r, (nuint)(4 * b1)), Vector128.LoadUnsafe(ref r, (nuint)(4 * b5)));
         var y2 = Vector256.Create(Vector128.LoadUnsafe(ref r, (nuint)(4 * b2)), Vector128.LoadUnsafe(ref r, (nuint)(4 * b6)));
@@ -560,7 +560,7 @@ internal sealed partial class Engine3D
     [System.Runtime.CompilerServices.SkipLocalsInit]
     private static void PrepareMasses256(ref float g, ReadOnlySpan<int> idx, ReadOnlySpan<float> pk, int maxPoints)
     {
-        ref float p = ref MemoryMarshal.GetReference(pk);
+        ref float p = ref Mem.Ref(pk);
         const int s = PkStride;
         int a0 = idx[0] * s, a1 = idx[1] * s, a2 = idx[2] * s, a3 = idx[3] * s, a4 = idx[4] * s, a5 = idx[5] * s, a6 = idx[6] * s, a7 = idx[7] * s;
         int b0 = idx[8] * s, b1 = idx[9] * s, b2 = idx[10] * s, b3 = idx[11] * s, b4 = idx[12] * s, b5 = idx[13] * s, b6 = idx[14] * s, b7 = idx[15] * s;
@@ -626,7 +626,7 @@ internal sealed partial class Engine3D
     [System.Runtime.CompilerServices.SkipLocalsInit]
     private static int BuildContacts256(ref float g, ref int idx, ReadOnlySpan<float> payload, ReadOnlySpan<float> pk, ref Lane8Int off, ref Lane8Int cnt, ref Lane8Float msA, ref Lane8Float msB, int lane, int maxPoints, in SoftPair soft)
     {
-        ref float pay = ref MemoryMarshal.GetReference(payload);
+        ref float pay = ref Mem.Ref(payload);
         var counts = Vector256.Create(cnt[0], cnt[1], cnt[2], cnt[3], cnt[4], cnt[5], cnt[6], cnt[7]);
         var vmA = Vector256.Create(msA[0], msA[1], msA[2], msA[3], msA[4], msA[5], msA[6], msA[7]);
         var vmB = Vector256.Create(msB[0], msB[1], msB[2], msB[3], msB[4], msB[5], msB[6], msB[7]);
@@ -665,12 +665,12 @@ internal sealed partial class Engine3D
         {
             // RollingMass for all lanes: the inverse of IA + IB from the bodies' packed inertia rows (the same floats as WInvI), zero where the sum is singular. Only the lanes with rolling resistance read it.
             flags |= 2;
-            ref float pkr = ref MemoryMarshal.GetReference(pk);
+            ref float pkr = ref Mem.Ref(pk);
             const int s = Engine3D.PkStride, k = Engine3D.PkInertia;
-            Window(pk, ref pkr, idx * s + k, Unsafe.Add(ref idx, 1) * s + k, Unsafe.Add(ref idx, 2) * s + k, Unsafe.Add(ref idx, 3) * s + k, Unsafe.Add(ref idx, 4) * s + k, Unsafe.Add(ref idx, 5) * s + k,
-                Unsafe.Add(ref idx, 6) * s + k, Unsafe.Add(ref idx, 7) * s + k, 0, out var a0, out var a1, out var a2, out var a3, out var a4, out var a5, out _, out _);
-            Window(pk, ref pkr, Unsafe.Add(ref idx, 8) * s + k, Unsafe.Add(ref idx, 9) * s + k, Unsafe.Add(ref idx, 10) * s + k, Unsafe.Add(ref idx, 11) * s + k, Unsafe.Add(ref idx, 12) * s + k,
-                Unsafe.Add(ref idx, 13) * s + k, Unsafe.Add(ref idx, 14) * s + k, Unsafe.Add(ref idx, 15) * s + k, 0, out var b0, out var b1, out var b2, out var b3, out var b4, out var b5, out _, out _);
+            Window(pk, ref pkr, idx * s + k, Mem.Add(ref idx, 1) * s + k, Mem.Add(ref idx, 2) * s + k, Mem.Add(ref idx, 3) * s + k, Mem.Add(ref idx, 4) * s + k, Mem.Add(ref idx, 5) * s + k,
+                Mem.Add(ref idx, 6) * s + k, Mem.Add(ref idx, 7) * s + k, 0, out var a0, out var a1, out var a2, out var a3, out var a4, out var a5, out _, out _);
+            Window(pk, ref pkr, Mem.Add(ref idx, 8) * s + k, Mem.Add(ref idx, 9) * s + k, Mem.Add(ref idx, 10) * s + k, Mem.Add(ref idx, 11) * s + k, Mem.Add(ref idx, 12) * s + k,
+                Mem.Add(ref idx, 13) * s + k, Mem.Add(ref idx, 14) * s + k, Mem.Add(ref idx, 15) * s + k, 0, out var b0, out var b1, out var b2, out var b3, out var b4, out var b5, out _, out _);
             Vector256<float> ia = a0 + b0, ib = a1 + b1, ic = a2 + b2, id = a3 + b3, ie = a4 + b4, iff = a5 + b5;
             var c00 = id * iff - ie * ie; var c01 = ic * ie - ib * iff; var c02 = ib * ie - ic * id;
             var det = ia * c00 + ib * c01 + ic * c02;

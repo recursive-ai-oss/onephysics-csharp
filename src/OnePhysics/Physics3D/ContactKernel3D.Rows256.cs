@@ -202,6 +202,6 @@ internal static partial class ContactKernel3D
 
         // Rows [v.xyz, w.xyz, 0, 0], as PackBody wrote them.
         Lanes256.ScatterRows(aVx, aVy, aVz, aWx, aWy, aWz, zero, zero, pk, ref scatter, lanes, Engine3D.PkStride, Engine3D.PkVelocity);
-        Lanes256.ScatterRows(bVx, bVy, bVz, bWx, bWy, bWz, zero, zero, pk, ref Unsafe.Add(ref scatter, 8), lanes, Engine3D.PkStride, Engine3D.PkVelocity);
+        Lanes256.ScatterRows(bVx, bVy, bVz, bWx, bWy, bWz, zero, zero, pk, ref Mem.Add(ref scatter, 8), lanes, Engine3D.PkStride, Engine3D.PkVelocity);
     }
 }

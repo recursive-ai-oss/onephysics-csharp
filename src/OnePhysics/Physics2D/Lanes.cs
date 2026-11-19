@@ -452,17 +452,17 @@ internal readonly struct Lanes256 : ILane<Lanes256>
         var t4 = Avx.UnpackLow(f4, f5); var t5 = Avx.UnpackHigh(f4, f5); var t6 = Avx.UnpackLow(f6, f7); var t7 = Avx.UnpackHigh(f6, f7);
         var u0 = Avx.Shuffle(t0, t2, 0x44); var u1 = Avx.Shuffle(t0, t2, 0xEE); var u2 = Avx.Shuffle(t1, t3, 0x44); var u3 = Avx.Shuffle(t1, t3, 0xEE);
         var u4 = Avx.Shuffle(t4, t6, 0x44); var u5 = Avx.Shuffle(t4, t6, 0xEE); var u6 = Avx.Shuffle(t5, t7, 0x44); var u7 = Avx.Shuffle(t5, t7, 0xEE);
-        ref float d = ref MemoryMarshal.GetReference(dest);
+        ref float d = ref Mem.Ref(dest);
         int r;
         // Each stored row is a whole body row of the destination (rows[i] names a body below the high-water mark the destination was sized for); the Checked build verifies it.
-        if (n > 0 && (r = rows) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u0, u4, 0x20).StoreUnsafe(ref Unsafe.Add(ref d, r * stride + skip)); }
-        if (n > 1 && (r = Unsafe.Add(ref rows, 1)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u1, u5, 0x20).StoreUnsafe(ref Unsafe.Add(ref d, r * stride + skip)); }
-        if (n > 2 && (r = Unsafe.Add(ref rows, 2)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u2, u6, 0x20).StoreUnsafe(ref Unsafe.Add(ref d, r * stride + skip)); }
-        if (n > 3 && (r = Unsafe.Add(ref rows, 3)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u3, u7, 0x20).StoreUnsafe(ref Unsafe.Add(ref d, r * stride + skip)); }
-        if (n > 4 && (r = Unsafe.Add(ref rows, 4)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u0, u4, 0x31).StoreUnsafe(ref Unsafe.Add(ref d, r * stride + skip)); }
-        if (n > 5 && (r = Unsafe.Add(ref rows, 5)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u1, u5, 0x31).StoreUnsafe(ref Unsafe.Add(ref d, r * stride + skip)); }
-        if (n > 6 && (r = Unsafe.Add(ref rows, 6)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u2, u6, 0x31).StoreUnsafe(ref Unsafe.Add(ref d, r * stride + skip)); }
-        if (n > 7 && (r = Unsafe.Add(ref rows, 7)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u3, u7, 0x31).StoreUnsafe(ref Unsafe.Add(ref d, r * stride + skip)); }
+        if (n > 0 && (r = rows) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u0, u4, 0x20).StoreUnsafe(ref Mem.Add(ref d, r * stride + skip)); }
+        if (n > 1 && (r = Mem.Add(ref rows, 1)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u1, u5, 0x20).StoreUnsafe(ref Mem.Add(ref d, r * stride + skip)); }
+        if (n > 2 && (r = Mem.Add(ref rows, 2)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u2, u6, 0x20).StoreUnsafe(ref Mem.Add(ref d, r * stride + skip)); }
+        if (n > 3 && (r = Mem.Add(ref rows, 3)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u3, u7, 0x20).StoreUnsafe(ref Mem.Add(ref d, r * stride + skip)); }
+        if (n > 4 && (r = Mem.Add(ref rows, 4)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u0, u4, 0x31).StoreUnsafe(ref Mem.Add(ref d, r * stride + skip)); }
+        if (n > 5 && (r = Mem.Add(ref rows, 5)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u1, u5, 0x31).StoreUnsafe(ref Mem.Add(ref d, r * stride + skip)); }
+        if (n > 6 && (r = Mem.Add(ref rows, 6)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u2, u6, 0x31).StoreUnsafe(ref Mem.Add(ref d, r * stride + skip)); }
+        if (n > 7 && (r = Mem.Add(ref rows, 7)) >= 0) { Mem.Range(dest, r * stride + skip, 8); Avx.Permute2x128(u3, u7, 0x31).StoreUnsafe(ref Mem.Add(ref d, r * stride + skip)); }
     }
 
     /// <summary>The vector of a lane value (for <see cref="ScatterRows"/>).</summary>
