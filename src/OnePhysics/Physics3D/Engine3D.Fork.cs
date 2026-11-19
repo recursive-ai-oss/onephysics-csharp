@@ -55,6 +55,7 @@ internal sealed partial class Engine3D
         _initCount = s._initCount;
         _applyIdx = (int[])s._applyIdx.Clone();
         _applyCount = (int[])s._applyCount.Clone();
+        _writeMask = (ulong[])s._writeMask.Clone();
         _pairChunkCount = (int[])s._pairChunkCount.Clone();
         _skip = (SkipFrame3[])s._skip.Clone();
         RecycleManifolds = s.RecycleManifolds;

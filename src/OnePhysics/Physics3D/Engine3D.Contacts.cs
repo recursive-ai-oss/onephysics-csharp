@@ -182,7 +182,7 @@ internal sealed partial class Engine3D
     private int _skipMarginBits;
     private double[] _boxes = new double[48 + 2]; // six doubles a shape, plus two of padding so BoxPhase256 can load a box's upper half (offset 3) as four doubles
     private int[] _updateList = new int[64];
-    private byte[] _resStatus = new byte[64]; // 0 untouched, 1 manifolds computed, 2 boxes no longer overlap
+    private byte[] _resStatus = new byte[64]; // 0 untouched, 1 manifolds computed, 2 boxes no longer overlap, 3 (r4 h19b/c) a reused manifold that replaced the pair's one constraint in place, payload already written
     private int[] _resFirst = new int[64];
     private int[] _resCount = new int[64];
     private int _updateCount;
@@ -334,7 +334,7 @@ internal sealed partial class Engine3D
 
         // Work counters of the step, for benchmark reports: pairs found by the broadphase this step, and the sums of the per-chunk counts below (set after the narrowphase).
         StatNewPairs = found.Length;
-        if (_applyCount.Length < chunks) { _applyCount = new int[Math.Max(chunks, _applyCount.Length * 2)]; }
+        if (_applyCount.Length < chunks) { _applyCount = new int[Math.Max(chunks, _applyCount.Length * 2)]; _writeMask = new ulong[_applyCount.Length]; }
         if (_applyIdx.Length < chunks * 64) { _applyIdx = new int[Math.Max(chunks * 64, _applyIdx.Length * 2)]; }
         for (int i = 0; i < chunks; i++) { _scratch[i].OutCount = 0; _scratch[i].Reached = 0; _scratch[i].Fresh = 0; _scratch[i].Recycled = 0; }
         StatUpdated = _updateCount;
@@ -645,6 +645,8 @@ internal sealed partial class Engine3D
 
     private int[] _applyIdx = new int[64];
     private int[] _applyCount = new int[1];
+    // r4 h19c: per chunk, the update-list positions (bit k = lo + k) whose results WriteTask writes: survivors with results that CollideSurvivor did not write itself (status 1, count > 0).
+    private ulong[] _writeMask = new ulong[1];
 
     private const int PairListChunk = 1024;
     private int[] _pairChunkCount = new int[8];
@@ -682,11 +684,13 @@ internal sealed partial class Engine3D
 
         public void Run(int task)
         {
-            int lo = task * 64, hi = Math.Min(lo + 64, _e._updateCount);
+            int lo = task * 64;
             var sc = _e._scratch[task];
-            for (int i = lo; i < hi; i++)
+            // r4 h19c: only the chunk's pairs in the write mask (status 1 with results, ascending); a reuse that matched in place (status 3) was written by CollideSurvivor already, and the
+            // pairs without results have nothing to write. Same set and order as walking the chunk and skipping status != 1 and count 0.
+            for (ulong w = _e._writeMask[task]; w != 0; w &= w - 1)
             {
-                if (_e._resStatus[i] != 1) { continue; }
+                int i = lo + BitOperations.TrailingZeroCount(w);
                 int p = _e._updateList[i];
                 if (_e.IsSensor(_e.PairA[p]) || _e.IsSensor(_e.PairB[p])) { continue; }
                 int first = _e._resFirst[i];
@@ -716,6 +720,7 @@ internal sealed partial class Engine3D
             var sc = e._scratch[task];
             ulong listed = e.KernelWidth == 8 ? BoxPhase256(e, lo, hi, sc) : BoxPhase(e, lo, hi, sc);
             int recycled = 0, recycledPoints = 0, n = sc.SurvivorCount;
+            ulong write = 0;
             for (int k = 0; k < n; k++)
             {
                 int i = sc.Survivor[k];
@@ -725,7 +730,12 @@ internal sealed partial class Engine3D
                 {
                     recycled += count;
                     for (int c = 0; c < count; c++) { recycledPoints += sc.Out[e._resFirst[i] + c].Count; }
+                    // A convex reuse that CollideSurvivor found to match in place (status 3) is already written: nothing for the serial pass, nothing for WriteTask. Any other reuse (a convex one
+                    // that does not match in place, a triangle-soup pair's set of reused manifolds) is judged below like a fresh result.
+                    if (e._resStatus[i] == 3) { continue; }
                 }
+
+                if (count != 0) { write |= 1UL << (i - lo); }
                 // Worth the serial pass: the pair has points or a constraint to match (a survivor's boxes overlap, so it is never a pair that goes).
                 // A pair whose new contacts are exactly its constraints, one for one, changes nothing the serial pass owns (no constraint is added or removed, so no color moves); it only needs its payloads written.
                 if ((count != 0 || e.PairCons[e._updateList[i]] != -1) && !(e._deferWrite && e.MatchesInPlace(i, sc))) { listed |= 1UL << (i - lo); }
@@ -741,6 +751,7 @@ internal sealed partial class Engine3D
 
             sc.Recycled = recycled; sc.RecycledPoints = recycledPoints; sc.FreshQueries = sc.Fresh;
             e._applyCount[task] = m;
+            e._writeMask[task] = write;
         }
     }
 
@@ -995,6 +1006,25 @@ internal sealed partial class Engine3D
             && TryRecycle(sc, existingCons, ba, bb, qA, qB, new Vector3F((float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2])), pairSpec))
         {
             _resCount[i] = 1;
+            // r4 h19b: MatchesInPlace decided here, from what is already loaded: the reuse is one contact on sub-shapes (0, 0) and replaces the pair's constraint in place when that is the pair's only
+            // constraint, with the same sub-shape keys, neither shape is a sensor and no dynamic body of the pair sleeps (exactly MatchesInPlace's tests for a single result). Status 3 records it.
+            // r4 h19c: such a pair is also written here, straight into its constraint's payload (WriteRecycled, while the payload is still in cache from TryRecycle), instead of by WriteTask after
+            // the serial pass; its scratch slot is handed back (OutCount--), so the reuses of a chunk all go through one hot slot. This is safe because between here and WriteTask nothing reads or
+            // moves this constraint's payload: the other pairs' narrowphase reads only their own constraints, the serial pass does not visit the pair (not listed) and only adds, removes and wakes
+            // other pairs' constraints (slots are stable: removal clears only the removed slot), and the write reads only the shapes' materials, which no stage changes. CollideTask still reads the
+            // slot's Recycled and Count right after this call, before the next survivor can reuse it; _resFirst / _resCount of a status-3 pair are not read after that.
+            if (_deferWrite && Mem.At(ConsNext, existingCons) < 0 && !IsSensor(sa) && !IsSensor(sb)
+                && !(bodies.IsDynamic(ba) && !bodies.IsAwake(ba)) && !(bodies.IsDynamic(bb) && !bodies.IsAwake(bb)))
+            {
+                var cs = Core.Constraints;
+                if (cs.SubShapeA[existingCons] == 0 && cs.SubShapeB[existingCons] == 0)
+                {
+                    WriteRecycled(cs, existingCons, sa, sb, in sc.Out[sc.OutCount - 1]);
+                    sc.OutCount--;
+                    Mem.At(_resStatus, i) = 3;
+                }
+            }
+
             return;
         }
 

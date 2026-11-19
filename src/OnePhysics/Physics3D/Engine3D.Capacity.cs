@@ -30,7 +30,7 @@ internal sealed partial class Engine3D
         int pchunks = (pairs + PairListChunk - 1) / PairListChunk;
         if (_pairChunkCount.Length < pchunks) { _pairChunkCount = new int[pchunks]; }
         int chunks = (pairs + 63) / 64;
-        if (_applyCount.Length < chunks) { _applyCount = new int[chunks]; }
+        if (_applyCount.Length < chunks) { _applyCount = new int[chunks]; _writeMask = new ulong[chunks]; }
         if (_applyIdx.Length < chunks * 64) { _applyIdx = new int[chunks * 64]; }
         if (_scratch.Length < chunks)
         {
