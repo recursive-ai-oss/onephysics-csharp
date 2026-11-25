@@ -24,6 +24,9 @@ internal static class Swimming
     /// <summary>A person's average density, kg/m³ (a little less than water's: lungs).</summary>
     public const float DefaultDensity = 900f;
 
+    /// <summary>The default swim density in a world whose length unit has <paramref name="unitsPerMetre"/> world units to the metre: 900 kg per cubic metre (square metre, in a planar world) as that mass per cubic (square) world unit.</summary>
+    public static float DefaultDensityIn(float unitsPerMetre, bool planar) => unitsPerMetre == 1f ? DefaultDensity : DefaultDensity / (planar ? unitsPerMetre * unitsPerMetre : unitsPerMetre * unitsPerMetre * unitsPerMetre);
+
     /// <summary>Default rate, per second, at which a swimmer's velocity relaxes towards the water's plus its intent.</summary>
     public const float DefaultDamping = 4f;
 

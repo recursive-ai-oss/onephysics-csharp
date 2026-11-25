@@ -68,7 +68,7 @@ internal sealed partial class Engine2D : ICharacterExtHost
         CharVx[c] = vx; CharVy[c] = vy;
     }
 
-    private float GripHeight(int c) => 0.5f * CharDef[c].Height - 0.2f;
+    private float GripHeight(int c) => 0.5f * CharDef[c].Height - 0.2f * Ls;
 
     private void CharacterPosition(int c, out double x, out double y) => BodyOrigin(CharBody[c], out x, out y, out _);
 
@@ -332,7 +332,7 @@ internal sealed partial class Engine2D : ICharacterExtHost
         double len = Math.Sqrt((b.X - a.X) * (b.X - a.X) + (b.Y - a.Y) * (b.Y - a.Y));
         if (!(len > 1e-9)) { return; }
         double along = (b.Y - a.Y) / len;
-        double sign = along >= -1e-6 ? 1.0 : -1.0;
+        double sign = along >= -1e-6 * Ls ? 1.0 : -1.0;
         double s = st.Particle + (double)st.Fraction + sign * distance / len;
         s = s < 0.0 ? 0.0 : s > n - 1 ? n - 1 : s;
         int i = Math.Min((int)s, n - 2);
@@ -387,16 +387,16 @@ internal sealed partial class Engine2D : ICharacterExtHost
         ledge = default;
         var def = CharDef[c];
         var filter = LedgeFilter(CharBody[c], def.LayerMask);
-        float handUp = 0.5f * def.Height - 0.1f;
-        var chest = new Vector2D(cx, cy + (double)(handUp - 0.3f));
-        float reach = def.Radius + 0.4f;
+        float handUp = 0.5f * def.Height - 0.1f * Ls;
+        var chest = new Vector2D(cx, cy + (double)(handUp - 0.3f * Ls));
+        float reach = def.Radius + 0.4f * Ls;
         var dir = new Vector2F(side, 0f);
         if (!World!.Raycast(chest, dir, out var wall, reach, in filter)) { return false; }
         var nw = wall.Normal;
         if (!(wall.Distance > 0f) || Math.Abs(nw.Y) > 0.5f || nw.X * side > -0.5f) { return false; }
-        var o = new Vector2D(wall.Point.X - (double)nw.X * 0.1, cy + (double)(handUp + 0.5f));
-        if (!World.Raycast(o, new Vector2F(0f, -1f), out var top, 1.1f, in filter)) { return false; }
-        if (!(top.Distance > 0.02f) || top.Normal.Y < 0.7f) { return false; }
+        var o = new Vector2D(wall.Point.X - (double)nw.X * (0.1 * Ls), cy + (double)(handUp + 0.5f * Ls));
+        if (!World.Raycast(o, new Vector2F(0f, -1f), out var top, 1.1f * Ls, in filter)) { return false; }
+        if (!(top.Distance > 0.02f * Ls) || top.Normal.Y < 0.7f) { return false; }
         double inset = (top.Point.X - wall.Point.X) * nw.X;
         ledge = new Ledge { Body = top.Body.RawHandle.Index, BodyGen = top.Body.RawHandle.Generation, Tx = top.Point.X - (double)nw.X * inset, Ty = top.Point.Y, Nx = nw.X, Ny = nw.Y };
         return true;
@@ -405,8 +405,8 @@ internal sealed partial class Engine2D : ICharacterExtHost
     private void HangCentre(int c, in Ledge l, out double x, out double y)
     {
         var def = CharDef[c];
-        float drop = 0.5f * def.Height - 0.1f;
-        float outward = def.Radius + 0.02f;
+        float drop = 0.5f * def.Height - 0.1f * Ls;
+        float outward = def.Radius + 0.02f * Ls;
         x = l.Tx + (double)(l.Nx * outward);
         y = l.Ty - (double)drop;
     }
@@ -449,10 +449,10 @@ internal sealed partial class Engine2D : ICharacterExtHost
         float side = Side(facing);
         var filter = LedgeFilter(CharBody[c], def.LayerMask);
         CharacterPosition(c, out double cx, out double cy);
-        if (!World!.Raycast(new Vector2D(cx, cy), new Vector2F(side, 0f), out var hit, def.Radius + 0.4f, in filter)) { return false; }
+        if (!World!.Raycast(new Vector2D(cx, cy), new Vector2F(side, 0f), out var hit, def.Radius + 0.4f * Ls, in filter)) { return false; }
         if (!(hit.Distance >= 0f) || Math.Abs(hit.Normal.Y) > 0.5f || hit.Normal.X * side > -0.5f) { return false; }
         if (!Extensions.IsClimbable(hit.Shape.Handle.Index, hit.Shape.Handle.Generation)) { return false; }
-        float off = def.Radius + 0.02f;
+        float off = def.Radius + 0.02f * Ls;
         EnterHold(c, CharacterMode.Climbing, hit.Body.RawHandle.Index, hit.Point.X + (double)(hit.Normal.X * off), cy, hit.Normal.X, hit.Normal.Y);
         return true;
     }
@@ -482,8 +482,8 @@ internal sealed partial class Engine2D : ICharacterExtHost
         var def = CharDef[c];
         float side = nx > 0f ? -1f : 1f;
         if (!FindLedge(c, cx, cy, side, out var ledge)) { return false; }
-        float inward = def.Radius + 0.05f;
-        float lift = 0.5f * def.Height + def.Skin + 0.01f;
+        float inward = def.Radius + 0.05f * Ls;
+        float lift = 0.5f * def.Height + def.Skin + 0.01f * Ls;
         double tx = ledge.Tx + (double)(side * inward), ty = ledge.Ty + (double)lift;
         if (!CapsuleFitsAt(c, tx, ty)) { return false; }
         ref var st = ref Extensions.At(c);
@@ -504,11 +504,11 @@ internal sealed partial class Engine2D : ICharacterExtHost
             Capsule = Shape2D.CreateCapsule(new Vec2(0f, -halfLength), new Vec2(0f, halfLength), def.Radius),
             Radius = def.Radius, HalfLength = halfLength, Skin = def.Skin, Range = 0f, MaxPush = 0.5f * def.Radius, Mask = def.LayerMask, IgnoreBody = CharBody[c],
         };
-        MvGather(MvBox(x, y, 0f, 0f, ctx, 0.01f), ctx);
+        MvGather(MvBox(x, y, 0f, 0f, ctx, 0.01f * Ls), ctx);
         MvPlanes(x, y, ctx);
         for (int i = 0; i < _mvPlaneCount; i++)
         {
-            if (_mvPlanes[i].Separation < -0.5f * def.Skin - 0.01f && !IsCharacterBody(MvOwner(_mvMeta[i].Slot))) { return false; }
+            if (_mvPlanes[i].Separation < -0.5f * def.Skin - 0.01f * Ls && !IsCharacterBody(MvOwner(_mvMeta[i].Slot))) { return false; }
         }
 
         return true;
@@ -549,8 +549,8 @@ internal sealed partial class Engine2D : ICharacterExtHost
         if (v < 0f)
         {
             // Climbing down onto the ground: stand on it.
-            var feet = new Vector2D(x, y - (double)(0.5f * def.Height - 0.05f));
-            if (World!.Raycast(feet, new Vector2F(0f, -1f), out var ground, 0.05f - v + 0.02f, in filter) && ground.Normal.Y >= 0.7f && ground.Distance > 0f)
+            var feet = new Vector2D(x, y - (double)(0.5f * def.Height - 0.05f * Ls));
+            if (World!.Raycast(feet, new Vector2F(0f, -1f), out var ground, 0.05f * Ls - v + 0.02f * Ls, in filter) && ground.Normal.Y >= 0.7f && ground.Distance > 0f)
             {
                 ReleaseCharacter(c);
                 return;
@@ -558,12 +558,12 @@ internal sealed partial class Engine2D : ICharacterExtHost
         }
 
         // The surface is looked for at the hands: the climb ends when they pass the top.
-        float handUp = 0.5f * def.Height - 0.1f;
-        var from = new Vector2D(x + (double)(nx * 0.5f), cy + (double)handUp);
-        if (World!.Raycast(from, new Vector2F(-nx, 0f), out var hit, def.Radius + 0.9f, in filter) && hit.Distance > 0f && hit.Normal.X * nx >= 0.7f
+        float handUp = 0.5f * def.Height - 0.1f * Ls;
+        var from = new Vector2D(x + (double)(nx * (0.5f * Ls)), cy + (double)handUp);
+        if (World!.Raycast(from, new Vector2F(-nx, 0f), out var hit, def.Radius + 0.9f * Ls, in filter) && hit.Distance > 0f && hit.Normal.X * nx >= 0.7f
             && Extensions.IsClimbable(hit.Shape.Handle.Index, hit.Shape.Handle.Generation) && hit.Body.RawHandle.Index == st.Body)
         {
-            float off = def.Radius + 0.02f;
+            float off = def.Radius + 0.02f * Ls;
             EnterHold(c, CharacterMode.Climbing, st.Body, hit.Point.X + (double)(hit.Normal.X * off), cy, hit.Normal.X, hit.Normal.Y);
             return;
         }

@@ -78,10 +78,10 @@ internal sealed partial class Engine2D
     }
 
     /// <summary>Nothing under the character's feet and it is not moving up: what it meets in water it falls into.</summary>
-    private bool Airborne(int c) => CharGround[c] != GroundState.OnGround && CharVy[c] <= 0.5f;
+    private bool Airborne(int c) => CharGround[c] != GroundState.OnGround && CharVy[c] <= 0.5f * Opt.UnitsPerMetre;
 
     /// <summary>The density a character swims with: its own setting, else a person's 900 (2D characters are all virtual).</summary>
-    internal static float SwimDensityOf(int c, in CharacterExtState st) => st.SwimDensity > 0f ? st.SwimDensity : Swimming.DefaultDensity;
+    internal float SwimDensityOf(int c, in CharacterExtState st) => st.SwimDensity > 0f ? st.SwimDensity : Swimming.DefaultDensityIn(Opt.UnitsPerMetre, true);
 
     private float SwimGravity() => Math.Max(-Opt.Gravity.Y, 0f);
 

@@ -65,7 +65,7 @@ internal sealed partial class Engine3D : ICharacterExtHost
 
     private QuaternionF UprightOf(int c) => AlignY(UnitUp(CharDef[c].Up));
 
-    private float GripHeight(int c) => 0.5f * CharDef[c].Height - 0.2f;
+    private float GripHeight(int c) => 0.5f * CharDef[c].Height - 0.2f * Ls;
 
     private Vector3D CharacterPosition(int c)
     {
@@ -315,7 +315,7 @@ internal sealed partial class Engine3D : ICharacterExtHost
         double len = Math.Sqrt((b.X - a.X) * (b.X - a.X) + (b.Y - a.Y) * (b.Y - a.Y) + (b.Z - a.Z) * (b.Z - a.Z));
         if (!(len > 1e-9)) { return; }
         double along = ((b.X - a.X) * up.X + (b.Y - a.Y) * up.Y + (b.Z - a.Z) * up.Z) / len;
-        double sign = along >= -1e-6 ? 1.0 : -1.0;
+        double sign = along >= -1e-6 * Ls ? 1.0 : -1.0;
         double s = st.Particle + (double)st.Fraction + sign * distance / len;
         s = s < 0.0 ? 0.0 : s > n - 1 ? n - 1 : s;
         int i = Math.Min((int)s, n - 2);
@@ -362,17 +362,17 @@ internal sealed partial class Engine3D : ICharacterExtHost
         var def = CharDef[c];
         var up = UnitUp(def.Up);
         var filter = LedgeFilter(CharBody[c], def.LayerMask);
-        float handUp = 0.5f * def.Height - 0.1f;
-        var chest = new Vector3D(centre.X + (double)up.X * (handUp - 0.3f), centre.Y + (double)up.Y * (handUp - 0.3f), centre.Z + (double)up.Z * (handUp - 0.3f));
-        float reach = def.Radius + 0.4f;
+        float handUp = 0.5f * def.Height - 0.1f * Ls;
+        var chest = new Vector3D(centre.X + (double)up.X * (handUp - 0.3f * Ls), centre.Y + (double)up.Y * (handUp - 0.3f * Ls), centre.Z + (double)up.Z * (handUp - 0.3f * Ls));
+        float reach = def.Radius + 0.4f * Ls;
         if (!World!.Raycast(chest, facing, out var wall, reach, in filter)) { return false; }
         var nw = wall.Normal;
         if (!(wall.Distance > 0f) || Math.Abs(Vector3F.Dot(nw, up)) > 0.5f || Vector3F.Dot(nw, facing) > -0.5f) { return false; }
         // Straight down onto the top from half a metre above the hands, a hand's width inside the wall.
-        double above = (double)(handUp + 0.5f);
-        var o = new Vector3D(wall.Point.X - (double)nw.X * 0.1 + (double)up.X * (above - (handUp - 0.3f)), wall.Point.Y - (double)nw.Y * 0.1 + (double)up.Y * (above - (handUp - 0.3f)), wall.Point.Z - (double)nw.Z * 0.1 + (double)up.Z * (above - (handUp - 0.3f)));
-        if (!World.Raycast(o, up * -1f, out var top, 1.1f, in filter)) { return false; }
-        if (!(top.Distance > 0.02f) || Vector3F.Dot(top.Normal, up) < 0.7f) { return false; }
+        double above = (double)(handUp + 0.5f * Ls);
+        var o = new Vector3D(wall.Point.X - (double)nw.X * (0.1 * Ls) + (double)up.X * (above - (handUp - 0.3f * Ls)), wall.Point.Y - (double)nw.Y * (0.1 * Ls) + (double)up.Y * (above - (handUp - 0.3f * Ls)), wall.Point.Z - (double)nw.Z * (0.1 * Ls) + (double)up.Z * (above - (handUp - 0.3f * Ls)));
+        if (!World.Raycast(o, up * -1f, out var top, 1.1f * Ls, in filter)) { return false; }
+        if (!(top.Distance > 0.02f * Ls) || Vector3F.Dot(top.Normal, up) < 0.7f) { return false; }
         // The hands go at the wall's edge, so the top point is slid back along the wall's normal onto the wall plane.
         float inset = Vector3F.Dot(new Vector3F((float)(top.Point.X - wall.Point.X), (float)(top.Point.Y - wall.Point.Y), (float)(top.Point.Z - wall.Point.Z)), nw);
         ledge = new Ledge
@@ -387,8 +387,8 @@ internal sealed partial class Engine3D : ICharacterExtHost
     {
         var def = CharDef[c];
         var up = UnitUp(def.Up);
-        float drop = 0.5f * def.Height - 0.1f;
-        float out_ = def.Radius + 0.02f;
+        float drop = 0.5f * def.Height - 0.1f * Ls;
+        float out_ = def.Radius + 0.02f * Ls;
         return new Vector3D(l.Top.X + (double)(l.Normal.X * out_ - up.X * drop), l.Top.Y + (double)(l.Normal.Y * out_ - up.Y * drop), l.Top.Z + (double)(l.Normal.Z * out_ - up.Z * drop));
     }
 
@@ -433,11 +433,11 @@ internal sealed partial class Engine3D : ICharacterExtHost
         var f = Horizontal(facing, up);
         var filter = LedgeFilter(CharBody[c], def.LayerMask);
         var pos = CharacterPosition(c);
-        if (!World!.Raycast(pos, f, out var hit, def.Radius + 0.4f, in filter)) { return false; }
+        if (!World!.Raycast(pos, f, out var hit, def.Radius + 0.4f * Ls, in filter)) { return false; }
         if (!(hit.Distance >= 0f) || Math.Abs(Vector3F.Dot(hit.Normal, up)) > 0.5f || Vector3F.Dot(hit.Normal, f) > -0.5f) { return false; }
         if (!Extensions.IsClimbable(hit.Shape.Handle.Index, hit.Shape.Handle.Generation)) { return false; }
         var nw = hit.Normal;
-        float off = def.Radius + 0.02f;
+        float off = def.Radius + 0.02f * Ls;
         var centre = new Vector3D(hit.Point.X + (double)nw.X * off, hit.Point.Y + (double)nw.Y * off, hit.Point.Z + (double)nw.Z * off);
         // Keep the height the character has; only the distance to the surface changes.
         double lift = Vector3F.Dot(new Vector3F((float)(pos.X - centre.X), (float)(pos.Y - centre.Y), (float)(pos.Z - centre.Z)), up);
@@ -474,8 +474,8 @@ internal sealed partial class Engine3D : ICharacterExtHost
         var up = UnitUp(def.Up);
         var f = nw * -1f;
         if (!FindLedge(c, centre, f, out var ledge)) { return false; }
-        float inward = def.Radius + 0.05f;
-        float lift = 0.5f * def.Height + def.Skin + 0.01f;
+        float inward = def.Radius + 0.05f * Ls;
+        float lift = 0.5f * def.Height + def.Skin + 0.01f * Ls;
         var target = new Vector3D(ledge.Top.X + (double)(f.X * inward + up.X * lift), ledge.Top.Y + (double)(f.Y * inward + up.Y * lift), ledge.Top.Z + (double)(f.Z * inward + up.Z * lift));
         if (!CapsuleFitsAt(c, target)) { return false; }
         ref var st = ref Extensions.At(c);
@@ -492,11 +492,11 @@ internal sealed partial class Engine3D : ICharacterExtHost
         var def = CharDef[c];
         var ctx = MakeMoverCtx(in def, CharBody[c]);
         ctx.Range = 0f;
-        MvGather(MvBox(p, default, in ctx, 0.01f), in ctx);
+        MvGather(MvBox(p, default, in ctx, 0.01f * Ls), in ctx);
         MvPlanes(p, in ctx);
         for (int i = 0; i < _mvPlaneCount; i++)
         {
-            if (_mvPlanes[i].Separation < -0.5f * def.Skin - 0.01f && !IsCharacterBody(MvOwner(_mvMeta[i].Slot))) { return false; }
+            if (_mvPlanes[i].Separation < -0.5f * def.Skin - 0.01f * Ls && !IsCharacterBody(MvOwner(_mvMeta[i].Slot))) { return false; }
         }
 
         return true;
@@ -531,7 +531,7 @@ internal sealed partial class Engine3D : ICharacterExtHost
                 {
                     var next = HangCentre(c, in ledge);
                     float rise = Vector3F.Dot(new Vector3F((float)(next.X - centre.X), (float)(next.Y - centre.Y), (float)(next.Z - centre.Z)), up);
-                    if (Math.Abs(rise) <= 0.25f) { EnterHold(c, CharacterMode.Hanging, ledge.Body, next, ledge.Normal, Vector3F.Cross(up, ledge.Normal).Normalized()); }
+                    if (Math.Abs(rise) <= 0.25f * Ls) { EnterHold(c, CharacterMode.Hanging, ledge.Body, next, ledge.Normal, Vector3F.Cross(up, ledge.Normal).Normalized()); }
                 }
 
                 break;
@@ -562,8 +562,8 @@ internal sealed partial class Engine3D : ICharacterExtHost
         if (v < 0f)
         {
             // Climbing down onto the ground: stand on it.
-            var feet = new Vector3D(centre.X - (double)up.X * (0.5f * def.Height - 0.05f), centre.Y - (double)up.Y * (0.5f * def.Height - 0.05f), centre.Z - (double)up.Z * (0.5f * def.Height - 0.05f));
-            if (World!.Raycast(feet, up * -1f, out var ground, 0.05f - v + 0.02f, in filter) && Vector3F.Dot(ground.Normal, up) >= 0.7f && ground.Distance > 0f)
+            var feet = new Vector3D(centre.X - (double)up.X * (0.5f * def.Height - 0.05f * Ls), centre.Y - (double)up.Y * (0.5f * def.Height - 0.05f * Ls), centre.Z - (double)up.Z * (0.5f * def.Height - 0.05f * Ls));
+            if (World!.Raycast(feet, up * -1f, out var ground, 0.05f * Ls - v + 0.02f * Ls, in filter) && Vector3F.Dot(ground.Normal, up) >= 0.7f && ground.Distance > 0f)
             {
                 ReleaseCharacter(c);
                 return;
@@ -571,12 +571,12 @@ internal sealed partial class Engine3D : ICharacterExtHost
         }
 
         // The surface is looked for at the hands: the climb ends when they pass the top.
-        float handUp = 0.5f * def.Height - 0.1f;
-        var from = new Vector3D(cand.X + (double)(nw.X * 0.5f + up.X * handUp), cand.Y + (double)(nw.Y * 0.5f + up.Y * handUp), cand.Z + (double)(nw.Z * 0.5f + up.Z * handUp));
-        if (World!.Raycast(from, nw * -1f, out var hit, def.Radius + 0.9f, in filter) && hit.Distance > 0f && Vector3F.Dot(hit.Normal, nw) >= 0.7f
+        float handUp = 0.5f * def.Height - 0.1f * Ls;
+        var from = new Vector3D(cand.X + (double)(nw.X * (0.5f * Ls) + up.X * handUp), cand.Y + (double)(nw.Y * (0.5f * Ls) + up.Y * handUp), cand.Z + (double)(nw.Z * (0.5f * Ls) + up.Z * handUp));
+        if (World!.Raycast(from, nw * -1f, out var hit, def.Radius + 0.9f * Ls, in filter) && hit.Distance > 0f && Vector3F.Dot(hit.Normal, nw) >= 0.7f
             && Extensions.IsClimbable(hit.Shape.Handle.Index, hit.Shape.Handle.Generation) && hit.Body.RawHandle.Index == st.Body)
         {
-            float off = def.Radius + 0.02f;
+            float off = def.Radius + 0.02f * Ls;
             // Slide along the surface: the hit point is at hand height, so it is brought back down to the candidate's height along the surface.
             var next = new Vector3D(hit.Point.X + (double)hit.Normal.X * off - (double)up.X * handUp, hit.Point.Y + (double)hit.Normal.Y * off - (double)up.Y * handUp, hit.Point.Z + (double)hit.Normal.Z * off - (double)up.Z * handUp);
             EnterHold(c, CharacterMode.Climbing, st.Body, next, hit.Normal, default);

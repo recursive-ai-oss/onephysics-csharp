@@ -89,14 +89,14 @@ internal sealed partial class Engine3D
     }
 
     /// <summary>Nothing under the character's feet and it is not moving up: what it meets in water it falls into.</summary>
-    private bool Airborne(int c) => CharGround[c] != GroundState.OnGround && CharVy[c] <= 0.5f;
+    private bool Airborne(int c) => CharGround[c] != GroundState.OnGround && CharVy[c] <= 0.5f * Opt.UnitsPerMetre;
 
     /// <summary>The density a character swims with: its own setting, else a rigid character's real density (its mass over its capsule's volume), else a person's 900.</summary>
     internal float SwimDensityOf(int c, in CharacterExtState st)
     {
         if (st.SwimDensity > 0f) { return st.SwimDensity; }
         var def = CharDef[c];
-        if (def.Kind != CharacterKind.Rigid) { return Swimming.DefaultDensity; }
+        if (def.Kind != CharacterKind.Rigid) { return Swimming.DefaultDensityIn(Opt.UnitsPerMetre, false); }
         return def.Mass / Swimming.CapsuleVolume(false, def.Radius, def.Height);
     }
 
