@@ -23,6 +23,7 @@
     <Compile Include="../Common/TestSkeleton.cs" LinkBase="Common" />
     <Compile Include="../Common/AutoRagdollScenes.cs" LinkBase="Common" />
     <Compile Include="../Common/TetDropScene.cs" LinkBase="Common" />
+    <Compile Include="../Common/StaticModels.cs" LinkBase="Common" />
   </ItemGroup>
 
   <ItemGroup>

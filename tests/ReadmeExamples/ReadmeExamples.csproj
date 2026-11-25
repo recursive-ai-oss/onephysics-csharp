@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/OnePhysics/OnePhysics.csproj" />
     <ProjectReference Include="../../src/OnePhysics.Interchange/OnePhysics.Interchange.csproj" />
+    <ProjectReference Include="../../src/OnePhysics.Tools/OnePhysics.Tools.csproj" />
   </ItemGroup>
 
 </Project>

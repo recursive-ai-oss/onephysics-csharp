@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><GenerateDocumentationFile>false</GenerateDocumentationFile><IsPackable>false</IsPackable><NoWarn>$(NoWarn);CS1591</NoWarn></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/OnePhysics.Tools/OnePhysics.Tools.csproj" />
+    <Compile Include="../../tests/Common/ToolsMeshes.cs;../../tests/Common/StaticModels.cs" LinkBase="Common" />
+  </ItemGroup>
+</Project>

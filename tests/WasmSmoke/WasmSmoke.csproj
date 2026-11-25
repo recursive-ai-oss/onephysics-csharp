@@ -21,6 +21,7 @@
     <Compile Include="../Common/InterchangeSamples.cs" LinkBase="Common" />
     <EmbeddedResource Include="../../testdata/interchange/*" LogicalName="interchange.%(Filename)%(Extension)" />
     <Compile Include="../Common/ToolsMeshes.cs" LinkBase="Common" />
+    <Compile Include="../Common/StaticModels.cs" LinkBase="Common" />
     <Compile Include="../Common/TetBlob.cs" LinkBase="Common" />
     <Compile Include="../Common/TestSkeleton.cs" LinkBase="Common" />
     <Compile Include="../Common/PulleySmoke.cs" LinkBase="Common" />

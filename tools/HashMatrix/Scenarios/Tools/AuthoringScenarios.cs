@@ -17,6 +17,7 @@ internal static class AuthoringScenarios
     internal static void Init()
     {
         Scenarios.Register("tools/tetrahedralize", Tetrahedralize);
+        Scenarios.Register("tools/static-solve", StaticSolve);
         Scenarios.Register("tools/triangulate2d", Triangulate2D);
         Scenarios.Register("tools/autoragdoll", AutoRagdoll);
         Scenarios.Register("tools/tet-drop-3d", TetDrop);
@@ -51,6 +52,36 @@ internal static class AuthoringScenarios
         var l = TestMeshes.LBlock();
         var clean = MeshCleaner.Clean(l.V, l.I);
         WriteTet(ctx, Tetrahedralizer.Generate(clean.Vertices, clean.Indices, new TetrahedralizeOptions { TargetEdgeLength = 0.15f, MaxThreads = ctx.Threads })); ctx.EndStep();
+    }
+
+    private static void WriteSolution(ScenarioContext ctx, StaticSolution s)
+    {
+        ctx.Write(s.Iterations); ctx.Write(s.Converged ? 1 : 0); ctx.Write(s.DegreesOfFreedom); ctx.Write(s.WorstElement);
+        ctx.Write(s.Residual); ctx.Write(s.MinSafetyFactor); ctx.Write(s.MaxVonMises); ctx.Write(s.MaxDisplacement); ctx.Write(s.Volume); ctx.Write(s.Mass);
+        ctx.Write(s.TotalReaction.X); ctx.Write(s.TotalReaction.Y); ctx.Write(s.TotalReaction.Z); ctx.Write(s.WorstLocation.X); ctx.Write(s.WorstLocation.Y); ctx.Write(s.WorstLocation.Z);
+        foreach (var d in s.Displacements) { ctx.Write(d.X); ctx.Write(d.Y); ctx.Write(d.Z); }
+        foreach (var t in s.Stresses) { ctx.Write(t.XX); ctx.Write(t.YY); ctx.Write(t.ZZ); ctx.Write(t.XY); ctx.Write(t.YZ); ctx.Write(t.ZX); }
+        foreach (var t in s.Strains) { ctx.Write(t.XX); ctx.Write(t.YY); ctx.Write(t.ZZ); ctx.Write(t.XY); ctx.Write(t.YZ); ctx.Write(t.ZX); }
+        foreach (double x in s.VonMises) { ctx.Write(x); }
+        foreach (double x in s.PeakVonMises) { ctx.Write(x); }
+        foreach (double x in s.SafetyFactors) { ctx.Write(x); }
+        foreach (double x in s.VertexVonMises) { ctx.Write(x); }
+    }
+
+    // The static solve at the runner's thread count: quadratic and linear elements on a grid beam (end load and self weight, a weak layer axis) and on a tetrahedralized beam.
+    private static void StaticSolve(ScenarioContext ctx)
+    {
+        var steel = new ElasticMaterial { YoungsModulus = 200e9, PoissonRatio = 0.3, Density = 7850, Strength = 250e6, WeakAxis = new Vector3F(0, 0, 1), WeakAxisStrengthRatio = 0.6 };
+        var grid = CantileverModel.BuildGrid(1f, 0.1f, 0.1f, 20, 2, 2);
+        foreach (var order in new[] { StaticElementOrder.Quadratic, StaticElementOrder.Linear })
+        {
+            var o = new StaticSolveOptions { ElementOrder = order, MaxThreads = ctx.Threads };
+            WriteSolution(ctx, StaticSolver.Solve(grid.Vertices, grid.Tetrahedra, grid.EndLoad(steel, 800), o)); ctx.EndStep();
+            WriteSolution(ctx, StaticSolver.Solve(grid.Vertices, grid.Tetrahedra, grid.SelfWeight(steel), o)); ctx.EndStep();
+        }
+
+        var lattice = CantileverModel.BuildLattice(1f, 0.1f, 0.1f, 0.05f);
+        WriteSolution(ctx, StaticSolver.Solve(lattice.Mesh!, lattice.EndLoad(steel, 800), new StaticSolveOptions { MaxThreads = ctx.Threads })); ctx.EndStep();
     }
 
     private static void Triangulate2D(ScenarioContext ctx)

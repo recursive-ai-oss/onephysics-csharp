@@ -24,3 +24,4 @@ Task-oriented pages with examples that are compiled and run by the test suite. F
 | [Input limits](limits.md) | know what is refused |
 | [Coming from Unity](unity-mapping.md) | find the name of the thing you know |
 - [Importing robots, scenes and maps](interchange.md)
+- [Checking a part: deflection, stress and safety factor](statics.md)
