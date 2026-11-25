@@ -20,6 +20,7 @@ Task-oriented pages with examples that are compiled and run by the test suite. F
 | [Shallow water](water.md) | make a lake or wave tank that floats bodies and boats, reads currents and takes waves |
 | [Articulations](articulations.md) | build a robot arm, a walker or a long chain that cannot come apart; drive joints, steer a tool to a point |
 
+| [Bringing a world to rest](settle.md) | settle a built level, read the tip margin of a cabinet, the sag of a rope and whether a peg seats |
 | [Big worlds](world-scale.md) | stream terrain tiles, step far islands less often, run a region in slow motion |
 | [Input limits](limits.md) | know what is refused |
 | [Coming from Unity](unity-mapping.md) | find the name of the thing you know |

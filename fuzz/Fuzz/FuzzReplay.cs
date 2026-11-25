@@ -17,6 +17,33 @@ internal static class FuzzReplay
         catch (ReplayFormatException) { }
     }
 
+    // A recording with a settle in it, so mutated inputs reach the settle record's checks.
+    public static byte[] SettleSeed(int dimension)
+    {
+        using var stream = new MemoryStream();
+        if (dimension == 2)
+        {
+            var world = new PhysicsWorld2D(new WorldOptions2D { WorldId = 24 });
+            world.AddBox(new(20, 1), at: new(0, -0.5), type: BodyType.Static);
+            world.AddBox(new(1, 1), at: new(0, 0.8));
+            using var recorder = world.StartRecording(stream);
+            world.Step(1f / 60);
+            world.Settle(new SettleOptions2D { MaxSteps = 30, StableSteps = 5, ReportBodies = true });
+            world.Step(1f / 60);
+        }
+        else
+        {
+            var world = new PhysicsWorld3D(new WorldOptions3D { WorldId = 24 });
+            world.AddBox(new(20, 1, 20), at: new(0, -0.5, 0), type: BodyType.Static);
+            world.AddBox(new(1, 1, 1), at: new(0, 0.8, 0));
+            using var recorder = world.StartRecording(stream);
+            world.Step(1f / 60);
+            world.Settle(new SettleOptions3D { MaxSteps = 30, StableSteps = 5, ReportBodies = true });
+            world.Step(1f / 60);
+        }
+        return stream.ToArray();
+    }
+
     public static byte[] CommandSeed(int dimension)
     {
         using var stream = new MemoryStream();
