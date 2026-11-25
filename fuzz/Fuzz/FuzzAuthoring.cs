@@ -2,7 +2,7 @@ using System;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics.Tools;
 
-// Targets for the tetrahedralizer, the polygon mesher and the ragdoll fitter. Every input either is accepted or fails with a GeometryToolException; any other exception is a finding.
+// Targets for the tetrahedralizer, the static solve, the polygon mesher and the ragdoll fitter. Every input either is accepted or fails with a GeometryToolException (a StaticSolveException for the static solve); any other exception is a finding.
 internal static class FuzzAuthoring
 {
     private sealed class Reader
@@ -73,6 +73,82 @@ internal static class FuzzAuthoring
 
             if (t.Bindings.Length != v.Length) { throw new InvalidOperationException("One binding per input vertex was expected."); }
         });
+    }
+
+    // The static solve: a small grid or a random tetrahedron list, fuzzed material, supports, loads and options. Every input is solved or fails with a StaticSolveException;
+    // a solved problem must give one displacement per vertex and one result per tetrahedron, and the same bytes at one thread and at three.
+    internal static void StaticSolve(byte[] input)
+    {
+        var r = new Reader(input);
+        Vector3F[] v; int[] t;
+        bool grid = r.Byte() < 200, sane = r.Byte() < 140;
+        int bottom = 0;
+        if (grid)
+        {
+            int nx = 1 + r.Int(3), ny = 1 + r.Int(2), nz = 1 + r.Int(2);
+            v = new Vector3F[(nx + 1) * (ny + 1) * (nz + 1)];
+            int Idx(int i, int j, int k) => (k * (ny + 1) + j) * (nx + 1) + i;
+            for (int k = 0; k <= nz; k++) { for (int j = 0; j <= ny; j++) { for (int i = 0; i <= nx; i++) { v[Idx(i, j, k)] = new Vector3F(i, j, k); } } }
+            var list = new System.Collections.Generic.List<int>();
+            int[][] perms = { new[] { 0, 1, 2 }, new[] { 0, 2, 1 }, new[] { 1, 0, 2 }, new[] { 1, 2, 0 }, new[] { 2, 0, 1 }, new[] { 2, 1, 0 } };
+            for (int k = 0; k < nz; k++) { for (int j = 0; j < ny; j++) { for (int i = 0; i < nx; i++) { foreach (var pm in perms)
+            {
+                int[] pos = { i, j, k };
+                int a = Idx(i, j, k); pos[pm[0]]++; int b = Idx(pos[0], pos[1], pos[2]); pos[pm[1]]++; int c = Idx(pos[0], pos[1], pos[2]); pos[pm[2]]++; int d = Idx(pos[0], pos[1], pos[2]);
+                bool odd = (pm[0] == 0 && pm[1] == 2) || (pm[0] == 1 && pm[1] == 0) || (pm[0] == 2 && pm[1] == 1);
+                list.Add(a); list.Add(odd ? c : b); list.Add(odd ? b : c); list.Add(d);
+            } } } }
+            t = list.ToArray();
+            bottom = (nx + 1) * (ny + 1);
+            if (!sane && r.Byte() < 60) { v[r.Int(v.Length)] = new Vector3F(r.Float(), r.Float(), r.Float()); }
+            if (!sane && r.Byte() < 30) { t[r.Int(t.Length)] = r.Int(v.Length + 1); }
+        }
+        else
+        {
+            int nv = 1 + r.Int(12), nt = r.Int(8);
+            v = new Vector3F[nv];
+            for (int i = 0; i < nv; i++) { v[i] = new Vector3F(r.Float(), r.Float(), r.Float()); }
+            t = new int[4 * nt];
+            for (int i = 0; i < t.Length; i++) { t[i] = r.Int(nv + 1) - (r.Int(32) == 0 ? 1 : 0); }
+        }
+
+        double Num() { byte m = r.Byte(); return m < 8 ? double.NaN : m < 16 ? double.PositiveInfinity : m < 24 ? -1 : m < 40 ? 0 : Math.Pow(10, (r.Byte() - 128) / 8.0); }
+        var mat = new ElasticMaterial
+        {
+            YoungsModulus = r.Byte() < 230 ? 1e6 * (1 + r.Byte() / 64.0) : Num(),
+            PoissonRatio = r.Byte() < 230 ? r.Byte() / 600.0 : (r.Byte() - 128) / 64.0,
+            Density = r.Byte() < 200 ? 1000 : Num(),
+            Strength = r.Byte() < 100 ? 0 : r.Byte() < 220 ? 1e4 * (1 + r.Byte()) : Num(),
+            WeakAxis = r.Byte() < 60 ? new Vector3F(r.Float(), r.Float(), r.Float()) : default,
+            WeakAxisStrengthRatio = r.Byte() < 60 ? r.Byte() / 200.0 : 0,
+        };
+        if (sane && grid) { mat = ElasticMaterial.Create(1e6 * (1 + r.Byte()), r.Byte() / 600.0, 1000, r.Byte() < 128 ? 0 : 1e3 * (1 + r.Byte())); }
+        var p = new StaticProblem { Material = mat, Gravity = r.Byte() < 100 ? new Vector3D(0, 0, -9.81) : new Vector3D(Num(), 0, 0) };
+        int sup = sane && grid ? 0 : r.Int(v.Length + 1);
+        if (sane && grid) { for (int i = 0; i < bottom; i++) { p.Supports.Add(new StaticSupport(i)); } }
+        for (int i = 0; i < sup; i++) { p.Supports.Add(new StaticSupport(r.Byte() < 8 ? r.Int(40) - 4 : r.Int(v.Length), (SupportAxes)(r.Byte() < 200 ? 7 : r.Int(9)), new Vector3D(r.Byte() < 200 ? 0 : r.Float(), 0, 0))); }
+        int loads = r.Int(4);
+        for (int i = 0; i < loads; i++) { p.PointLoads.Add(new PointLoad(r.Int(v.Length + 1), new Vector3D(r.Float(), r.Float(), r.Float()))); }
+        int faces = r.Int(4);
+        for (int i = 0; i < faces; i++) { p.FaceLoads.Add(new FaceLoad(r.Int(v.Length + 1), r.Int(v.Length + 1), r.Int(v.Length + 1), r.Float() * 1000, new Vector3D(r.Float(), 0, 0))); }
+        var opt = new StaticSolveOptions
+        {
+            ElementOrder = r.Byte() < 200 ? (r.Byte() < 128 ? StaticElementOrder.Quadratic : StaticElementOrder.Linear) : (StaticElementOrder)r.Int(4),
+            MetresPerUnit = r.Byte() < 200 ? 0 : r.Float(),
+            Tolerance = r.Byte() < 200 ? 0 : Math.Abs(r.Float()) * 1e-3,
+            MaxIterations = r.Byte() < 200 ? 200 : r.Int(300) - 20,
+            MaxThreads = r.Byte() < 220 ? 1 : r.Int(6) - 1,
+        };
+        StaticSolution? a1 = null;
+        try { a1 = StaticSolver.Solve(v, t, p, opt); }
+        catch (StaticSolveException) { }
+        if (a1 is null) { return; }
+        if (a1.Displacements.Length != v.Length || a1.VonMises.Length != t.Length / 4 || a1.SafetyFactors.Length != t.Length / 4) { throw new InvalidOperationException("The solution has the wrong sizes."); }
+        var again = StaticSolver.Solve(v, t, p, new StaticSolveOptions { ElementOrder = opt.ElementOrder, MetresPerUnit = opt.MetresPerUnit, Tolerance = opt.Tolerance, MaxIterations = opt.MaxIterations, MaxThreads = 3 });
+        for (int i = 0; i < v.Length; i++)
+        {
+            if (BitConverter.DoubleToInt64Bits(a1.Displacements[i].X) != BitConverter.DoubleToInt64Bits(again.Displacements[i].X) || BitConverter.DoubleToInt64Bits(a1.Displacements[i].Z) != BitConverter.DoubleToInt64Bits(again.Displacements[i].Z)) { throw new InvalidOperationException("The displacement depends on the thread count at vertex " + i + "."); }
+        }
     }
 
     internal static void Triangulate2D(byte[] input)

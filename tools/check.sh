@@ -64,6 +64,7 @@ dotnet run -c "$config" --no-build --project fuzz/Fuzz -- snapshot --random 1 10
 dotnet run -c "$config" --no-build --project fuzz/Fuzz -- tools-polygon --random 1 2000
 dotnet run -c "$config" --no-build --project fuzz/Fuzz -- tools-sprite --random 1 2000
 dotnet run -c "$config" --no-build --project fuzz/Fuzz -- tools-tetrahedralize --random 1 1500
+dotnet run -c "$config" --no-build --project fuzz/Fuzz -- tools-static-solve --random 1 1500 256
 dotnet run -c "$config" --no-build --project fuzz/Fuzz -- tools-triangulate2d --random 1 2000
 dotnet run -c "$config" --no-build --project fuzz/Fuzz -- tools-autoragdoll --random 1 3000
 for t in interchange-urdf interchange-mjcf interchange-gltf interchange-tiled interchange-ldtk; do dotnet run -c "$config" --no-build --project fuzz/Fuzz -- "$t" --random 1 3000; done

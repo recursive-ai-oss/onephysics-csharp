@@ -38,6 +38,9 @@ internal static class ToolsSmoke
         MixI(tet.Tetrahedra.Length); foreach (var v in tet.Vertices) { Mix(v.X); Mix(v.Y); Mix(v.Z); } Mix((float)tet.SurfaceDeviation);
         var mesh2 = TriangleMesher.Generate(star, new[] { new[] { new Vector2F(-0.3f, -0.3f), new Vector2F(-0.3f, 0.3f), new Vector2F(0.3f, 0.3f), new Vector2F(0.3f, -0.3f) } }, new TriangleMeshOptions { TargetEdgeLength = 0.4f });
         MixI(mesh2.Triangles.Length); foreach (var v in mesh2.Vertices) { Mix(v.X); Mix(v.Y); }
+        var cant = CantileverModel.BuildGrid(1f, 0.1f, 0.1f, 12, 2, 2);
+        var beam = StaticSolver.Solve(cant.Vertices, cant.Tetrahedra, cant.EndLoad(ElasticMaterial.Create(200e9, 0.3, 7850, 250e6), 500), new StaticSolveOptions { MaxThreads = 3 });
+        MixI(beam.Iterations); Mix((float)beam.MaxDisplacement); Mix((float)beam.MaxVonMises); Mix((float)beam.MinSafetyFactor);
         var sk = TestSkeleton.Humanoid();
         var rag = AutoRagdoller.Create(sk.Names, sk.Parents, sk.Positions, sk.Skin);
         MixI(rag.Definition.Parts.Length);
@@ -45,6 +48,6 @@ internal static class ToolsSmoke
         var rag2 = AutoRagdoller.Create2D(sk.Names, sk.Parents, sk.Positions2D(), sk.Skin2D());
         foreach (var part in rag2.Definition.Parts) { Mix(part.Mass); Mix(part.Angle); Mix(part.ShapeHalfSize.Y); }
         digest = h;
-        return d.Hulls.Count == 2 && pieces.Length >= 2 && sprite.Length >= 3 && simple.Hull.Vertices.Length <= 20 && tet.Tetrahedra.Length > 100 && mesh2.Triangles.Length > 30 && rag.Definition.Parts.Length == 13 && rag2.Definition.Parts.Length == 13;
+        return d.Hulls.Count == 2 && pieces.Length >= 2 && sprite.Length >= 3 && simple.Hull.Vertices.Length <= 20 && tet.Tetrahedra.Length > 100 && mesh2.Triangles.Length > 30 && beam.Converged && rag.Definition.Parts.Length == 13 && rag2.Definition.Parts.Length == 13;
     }
 }
