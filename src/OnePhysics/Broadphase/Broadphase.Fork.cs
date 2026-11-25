@@ -18,12 +18,8 @@ public partial class Broadphase<TBox> where TBox : struct, IBox<TBox>
 
     internal void CopyFrom(Broadphase<TBox> s)
     {
-        _moved = (int[])s._moved.Clone();
-        _movedCount = s._movedCount;
-        _pairs = (ProxyPair[])s._pairs.Clone();
-        _pairCount = s._pairCount;
+        // The pairs found by the last update and the moved-key list are rebuilt by the next update; a restore leaves them empty, and so does a fork.
         s._refitsSinceRebuild.CopyTo(_refitsSinceRebuild, 0);
-        _sortKeys = (long[])s._sortKeys.Clone();
         for (int i = 0; i < _trees.Length; i++) { _trees[i].CopyFrom(s._trees[i]); }
         _moves.AddRange(s._moves);
         _moveStage.AddRange(s._moveStage);

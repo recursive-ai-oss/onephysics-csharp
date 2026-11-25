@@ -44,7 +44,7 @@ Snapshot bytes, hashes and step results are unchanged; nothing is added to the s
 
 ## Fork
 
-`Fork()` copies state directly, as before, and is now cheaper: it copies the stores up to their high-water marks, gives the copied constraint store only the capacity it needs (it grows by doubling when stepping needs more), leaves out the scratch that is sized on first use (the solver's batch arrays, the staging arrays a restore reads into, the restore's input buffer, empty joint records). A fork does not step or snapshot differently: with the same inputs it follows the source bit for bit, which the fork tests, the matrix's fork scenarios and the rollback probe check.
+`Fork()` copies state directly, as before, and is now cheaper: it copies the stores up to their high-water marks, gives the copied constraint store only the capacity it needs (it grows by doubling when stepping needs more), leaves out the scratch that is sized on first use (the solver's batch arrays, the staging arrays a restore reads into, the restore's input buffer; in 3D also the pair update and apply lists, the pair skip hints, the colour sort buffer, the per-body step rows and the broadphase rebuild scratch, which a restore leaves alone and the step regrows or rewrites; and the joint records of slots that never held a joint). A fork does not step or snapshot differently: with the same inputs it follows the source bit for bit, which the fork tests, the matrix's fork scenarios and the rollback probe check.
 
 ## Design record
 

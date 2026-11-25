@@ -16,7 +16,7 @@ internal static class RollbackTiming
         int threads = int.Parse(options.Get("threads", "1"), CultureInfo.InvariantCulture);
         int trials = int.Parse(options.Get("trials", "15"), CultureInfo.InvariantCulture);
         string only = options.Get("scene", "");
-        Console.WriteLine("scene,threads,steps,snapshot_ms,restore_ms,snap_restore_ms,mark_ms,rollback_ms,mark_rollback_ms,fork_ms,snapshot_bytes,load_before,load_after");
+        Console.WriteLine("scene,threads,steps,snapshot_ms,restore_ms,snap_restore_ms,mark_ms,rollback_ms,mark_rollback_ms,fork_ms,fork_alloc_bytes,snapshot_bytes,load_before,load_after");
         foreach (var name in new[] { "large-pile", "large-pile-3d", "ragdoll-pile-3d", "sleep-wake-3d" })
         {
             if (only.Length > 0 && only != name) { continue; }
@@ -61,7 +61,7 @@ internal static class RollbackTiming
     {
         var snap = new List<double>(); var rest = new List<double>(); var both = new List<double>();
         var mk = new List<double>(); var rb = new List<double>(); var mr = new List<double>(); var fk = new List<double>();
-        int bytes = 0;
+        int bytes = 0; long forkBytes = 0;
         double Time(Action a) { long t0 = Stopwatch.GetTimestamp(); a(); return 1000.0 * (Stopwatch.GetTimestamp() - t0) / Stopwatch.Frequency; }
         for (int t = 0; t < trials + 3; t++)
         {
@@ -79,11 +79,12 @@ internal static class RollbackTiming
             if (t >= 3) { mk.Add(a); rb.Add(b); mr.Add(a + b); }
 
             for (int i = 0; i < k; i++) { stepC(); }
+            long a0 = GC.GetAllocatedBytesForCurrentThread();
             double f = Time(fork);
-            if (t >= 3) { fk.Add(f); }
+            if (t >= 3) { fk.Add(f); forkBytes = GC.GetAllocatedBytesForCurrentThread() - a0; }
         }
 
         string F(List<double> xs) => xs.Count == 0 ? "" : Median(xs).ToString("F3", CultureInfo.InvariantCulture);
-        Console.WriteLine($"{name},{threads},{k},{F(snap)},{F(rest)},{F(both)},{F(mk)},{F(rb)},{F(mr)},{F(fk)},{bytes},{before},{Load()}");
+        Console.WriteLine($"{name},{threads},{k},{F(snap)},{F(rest)},{F(both)},{F(mk)},{F(rb)},{F(mr)},{F(fk)},{forkBytes},{bytes},{before},{Load()}");
     }
 }
