@@ -24,7 +24,7 @@ public sealed partial class PhysicsWorld3D
             if (!ReferenceEquals(assembly[i].World, this)) throw new InvalidHandleException("A body of the assembly is null or belongs to a different world.");
             handles[i] = assembly[i].RawHandle;
         }
-        return StabilityMargin3D.Compute(this, handles, options ?? new StabilityOptions3D());
+        return StabilityMargin3D.Compute(this, handles, (options ?? new StabilityOptions3D()).WithDefaultsFor(Options.LengthUnit));
     }
 }
 

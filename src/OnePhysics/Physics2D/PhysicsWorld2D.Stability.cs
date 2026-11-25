@@ -24,7 +24,7 @@ public sealed partial class PhysicsWorld2D
             if (!ReferenceEquals(assembly[i].World, this)) throw new InvalidHandleException("A body of the assembly is null or belongs to a different world.");
             handles[i] = assembly[i].RawHandle;
         }
-        return StabilityMargin2D.Compute(this, handles, options ?? new StabilityOptions2D());
+        return StabilityMargin2D.Compute(this, handles, (options ?? new StabilityOptions2D()).WithDefaultsFor(Options.LengthUnit));
     }
 }
 

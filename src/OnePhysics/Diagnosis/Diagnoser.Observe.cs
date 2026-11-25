@@ -105,7 +105,7 @@ internal sealed partial class Diagnoser
             int a = cs.BodyA[c], b = cs.BodyB[c];
             bool wa = bodies.TypeOf(a) == BodyType.Dynamic && bodies.IsAwake(a), wb = bodies.TypeOf(b) == BodyType.Dynamic && bodies.IsAwake(b);
             if (!wa && !wb) { continue; }
-            double depth = Depth(core, c);
+            double depth = Depth(core, c) / h.UnitsPerMetre;
             if (!(depth > 0)) { continue; }
             if (depth <= PenetrationFloor) { continue; }
             double thin = HalfThin(h, a, b);

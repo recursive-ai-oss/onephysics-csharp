@@ -21,6 +21,18 @@ public sealed class InsertionOptions2D
     /// <summary>Which shapes of the mate count. Default: every non-sensor shape.</summary>
     public QueryFilter2D Filter { get; set; }
 
+    /// <summary>This set of options with the tolerances that were never set (metre values: ProbeDistance, SeatTolerance) at their defaults for a world of the given unit. The world applies this itself.</summary>
+    /// <param name="unit">The world's length unit.</param>
+    public InsertionOptions2D WithDefaultsFor(LengthUnit unit)
+    {
+        var s = new UnitScaler(unit.Scale, false);
+        var c = (InsertionOptions2D)MemberwiseClone();
+        if (s.IsIdentity) { return c; }
+        float probedistance = ProbeDistance; s.D(ref probedistance, 0.05f, 1); c.ProbeDistance = probedistance;
+        float seattolerance = SeatTolerance; s.D(ref seattolerance, 0.001f, 1); c.SeatTolerance = seattolerance;
+        return c;
+    }
+
     internal void Validate()
     {
         if (Stations < 1 || Stations > 4096) throw new ArgumentOutOfRangeException(nameof(Stations), Stations, "Stations must be within 1..4096.");
@@ -161,7 +173,7 @@ public sealed partial class PhysicsWorld2D
     public InsertionReport2D CheckInsertion(ReadOnlySpan<Body> part, Vector2F axis, float distance, InsertionOptions2D? options = null)
     {
         _core.FlushPostStep();
-        return InsertionReport2D.Compute(this, part, axis, distance, options ?? new InsertionOptions2D());
+        return InsertionReport2D.Compute(this, part, axis, distance, (options ?? new InsertionOptions2D()).WithDefaultsFor(Options.LengthUnit));
     }
 }
 

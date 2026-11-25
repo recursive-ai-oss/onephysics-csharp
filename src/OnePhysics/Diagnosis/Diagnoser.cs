@@ -53,6 +53,10 @@ internal sealed partial class Diagnoser
     private long _firstStep, _lastStep;
     private int _total, _observed;
     private bool _contactScanDone;
+    private float _unitsPerMetre = 1f;
+
+    /// <summary>Names the world's length unit and what a world unit is in metres, for a world that is not in metres: every value in a finding is in metres, whatever the unit.</summary>
+    private string UnitNote() => _unitsPerMetre == 1f ? "" : " The world's length unit is " + N(1.0 / _unitsPerMetre) + " m per world unit (one world unit is " + N(1.0 / _unitsPerMetre) + " m, and " + N(_unitsPerMetre) + " world units make a metre); every length, speed and acceleration in this finding is given in metres.";
 
     public Diagnoser(DiagnoseOptions options) { _o = options; _dt = options.Dt; }
 

@@ -12,6 +12,17 @@ public sealed class StabilityOptions3D
     /// <summary>A contact point supports the assembly when its separation is at most this many metres. Default 0.005.</summary>
     public float ContactTolerance { get; set; } = 0.005f;
 
+    /// <summary>This set of options with the tolerances that were never set (metre values: ContactTolerance) at their defaults for a world of the given unit. The world applies this itself.</summary>
+    /// <param name="unit">The world's length unit.</param>
+    public StabilityOptions3D WithDefaultsFor(LengthUnit unit)
+    {
+        var s = new UnitScaler(unit.Scale, false);
+        var c = (StabilityOptions3D)MemberwiseClone();
+        if (s.IsIdentity) { return c; }
+        float contacttolerance = ContactTolerance; s.D(ref contacttolerance, 0.005f, 1); c.ContactTolerance = contacttolerance;
+        return c;
+    }
+
     internal void Validate()
     {
         if (DirectionCount < 4 || DirectionCount > 360) throw new ArgumentOutOfRangeException(nameof(DirectionCount), DirectionCount, "DirectionCount must be within 4..360.");
