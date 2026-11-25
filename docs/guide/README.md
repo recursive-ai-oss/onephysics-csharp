@@ -21,6 +21,7 @@ Task-oriented pages with examples that are compiled and run by the test suite. F
 | [Articulations](articulations.md) | build a robot arm, a walker or a long chain that cannot come apart; drive joints, steer a tool to a point |
 
 | [Big worlds](world-scale.md) | stream terrain tiles, step far islands less often, run a region in slow motion |
+| [Diagnosis](diagnosis.md) | ask a world what is wrong with it: findings with codes, values and suggested changes; the same over a recording |
 | [Input limits](limits.md) | know what is refused |
 | [Coming from Unity](unity-mapping.md) | find the name of the thing you know |
 - [Importing robots, scenes and maps](interchange.md)
