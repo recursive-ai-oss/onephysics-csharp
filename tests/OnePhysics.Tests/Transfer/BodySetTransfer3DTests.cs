@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics.LowLevel;
+using System.IO;
+using RecursiveAI.OnePhysics.Replay;
 using Xunit;
 using P3 = RecursiveAI.OnePhysics.Physics3D;
 
@@ -194,7 +196,7 @@ public sealed class BodySetTransfer3DTests
         Assert.Equal(map.Anchors[0].Outside, cart.RawHandle);
         double x0 = anchor.Position.X;
         for (int i = 0; i < 30; i++) { b.Step(Dt); }
-        Assert.Equal(x0 + 2.0 * 30 * Dt, anchor.Position.X, 3);
+        Assert.Equal(x0 + (double)cart.LinearVelocity.X * 30 * Dt, anchor.Position.X, 4);
     }
 
     [Fact]
@@ -348,5 +350,73 @@ public sealed class BodySetTransfer3DTests
         Assert.Contains("magic", Assert.Throws<BodySetPacketException>(() => BodySetPacket.Read(new byte[100])).Field);
         Assert.Throws<ArgumentOutOfRangeException>(() => BodySetPacket.Read(bytes, -1));
         Assert.Contains("limit", Assert.Throws<BodySetPacketException>(() => BodySetPacket.Read(bytes, 10)).Message);
+    }
+
+    [Fact]
+    public void EveryKindOfShapeJointAndBodySettingTravels()
+    {
+        var a = World(9160);
+        a.Options.Gravity = new Vector3F(0, -9.81f, 0);
+        var b0 = a.AddSphere(0.4f, at: new Vector3D(0, 3, 0));
+        var b1 = a.AddCapsule(0.4f, 0.2f, at: new Vector3D(1, 3, 0));
+        var b2 = a.AddCylinder(0.3f, 0.3f, at: new Vector3D(2, 3, 0));
+        var b3 = a.AddConvexHull(new[] { new Vector3F(-.4f, -.4f, -.4f), new Vector3F(.4f, -.4f, -.4f), new Vector3F(0, .5f, 0), new Vector3F(0, -.4f, .5f) }, at: new Vector3D(3, 3, 0));
+        var b4 = a.CreateBody(BodyType.Dynamic, new Vector3D(4, 3, 0));
+        a.CreateBox(b4, new Vector3F(0.5f, 0.5f, 0.5f));
+        a.CreateSphere(b4, 0.2f, new P3.ShapeDef { IsSensor = true });
+        var b5 = a.AddBox(new Vector3F(0.5f, 0.5f, 0.5f), at: new Vector3D(5, 3, 0), material: new P3.Material3D(0.2f, 0.4f, 0.01f));
+        var b6 = a.AddBox(new Vector3F(0.5f, 0.5f, 0.5f), at: new Vector3D(6, 3, 0));
+        var b7 = a.AddBox(new Vector3F(0.5f, 0.5f, 0.5f), at: new Vector3D(7, 3, 0));
+        var mesh = a.AddMesh(new[] { new Vector3F(-2, 0, -2), new Vector3F(2, 0, -2), new Vector3F(0, 0.3f, 2) }, new[] { 0, 1, 2 }, new Vector3D(0, 0.01, 10), material: new P3.Material3D(0.7f));
+        b1.Mass = 3f; b1.CenterOfMass = new Vector3F(0.1f, 0, 0);
+        b2.Controls = new BodyControlSettings(RigidbodyConstraints.FreezePositionZ, 20f, 10f, 5f);
+        b3.SleepSettings = new BodySleepSettings(0.2f, 0.2f, 0.7f);
+        b5.NeverSleep = true;
+        b6.LinearVelocity = new Vector3F(0, 0, 1); b6.AngularVelocity = new Vector3F(1, 2, 3);
+        a.CreateJoint(new P3.FixedJointDef { BodyA = b0, BodyB = b1, LocalFrameA = new P3.JointFrame3D(new Vector3F(0.5f, 0, 0), QuaternionF.Identity), LocalFrameB = new P3.JointFrame3D(new Vector3F(-0.5f, 0, 0), QuaternionF.Identity) });
+        a.CreateJoint(new P3.HingeJointDef { BodyA = b1, BodyB = b2, EnableLimit = true, LowerAngle = -0.5f, UpperAngle = 0.5f, LocalFrameA = new P3.JointFrame3D(new Vector3F(0.6f, 0, 0), QuaternionF.Identity), LocalFrameB = new P3.JointFrame3D(new Vector3F(-0.4f, 0, 0), QuaternionF.Identity) });
+        a.CreateJoint(new P3.SliderJointDef { BodyA = b2, BodyB = b3, EnableLimit = true, LowerTranslation = -0.2f, UpperTranslation = 0.2f, LocalFrameA = new P3.JointFrame3D(new Vector3F(0.5f, 0, 0), QuaternionF.Identity), LocalFrameB = default });
+        a.CreateJoint(new P3.DistanceJointDef { BodyA = b3, BodyB = b4, Length = 1.2f, LocalFrameA = default, LocalFrameB = default });
+        a.CreateJoint(new P3.SwingTwistJointDef { BodyA = b4, BodyB = b5, LocalFrameA = new P3.JointFrame3D(new Vector3F(0.5f, 0, 0), QuaternionF.Identity), LocalFrameB = new P3.JointFrame3D(new Vector3F(-0.5f, 0, 0), QuaternionF.Identity) });
+        a.CreateJoint(new P3.ConeJointDef { BodyA = b5, BodyB = b6, LocalFrameA = new P3.JointFrame3D(new Vector3F(0.5f, 0, 0), QuaternionF.Identity), LocalFrameB = new P3.JointFrame3D(new Vector3F(-0.5f, 0, 0), QuaternionF.Identity) });
+        for (int i = 0; i < 50; i++) { a.Step(Dt); }
+        var all = new List<P3.Body>();
+        foreach (var x in a.Bodies) { all.Add(x); }
+        var packet = a.ExtractBodies(all.ToArray(), new BodySetOptions { Move = false });
+        Assert.Equal(6, packet.JointCount);
+        var b = new P3.PhysicsWorld3D(new() { WorldId = 9161, SleepEnabled = false });
+        b.Options.Gravity = a.Options.Gravity;
+        var map = b.InsertBodies(packet);
+        var src = map.OldBodies.ToArray().Select(h => a.GetBody(h)).ToArray();
+        var copy = Bodies(b, map);
+        Assert.Equal(b6.SleepSettings.IsOverride, copy[Array.IndexOf(src, b6)].SleepSettings.IsOverride);
+        Assert.Equal(b3.SleepSettings.TimeToSleep, copy[Array.IndexOf(src, b3)].SleepSettings.TimeToSleep);
+        Assert.Equal(b2.Controls.Constraints, copy[Array.IndexOf(src, b2)].Controls.Constraints);
+        Assert.Equal(b1.Mass, copy[Array.IndexOf(src, b1)].Mass);
+        Assert.True(copy[Array.IndexOf(src, b5)].NeverSleep);
+        Assert.Equal(0.0, Follow(a, src, b, copy, 100));
+        // An inserted world restores byte for byte into a fresh one and then steps the same.
+        var fresh = new P3.PhysicsWorld3D(new() { WorldId = 9161, SleepEnabled = false });
+        fresh.Restore(b.Snapshot());
+        Assert.Equal(b.ComputeHash(), fresh.ComputeHash());
+        b.Step(Dt); fresh.Step(Dt);
+        Assert.Equal(b.ComputeHash(), fresh.ComputeHash());
+    }
+
+    [Fact]
+    public void AnInsertionIsRecordedAndPlaysBack()
+    {
+        var a = World(9170);
+        var boxes = Stack(a, 3);
+        for (int i = 0; i < 100; i++) { a.Step(Dt); }
+        var packet = a.ExtractBodies(boxes, new BodySetOptions { Move = false });
+        var b = World(9171);
+        using var stream = new MemoryStream();
+        using (b.StartRecording(stream)) { b.InsertBodies(packet, new Vector3D(5, 0, 0)); for (int i = 0; i < 30; i++) { b.Step(Dt); } }
+        stream.Position = 0;
+        var player = new ReplayPlayer(stream);
+        var c = World(9171);
+        while (player.ReadNextStep(c)) { }
+        Assert.Equal(b.Snapshot(), c.Snapshot());
     }
 }
