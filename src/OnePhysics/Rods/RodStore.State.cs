@@ -52,7 +52,7 @@ internal sealed partial class RodStore
             int gen = r.ReadInt32(); if (gen < 1) throw r.Error("Rod generation must be positive."); generations[i] = gen;
             if (!r.ReadBool()) continue;
             RodMaterial material;
-            try { material = new RodMaterial(r.ReadSingle(),r.ReadSingle(),r.ReadSingle(),r.ReadSingle()); }
+            try { material = RodMaterial.FromWorld(r.ReadSingle(),r.ReadSingle(),r.ReadSingle(),r.ReadSingle(),Host.UnitsPerMetre); }
             catch (ArgumentException ex) { throw r.Error("Rod material: "+ex.Message); }
             int substeps = r.ReadInt32(), iterations = r.ReadInt32(); float damping = r.ReadSingle(), gravity = r.ReadSingle();
             bool clampStart = r.ReadBool(); var rootFrame = ReadFrame(r);
@@ -94,7 +94,7 @@ internal sealed partial class RodStore
                 d.Length[s] = r.ReadSingle(); d.RestBend[s] = ReadVector(r); d.Clamped[s] = r.ReadBool();
                 d.InverseBendInertia[s] = r.ReadSingle(); d.InverseTwistInertia[s] = r.ReadSingle();
                 var q = d.FrameData[s]; double norm = (double)q.X*q.X+(double)q.Y*q.Y+(double)q.Z*q.Z+(double)q.W*q.W;
-                if (!(norm >= 0.999 && norm <= 1.001) || !Finite(d.AngularVelocity[s]) || !(d.Length[s] >= 0.0001f && d.Length[s] <= 100) || !Finite(d.RestBend[s]) || !(d.InverseBendInertia[s] >= 0) || !float.IsFinite(d.InverseBendInertia[s]) || !(d.InverseTwistInertia[s] >= 0) || !float.IsFinite(d.InverseTwistInertia[s])) throw r.Error("Invalid rod segment frame, velocity, rest length or inertia.");
+                if (!(norm >= 0.999 && norm <= 1.001) || !Finite(d.AngularVelocity[s]) || !(d.Length[s] >= 0.0001f * Host.UnitsPerMetre && d.Length[s] <= 100 * Math.Max(1f, Host.UnitsPerMetre)) || !Finite(d.RestBend[s]) || !(d.InverseBendInertia[s] >= 0) || !float.IsFinite(d.InverseBendInertia[s]) || !(d.InverseTwistInertia[s] >= 0) || !float.IsFinite(d.InverseTwistInertia[s])) throw r.Error("Invalid rod segment frame, velocity, rest length or inertia.");
                 if (Host.Planar && (q.X != 0 || q.Y != 0 || d.AngularVelocity[s].X != 0 || d.AngularVelocity[s].Y != 0)) throw r.Error("Planar rod has a nonplanar frame.");
             }
             r.ReadDoubles(d.LambdaData,true,"rod multipliers");

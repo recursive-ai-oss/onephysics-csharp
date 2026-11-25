@@ -23,7 +23,7 @@ internal sealed partial class Engine3D
             double along=axisSquared>1e-24?Math.Clamp(RodGeometry.Dot(origin-a,axis)/axisSquared,0,1):0;
             var offset=a+axis*along-origin;double distance=RodGeometry.Length(offset);
             double gap=distance-g.Convex.ConvexRadius-radius;
-            if(gap>1e-7&&distance>1e-12)
+            if(gap>1e-7*Opt.UnitsPerMetre&&distance>1e-12)
             {
                 var unit=offset/distance;var normal=RodGeometry.Float(unit);
                 return new RodWitness{Separation=(float)gap,Normal=normal,Surface=origin+unit*g.Convex.ConvexRadius,Fraction=(float)along,Convex=true};
@@ -65,19 +65,19 @@ internal sealed partial class Engine3D
         }
         return best;
     }
-    private static RodWitness RodLeaf(in ConvexShape3D leaf,Vector3D origin,QuaternionF rotation,in ConvexShape3D capsule,Vector3D center,QuaternionF capsuleRotation,Vector3D a,Vector3D b,float radius,int subshape)
+    private RodWitness RodLeaf(in ConvexShape3D leaf,Vector3D origin,QuaternionF rotation,in ConvexShape3D capsule,Vector3D center,QuaternionF capsuleRotation,Vector3D a,Vector3D b,float radius,int subshape)
     {
         var inv=RodParticles.Conjugate(rotation);var transform=new RigidTransformF(inv*capsuleRotation,RodParticles.Rotate(inv,RodGeometry.Float(center-origin)));
         var distance=Gjk3D.Distance(leaf,capsule,transform);
         var result=new RodWitness{Separation=distance.Distance,Subshape=subshape};
-        if(!distance.Overlapping&&distance.Distance>1e-7f)
+        if(!distance.Overlapping&&distance.Distance>1e-7f*Opt.UnitsPerMetre)
         {
             result.Normal=RodParticles.Rotate(rotation,distance.Normal);
             result.Surface=origin+RodGeometry.Double(RodParticles.Rotate(rotation,distance.PointA));
             var core=origin+RodGeometry.Double(RodParticles.Rotate(rotation,distance.PointB))+RodGeometry.Double(result.Normal*radius);
             result.Fraction=RodGeometry.Parameter(a,b,core);return result;
         }
-        t_rodManifolds??=new ManifoldGenerator3D();var manifold=t_rodManifolds.Collide(leaf,capsule,transform,0.001f);
+        t_rodManifolds??=new ManifoldGenerator3D();var manifold=t_rodManifolds.Collide(leaf,capsule,transform,0.001f*Opt.UnitsPerMetre);
         if(manifold.PointCount==0){result.Separation=float.PositiveInfinity;return result;}
         int best=0;for(int i=1;i<manifold.PointCount;i++)if(manifold[i].Separation<manifold[best].Separation)best=i;
         var contact=manifold[best];result.Separation=contact.Separation;result.Normal=RodParticles.Rotate(rotation,manifold.Normal);

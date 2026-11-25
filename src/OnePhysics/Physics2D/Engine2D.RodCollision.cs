@@ -18,7 +18,7 @@ internal sealed partial class Engine2D
         SimplexCache2D cache=default;
         var distance=Distance2D.Compute(Geom[shape],capsule,Transform2.Identity,ref cache);
         var result=new RodWitness{Separation=distance.Distance,Convex=Geom[shape].Kind is ShapeKind2D.Circle or ShapeKind2D.Capsule or ShapeKind2D.Segment or ShapeKind2D.Polygon};
-        if(distance.Distance>1e-7f)
+        if(distance.Distance>1e-7f*Opt.UnitsPerMetre)
         {
             var delta=distance.PointB-distance.PointA;float l=(float)Math.Sqrt(delta.X*delta.X+delta.Y*delta.Y);
             if(l>0)result.Normal=RodParticles.Rotate(rotation,new(delta.X/l,delta.Y/l,0));

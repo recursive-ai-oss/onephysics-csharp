@@ -7,11 +7,11 @@ namespace RecursiveAI.OnePhysics.Rods;
 internal sealed partial class RodStore
 {
     private struct SegmentPair { internal int A,SA,B,SB; }
-    private static bool MaterialNeighbours(RodParticles d,int a,int b)
+    private bool MaterialNeighbours(RodParticles d,int a,int b)
     {
         if(a>b)(a,b)=(b,a);if(b-a<=1)return true;
         double gap=0;
-        for(int i=a+1;i<b;i++){gap+=d.Length[i];if(gap>2*d.Material.Radius+1e-7)return false;}
+        for(int i=a+1;i<b;i++){gap+=d.Length[i];if(gap>2*d.Material.Radius+1e-7*Host.UnitsPerMetre)return false;}
         return true;
     }
     private SegmentPair[] _segmentPairs=new SegmentPair[16];

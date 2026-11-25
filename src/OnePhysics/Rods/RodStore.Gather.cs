@@ -14,7 +14,7 @@ namespace RecursiveAI.OnePhysics.Rods;
 internal sealed partial class RodStore
 {
     // Distance in metres by which a segment or a body's near box may move after a gather before the candidate lists are rebuilt.
-    private const double GatherMargin=0.004;
+    private double GatherMargin=>0.004*Host.UnitsPerMetre;   // metres, in world units
     private const int PairBlock=32;
     // A proof that a rod segment (or end point) does not reach a shape. Clear is a lower bound on the gap above the skin over the whole substep
     // sweep, EndGap one at its end, both for the endpoints A and B (the end positions of that sweep). The proof carries to later passes while the
@@ -104,7 +104,7 @@ internal sealed partial class RodStore
             var d=Data[r];var g=_gathers[r];if(d==null||g==null||!g.Active)continue;
             for(int s=0;s<d.Length.Length;s++)
             {
-                SegmentBounds(d,s,out var min,out var max);int k=6*s;const double slack=GatherMargin*.5;
+                SegmentBounds(d,s,out var min,out var max);int k=6*s;double slack=GatherMargin*.5;
                 if(min.X<g.Box[k]-slack||min.Y<g.Box[k+1]-slack||min.Z<g.Box[k+2]-slack||max.X>g.Box[k+3]+slack||max.Y>g.Box[k+4]+slack||max.Z>g.Box[k+5]+slack)return true;
             }
         }
@@ -170,7 +170,7 @@ internal sealed partial class RodStore
             g.Box[k]=min.X;g.Box[k+1]=min.Y;g.Box[k+2]=min.Z;g.Box[k+3]=max.X;g.Box[k+4]=max.Y;g.Box[k+5]=max.Z;
             lo=new(Math.Min(lo.X,min.X),Math.Min(lo.Y,min.Y),Math.Min(lo.Z,min.Z));hi=new(Math.Max(hi.X,max.X),Math.Max(hi.Y,max.Y),Math.Max(hi.Z,max.Z));
         }
-        double radius=d.Material.Radius,pad=radius+.001+GatherMargin;
+        double radius=d.Material.Radius,pad=radius+.001*Host.UnitsPerMetre+GatherMargin;
         // The broadphase boxes of a moving body are shifted and padded by the same bounds as the exact test, so the moving trees are asked with that reach added.
         var list=g.Shapes;list.Clear();
         Host.CollectShapes(lo-new Vector3D(pad,pad,pad),hi+new Vector3D(pad,pad,pad),false,list);
@@ -454,7 +454,7 @@ internal sealed partial class RodStore
     }
     private void Certify(ref Cert c,int body,Vector3D a1,Vector3D b1,float clear,float endGap)
     {
-        if(!(clear>1e-4f)){c=default;return;}
+        if(!(clear>1e-4f*Host.UnitsPerMetre)){c=default;return;}
         c=new Cert{Clear=clear,EndGap=endGap,Version=_bodyVersion[body],Substep=_substep,Epoch=_gatherEpoch,A=a1,B=b1};
     }
     // Reads rod, rigid pose and cache state only; writes this rod's gather slot.
@@ -512,7 +512,7 @@ internal sealed partial class RodStore
     {
         public void Run(int task)=>store.SweepPairBlock(task);
     }
-    private static void PairBoxes(RodParticles d,int s,out double minX,out double minY,out double minZ,out double maxX,out double maxY,out double maxZ)
+    private void PairBoxes(RodParticles d,int s,out double minX,out double minY,out double minZ,out double maxX,out double maxY,out double maxZ)
     {
         SegmentBounds(d,s,out var min,out var max);double radius=d.Material.Radius+Skin(d);
         minX=min.X-radius;minY=min.Y-radius;minZ=min.Z-radius;maxX=max.X+radius;maxY=max.Y+radius;maxZ=max.Z+radius;

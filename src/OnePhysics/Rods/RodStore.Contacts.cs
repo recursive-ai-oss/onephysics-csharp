@@ -21,7 +21,7 @@ internal sealed partial class RodStore
     private int _contactCount,_contactPass;
     private readonly float[] _contactPayload=new float[104],_contactExtra=new float[10];
     private readonly byte[] _contactPoints=new byte[1];
-    private static float Skin(RodParticles d)=>Math.Max(1e-6f,d.Material.Radius*.002f);
+    private float Skin(RodParticles d)=>Math.Max(1e-6f*Host.UnitsPerMetre,d.Material.Radius*.002f);
     private bool AttachedTo(RodParticles d,int body)
     {
         for(int p=0;p<d.AttachmentBody.Length;p++)if(d.AttachmentBody[p]==body&&Host.RodCore.Bodies.Handles.IsAlive(body,d.AttachmentGeneration[p]))return true;
