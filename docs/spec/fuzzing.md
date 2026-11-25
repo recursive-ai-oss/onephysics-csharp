@@ -28,6 +28,8 @@ State (instrumented build, corpora, crashes, logs, `stats.tsv`) lives under `$FU
 
 The authoring tools have their own targets: `tools-mesh-clean`, `tools-mesh-mass`, `tools-hull-simplify`, `tools-decompose3d`, `tools-polygon`, `tools-sprite`, and for the tetrahedralizer, the polygon mesher and the ragdoll fitter `tools-tetrahedralize`, `tools-static-solve` (a small grid or random tetrahedra with fuzzed material, supports, loads and options; a solved problem must have the right sizes and the same displacement at one and at three threads), `tools-triangulate2d` and `tools-autoragdoll` (3D and 2D, each definition also given to `AddRagdoll`; a definition the engine refuses is a finding, so the fitter checks sizes and masses against the engine's limits itself). The instrumented build covers the runtime, tools and interchange assemblies, so guided runs of these targets steer by the authoring code and by the runtime code they reach (hulls, the ragdoll builders).
 
+Marks and rollback have `rollback2d` and `rollback3d`: the bytes are an operation stream (steps, mark, rollback to a live mark, release, body creation and destruction, velocity and gravity changes) run on two worlds at once, one with `Mark`/`RollbackTo` and one that keeps a snapshot at each mark and restores it; the hashes must agree after every operation and a rollback must give back the marked bytes (`docs/spec/rollback.md`).
+
 ## Seeds and regression tests
 
 `testdata/fuzz-seeds/<target>/` holds small seed inputs written by our own generator (`dotnet run --project fuzz/Fuzz -- --seeds testdata/fuzz-seeds`): seeded random bytes of growing length, a valid snapshot for the raw snapshot reader, and a cube for the hull builder.
