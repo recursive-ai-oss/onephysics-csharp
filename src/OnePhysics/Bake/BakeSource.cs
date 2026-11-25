@@ -53,6 +53,7 @@ internal sealed class FractureSample
 internal interface IBakeSource
 {
     int Dimension { get; }
+    double MetresPerUnit { get; }
     long StepCount { get; }
     ulong Hash();
     void ReadBodies(List<PoseSample> into);

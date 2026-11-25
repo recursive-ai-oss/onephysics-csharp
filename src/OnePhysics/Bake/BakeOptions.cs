@@ -27,7 +27,7 @@ public enum BakeTracks
 
 /// <summary>
 /// How a bake is recorded: which tracks, how often, and how coarsely the numbers are stored. The defaults keep a long clip compact
-/// (positions to about 8 micrometres, rotation components to about 8e-6) and are documented in docs/spec/bake.md.
+/// (positions to about 8 micrometres, in a metre world, rotation components to about 8e-6) and are documented in docs/spec/bake.md.
 /// </summary>
 public sealed class BakeOptions
 {
@@ -40,11 +40,11 @@ public sealed class BakeOptions
     /// <summary>The fixed step in seconds the world is stepped with, finite and positive. Default 1/60. A step with another dt marks the bake faulted (<see cref="BakeRecorder.Finish()"/> then throws).</summary>
     public float Dt { get; set; } = 1f / 60f;
 
-    /// <summary>Rigid-body positions are stored as multiples of 2^PositionExponent metres (-40 to 0). Default -16 (about 15 micrometres, error at most half of that). The world's own positions lie on a 2^-32 grid (a body origin is that grid point minus a rotated float offset), so -40 reproduces a position to about 5e-13 m, which is as exact as a double holds at the world's extent.</summary>
-    public int PositionExponent { get; set; } = -16;
+    /// <summary>Rigid-body positions are stored as multiples of 2^PositionExponent world units (-40 to 0). Null (default) derives it from the world's <see cref="LengthUnit"/>: the largest exponent whose quantum is at most 2^-16 metres (-16 in a metre world, -7 in millimetres), error at most half of that. The world's own positions lie on a 2^-32 grid (a body origin is that grid point minus a rotated float offset), so -40 reproduces a position to about 5e-13 world units.</summary>
+    public int? PositionExponent { get; set; }
 
-    /// <summary>Soft, cloth, rod and particle positions are stored as multiples of 2^VertexExponent metres (-40 to 0). Default -14 (about 61 micrometres, error at most half of that).</summary>
-    public int VertexExponent { get; set; } = -14;
+    /// <summary>Soft, cloth, rod and particle positions are stored as multiples of 2^VertexExponent world units (-40 to 0). Null (default) derives it from the world's <see cref="LengthUnit"/>: the largest exponent whose quantum is at most 2^-14 metres (-14 in a metre world).</summary>
+    public int? VertexExponent { get; set; }
 
     /// <summary>Rotation components (quaternion or cosine and sine) are stored as multiples of 2^-RotationBits (1 to 30), or as exact float32 bit patterns when 0. Default 16 (error at most 7.7e-6 per component, below 0.001 degrees).</summary>
     public int RotationBits { get; set; } = 16;
@@ -71,8 +71,8 @@ public sealed class BakeOptions
         if ((Tracks & ~BakeTracks.All) != 0) { throw new ArgumentOutOfRangeException(nameof(Tracks), Tracks, "Tracks has unknown bits."); }
         if (FrameStride < 1 || FrameStride > 1024) { throw new ArgumentOutOfRangeException(nameof(FrameStride), FrameStride, "FrameStride must be 1 to 1024."); }
         if (!(Dt > 0f) || !float.IsFinite(Dt)) { throw new ArgumentOutOfRangeException(nameof(Dt), Dt, "Dt must be finite and positive."); }
-        if (PositionExponent < -40 || PositionExponent > 0) { throw new ArgumentOutOfRangeException(nameof(PositionExponent), PositionExponent, "PositionExponent must be -40 to 0."); }
-        if (VertexExponent < -40 || VertexExponent > 0) { throw new ArgumentOutOfRangeException(nameof(VertexExponent), VertexExponent, "VertexExponent must be -40 to 0."); }
+        if (PositionExponent is < -40 or > 0) { throw new ArgumentOutOfRangeException(nameof(PositionExponent), PositionExponent, "PositionExponent must be -40 to 0."); }
+        if (VertexExponent is < -40 or > 0) { throw new ArgumentOutOfRangeException(nameof(VertexExponent), VertexExponent, "VertexExponent must be -40 to 0."); }
         if (RotationBits < 0 || RotationBits > 30) { throw new ArgumentOutOfRangeException(nameof(RotationBits), RotationBits, "RotationBits must be 0 to 30."); }
         if (BlockFrames < 1 || BlockFrames > BakeFormat.MaxBlockFrames) { throw new ArgumentOutOfRangeException(nameof(BlockFrames), BlockFrames, "BlockFrames must be 1 to 4096."); }
         ArgumentNullException.ThrowIfNull(SceneName);

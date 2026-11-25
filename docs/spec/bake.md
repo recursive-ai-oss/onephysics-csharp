@@ -27,8 +27,8 @@ END chunk   (last)
 | 4 | u16 | format version | 1; a reader refuses another value |
 | 6 | u16 | flags | 0; ignored by readers |
 | 8 | u8 | dimension | 2 or 3 |
-| 9 | i8 | position exponent | -40 to 0: rigid-body positions are multiples of 2^e metres |
-| 10 | i8 | vertex exponent | -40 to 0: soft, rod and particle positions are multiples of 2^e metres |
+| 9 | i8 | position exponent | -40 to 0: rigid-body positions are multiples of 2^e world units |
+| 10 | i8 | vertex exponent | -40 to 0: soft, rod and particle positions are multiples of 2^e world units |
 | 11 | u8 | rotation bits | 0 to 30: rotation components are multiples of 2^-bits; 0 means exact float32 bit patterns |
 | 12 | u32 | frame count | 1 to 2^24 |
 | 16 | u32 | frame stride | 1 to 1024: world steps between frames |
@@ -48,6 +48,7 @@ Each chunk is `u32 tag, u32 length, length bytes`. The length must fit in the re
 
 | tag (ASCII) | contents |
 |---|---|
+| `UNIT` | optional, exactly 8 bytes: f64 metres per world unit (1e-6 to 1e6). Written only when the baked world's length unit is not one metre; absent means 1 |
 | `HASH` | `frame count` × u64: the world hash after each frame was taken |
 | `RIGD` | rigid-body tracks |
 | `SOFT` | soft-body and cloth tracks |
@@ -168,12 +169,16 @@ event*: varint step, u8 kind, varint slotA+1, varint genA, varint slotB+1, varin
 
 A reader raises `BakeFormatException` (field, byte offset, problem) for a short file, a bad magic, version or checksum, a count above the limit or the bytes left, an index out of range, a duplicate chunk, a missing `END `, bytes after it, a bad tag in a block, a zero run past its block, a non-finite float where one is required, or leftover bytes in a block. Structure is checked when the file is opened; the numbers of a block when it is first sampled.
 
+## Length unit
+
+Every length in a clip (positions, vertices, fracture points, fragment geometry) is in the baked world's own unit; `UNIT` says how many metres one is, so a reader can convert and knows what a quantum is in metres: `2^exponent * metresPerUnit`. The writer's default exponents follow the unit: the largest `e` (at least -40, at most 0) with `2^e * metresPerUnit <= 2^-16` (rigid) or `2^-14` (the rest), so a millimetre world gets -7 and -5 and the same absolute precision as a metre world gets at -16 and -14. An exponent the host sets is used as given, in world units. A world in metres writes no `UNIT` chunk, so its files are the files earlier writers produced.
+
 ## Defaults and the sizes they give
 
 | option | default | error |
 |---|---|---|
-| `PositionExponent` | -16 (15.3 µm) | at most 7.6 µm |
-| `VertexExponent` | -14 (61 µm) | at most 31 µm |
+| `PositionExponent` | derived: -16 in metres (15.3 µm) | at most 7.6 µm |
+| `VertexExponent` | derived: -14 in metres (61 µm) | at most 31 µm |
 | `RotationBits` | 16 | at most 7.6e-6 per component (below 0.001 degrees) |
 | `BlockFrames` | 64 | |
 | `FrameStride` | 1 | |

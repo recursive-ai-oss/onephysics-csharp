@@ -23,7 +23,8 @@ public sealed class BakeRecorder : IDisposable
     private int _frames;
     private readonly List<ulong> _hashes = new();
     private readonly double _posScale, _vertScale, _rotScale;
-    private readonly int _dims;
+    private readonly int _dims, _posExp, _vertExp;
+    private readonly double _unit;
 
     private readonly TrackBuilder _rigid = new(), _soft = new(), _rods = new(), _parts = new();
     private readonly List<(int Step, EventSample E)> _events = new();
@@ -48,8 +49,11 @@ public sealed class BakeRecorder : IDisposable
         options.Validate();
         _source = source; _o = options.Copy(); _detach = detach;
         _dims = source.Dimension;
-        _posScale = BakeFormat.Pow2(-_o.PositionExponent);
-        _vertScale = BakeFormat.Pow2(-_o.VertexExponent);
+        _unit = source.MetresPerUnit;
+        _posExp = _o.PositionExponent ?? BakeFormat.ExponentFor(-16, _unit);
+        _vertExp = _o.VertexExponent ?? BakeFormat.ExponentFor(-14, _unit);
+        _posScale = BakeFormat.Pow2(-_posExp);
+        _vertScale = BakeFormat.Pow2(-_vertExp);
         _rotScale = BakeFormat.Pow2(_o.RotationBits);
         _startStep = _lastStep = source.StepCount;
         CaptureFrame();
@@ -236,13 +240,21 @@ public sealed class BakeRecorder : IDisposable
     {
         var w = new ByteSink(1 << 16);
         w.U32(BakeFormat.Magic); w.U16(BakeFormat.Version); w.U16(0);
-        w.U8(_dims); w.U8((byte)(sbyte)_o.PositionExponent); w.U8((byte)(sbyte)_o.VertexExponent); w.U8(_o.RotationBits);
+        w.U8(_dims); w.U8((byte)(sbyte)_posExp); w.U8((byte)(sbyte)_vertExp); w.U8(_o.RotationBits);
         w.U32((uint)_frames); w.U32((uint)_o.FrameStride); w.U32((uint)_o.BlockFrames);
         w.F32(_o.Dt); w.U32(0);
         w.I64(_startStep);
         w.Bytes(_o.ReplayDigest ?? new byte[32]);
         w.Str(_o.SceneName);
         w.Str(_o.LibraryVersion ?? VersionText());
+
+        if (_unit != 1.0)
+        {
+            // Only a world that is not in metres writes the unit, so every other file keeps its bytes.
+            var us = new ByteSink(8);
+            us.F64(_unit);
+            Chunk(w, BakeFormat.TagUnit, us);
+        }
 
         var hs = new ByteSink(_frames * 8 + 8);
         foreach (var h in _hashes) { hs.U64(h); }

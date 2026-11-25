@@ -106,6 +106,7 @@ public sealed partial class PhysicsWorld3D
         private Vector3D[] _tmp = Array.Empty<Vector3D>();
 
         public int Dimension => 3;
+        public double MetresPerUnit => w.LengthUnit.MetresPerUnit;
         public long StepCount => w.StepCount;
         public ulong Hash() => w.ComputeHash();
 

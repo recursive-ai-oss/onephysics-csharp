@@ -430,4 +430,35 @@ public sealed class BakeRoundTripTests
             Assert.InRange(Math.Abs(vol) * density / mass, 0.98, 1.02);
         }
     }
+
+    [Fact]
+    public void AMillimetreWorldBakesWithItsUnitAndQuantaThatFollowIt()
+    {
+        var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { WorldId = 7395, LengthUnit = LengthUnit.Millimetres });
+        w.AddBox(new Vector3F(30000, 1000, 30000), new Vector3D(0, -500, 0), type: BodyType.Static);
+        var box = w.AddBox(new Vector3F(500, 500, 500), new Vector3D(0, 1500, 0), new QuaternionF(0.1f, 0.2f, 0f, 1f).Normalized());
+        w.AddCloth(new P3.ClothDef { Width = 800, Depth = 800, SegmentsX = 6, SegmentsZ = 6, Position = new Vector3D(2000, 1200, 0) });
+        var frames = new List<Frame> { Read3(w) };
+        using var rec = w.BeginBake(Opt());
+        for (int i = 0; i < 90; i++) { w.Step(Dt); frames.Add(Read3(w)); }
+        var file = rec.Finish();
+        var clip = BakeClip.Parse(file);
+        Assert.Equal(0.001, clip.MetresPerUnit);
+        Assert.Equal(-7, clip.PositionExponent);
+        Assert.Equal(-5, clip.VertexExponent);
+        CheckFrames(clip, frames, true, Math.Pow(2, -8) + 1e-12, Math.Pow(2, -6) + 1e-12, 2 * Math.Pow(2, -17));
+        var e = clip.FindRigid(box.RawHandle.Index, box.RawHandle.Generation)!;
+        Assert.True(e.TrySampleRigid(clip.TimeOfFrame(0), out var p0));
+        Assert.InRange(p0.Position.Y, 1499.99, 1500.01);
+        // A metre world writes no unit chunk, so its clip reports one metre.
+        var (metres, _) = Bake3(Opt(), 3);
+        Assert.Equal(1.0, BakeClip.Parse(metres).MetresPerUnit);
+        // A host-set exponent is in world units and is used as given.
+        var o = Opt(); o.PositionExponent = -3; o.Tracks = BakeTracks.Rigid;
+        var w2 = new P3.PhysicsWorld3D(new P3.WorldOptions3D { WorldId = 7396, LengthUnit = LengthUnit.Millimetres });
+        w2.AddBox(new Vector3F(500, 500, 500), new Vector3D(0, 1500, 0));
+        using var r2 = w2.BeginBake(o);
+        w2.Step(Dt);
+        Assert.Equal(-3, BakeClip.Parse(r2.Finish()).PositionExponent);
+    }
 }

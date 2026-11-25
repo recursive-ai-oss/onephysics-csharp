@@ -16,6 +16,7 @@ internal static class BakeFormat
     internal const uint TagParticles = 0x54524150u; // "PART"
     internal const uint TagFracture = 0x43415246u;  // "FRAC"
     internal const uint TagEvents = 0x544E5645u;    // "EVNT"
+    internal const uint TagUnit = 0x54494E55u;      // "UNIT"
     internal const uint TagHashes = 0x48534148u;    // "HASH"
     internal const uint TagEnd = 0x20444E45u;       // "END "
 
@@ -26,6 +27,15 @@ internal static class BakeFormat
 
     /// <summary>2^e as a double, exactly (e in -1000..1000).</summary>
     internal static double Pow2(int e) => BitConverter.Int64BitsToDouble((long)(1023 + e) << 52);
+
+    /// <summary>The largest exponent e (clamped to -40..0) with 2^e * metresPerUnit at most 2^baseExponent: the quantum in world units that is no coarser than 2^baseExponent metres.</summary>
+    internal static int ExponentFor(int baseExponent, double metresPerUnit)
+    {
+        int e = baseExponent;
+        while (e > -300 && Pow2(e) * metresPerUnit > Pow2(baseExponent)) { e--; }
+        while (e < 300 && Pow2(e + 1) * metresPerUnit <= Pow2(baseExponent)) { e++; }
+        return Math.Clamp(e, -40, 0);
+    }
 
     // FNV-1a over the bytes: a cheap integrity check, not a security measure.
     internal static ulong Checksum(ReadOnlySpan<byte> bytes)

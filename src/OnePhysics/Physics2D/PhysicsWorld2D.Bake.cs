@@ -105,6 +105,7 @@ public sealed partial class PhysicsWorld2D
         private Vector2D[] _tmp = Array.Empty<Vector2D>();
 
         public int Dimension => 2;
+        public double MetresPerUnit => w.LengthUnit.MetresPerUnit;
         public long StepCount => w.StepCount;
         public ulong Hash() => w.ComputeHash();
 

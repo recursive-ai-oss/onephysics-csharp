@@ -45,10 +45,13 @@ public sealed class BakeClip
     /// <summary>The world's step count when the bake began (frame 0).</summary>
     public long StartStep { get; private set; }
 
-    /// <summary>Body positions are multiples of 2^PositionExponent metres.</summary>
+    /// <summary>Metres per world unit of the baked world (1 when the file has no unit chunk). Every length in the clip is in world units; multiply by this for metres.</summary>
+    public double MetresPerUnit { get; private set; } = 1.0;
+
+    /// <summary>Body positions are multiples of 2^PositionExponent world units.</summary>
     public int PositionExponent { get; private set; }
 
-    /// <summary>Soft, rod and particle positions are multiples of 2^VertexExponent metres.</summary>
+    /// <summary>Soft, rod and particle positions are multiples of 2^VertexExponent world units.</summary>
     public int VertexExponent { get; private set; }
 
     /// <summary>Rotation components are multiples of 2^-RotationBits, or exact float32 values when 0.</summary>
@@ -187,6 +190,11 @@ public sealed class BakeClip
             if (!seen.Add(tag)) { throw new BakeFormatException("chunk tag", payloadAt - 8, "the chunk " + TagText(tag) + " appears twice"); }
             switch (tag)
             {
+                case BakeFormat.TagUnit:
+                    if (len != 8) { throw new BakeFormatException("unit chunk", payloadAt, "the unit chunk must be 8 bytes"); }
+                    MetresPerUnit = System.BitConverter.Int64BitsToDouble(System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(payload));
+                    if (!(MetresPerUnit >= 1e-6 && MetresPerUnit <= 1e6)) { throw new BakeFormatException("metres per unit", payloadAt, "must be 1e-6 to 1e6"); }
+                    break;
                 case BakeFormat.TagHashes: ParseHashes(payload, payloadAt); break;
                 case BakeFormat.TagRigid: ParseEntities(payload, payloadAt, _rigid, tag); Tracks |= BakeTracks.Rigid; break;
                 case BakeFormat.TagSoft: ParseEntities(payload, payloadAt, _soft, tag); Tracks |= BakeTracks.Soft; break;
