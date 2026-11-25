@@ -409,6 +409,18 @@ public struct ShapeDef
 
     private uint _density;
 
+    // The defaults that are physical values follow the world's length unit. Density is 1 kg per cubic metre, so a world in another unit gets 1 kg per that many cubic world units and a box of the same real size has the same mass.
+    // Rolling resistance is a length (a torque limit per unit of normal impulse): 3 mm by default. A value equal to the default of its field is stored as "not set", so it is the default whatever the unit;
+    // any other value is in world units as given.
+    internal readonly ShapeDef WithUnitDefaults(float unitsPerMetre)
+    {
+        if (unitsPerMetre == 1f) { return this; }
+        var d = this;
+        if (_density == 0) { d.Density = 1f / (unitsPerMetre * unitsPerMetre * unitsPerMetre); }
+        if (_rollingResistance == 0) { d.RollingResistance = Material3D.DefaultRollingResistance * unitsPerMetre; }
+        return d;
+    }
+
     /// <summary>Friction coefficient. Default 0.6.</summary>
     public float Friction { readonly get => ZeroDefault.Get(_friction, 0.6f); set => _friction = ZeroDefault.Set(value, 0.6f); }
 

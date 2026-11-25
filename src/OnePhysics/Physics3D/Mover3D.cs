@@ -200,23 +200,60 @@ public struct CharacterDef
     /// <summary>A person simulated as a dynamic body (<see cref="CharacterKind.Rigid"/>).</summary>
     public static CharacterDef RigidHumanoid => new() { Kind = CharacterKind.Rigid };
 
-    internal readonly void Validate()
+    /// <summary>
+    /// This definition with every length that was never set (radius, height, step offset, skin) at its default for a world of the given unit: a world in millimetres gets a 300 mm radius, not 0.3 mm. Values you did set are in world units and are kept.
+    /// The world applies this itself when a character is created; it is public so that a definition can be inspected before it is used.
+    /// </summary>
+    /// <param name="unit">The world's length unit.</param>
+    public readonly CharacterDef WithDefaultsFor(LengthUnit unit) => Resolved(unit.Scale);
+
+    /// <summary>
+    /// This definition, written in metres, expressed in <paramref name="unit"/>: every length you set (radius, height, step offset, skin) is multiplied by world units per metre. Lengths never set stay unset and take their defaults for the world's unit.
+    /// Use it on the metre-valued presets (<see cref="Child"/>, <see cref="Giant"/>) in a world that is not in metres.
+    /// </summary>
+    /// <param name="unit">The target length unit.</param>
+    public readonly CharacterDef InUnit(LengthUnit unit)
     {
-        if (!(Radius > 0f && Radius <= 1000f)) { throw new ArgumentOutOfRangeException(nameof(Radius), Radius, "Radius must be within (0, 1000]."); }
-        if (!(Height >= 2f * Radius && Height <= 10000f)) { throw new ArgumentOutOfRangeException(nameof(Height), Height, "Height must be at least twice the radius (" + (2f * Radius).ToString(CultureInfo.InvariantCulture) + ") and at most 10000."); }
-        if (!(SlopeLimitRadians >= 0f && SlopeLimitRadians <= (float)(Math.PI / 2.0))) { throw new ArgumentOutOfRangeException(nameof(SlopeLimitRadians), SlopeLimitRadians, "SlopeLimitRadians must be within [0, pi/2] radians."); }
-        if (!(StepOffset >= 0f && StepOffset <= Height)) { throw new ArgumentOutOfRangeException(nameof(StepOffset), StepOffset, "StepOffset must be within [0, Height]."); }
-        if (!(Skin >= 0.0001f && Skin <= 0.5f * Radius)) { throw new ArgumentOutOfRangeException(nameof(Skin), Skin, "Skin must be within [0.0001, Radius / 2]."); }
-        if (!(PushStrength >= 0f && PushStrength <= 100f)) { throw new ArgumentOutOfRangeException(nameof(PushStrength), PushStrength, "PushStrength must be within [0, 100]."); }
-        if (!(Mass > 0f && Mass <= 1e6f)) { throw new ArgumentOutOfRangeException(nameof(Mass), Mass, "Mass must be within (0, 1e6]."); }
-        if (!(SwimDensity >= 0f && SwimDensity <= 1e5f)) { throw new ArgumentOutOfRangeException(nameof(SwimDensity), SwimDensity, "SwimDensity must be within [0, 100000]."); }
-        if (!(SwimDamping >= 0f && SwimDamping <= 1000f)) { throw new ArgumentOutOfRangeException(nameof(SwimDamping), SwimDamping, "SwimDamping must be within [0, 1000]."); }
-        if (!(MaxPushForce >= 0f && MaxPushForce <= 1e9f)) { throw new ArgumentOutOfRangeException(nameof(MaxPushForce), MaxPushForce, "MaxPushForce must be within [0, 1e9]."); }
+        float s = unit.Scale;
+        var d = this;
+        if (_radius != 0) { d.Radius = Radius * s; }
+        if (_height != 0) { d.Height = Height * s; }
+        if (_stepOffset != 0) { d.StepOffset = StepOffset * s; }
+        if (_skin != 0) { d.Skin = Skin * s; }
+        return d;
+    }
+
+    internal readonly CharacterDef Resolved(float unitsPerMetre)
+    {
+        if (unitsPerMetre == 1f) { return this; }
+        var d = this;
+        if (_radius == 0) { d.Radius = 0.3f * unitsPerMetre; }
+        if (_height == 0) { d.Height = 1.8f * unitsPerMetre; }
+        if (_stepOffset == 0) { d.StepOffset = 0.3f * unitsPerMetre; }
+        if (_skin == 0) { d.Skin = 0.01f * unitsPerMetre; }
+        return d;
+    }
+
+    internal readonly void Validate(float unitsPerMetre = 1f)
+    {
+        if (!(Radius > 0f && Radius <= 1000f * unitsPerMetre)) { throw Bad(nameof(Radius), Radius, "Radius must be within (0, 1000]."); }
+        if (!(Height >= 2f * Radius && Height <= 10000f * unitsPerMetre)) { throw Bad(nameof(Height), Height, "Height must be at least twice the radius (" + (2f * Radius).ToString(CultureInfo.InvariantCulture) + ") and at most 10000."); }
+        if (!(SlopeLimitRadians >= 0f && SlopeLimitRadians <= (float)(Math.PI / 2.0))) { throw Bad(nameof(SlopeLimitRadians), SlopeLimitRadians, "SlopeLimitRadians must be within [0, pi/2] radians."); }
+        if (!(StepOffset >= 0f && StepOffset <= Height)) { throw Bad(nameof(StepOffset), StepOffset, "StepOffset must be within [0, Height]."); }
+        if (!(Skin >= 0.0001f * unitsPerMetre && Skin <= 0.5f * Radius)) { throw Bad(nameof(Skin), Skin, "Skin must be within [0.0001, Radius / 2]."); }
+        if (!(PushStrength >= 0f && PushStrength <= 100f)) { throw Bad(nameof(PushStrength), PushStrength, "PushStrength must be within [0, 100]."); }
+        if (!(Mass > 0f && Mass <= 1e6f)) { throw Bad(nameof(Mass), Mass, "Mass must be within (0, 1e6]."); }
+        if (!(SwimDensity >= 0f && SwimDensity <= 1e5f)) { throw Bad(nameof(SwimDensity), SwimDensity, "SwimDensity must be within [0, 100000]."); }
+        if (!(SwimDamping >= 0f && SwimDamping <= 1000f)) { throw Bad(nameof(SwimDamping), SwimDamping, "SwimDamping must be within [0, 1000]."); }
+        if (!(MaxPushForce >= 0f && MaxPushForce <= 1e9f)) { throw Bad(nameof(MaxPushForce), MaxPushForce, "MaxPushForce must be within [0, 1e9]."); }
         float l2 = Up.LengthSquared();
-        if (!float.IsFinite(l2) || !(l2 > 1e-12f)) { throw new ArgumentOutOfRangeException(nameof(Up), Up, "Up must be a finite, non-zero vector."); }
-        if (Kind != CharacterKind.Virtual && Kind != CharacterKind.Rigid) { throw new ArgumentOutOfRangeException(nameof(Kind), Kind, "Kind must be Virtual or Rigid."); }
+        if (!float.IsFinite(l2) || !(l2 > 1e-12f)) { throw Bad(nameof(Up), Up, "Up must be a finite, non-zero vector."); }
+        if (Kind != CharacterKind.Virtual && Kind != CharacterKind.Rigid) { throw Bad(nameof(Kind), Kind, "Kind must be Virtual or Rigid."); }
         Engine3D.CheckLayer(Layer, nameof(Layer));
     }
+
+    // A helper, so the argument names reported are the definition's own property names (the rule for exceptions raised inside a method with parameters would want this method's).
+    private static ArgumentOutOfRangeException Bad(string name, object? value, string message) => new(name, value, message);
 }
 
 /// <summary>The mover's memory between moves: where the capsule's centre is and what it stands on. A <see cref="Character"/> keeps one in the world (and in snapshots); the middle tier keeps its own.</summary>
@@ -413,7 +450,8 @@ public static class Mover3D
     public static MoveResult3D Move(PhysicsWorld3D world, in CharacterDef def, ref MoverState3D state, Vector3F displacement, float dt, Body ignore = default, Span<MoverHit3D> hits = default)
     {
         ArgumentNullException.ThrowIfNull(world);
-        def.Validate();
-        return world.Engine.MoveCapsule(world, in def, ref state, displacement, dt, ignore, hits);
+        var resolved = def.Resolved(world.Options.UnitsPerMetre);
+        resolved.Validate(world.Options.UnitsPerMetre);
+        return world.Engine.MoveCapsule(world, in resolved, ref state, displacement, dt, ignore, hits);
     }
 }

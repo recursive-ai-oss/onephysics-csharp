@@ -395,6 +395,16 @@ public struct ShapeDef
 
     private uint _density;
 
+    // The default density is a physical value, 1 kg per cubic metre (per square metre in 2D), so a world in another length unit gets 1 kg per that many cubic world units: a box of the same real size has the same mass.
+    // A density equal to the default of 1 is stored as "not set", so it is the default whatever the unit. Any other value is kg per world-unit volume as given.
+    internal readonly ShapeDef WithUnitDefaults(float unitsPerMetre)
+    {
+        if (_density != 0 || unitsPerMetre == 1f) { return this; }
+        var d = this;
+        d.Density = 1f / (unitsPerMetre * unitsPerMetre);
+        return d;
+    }
+
     /// <summary>Friction coefficient, 0 to 1e15. Default 0.6.</summary>
     public float Friction { readonly get => ZeroDefault.Get(_friction, 0.6f); set => _friction = ZeroDefault.Set(value, 0.6f); }
 

@@ -152,7 +152,7 @@ public readonly partial struct Character : IEquatable<Character>
     public float SlopeLimitRadians
     {
         get { var e = Resolve(out int c); return e.CharDef[c].SlopeLimitRadians; }
-        set { using var replayMutation = _world?.RecordMutation("Character.SlopeLimitRadians");  var e = Resolve(out int c); var d = e.CharDef[c]; d.SlopeLimitRadians = value; d.Validate(); e.CharDef[c] = d; }
+        set { using var replayMutation = _world?.RecordMutation("Character.SlopeLimitRadians");  var e = Resolve(out int c); var d = e.CharDef[c]; d.SlopeLimitRadians = value; d.Validate(e.Opt.UnitsPerMetre); e.CharDef[c] = d; }
     }
 
     /// <summary>Tallest step climbed and farthest snap down to ground, metres, within [0, Height] (Unity's <c>stepOffset</c>).</summary>
@@ -160,7 +160,7 @@ public readonly partial struct Character : IEquatable<Character>
     public float StepOffset
     {
         get { var e = Resolve(out int c); return e.CharDef[c].StepOffset; }
-        set { using var replayMutation = _world?.RecordMutation("Character.StepOffset");  var e = Resolve(out int c); var d = e.CharDef[c]; d.StepOffset = value; d.Validate(); e.CharDef[c] = d; }
+        set { using var replayMutation = _world?.RecordMutation("Character.StepOffset");  var e = Resolve(out int c); var d = e.CharDef[c]; d.StepOffset = value; d.Validate(e.Opt.UnitsPerMetre); e.CharDef[c] = d; }
     }
 
     /// <summary>How hard a virtual character pushes dynamic bodies it walks into; 0 (default) does not push. See <see cref="CharacterDef.PushStrength"/>.</summary>
@@ -168,7 +168,7 @@ public readonly partial struct Character : IEquatable<Character>
     public float PushStrength
     {
         get { var e = Resolve(out int c); return e.CharDef[c].PushStrength; }
-        set { using var replayMutation = _world?.RecordMutation("Character.PushStrength");  var e = Resolve(out int c); var d = e.CharDef[c]; d.PushStrength = value; d.Validate(); e.CharDef[c] = d; }
+        set { using var replayMutation = _world?.RecordMutation("Character.PushStrength");  var e = Resolve(out int c); var d = e.CharDef[c]; d.PushStrength = value; d.Validate(e.Opt.UnitsPerMetre); e.CharDef[c] = d; }
     }
 
     /// <summary>The most force a virtual character pushes a dynamic body with, newtons, within [0, 1e9]. See <see cref="CharacterDef.MaxPushForce"/>.</summary>
@@ -176,7 +176,7 @@ public readonly partial struct Character : IEquatable<Character>
     public float MaxPushForce
     {
         get { var e = Resolve(out int c); return e.CharDef[c].MaxPushForce; }
-        set { using var replayMutation = _world?.RecordMutation("Character.MaxPushForce");  var e = Resolve(out int c); var d = e.CharDef[c]; d.MaxPushForce = value; d.Validate(); e.CharDef[c] = d; }
+        set { using var replayMutation = _world?.RecordMutation("Character.MaxPushForce");  var e = Resolve(out int c); var d = e.CharDef[c]; d.MaxPushForce = value; d.Validate(e.Opt.UnitsPerMetre); e.CharDef[c] = d; }
     }
 
     /// <summary>Which layers the mover collides with (bit i: layer i). Default all.</summary>
@@ -305,7 +305,8 @@ public sealed partial class PhysicsWorld3D
     public Character AddCharacter(Vector3D at, CharacterDef def)
     {
         using var replayMutation = RecordMutation("PhysicsWorld3D.AddCharacter");
-        def.Validate();
+        def = def.Resolved(Options.UnitsPerMetre);
+        def.Validate(Options.UnitsPerMetre);
         if (!double.IsFinite(at.X) || !double.IsFinite(at.Y) || !double.IsFinite(at.Z) || Math.Abs(at.X) > 2097152.0 || Math.Abs(at.Y) > 2097152.0 || Math.Abs(at.Z) > 2097152.0)
         {
             throw new ArgumentOutOfRangeException(nameof(at), at, "Position " + at + " must be finite and within +-2^21 of the world origin.");

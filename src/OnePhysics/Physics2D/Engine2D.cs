@@ -228,7 +228,13 @@ internal sealed partial class Engine2D : ISnapshotSection
 
     // ------------------------------------------------------------------ shapes
 
-    public ShapeHandle AddShape(BodyHandle body, in Shape2D geometry, in ShapeDef def)
+        public ShapeHandle AddShape(BodyHandle body, in Shape2D geometry, in ShapeDef given)
+    {
+        var resolved = given.WithUnitDefaults(Opt.UnitsPerMetre);
+        return AddShapeResolved(body, in geometry, in resolved);
+    }
+
+    private ShapeHandle AddShapeResolved(BodyHandle body, in Shape2D geometry, in ShapeDef def)
     {
         def.Surface.Validate(Core.Layout.PositionLanes);
         var aero = def.Aero?.ToSpec();

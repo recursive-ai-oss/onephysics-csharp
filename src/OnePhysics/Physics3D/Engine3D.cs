@@ -308,7 +308,13 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     // ------------------------------------------------------------------ shapes
 
-    public ShapeHandle AddShape(BodyHandle body, byte[] recipe, in ShapeDef def)
+        public ShapeHandle AddShape(BodyHandle body, byte[] recipe, in ShapeDef given)
+    {
+        var resolved = given.WithUnitDefaults(Opt.UnitsPerMetre);
+        return AddShapeResolved(body, recipe, in resolved);
+    }
+
+    private ShapeHandle AddShapeResolved(BodyHandle body, byte[] recipe, in ShapeDef def)
     {
         def.Surface.Validate(Core.Layout.PositionLanes);
         var aero = def.Aero?.ToSpec();

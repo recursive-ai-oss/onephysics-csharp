@@ -28,7 +28,7 @@ public sealed partial class PhysicsWorld3D : IRecordedWorld
     void IRecordedWorld.PrepareHistory() => _remembersDestroyed = true;
     int IRecordedWorld.ReplayDimension => 3;
     long IRecordedWorld.ReplayStepCount => StepCount;
-    int IRecordedWorld.WriteReplayOptions(Span<byte> bytes) { ReplayOptions3D.Write(Options, _engine.Bp.Options.Margin, Id, bytes); return ReplayOptions3D.Size; }
+    int IRecordedWorld.WriteReplayOptions(Span<byte> bytes) { ReplayOptions3D.Write(Options, _engine.Bp.Options.Margin, Id, bytes); return ReplayOptions3D.WrittenSize(Options); }
     void IRecordedWorld.ApplyReplayOptions(ReadOnlySpan<byte> bytes)
     {
         var options = _replayOptionScratch ??= new WorldOptions3D();

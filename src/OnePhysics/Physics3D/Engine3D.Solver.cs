@@ -833,7 +833,7 @@ internal sealed partial class Engine3D
     public void SolveBatch(ReadOnlySpan<int> constraints, SolvePhase phase, in StepContext ctx)
     {
         if (constraints.Length == 0) { return; }
-        var kp = new KernelParams(ctx.InverseSubstepDt, Opt.PushOutVelocity, Opt.ContactSlop, Opt.RestitutionThreshold);
+        var kp = new KernelParams(ctx.InverseSubstepDt, Opt.PushOutVelocity, Opt.ContactSlop, Opt.RestitutionThreshold, ContactKernel3D.ImpulseSpeedCap * Opt.UnitsPerMetre);
         var jp = ctx.Schedule != 0 ? _liteJointParams : _jointParams;
         var cons = Core.Constraints;
         if (cons.Color[constraints[0]] == ConstraintStore.Overflow)
