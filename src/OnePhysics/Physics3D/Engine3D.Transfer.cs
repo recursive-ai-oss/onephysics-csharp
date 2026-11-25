@@ -244,6 +244,11 @@ internal sealed partial class Engine3D : ITransferEngine
 
     void ITransferEngine.CheckInsert(PacketModel m) { }
 
+    void ITransferEngine.RefreshBodyProxies(int b)
+    {
+        for (int s = ShapeHead[b]; s >= 0; s = NextShape[s]) { Bp.MoveProxy(Proxy[s], TightBox(b, s), 0.0, 0.0, 0.0); }
+    }
+
     BodyHandle ITransferEngine.CreateBody(PacketBody pb, ReadOnlySpan<double> rel, ReadOnlySpan<float> rot, ReadOnlySpan<float> lin, ReadOnlySpan<float> ang)
     {
         var def = new BodyDef

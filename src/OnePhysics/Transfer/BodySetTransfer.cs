@@ -56,6 +56,25 @@ internal interface ITransferEngine
     /// <summary>Rotates the world-axis vectors of a contact's payload by the portal rotation and clears the impulses that depend on the tangent basis.</summary>
     void TransformContactPayload(Span<float> payload, TransferTransform transform);
     void CheckInsert(PacketModel model);
+
+    // ---- interest streams
+    /// <summary>After a body's pose was written straight into the store: moves the broadphase proxies of its shapes to the new bounds.</summary>
+    void RefreshBodyProxies(int body);
+}
+
+/// <summary>
+/// Narrows what an extraction carries, for interest streams: some bodies of the set travel as kinematic proxies, and joints and contacts that the receiving world could not simulate (kinematic against kinematic) are left out.
+/// </summary>
+internal interface IExtractFilter
+{
+    /// <summary>The body travels as a proxy: static stays static, anything else becomes kinematic, with no sleep state or controls.</summary>
+    bool IsProxy(int body);
+    /// <summary>The joint among the set is carried.</summary>
+    bool KeepJoint(int constraint);
+    /// <summary>A contact between two bodies of the set (or one of them and a static body outside it) is carried.</summary>
+    bool KeepContact(int bodyA, int bodyB);
+    /// <summary>The set whose ragdolls are written: ragdolls with a part outside it are not.</summary>
+    bool[] RagdollSet(bool[] inSet);
 }
 
 /// <summary>Extraction and insertion of body sets, shared by both dimensions.</summary>
@@ -65,7 +84,9 @@ internal static class BodySetTransfer
 
     // ------------------------------------------------------------------ extract
 
-    public static BodySetPacket Extract(ITransferEngine e, ReadOnlySpan<BodyHandle> handles, BodySetOptions options, string what)
+    public static BodySetPacket Extract(ITransferEngine e, ReadOnlySpan<BodyHandle> handles, BodySetOptions options, string what) => Extract(e, handles, options, what, null);
+
+    public static BodySetPacket Extract(ITransferEngine e, ReadOnlySpan<BodyHandle> handles, BodySetOptions options, string what, IExtractFilter? filter)
     {
         if (options == null) { options = new BodySetOptions(); }
         if (!Enum.IsDefined(options.Boundary)) { throw new ArgumentOutOfRangeException(nameof(options), options.Boundary, "Unknown boundary policy."); }
@@ -98,7 +119,7 @@ internal static class BodySetTransfer
             int a = cs.BodyA[c], b = cs.BodyB[c];
             bool ia = inSet[a], ib = inSet[b];
             if (!ia && !ib) { continue; }
-            if (ia && ib) { e.WriteJoint(c); jointSlots.Add(c); continue; }
+            if (ia && ib) { if (filter != null && !filter.KeepJoint(c)) { continue; } e.WriteJoint(c); jointSlots.Add(c); continue; }
             int outside = ia ? b : a;
             switch (options.Boundary)
             {
@@ -128,6 +149,12 @@ internal static class BodySetTransfer
             int b = members[i];
             packetIndexOfBody[b] = i;
             model.Bodies[i] = ReadMember(e, core, b, lanes, origin);
+            if (filter != null && filter.IsProxy(b))
+            {
+                var pr = model.Bodies[i];
+                if (pr.Type != (byte)BodyType.Static) { pr.Type = (byte)BodyType.Kinematic; }
+                pr.Asleep = false; pr.SleepTime = 0f; pr.HasControls = false; pr.HasSleep = false;
+            }
         }
 
         int ai = memberCount;
@@ -178,6 +205,7 @@ internal static class BodySetTransfer
             int ia = (uint)pair.ShapeA < (uint)packetIndexOfShape.Length ? packetIndexOfShape[pair.ShapeA] : -1;
             int ib = (uint)pair.ShapeB < (uint)packetIndexOfShape.Length ? packetIndexOfShape[pair.ShapeB] : -1;
             if (ia < 0 || ib < 0) { continue; }
+            if (filter != null && !filter.KeepContact(shapes.Owner[pair.ShapeA], shapes.Owner[pair.ShapeB])) { continue; }
             bool first = true;
             for (int c = pair.FirstConstraint; c >= 0; c = e.NextInChain(c))
             {
@@ -198,7 +226,7 @@ internal static class BodySetTransfer
         Array.Fill(jointIndexOfSlot, -1);
         for (int i = 0; i < jointSlots.Count; i++) { jointIndexOfSlot[jointSlots[i]] = i; }
         var ragdolls = new List<PacketRagdoll>();
-        e.WriteRagdolls(inSet, packetIndexOfBody, jointIndexOfSlot, ragdolls);
+        e.WriteRagdolls(filter != null ? filter.RagdollSet(inSet) : inSet, packetIndexOfBody, jointIndexOfSlot, ragdolls);
         model.Ragdolls = ragdolls.ToArray();
 
         // Contacts between a member and a static shape outside the set (the ground it rests on): the receiving world may hold the same shape, and then the contact keeps its warm start.
@@ -210,6 +238,7 @@ internal static class BodySetTransfer
             if ((ia < 0) == (ib < 0)) { continue; }
             int outside = ia < 0 ? pair.ShapeA : pair.ShapeB;
             if (bodies.TypeOf(shapes.Owner[outside]) != BodyType.Static) { continue; }
+            if (filter != null && !filter.KeepContact(shapes.Owner[ia >= 0 ? pair.ShapeA : pair.ShapeB], shapes.Owner[outside])) { continue; }
             bool first = true;
             for (int c = pair.FirstConstraint; c >= 0; c = e.NextInChain(c))
             {

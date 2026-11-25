@@ -118,6 +118,9 @@ public class ReadmeTests
         Assert.Equal(transfer, GuideExamples.Transfer.Run());
         Assert.True(transfer.SameHash && transfer.Bodies == 1);
         Assert.InRange(transfer.SpeedAfter, 2.999, 3.001);
+        var interest = GuideExamples.Interest.Run();
+        Assert.Equal(interest, GuideExamples.Interest.Run());
+        Assert.True(interest.SameHash && interest.Inside > 2 && interest.Proxies >= 1);
         var wt = GuideExamples.Water.Run();
         Assert.Equal(wt, GuideExamples.Water.Run());
         var sw = GuideExamples.Swimming.Run();

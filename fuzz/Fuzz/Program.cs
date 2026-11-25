@@ -48,6 +48,7 @@ internal static class Program
         ["replay"] = FuzzReplay.Run,
         ["scene"] = FuzzScene.Run,
         ["body-set-packet"] = FuzzTransfer.Run,
+        ["interest-message"] = FuzzInterest.Run,
         ["plane3d"] = FuzzMissingShapes.Plane,
         ["massoffset2d"] = FuzzMissingShapes.MassOffset2D,
         ["massoffset3d"] = FuzzMissingShapes.MassOffset3D,
