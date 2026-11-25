@@ -143,8 +143,13 @@ public sealed partial class PhysicsWorld2D
         _engine.CheckSoftBounds();
         if (_core.Controls.Active) _engine.ValidateTargetMotion(dt);
         SyncCoreOptions();
-        if (_recorder != null) { RecordPreparedStep(dt); return; }
-        StepPrepared(dt);
+        _stepping = true;
+        try
+        {
+            if (_recorder != null) { RecordPreparedStep(dt); return; }
+            StepPrepared(dt);
+        }
+        finally { _stepping = false; }
     }
 
     // The unrecorded path has no recording scope or exception region in its simulation body.

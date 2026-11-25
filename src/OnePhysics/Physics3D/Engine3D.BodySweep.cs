@@ -15,9 +15,14 @@ internal sealed partial class Engine3D
         internal bool InUse;
     }
 
+    // Set only for the duration of an insertion check: more bodies the sweep must ignore (the other members of the part) and a translation applied to the start pose of the next sweeps.
+    internal int[]? SweepExcluded;
+    internal double SweepShiftX, SweepShiftY, SweepShiftZ;
+
     private bool ExcludedFromSweep(int candidate, int source, bool jointed)
     {
         if (candidate == source) { return true; }
+        if (SweepExcluded != null && Array.BinarySearch(SweepExcluded, candidate) >= 0) { return true; }
         if (!jointed) { return false; }
         var constraints = Core.Constraints;
         for (int i = 0; i < constraints.HighWater; i++)
@@ -115,7 +120,7 @@ internal sealed partial class Engine3D
                 {
                     var offset = rotation.Rotate(local.Translation);
                     var query = template;
-                    query.X = x + offset.X; query.Y = y + offset.Y; query.Z = z + offset.Z;
+                    query.X = x + offset.X + SweepShiftX; query.Y = y + offset.Y + SweepShiftY; query.Z = z + offset.Z + SweepShiftZ;
                     query.Mover = shape; query.MoverRot = rotation * local.Rotation;
                     KeepSweep(in query, in filter, ref best, ref found);
                 }

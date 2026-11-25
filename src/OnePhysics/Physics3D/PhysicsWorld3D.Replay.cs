@@ -40,6 +40,7 @@ public sealed partial class PhysicsWorld3D : IRecordedWorld
     bool IRecordedWorld.WriteReplaySnapshot(Span<byte> bytes, out int written) => _core.TrySnapshot(bytes, out written);
     ulong IRecordedWorld.ReplayHash() => ComputeHash();
     void IRecordedWorld.RestoreReplaySnapshot(ReadOnlySpan<byte> bytes) => Restore(bytes);
+    byte[] IRecordedWorld.ReplaySettle(ReadOnlySpan<byte> options) { var bytes = new byte[SettleReport.EncodedSize]; ReplaySettle(options).Write(bytes); return bytes; }
     void IRecordedWorld.AttachRecorder(ReplayRecorder? recorder)
     {
         _recorder = recorder;

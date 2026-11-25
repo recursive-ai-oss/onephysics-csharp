@@ -16,6 +16,7 @@ public readonly struct Rod
     public int Index { get; }
     /// <summary>Whether the rod still exists in the original world.</summary>
     public bool IsValid => _store != null && _store.Alive(Index,_generation);
+    internal object? OwnerStore => _store;
     private RodStore Store => IsValid ? _store! : throw new InvalidOperationException("Rod has been destroyed or is uninitialized.");
     private RodParticles Data => Store.Data[Index]!;
     /// <summary>Number of centerline particles (segments plus one).</summary>

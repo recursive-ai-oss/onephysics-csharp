@@ -36,5 +36,7 @@ public enum ReplayRecordKind : byte
     /// <summary>Version 2: finish a step after callback mutations, with the final step count and optional hash.</summary>
     EndStep = 5,
     /// <summary>Version 2: live simulation options, separate from the last synchronized core options in snapshots.</summary>
-    LiveOptions = 6
+    LiveOptions = 6,
+    /// <summary>Version 2: a settle run as one record: resulting world step count, the settle options, the report it produced, and the resulting hash when the track has hashes. Playback runs the same settle and compares.</summary>
+    Settle = 7
 }

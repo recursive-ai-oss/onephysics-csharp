@@ -6,9 +6,14 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 
 internal sealed partial class Engine2D
 {
+    // Set only for the duration of an insertion check: more bodies the sweep must ignore (the other members of the part) and a translation applied to the start pose of the next sweeps.
+    internal int[]? SweepExcluded;
+    internal double SweepShiftX, SweepShiftY;
+
     private bool ExcludedFromSweep(int candidate, int source, bool jointed)
     {
         if (candidate == source) { return true; }
+        if (SweepExcluded != null && Array.BinarySearch(SweepExcluded, candidate) >= 0) { return true; }
         if (!jointed) { return false; }
         var constraints = Core.Constraints;
         for (int i = 0; i < constraints.HighWater; i++)
@@ -40,7 +45,7 @@ internal sealed partial class Engine2D
             if (Geom[slot].Kind == ShapeKind2D.Empty) { continue; }
             FrameOf(body, out double x, out double y, out Rot2 rotation);
             var query = template;
-            query.X = x; query.Y = y; query.Mover = Geom[slot]; query.MoverRot = rotation;
+            query.X = x + SweepShiftX; query.Y = y + SweepShiftY; query.Mover = Geom[slot]; query.MoverRot = rotation;
             KeepSweep(in query, in filter, ref best, ref found);
         }
         return found;
