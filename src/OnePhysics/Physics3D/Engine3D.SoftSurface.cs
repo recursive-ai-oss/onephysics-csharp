@@ -383,7 +383,8 @@ internal sealed partial class Engine3D
 
             if (!needTri && !needEdge) { continue; }
             _tgNeedTri[b] = needTri; _tgNeedEdge[b] = needEdge;
-            double cst = 2.0 * Math.Max(extT[b], 1e-3), cse = 2.0 * Math.Max(extE[b], 1e-3);
+            double cmin = 1e-3 * (double)Opt.UnitsPerMetre;
+            double cst = 2.0 * Math.Max(extT[b], cmin), cse = 2.0 * Math.Max(extE[b], cmin);
             // Cells are twice the largest box, so a box that meets a query box has its minimum corner in at most 2 cells per axis of the range searched.
             _tgIcT[b] = 1.0 / cst; _tgMxT[b] = cst * 0.5; _tgIcE[b] = 1.0 / cse; _tgMxE[b] = cse * 0.5;
             _tgTri[b] ??= new SoftCellGrid(); _tgEdge[b] ??= new SoftCellGrid();
@@ -870,7 +871,7 @@ internal sealed partial class Engine3D
         var dp = _awakeSoft[ba]; var dt = _awakeSoft[bt];
         float thick = dp.Radius + dt.Radius;
         double reach = thick + RelTrav(ba, bt, _selH);
-        if (_vtD0[k] - RelDisp(ba, bt) - 1e-5 >= reach) { return false; }
+        if (_vtD0[k] - RelDisp(ba, bt) - 1e-5 * (double)Opt.UnitsPerMetre >= reach) { return false; }
         int g = _vtP[k];
         int p = g - dp.Base;
         int el = _gtLocal[_vtT[k]];
@@ -893,7 +894,7 @@ internal sealed partial class Engine3D
         var d1 = _awakeSoft[ba]; var d2 = _awakeSoft[bb];
         float thick = d1.Radius + d2.Radius;
         double reach = thick + RelTrav(ba, bb, _selH);
-        if (_eeD0[k] - RelDisp(ba, bb) - 1e-5 >= reach) { return false; }
+        if (_eeD0[k] - RelDisp(ba, bb) - 1e-5 * (double)Opt.UnitsPerMetre >= reach) { return false; }
         int g1 = _eeA[k], g2 = _eeB[k];
         int l1 = _geLocal[g1], l2 = _geLocal[g2];
         int a = d1.SurfEdgeA[l1], b = d1.SurfEdgeB[l1], c = d2.SurfEdgeA[l2], d = d2.SurfEdgeB[l2];

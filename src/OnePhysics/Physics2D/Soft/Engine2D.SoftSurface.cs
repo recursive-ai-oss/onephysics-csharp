@@ -102,7 +102,7 @@ internal sealed partial class Engine2D
             }
         }
 
-        double cs = Math.Max(maxExt, 1e-3), icsz = 1.0 / cs;
+        double cs = Math.Max(maxExt, 1e-3 * (double)Opt.UnitsPerMetre), icsz = 1.0 / cs;
         var keys = _edgeGrid.Keys;
         for (int ge = 0; ge < ne; ge++)
         {

@@ -76,10 +76,10 @@ internal sealed partial class Engine3D
     }
 
     /// <summary>Validates a definition and returns the copy the world keeps: the surface normal made unit length (and the offset scaled with it).</summary>
-    public static FluidDef Prepare(FluidDef def)
+    public static FluidDef Prepare(FluidDef def, float unitsPerMetre = 1f)
     {
-        def.Validate();
-        var d = def.Clone();
+        var d = def.Resolved(unitsPerMetre);
+        d.Validate(unitsPerMetre);
         var n = d.SurfaceNormal;
         double len = Math.Sqrt((double)n.X * n.X + (double)n.Y * n.Y + (double)n.Z * n.Z);
         d.SurfaceNormal = new Vector3F((float)(n.X / len), (float)(n.Y / len), (float)(n.Z / len));
@@ -95,7 +95,7 @@ internal sealed partial class Engine3D
 
     public Fluid AddFluid(FluidDef def)
     {
-        var d = Prepare(def);
+        var d = Prepare(def, Opt.UnitsPerMetre);
         int i = FluidHandles.Allocate();
         if (i >= Fluids.Length) { Array.Resize(ref Fluids, Math.Max(i + 1, Fluids.Length * 2)); }
         Fluids[i] = d;
@@ -148,7 +148,7 @@ internal sealed partial class Engine3D
 
         var rel = new Vector3F(lin[0] - fluid.Flow.X, lin[1] - fluid.Flow.Y, lin[2] - fluid.Flow.Z);
         float speed = float.Sqrt(rel.X * rel.X + rel.Y * rel.Y + rel.Z * rel.Z);
-        var dir = speed > 1e-6f ? new Vector3F(rel.X / speed, rel.Y / speed, rel.Z / speed) : default;
+        var dir = speed > 1e-6f * Opt.UnitsPerMetre ? new Vector3F(rel.X / speed, rel.Y / speed, rel.Z / speed) : default;
 
         var q = RotationOfBody(b);
         var spin = bodies.AngularVelocityOf(b);
@@ -309,7 +309,7 @@ internal sealed partial class Engine3D
         public int[] FactorBits = Array.Empty<int>();
     }
 
-    private static FluidBlock ReadFluids(StateReader r, int bodyCount)
+    private FluidBlock ReadFluids(StateReader r, int bodyCount)
     {
         var blk = new FluidBlock { Handles = HandleTable.Read(r, "fluid") };
         blk.Defs = new FluidDef?[Math.Max(blk.Handles.HighWater, 1)];
@@ -326,7 +326,7 @@ internal sealed partial class Engine3D
             d.LimitToRegion = r.ReadBool();
             d.RegionMin = new Vector3D(r.ReadDouble(), r.ReadDouble(), r.ReadDouble());
             d.RegionMax = new Vector3D(r.ReadDouble(), r.ReadDouble(), r.ReadDouble());
-            try { d.Validate(); }
+            try { d.Validate(Opt.UnitsPerMetre); }
             catch (ArgumentOutOfRangeException e) { throw r.Error("invalid fluid: " + e.Message); }
             // The world stores unit normals; a different length would make the saved offset mean something else.
             double len2 = (double)d.SurfaceNormal.X * d.SurfaceNormal.X + (double)d.SurfaceNormal.Y * d.SurfaceNormal.Y + (double)d.SurfaceNormal.Z * d.SurfaceNormal.Z;

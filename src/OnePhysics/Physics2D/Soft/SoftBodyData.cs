@@ -21,6 +21,7 @@ internal sealed partial class SoftBodyData
     internal const int MaxClusters = 256;
 
     public SoftBodyDef Def = null!;
+    public float UnitsPerMetre = 1f;                  // the world's length unit while the body is built: the default mass and particle radius are metre values
     public int N;
     public double[] Pos = Array.Empty<double>();      // 2 per particle, world coordinates relative to the world origin
     public double[] Prev = Array.Empty<double>();     // positions at the start of the current substep
@@ -79,10 +80,17 @@ internal sealed partial class SoftBodyData
     public int ConstraintCount => EdgeA.Length + BendA.Length + Tris.Length / 3 + (PressureRest > 0f ? 1 : 0);
 
     /// <summary>Builds a body from a validated definition: particles at the mesh vertices placed by the definition's pose, masses, and the constraint lists.</summary>
-    public static SoftBodyData Create(SoftBodyDef def, int blockSize = DefaultBlockSize)
+    public static SoftBodyData Create(SoftBodyDef def, int blockSize = DefaultBlockSize, float unitsPerMetre = 1f)
     {
-        var d = new SoftBodyData { Def = def, BlockSize = blockSize };
+        var d = new SoftBodyData { Def = def, BlockSize = blockSize, UnitsPerMetre = unitsPerMetre };
         d.Build();
+        if (unitsPerMetre != 1f)
+        {
+            // Outside metres the defaults (mass from the area, radius from the edges) are frozen into the definition, so a restore rebuilds this body without knowing the unit it was made in.
+            if (def.Mass == 0f) { def.Mass = d.TotalMass; }
+            if (def.ParticleRadius == 0f) { def.ParticleRadius = d.Radius; }
+        }
+
         var p = def.Position;
         var (sn, cs) = Math64.SinCos(def.Angle);
         float c = (float)cs, s = (float)sn;
@@ -160,7 +168,12 @@ internal sealed partial class SoftBodyData
 
         double areaForMass = nt > 0 ? total : enclosed;
         double mass = Def.Mass;
-        if (mass == 0.0) { mass = (nt > 0 ? 1000.0 : 10.0) * areaForMass; }
+        if (mass == 0.0)
+        {
+            // 1000 kg (a sheet) or 10 kg (an outline) per square metre: per square world unit these are smaller by the unit's scale squared.
+            double k = UnitsPerMetre;
+            mass = (nt > 0 ? 1000.0 : 10.0) / (k == 1.0 ? 1.0 : k * k) * areaForMass;
+        }
         if (!(mass > 0.0) || !double.IsFinite(mass)) { mass = 1.0; }
         TotalMass = (float)mass;
         for (int i = 0; i < N; i++)
@@ -230,7 +243,7 @@ internal sealed partial class SoftBodyData
 
         double edgeSum = 0.0;
         for (int i = 0; i < ne; i++) { edgeSum += EdgeRest[i]; }
-        Radius = Def.ParticleRadius != 0f ? Def.ParticleRadius : (float)Math.Min(100.0, Math.Max(1e-4, 0.25 * edgeSum / Math.Max(1, ne)));   // the largest radius a definition accepts, so a saved body always restores
+        Radius = Def.ParticleRadius != 0f ? Def.ParticleRadius : (float)Math.Min(100.0 * Math.Max(1.0, (double)UnitsPerMetre), Math.Max(1e-4 * (double)UnitsPerMetre, 0.25 * edgeSum / Math.Max(1, ne)));   // the largest radius a definition accepts, so a saved body always restores
         Lambda = new float[ConstraintCount];
         X = new float[2 * N]; XP = new float[2 * N]; X0 = new float[2 * N];
         GradP = PressureRest > 0f ? new float[2 * N] : Array.Empty<float>();   // the pressure may be switched on later through the handle

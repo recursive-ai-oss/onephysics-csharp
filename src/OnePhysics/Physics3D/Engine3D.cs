@@ -317,7 +317,7 @@ internal sealed partial class Engine3D : ISnapshotSection
     private ShapeHandle AddShapeResolved(BodyHandle body, byte[] recipe, in ShapeDef def)
     {
         def.Surface.Validate(Core.Layout.PositionLanes);
-        var aero = def.Aero?.ToSpec();
+        var aero = def.Aero?.WithDefaultsFor(Opt.LengthUnit).ToSpec();
         aero?.Prepare(planar: false, areaRequired: false);
         Nonnegative(def.Density, "Density");
         Coefficient(def.Friction, "Friction");

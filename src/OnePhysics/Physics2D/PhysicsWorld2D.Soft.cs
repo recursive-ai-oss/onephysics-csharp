@@ -22,7 +22,7 @@ public sealed partial class PhysicsWorld2D
         return _engine.AddSoftBody(MaterialDef(mesh, at, material));
     }
 
-    private static SoftBodyDef MaterialDef(SoftBodyMesh mesh, Vector2D at, SoftMaterial material)
+    private SoftBodyDef MaterialDef(SoftBodyMesh mesh, Vector2D at, SoftMaterial material)
     {
         var def = material switch
         {
@@ -31,7 +31,7 @@ public sealed partial class PhysicsWorld2D
             _ => throw new ArgumentOutOfRangeException(nameof(material), material, "material is not a SoftMaterial."),
         };
         if (mesh.IsClosed && mesh.TriangleCount == 0 && material == SoftMaterial.Rubber) { def.InternalPressure = 1f; }
-        return def;
+        return def.InUnit(Options.LengthUnit);    // the presets are written in metres
     }
 
     /// <summary>Adds a block of soft material made of triangles, centred on <paramref name="at"/>.</summary>
@@ -59,8 +59,12 @@ public sealed partial class PhysicsWorld2D
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddStrip");
         var mesh = SoftBodyMesh.Box(new Vector2F(length, thickness), segments, 1);
         var def = SoftBodyDef.Jelly(mesh, at);
-        def.Mass = massPerLength * length;
+        // the default 0.15 kg per metre follows the unit: per world unit of length it is smaller by the units per metre
+        float perLength = massPerLength;
+        if (Options.UnitsPerMetre != 1f && BitConverter.SingleToInt32Bits(perLength) == BitConverter.SingleToInt32Bits(0.15f)) { perLength /= Options.UnitsPerMetre; }
+        def.Mass = perLength * length;
         def.EdgeCompliance = 3e-3f; def.EdgeDamping = 0.02f; def.AreaCompliance = 1e-4f; def.AreaDamping = 0.02f; def.LinearDamping = 0.05f; def.Friction = 0.5f;
+        def = def.InUnit(Options.LengthUnit);
         def.Strip = new StripParams { AlongCompliance = 3e-3f, AcrossCompliance = 3e-3f, ShearCompliance = 5e-2f, StrainLimit = 0.05f, Drag = 1.2f };
         if (pinStart) { def.PinnedParticles = new[] { 0, segments + 1 }; }
         return _engine.AddSoftBody(def);
@@ -86,7 +90,7 @@ public sealed partial class PhysicsWorld2D
     public SoftBody AddBalloon(float radius, Vector2D at = default, int segments = 24)
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddBalloon");
-        return _engine.AddSoftBody(SoftBodyDef.Balloon(SoftBodyMesh.Ring(radius, segments), at));
+        return _engine.AddSoftBody(SoftBodyDef.Balloon(SoftBodyMesh.Ring(radius, segments), at).InUnit(Options.LengthUnit));
     }
 
     /// <summary>Adds a shape-matching blob (a disc whose clusters pull it back to its rest shape).</summary>
@@ -97,7 +101,7 @@ public sealed partial class PhysicsWorld2D
     public SoftBody AddBlob(float radius, Vector2D at = default, int rings = 3)
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddBlob");
-        return _engine.AddSoftBody(SoftBodyDef.Blob(SoftBodyMesh.Disc(radius, rings, Math.Max(6, 6 * rings)), at));
+        return _engine.AddSoftBody(SoftBodyDef.Blob(SoftBodyMesh.Disc(radius, rings, Math.Max(6, 6 * rings)), at).InUnit(Options.LengthUnit));
     }
 
     /// <summary>Adds a soft body from a definition (middle tier). The definition is copied.</summary>

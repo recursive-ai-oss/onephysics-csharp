@@ -52,18 +52,38 @@ public sealed class FluidDef
     /// <summary>A copy of this definition.</summary>
     public FluidDef Clone() => (FluidDef)MemberwiseClone();
 
+    /// <summary>This definition with a density that was never set (1000 kg per cubic metre) at its default for a world of the given unit: that mass per cubic world unit. The world applies this itself when the fluid is added.</summary>
+    /// <param name="unit">The world's length unit.</param>
+    public FluidDef WithDefaultsFor(LengthUnit unit) => Resolved(unit.Scale);
+
+    internal FluidDef Resolved(float unitsPerMetre)
+    {
+        var c = Clone();
+        if (unitsPerMetre == 1f) { return c; }
+        var s = new UnitScaler(unitsPerMetre, false);
+        float d = c.Density; s.D(ref d, 1000f, -3); c.Density = d;
+        return c;
+    }
+
     /// <summary>Checks every field.</summary>
     /// <exception cref="ArgumentOutOfRangeException">A field is NaN, infinite or outside its range; the message names the field and the value.</exception>
-    public void Validate()
+    public void Validate() => Validate(1f);
+
+    // The ranges are those of metres, in world units, and never narrower than at one metre per unit.
+    internal void Validate(float unitsPerMetre)
     {
+        float wide = unitsPerMetre > 1f ? unitsPerMetre : 1f;
+        float k3 = unitsPerMetre * unitsPerMetre * unitsPerMetre;
+        float denseMax = 1e7f / k3;      // 10^7 kg per cubic metre, per cubic world unit
+        if (denseMax < 1e7f) { denseMax = 1e7f; }
         var n = SurfaceNormal;
         if (!float.IsFinite(n.X) || !float.IsFinite(n.Y) || !float.IsFinite(n.Z)) { throw Bad(nameof(SurfaceNormal), n, "must be finite"); }
         double len2 = (double)n.X * n.X + (double)n.Y * n.Y + (double)n.Z * n.Z;
         if (!(len2 > 1e-24) || len2 > 1e24) { throw Bad(nameof(SurfaceNormal), n, "must have a length between 1e-12 and 1e12"); }
         if (!double.IsFinite(SurfaceOffset) || Math.Abs(SurfaceOffset) > MaxCoordinate) { throw Bad(nameof(SurfaceOffset), SurfaceOffset, "must be finite and within ±" + MaxCoordinate.ToString("R", CultureInfo.InvariantCulture)); }
-        if (!(Density > 0f && Density <= 1e7f)) { throw Bad(nameof(Density), Density, "must be above 0 and at most 10^7 kg/m³"); }
+        if (!(Density > 0f && Density <= denseMax)) { throw Bad(nameof(Density), Density, "must be above 0 and at most 10^7 kg/m³"); }
         var f = Flow;
-        if (!(Math.Abs(f.X) <= 1e4f && Math.Abs(f.Y) <= 1e4f && Math.Abs(f.Z) <= 1e4f)) { throw Bad(nameof(Flow), f, "must be finite with each component within ±10^4 m/s"); }
+        if (!(Math.Abs(f.X) <= 1e4f * wide && Math.Abs(f.Y) <= 1e4f * wide && Math.Abs(f.Z) <= 1e4f * wide)) { throw Bad(nameof(Flow), f, "must be finite with each component within ±10^4 m/s"); }
         if (!(LinearDrag >= 0f && LinearDrag <= 1000f)) { throw Bad(nameof(LinearDrag), LinearDrag, "must be within 0 to 1000"); }
         if (!(AngularDrag >= 0f && AngularDrag <= 1000f)) { throw Bad(nameof(AngularDrag), AngularDrag, "must be within 0 to 1000"); }
         if (!(ViscousDamping >= 0f && ViscousDamping <= 1000f)) { throw Bad(nameof(ViscousDamping), ViscousDamping, "must be within 0 to 1000"); }
@@ -131,7 +151,7 @@ public readonly struct Fluid : IEquatable<Fluid>
         using var replayMutation = _world?.RecordMutation("Fluid.SetDefinition");
         ArgumentNullException.ThrowIfNull(def);
         Resolve();
-        var prepared = Engine3D.Prepare(def);
+        var prepared = Engine3D.Prepare(def, _world!.Options.UnitsPerMetre);
         _world!.Engine.Fluids[_index] = prepared;
         _world.Engine.WakeAllDynamic();
     }

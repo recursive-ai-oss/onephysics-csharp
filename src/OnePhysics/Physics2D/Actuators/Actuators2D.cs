@@ -310,7 +310,7 @@ public sealed partial class PhysicsWorld2D
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddThruster");
         ArgumentNullException.ThrowIfNull(def);
         if (body.World != this) { throw new ArgumentException("The body belongs to another world.", nameof(body)); }
-        int i = _engine.Actuators.CreateThruster(body.Handle, def.ToSpec());
+        int i = _engine.Actuators.CreateThruster(body.Handle, def.WithDefaultsFor(Options.LengthUnit).ToSpec());
         return new Thruster(this, i, _engine.Actuators.ThrusterHandles.GenerationOf(i));
     }
 
@@ -326,7 +326,7 @@ public sealed partial class PhysicsWorld2D
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddBoat");
         ArgumentNullException.ThrowIfNull(def);
         if (hull.World != this) { throw new ArgumentException("The hull belongs to another world.", nameof(hull)); }
-        int i = _engine.Actuators.CreateBoat(hull.Handle, def.ToSpec());
+        int i = _engine.Actuators.CreateBoat(hull.Handle, def.WithDefaultsFor(Options.LengthUnit).ToSpec());
         return new Boat(this, i, _engine.Actuators.BoatHandles.GenerationOf(i));
     }
 
@@ -342,7 +342,7 @@ public sealed partial class PhysicsWorld2D
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddHovercraft");
         ArgumentNullException.ThrowIfNull(def);
         if (craft.World != this) { throw new ArgumentException("The craft belongs to another world.", nameof(craft)); }
-        int i = _engine.Actuators.CreateHover(craft.Handle, def.ToSpec());
+        int i = _engine.Actuators.CreateHover(craft.Handle, def.WithDefaultsFor(Options.LengthUnit).ToSpec());
         return new Hovercraft(this, i, _engine.Actuators.HoverHandles.GenerationOf(i));
     }
 
@@ -391,6 +391,6 @@ public readonly partial struct Shape
     public AeroSurface? Aero
     {
         get { int s = Resolve(); var st = _world!.Engine.Actuators.Surfaces; return s < st.Length && st[s] != null ? AeroSurface.FromSpec(st[s]!.Spec) : null; }
-        set { using var replayMutation = _world?.RecordMutation("Shape.Aero"); Resolve(); _world!.Engine.Actuators.SetSurface(_handle, value?.ToSpec()); }
+        set { using var replayMutation = _world?.RecordMutation("Shape.Aero"); Resolve(); _world!.Engine.Actuators.SetSurface(_handle, value?.WithDefaultsFor(_world!.Options.LengthUnit).ToSpec()); }
     }
 }

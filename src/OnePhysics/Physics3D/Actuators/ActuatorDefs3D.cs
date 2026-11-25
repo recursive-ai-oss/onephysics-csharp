@@ -49,6 +49,23 @@ public sealed class AeroSurface
     /// <summary>A copy.</summary>
     public AeroSurface Clone() => (AeroSurface)MemberwiseClone();
 
+    /// <summary>This definition with the members that were never set at their defaults for a world of the given unit (see <see cref="PhysicsWorld3D.Options"/>); the world applies this itself when the surface is added.</summary>
+    /// <param name="unit">The world's length unit.</param>
+    public AeroSurface WithDefaultsFor(LengthUnit unit) => Scaled(new UnitScaler(unit.Scale, false));
+
+    /// <summary>This definition, written in metres, expressed in <paramref name="unit"/>: the area and the centre of pressure are multiplied by the units per metre (squared for an area; a planar area is a width).</summary>
+    /// <param name="unit">The target length unit.</param>
+    public AeroSurface InUnit(LengthUnit unit) => Scaled(new UnitScaler(unit.Scale, true));
+
+    internal AeroSurface Scaled(UnitScaler s)
+    {
+        var c = Clone();
+        if (s.IsIdentity) { return c; }
+        float a = Area; s.E(ref a, 2); c.Area = a;
+        var p = CenterOfPressure; s.E(ref p, 1); c.CenterOfPressure = p;
+        return c;
+    }
+
     internal SurfaceSpec ToSpec() => new()
     {
         Kind = Kind, Coef = Coefficients, Area = Area, Chord = new Vector3F(-Forward.X, -Forward.Y, -Forward.Z), Normal = Up, Center = CenterOfPressure, Medium = Medium,
@@ -102,6 +119,33 @@ public sealed class ThrusterDef
 
     /// <summary>A copy.</summary>
     public ThrusterDef Clone() => (ThrusterDef)MemberwiseClone();
+
+    /// <summary>This definition with the members that were never set (<see cref="MaxThrust"/> 100 N, <see cref="ImmersionDepth"/> 0.3 m) at their defaults for a world of the given unit; the world applies this itself when the thruster is added.</summary>
+    /// <param name="unit">The world's length unit.</param>
+    public ThrusterDef WithDefaultsFor(LengthUnit unit) => Scaled(new UnitScaler(unit.Scale, false));
+
+    /// <summary>This definition, written in metres and newtons, expressed in <paramref name="unit"/>: the position, thrust (kilogram world units per second squared), pitch speed, spin torque per thrust and immersion depth.</summary>
+    /// <param name="unit">The target length unit.</param>
+    public ThrusterDef InUnit(LengthUnit unit) => Scaled(new UnitScaler(unit.Scale, true));
+
+    internal ThrusterDef Scaled(UnitScaler s)
+    {
+        var c = Clone();
+        if (s.IsIdentity) { return c; }
+        var p = Position; s.E(ref p, 1); c.Position = p;
+        float t = MaxThrust; s.D(ref t, 100f, 1); c.MaxThrust = t;
+        float v = PitchSpeed; s.E(ref v, 1); c.PitchSpeed = v;
+        float d = ImmersionDepth; s.D(ref d, 0.3f, 1); c.ImmersionDepth = d;
+        float q = SpinTorque; s.E(ref q, 1); c.SpinTorque = q;
+        return c;
+    }
+
+    internal static ThrusterDef[] Scaled(ThrusterDef[] defs, UnitScaler s)
+    {
+        var a = new ThrusterDef[defs.Length];
+        for (int i = 0; i < a.Length; i++) { a[i] = defs[i]?.Scaled(s)!; }
+        return a;
+    }
 
     internal ThrusterSpec ToSpec() => new()
     {
@@ -159,6 +203,15 @@ public sealed class BoatFoilDef
 
     /// <summary>A copy.</summary>
     public BoatFoilDef Clone() => (BoatFoilDef)MemberwiseClone();
+
+    internal BoatFoilDef Scaled(UnitScaler s)
+    {
+        var c = Clone();
+        if (s.IsIdentity) { return c; }
+        var p = Position; s.E(ref p, 1); c.Position = p;
+        float a = Area; s.D(ref a, 0.1f, 2); c.Area = a;
+        return c;
+    }
 }
 
 /// <summary>
@@ -234,6 +287,23 @@ public sealed class BoatDef
         };
     }
 
+    /// <summary>This definition with the members that were never set at their defaults for a world of the given unit, foils and propellers included; the world applies this itself when the boat is added.</summary>
+    /// <param name="unit">The world's length unit.</param>
+    public BoatDef WithDefaultsFor(LengthUnit unit) => Scaled(new UnitScaler(unit.Scale, false));
+
+    /// <summary>This definition, written in metres and newtons (for example <see cref="Dinghy"/>), expressed in <paramref name="unit"/>. Drag coefficients, damping per second and angles do not depend on the length unit.</summary>
+    /// <param name="unit">The target length unit.</param>
+    public BoatDef InUnit(LengthUnit unit) => Scaled(new UnitScaler(unit.Scale, true));
+
+    internal BoatDef Scaled(UnitScaler s)
+    {
+        var c = Clone();
+        if (s.IsIdentity) { return c; }
+        for (int i = 0; i < c.Foils.Length; i++) { c.Foils[i] = c.Foils[i]?.Scaled(s)!; }
+        c.Propellers = ThrusterDef.Scaled(c.Propellers, s);
+        return c;
+    }
+
     internal BoatSpec ToSpec()
     {
         var spec = new BoatSpec
@@ -284,6 +354,16 @@ public sealed class HoverFanDef
 
     /// <summary>A copy.</summary>
     public HoverFanDef Clone() => (HoverFanDef)MemberwiseClone();
+
+    internal HoverFanDef Scaled(UnitScaler s)
+    {
+        var c = Clone();
+        if (s.IsIdentity) { return c; }
+        var p = Position; s.E(ref p, 1); c.Position = p;
+        float l = MaxLift; s.D(ref l, 1000f, 1); c.MaxLift = l;
+        float r = Range; s.D(ref r, 1f, 1); c.Range = r;
+        return c;
+    }
 
     internal HoverFanSpec ToSpec() => new() { Position = Position, Direction = Direction, MaxLift = MaxLift, Range = Range, Damping = Damping };
 }
@@ -342,6 +422,24 @@ public sealed class HovercraftDef
             Thrusters = [Fwd(0.5f), Fwd(-0.5f)],
             SkirtDrag = 0.4f * massKg, AngularDamping = 0.3f * massKg,
         };
+    }
+
+    /// <summary>This definition with the members that were never set at their defaults for a world of the given unit, fans and thrusters included; the world applies this itself when the craft is added.</summary>
+    /// <param name="unit">The world's length unit.</param>
+    public HovercraftDef WithDefaultsFor(LengthUnit unit) => Scaled(new UnitScaler(unit.Scale, false));
+
+    /// <summary>This definition, written in metres and newtons (for example <see cref="Small"/>), expressed in <paramref name="unit"/>: positions, ranges, lifts and thrusts, and the angular damping (kilogram world units squared per second).</summary>
+    /// <param name="unit">The target length unit.</param>
+    public HovercraftDef InUnit(LengthUnit unit) => Scaled(new UnitScaler(unit.Scale, true));
+
+    internal HovercraftDef Scaled(UnitScaler s)
+    {
+        var c = Clone();
+        if (s.IsIdentity) { return c; }
+        for (int i = 0; i < c.Fans.Length; i++) { c.Fans[i] = c.Fans[i]?.Scaled(s)!; }
+        c.Thrusters = ThrusterDef.Scaled(c.Thrusters, s);
+        float a = AngularDamping; s.E(ref a, 2); c.AngularDamping = a;
+        return c;
     }
 
     internal HoverSpec ToSpec()

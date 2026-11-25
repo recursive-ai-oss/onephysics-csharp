@@ -44,15 +44,16 @@ internal sealed partial class Engine2D
 
     public SoftBody AddSoftBody(SoftBodyDef def)
     {
-        def.Validate();
+        float ku = Opt.UnitsPerMetre;
         var copy = def.Clone();
+        copy.Validate(ku);
         long total = (long)_softParticles + copy.Mesh!.VertexCount;
         if (total > MaxSoftParticles)
         {
             throw new SoftBodyException(SoftBodyError.BadCount, "the world would hold " + total.ToString(CultureInfo.InvariantCulture) + " soft-body particles; the limit is " + MaxSoftParticles.ToString(CultureInfo.InvariantCulture) + ".", "def");
         }
 
-        var data = SoftBodyData.Create(copy, SoftBlockSizeForTests);
+        var data = SoftBodyData.Create(copy, SoftBlockSizeForTests, ku);
         int i = SoftHandles.Allocate();
         if (i >= SoftData.Length) { Array.Resize(ref SoftData, Math.Max(i + 1, SoftData.Length * 2)); }
         SoftData[i] = data;
@@ -307,7 +308,7 @@ internal sealed partial class Engine2D
                     }
                 }
 
-                def.Validate();
+                def.Validate(Opt.UnitsPerMetre);
             }
             catch (SoftBodyException ex) { throw r.Error("invalid soft body: " + ex.Message); }
 

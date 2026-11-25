@@ -55,7 +55,7 @@ internal sealed partial class Engine3D
         // The capsule's axis, relative to p.
         var a0 = new Vector3D(-(double)c.Up.X * half, -(double)c.Up.Y * half, -(double)c.Up.Z * half);
         var a1 = new Vector3D((double)c.Up.X * half, (double)c.Up.Y * half, (double)c.Up.Z * half);
-        double reach = c.Radius + c.Range + 1e-3;
+        double reach = c.Radius + c.Range + 1e-3 * (double)Ls;
         for (int i = 0; i < SoftHandles.HighWater; i++)
         {
             if (!SoftHandles.IsLive(i)) { continue; }
@@ -106,7 +106,7 @@ internal sealed partial class Engine3D
         }
     }
 
-    private static bool IsSupportContact(in DefContact k, in MoverCtx c) => k.Sep <= 2f * c.Skin + 1e-3f && k.Nx * c.Up.X + k.Ny * c.Up.Y + k.Nz * c.Up.Z >= c.CosSlope;
+    private bool IsSupportContact(in DefContact k, in MoverCtx c) => k.Sep <= 2f * c.Skin + 1e-3f * Ls && k.Nx * c.Up.X + k.Ny * c.Up.Y + k.Nz * c.Up.Z >= c.CosSlope;
 
     /// <summary>A character standing on a soft body wakes it: the weight is added to the particles under its feet during the step (see <see cref="ApplySupportMass"/>).</summary>
     private void MvWakeDeformables(in MoverCtx c)

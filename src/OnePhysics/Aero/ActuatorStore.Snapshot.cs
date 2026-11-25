@@ -14,13 +14,13 @@ internal sealed partial class ActuatorStore
     bool ISnapshotSection.IsPresent => IsPresent;
 
     /// <summary>Whether the section is written: anything exists, or the air density was changed.</summary>
-    public bool IsPresent => HasWork || AirDensity != DefaultAirDensity;
+    public bool IsPresent => HasWork || !float.IsNaN(_airDensity);
 
     void ISnapshotSection.Reset() { Clear(); }
 
     private void Clear()
     {
-        AirDensity = DefaultAirDensity;
+        _airDensity = float.NaN;
         ThrusterHandles.Reset(); BoatHandles.Reset(); HoverHandles.Reset();
         Array.Clear(Thrusters); Array.Clear(Boats); Array.Clear(Hovers); Array.Clear(Surfaces);
         _surfaceCount = 0;
@@ -195,7 +195,7 @@ internal sealed partial class ActuatorStore
 
     private void CopyFrom(ActuatorStore src)
     {
-        AirDensity = src.AirDensity;
+        _airDensity = src._airDensity;
         ThrusterHandles = new HandleTable(); ThrusterHandles.CopyFrom(src.ThrusterHandles);
         BoatHandles = new HandleTable(); BoatHandles.CopyFrom(src.BoatHandles);
         HoverHandles = new HandleTable(); HoverHandles.CopyFrom(src.HoverHandles);

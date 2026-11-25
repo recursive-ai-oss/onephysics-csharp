@@ -22,7 +22,7 @@ public sealed partial class PhysicsWorld3D
         return _engine.AddSoftBody(MaterialDef(mesh, at, material));
     }
 
-    private static SoftBodyDef MaterialDef(SoftBodyMesh mesh, Vector3D at, SoftMaterial material)
+    private SoftBodyDef MaterialDef(SoftBodyMesh mesh, Vector3D at, SoftMaterial material)
     {
         var def = material switch
         {
@@ -32,7 +32,7 @@ public sealed partial class PhysicsWorld3D
             _ => throw new ArgumentOutOfRangeException(nameof(material), material, "material is not a SoftMaterial."),
         };
         if (mesh.IsClosed && mesh.TetrahedronCount == 0 && material == SoftMaterial.Rubber) { def.InternalPressure = 1f; }
-        return def;
+        return def.InUnit(Options.LengthUnit);    // the presets are written in metres
     }
 
     /// <summary>Adds a square of cloth in the x–z plane, centred on <paramref name="at"/>, optionally held at its four corners.</summary>
@@ -46,7 +46,7 @@ public sealed partial class PhysicsWorld3D
     {
         using var replayMutation = RecordMutation("PhysicsWorld3D.AddCloth");
         var mesh = SoftBodyMesh.Cloth(width, depth, segments, segments);
-        var def = SoftBodyDef.Cloth(mesh, at);
+        var def = SoftBodyDef.Cloth(mesh, at).InUnit(Options.LengthUnit);
         if (pinCorners)
         {
             int n = segments + 1;
@@ -64,7 +64,7 @@ public sealed partial class PhysicsWorld3D
     {
         using var replayMutation = RecordMutation("PhysicsWorld3D.AddCloth");
         ArgumentNullException.ThrowIfNull(def);
-        return _engine.AddSoftBody(def.ToSoftBodyDef());
+        return _engine.AddSoftBody(def.WithDefaultsFor(Options.LengthUnit).ToSoftBodyDef(), false);
     }
 
     /// <summary>Adds a block of soft material made of tetrahedra, centred on <paramref name="at"/>.</summary>

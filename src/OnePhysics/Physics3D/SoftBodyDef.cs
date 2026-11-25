@@ -162,10 +162,38 @@ public sealed class SoftBodyDef
         Mesh = mesh, Position = at, EdgeCompliance = 3e-4f, EdgeDamping = 0.003f, VolumeCompliance = 2e-6f, VolumeDamping = 0.003f, BendCompliance = 1e-3f, Friction = 0.6f, LinearDamping = 0.2f,
     };
 
+    /// <summary>
+    /// A copy with the members whose default is tuned in metres at their default for a world of the given unit: <see cref="BendCompliance"/>, whose value is per square length because the isometric bend measures
+    /// the hinge in lengths and areas (1e-3 m⁻² becomes 1e-3 over the squared units per metre). A mass or radius left at 0 takes its automatic value from the mesh in whatever unit the world uses
+    /// (0.3 kg per square metre or 1000 kg per cubic metre become that mass per square or cubic world unit). The world applies this itself when the body is added.
+    /// </summary>
+    /// <param name="unit">The world's length unit.</param>
+    public SoftBodyDef WithDefaultsFor(LengthUnit unit) { var c = Clone(); c.Convert(new UnitScaler(unit.Scale, false)); return c; }
+
+    /// <summary>
+    /// A copy with the material members of this definition, written in metres and SI, expressed in <paramref name="unit"/> (use it on <see cref="Cloth"/>, <see cref="Rubber"/> and <see cref="Jelly"/>
+    /// in a world that is not in metres): <see cref="BendCompliance"/> per square length, <see cref="VolumeCompliance"/> per fourth power of length (the constraint is on a volume and its gradient is an area)
+    /// and <see cref="TearForce"/> in kilogram world units per second squared. Stretch compliance (an inverse stiffness in s²/kg) and the damping times do not depend on the length unit. The mesh, position, velocity,
+    /// radius and mass are yours and stay as they are.
+    /// </summary>
+    /// <param name="unit">The target length unit.</param>
+    public SoftBodyDef InUnit(LengthUnit unit) { var c = Clone(); c.Convert(new UnitScaler(unit.Scale, true)); return c; }
+
+    internal void Convert(UnitScaler s)
+    {
+        if (s.IsIdentity) { return; }
+        float bend = BendCompliance; s.D(ref bend, 1e-3f, -2); BendCompliance = bend;
+        float vol = VolumeCompliance; s.E(ref vol, 4); VolumeCompliance = vol;
+        float tear = TearForce; s.E(ref tear, 1); TearForce = tear;
+    }
+
     /// <summary>Checks every field.</summary>
     /// <exception cref="SoftBodyException">A field is NaN, infinite or outside its range; the message names the field and the value.</exception>
-    public void Validate()
+    public void Validate() => Validate(1f);
+
+    internal void Validate(float unitsPerMetre)
     {
+        float wide = unitsPerMetre > 1f ? unitsPerMetre : 1f;
         if (Mesh == null) { throw new SoftBodyException(SoftBodyError.InvalidDefinition, "SoftBodyDef.Mesh is null; give the body a mesh.", nameof(Mesh)); }
         var p = Position;
         if (!double.IsFinite(p.X) || !double.IsFinite(p.Y) || !double.IsFinite(p.Z))
@@ -183,13 +211,13 @@ public sealed class SoftBodyDef
         if (!float.IsFinite(qn) || !(qn > 1e-12f)) { throw new SoftBodyException(SoftBodyError.InvalidDefinition, "SoftBodyDef.Rotation is not a usable quaternion (zero or not finite).", nameof(Rotation)); }
         Range(Scale, nameof(Scale), 1e-6f, 1e6f);
         var v = LinearVelocity;
-        if (!float.IsFinite(v.X) || !float.IsFinite(v.Y) || !float.IsFinite(v.Z) || Math.Abs(v.X) > 1e4f || Math.Abs(v.Y) > 1e4f || Math.Abs(v.Z) > 1e4f)
+        if (!float.IsFinite(v.X) || !float.IsFinite(v.Y) || !float.IsFinite(v.Z) || Math.Abs(v.X) > 1e4f * wide || Math.Abs(v.Y) > 1e4f * wide || Math.Abs(v.Z) > 1e4f * wide)
         {
-            throw new SoftBodyException(SoftBodyError.OutOfRange, "SoftBodyDef.LinearVelocity is " + v + "; components must be finite and within ±10000.", nameof(LinearVelocity));
+            throw new SoftBodyException(SoftBodyError.OutOfRange, "SoftBodyDef.LinearVelocity is " + v + "; components must be finite and within ±10000 m/s (in world units, that many times the units per metre).", nameof(LinearVelocity));
         }
 
         if (Mass != 0f) { Range(Mass, nameof(Mass), float.Epsilon, 1e9f); }
-        if (ParticleRadius != 0f) { Range(ParticleRadius, nameof(ParticleRadius), float.Epsilon, MaxParticleRadius); }
+        if (ParticleRadius != 0f) { Range(ParticleRadius, nameof(ParticleRadius), float.Epsilon, MaxParticleRadius * wide); }
         Range(EdgeCompliance, nameof(EdgeCompliance), 0f, MaxCompliance);
         Range(BendCompliance, nameof(BendCompliance), 0f, MaxCompliance);
         Range(VolumeCompliance, nameof(VolumeCompliance), 0f, MaxCompliance);
@@ -198,7 +226,7 @@ public sealed class SoftBodyDef
         Range(VolumeDamping, nameof(VolumeDamping), 0f, 1f);
         Range(InternalPressure, nameof(InternalPressure), 0f, 100f);
         Range(TearStrain, nameof(TearStrain), 0f, 100f);
-        Range(TearForce, nameof(TearForce), 0f, 1e12f);
+        Range(TearForce, nameof(TearForce), 0f, 1e12f * wide);
         Range(PlasticYield, nameof(PlasticYield), 0f, 10f);
         Range(PlasticCreep, nameof(PlasticCreep), 0f, 1f);
         Range(PlasticMax, nameof(PlasticMax), 0f, 10f);
