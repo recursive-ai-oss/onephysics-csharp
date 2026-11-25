@@ -402,13 +402,26 @@ public static class Distance2D
     /// <param name="b">Second shape.</param>
     /// <param name="sweepB">Motion of the second body.</param>
     /// <param name="maxFraction">Largest fraction of the sweep to search, in [0, 1].</param>
-    /// <param name="targetGap">Gap between the rounded surfaces at which to stop. Must be at least 0; the time reported is when the gap first falls to within a quarter of <see cref="Constants2D.LinearSlop"/> (times <paramref name="lengthScale"/>) of it.</param>
-    /// <param name="lengthScale">World units per metre when the caller works in another unit (see <see cref="LengthUnit"/>); scales the slop. Default 1.</param>
+    /// <param name="targetGap">Gap between the rounded surfaces at which to stop. Must be at least 0; the time reported is when the gap first falls to within a quarter of <see cref="Constants2D.LinearSlop"/> of it.</param>
     /// <returns>
     /// <see cref="ToiState.Hit"/> with the fraction; <see cref="ToiState.Overlapped"/> when the surfaces already overlap at the start; <see cref="ToiState.Separated"/> when they never come within the target gap;
     /// <see cref="ToiState.Failed"/> after 50 iterations or when a body rotates by about 170° or more in the sweep (the fraction is still a time before contact).
     /// </returns>
-    public static ToiOutput2D TimeOfImpact(in Shape2D a, in Sweep2D sweepA, in Shape2D b, in Sweep2D sweepB, float maxFraction = 1f, float targetGap = Constants2D.LinearSlop, float lengthScale = 1f)
+    public static ToiOutput2D TimeOfImpact(in Shape2D a, in Sweep2D sweepA, in Shape2D b, in Sweep2D sweepB, float maxFraction = 1f, float targetGap = Constants2D.LinearSlop)
+    {
+        return Advance(in a, in sweepA, in b, in sweepB, maxFraction, targetGap, 0.25f * Constants2D.LinearSlop);
+    }
+
+    /// <summary>The same for a world in another length unit: the stopping tolerance, a quarter of <see cref="Constants2D.LinearSlop"/> in metres, is multiplied by <paramref name="lengthScale"/> (world units per metre).</summary>
+    /// <param name="a">First shape (in its body's frame).</param>
+    /// <param name="sweepA">Motion of the first body.</param>
+    /// <param name="b">Second shape.</param>
+    /// <param name="sweepB">Motion of the second body.</param>
+    /// <param name="maxFraction">Largest fraction of the sweep to search, in [0, 1].</param>
+    /// <param name="targetGap">Gap between the rounded surfaces at which to stop, at least 0.</param>
+    /// <param name="lengthScale">World units per metre.</param>
+    /// <returns>As the overload without a length scale.</returns>
+    public static ToiOutput2D TimeOfImpact(in Shape2D a, in Sweep2D sweepA, in Shape2D b, in Sweep2D sweepB, float maxFraction, float targetGap, float lengthScale)
     {
         return Advance(in a, in sweepA, in b, in sweepB, maxFraction, targetGap, 0.25f * Constants2D.LinearSlop * lengthScale);
     }

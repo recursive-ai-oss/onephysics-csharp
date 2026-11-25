@@ -346,4 +346,28 @@ public sealed class LengthUnitTests
         Assert.Equal(50f, sand.Resolved(1000f, false).Spacing);   // never set: the world fills in 50 mm
         sand.Resolved(1000f, false).ValidateIn(1000f, false);
     }
+
+    [Fact]
+    public void ChangingTheUnitWhileRecordingReplays()
+    {
+        var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { WorldId = 95 });
+        w.AddBox(new(40, 1, 40), at: new(0, -0.5, 0), type: BodyType.Static);
+        w.AddBox(new(1, 1, 1), at: new(0, 2, 0));
+        using var stream = new MemoryStream();
+        var hashes = new System.Collections.Generic.List<ulong>();
+        using (w.StartRecording(stream))
+        {
+            for (int i = 0; i < 20; i++) { w.Step(1f / 60); hashes.Add(w.ComputeHash()); }
+            w.Options.LengthUnit = LengthUnit.Centimetres;      // from here on the metre-tuned tolerances are those of a centimetre world
+            for (int i = 0; i < 20; i++) { w.Step(1f / 60); hashes.Add(w.ComputeHash()); }
+        }
+
+        stream.Position = 0;
+        var player = new ReplayPlayer(stream);
+        var copy = player.CreateWorld3D();
+        int n = 0;
+        while (player.ReadNextStep(copy)) { Assert.Equal(hashes[n++], copy.ComputeHash()); }
+        Assert.Equal(hashes.Count, n);
+        Assert.Equal(LengthUnit.Centimetres, copy.Options.LengthUnit);
+    }
 }
