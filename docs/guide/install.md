@@ -1,7 +1,7 @@
 # Install
 
 ```
-dotnet add package RecursiveAI.OnePhysics --prerelease
+dotnet add package RecursiveAI.OnePhysics
 ```
 
 The package id is `RecursiveAI.OnePhysics`. Its only dependency is `RecursiveAI.OneMath` (the deterministic vectors and functions the API is written in: `Vector2F`, `Vector2D`, `Vector3F`, `Vector3D`), which NuGet restores for you.

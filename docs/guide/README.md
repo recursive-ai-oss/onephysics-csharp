@@ -19,7 +19,6 @@ Task-oriented pages with examples that are compiled and run by the test suite. F
 | [Particle fluids](fluids.md) | pour, splash and float things in a liquid; query particles and see when a body gets wet |
 | [Shallow water](water.md) | make a lake or wave tank that floats bodies and boats, reads currents and takes waves |
 | [Articulations](articulations.md) | build a robot arm, a walker or a long chain that cannot come apart; drive joints, steer a tool to a point |
-
 | [Bringing a world to rest](settle.md) | settle a built level, read the tip margin of a cabinet, the sag of a rope and whether a peg seats |
 | [Baking a simulation](bake.md) | record a run into a compact cache, play it back with no world, and run a world at offline quality |
 | [Big worlds](world-scale.md) | stream terrain tiles, step far islands less often, run a region in slow motion |
