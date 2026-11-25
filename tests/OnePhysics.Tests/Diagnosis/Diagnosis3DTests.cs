@@ -361,6 +361,27 @@ public class Diagnosis3DTests
     }
 
     [Fact]
+    public void DiagnosingWhileRecordingLeavesTheRecordingValid()
+    {
+        var (w, _) = Chain(300);
+        using var ms = new MemoryStream();
+        using (w.StartRecording(ms))
+        {
+            for (int i = 0; i < 20; i++) w.Step(Dt);
+            Assert.NotEmpty(w.Diagnose(new DiagnoseOptions { ProbeSteps = 10 }).Findings);
+            for (int i = 0; i < 20; i++) w.Step(Dt);
+        }
+
+        ms.Position = 0;
+        var player = new RecursiveAI.OnePhysics.Replay.ReplayPlayer(ms);
+        var copy = player.CreateWorld3D();
+        int steps = 0;
+        while (player.ReadNextStep(copy)) { steps++; }   // throws on the first hash that differs
+        Assert.Equal(40, steps);
+        Assert.Equal(w.ComputeHash(), copy.ComputeHash());
+    }
+
+    [Fact]
     public void FindingsAreTheSameAtAnyThreadCount()
     {
         string Run(int threads)
