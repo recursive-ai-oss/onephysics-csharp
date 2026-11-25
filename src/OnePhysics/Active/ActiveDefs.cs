@@ -86,7 +86,7 @@ public sealed class BipedBones
 /// stop the fall. While ξ stays inside the support polygon the ankles apply the torque that moves the centre of pressure towards ξ, never further than the foot's edge (a zero-moment-point limit); when ξ leaves the polygon
 /// by more than <see cref="StepTrigger"/> the figure takes a step and puts the swing foot on ξ.
 /// </summary>
-public sealed class BalanceDef
+public sealed partial class BalanceDef
 {
     /// <summary>Centre-of-pressure feedback: the pressure point is put at ξ + gain · (ξ − the support centre). At least 0. Default 2.5.</summary>
     public float CaptureGain { get; set; } = 2.5f;
@@ -133,7 +133,7 @@ public sealed class BalanceDef
 /// A walking controller in the SIMBICON family (Yin, Loken and van de Panne 2007; Coros, Beaudoin and van de Panne 2010): a finite-state gait with one leg swinging while the other carries the body, the swing foot
 /// placed by feedback on the centre of mass position and velocity (the capture point), the stance hip holding the pelvis level, the knee holding the hip height, and the ankle keeping the foot flat on the ground.
 /// </summary>
-public sealed class WalkerDef
+public sealed partial class WalkerDef
 {
     /// <summary>Duration of one step (one leg's swing), s. Default 0.42.</summary>
     public float StepTime { get; set; } = 0.36f;
@@ -213,7 +213,7 @@ public sealed class WalkerDef
 /// What turns a ragdoll into an active one: the pose drive's gains (a stable proportional-derivative controller, Tan, Liu and Turk 2011, so any gain is safe at any time step), animation blending, hit reactions
 /// and the optional balance and walking controllers. Copied when the ragdoll is made active.
 /// </summary>
-public sealed class ActiveRagdollDef
+public sealed partial class ActiveRagdollDef
 {
     /// <summary>
     /// Natural frequency, Hz, of the pose drive on the arms, torso and head: stiffness is the joint's effective inertia times (2π · this)². Stable at any value and any time step (the drive is integrated implicitly), so
@@ -285,12 +285,13 @@ public sealed class ActiveRagdollDef
 
     internal ActiveRagdollDef Clone() => new()
     {
-        PdHertz = PdHertz, LegPdHertz = LegPdHertz, LoadPdHertz = LoadPdHertz, TargetSlew = TargetSlew, SwingTorqueScale = SwingTorqueScale, PdDampingRatio = PdDampingRatio, TorqueScale = TorqueScale, RootMode = RootMode, RootTrackHertz = RootTrackHertz, HitRecoveryTime = HitRecoveryTime, HitStrength = HitStrength, HitRadius = HitRadius,
+        PdHertz = PdHertz, LegPdHertz = LegPdHertz, LoadPdHertz = LoadPdHertz, TargetSlew = TargetSlew, SwingTorqueScale = SwingTorqueScale, PdDampingRatio = PdDampingRatio, TorqueScale = TorqueScale, RootMode = RootMode, RootTrackHertz = RootTrackHertz, HitRecoveryTime = HitRecoveryTime, HitStrength = HitStrength, HitRadius = HitRadius, Units = Units,
         Balance = Balance?.Clone()!, Walker = Walker?.Clone()!, Bones = Bones?.Clone()!,
     };
 
     internal void Validate(int parts)
     {
+        if (Units != 1f) { var m = Scaled(new UnitScaler(1f / Units, true)); m.Units = 1f; m.Validate(parts); return; }
         BalanceDef.Check(PdHertz, 0f, 1000f, nameof(PdHertz));
         BalanceDef.Check(LegPdHertz, 0f, 1000f, nameof(LegPdHertz));
         BalanceDef.Check(LoadPdHertz, 0f, 1000f, nameof(LoadPdHertz));

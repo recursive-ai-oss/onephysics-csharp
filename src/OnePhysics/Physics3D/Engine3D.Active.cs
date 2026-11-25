@@ -117,27 +117,27 @@ internal sealed partial class Engine3D
         return a;
     }
 
-    private static void DeriveActiveGeometry(ActiveState3D a, RagdollState rg)
+    private void DeriveActiveGeometry(ActiveState3D a, RagdollState rg)
     {
         var parts = rg.Def.Parts;
         var b = a.Def.Bones;
         float Dist(RagdollPartDef p, RagdollPartDef q) { float dx = p.JointPosition.X - q.JointPosition.X, dy = p.JointPosition.Y - q.JointPosition.Y, dz = p.JointPosition.Z - q.JointPosition.Z; return float.Sqrt(dx * dx + dy * dy + dz * dz); }
         var thigh = parts[b.LeftThigh]; var shin = parts[b.LeftShin]; var foot = parts[b.LeftFoot];
-        a.L1 = Math.Max(Dist(thigh, shin), 0.05f); a.L2 = Math.Max(Dist(shin, foot), 0.05f);
+        a.L1 = Math.Max(Dist(thigh, shin), 0.05f * Opt.UnitsPerMetre); a.L2 = Math.Max(Dist(shin, foot), 0.05f * Opt.UnitsPerMetre);
         float hx = foot.ShapeHalfSize.X, hy = foot.ShapeHalfSize.Y, hz = foot.ShapeHalfSize.Z;
         float extZ = hz, extY = hy, extX = hx;
         if (foot.Shape == RagdollShapeKind.Sphere) { extX = extY = extZ = hx; }
         else if (foot.Shape == RagdollShapeKind.Capsule) { extZ = hx + hy; extY = hy; extX = hy; }
-        a.AnkleHeight = Math.Max(foot.JointPosition.Y - (foot.Position.Y - extY), 0.01f);
-        a.FootBack = Math.Max(foot.JointPosition.Z - (foot.Position.Z - extZ), 0.01f);
-        a.FootFront = Math.Max((foot.Position.Z + extZ) - foot.JointPosition.Z, 0.01f);
-        a.FootHalfWidth = Math.Max(extX, 0.01f);
+        a.AnkleHeight = Math.Max(foot.JointPosition.Y - (foot.Position.Y - extY), 0.01f * Opt.UnitsPerMetre);
+        a.FootBack = Math.Max(foot.JointPosition.Z - (foot.Position.Z - extZ), 0.01f * Opt.UnitsPerMetre);
+        a.FootFront = Math.Max((foot.Position.Z + extZ) - foot.JointPosition.Z, 0.01f * Opt.UnitsPerMetre);
+        a.FootHalfWidth = Math.Max(extX, 0.01f * Opt.UnitsPerMetre);
         float m = 0f;
         for (int i = 0; i < parts.Length; i++) { m += parts[i].Mass; }
         a.TotalMass = m;
     }
 
-    private float Gravity3D { get { float g = -Opt.Gravity.Y; return g > 0.1f ? g : 9.81f; } }
+    private float Gravity3D { get { float g = -Opt.Gravity.Y; return g > 0.1f * Opt.UnitsPerMetre ? g : 9.81f * Opt.UnitsPerMetre; } }
 
     // ---- helpers ----
 
@@ -586,8 +586,8 @@ internal sealed partial class Engine3D
             lg.HipF = Fo(hip.X - px, hip.Z - pz); lg.HipL = Le(hip.X - px, hip.Z - pz); lg.HipU = (float)(hip.Y - py);
             lg.AnkleF = Fo(ankle.X - px, ankle.Z - pz); lg.AnkleL = Le(ankle.X - px, ankle.Z - pz); lg.AnkleU = (float)(ankle.Y - py);
             lg.ThighRho = partRho[th]; lg.ThighPhi = partPhi[th]; lg.FootRho = partRho[ft]; lg.FootPhi = partPhi[ft]; lg.ShinRho = partRho[sh]; lg.ShinPhi = partPhi[sh];
-            bool hit = GroundRay(a, r, ankle.X, ankle.Y + 0.05, ankle.Z, a.AnkleHeight + 0.45f, out double gy, out Vector3F n);
-            lg.Grounded = hit && ankle.Y - gy <= a.AnkleHeight + 0.04f;
+            bool hit = GroundRay(a, r, ankle.X, ankle.Y + 0.05 * Opt.UnitsPerMetre, ankle.Z, a.AnkleHeight + 0.45f * Opt.UnitsPerMetre, out double gy, out Vector3F n);
+            lg.Grounded = hit && ankle.Y - gy <= a.AnkleHeight + 0.04f * Opt.UnitsPerMetre;
             lg.GroundU = (float)((hit ? gy : ankle.Y - a.AnkleHeight) - py);
             if (hit)
             {
@@ -603,8 +603,8 @@ internal sealed partial class Engine3D
             ref var stance = ref (swing == 0 ? ref inp.Right : ref inp.Left);
             double wx = px + (stance.AnkleF + gait.PlaceF) * fx + (stance.AnkleL + gait.PlaceL) * lx;
             double wz = pz + (stance.AnkleF + gait.PlaceF) * fz + (stance.AnkleL + gait.PlaceL) * lz;
-            double ytop = Math.Max(py + inp.Left.AnkleU, py + inp.Right.AnkleU) + 0.3;
-            if (GroundRay(a, r, wx, ytop, wz, 1.6f, out double gy, out Vector3F n))
+            double ytop = Math.Max(py + inp.Left.AnkleU, py + inp.Right.AnkleU) + 0.3 * Opt.UnitsPerMetre;
+            if (GroundRay(a, r, wx, ytop, wz, 1.6f * Opt.UnitsPerMetre, out double gy, out Vector3F n))
             {
                 ref var sw = ref (swing == 0 ? ref inp.Left : ref inp.Right);
                 sw.PlaceDU = (float)(gy - (py + stance.GroundU));
@@ -615,7 +615,7 @@ internal sealed partial class Engine3D
         // Planning on measurements beyond what a figure can reach overflows into gait state that could not be saved; the controller sits this step out (as in 2D).
         if (!BipedGait.Sane(in inp)) { a.HasLanding = false; return; }
         var o = new BipedOut();
-        var ap = new ActiveParams(a.Def.Balance, a.Def.Walker);
+        var ap = new ActiveParams(a.Def.Balance, a.Def.Walker, Opt.UnitsPerMetre);
         BipedGait.Step(ref a.Gait, in ap, in inp, ref o);
         a.SwingLeg = a.Gait.Phase == (byte)GaitPhase.SwingLeft ? 0 : a.Gait.Phase == (byte)GaitPhase.SwingRight ? 1 : -1;
         a.Stance0 = inp.Left.Grounded && o.Left.Weight > 0f; a.Stance1 = inp.Right.Grounded && o.Right.Weight > 0f;
@@ -734,7 +734,7 @@ internal sealed partial class Engine3D
         return q;
     }
 
-    private static ActiveState3D?[] ReadActives(StateReader rd, HandleTable ragHandles, RagdollState?[] ragdolls)
+    private ActiveState3D?[] ReadActives(StateReader rd, HandleTable ragHandles, RagdollState?[] ragdolls)
     {
         int version = rd.ReadInt32();
         if (version != 1) { throw rd.Error("unsupported 3D active ragdoll section version " + version.ToString(CultureInfo.InvariantCulture)); }
@@ -750,7 +750,7 @@ internal sealed partial class Engine3D
             var rg = ragdolls[slot]!;
             if (n != rg.Parts) { throw rd.Error("an active ragdoll with " + n.ToString(CultureInfo.InvariantCulture) + " parts for a ragdoll of " + rg.Parts.ToString(CultureInfo.InvariantCulture)); }
             var a = new ActiveState3D();
-            a.ReadCommon(rd, n);
+            a.ReadCommon(rd, n, Opt.UnitsPerMetre);
             try { BipedSkeleton.Check(a.Def.Bones, i => rg.Def.Parts[i].Parent); }
             catch (ArgumentException e) { throw rd.Error("invalid active ragdoll bones: " + e.Message); }
             a.Pose = new QuaternionF[n]; a.Cur = new QuaternionF[n];
@@ -791,7 +791,7 @@ internal sealed partial class Engine3D
 
         public void Write(StateWriter w) => e.WriteActives(w);
 
-        public void Read(StateReader r) => e.CommitActives(ReadActives(r, e.RagHandles, e.Ragdolls));
+        public void Read(StateReader r) => e.CommitActives(e.ReadActives(r, e.RagHandles, e.Ragdolls));
 
         public ISnapshotSection Fork(WorldCore destination)
         {

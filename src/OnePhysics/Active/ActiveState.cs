@@ -39,7 +39,7 @@ internal abstract class ActiveCommon
 
     public const int DefBytes = 7 * 4 + 1 + 4 * 4 + 6 * 4 + 16 * 4 + 9 * 4;
 
-    public static ActiveRagdollDef ReadDef(StateReader r, int parts)
+    public static ActiveRagdollDef ReadDef(StateReader r, int parts, float unitsPerMetre = 1f)
     {
         var d = new ActiveRagdollDef { PdHertz = r.ReadSingle(), LegPdHertz = r.ReadSingle(), LoadPdHertz = r.ReadSingle(), TargetSlew = r.ReadSingle(), SwingTorqueScale = r.ReadSingle(), PdDampingRatio = r.ReadSingle(), TorqueScale = r.ReadSingle() };
         byte root = r.ReadByte();
@@ -57,6 +57,7 @@ internal abstract class ActiveCommon
             RightThigh = r.ReadInt32(), RightShin = r.ReadInt32(), RightFoot = r.ReadInt32(),
         };
         d.Balance = b; d.Walker = k; d.Bones = o;
+        d.Units = unitsPerMetre;
         try { d.Validate(parts); }
         catch (ArgumentException e) { throw r.Error("invalid active ragdoll settings: " + e.Message); }
         return d;
@@ -74,9 +75,9 @@ internal abstract class ActiveCommon
         w.NamedSingle(Gait.FVelF); w.NamedSingle(Gait.FVelL); w.NamedSingle(Gait.Height); w.NamedSingle(Gait.BiasF); w.NamedSingle(Gait.BiasL); w.NamedSingle(Gait.SumF); w.NamedSingle(Gait.SumL); w.NamedSingle(Gait.SumT); w.NamedByte(Gait.Primed);
     }
 
-    public void ReadCommon(StateReader r, int parts)
+    public void ReadCommon(StateReader r, int parts, float unitsPerMetre = 1f)
     {
-        Def = ReadDef(r, parts);
+        Def = ReadDef(r, parts, unitsPerMetre);
         Mode = r.ReadByte();
         if (Mode > (byte)ActiveMode.Walk) { throw r.Error("invalid active ragdoll mode"); }
         CmdX = r.ReadSingle(); CmdZ = r.ReadSingle(); Heading = r.ReadSingle();
