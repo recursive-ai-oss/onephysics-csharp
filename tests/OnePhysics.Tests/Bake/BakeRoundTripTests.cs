@@ -378,4 +378,56 @@ public sealed class BakeRoundTripTests
         Assert.Matches(@"^\d+\.\d+\.\d+$", clip.LibraryVersion);
         Assert.Equal(1, clip.FormatVersion);
     }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    [InlineData(4096)]
+    public void AnyBlockSizeReadsBackTheSameAndSamplesAcrossBlockBoundaries(int block)
+    {
+        var o = Opt(); o.BlockFrames = block;
+        var (file, frames) = Bake3(o, 40);
+        var clip = BakeClip.Parse(file);
+        CheckFrames(clip, frames, true, Math.Pow(2, -17) + 1e-12, Math.Pow(2, -15) + 1e-12, 2 * Math.Pow(2, -17));
+        foreach (var e in clip.Rigid)
+        {
+            for (int k = e.FirstFrame; k < e.LastFrame; k++)
+            {
+                Assert.True(e.TrySampleRigid(clip.TimeOfFrame(k) + 0.5 * clip.FrameDuration, out var m));
+                Assert.True(e.TrySampleRigid(clip.TimeOfFrame(k), out var a));
+                Assert.True(e.TrySampleRigid(clip.TimeOfFrame(k + 1), out var b));
+                Assert.InRange(Math.Abs(m.Position.Y - 0.5 * (a.Position.Y + b.Position.Y)), 0, 1e-9);
+            }
+        }
+    }
+
+    [Fact]
+    public void FragmentGeometryIsTheFragmentsShapeInItsOwnFrame()
+    {
+        var w = BakeScenes.Spatial(1);
+        var fragments = new Dictionary<(int, int), double>();
+        using var rec = w.BeginBake(Opt());
+        for (int i = 0; i < 150; i++)
+        {
+            w.Step(Dt);
+            foreach (var f in w.FractureEvents) { for (int k = 0; k < f.FragmentCount; k++) { var b = w.FractureFragments[f.FirstFragment + k]; fragments[(b.RawHandle.Index, b.RawHandle.Generation)] = b.Mass; } }
+        }
+
+        var clip = BakeClip.Parse(rec.Finish());
+        Assert.NotEmpty(fragments);
+        double density = 1000.0 / 1000.0; // AddBox's default density, and fragments keep their parent's
+        foreach (var g in clip.FragmentGeometry)
+        {
+            Assert.True(fragments.TryGetValue((g.Body.Slot, g.Body.Generation), out double mass));
+            // The closed surface encloses the volume that the mass came from: the sum of signed tetrahedra about the body origin.
+            double vol = 0;
+            for (int t = 0; t < g.Triangles.Length; t += 3)
+            {
+                var a = g.Vertices[g.Triangles[t]]; var b = g.Vertices[g.Triangles[t + 1]]; var c = g.Vertices[g.Triangles[t + 2]];
+                vol += ((double)a.X * ((double)b.Y * c.Z - (double)b.Z * c.Y) - (double)a.Y * ((double)b.X * c.Z - (double)b.Z * c.X) + (double)a.Z * ((double)b.X * c.Y - (double)b.Y * c.X)) / 6.0;
+            }
+
+            Assert.InRange(Math.Abs(vol) * density / mass, 0.98, 1.02);
+        }
+    }
 }

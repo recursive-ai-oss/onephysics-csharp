@@ -10,7 +10,7 @@ internal static class BakeScenes
 {
     internal const float Dt = 1f / 60f;
 
-    internal static P3.PhysicsWorld3D Spatial(int threads, int worldId = 93)
+    internal static P3.PhysicsWorld3D Spatial(int threads, int worldId = 7391)
     {
         var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { WorldId = worldId, ThreadCount = threads });
         w.AddBox(new Vector3F(30, 1, 30), new Vector3D(0, -0.5, 0), type: BodyType.Static);
@@ -30,7 +30,7 @@ internal static class BakeScenes
         return w;
     }
 
-    internal static P2.PhysicsWorld2D Planar(int threads, int worldId = 94)
+    internal static P2.PhysicsWorld2D Planar(int threads, int worldId = 7392)
     {
         var w = new P2.PhysicsWorld2D(new P2.WorldOptions2D { WorldId = worldId, ThreadCount = threads });
         w.AddBox(new Vector2F(30, 1), new Vector2D(0, -0.5), type: BodyType.Static);

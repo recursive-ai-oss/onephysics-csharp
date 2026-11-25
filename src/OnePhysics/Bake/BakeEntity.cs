@@ -56,7 +56,7 @@ public sealed class BakeEntity
     /// <summary>
     /// Samples a body's pose at <paramref name="time"/> seconds from the start of the clip. At a frame time the stored value is returned as decoded;
     /// between frames the position is interpolated linearly and the rotation by normalised linear interpolation along the shorter arc (nlerp; its largest
-    /// difference from slerp is about 1/10 of the angle turned in one frame squared, 0.0003 rad for a quarter-turn per second at 60 Hz).
+    /// difference from slerp is about Theta^3/248 radians for a turn Theta between two frames: 7e-8 rad at 90 degrees a second and 60 Hz).
     /// </summary>
     /// <returns>False when the body does not exist at that time (before its first frame, after its last, or outside the clip).</returns>
     /// <exception cref="InvalidOperationException">This is not a body track.</exception>
