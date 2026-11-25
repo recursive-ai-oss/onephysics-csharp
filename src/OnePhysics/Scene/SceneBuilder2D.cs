@@ -21,7 +21,7 @@ internal static partial class SceneBuilder2D
     /// <summary>Builds the scene; bodies with a <c>character</c> script become characters (their bodies are in the array), returned with their scripts in body order.</summary>
     public static (PhysicsWorld2D World, Body[] Bodies, WorldOptions2D Options) Build(Scene s, int threads, out List<(Character Character, CharacterScript Script, int Body)> characters)
     {
-        var opt = new WorldOptions2D { Gravity = new Vector2F((float)s.Gx, (float)s.Gy), ThreadCount = threads };
+        var opt = new WorldOptions2D { LengthUnit = s.LengthUnit, Gravity = new Vector2F((float)s.Gx, (float)s.Gy), ThreadCount = threads };
         if (s.Params.TryGetValue("world-id", out var ids)) opt.WorldId = int.Parse(ids[0], CultureInfo.InvariantCulture);
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
         if (s.WorldLimits is BodyControlSettings worldLimits) { opt.MaxLinearSpeed = worldLimits.MaxLinearSpeed; opt.MaxAngularSpeed = worldLimits.MaxAngularSpeed; opt.PushOutVelocity = worldLimits.MaxDepenetrationSpeed; }

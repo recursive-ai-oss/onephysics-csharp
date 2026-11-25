@@ -82,6 +82,34 @@ public sealed class WorldOptions3D
 {
     internal Action<string>? ReplayChanged;
 
+    /// <summary>
+    /// How long one world unit is, in metres. Default one metre. Every default tuned in metres (gravity, sleep threshold, speculative distance, push-out and speed limits, the broadphase margin, hit and restitution thresholds,
+    /// and the default sizes of characters, soft bodies, rods, cloth and fluids) follows it; a value you set explicitly stays in world units. Setting it moves the options still at their defaults and changes the engine's own
+    /// metre-tuned tolerances at the next step. Saved in snapshots (only when it is not one metre) and covered by the world hash.
+    /// </summary>
+    public LengthUnit LengthUnit { get => _lengthUnit; set { ApplyLengthUnit(value); ReplayChanged?.Invoke("WorldOptions3D.LengthUnit"); } }
+    private LengthUnit _lengthUnit;
+    private float _unitScale = 1f;
+
+    /// <summary>World units per metre as a float: the factor every metre-tuned constant is multiplied by. Exactly 1 at the default unit.</summary>
+    internal float UnitsPerMetre => _unitScale;
+
+    internal void SetLengthUnitRaw(LengthUnit unit) { _lengthUnit = unit; _unitScale = unit.Scale; }
+
+    private void ApplyLengthUnit(LengthUnit unit)
+    {
+        float o = _unitScale, n = unit.Scale;
+        _replayGravity = new(UnitDefaults.Follow(_replayGravity.X, 0f, o, n), UnitDefaults.Follow(_replayGravity.Y, -9.81f, o, n), UnitDefaults.Follow(_replayGravity.Z, 0f, o, n));
+        _replaySleepThreshold = UnitDefaults.Follow(_replaySleepThreshold, 0.05f, o, n);
+        _replaySpeculativeDistance = UnitDefaults.Follow(_replaySpeculativeDistance, 0.02f, o, n);
+        _replayPushOutVelocity = UnitDefaults.Follow(_replayPushOutVelocity, 3f, o, n);
+        _replayRestitutionThreshold = UnitDefaults.Follow(_replayRestitutionThreshold, 1f, o, n);
+        _replayMaxLinearSpeed = UnitDefaults.Follow(_replayMaxLinearSpeed, 400f, o, n);
+        _replayBroadphaseMargin = UnitDefaults.Follow(_replayBroadphaseMargin, 0.03, o, n);
+        _replayHitSpeedThreshold = UnitDefaults.Follow(_replayHitSpeedThreshold, 1f, o, n);
+        SetLengthUnitRaw(unit);
+    }
+
     /// <summary>Substeps of the soft-body solver per step, 1..64. Many small steps with one pass each beat few large steps with many passes (Macklin et al. 2019). Default 4. Saved with the soft bodies.</summary>
     public int SoftSubsteps { get => _replaySoftSubsteps; set { _replaySoftSubsteps = value; ReplayChanged?.Invoke("WorldOptions3D.SoftSubsteps"); } }
     private int _replaySoftSubsteps = 4;

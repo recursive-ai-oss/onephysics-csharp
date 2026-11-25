@@ -36,6 +36,7 @@ static class Driver3
     public static int Run(Opts o, ISim3 sim)
     {
         var s = Scene.Load(o.Get("scene", ""));
+        double unitsPerMetre = sim.Name == "onephysics" ? UnitScaling.FromEnvironment() : 1.0; UnitScaling.Apply(s, unitsPerMetre);
         if (int.TryParse(Environment.GetEnvironmentVariable("BAR_QUERY_REPS"), out int qreps) && qreps > 0) s.QueryReps = qreps; // more repetitions for profiling the query phase
         bool timing = o.Get("mode", "stability") == "timing";
         int threads = int.Parse(o.Get("threads", "1"), CultureInfo.InvariantCulture);
@@ -51,7 +52,7 @@ static class Driver3
         var wheelPart = new double[sim.WheelDoubles]; var softPart = new double[sim.SoftDoubles];
         void Frame(int step)
         {
-            sim.Snapshot(d); sim.Wheels(wheelPart); sim.SoftSnapshot(softPart);
+            sim.Snapshot(d); UnitScaling.ToMetres(d, 3, unitsPerMetre); sim.Wheels(wheelPart); sim.SoftSnapshot(softPart);
             wheelPart.CopyTo(wd, 0); softPart.CopyTo(wd, wheelPart.Length);
             dump!.Write((uint)step); dump.Write((uint)wd.Length); foreach (var v in d) dump.Write(v); foreach (var v in wd) dump.Write(v);
         }

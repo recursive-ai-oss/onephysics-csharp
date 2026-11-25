@@ -18,6 +18,7 @@ static class OnePhysicsDriver
     public static int Run(Opts o)
     {
         var s = Scene.Load(o.Get("scene", ""));
+        double unitsPerMetre = UnitScaling.FromEnvironment(); UnitScaling.Apply(s, unitsPerMetre);
         bool timing = o.Get("mode", "stability") == "timing";
         string result = o.Get("result", ""), dumpPath = o.Get("dump", "");
         int threads = int.Parse(o.Get("threads", "1"), CultureInfo.InvariantCulture);
@@ -34,6 +35,7 @@ static class OnePhysicsDriver
                 d[i * 7] = p.X; d[i * 7 + 1] = p.Y; d[i * 7 + 2] = bodies[i].Angle; d[i * 7 + 3] = v.X; d[i * 7 + 4] = v.Y;
                 d[i * 7 + 5] = bodies[i].AngularVelocity; d[i * 7 + 6] = bodies[i].IsAwake ? 1 : 0;
             }
+            UnitScaling.ToMetres(d, 2, unitsPerMetre);
         }
         BinaryWriter? dump = null;
         if (!timing && dumpPath != "")

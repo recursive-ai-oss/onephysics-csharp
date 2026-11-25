@@ -8,7 +8,8 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 internal sealed partial class Engine2D
 {
     private const double MoverBoundary = 2097152.0; // 2^21
-    private const float MoverMinMove = 1e-6f;
+    private float MoverMinMove => 1e-6f * Opt.UnitsPerMetre;
+    private float Ls => Opt.UnitsPerMetre;
     private const int MoverSlideIterations = 5;
 
     private struct PlaneMeta
@@ -129,7 +130,7 @@ internal sealed partial class Engine2D
         fraction = 1f; normal = default; slot = -1; px = 0; py = 0;
         float len = float.Sqrt(dx * dx + dy * dy);
         if (!(len > MoverMinMove)) { return false; }
-        var box = MvBox(x, y, dx, dy, c, 1e-3f);
+        var box = MvBox(x, y, dx, dy, c, (1e-3f * Ls));
         MvGather(in box, in c);
         bool any = false;
         for (int i = 0; i < _mvCandCount; i++)
@@ -147,7 +148,7 @@ internal sealed partial class Engine2D
                 // neighbour owns that feature. Such a hit can pin a capsule just
                 // before a ramp's crest. Apply the same ownership test as contacts.
                 var atHit = new Transform2(xf.P + lt * o.Fraction, xf.Q);
-                if (Collide2D.Collide(in Geom[s], in c.Capsule, atHit, 2e-3f).PointCount == 0) { continue; }
+                if (Collide2D.Collide(in Geom[s], in c.Capsule, atHit, (2e-3f * Ls)).PointCount == 0) { continue; }
             }
             Vec2 wn = bq.Rotate(o.Normal);
             if (wn.X == 0f && wn.Y == 0f) { continue; }
@@ -170,7 +171,7 @@ internal sealed partial class Engine2D
     {
         for (int i = 0; i < _mvPlaneCount; i++)
         {
-            if (!(_mvPlanes[i].Push > 1e-5f)) { continue; }
+            if (!(_mvPlanes[i].Push > (1e-5f * Ls))) { continue; }
             float ny = _mvPlanes[i].Normal.Y;
             if (ny < c.CosSlope)
             {
@@ -196,10 +197,10 @@ internal sealed partial class Engine2D
         for (int it = 0; it < MoverSlideIterations; it++)
         {
             if (!(float.Sqrt(rx * rx + ry * ry) > MoverMinMove)) { break; }
-            var box = MvBox(x, y, rx, ry, c, c.Range + 1e-3f);
+            var box = MvBox(x, y, rx, ry, c, c.Range + (1e-3f * Ls));
             MvGather(in box, in c);
             MvPlanes(x, y, in c);
-            var v = Mover2D.Solve(_mvPlanes.AsSpan(0, _mvPlaneCount), rx, ry, 50, 1e-5f);
+            var v = Mover2D.Solve(_mvPlanes.AsSpan(0, _mvPlaneCount), rx, ry, 50, (1e-5f * Ls));
             MvRecordHits(in c);
             float len = float.Sqrt(v.X * v.X + v.Y * v.Y);
             if (!(len > MoverMinMove)) { break; }
@@ -223,17 +224,17 @@ internal sealed partial class Engine2D
         // Lift as far as the step offset allows (a ceiling stops it), move forward, then drop onto whatever is below: walkable ground no lower than where we started.
         float raise = c.Step;
         if (MvCast(x0, y0, 0f, c.Step, c, out float fu, out _, out _, out _, out _)) { raise = fu * c.Step; }
-        if (raise < 1e-3f) { return false; }
+        if (raise < (1e-3f * Ls)) { return false; }
         double px = x0, py = y0 + (double)raise;
         int hits = _mvHitCount;
         MvSlide(ref px, ref py, sign * forward, 0f, c);
         float progress = (float)(px - x0) * sign;
-        if (!(progress > progressNow + 1e-3f)) { _mvHitCount = hits; return false; }
+        if (!(progress > progressNow + (1e-3f * Ls))) { _mvHitCount = hits; return false; }
         // The slide may have ridden up a rounded edge; the drop must still end no higher than the step offset above where we started and no lower than where we started.
-        float drop = (float)(py - y0) + 2e-3f;
+        float drop = (float)(py - y0) + (2e-3f * Ls);
         if (!MvCast(px, py, 0f, -drop, c, out float fd, out Vec2 n, out int dropSlot, out _, out _) || n.Y < c.CosSlope || IsCharacterBody(MvOwner(dropSlot))) { _mvHitCount = hits; return false; }
         double landed = py - (double)(fd * drop);
-        if (landed - y0 > (double)c.Step + 1e-3) { _mvHitCount = hits; return false; }
+        if (landed - y0 > (double)c.Step + 1e-3 * (double)Ls) { _mvHitCount = hits; return false; }
         nx = px; ny = landed;
         return true;
     }
@@ -250,7 +251,7 @@ internal sealed partial class Engine2D
         float sign = h < 0f ? -1f : 1f;
         float progress = (float)(x - x0) * sign;
         float want = Math.Abs(h);
-        if (!tryStep || !wall || c.Step <= 0f || !(progress < want - 1e-4f)) { return; }
+        if (!tryStep || !wall || c.Step <= 0f || !(progress < want - (1e-4f * Ls))) { return; }
         int keep = _mvHitCount;
         _mvHitCount = hitsBefore;
         // First try the movement as asked; a short move may leave the capsule's rounded bottom behind the step's edge, so a second try moves about a radius forward.
@@ -275,17 +276,17 @@ internal sealed partial class Engine2D
 
         float down = -v;
         // Resolve overlaps first and see whether we already stand on walkable ground: then the downward movement is simply absorbed (no sliding down a gentle slope, no sinking).
-        MvGather(MvBox(x, y, 0f, 0f, c, c.Range + 1e-3f), c);
+        MvGather(MvBox(x, y, 0f, 0f, c, c.Range + (1e-3f * Ls)), c);
         MvPlanes(x, y, c);
-        var r = Mover2D.Solve(_mvPlanes.AsSpan(0, _mvPlaneCount), 0f, 0f, 50, 1e-5f);
+        var r = Mover2D.Solve(_mvPlanes.AsSpan(0, _mvPlaneCount), 0f, 0f, 50, (1e-5f * Ls));
         bool resting = false;
         for (int i = 0; i < _mvPlaneCount; i++)
         {
-            if (_mvPlanes[i].Normal.Y >= c.CosSlope && !IsCharacterBody(MvOwner(_mvMeta[i].Slot)) && _mvPlanes[i].Separation + r.X * _mvPlanes[i].Normal.X + r.Y * _mvPlanes[i].Normal.Y <= 1e-3f)
+            if (_mvPlanes[i].Normal.Y >= c.CosSlope && !IsCharacterBody(MvOwner(_mvMeta[i].Slot)) && _mvPlanes[i].Separation + r.X * _mvPlanes[i].Normal.X + r.Y * _mvPlanes[i].Normal.Y <= (1e-3f * Ls))
             {
                 resting = true;
                 // Pressing into the ground counts as a hit with it.
-                if (down > MoverMinMove && _mvPlanes[i].Push <= 1e-5f) { _mvPlanes[i].Push = 1e-3f; }
+                if (down > MoverMinMove && _mvPlanes[i].Push <= (1e-5f * Ls)) { _mvPlanes[i].Push = (1e-3f * Ls); }
             }
         }
 
@@ -372,9 +373,9 @@ internal sealed partial class Engine2D
         float gnx = 0f, gny = 0f;
         int gslot = -1;
         c.Range = 3f * c.Skin;
-        MvGather(MvBox(x, y, 0f, 0f, c, c.Range + 1e-3f), c);
+        MvGather(MvBox(x, y, 0f, 0f, c, c.Range + (1e-3f * Ls)), c);
         MvPlanes(x, y, c);
-        var settle = Mover2D.Solve(_mvPlanes.AsSpan(0, _mvPlaneCount), 0f, 0f, 50, 1e-5f);
+        var settle = Mover2D.Solve(_mvPlanes.AsSpan(0, _mvPlaneCount), 0f, 0f, 50, (1e-5f * Ls));
         MvRecordHits(in c);
         x += (double)settle.X; y += (double)settle.Y;
         var ground = GroundState.InAir;

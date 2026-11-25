@@ -819,7 +819,7 @@ internal sealed partial class Engine2D
             }
 
             var sweepStatic = new Sweep2D(default, c, c, q, q);
-            var toi = Distance2D.TimeOfImpact(in g, sweepStatic, in e.Geom[Shape], Sweep, Best, Constants2D.LinearSlop);
+            var toi = Distance2D.TimeOfImpact(in g, sweepStatic, in e.Geom[Shape], Sweep, Best, Constants2D.LinearSlop * e.Opt.UnitsPerMetre, e.Opt.UnitsPerMetre);
             if ((toi.State == ToiState.Hit || toi.State == ToiState.Failed) && toi.Fraction > 0f && toi.Fraction < Best)
             {
                 if (core.Surfaces.IsPresent)

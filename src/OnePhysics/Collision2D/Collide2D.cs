@@ -130,7 +130,7 @@ internal readonly ref struct PolyView
 public static class Collide2D
 {
     // Reference faces change from A to B only when B's separation is better by this much, which keeps feature ids from flickering.
-    private const float FlipTolerance = 0.1f * Constants2D.LinearSlop;
+    internal const float FlipTolerance = 0.1f * Constants2D.LinearSlop;
 
     // Contact normals within this sine of an edge normal count as the edge's own normal when filtering chain contacts (about 0.014 degrees).
     private const float GhostTolerance = 2.44140625e-4f;
@@ -152,20 +152,20 @@ public static class Collide2D
     /// (the distance between the two shapes minus the speculative distance), or 0 when no bound is known; it is 0 whenever the manifold has points. The caller may skip the
     /// narrowphase for a pair until the shapes have moved relative to each other by that much, since no point can appear before then.
     /// </summary>
-    internal static Manifold2D Collide(in Shape2D a, in Shape2D b, Transform2 xfBInA, float speculativeDistance, out float clearance)
+    internal static Manifold2D Collide(in Shape2D a, in Shape2D b, Transform2 xfBInA, float speculativeDistance, out float clearance, float flipTolerance = FlipTolerance)
     {
         clearance = 0f;
         if (a._count == 0 || b._count == 0 || !xfBInA.IsFinite || !(speculativeDistance >= 0f) || !float.IsFinite(speculativeDistance)) { return default; }
         if (a._kind == ShapeKind2D.ChainSegment)
         {
-            return b._kind == ShapeKind2D.ChainSegment ? default : CollideChain(in a, in b, xfBInA, speculativeDistance);
+            return b._kind == ShapeKind2D.ChainSegment ? default : CollideChain(in a, in b, xfBInA, speculativeDistance, flipTolerance);
         }
 
         if (b._kind == ShapeKind2D.ChainSegment)
         {
             // Run it with the chain segment as A, then express the result in the original A's frame.
             Transform2 inv = Transform2.InvMul(xfBInA, Transform2.Identity);
-            Manifold2D m = CollideChain(in b, in a, inv, speculativeDistance);
+            Manifold2D m = CollideChain(in b, in a, inv, speculativeDistance, flipTolerance);
             if (m.PointCount == 0) { return default; }
             Vec2 n = -xfBInA.Q.Rotate(m.Normal);
             var p0 = new ManifoldPoint2D(xfBInA.Apply(m.Point0.Point), m.Point0.Separation, SwapId(m.Point0.Id));
@@ -190,7 +190,7 @@ public static class Collide2D
         Poly.LoadTransformed(ref pb, in b, xfBInA);
         var va = new PolyView(in a);
         var vb = new PolyView(in pb);
-        return Convex(in va, in vb, speculativeDistance, false, false, out clearance);
+        return Convex(in va, in vb, speculativeDistance, false, false, out clearance, flipTolerance);
     }
 
     private static uint SwapId(uint id) => ((id & 0xFFu) << 8) | ((id >> 8) & 0xFFu);
@@ -286,7 +286,7 @@ public static class Collide2D
         bound = best; return best;
     }
 
-    private static Manifold2D Convex(in PolyView pa, in PolyView pb, float margin, bool onlyFace0OfA, bool forceReferenceA, out float clearance)
+    private static Manifold2D Convex(in PolyView pa, in PolyView pb, float margin, bool onlyFace0OfA, bool forceReferenceA, out float clearance, float flipTolerance)
     {
         clearance = 0f;
         float rT = pa.R + pb.R;
@@ -311,8 +311,8 @@ public static class Collide2D
         float best = sepA > sepB ? sepA : sepB;
         if (best - rT > margin) { clearance = best - rT - margin; return default; }
 
-        bool flip = pa.N < 2 || (!forceReferenceA && pb.N >= 2 && sepB > sepA + FlipTolerance);
-        return flip ? Face(in pb, in pa, edgeB, sepB, true, margin) : Face(in pa, in pb, edgeA, sepA, false, margin);
+        bool flip = pa.N < 2 || (!forceReferenceA && pb.N >= 2 && sepB > sepA + flipTolerance);
+        return flip ? Face(in pb, in pa, edgeB, sepB, true, margin, flipTolerance) : Face(in pa, in pb, edgeA, sepA, false, margin, flipTolerance);
     }
 
     // Closest points of two segments (Ericson 5.1.9); s and t are exactly 0 or 1 when the closest point is an endpoint.
@@ -344,7 +344,7 @@ public static class Collide2D
 
     // Manifold with reference face i of R and the most anti-parallel face of I as the incident edge. Everything is in A's frame; flip says that R is shape B.
     // coreSep is the smallest distance from the reference face to the incident core's vertices, which the separating-axis search has just computed for this very face.
-    private static Manifold2D Face(in PolyView r, in PolyView inc, int i, float coreSep, bool flip, float margin)
+    private static Manifold2D Face(in PolyView r, in PolyView inc, int i, float coreSep, bool flip, float margin, float flipTolerance)
     {
         int n = r.N;
         int i2 = i + 1 == n ? 0 : i + 1;
@@ -376,7 +376,7 @@ public static class Collide2D
 
         // The cores are apart along the face normal, or the incident feature lies wholly beside the reference edge without the cores overlapping along it
         // (a point or edge past the end of a segment, whose line distance says nothing about the gap).
-        if (coreSep > FlipTolerance || (beside && coreSep >= 0f))
+        if (coreSep > flipTolerance || (beside && coreSep >= 0f))
         {
             // The cores are apart. When the closest points of the two edges are both vertices the contact normal is the line between them,
             // not the face normal (vertex-vertex region); otherwise the faces are in contact and clipping gives the points.
@@ -448,7 +448,7 @@ public static class Collide2D
     // A chain segment (A) against any other shape (B, expressed in A's frame by xf). One-sided segments have a solid side (the right of p1 -> p2); a body whose
     // centre is behind collides with nothing. Contacts with the segment's end vertices are kept only when a smooth surface through the ghost vertices
     // could produce that normal, so a body sliding over a row of segments never feels the joints between them.
-    private static Manifold2D CollideChain(in Shape2D seg, in Shape2D other, Transform2 xf, float margin)
+    private static Manifold2D CollideChain(in Shape2D seg, in Shape2D other, Transform2 xf, float margin, float flipTolerance)
     {
         Vec2 p1 = seg._v[0], p2 = seg._v[1];
         Vec2 g1 = seg._ghost1, g2 = seg._ghost2;
@@ -472,7 +472,7 @@ public static class Collide2D
         pa.Nm[1] = -n;
         var pb = Poly.From(in other, xf);
         var va = new PolyView(in pa); var vb = new PolyView(in pb);
-        Manifold2D m = Convex(in va, in vb, margin, true, false, out _);
+        Manifold2D m = Convex(in va, in vb, margin, true, false, out _, flipTolerance);
         if (m.PointCount == 0) { return m; }
         Manifold2D f = FilterGhosts(in m, p1, p2, g2, has1, has2, n);
         if (f.PointCount == 0)
@@ -480,7 +480,7 @@ public static class Collide2D
             // The other shape's own face was the minimum-translation axis, but it only touches the segment's end vertices with a normal a smooth surface
             // could not produce (a tilted body whose corner has sunk through the line of the segment, with the joint poking into its face).
             // Resolve it against the segment's face instead.
-            Manifold2D alt = Convex(in va, in vb, margin, true, true, out _);
+            Manifold2D alt = Convex(in va, in vb, margin, true, true, out _, flipTolerance);
             if (alt.PointCount > 0) { f = FilterGhosts(in alt, p1, p2, g2, has1, has2, n); }
         }
 

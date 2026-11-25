@@ -1043,7 +1043,7 @@ internal sealed partial class Engine3D
 
         // Nothing static near the whole sweep: no shape can touch anything, so skip the per-shape bounds and casts. The box holds every point of every shape at the start and the end pose
         // (each within MaxExtent of the centre of mass, padded for float rounding), which contains every per-shape sweep box below, so the answer is the same as without this test.
-        double reach = (double)(MaxExtent[b] * 1.01f + 1e-4f);
+        double reach = (double)(MaxExtent[b] * 1.01f + 1e-4f * Opt.UnitsPerMetre);
         var coarse = new Aabb3D(cx + Math.Min(0.0, (double)m.X) - reach, cy + Math.Min(0.0, (double)m.Y) - reach, cz + Math.Min(0.0, (double)m.Z) - reach,
             cx + Math.Max(0.0, (double)m.X) + reach, cy + Math.Max(0.0, (double)m.Y) + reach, cz + Math.Max(0.0, (double)m.Z) + reach);
         var near = new AnyCandidate();
@@ -1093,7 +1093,7 @@ internal sealed partial class Engine3D
         if (spin > Opt.SpeculativeDistance && VehicleOfBody(b) < 0) { best = CornerSweep(b, cx, cy, cz, m, qStart, qEnd, spin, best); }
         if (best >= 1f) { return; }
         Core.BodyReadback.CcdState[b] |= 2;
-        float t = best - 0.005f / len;
+        float t = best - 0.005f * Opt.UnitsPerMetre / len;
         if (t < 0f) { t = 0f; }
         pos[0] = cx + (double)(t * m.X); pos[1] = cy + (double)(t * m.Y); pos[2] = cz + (double)(t * m.Z);
         // Normalised lerp along the shorter arc.

@@ -75,6 +75,34 @@ public sealed class WorldOptions2D
 {
     internal Action<string>? ReplayChanged;
 
+    /// <summary>
+    /// How long one world unit is, in metres. Default one metre. Every default tuned in metres (gravity, sleep threshold, speculative distance, push-out and speed limits, the broadphase margin, hit and restitution thresholds,
+    /// and the default sizes of characters, soft bodies, rods, cloth and fluids) follows it; a value you set explicitly stays in world units. Setting it moves the options still at their defaults and changes the engine's own
+    /// metre-tuned tolerances at the next step. Saved in snapshots (only when it is not one metre) and covered by the world hash.
+    /// </summary>
+    public LengthUnit LengthUnit { get => _lengthUnit; set { ApplyLengthUnit(value); ReplayChanged?.Invoke("WorldOptions2D.LengthUnit"); } }
+    private LengthUnit _lengthUnit;
+    private float _unitScale = 1f;
+
+    /// <summary>World units per metre as a float: the factor every metre-tuned constant is multiplied by. Exactly 1 at the default unit.</summary>
+    internal float UnitsPerMetre => _unitScale;
+
+    internal void SetLengthUnitRaw(LengthUnit unit) { _lengthUnit = unit; _unitScale = unit.Scale; }
+
+    private void ApplyLengthUnit(LengthUnit unit)
+    {
+        float o = _unitScale, n = unit.Scale;
+        _replayGravity = new(UnitDefaults.Follow(_replayGravity.X, 0f, o, n), UnitDefaults.Follow(_replayGravity.Y, -9.81f, o, n));
+        _replaySleepThreshold = UnitDefaults.Follow(_replaySleepThreshold, 0.05f, o, n);
+        _replaySpeculativeDistance = UnitDefaults.Follow(_replaySpeculativeDistance, DefaultSpeculativeDistance, o, n);
+        _replayPushOutVelocity = UnitDefaults.Follow(_replayPushOutVelocity, 3f, o, n);
+        _replayRestitutionThreshold = UnitDefaults.Follow(_replayRestitutionThreshold, 1f, o, n);
+        _replayMaxLinearSpeed = UnitDefaults.Follow(_replayMaxLinearSpeed, 400f, o, n);
+        _replayBroadphaseMargin = UnitDefaults.Follow(_replayBroadphaseMargin, 0.1, o, n);
+        _replayHitSpeedThreshold = UnitDefaults.Follow(_replayHitSpeedThreshold, 1f, o, n);
+        SetLengthUnitRaw(unit);
+    }
+
     /// <summary>Gravity in metres per second squared. Default (0, -9.81).</summary>
     public Vector2F Gravity { get => _replayGravity; set { _replayGravity = value; ReplayChanged?.Invoke("WorldOptions2D.Gravity"); } }
     private Vector2F _replayGravity = new(0f, -9.81f);
@@ -261,8 +289,8 @@ public sealed class WorldOptions2D
         Positive(JointDampingRatio, nameof(JointDampingRatio), true);
         Positive(MaxLinearSpeed, nameof(MaxLinearSpeed), false);
         Positive(MaxRotationPerSubstep, nameof(MaxRotationPerSubstep), false);
-        if (!(SpeculativeDistance >= 0f && SpeculativeDistance <= 1f)) { throw new ArgumentOutOfRangeException(nameof(SpeculativeDistance), SpeculativeDistance, "SpeculativeDistance must be within 0..1."); }
-        if (!(BroadphaseMargin >= 0.0 && BroadphaseMargin <= 100.0)) { throw new ArgumentOutOfRangeException(nameof(BroadphaseMargin), BroadphaseMargin, "BroadphaseMargin must be within 0..100."); }
+        if (!(SpeculativeDistance >= 0f && SpeculativeDistance <= 1f * _unitScale)) { throw new ArgumentOutOfRangeException(nameof(SpeculativeDistance), SpeculativeDistance, "SpeculativeDistance must be within 0..1 metre (1 * LengthUnit.UnitsPerMetre world units)."); }
+        if (!(BroadphaseMargin >= 0.0 && BroadphaseMargin <= 100.0 * _unitScale)) { throw new ArgumentOutOfRangeException(nameof(BroadphaseMargin), BroadphaseMargin, "BroadphaseMargin must be within 0..100 metres (100 * LengthUnit.UnitsPerMetre world units)."); }
     }
 
     private static void Positive(float v, string name, bool allowZero)

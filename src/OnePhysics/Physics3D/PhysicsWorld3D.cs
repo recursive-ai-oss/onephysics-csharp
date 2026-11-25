@@ -56,8 +56,13 @@ public sealed partial class PhysicsWorld3D
         _core.AddSection(_engine.Water);
         _core.AddSection(_engine.Articulations);
         _core.RegisterWorldScale();
+        _core.AddSection(UnitSection(_engine));
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
+
+    // The length unit section of a world, bound to its engine; a fork builds the copy's own.
+    private static LengthUnitSection UnitSection(Engine3D engine) =>
+        new(() => engine.Opt.LengthUnit, unit => engine.Opt.SetLengthUnitRaw(unit), destination => UnitSection((Engine3D)destination.GetSnapshotSection(Engine3D.Id)));
 
     // Sizes the storage to the capacity options, and to a multiple of the body count where an option is 0 and Warmup asked for a default.
     private void ReserveCapacity(bool defaults = false)

@@ -198,7 +198,7 @@ internal sealed partial class Engine3D
     /// <summary>True when any service state differs from a world that never used these features; only then is the extra block written (so such a world's bytes and hash do not change).</summary>
     private bool HasServiceState()
     {
-        if (FilterDirty || Opt.HitSpeedThreshold != 1f) { return true; }
+        if (FilterDirty || Opt.HitSpeedThreshold != 1f * Opt.UnitsPerMetre) { return true; }
         foreach (uint row in LayerMatrix) { if (row != uint.MaxValue) { return true; } }
         var shapes = Core.Shapes;
         for (int s = 0; s < shapes.HighWater; s++)
@@ -233,9 +233,9 @@ internal sealed partial class Engine3D
         public byte[] Flags = new byte[8];
         public byte[] Layers = new byte[8];
 
-        public bool IsDefault()
+        public bool IsDefault(float hitDefault)
         {
-            if (Dirty || Hit != 1f) { return false; }
+            if (Dirty || Hit != hitDefault) { return false; }
             foreach (uint row in Matrix) { if (row != uint.MaxValue) { return false; } }
             for (int i = 0; i < Count; i++) { if (Flags[i] != 0 || Layers[i] != 0) { return false; } }
             return true;
@@ -271,7 +271,7 @@ internal sealed partial class Engine3D
         if (b == null)
         {
             Array.Fill(LayerMatrix, uint.MaxValue);
-            Opt.HitSpeedThreshold = 1f;
+            Opt.HitSpeedThreshold = 1f * Opt.UnitsPerMetre;
             FilterDirty = false;
             if (ShapeFlags.Length < n) { ShapeFlags = new byte[n]; ShapeLayer = new byte[n]; }
             Array.Clear(ShapeFlags);

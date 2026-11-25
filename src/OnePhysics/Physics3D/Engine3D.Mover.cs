@@ -8,7 +8,8 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 internal sealed partial class Engine3D
 {
     private const double MoverBoundary = 2097152.0; // 2^21
-    private const float MoverMinMove = 1e-6f;
+    private float MoverMinMove => 1e-6f * Opt.UnitsPerMetre;
+    private float Ls => Opt.UnitsPerMetre;
     private const int MoverSlideIterations = 5;
 
     private struct PlaneMeta
@@ -219,7 +220,7 @@ internal sealed partial class Engine3D
         fraction = 1f; normal = default; slot = -1;
         float len = d.Length();
         if (!(len > MoverMinMove)) { return false; }
-        var box = MvBox(p, d, in c, 1e-3f);
+        var box = MvBox(p, d, in c, (1e-3f * Ls));
         MvGather(in box, in c);
         bool any = false;
         var q = new QueryParams { Kind = QueryKind.Cast, X = p.X, Y = p.Y, Z = p.Z, Tx = d.X, Ty = d.Y, Tz = d.Z, Mover = c.Capsule, MoverRot = c.Rot };
@@ -246,7 +247,7 @@ internal sealed partial class Engine3D
     {
         for (int i = 0; i < _mvPlaneCount; i++)
         {
-            if (!(_mvPlanes[i].Push > 1e-5f)) { continue; }
+            if (!(_mvPlanes[i].Push > (1e-5f * Ls))) { continue; }
             float nu = Vector3F.Dot(_mvPlanes[i].Normal, c.Up);
             if (nu < c.CosSlope)
             {
@@ -273,10 +274,10 @@ internal sealed partial class Engine3D
         for (int it = 0; it < MoverSlideIterations; it++)
         {
             if (!(r.Length() > MoverMinMove)) { break; }
-            var box = MvBox(p, r, in c, c.Range + 1e-3f);
+            var box = MvBox(p, r, in c, c.Range + (1e-3f * Ls));
             MvGather(in box, in c);
             MvPlanes(p, in c);
-            var v = Mover3D.Solve(_mvPlanes.AsSpan(0, _mvPlaneCount), r, 50, 1e-5f);
+            var v = Mover3D.Solve(_mvPlanes.AsSpan(0, _mvPlaneCount), r, 50, (1e-5f * Ls));
             MvRecordHits(in c);
             float len = v.Length();
             if (!(len > MoverMinMove)) { break; }
@@ -300,15 +301,15 @@ internal sealed partial class Engine3D
         // Lift as far as the step offset allows (a ceiling stops it), move forward, then drop onto whatever is below: walkable ground no higher than the step offset above where we started.
         float raise = c.Step;
         if (MvCast(p0, c.Up * c.Step, in c, out float fu, out _, out _)) { raise = fu * c.Step; }
-        if (raise < 1e-3f) { return false; }
+        if (raise < (1e-3f * Ls)) { return false; }
         var p = MvAdd(p0, c.Up, raise);
         int hits = _mvHitCount;
         MvSlide(ref p, dir * forward, in c);
         var delta = MvDiff(p, p0);
         float progress = Vector3F.Dot(delta, dir);
-        if (!(progress > progressNow + 1e-3f)) { _mvHitCount = hits; return false; }
+        if (!(progress > progressNow + (1e-3f * Ls))) { _mvHitCount = hits; return false; }
         // The slide may have ridden up a rounded edge; the drop must end no higher than the step offset above where we started.
-        float drop = Vector3F.Dot(delta, c.Up) + 2e-3f;
+        float drop = Vector3F.Dot(delta, c.Up) + (2e-3f * Ls);
         if (!(drop > 0f) || !MvCast(p, c.Up * -drop, in c, out float fd, out Vector3F n, out int dropSlot) || Vector3F.Dot(n, c.Up) < c.CosSlope || IsCharacterBody(MvOwner(dropSlot)))
         {
             _mvHitCount = hits;
@@ -318,7 +319,7 @@ internal sealed partial class Engine3D
         var landed = MvAdd(p, c.Up, -(fd * drop));
         // A step goes up: landing at the height we started from is just a slide past the end of a wall.
         float gain = Vector3F.Dot(MvDiff(landed, p0), c.Up);
-        if (gain > c.Step + 1e-3f || gain < 0.5f * c.Skin) { _mvHitCount = hits; return false; }
+        if (gain > c.Step + (1e-3f * Ls) || gain < 0.5f * c.Skin) { _mvHitCount = hits; return false; }
         landedAt = landed;
         return true;
     }
@@ -335,7 +336,7 @@ internal sealed partial class Engine3D
         float want = h.Length();
         var dir = h / want;
         float progress = Vector3F.Dot(MvDiff(p, p0), dir);
-        if (!tryStep || !wall || c.Step <= 0f || !(progress < want - 1e-4f)) { return; }
+        if (!tryStep || !wall || c.Step <= 0f || !(progress < want - (1e-4f * Ls))) { return; }
         int keep = _mvHitCount;
         _mvHitCount = hitsBefore;
         // First try the movement as asked; a short move leaves the capsule's rounded bottom too far behind the step's edge to rest on it (the contact there leans over the slope limit),
@@ -363,18 +364,18 @@ internal sealed partial class Engine3D
 
         float down = -v;
         // Resolve overlaps first and see whether we already stand on walkable ground: then the downward movement is simply absorbed (no sliding down a gentle slope, no sinking).
-        MvGather(MvBox(p, default, in c, c.Range + 1e-3f), in c);
+        MvGather(MvBox(p, default, in c, c.Range + (1e-3f * Ls)), in c);
         MvPlanes(p, in c);
-        var r = Mover3D.Solve(_mvPlanes.AsSpan(0, _mvPlaneCount), default, 50, 1e-5f);
+        var r = Mover3D.Solve(_mvPlanes.AsSpan(0, _mvPlaneCount), default, 50, (1e-5f * Ls));
         bool resting = false;
         for (int i = 0; i < _mvPlaneCount; i++)
         {
             var n = _mvPlanes[i].Normal;
-            if (Vector3F.Dot(n, c.Up) >= c.CosSlope && !IsCharacterBody(MvOwner(_mvMeta[i].Slot)) && _mvPlanes[i].Separation + Vector3F.Dot(r, n) <= 1e-3f)
+            if (Vector3F.Dot(n, c.Up) >= c.CosSlope && !IsCharacterBody(MvOwner(_mvMeta[i].Slot)) && _mvPlanes[i].Separation + Vector3F.Dot(r, n) <= (1e-3f * Ls))
             {
                 resting = true;
                 // Pressing into the ground counts as a hit with it.
-                if (down > MoverMinMove && _mvPlanes[i].Push <= 1e-5f) { _mvPlanes[i].Push = 1e-3f; }
+                if (down > MoverMinMove && _mvPlanes[i].Push <= (1e-5f * Ls)) { _mvPlanes[i].Push = (1e-3f * Ls); }
             }
         }
 
@@ -425,7 +426,7 @@ internal sealed partial class Engine3D
     private GroundState MvDetectGround(Vector3D p, Vector3F settle, ref MoverCtx c, out Vector3F normal, out int slot, out double gx, out double gy, out double gz, out int planesUsed)
     {
         c.Range = 3f * c.Skin;
-        MvGather(MvBox(p, default, in c, c.Range + 1e-3f), in c);
+        MvGather(MvBox(p, default, in c, c.Range + (1e-3f * Ls)), in c);
         MvPlanes(p, in c);
         planesUsed = _mvPlaneCount;
         normal = default; slot = -1; gx = gy = gz = 0.0;
@@ -496,9 +497,9 @@ internal sealed partial class Engine3D
 
         // Settle: undo any overlap with the skin zone the last movement ended in (and report those surfaces as hits), then find the ground: the best surface within the slope limit just under the capsule.
         c.Range = 3f * c.Skin;
-        MvGather(MvBox(p, default, in c, c.Range + 1e-3f), in c);
+        MvGather(MvBox(p, default, in c, c.Range + (1e-3f * Ls)), in c);
         MvPlanes(p, in c);
-        var settle = Mover3D.Solve(_mvPlanes.AsSpan(0, _mvPlaneCount), default, 50, 1e-5f);
+        var settle = Mover3D.Solve(_mvPlanes.AsSpan(0, _mvPlaneCount), default, 50, (1e-5f * Ls));
         MvRecordHits(in c);
         p = MvAdd(p, settle);
         var ground = GroundState.InAir;

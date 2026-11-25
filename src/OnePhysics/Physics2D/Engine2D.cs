@@ -796,7 +796,7 @@ internal sealed partial class Engine2D : ISnapshotSection
             if (hasServices)
             {
                 svc = ReadServices(r, ns, live);
-                if (svc.IsDefault()) { throw r.Error("2D service block holds only default state; the snapshot would not re-serialize to the same bytes"); }
+                if (svc.IsDefault(1f * Opt.UnitsPerMetre)) { throw r.Error("2D service block holds only default state; the snapshot would not re-serialize to the same bytes"); }
             }
 
             if (hasChars)

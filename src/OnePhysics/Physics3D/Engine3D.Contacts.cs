@@ -798,6 +798,8 @@ internal sealed partial class Engine3D
         public bool Approach;
         public Vector3F VA, WA, VB, WB;
         public float Spec, Dt;
+        // World units per metre, for the metre-tuned tolerances the emit step applies (seam distance).
+        public float Unit;
     }
 
     /// <summary>Fills <see cref="ReachLinear"/> and <see cref="ReachTurn"/> of a body from its velocities and the step (nothing for a static body, no swing for a kinematic one).</summary>
@@ -863,7 +865,8 @@ internal sealed partial class Engine3D
         float turn = (bodies.TypeOf(bb) != BodyType.Dynamic ? ReachTurn[ba] : 0f) + (bodies.TypeOf(ba) != BodyType.Dynamic ? ReachTurn[bb] : 0f);
         float sweep = (float.Sqrt(dx * dx + dy * dy + dz * dz) * Core.ContactStepDt) + turn;
         if (!(sweep > (float)FastFactor * spec)) { return spec; }
-        return sweep < MaxPairSpeculation ? sweep : MaxPairSpeculation;
+        float maxPair = MaxPairSpeculation * Opt.UnitsPerMetre;
+        return sweep < maxPair ? sweep : maxPair;
     }
 
     private const float MaxPairSpeculation = 0.25f;
@@ -911,7 +914,7 @@ internal sealed partial class Engine3D
             float pairSpec = spec;
             if (fatOk && Mem.Add(ref reachSum, ba) + Mem.Add(ref reachSum, bb) > fast) { pairSpec = e.FastPairSpeculativeDistance(ba, bb, spec); }
             // Tight boxes (this step's for a shape that moved, the stored fat box for one that did not); the extra margin keeps the shortcut clear of rounding at the threshold.
-            const double Gap = 0.005;
+            double Gap = 0.005 * (double)e.Opt.UnitsPerMetre;
             double gap = pairSpec + Gap;
             ref double a = ref fa, b = ref fb;
             if (Mem.Add(ref boxStamp, sa) == stamp) { a = ref Mem.Add(ref boxes, 6 * sa); }
@@ -956,7 +959,7 @@ internal sealed partial class Engine3D
         trees[0] = bp.TreeAt(0).NodeArray; trees[1] = bp.TreeAt(1).NodeArray; trees[2] = bp.TreeAt(2).NodeArray;
         int stamp = e._stamp, n = 0;
         float spec = e.Opt.SpeculativeDistance, fast = (float)FastFactor * spec;
-        const double Gap = 0.005;
+        double Gap = 0.005 * (double)e.Opt.UnitsPerMetre;
         var gap = Vector256.Create(spec + Gap);
         ulong listed = 0;
         for (int i = lo; i < hi; i++)
@@ -1023,7 +1026,7 @@ internal sealed partial class Engine3D
         if (existingCons < 0)
         {
             ref SkipFrame3 skip = ref Mem.At(_skip, p);
-            if (skip.Clear > 0f && StillApart(in skip, qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]), skip.Spec - pairSpec)) { sc.Reached++; return false; }
+            if (skip.Clear > 0f && StillApart(in skip, qA, qB, (float)(pB[0] - pA[0]), (float)(pB[1] - pA[1]), (float)(pB[2] - pA[2]), skip.Spec - pairSpec, Opt.UnitsPerMetre)) { sc.Reached++; return false; }
         }
 
         var ga = Geoms[GeomOf[sa]]!;
@@ -1131,7 +1134,7 @@ internal sealed partial class Engine3D
         {
             int i = j.I, p = j.P;
             _resFirst[i] = sc.OutCount;
-            var f = new PairFrame { Rwa = j.Rwa, ArmA = j.ArmA, ComDiff = j.ComDiff };
+            var f = new PairFrame { Rwa = j.Rwa, ArmA = j.ArmA, ComDiff = j.ComDiff, Unit = Opt.UnitsPerMetre };
             float spec = j.Spec;
             if (spec > Opt.SpeculativeDistance)
             {
@@ -1187,7 +1190,7 @@ internal sealed partial class Engine3D
         double dz = (pB[2] - pA[2]) + ((double)armB.Z - (double)armA.Z);
         var inv = rwa.Conjugated();
         var bInA = new RigidTransformF(inv.Times(rwb), inv.RotateInline(new Vector3F((float)dx, (float)dy, (float)dz)));
-        var f = new PairFrame { Rwa = rwa, ArmA = armA, ComDiff = new Vector3F((float)(pA[0] - pB[0]), (float)(pA[1] - pB[1]), (float)(pA[2] - pB[2])) };
+        var f = new PairFrame { Rwa = rwa, ArmA = armA, ComDiff = new Vector3F((float)(pA[0] - pB[0]), (float)(pA[1] - pB[1]), (float)(pA[2] - pB[2])), Unit = Opt.UnitsPerMetre };
         if (spec > Opt.SpeculativeDistance)
         {
             // Points farther than the fixed distance are kept only as far as the surfaces at that point close in during the step (see Emit).
@@ -1317,7 +1320,7 @@ internal sealed partial class Engine3D
 
     // Whether a pair recorded as apart still is. Every point of B's shape moves, relative to A, by at most the change of B's centre of mass in A's frame plus the chord of the relative turn times the point's distance
     // from that centre (chord = 2 sin(angle / 2) = twice the vector part of the relative rotation). The slack covers float rounding of the relative pose, which grows with its size.
-    internal static bool StillApart(in SkipFrame3 f, QuaternionF qA, QuaternionF qB, float dx, float dy, float dz, float searchChange = 0f)
+    internal static bool StillApart(in SkipFrame3 f, QuaternionF qA, QuaternionF qB, float dx, float dy, float dz, float searchChange = 0f, float unitsPerMetre = 1f)
     {
         var invA = qA.Conjugated();
         var d = invA.RotateInline(new Vector3F(dx, dy, dz));
@@ -1330,7 +1333,7 @@ internal sealed partial class Engine3D
         float ry = w * -f.Qy + f.Qw * y + (z * -f.Qx - x * -f.Qz);
         float rz = w * -f.Qz + f.Qw * z + (x * -f.Qy - y * -f.Qx);
         float turn = 2f * float.Sqrt(rx * rx + ry * ry + rz * rz);
-        float slack = 0.001f + 1e-6f * (float.Abs(dx) + float.Abs(dy) + float.Abs(dz) + f.Reach);
+        float slack = 0.001f * unitsPerMetre + 1e-6f * (float.Abs(dx) + float.Abs(dy) + float.Abs(dz) + f.Reach);
         float axis2 = f.Nx * f.Nx + f.Ny * f.Ny + f.Nz * f.Nz;
         float used;
         if (axis2 > 0.99f && axis2 < 1.01f)
@@ -1437,7 +1440,7 @@ internal sealed partial class Engine3D
                 for (int k = 0; k < count; k++)
                 {
                     Vector3F pt = map ? mapToA.TransformPoint(m[k].Point) : m[k].Point;
-                    if (IsGhostRegion(soupIsA ? pt : soupFromA.TransformPoint(pt), in tri)) { return; }
+                    if (IsGhostRegion(soupIsA ? pt : soupFromA.TransformPoint(pt), in tri, f.Unit)) { return; }
                 }
             }
         }
@@ -1489,14 +1492,14 @@ internal sealed partial class Engine3D
     // own faces or edges, a hair off the floor's, and every one of its contacts near a seam used to be dropped as a seam contact, leaving the shape no contact at all over a whole cell.
     private const float FlatPatchCosine = 0.9995f;
 
-    private static bool IsGhostRegion(Vector3F pointInSoup, in SoupTriangle3D tri)
+    internal static bool IsGhostRegion(Vector3F pointInSoup, in SoupTriangle3D tri, float unitsPerMetre = 1f)
     {
         int region = ClosestRegion(pointInSoup, tri.V0, tri.V1, tri.V2);
         if (region == 0)
         {
             // A point on a seam is a hair inside the face as often as a hair outside it, and which one float rounding picks depends on the exact pose (a spinning sphere crosses the same seam at
             // different phases). Within 5 mm of an inactive edge (the contact point sits midway between the surfaces, so a penetrating shape puts it off the edge by about half its depth) it counts as being on that edge.
-            return NearInactiveEdge(pointInSoup, in tri, 0, tri.V0, tri.V1) || NearInactiveEdge(pointInSoup, in tri, 1, tri.V1, tri.V2) || NearInactiveEdge(pointInSoup, in tri, 2, tri.V2, tri.V0);
+            return NearInactiveEdge(pointInSoup, in tri, 0, tri.V0, tri.V1, unitsPerMetre) || NearInactiveEdge(pointInSoup, in tri, 1, tri.V1, tri.V2, unitsPerMetre) || NearInactiveEdge(pointInSoup, in tri, 2, tri.V2, tri.V0, unitsPerMetre);
         }
 
         if (region <= 3) { return !tri.IsEdgeActive(region - 1); }
@@ -1506,7 +1509,7 @@ internal sealed partial class Engine3D
 
     private const float SeamTolerance = 5e-3f;
 
-    private static bool NearInactiveEdge(Vector3F p, in SoupTriangle3D tri, int edge, Vector3F a, Vector3F b)
+    private static bool NearInactiveEdge(Vector3F p, in SoupTriangle3D tri, int edge, Vector3F a, Vector3F b, float unitsPerMetre)
     {
         if (tri.IsEdgeActive(edge)) { return false; }
         // Distance from the point to the segment (Ericson 5.1.2).
@@ -1515,7 +1518,8 @@ internal sealed partial class Engine3D
         float t = len2 > 0f ? Vector3F.Dot(ap, ab) / len2 : 0f;
         t = t < 0f ? 0f : t > 1f ? 1f : t;
         Vector3F d = ap - ab * t;
-        return Vector3F.Dot(d, d) <= SeamTolerance * SeamTolerance;
+        float seam = SeamTolerance * unitsPerMetre;
+        return Vector3F.Dot(d, d) <= seam * seam;
     }
 
     /// <summary>Which feature of a triangle is nearest to a point (Ericson, Real-Time Collision Detection, 5.1.5): 0 face, 1..3 edge 0..2, 4..6 vertex 0..2.</summary>
@@ -1600,8 +1604,9 @@ internal sealed partial class Engine3D
     public bool RecycleManifolds = true;
 
     // Bound on how far any point of B has moved relative to A since the manifold was made (metres, with the turn scaled by B's extent), and how deep a reused point may have sunk.
-    private const float RecycleTol = 0.0035f;
-    private const float RecycleDepth = 0.02f;
+    // Metre-tuned reuse tolerances, in world units.
+    private float RecycleTol => 0.0035f * Opt.UnitsPerMetre;
+    private float RecycleDepth => 0.02f * Opt.UnitsPerMetre;
     // A normal counts as a face normal when it is parallel to one to within about a quarter of a degree.
     private const float FaceParallel = 0.99999f;
 

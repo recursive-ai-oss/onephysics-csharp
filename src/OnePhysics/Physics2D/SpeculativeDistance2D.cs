@@ -10,7 +10,10 @@ internal sealed class SpeculativeDistance2D(Engine2D engine) : ISnapshotSection
 {
     public int SectionId => 0x43455053;
     public bool IsOptional => true;
-    public bool IsPresent => System.BitConverter.SingleToInt32Bits(engine.Opt.SpeculativeDistance) != System.BitConverter.SingleToInt32Bits(WorldOptions2D.DefaultSpeculativeDistance);
+    public bool IsPresent => System.BitConverter.SingleToInt32Bits(engine.Opt.SpeculativeDistance) != System.BitConverter.SingleToInt32Bits(DefaultForUnit());
+
+    private float DefaultForUnit() => WorldOptions2D.DefaultSpeculativeDistance * engine.Opt.UnitsPerMetre;
+
 
     public void Write(StateWriter w)
     {
@@ -24,11 +27,11 @@ internal sealed class SpeculativeDistance2D(Engine2D engine) : ISnapshotSection
     {
         if (r.ReadInt32() != 1) { throw r.Error("unsupported speculative distance section version"); }
         float v = r.ReadSingle();
-        if (!(v >= 0f && v <= 1f)) { throw r.Error("invalid speculative distance"); }
+        if (!(v >= 0f && v <= 1e6f)) { throw r.Error("invalid speculative distance"); }
         engine.Opt.SpeculativeDistance = v;
     }
 
-    public void Reset() => engine.Opt.SpeculativeDistance = WorldOptions2D.DefaultSpeculativeDistance;
+    public void Reset() => engine.Opt.SpeculativeDistance = DefaultForUnit();
 
     public ISnapshotSection Fork(WorldCore destination) => new SpeculativeDistance2D((Engine2D)destination.GetSnapshotSection(engine.SectionId));
 }
