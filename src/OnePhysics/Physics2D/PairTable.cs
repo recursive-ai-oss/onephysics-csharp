@@ -35,6 +35,17 @@ internal sealed partial class PairTable
     /// <summary>Makes room for <paramref name="count"/> entries without growing.</summary>
     public void Reserve(int count)
     {
+        // One step to the final size when the table is empty (nothing to move), so a table rebuilt for a known count does not pass through every smaller size.
+        if (_count == 0 && count * 2 > _entries.Length)
+        {
+            int n = _entries.Length;
+            int doublings = 0;
+            while (count * 2 > n) { n *= 2; doublings++; }
+            _entries = NewEntries(n);
+            _shift -= doublings;
+            return;
+        }
+
         while (count * 2 > _entries.Length) { Grow(); }
     }
 

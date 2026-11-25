@@ -6,6 +6,8 @@ What changed for hosts in each release, newest first. "Moved results" lists the 
 
 ## [Unreleased]
 
+- **`Fork()` allocates about half as much in 3D (no result, snapshot or hash moves).** A fork no longer copies per-step scratch that the next step rewrites (pair update and apply lists, skip hints, colour sort buffer, per-body step rows), joint records for slots that never held a joint, or broadphase and tree rebuild scratch, and it rebuilds the pair map at the size its live pairs need. Bytes per fork, one thread: 3000-body sleep-wake scene 10.3 to 4.3 MB, 1500-part ragdoll pile 10.3 to 5.3 MB, 3000-body pile 22.6 to 10.6 MB; 2D pile 16.9 to 15.1 MB. Median fork time, x64, 1/7/60 steps after the mark: 3D pile 1.0-3.2 ms and ragdoll pile 0.5-1.6 ms (snapshot plus restore 6.6-7.2 and 3.7-3.8 ms); the sleep-wake scene 0.34-1.35 ms against 1.04-1.38 ms, now cheaper in most runs. `bar rollback-timing` reports bytes allocated per fork.
+
 ## [1.3.0] - 2026-11-25
 
 Adds the network seam: `Mark`/`RollbackTo` rollback marks, body-set transfer between worlds (characters and vehicles included) and partial worlds streamed by interest; all three packages at 1.3.0. No existing result moves: every 1.2.0 world hash and snapshot is unchanged.

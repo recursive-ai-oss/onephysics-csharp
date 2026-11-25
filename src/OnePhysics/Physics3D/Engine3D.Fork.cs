@@ -43,21 +43,12 @@ internal sealed partial class Engine3D
         _moveState = new byte[s._moveState.Length]; _moveBox = new Aabb3D[s._moveBox.Length];
         _stamp = s._stamp;
         _boxes = (double[])s._boxes.Clone();
-        _updateList = (int[])s._updateList.Clone();
-        _resStatus = (byte[])s._resStatus.Clone();
-        _resFirst = (int[])s._resFirst.Clone();
-        _resCount = (int[])s._resCount.Clone();
-        _updateCount = s._updateCount;
         _deferWrite = s._deferWrite;
         _sleepers = (int[])s._sleepers.Clone();
         _sleeperCount = s._sleeperCount;
         _isSleeper = (byte[])s._isSleeper.Clone();
         _initCount = s._initCount;
-        _applyIdx = (int[])s._applyIdx.Clone();
-        _applyCount = (int[])s._applyCount.Clone();
-        _writeMask = (ulong[])s._writeMask.Clone();
         _pairChunkCount = (int[])s._pairChunkCount.Clone();
-        _skip = (SkipFrame3[])s._skip.Clone();
         RecycleManifolds = s.RecycleManifolds;
         FluidHandles.CopyFrom(s.FluidHandles);
         _buoyBits = (int[])s._buoyBits.Clone();
@@ -153,7 +144,6 @@ internal sealed partial class Engine3D
         _liteStImpulse = s._liteStImpulse;
         _jointParams = s._jointParams;
         _liteJointParams = s._liteJointParams;
-        _sortTmp = (int[])s._sortTmp.Clone();
         VehHandles.CopyFrom(s.VehHandles);
         _vehOfBody = (int[])s._vehOfBody.Clone();
         _castChassis = s._castChassis;
@@ -171,11 +161,6 @@ internal sealed partial class Engine3D
         ShapeHead = (int[])s.ShapeHead.Clone();
         ShapeTail = (int[])s.ShapeTail.Clone();
         Dp = (float[])s.Dp.Clone();
-        StartPos = (double[])s.StartPos.Clone();
-        StartRot = (float[])s.StartRot.Clone();
-        Dq = (float[])s.Dq.Clone();
-        Pk = (float[])s.Pk.Clone();
-        WInvI = (float[])s.WInvI.Clone();
         SlotOf = (int[])s.SlotOf.Clone();
         KernelWidth = s.KernelWidth;
         GeomOf = (int[])s.GeomOf.Clone();
@@ -202,10 +187,11 @@ internal sealed partial class Engine3D
         s._dp3.CopyTo(_dp3, 0);
         // The staging arrays a restore reads into and the solver's batch scratch (Wide, WideIdx, WideJ, WideJIdx, BatchInfo, JScratch) are sized on first use, so a fork leaves them empty.
         ConsistencyProblem = s.ConsistencyProblem;
-        // The record array is sized by constraint slots and holds a record only where a joint is or was (type or generation set); the rest is left zero instead of copying megabytes of empty records.
+        // The record array is sized by constraint slots and holds a record only where a joint is or was (type or generation set). The copy is as long as that and no longer: creating a joint grows it
+        // (EnsureJointSlots), and a restored world already has records for fewer slots than it has constraints, so nothing reads a joint record of a contact. A pile with no joints no longer allocates megabytes of empty records.
         int usedJoints = s.Joints.Length;
         while (usedJoints > 0 && s.Joints[usedJoints - 1].Type == 0 && s.Joints[usedJoints - 1].Gen == 0) { usedJoints--; }
-        Joints = new JointData3D[s.Joints.Length];
+        Joints = new JointData3D[Math.Max(usedJoints, 16)];
         Array.Copy(s.Joints, Joints, usedJoints);
         for (int i = 0; i < usedJoints; i++) { Joints[i].Path = (Vector3F[]?)s.Joints[i].Path?.Clone(); }
         JointForce = (float[])s.JointForce.Clone();
@@ -215,7 +201,9 @@ internal sealed partial class Engine3D
         _needBind = s._needBind;
         _pendingJointHertz = s._pendingJointHertz;
         _pendingJointDamping = s._pendingJointDamping;
-        PairMap.CopyFrom(s.PairMap);
+        // The pair map is only probed by key, so it is rebuilt from the pair table, as a restore does, at the size the live pairs need: a clone carried the source's whole table, grown by doubling.
+        PairMap.Reserve(s.PairMap.Count);
+        for (int p = 0; p < PairHigh; p++) { if (PairLive[p]) { PairMap.Set(PairKey(PairA[p], PairB[p]), p); } }
         foreach (var g in s.Geoms) { Geoms.Add(g?.CloneForFork()); }
         foreach (var entry in s._geomIndex) { _geomIndex.Add(entry.Key, entry.Value); }
         SoftData = new SoftBodyData?[s.SoftData.Length];
@@ -227,5 +215,8 @@ internal sealed partial class Engine3D
         Fluids = new FluidDef?[s.Fluids.Length];
         for (int i = 0; i < Fluids.Length; i++) { Fluids[i] = s.Fluids[i]?.Clone(); }
         _awakeSoftCount = 0; _scCount = 0;
+        // Scratch that every step rewrites before it reads, and that grows on demand, starts as a new engine's does (a restore leaves it alone too): the pair update lists, the apply lists, the pair skip hints,
+        // the colour sort buffer, and the per-body step rows (start pose, accumulated rotation, packed velocity rows, world inverse inertia). Only the per-body rows are sized here.
+        EnsureBodies(Core.Bodies.HighWater);
     }
 }
