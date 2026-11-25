@@ -39,8 +39,8 @@ internal static class FuzzInterest
         catch (ArgumentException) { }
     }
 
-    /// <summary>Messages 0..count of a small authority world: a stack, a ragdoll and a joint chain with the region's edge through them.</summary>
-    public static byte[][] Messages(int dimension, int count)
+    /// <summary>Messages 0..count of a small authority world: a stack, a ragdoll and a joint chain with the region's edge through them; with <paramref name="entities"/> also a car and a character.</summary>
+    public static byte[][] Messages(int dimension, int count, bool entities = false)
     {
         var result = new byte[count + 1][];
         if (dimension == 2)
@@ -49,6 +49,7 @@ internal static class FuzzInterest
             world.AddBox(new(40, 1), at: new(0, -0.5), type: BodyType.Static);
             for (int i = 0; i < 4; i++) { world.AddBox(new(1, 1), at: new(0.02 * i, 0.5 + 1.001 * i)); }
             world.AddRagdoll(RecursiveAI.OnePhysics.Physics2D.RagdollDef.Humanoid, new Vector2D(5, 1.2), 1.5f);
+            if (entities) { world.AddCar(new Vector2D(-6, 0)); world.AddCharacter(new Vector2D(1, 1)); }
             var pivot = world.AddBox(new(0.2f, 0.2f), at: new(-4, 3), type: BodyType.Static);
             var prev = pivot;
             for (int i = 0; i < 4; i++)
@@ -71,6 +72,11 @@ internal static class FuzzInterest
             world.AddBox(new(40, 1, 40), at: new(0, -0.5, 0), type: BodyType.Static);
             for (int i = 0; i < 4; i++) { world.AddBox(new(1, 1, 1), at: new(0.02 * i, 0.5 + 1.001 * i, 0)); }
             world.AddRagdoll(RecursiveAI.OnePhysics.Physics3D.RagdollDef.Humanoid, new Vector3D(5, 1.2, 0));
+            if (entities)
+            {
+                world.AddVehicle(world.AddBox(new(1.8f, 0.6f, 4.2f), at: new(-6, 1.0, 4), density: 357f), RecursiveAI.OnePhysics.Physics3D.VehicleDef.Car);
+                world.AddCharacter(new Vector3D(1, 1, 2));
+            }
             var pivot = world.AddBox(new(0.2f, 0.2f, 0.2f), at: new(-4, 3, 0), type: BodyType.Static);
             var prev = pivot;
             for (int i = 0; i < 4; i++)

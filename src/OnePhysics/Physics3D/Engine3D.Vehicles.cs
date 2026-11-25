@@ -126,6 +126,16 @@ internal sealed partial class Engine3D
         return v;
     }
 
+    /// <summary>Puts a vehicle built from a packet record into the lowest free vehicle slot.</summary>
+    private int RegisterVehicle(VehicleState s)
+    {
+        int v = VehHandles.Allocate();
+        if (v >= Vehicles.Length) { Array.Resize(ref Vehicles, Math.Max(v + 1, Vehicles.Length * 2)); }
+        Vehicles[v] = s;
+        IndexVehicleBody(s.Body, v);
+        return v;
+    }
+
     private void IndexVehicleBody(int body, int vehicle)
     {
         if (body >= _vehOfBody.Length)
@@ -702,7 +712,9 @@ internal sealed partial class Engine3D
         foreach (var ab in d.AntiRollBars) { w.NamedInt32(ab.Left); w.NamedInt32(ab.Right); w.NamedSingle(ab.Stiffness); }
     }
 
-    private VehicleDef ReadVehicleDef(StateReader r)
+    private VehicleDef ReadVehicleDef(StateReader r) => ReadVehicleDef(r, Opt.UnitsPerMetre);
+
+    private static VehicleDef ReadVehicleDef(StateReader r, float unitsPerMetre)
     {
         var d = new VehicleDef();
         int nw = r.ReadCount(150, "vehicle wheels");
@@ -749,7 +761,7 @@ internal sealed partial class Engine3D
         if (na > 16) { throw r.Error("more than 16 anti-roll bars"); }
         d.AntiRollBars = new AntiRollBarDef[na];
         for (int i = 0; i < na; i++) { d.AntiRollBars[i] = new AntiRollBarDef { Left = r.ReadInt32(), Right = r.ReadInt32(), Stiffness = r.ReadSingle() }; }
-        d.Units = Opt.UnitsPerMetre;
+        d.Units = unitsPerMetre;
         try { d.Validate(); }
         catch (ArgumentException e) { throw r.Error("invalid vehicle definition: " + e.Message); }
         return d;

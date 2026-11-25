@@ -33,6 +33,9 @@ internal sealed class InterestRoles : IExtractFilter
     /// <summary>Joints the client holds: both bodies present, one of them dynamic there, and a kind a packet can carry.</summary>
     public bool[] Desired = Array.Empty<bool>();
 
+    /// <summary>Bodies the roles left out because a packet cannot carry them, with their role had they been carried.</summary>
+    public readonly List<InterestSkip> Skipped = new();
+
     private InterestRoles(WorldCore core, byte[] role) { _core = core; Role = role; }
 
     /// <summary>The body is a dynamic inside body: the only kind of body the client's solver moves.</summary>
@@ -64,7 +67,7 @@ internal sealed class InterestRoles : IExtractFilter
         var role = new byte[high];
         for (int b = 0; b < high; b++) { if (inside[b] && bodies.IsLive(b)) { role[b] = Inside; } }
         var result = new InterestRoles(core, role);
-        if (!proxies && !withJoints) { return result; }
+        if (!proxies && !withJoints) { result.SkipUncarriable(e); return result; }
 
         if (proxies)
         {
@@ -95,8 +98,29 @@ internal sealed class InterestRoles : IExtractFilter
             for (int b = 0; b < high; b++) { if (near[b] && role[b] == Absent && bodies.IsLive(b)) { role[b] = Proxy; } }
         }
 
+        result.SkipUncarriable(e);
         if (withJoints) { result.FindJoints(e); }
         return result;
+    }
+
+    /// <summary>
+    /// Takes out of the roles every body a packet cannot carry (an articulation, a rope attachment, a character holding a body that is not in the stream...). They are never sent and never part of the shared hash; the host
+    /// sees them in <see cref="Skipped"/>. Done once the proxies are known, because a hold may be on a proxy.
+    /// </summary>
+    private void SkipUncarriable(ITransferEngine e)
+    {
+        var present = new bool[Role.Length];
+        bool any = false;
+        for (int b = 0; b < present.Length; b++) { if (Role[b] != Absent) { present[b] = true; any = true; } }
+        if (!any) { return; }
+        var skipped = new List<(int Body, string Reason)>();
+        e.FindUncarriable(present, skipped);
+        skipped.Sort((x, y) => x.Body.CompareTo(y.Body));
+        foreach (var (body, reason) in skipped)
+        {
+            Skipped.Add(new InterestSkip(_core.HandleOfBody(body), Role[body] == Inside, reason));
+            Role[body] = Absent;
+        }
     }
 
     private void FindJoints(ITransferEngine e)

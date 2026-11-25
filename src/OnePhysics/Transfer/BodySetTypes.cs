@@ -47,6 +47,12 @@ public sealed class BodySetPacket
     /// <summary>The length unit of the source world, in metres per world unit. A world accepts a packet only when its own unit is equal.</summary>
     public double MetresPerUnit => Model.MetresPerUnit;
 
+    /// <summary>Characters carried (their bodies are among the set's bodies).</summary>
+    public int CharacterCount { get { int n = 0; foreach (var e in Model.Entities) { if (e.Kind == PacketEntity.KindCharacter) { n++; } } return n; } }
+
+    /// <summary>Vehicles carried (their chassis are among the set's bodies).</summary>
+    public int VehicleCount { get { int n = 0; foreach (var e in Model.Entities) { if (e.Kind == PacketEntity.KindVehicle) { n++; } } return n; } }
+
     /// <summary>Bodies that were in the set (anchors not counted).</summary>
     public int BodyCount => Model.MemberCount;
 
@@ -97,10 +103,14 @@ public sealed class BodySetHandleMap
     private readonly ShapeHandle[] _oldShapes, _newShapes;
     private readonly JointHandle[] _oldJoints, _newJoints;
     private readonly RagdollHandle[] _oldRagdolls, _newRagdolls;
+    private readonly CharacterHandle[] _oldCharacters, _newCharacters;
+    private readonly VehicleHandle[] _oldVehicles, _newVehicles;
     private readonly int _members;
 
-    internal BodySetHandleMap(BodyHandle[] oldBodies, BodyHandle[] newBodies, int members, ShapeHandle[] oldShapes, ShapeHandle[] newShapes, JointHandle[] oldJoints, JointHandle[] newJoints, RagdollHandle[] oldRagdolls, RagdollHandle[] newRagdolls)
+    internal BodySetHandleMap(BodyHandle[] oldBodies, BodyHandle[] newBodies, int members, ShapeHandle[] oldShapes, ShapeHandle[] newShapes, JointHandle[] oldJoints, JointHandle[] newJoints, RagdollHandle[] oldRagdolls, RagdollHandle[] newRagdolls,
+        CharacterHandle[] oldCharacters, CharacterHandle[] newCharacters, VehicleHandle[] oldVehicles, VehicleHandle[] newVehicles)
     {
+        _oldCharacters = oldCharacters; _newCharacters = newCharacters; _oldVehicles = oldVehicles; _newVehicles = newVehicles;
         _oldBodies = oldBodies; _newBodies = newBodies; _members = members;
         _oldShapes = oldShapes; _newShapes = newShapes; _oldJoints = oldJoints; _newJoints = newJoints; _oldRagdolls = oldRagdolls; _newRagdolls = newRagdolls;
     }
@@ -131,6 +141,18 @@ public sealed class BodySetHandleMap
 
     /// <summary>Ragdoll handles in the receiving world, parallel to <see cref="OldRagdolls"/>.</summary>
     public ReadOnlySpan<RagdollHandle> NewRagdolls => _newRagdolls;
+
+    /// <summary>Character handles in the source world, ascending by source slot.</summary>
+    public ReadOnlySpan<CharacterHandle> OldCharacters => _oldCharacters;
+
+    /// <summary>Character handles in the receiving world, parallel to <see cref="OldCharacters"/> (get the character with <c>world.GetCharacter</c>).</summary>
+    public ReadOnlySpan<CharacterHandle> NewCharacters => _newCharacters;
+
+    /// <summary>Vehicle handles in the source world, ascending by source slot.</summary>
+    public ReadOnlySpan<VehicleHandle> OldVehicles => _oldVehicles;
+
+    /// <summary>Vehicle handles in the receiving world, parallel to <see cref="OldVehicles"/> (get the vehicle with <c>world.GetVehicle</c>).</summary>
+    public ReadOnlySpan<VehicleHandle> NewVehicles => _newVehicles;
 
     /// <summary>The new handle of a body of the set (found by slot and generation, so a handle works whichever world id the packet remembers). Returns false for a handle that was not in the set.</summary>
     public bool TryMap(BodyHandle old, out BodyHandle mapped)
@@ -168,7 +190,7 @@ public sealed class BodySetHandleMap
     }
 }
 
-/// <summary>A set of bodies cannot be extracted or a packet cannot be inserted, for a reason in the world's state: a joint cuts through the set and no boundary policy was chosen, a body belongs to a character, vehicle or other feature the packet does not carry, the length units differ. The world is unchanged (a moved set is removed only after the packet is built).</summary>
+/// <summary>A set of bodies cannot be extracted or a packet cannot be inserted, for a reason in the world's state: a joint cuts through the set and no boundary policy was chosen, a body belongs to a bicycle, articulation, rod or other feature the packet does not carry, a character holds a rope or a body that is not in the set, the length units differ. The world is unchanged (a moved set is removed only after the packet is built).</summary>
 public sealed class BodySetTransferException : PhysicsException
 {
     /// <summary>Creates the exception with a message naming what stopped the transfer.</summary>

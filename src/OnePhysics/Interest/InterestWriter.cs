@@ -35,6 +35,14 @@ public sealed class InterestWriter
     /// <summary>2 or 3.</summary>
     public int Dimension => _layout.Dimension;
 
+    /// <summary>
+    /// The bodies the last <see cref="Write"/> left out because a packet cannot carry them: an articulation link, a body with a rope or cloth attached, a rail vehicle, a bicycle, a character holding a body that is not in the stream,
+    /// and the like. A skipped body is not an error: it is simply absent from the client. Empty before the first <see cref="Write"/>.
+    /// </summary>
+    public IReadOnlyList<InterestSkip> LastSkipped => _skipped;
+
+    private IReadOnlyList<InterestSkip> _skipped = Array.Empty<InterestSkip>();
+
     /// <summary>The sequence number the next message will carry: 0 before the first.</summary>
     public long NextSequence => _next;
 
@@ -57,7 +65,7 @@ public sealed class InterestWriter
         Check(region);
         var core = _e.Core;
         core.FlushPostStep();
-        var roles = InterestRoles.Compute(_e, region, false, false);
+        var roles = InterestRoles.Compute(_e, region, _options.Proxies, false);
         var items = new List<(int, int, byte, byte[])>();
         for (int b = 0; b < roles.Role.Length; b++)
         {
@@ -79,7 +87,6 @@ public sealed class InterestWriter
     /// </summary>
     /// <param name="region">What the client sees now; it may differ from message to message (a moving interest).</param>
     /// <returns>The message bytes (<c>docs/spec/interest.md</c>), identical on every platform.</returns>
-    /// <exception cref="BodySetTransferException">A body that would be sent belongs to a character, vehicle, articulation, rod, active ragdoll or another feature a packet does not carry; the message is not written and the writer is unchanged. Keep such bodies out of the region and away from it.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="region"/> is null.</exception>
     /// <exception cref="ArgumentException">The region's dimension differs from the world's.</exception>
     public byte[] Write(InterestRegion region)
@@ -93,8 +100,9 @@ public sealed class InterestWriter
         int high = role.Length;
 
         bool PresentBefore(int b) => b < _prevRole.Length && _prevRole[b] != 0 && bodies.Handles.IsAlive(b, _prevGen[b]);
-        // A dynamic body changes how the client simulates it when its role changes (inside is dynamic there, a proxy is kinematic), so it leaves and enters again; any other kind just takes the new role.
-        bool Reenter(int b) => PresentBefore(b) && role[b] != 0 && _prevRole[b] != role[b] && bodies.TypeOf(b) == BodyType.Dynamic;
+        // A dynamic body changes how the client simulates it when its role changes (inside is dynamic there, a proxy is kinematic), so it leaves and enters again; so does a body that carries a character or vehicle, because
+        // only an inside body comes with that state. Any other kind just takes the new role.
+        bool Reenter(int b) => PresentBefore(b) && role[b] != 0 && _prevRole[b] != role[b] && (bodies.TypeOf(b) == BodyType.Dynamic || _e.HasEntity(b));
 
         var leaves = new List<(int Slot, int Gen)>();
         for (int b = 0; b < _prevRole.Length; b++)
@@ -204,6 +212,7 @@ public sealed class InterestWriter
         var bytes = w.ToArray();
 
         // ---- remember
+        _skipped = roles.Skipped.Count == 0 ? Array.Empty<InterestSkip>() : roles.Skipped.ToArray();
         _prevRole = (byte[])role.Clone();
         _prevGen = new int[high];
         _prevState = new byte[]?[high];

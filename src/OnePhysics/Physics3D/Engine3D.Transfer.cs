@@ -18,36 +18,39 @@ internal sealed partial class Engine3D : ITransferEngine
 
     // ------------------------------------------------------------------ extraction
 
-    void ITransferEngine.CheckMembers(int[] members, bool[] inSet)
+    void ITransferEngine.CheckMembers(int[] members, bool[] inSet) => CheckMembers(members, inSet, inSet);
+
+    /// <summary>
+    /// Refuses a set that takes part in something a packet does not carry. <paramref name="selected"/> marks the bodies whose own features are checked (<paramref name="members"/>, as a mask) and
+    /// <paramref name="travelling"/> the bodies that travel together, which a character's hold has to stay inside.
+    /// </summary>
+    private void CheckMembers(int[] members, bool[] selected, bool[] travelling)
     {
         var s = new RegionSelection(Core.Bodies.HighWater);
         foreach (int b in members) { s.AddBody(b); }
-        for (int i = 0; i < Core.Shapes.HighWater; i++) { if (Core.Shapes.Handles.IsLive(i) && inSet[Core.Shapes.Owner[i]]) { s.Add("shape", i); } }
+        foreach (int b in members) { for (int sh = ShapeHead[b]; sh >= 0; sh = NextShape[sh]) { s.Add("shape", sh); } }
         Rods.CloseRegion(s);
         Cables.CloseRegion(s);
         _articulations?.CloseRegion(s);
-        _charExt?.CloseRegion(s);
         _actuators?.SelectRegion(s);
         _destruction?.SelectRegion(s);
-        CheckRagdolls(inSet);
+        CheckRagdolls(selected);
 
-        for (int i = 0; i < VehHandles.HighWater; i++) { if (VehHandles.IsLive(i) && inSet[Vehicles[i]!.Body]) { s.Add("vehicle", i); } }
-        for (int i = 0; i < BikeHandles.HighWater; i++) { if (BikeHandles.IsLive(i) && (inSet[Bikes[i]!.Frame] || inSet[Bikes[i]!.Fork])) { s.Add("bicycle", i); } }
-        for (int i = 0; i < CharHandles.HighWater; i++) { if (CharHandles.IsLive(i) && inSet[CharBody[i]]) { s.Add("character", i); } }
+        for (int i = 0; i < BikeHandles.HighWater; i++) { if (BikeHandles.IsLive(i) && (selected[Bikes[i]!.Frame] || selected[Bikes[i]!.Fork])) { s.Add("bicycle", i); } }
         for (int i = 0; i < RailHandles.HighWater; i++)
         {
             if (!RailHandles.IsLive(i)) { continue; }
             var r = Rails[i]!;
-            if (r.Car >= 0 && inSet[r.Car]) { s.Add("rail vehicle", i); }
-            else { foreach (int w in r.Ws) { if (w >= 0 && w < inSet.Length && inSet[w]) { s.Add("rail vehicle", i); } } }
+            if (r.Car >= 0 && selected[r.Car]) { s.Add("rail vehicle", i); }
+            else { foreach (int w in r.Ws) { if (w >= 0 && w < selected.Length && selected[w]) { s.Add("rail vehicle", i); } } }
         }
 
-        for (int i = 0; i < TrackHandles.HighWater; i++) { if (TrackHandles.IsLive(i) && ((Tracks[i]!.Ballast >= 0 && inSet[Tracks[i]!.Ballast]) || (Tracks[i]!.Rails >= 0 && inSet[Tracks[i]!.Rails]))) { s.Add("rail track", i); } }
+        for (int i = 0; i < TrackHandles.HighWater; i++) { if (TrackHandles.IsLive(i) && ((Tracks[i]!.Ballast >= 0 && selected[Tracks[i]!.Ballast]) || (Tracks[i]!.Rails >= 0 && selected[Tracks[i]!.Rails]))) { s.Add("rail track", i); } }
         for (int i = 0; i < LinkHandles.HighWater; i++)
         {
             if (!LinkHandles.IsLive(i)) { continue; }
             ref ClothLink l = ref Links[i];
-            if (l.Kind == (int)ClothLinkKind.Attachment && (uint)l.Rigid < (uint)inSet.Length && inSet[l.Rigid]) { s.Add("cloth attachment", i); }
+            if (l.Kind == (int)ClothLinkKind.Attachment && (uint)l.Rigid < (uint)selected.Length && selected[l.Rigid]) { s.Add("cloth attachment", i); }
         }
 
         foreach (var kv in s.Entities)
@@ -60,17 +63,17 @@ internal sealed partial class Engine3D : ITransferEngine
 
         foreach (int b in members)
         {
+            int ch = CharacterOfBody(b);
+            if (ch >= 0) { var why = CharacterRefusal(ch, travelling); if (why != null) { throw Refuse(why); } }
             if (Core.BodyTimeScaleOf(b) != 1f) { throw Refuse("Body-set transfer: body " + Core.HandleOfBody(b) + " has a local time scale, which a packet does not carry."); }
             foreach (var tile in Core.ScaleStore.Tiles) { if (Array.IndexOf(tile.Bodies, b) >= 0) { throw Refuse("Body-set transfer: body " + Core.HandleOfBody(b) + " belongs to a streamed tile, which a packet does not carry."); } }
-        }
-
-        for (int sh = 0; sh < Core.Shapes.HighWater; sh++)
-        {
-            if (!Core.Shapes.Handles.IsLive(sh) || !inSet[Core.Shapes.Owner[sh]]) { continue; }
-            if (Core.ContactMaterials.MaterialCount(sh) > 0) { throw Refuse("Body-set transfer: shape " + Core.HandleOfShape(sh) + " has per-triangle contact materials, which a packet does not carry."); }
-            var g = Geoms[GeomOf[sh]]!;
-            if (g.Recipe.Length > 0 && (g.Recipe[0] == ShapeSpec3D.KVoxelGrid))
-            { throw Refuse("Body-set transfer: shape " + Core.HandleOfShape(sh) + " is a voxel grid, which is edited in place and has no immutable recipe to carry."); }
+            for (int sh = ShapeHead[b]; sh >= 0; sh = NextShape[sh])
+            {
+                if (Core.ContactMaterials.MaterialCount(sh) > 0) { throw Refuse("Body-set transfer: shape " + Core.HandleOfShape(sh) + " has per-triangle contact materials, which a packet does not carry."); }
+                var g = Geoms[GeomOf[sh]]!;
+                if (g.Recipe.Length > 0 && (g.Recipe[0] == ShapeSpec3D.KVoxelGrid))
+                { throw Refuse("Body-set transfer: shape " + Core.HandleOfShape(sh) + " is a voxel grid, which is edited in place and has no immutable recipe to carry."); }
+            }
         }
     }
 

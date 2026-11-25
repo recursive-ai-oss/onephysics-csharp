@@ -126,6 +126,16 @@ internal sealed partial class Engine2D
         return v;
     }
 
+    /// <summary>Puts a vehicle built from a packet record into the lowest free vehicle slot.</summary>
+    private int RegisterVehicle(VehicleState s)
+    {
+        int v = VehHandles.Allocate();
+        if (v >= Vehicles.Length) { Array.Resize(ref Vehicles, Math.Max(v + 1, Vehicles.Length * 2)); }
+        Vehicles[v] = s;
+        IndexVehicleBody(s.Body, v);
+        return v;
+    }
+
     private void IndexVehicleBody(int body, int vehicle)
     {
         if (body >= _vehOfBody.Length)
@@ -755,7 +765,9 @@ internal sealed partial class Engine2D
         w.NamedSingle(d.AirPitchTorque); w.NamedSingle(d.GroundPitchTorque);
     }
 
-    private VehicleDef ReadVehicleDef(StateReader r)
+    private VehicleDef ReadVehicleDef(StateReader r) => ReadVehicleDef(r, Opt.UnitsPerMetre);
+
+    private static VehicleDef ReadVehicleDef(StateReader r, float unitsPerMetre)
     {
         var d = new VehicleDef();
         int nw = r.ReadCount(88, "vehicle wheels");
@@ -795,7 +807,7 @@ internal sealed partial class Engine2D
         }
 
         d.AirPitchTorque = r.ReadSingle(); d.GroundPitchTorque = r.ReadSingle();
-        d.Units = Opt.UnitsPerMetre;
+        d.Units = unitsPerMetre;
         try { d.Validate(); }
         catch (ArgumentException e) { throw r.Error("invalid vehicle definition: " + e.Message); }
         return d;

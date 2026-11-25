@@ -7,7 +7,7 @@ public sealed partial class PhysicsWorld2D
 {
     /// <summary>
     /// Takes a set of bodies out of this world into a <see cref="BodySetPacket"/>: their shapes, the joints among them, the contacts among them with their warm-start state, and what a joint across the boundary needs
-    /// (see <see cref="BodySetOptions.Boundary"/>). By default the bodies are moved: they are destroyed here once the packet is built. Contacts with static shapes outside the set are carried when the receiving world holds the same shape at the same pose; other contacts with outside bodies are not, and the receiving world finds them again. A ragdoll goes whole: naming one of its parts takes all of them.
+    /// (see <see cref="BodySetOptions.Boundary"/>). By default the bodies are moved: they are destroyed here once the packet is built. Contacts with static shapes outside the set are carried when the receiving world holds the same shape at the same pose; other contacts with outside bodies are not, and the receiving world finds them again. A ragdoll goes whole: naming one of its parts takes all of them. Characters and vehicles travel whole with their bodies (list a driver with her car); `docs/spec/transfer.md` says what each carries.
     /// </summary>
     /// <param name="bodies">Live bodies of this world, each listed once.</param>
     /// <param name="options">Move or copy, and the boundary policy; the defaults move the set and refuse a joint that crosses its boundary.</param>

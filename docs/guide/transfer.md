@@ -1,6 +1,6 @@
 # Moving bodies between worlds
 
-A set of bodies can leave one world as a packet of bytes and arrive in another: a crate carried through a portal, a vehicle handed from one region's world to the next, a player's props moved to the server that now owns them. The packet carries the bodies' shapes, the joints among them, the contacts among them with their solver state (so a resting stack does not pop), the ragdolls they belong to, and what a joint that crosses the boundary needs. `docs/spec/transfer.md` is the byte layout.
+A set of bodies can leave one world as a packet of bytes and arrive in another: a crate carried through a portal, a vehicle handed from one region's world to the next, a player's props moved to the server that now owns them. The packet carries the bodies' shapes, the joints among them, the contacts among them with their solver state (so a resting stack does not pop), the ragdolls they belong to, the characters and vehicles that stand on them, and what a joint that crosses the boundary needs. `docs/spec/transfer.md` is the byte layout.
 
 <!-- example: Guide/Transfer.cs -->
 ```csharp
@@ -29,12 +29,43 @@ Body through = far.GetBody(far.InsertBodies(thrown, at: new Vector3D(100, 0, 0),
 
 `PhysicsWorld2D` has the same two methods; its transform is `InsertBodies(packet, at, angle)`.
 
+## Characters and vehicles
+
+A character or vehicle travels whole with its body: definition, ground state, abilities (seated, climbing, swimming), inputs, drivetrain and wheels. Name the bodies together, a driver with her car; the handle map lists the new `Character` and `Vehicle` handles.
+
+<!-- example: Guide/TransferEntities.cs -->
+```csharp
+var north = new PhysicsWorld3D();
+north.AddBox(new Vector3F(400, 1, 400), at: new Vector3D(0, -0.5, 0), type: BodyType.Static);
+Body chassis = north.AddBox(new Vector3F(1.8f, 0.6f, 4.2f), at: new Vector3D(0, 1.0, 0), density: 357f);
+Vehicle car = north.AddVehicle(chassis, VehicleDef.Car);
+Character driver = north.AddCharacter(new Vector3D(0, 2, 0));
+driver.Mount(chassis, new Vector3F(-0.4f, 0.5f, 0.2f));
+for (int i = 0; i < 90; i++) { car.Drive(throttle: 0.5f); north.Step(1f / 60f); }
+
+// The car and its driver cross to the world that owns the next stretch of road.
+BodySetPacket packet = north.ExtractBodies(new[] { chassis, driver.Body });
+var south = new PhysicsWorld3D();
+south.AddBox(new Vector3F(400, 1, 400), at: new Vector3D(0, -0.5, 0), type: BodyType.Static);   // the same road
+BodySetHandleMap map = south.InsertBodies(BodySetPacket.Read(packet.ToArray()));
+Vehicle arrived = south.GetVehicle(map.NewVehicles[0]);
+Character passenger = south.GetCharacter(map.NewCharacters[0]);
+```
+
+Into a world with the same road the car drives on exactly as it would have: its next 120 steps are bit-identical to the source's. Three things to know:
+
+- A character seated on, hanging from or climbing a body must travel with that body (extraction refuses otherwise, naming it), and a character holding a rope cannot travel (a packet carries no rods).
+- Ground the character or a wheel stood on that is not in the set is not carried: the character arrives in the air and a wheel out of contact until the next move or step finds the ground in the receiving world.
+- A portal's rotation turns the car's wheel contacts, the character's ground normal and its velocity with it; a character's up direction turns too, unless the rotation is a turn about it, which leaves it bit for bit.
+
+Bicycles are not carried yet.
+
 ## What goes in the packet
 
-- **The set** is the bodies you name, plus every part of a ragdoll one of them belongs to. A packet holds rigid bodies, their shapes (every kind except voxel grids, which are edited in place), their joints (every kind except pulley and mouse joints, which are anchored in world coordinates; in 2D also path and configurable joints), ragdolls, and the contact constraints among them.
+- **The set** is the bodies you name, plus every part of a ragdoll one of them belongs to. A packet holds rigid bodies, their characters and vehicles (below), their shapes (every kind except voxel grids, which are edited in place), their joints (every kind except pulley and mouse joints, which are anchored in world coordinates; in 2D also path and configurable joints), ragdolls, and the contact constraints among them.
 - **Contacts with something outside the set** are carried when the other shape is a static shape that the receiving world also holds (same geometry, same pose): the crate keeps its resting contact with the floor. Anything else outside is found again by the receiving world's first step.
 - **Sensor overlaps are not carried**: the receiving world finds them again and reports an enter event in its first step.
-- **Not carried, and refused with a message that names it:** characters, vehicles, bicycles, rail vehicles, articulations, rods and cables attached to a body, thrusters, boats and other actuators, breakable and debris records, streamed tiles, cloth attachments, active ragdolls, local time scales and per-triangle contact materials. Destroy the feature, or leave its bodies out.
+- **Not carried, and refused with a message that names it:** bicycles, rail vehicles, articulations, rods and cables attached to a body, thrusters, boats and other actuators, breakable and debris records, streamed tiles, cloth attachments, active ragdolls, local time scales and per-triangle contact materials. Destroy the feature, or leave its bodies out.
 - **A joint that crosses the boundary** (one body in the set, the other not) is refused until you choose a policy: `BoundaryPolicy.Break` leaves the joint behind, `BoundaryPolicy.HoldAsAnchor` carries the outside body along as a shapeless anchor that keeps its pose and velocity (static stays static, anything else becomes kinematic), so the set hangs where it hung.
 - **Move or copy.** `ExtractBodies` moves by default; `new BodySetOptions { Move = false }` copies and leaves the source untouched.
 

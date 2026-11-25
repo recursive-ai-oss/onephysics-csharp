@@ -343,19 +343,21 @@ public sealed class InterestStream3DTests
     }
 
     [Fact]
-    public void WhatAPacketCannotCarryIsRefusedAndTheWriterStaysUsable()
+    public void WhatAPacketCannotCarryIsSkippedAndReportedAndTheWriterStaysUsable()
     {
         var scene = Build(8622, chain: false, ragdoll: false, boxes: 4);
         var a = scene.World;
         var writer = a.CreateInterestWriter();
         var player = a.AddCharacter(new Vector3D(2, 1, 5), P3.CharacterDef.Humanoid);
+        var tied = a.AddBox(new Vector3F(0.6f, 0.6f, 0.6f), at: new Vector3D(-2, 1.5, 8));
+        a.AddRope(new Vector3D(-2, 4, 8), new Vector3D(-2, 1.5, 8), 8, pinStart: true).Attach(8, tied, default);
         a.Step(Dt);
-        var ex = Assert.Throws<BodySetTransferException>(() => writer.Write(Wide()));
-        Assert.Contains("character", ex.Message);
-        Assert.Equal(0, writer.NextSequence);
-        player.Destroy();
-        a.Step(Dt);
+        var msg = writer.Write(Wide());
+        Assert.Single(writer.LastSkipped);
+        Assert.Equal(tied.Handle, writer.LastSkipped[0].Body);
+        Assert.Contains("rod", writer.LastSkipped[0].Reason);
         var c = new P3.PhysicsWorld3D(new() { WorldId = 8623 });
-        Assert.Equal(0, c.CreateInterestClient().Apply(writer.Write(Wide())).Sequence);
+        Assert.Equal(0, c.CreateInterestClient().Apply(msg).Sequence);
+        Assert.Single(c.GetCharacters());
     }
 }

@@ -270,15 +270,14 @@ public sealed class BodySetTransfer3DTests
     }
 
     [Fact]
-    public void ABodyOfACharacterIsRefusedWithItsName()
+    public void ABodyWithARopeOnItIsRefusedWithItsName()
     {
         var a = World(9129);
-        var player = a.AddCharacter(new Vector3D(0, 1, 0));
-        P3.Body body = default;
-        foreach (var x in a.Bodies) { if (x.Type == BodyType.Dynamic || x.Type == BodyType.Kinematic) { body = x; } }
-        var ex = Assert.Throws<BodySetTransferException>(() => a.ExtractBodies(new[] { body }));
-        Assert.Contains("character", ex.Message);
-        Assert.True(body.IsValid);
+        var box = a.AddBox(new Vector3F(0.6f, 0.6f, 0.6f), at: new Vector3D(0, 1.5, 0));
+        a.AddRope(new Vector3D(0, 4, 0), new Vector3D(0, 1.5, 0), 8, pinStart: true).Attach(8, box, default);
+        var ex = Assert.Throws<BodySetTransferException>(() => a.ExtractBodies(new[] { box }));
+        Assert.Contains("rod", ex.Message);
+        Assert.True(box.IsValid);
     }
 
     [Fact]

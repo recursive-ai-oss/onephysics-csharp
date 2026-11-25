@@ -18,24 +18,27 @@ internal sealed partial class Engine2D : ITransferEngine
 
     // ------------------------------------------------------------------ extraction
 
-    void ITransferEngine.CheckMembers(int[] members, bool[] inSet)
+    void ITransferEngine.CheckMembers(int[] members, bool[] inSet) => CheckMembers(members, inSet, inSet);
+
+    /// <summary>
+    /// Refuses a set that takes part in something a packet does not carry. <paramref name="selected"/> marks the bodies whose own features are checked (<paramref name="members"/>, as a mask) and
+    /// <paramref name="travelling"/> the bodies that travel together, which a character's hold has to stay inside.
+    /// </summary>
+    private void CheckMembers(int[] members, bool[] selected, bool[] travelling)
     {
         var s = new RegionSelection(Core.Bodies.HighWater);
         foreach (int b in members) { s.AddBody(b); }
-        for (int i = 0; i < Core.Shapes.HighWater; i++) { if (Core.Shapes.Handles.IsLive(i) && inSet[Core.Shapes.Owner[i]]) { s.Add("shape", i); } }
+        foreach (int b in members) { for (int sh = ShapeHead[b]; sh >= 0; sh = NextShape[sh]) { s.Add("shape", sh); } }
         Rods.CloseRegion(s);
         Cables.CloseRegion(s);
         _articulations?.CloseRegion(s);
-        _charExt?.CloseRegion(s);
         _actuators?.SelectRegion(s);
         _destruction?.SelectRegion(s);
-        CheckRagdolls(inSet);
+        CheckRagdolls(selected);
 
-        for (int i = 0; i < VehHandles.HighWater; i++) { if (VehHandles.IsLive(i) && inSet[Vehicles[i]!.Body]) { s.Add("vehicle", i); } }
-        for (int i = 0; i < BikeHandles.HighWater; i++) { if (BikeHandles.IsLive(i) && inSet[Bikes[i]!.Frame]) { s.Add("bicycle", i); } }
-        for (int i = 0; i < CharHandles.HighWater; i++) { if (CharHandles.IsLive(i) && inSet[CharBody[i]]) { s.Add("character", i); } }
-        for (int i = 0; i < RailHandles.HighWater; i++) { if (RailHandles.IsLive(i) && inSet[Rails[i]!.Car]) { s.Add("rail vehicle", i); } }
-        for (int i = 0; i < TrackHandles.HighWater; i++) { if (TrackHandles.IsLive(i) && Tracks[i]!.Body >= 0 && inSet[Tracks[i]!.Body]) { s.Add("rail track", i); } }
+        for (int i = 0; i < BikeHandles.HighWater; i++) { if (BikeHandles.IsLive(i) && selected[Bikes[i]!.Frame]) { s.Add("bicycle", i); } }
+        for (int i = 0; i < RailHandles.HighWater; i++) { if (RailHandles.IsLive(i) && selected[Rails[i]!.Car]) { s.Add("rail vehicle", i); } }
+        for (int i = 0; i < TrackHandles.HighWater; i++) { if (TrackHandles.IsLive(i) && Tracks[i]!.Body >= 0 && selected[Tracks[i]!.Body]) { s.Add("rail track", i); } }
         foreach (var kv in s.Entities)
         {
             if (kv.Key == "body" || kv.Key == "shape" || kv.Value.Count == 0) { continue; }
@@ -46,14 +49,14 @@ internal sealed partial class Engine2D : ITransferEngine
 
         foreach (int b in members)
         {
+            int ch = CharacterOfBody(b);
+            if (ch >= 0) { var why = CharacterRefusal(ch, travelling); if (why != null) { throw Refuse(why); } }
             if (Core.BodyTimeScaleOf(b) != 1f) { throw Refuse("Body-set transfer: body " + Core.HandleOfBody(b) + " has a local time scale, which a packet does not carry."); }
             foreach (var tile in Core.ScaleStore.Tiles) { if (Array.IndexOf(tile.Bodies, b) >= 0) { throw Refuse("Body-set transfer: body " + Core.HandleOfBody(b) + " belongs to a streamed tile, which a packet does not carry."); } }
-        }
-
-        for (int sh = 0; sh < Core.Shapes.HighWater; sh++)
-        {
-            if (!Core.Shapes.Handles.IsLive(sh) || !inSet[Core.Shapes.Owner[sh]]) { continue; }
-            if (Core.ContactMaterials.MaterialCount(sh) > 0) { throw Refuse("Body-set transfer: shape " + Core.HandleOfShape(sh) + " has per-segment contact materials, which a packet does not carry."); }
+            for (int sh = ShapeHead[b]; sh >= 0; sh = NextShape[sh])
+            {
+                if (Core.ContactMaterials.MaterialCount(sh) > 0) { throw Refuse("Body-set transfer: shape " + Core.HandleOfShape(sh) + " has per-segment contact materials, which a packet does not carry."); }
+            }
         }
     }
 

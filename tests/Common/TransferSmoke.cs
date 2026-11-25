@@ -51,4 +51,49 @@ internal static class TransferSmoke
         for (int i = 0; i < map.NewBodies.Length; i++) { same &= w.GetBody(new BodyHandle(w.Id, map.OldBodies[i].Index, map.OldBodies[i].Generation)).Position == copy.GetBody(map.NewBodies[i]).Position; }
         return same && map.NewRagdolls.Length == 1 ? copy.ComputeHash() : 0;
     }
+
+    // Characters and vehicles in packets: a car with a seated driver and a walker leave one world as bytes and arrive in another, which then drives and steps like the first; equal at one and three threads.
+    internal static bool RunEntities(out ulong digest)
+    {
+        ulong a = Cars2(1), b = Cars2(3), c = Cars3(1), d = Cars3(3);
+        digest = a ^ (c * 31);
+        return a == b && c == d && a != 0 && c != 0;
+    }
+
+    private static ulong Cars2(int threads)
+    {
+        P2.PhysicsWorld2D World() { var x = new P2.PhysicsWorld2D(new P2.WorldOptions2D { WorldId = 9, ThreadCount = threads, SleepEnabled = false }); x.AddBox(new Vector2F(400, 1), at: new Vector2D(0, -0.5), type: BodyType.Static); return x; }
+        var w = World();
+        var car = w.AddCar(new Vector2D(0, 0));
+        var driver = w.AddCharacter(new Vector2D(0, 2));
+        driver.Mount(car.Chassis, new Vector2F(0.2f, 1.4f));
+        var walker = w.AddCharacter(new Vector2D(8, 1));
+        for (int i = 0; i < 30; i++) { car.Drive(0.5f); walker.Move(new Vector2F(0.03f, -0.02f), 1f / 60); w.Step(1f / 60); }
+        var packet = BodySetPacket.Read(w.ExtractBodies(new[] { car.Chassis, driver.Body, walker.Body }, new BodySetOptions { Move = false }).ToArray());
+        var copy = World();
+        var map = copy.InsertBodies(packet);
+        var car2 = copy.GetVehicle(map.NewVehicles[0]); var walker2 = copy.GetCharacter(map.NewCharacters[1]);
+        for (int i = 0; i < 30; i++) { car.Drive(0.5f); walker.Move(new Vector2F(0.03f, -0.02f), 1f / 60); w.Step(1f / 60); car2.Drive(0.5f); walker2.Move(new Vector2F(0.03f, -0.02f), 1f / 60); copy.Step(1f / 60); }
+        bool same = car.Chassis.Position == car2.Chassis.Position && walker.Body.Position == walker2.Body.Position && copy.GetCharacter(map.NewCharacters[0]).Mode == CharacterMode.Seated;
+        return same ? copy.ComputeHash() : 0;
+    }
+
+    private static ulong Cars3(int threads)
+    {
+        P3.PhysicsWorld3D World() { var x = new P3.PhysicsWorld3D(new P3.WorldOptions3D { WorldId = 9, ThreadCount = threads, SleepEnabled = false }); x.AddBox(new Vector3F(400, 1, 400), at: new Vector3D(0, -0.5, 0), type: BodyType.Static); return x; }
+        var w = World();
+        var chassis = w.AddBox(new Vector3F(1.8f, 0.6f, 4.2f), at: new Vector3D(0, 1.0, 0), density: 357f);
+        var car = w.AddVehicle(chassis, P3.VehicleDef.Car);
+        var driver = w.AddCharacter(new Vector3D(0, 2, 0));
+        driver.Mount(chassis, new Vector3F(-0.4f, 0.5f, 0.2f));
+        var walker = w.AddCharacter(new Vector3D(8, 1, 0));
+        for (int i = 0; i < 30; i++) { car.Drive(0.5f); walker.Move(new Vector3F(0.03f, -0.02f, 0), 1f / 60); w.Step(1f / 60); }
+        var packet = BodySetPacket.Read(w.ExtractBodies(new[] { chassis, driver.Body, walker.Body }, new BodySetOptions { Move = false }).ToArray());
+        var copy = World();
+        var map = copy.InsertBodies(packet);
+        var car2 = copy.GetVehicle(map.NewVehicles[0]); var walker2 = copy.GetCharacter(map.NewCharacters[1]);
+        for (int i = 0; i < 30; i++) { car.Drive(0.5f); walker.Move(new Vector3F(0.03f, -0.02f, 0), 1f / 60); w.Step(1f / 60); car2.Drive(0.5f); walker2.Move(new Vector3F(0.03f, -0.02f, 0), 1f / 60); copy.Step(1f / 60); }
+        bool same = chassis.Position == car2.Chassis.Position && walker.Body.Position == walker2.Body.Position && copy.GetCharacter(map.NewCharacters[0]).Mode == CharacterMode.Seated;
+        return same ? copy.ComputeHash() : 0;
+    }
 }

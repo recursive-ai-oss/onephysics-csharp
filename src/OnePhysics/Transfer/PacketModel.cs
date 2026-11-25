@@ -18,6 +18,8 @@ internal sealed class PacketModel
     public PacketSupport[] Supports = Array.Empty<PacketSupport>();
     public PacketSupportContact[] SupportContacts = Array.Empty<PacketSupportContact>();
     public PacketRagdoll[] Ragdolls = Array.Empty<PacketRagdoll>();
+    /// <summary>Characters and vehicles (packet version 2): ascending by kind, then by source slot.</summary>
+    public PacketEntity[] Entities = Array.Empty<PacketEntity>();
 
     public int PositionLanes => Dimension;
     public int RotationLanes => Dimension == 3 ? 4 : 2;
@@ -109,6 +111,19 @@ internal sealed class PacketSupportContact
 /// <summary>A ragdoll whose parts are bodies of the packet: the record of its definition and drive state, with parts and joints named by packet index.</summary>
 internal sealed class PacketRagdoll
 {
+    public int Slot, Generation;
+    public byte[] Blob = Array.Empty<byte>();
+}
+
+/// <summary>The controller state of a character or a vehicle riding on bodies of the packet: an engine record in which bodies are named by packet index.</summary>
+internal sealed class PacketEntity
+{
+    /// <summary>A character: its definition, ground state and abilities state.</summary>
+    public const byte KindCharacter = 1;
+    /// <summary>A wheeled, tracked or motorcycle vehicle: definition, inputs, drivetrain and wheels.</summary>
+    public const byte KindVehicle = 2;
+
+    public byte Kind;
     public int Slot, Generation;
     public byte[] Blob = Array.Empty<byte>();
 }

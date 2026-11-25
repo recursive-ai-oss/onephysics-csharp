@@ -7,13 +7,13 @@ public sealed partial class PhysicsWorld3D
 {
     /// <summary>
     /// Takes a set of bodies out of this world into a <see cref="BodySetPacket"/>: their shapes, the joints among them, the contacts among them with their warm-start state, and what a joint across the boundary needs
-    /// (see <see cref="BodySetOptions.Boundary"/>). By default the bodies are moved: they are destroyed here once the packet is built. Contacts with static shapes outside the set are carried when the receiving world holds the same shape at the same pose; other contacts with outside bodies are not, and the receiving world finds them again. A ragdoll goes whole: naming one of its parts takes all of them.
+    /// (see <see cref="BodySetOptions.Boundary"/>). By default the bodies are moved: they are destroyed here once the packet is built. Contacts with static shapes outside the set are carried when the receiving world holds the same shape at the same pose; other contacts with outside bodies are not, and the receiving world finds them again. A ragdoll goes whole: naming one of its parts takes all of them. Characters and vehicles travel whole with their bodies (list a driver with her car); `docs/spec/transfer.md` says what each carries.
     /// </summary>
     /// <param name="bodies">Live bodies of this world, each listed once.</param>
     /// <param name="options">Move or copy, and the boundary policy; the defaults move the set and refuse a joint that crosses its boundary.</param>
     /// <exception cref="ArgumentException">No bodies, or a body listed twice.</exception>
     /// <exception cref="InvalidHandleException">A body is the default value, destroyed (<see cref="StaleHandleException"/>) or from another world.</exception>
-    /// <exception cref="BodySetTransferException">A joint cuts through the set and the policy is <see cref="BoundaryPolicy.Refuse"/>, or a body takes part in a character, vehicle, ragdoll, articulation, rod, cable, actuator, cloth link, breakable or streamed tile (a packet carries rigid bodies, shapes, joints and contacts), or a shape or joint kind is not carried. The world is unchanged.</exception>
+    /// <exception cref="BodySetTransferException">A joint cuts through the set and the policy is <see cref="BoundaryPolicy.Refuse"/>, or a body takes part in something a packet does not carry (a bicycle, rail vehicle, articulation, rod, cable, actuator, cloth link, breakable or streamed tile, an active ragdoll), or a character holds a rope or a body that is not in the set, or a shape or joint kind is not carried. The world is unchanged.</exception>
     public BodySetPacket ExtractBodies(ReadOnlySpan<Body> bodies, BodySetOptions? options = null)
     {
         var handles = new BodyHandle[bodies.Length];

@@ -149,3 +149,23 @@ public sealed class InterestStreamException : PhysicsException
         Offset = offset;
     }
 }
+
+/// <summary>
+/// A body an interest stream left out because a body-set packet cannot carry it (<see cref="InterestWriter.LastSkipped"/>). The body is absent from the client; the authority keeps simulating it.
+/// </summary>
+public readonly struct InterestSkip
+{
+    internal InterestSkip(BodyHandle body, bool wasInside, string reason) { Body = body; WasInside = wasInside; Reason = reason; }
+
+    /// <summary>The body in the authority's world.</summary>
+    public BodyHandle Body { get; }
+
+    /// <summary>True when the body was inside the region (or named); false when it would only have been a proxy.</summary>
+    public bool WasInside { get; }
+
+    /// <summary>What a packet cannot carry about it, in words (the text of the <see cref="BodySetTransferException"/> an extraction would have thrown).</summary>
+    public string Reason { get; }
+
+    /// <inheritdoc/>
+    public override string ToString() => Body + (WasInside ? " (inside)" : " (proxy)") + ": " + Reason;
+}

@@ -42,6 +42,20 @@ internal interface ITransferEngine
     void WriteRagdolls(bool[] inSet, int[] bodyIndex, int[] jointIndex, List<PacketRagdoll> into);
     /// <summary>Rebuilds a ragdoll from its record on the new bodies and joints; returns its handle.</summary>
     RagdollHandle CreateRagdoll(PacketRagdoll record, BodyHandle[] bodies, JointHandle[] joints);
+    /// <summary>
+    /// The characters and then the vehicles whose body is in <paramref name="entitySet"/>, as packet records in ascending slot order; bodies are named by <paramref name="bodyIndex"/> (a body that is in the packet but
+    /// outside <paramref name="inSet"/> cannot happen: <see cref="CheckMembers"/> refused it). Fields that name a body outside the packet are cleared or refused as the spec says.
+    /// </summary>
+    void WriteEntities(bool[] inSet, bool[] entitySet, int[] bodyIndex, List<PacketEntity> into);
+    /// <summary>Rebuilds a character or vehicle from its record on the new bodies, with its world-space values taken through the transform; returns its new slot and generation.</summary>
+    (int Slot, int Generation) CreateEntity(PacketEntity record, PacketModel model, BodyHandle[] bodies, TransferTransform transform);
+    /// <summary>True when the body is the body of a character or the chassis of a vehicle (something that travels with an entity record).</summary>
+    bool HasEntity(int body);
+    /// <summary>
+    /// Removes from <paramref name="set"/> every body a packet could not carry, repeatedly (taking one out can strand another that depends on it), and says why for each: the feature it takes part in that a packet does not carry,
+    /// or a hold that names a body outside the set. Used by interest streams, which skip such bodies instead of refusing.
+    /// </summary>
+    void FindUncarriable(bool[] set, List<(int Body, string Reason)> skipped);
 
     // ---- insertion
     /// <summary>Creates the body at its final pose (centre of mass for a member, origin for an anchor), awake, with the engine's per-body floats.</summary>
@@ -226,8 +240,12 @@ internal static class BodySetTransfer
         Array.Fill(jointIndexOfSlot, -1);
         for (int i = 0; i < jointSlots.Count; i++) { jointIndexOfSlot[jointSlots[i]] = i; }
         var ragdolls = new List<PacketRagdoll>();
-        e.WriteRagdolls(filter != null ? filter.RagdollSet(inSet) : inSet, packetIndexOfBody, jointIndexOfSlot, ragdolls);
+        var writeSet = filter != null ? filter.RagdollSet(inSet) : inSet;
+        e.WriteRagdolls(writeSet, packetIndexOfBody, jointIndexOfSlot, ragdolls);
         model.Ragdolls = ragdolls.ToArray();
+        var entities = new List<PacketEntity>();
+        e.WriteEntities(inSet, writeSet, packetIndexOfBody, entities);
+        model.Entities = entities.ToArray();
 
         // Contacts between a member and a static shape outside the set (the ground it rests on): the receiving world may hold the same shape, and then the contact keeps its warm start.
         var raw = new List<(int Member, int Outside, PacketSupportContact Contact)>();
@@ -379,6 +397,8 @@ internal static class BodySetTransfer
         var newJoints = new JointHandle[m.Joints.Length];
         var oldJoints = new JointHandle[m.Joints.Length];
         RagdollHandle[] ragdollMap = Array.Empty<RagdollHandle>();
+        var oldCharacters = new List<CharacterHandle>(); var newCharacters = new List<CharacterHandle>();
+        var oldVehicles = new List<VehicleHandle>(); var newVehicles = new List<VehicleHandle>();
         try
         {
             for (int i = 0; i < n; i++)
@@ -409,6 +429,13 @@ internal static class BodySetTransfer
             var newRagdolls = new RagdollHandle[m.Ragdolls.Length];
             for (int i = 0; i < m.Ragdolls.Length; i++) { newRagdolls[i] = e.CreateRagdoll(m.Ragdolls[i], newBodies, newJoints); }
             ragdollMap = newRagdolls;
+            foreach (var en in m.Entities)
+            {
+                var (slot, generation) = e.CreateEntity(en, m, newBodies, transform);
+                if (en.Kind == PacketEntity.KindCharacter) { oldCharacters.Add(new CharacterHandle(m.SourceWorld, en.Slot, en.Generation)); newCharacters.Add(new CharacterHandle(core.Id, slot, generation)); }
+                else { oldVehicles.Add(new VehicleHandle(m.SourceWorld, en.Slot, en.Generation)); newVehicles.Add(new VehicleHandle(core.Id, slot, generation)); }
+            }
+
             AddContacts(e, core, m, newShapes, newBodies, transform);
             AddSupportContacts(e, core, m, newShapes, newBodies, supportShape, transform);
             SleepComponents(core, m, newBodies);
@@ -425,7 +452,8 @@ internal static class BodySetTransfer
 
         var oldRagdolls = new RagdollHandle[m.Ragdolls.Length];
         for (int i = 0; i < oldRagdolls.Length; i++) { oldRagdolls[i] = new RagdollHandle(m.SourceWorld, m.Ragdolls[i].Slot, m.Ragdolls[i].Generation); }
-        return new BodySetHandleMap(oldBodies, newBodies, m.MemberCount, oldShapes, newShapes, oldJoints, newJoints, oldRagdolls, ragdollMap);
+        return new BodySetHandleMap(oldBodies, newBodies, m.MemberCount, oldShapes, newShapes, oldJoints, newJoints, oldRagdolls, ragdollMap,
+            oldCharacters.ToArray(), newCharacters.ToArray(), oldVehicles.ToArray(), newVehicles.ToArray());
     }
 
     private static void AddContacts(ITransferEngine e, WorldCore core, PacketModel m, ShapeHandle[] shapes, BodyHandle[] bodies, TransferTransform transform)

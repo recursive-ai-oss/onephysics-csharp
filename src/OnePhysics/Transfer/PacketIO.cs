@@ -11,7 +11,10 @@ namespace RecursiveAI.OnePhysics;
 internal static class PacketIO
 {
     public const uint Magic = 0x5342504F;   // "OPBS"
+    /// <summary>Version written when the packet carries no characters or vehicles; the layout of the first version.</summary>
     public const uint Version = 1;
+    /// <summary>Version written when it does: the same layout followed by the entity records.</summary>
+    public const uint VersionWithEntities = 2;
     internal const int MaxEntities = 1 << 24;
 
     // ------------------------------------------------------------------ write
@@ -19,7 +22,7 @@ internal static class PacketIO
     public static byte[] Write(PacketModel m)
     {
         var w = StateWriter.ToBuffer();
-        w.WriteUInt32(Magic); w.WriteUInt32(Version);
+        w.WriteUInt32(Magic); w.WriteUInt32(m.Entities.Length > 0 ? VersionWithEntities : Version);
         w.WriteInt32(m.Dimension); w.WriteDouble(m.MetresPerUnit);
         w.WriteInt32(m.PositionLanes); w.WriteInt32(m.RotationLanes); w.WriteInt32(m.LinearLanes); w.WriteInt32(m.AngularLanes); w.WriteInt32(m.MaxManifoldPoints); w.WriteInt32(m.PayloadFloats);
         w.WriteInt32(m.MemberCount); w.WriteInt32(m.Bodies.Length - m.MemberCount); w.WriteInt32(m.Shapes.Length); w.WriteInt32(m.Joints.Length); w.WriteInt32(m.Contacts.Length); w.WriteInt32(m.Supports.Length); w.WriteInt32(m.SupportContacts.Length); w.WriteInt32(m.Ragdolls.Length);
@@ -77,6 +80,15 @@ internal static class PacketIO
         foreach (var rd in m.Ragdolls)
         {
             w.WriteInt32(rd.Slot); w.WriteInt32(rd.Generation); w.WriteInt32(rd.Blob.Length); w.WriteBytes(rd.Blob);
+        }
+
+        if (m.Entities.Length > 0)
+        {
+            w.WriteInt32(m.Entities.Length);
+            foreach (var en in m.Entities)
+            {
+                w.WriteByte(en.Kind); w.WriteInt32(en.Slot); w.WriteInt32(en.Generation); w.WriteInt32(en.Blob.Length); w.WriteBytes(en.Blob);
+            }
         }
 
         return w.ToArray();
@@ -140,7 +152,7 @@ internal static class PacketIO
         var r = new Reader(data);
         if (r.UInt("magic") != Magic) { r.Pos = 0; throw r.Bad("magic", "not a body-set packet"); }
         uint version = r.UInt("version");
-        if (version != Version) { r.Pos -= 4; throw r.Bad("version", "unsupported packet version " + version.ToString(CultureInfo.InvariantCulture) + "; this reader knows version 1"); }
+        if (version != Version && version != VersionWithEntities) { r.Pos -= 4; throw r.Bad("version", "unsupported packet version " + version.ToString(CultureInfo.InvariantCulture) + "; this reader knows versions 1 and 2"); }
         var m = new PacketModel();
         int dim = r.Int("dimension");
         if (dim != 2 && dim != 3) { r.Pos -= 4; throw r.Bad("dimension", "must be 2 or 3, found " + dim.ToString(CultureInfo.InvariantCulture)); }
@@ -347,6 +359,31 @@ internal static class PacketIO
             catch (BodySetPacketException e) { throw new BodySetPacketException(At("ragdolls", i, "blob"), at, e.Message); }
         }
 
+        if (version == VersionWithEntities)
+        {
+            int nEntities = r.Count("entityCount", 13);
+            if (nEntities == 0) { r.Pos -= 4; throw r.Bad("entityCount", "a version 2 packet carries at least one character or vehicle"); }
+            m.Entities = new PacketEntity[nEntities];
+            var usedCharacter = new bool[members];
+            var usedVehicle = new bool[members];
+            for (int i = 0; i < nEntities; i++)
+            {
+                var en = new PacketEntity();
+                m.Entities[i] = en;
+                en.Kind = r.Byte(At("entities", i, "kind"));
+                if (en.Kind != PacketEntity.KindCharacter && en.Kind != PacketEntity.KindVehicle) { r.Pos--; throw r.Bad(At("entities", i, "kind"), "unknown entity kind " + en.Kind.ToString(CultureInfo.InvariantCulture)); }
+                en.Slot = r.Int(At("entities", i, "slot")); en.Generation = r.Int(At("entities", i, "generation"));
+                if (en.Slot < 0 || en.Generation <= 0) { throw r.Bad(At("entities", i, "slot"), "slot and generation must be positive handles of the source world"); }
+                if (i > 0 && (m.Entities[i - 1].Kind > en.Kind || (m.Entities[i - 1].Kind == en.Kind && m.Entities[i - 1].Slot >= en.Slot))) { throw r.Bad(At("entities", i, "slot"), "entities must be in ascending order of kind, then slot"); }
+                int len = r.Int(At("entities", i, "blobLength"));
+                if (len < 0 || len > r.Remaining) { throw r.Bad(At("entities", i, "blobLength"), "length " + len.ToString(CultureInfo.InvariantCulture) + " exceeds the remaining bytes"); }
+                int at = r.Pos;
+                en.Blob = r.Bytes(len, At("entities", i, "blob"));
+                try { PacketBlobs.ValidateEntity(dim, en.Kind, en.Blob, m, usedCharacter, usedVehicle); }
+                catch (BodySetPacketException e) { throw new BodySetPacketException(At("entities", i, "blob"), at, e.Message); }
+            }
+        }
+
         if (r.Remaining != 0) { throw r.Bad("end", r.Remaining.ToString(CultureInfo.InvariantCulture) + " unexpected trailing bytes"); }
         return m;
     }
@@ -430,6 +467,11 @@ internal static class PacketBlobs
     public static void ValidateRagdoll(int dimension, byte[] blob, PacketModel m, bool[] used)
     {
         if (dimension == 3) { Physics3D.Engine3D.ValidateRagdollBlob(blob, m, used); } else { Physics2D.Engine2D.ValidateRagdollBlob(blob, m, used); }
+    }
+
+    public static void ValidateEntity(int dimension, byte kind, byte[] blob, PacketModel m, bool[] usedCharacter, bool[] usedVehicle)
+    {
+        if (dimension == 3) { Physics3D.Engine3D.ValidateEntityBlob(kind, blob, m, usedCharacter, usedVehicle); } else { Physics2D.Engine2D.ValidateEntityBlob(kind, blob, m, usedCharacter, usedVehicle); }
     }
 
     public static void ValidateJoint(int dimension, byte[] blob)
