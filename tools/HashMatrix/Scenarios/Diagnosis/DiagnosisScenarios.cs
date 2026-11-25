@@ -47,7 +47,7 @@ internal static class DiagnosisScenarios
     {
         var w = new PhysicsWorld3D(new WorldOptions3D { WorldId = 61, ThreadCount = threads, Gravity = new Vector3F(0, -9.81f, 0) });
         w.AddBox(new Vector3F(60, 1, 60), at: new Vector3D(0, -0.5, 0), type: BodyType.Static);
-        Body prev = w.AddBox(new Vector3F(0.2f, 0.2f, 0.2f), at: new Vector3D(0, 10, 0), type: BodyType.Static);
+        Physics3D.Body prev = w.AddBox(new Vector3F(0.2f, 0.2f, 0.2f), at: new Vector3D(0, 10, 0), type: BodyType.Static);
         for (int i = 0; i < 6; i++)
         {
             var b = w.AddBox(new Vector3F(0.4f, 0.4f, 0.4f), at: new Vector3D(0.5 * (i + 1), 10, 0), density: i == 5 ? 1500f : 1f);
@@ -101,7 +101,7 @@ internal static class DiagnosisScenarios
     {
         var w = new PhysicsWorld2D(new WorldOptions2D { WorldId = 62, ThreadCount = threads, Gravity = new Vector2F(0, -9.81f) });
         w.AddBox(new Vector2F(60, 1), at: new Vector2D(0, -0.5), type: BodyType.Static);
-        Body prev = w.AddBox(new Vector2F(0.2f, 0.2f), at: new Vector2D(0, 10), type: BodyType.Static);
+        Physics2D.Body prev = w.AddBox(new Vector2F(0.2f, 0.2f), at: new Vector2D(0, 10), type: BodyType.Static);
         for (int i = 0; i < 6; i++)
         {
             var b = w.AddBox(new Vector2F(0.4f, 0.4f), at: new Vector2D(0.5 * (i + 1), 10), density: i == 5 ? 1500f : 1f);
