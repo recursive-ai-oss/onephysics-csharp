@@ -237,18 +237,7 @@ internal sealed class CharacterExtStore : ISnapshotSection
             CharacterExtState s = c < States.Length ? States[c] : default;
             w.DescribeEntity("character", c, _host.CharacterGeneration(c));
             w.NamedInt32(c); w.NamedInt32(_host.CharacterGeneration(c));
-            // Every record has every field whatever the mode, so the layout of a world does not change when a character sits down or lets go (regional restores need a stable field set).
-            w.NamedByte((byte)((s.CanClimb ? 1 : 0) | (s.ExactCarry ? 2 : 0) | (s.Riding ? 4 : 0))); w.NamedByte((byte)s.Mode);
-            w.NamedInt32(s.Body); w.NamedInt32(s.BodyGen);
-            WriteVec(w, s.Local);
-            w.NamedSingle(s.LocalRotation.X); w.NamedSingle(s.LocalRotation.Y); w.NamedSingle(s.LocalRotation.Z); w.NamedSingle(s.LocalRotation.W);
-            WriteVec(w, s.Normal); WriteVec(w, s.Along);
-            w.NamedInt32(s.Rod); w.NamedInt32(s.RodGen); w.NamedInt32(s.Particle); w.NamedSingle(s.Fraction);
-            if (swim)
-            {
-                w.NamedByte((byte)(s.NoSwim ? 1 : 0)); w.NamedByte((byte)s.Water);
-                w.NamedSingle(s.SwimDensity); w.NamedSingle(s.SwimDamping); WriteVec(w, s.SwimVelocity); w.NamedSingle(s.Immersion);
-            }
+            WriteState(w, in s, swim);
         }
 
         w.DescribeEntity("world", -1);
@@ -261,6 +250,26 @@ internal sealed class CharacterExtStore : ISnapshotSection
         }
     }
 
+    /// <summary>One record's fields after the slot and generation, as the snapshot section writes them; also the ability part of a character in a body-set packet.</summary>
+    internal static void WriteState(StateWriter w, in CharacterExtState s, bool swim)
+    {
+        // Every record has every field whatever the mode, so the layout of a world does not change when a character sits down or lets go (regional restores need a stable field set).
+        w.NamedByte((byte)((s.CanClimb ? 1 : 0) | (s.ExactCarry ? 2 : 0) | (s.Riding ? 4 : 0))); w.NamedByte((byte)s.Mode);
+        w.NamedInt32(s.Body); w.NamedInt32(s.BodyGen);
+        WriteVec(w, s.Local);
+        w.NamedSingle(s.LocalRotation.X); w.NamedSingle(s.LocalRotation.Y); w.NamedSingle(s.LocalRotation.Z); w.NamedSingle(s.LocalRotation.W);
+        WriteVec(w, s.Normal); WriteVec(w, s.Along);
+        w.NamedInt32(s.Rod); w.NamedInt32(s.RodGen); w.NamedInt32(s.Particle); w.NamedSingle(s.Fraction);
+        if (swim)
+        {
+            w.NamedByte((byte)(s.NoSwim ? 1 : 0)); w.NamedByte((byte)s.Water);
+            w.NamedSingle(s.SwimDensity); w.NamedSingle(s.SwimDamping); WriteVec(w, s.SwimVelocity); w.NamedSingle(s.Immersion);
+        }
+    }
+
+    /// <summary>True when the record has something in use, which is what makes the snapshot (or a packet) write it.</summary>
+    internal static bool InUse(in CharacterExtState s) => IsActive(in s);
+
     private static void WriteVec(StateWriter w, Vector3F v) { w.NamedSingle(v.X); w.NamedSingle(v.Y); w.NamedSingle(v.Z); }
 
     private static Vector3F ReadVec(StateReader r) => new(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
@@ -268,6 +277,58 @@ internal sealed class CharacterExtStore : ISnapshotSection
     private static bool Finite(Vector3F v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
 
     private static bool Unit(Vector3F v) => Finite(v) && Math.Abs(v.X * v.X + v.Y * v.Y + v.Z * v.Z - 1f) <= 1e-3f;
+
+    /// <summary>Reads and checks one record written by <see cref="WriteState"/>.</summary>
+    internal static CharacterExtState ReadState(StateReader r, bool swim, bool planar, int savedGeneration)
+    {
+        int gen = savedGeneration;
+        byte flags = r.ReadByte();
+        if (flags > 7) { throw r.Error("invalid character ability flags"); }
+        var s = new CharacterExtState { CanClimb = (flags & 1) != 0, ExactCarry = (flags & 2) != 0, Riding = (flags & 4) != 0, SavedGeneration = gen };
+        byte mode = r.ReadByte();
+        if (mode > (byte)CharacterMode.Roped) { throw r.Error("invalid character mode " + mode.ToString(CultureInfo.InvariantCulture)); }
+        s.Mode = (CharacterMode)mode;
+        s.Body = r.ReadInt32(); s.BodyGen = r.ReadInt32();
+        s.Local = ReadVec(r);
+        s.LocalRotation = new QuaternionF(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+        s.Normal = ReadVec(r); s.Along = ReadVec(r);
+        s.Rod = r.ReadInt32(); s.RodGen = r.ReadInt32(); s.Particle = r.ReadInt32(); s.Fraction = r.ReadSingle();
+        if (swim)
+        {
+            byte sf = r.ReadByte(), ws = r.ReadByte();
+            if (sf > 1 || ws > (byte)CharacterWaterState.Swimming) { throw r.Error("invalid character swim state"); }
+            s.NoSwim = sf != 0; s.Water = (CharacterWaterState)ws;
+            s.SwimDensity = r.ReadSingle(); s.SwimDamping = r.ReadSingle(); s.SwimVelocity = ReadVec(r); s.Immersion = r.ReadSingle();
+            if (!(s.SwimDensity >= 0f && s.SwimDensity <= 1e5f) || !(s.SwimDamping >= 0f && s.SwimDamping <= 1e3f) || !Finite(s.SwimVelocity) || !(s.Immersion >= 0f && s.Immersion <= 1f)
+                || Math.Abs(s.SwimVelocity.X) > 1e5f || Math.Abs(s.SwimVelocity.Y) > 1e5f || Math.Abs(s.SwimVelocity.Z) > 1e5f || (planar && s.SwimVelocity.Z != 0f)) { throw r.Error("invalid character swim values"); }
+        }
+
+        if (s.Mode != CharacterMode.Free && s.Riding) { throw r.Error("a held character cannot also be carried"); }
+        bool bodyUsed = s.Riding || s.Mode == CharacterMode.Seated || s.Mode == CharacterMode.Hanging || s.Mode == CharacterMode.Climbing;
+        if (bodyUsed)
+        {
+            if (s.Body < 0 || s.Body > 1 << 26 || s.BodyGen < 1) { throw r.Error("invalid body reference in a character ability"); }
+            if (!Finite(s.Local) || Math.Abs(s.Local.X) > 4194304f || Math.Abs(s.Local.Y) > 4194304f || Math.Abs(s.Local.Z) > 4194304f || (planar && s.Local.Z != 0f)) { throw r.Error("invalid character anchor"); }
+        }
+
+        var q = s.LocalRotation;
+        if (!(Math.Abs(q.X * q.X + q.Y * q.Y + q.Z * q.Z + q.W * q.W - 1f) <= 1e-3f) || (planar && (q.X != 0f || q.Y != 0f))) { throw r.Error("invalid seat rotation"); }
+        if (s.Mode == CharacterMode.Roped)
+        {
+            if (s.Rod < 0 || s.Rod > 65536 || s.RodGen < 1 || s.Particle < 0 || s.Particle > 4096 || !(s.Fraction >= 0f && s.Fraction <= 1f)) { throw r.Error("invalid rope grip"); }
+        }
+
+        if (s.Mode == CharacterMode.Hanging || s.Mode == CharacterMode.Climbing)
+        {
+            if (!Unit(s.Normal) || (planar && s.Normal.Z != 0f)) { throw r.Error("invalid surface normal"); }
+            if (s.Mode == CharacterMode.Hanging && (!Unit(s.Along) || (planar && s.Along.Z != 0f))) { throw r.Error("invalid ledge direction"); }
+        }
+
+        if (!Finite(s.Normal) || !Finite(s.Along)) { throw r.Error("non-finite character ability"); }
+        // The writer leaves out records with nothing in use, so one that is all zero was not written by this library.
+        if (!IsActive(in s)) { throw r.Error("character ability record with nothing in use"); }
+        return s;
+    }
 
     void ISnapshotSection.Read(StateReader r)
     {
@@ -285,51 +346,7 @@ internal sealed class CharacterExtStore : ISnapshotSection
             if (c <= last || c >= slotLimit || gen < 1) { throw r.Error("character abilities out of order or for an invalid character"); }
             last = c;
             if (c >= states.Length) { Array.Resize(ref states, Math.Max(c + 1, states.Length * 2)); }
-            byte flags = r.ReadByte();
-            if (flags > 7) { throw r.Error("invalid character ability flags"); }
-            var s = new CharacterExtState { CanClimb = (flags & 1) != 0, ExactCarry = (flags & 2) != 0, Riding = (flags & 4) != 0, SavedGeneration = gen };
-            byte mode = r.ReadByte();
-            if (mode > (byte)CharacterMode.Roped) { throw r.Error("invalid character mode " + mode.ToString(CultureInfo.InvariantCulture)); }
-            s.Mode = (CharacterMode)mode;
-            s.Body = r.ReadInt32(); s.BodyGen = r.ReadInt32();
-            s.Local = ReadVec(r);
-            s.LocalRotation = new QuaternionF(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
-            s.Normal = ReadVec(r); s.Along = ReadVec(r);
-            s.Rod = r.ReadInt32(); s.RodGen = r.ReadInt32(); s.Particle = r.ReadInt32(); s.Fraction = r.ReadSingle();
-            if (version == SwimSectionVersion)
-            {
-                byte sf = r.ReadByte(), ws = r.ReadByte();
-                if (sf > 1 || ws > (byte)CharacterWaterState.Swimming) { throw r.Error("invalid character swim state"); }
-                s.NoSwim = sf != 0; s.Water = (CharacterWaterState)ws;
-                s.SwimDensity = r.ReadSingle(); s.SwimDamping = r.ReadSingle(); s.SwimVelocity = ReadVec(r); s.Immersion = r.ReadSingle();
-                if (!(s.SwimDensity >= 0f && s.SwimDensity <= 1e5f) || !(s.SwimDamping >= 0f && s.SwimDamping <= 1e3f) || !Finite(s.SwimVelocity) || !(s.Immersion >= 0f && s.Immersion <= 1f)
-                    || Math.Abs(s.SwimVelocity.X) > 1e5f || Math.Abs(s.SwimVelocity.Y) > 1e5f || Math.Abs(s.SwimVelocity.Z) > 1e5f || (planar && s.SwimVelocity.Z != 0f)) { throw r.Error("invalid character swim values"); }
-            }
-
-            if (s.Mode != CharacterMode.Free && s.Riding) { throw r.Error("a held character cannot also be carried"); }
-            bool bodyUsed = s.Riding || s.Mode == CharacterMode.Seated || s.Mode == CharacterMode.Hanging || s.Mode == CharacterMode.Climbing;
-            if (bodyUsed)
-            {
-                if (s.Body < 0 || s.Body > 1 << 26 || s.BodyGen < 1) { throw r.Error("invalid body reference in a character ability"); }
-                if (!Finite(s.Local) || Math.Abs(s.Local.X) > 4194304f || Math.Abs(s.Local.Y) > 4194304f || Math.Abs(s.Local.Z) > 4194304f || (planar && s.Local.Z != 0f)) { throw r.Error("invalid character anchor"); }
-            }
-
-            var q = s.LocalRotation;
-            if (!(Math.Abs(q.X * q.X + q.Y * q.Y + q.Z * q.Z + q.W * q.W - 1f) <= 1e-3f) || (planar && (q.X != 0f || q.Y != 0f))) { throw r.Error("invalid seat rotation"); }
-            if (s.Mode == CharacterMode.Roped)
-            {
-                if (s.Rod < 0 || s.Rod > 65536 || s.RodGen < 1 || s.Particle < 0 || s.Particle > 4096 || !(s.Fraction >= 0f && s.Fraction <= 1f)) { throw r.Error("invalid rope grip"); }
-            }
-
-            if (s.Mode == CharacterMode.Hanging || s.Mode == CharacterMode.Climbing)
-            {
-                if (!Unit(s.Normal) || (planar && s.Normal.Z != 0f)) { throw r.Error("invalid surface normal"); }
-                if (s.Mode == CharacterMode.Hanging && (!Unit(s.Along) || (planar && s.Along.Z != 0f))) { throw r.Error("invalid ledge direction"); }
-            }
-
-            if (!Finite(s.Normal) || !Finite(s.Along)) { throw r.Error("non-finite character ability"); }
-            // The writer leaves out records with nothing in use, so one that is all zero was not written by this library.
-            if (!IsActive(in s)) { throw r.Error("character ability record with nothing in use"); }
+            var s = ReadState(r, version == SwimSectionVersion, planar, gen);
             active++;
             states[c] = s;
         }

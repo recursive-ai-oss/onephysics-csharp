@@ -533,7 +533,7 @@ public sealed partial class WorldCore
             if (aDyn) { WakeIsland(_bodies.Island[a]); }
             if (bDyn) { WakeIsland(_bodies.Island[b]); }
             if (aDyn && bDyn) { _islands.Merge(_bodies, _bodies.Island[a], _bodies.Island[b]); }
-            _constraints.ColorWritable[c] = _coloring.Assign(a, aDyn, b, bDyn);
+            _constraints.ColorWritable[c] = AssignColor(a, aDyn, b, bDyn);
         }
 
         if (desc.Kind != ConstraintKind.Joint) { EmitConstraintEvent(desc.Kind == ConstraintKind.Sensor ? EventKind.SensorEnter : EventKind.ContactBegin, c, true, 0f); }

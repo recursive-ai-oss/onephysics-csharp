@@ -22,6 +22,8 @@ Task-oriented pages with examples that are compiled and run by the test suite. F
 | [Bringing a world to rest](settle.md) | settle a built level, read the tip margin of a cabinet, the sag of a rope and whether a peg seats |
 | [Baking a simulation](bake.md) | record a run into a compact cache, play it back with no world, and run a world at offline quality |
 | [Big worlds](world-scale.md) | stream terrain tiles, step far islands less often, run a region in slow motion |
+| [Moving bodies between worlds](transfer.md) | take a set of bodies, a stack or a ragdoll out of one world and put it into another, through a portal if you like |
+| [Partial worlds](interest.md) | stream what a client can see: interest regions, kinematic proxies, deltas, the shared-entity hash |
 | [Diagnosis](diagnosis.md) | ask a world what is wrong with it: findings with codes, values and suggested changes; the same over a recording |
 | [A follower world for cosmetics](presentation.md) | keep debris, hair, cloth, ropes and particles in a second world that follows the authority, with budgets and a recording |
 | [Input limits](limits.md) | know what is refused |

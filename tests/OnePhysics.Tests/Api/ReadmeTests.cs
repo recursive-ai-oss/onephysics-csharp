@@ -123,6 +123,16 @@ public class ReadmeTests
         Assert.Equal(61, bake.Frames);
         Assert.InRange(bake.TopY, 0.4, 4.0);
         Assert.InRange(bake.MidY, 0.0, 2.1);
+        var transfer = GuideExamples.Transfer.Run();
+        Assert.Equal(transfer, GuideExamples.Transfer.Run());
+        Assert.True(transfer.SameHash && transfer.Bodies == 1);
+        Assert.InRange(transfer.SpeedAfter, 2.999, 3.001);
+        var carried = GuideExamples.TransferEntities.Run();
+        Assert.Equal(carried, GuideExamples.TransferEntities.Run());
+        Assert.True(carried.Characters == 1 && carried.Vehicles == 1 && carried.Seated && carried.Gap > 1.0, carried.ToString());
+        var interest = GuideExamples.Interest.Run();
+        Assert.Equal(interest, GuideExamples.Interest.Run());
+        Assert.True(interest.SameHash && interest.Inside > 2 && interest.Proxies >= 1);
         var wt = GuideExamples.Water.Run();
         Assert.Equal(wt, GuideExamples.Water.Run());
         var sw = GuideExamples.Swimming.Run();

@@ -54,6 +54,18 @@ internal static class Seeds
         File.WriteAllBytes(Path.Combine(root, "bake", "spatial"), FuzzBake.Seed(3));
         File.WriteAllBytes(Path.Combine(root, "scene", "state-millimetres"), FuzzScene.StateInMillimetres());
         File.WriteAllBytes(Path.Combine(root, "scene", "authoring-millimetres"), FuzzScene.AuthoringInMillimetres());
+        File.WriteAllBytes(Path.Combine(root, "body-set-packet", "planar"), FuzzTransfer.Seed(2));
+        File.WriteAllBytes(Path.Combine(root, "body-set-packet", "spatial"), FuzzTransfer.Seed(3));
+        File.WriteAllBytes(Path.Combine(root, "body-set-packet", "planar-entities"), FuzzTransfer.SeedEntities(2));
+        File.WriteAllBytes(Path.Combine(root, "body-set-packet", "spatial-entities"), FuzzTransfer.SeedEntities(3));
+        File.WriteAllBytes(Path.Combine(root, "interest-message", "planar-snapshot"), FuzzInterest.Messages(2, 0)[0]);
+        File.WriteAllBytes(Path.Combine(root, "interest-message", "planar-delta"), FuzzInterest.Messages(2, 1)[1]);
+        File.WriteAllBytes(Path.Combine(root, "interest-message", "spatial-snapshot"), FuzzInterest.Messages(3, 0)[0]);
+        File.WriteAllBytes(Path.Combine(root, "interest-message", "spatial-delta"), FuzzInterest.Messages(3, 1)[1]);
+        File.WriteAllBytes(Path.Combine(root, "interest-message", "planar-entities-snapshot"), FuzzInterest.Messages(2, 0, true)[0]);
+        File.WriteAllBytes(Path.Combine(root, "interest-message", "planar-entities-delta"), FuzzInterest.Messages(2, 1, true)[1]);
+        File.WriteAllBytes(Path.Combine(root, "interest-message", "spatial-entities-snapshot"), FuzzInterest.Messages(3, 0, true)[0]);
+        File.WriteAllBytes(Path.Combine(root, "interest-message", "spatial-entities-delta"), FuzzInterest.Messages(3, 1, true)[1]);
         File.WriteAllBytes(Path.Combine(root, "replay", "planar"), FuzzReplay.Seed(2));
         File.WriteAllBytes(Path.Combine(root, "replay", "spatial"), FuzzReplay.Seed(3));
         File.WriteAllBytes(Path.Combine(root, "replay", "recorded-planar"), FuzzReplay.CommandSeed(2));

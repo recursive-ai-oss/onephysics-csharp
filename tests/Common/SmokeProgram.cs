@@ -324,6 +324,12 @@ internal static class SmokeProgram
         Console.WriteLine((settle ? "OK settle " : "FAIL settle ") + settleHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool rollback = RollbackSmoke.Run(out ulong rollbackHash);
         Console.WriteLine((rollback ? "OK rollback " : "FAIL rollback ") + rollbackHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        bool transfer = TransferSmoke.Run(out ulong transferHash);
+        Console.WriteLine((transfer ? "OK transfer " : "FAIL transfer ") + transferHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        bool carried = TransferSmoke.RunEntities(out ulong carriedHash);
+        Console.WriteLine((carried ? "OK transfer-entities " : "FAIL transfer-entities ") + carriedHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        bool interest = InterestSmoke.Run(out ulong interestHash);
+        Console.WriteLine((interest ? "OK interest " : "FAIL interest ") + interestHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool rods = RodSmoke.Run(out ulong rodHash);
         Console.WriteLine((rods ? "OK rods " : "FAIL rods ") + rodHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool pulleys = PulleySmoke.Run(out ulong pulleyHash);
@@ -342,7 +348,7 @@ internal static class SmokeProgram
         Console.WriteLine((destruction ? "OK destruction " : "FAIL destruction ") + destructionHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool machines = JointMachineSmoke.Run();
         Console.WriteLine(machines ? "OK machines" : "FAIL machines");
-        return bake && rollback && settle && diagnosis && worldScale && articulations && tools && interchange && destruction && active && shallowWater && swim && railBike && abilities && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
+        return bake && rollback && transfer && carried && interest && settle && diagnosis && worldScale && articulations && tools && interchange && destruction && active && shallowWater && swim && railBike && abilities && act3 && act2 && rods && pulleys && ExtendedQueriesSmoke() && missingShapes && repairs && bodyControls && machines && surfaces && contacts && formats && inspection && ok && same && bpSame && w2Same && jSame && cSame && w3Same && kSame && sSame && hSame && xSame && kkSame && dSame && fSame && skSame && soft2d ? 0 : 1;
     }
 
     private static bool MissingShapes()

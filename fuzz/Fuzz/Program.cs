@@ -51,6 +51,8 @@ internal static class Program
         ["presentation"] = FuzzPresentation.Run,
         ["scene"] = FuzzScene.Run,
         ["bake"] = FuzzBake.Run,
+        ["body-set-packet"] = FuzzTransfer.Run,
+        ["interest-message"] = FuzzInterest.Run,
         ["plane3d"] = FuzzMissingShapes.Plane,
         ["massoffset2d"] = FuzzMissingShapes.MassOffset2D,
         ["massoffset3d"] = FuzzMissingShapes.MassOffset3D,

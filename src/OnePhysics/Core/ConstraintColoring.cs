@@ -81,6 +81,25 @@ public sealed partial class ConstraintColoring
         return (byte)color;
     }
 
+    /// <summary>The colour <paramref name="wanted"/> when neither dynamic body uses it, otherwise what <see cref="Assign"/> gives. A wanted overflow marker takes whatever <see cref="Assign"/> gives too.</summary>
+    internal byte AssignPreferred(int a, bool aDynamic, int b, bool bDynamic, int wanted)
+    {
+        if (!aDynamic && !bDynamic) { return ConstraintStore.Uncolored; }
+        if ((uint)wanted < ColorCount)
+        {
+            ulong bit = 1UL << wanted;
+            ulong used = (aDynamic ? _mask[a] : 0UL) | (bDynamic ? _mask[b] : 0UL);
+            if ((used & bit) == 0)
+            {
+                if (aDynamic) { _mask[a] |= bit; }
+                if (bDynamic) { _mask[b] |= bit; }
+                return (byte)wanted;
+            }
+        }
+
+        return Assign(a, aDynamic, b, bDynamic);
+    }
+
     private static int FirstFree(ulong used, int from, int to)
     {
         for (int c = from; c < to; c++)
