@@ -314,6 +314,32 @@ public class Diagnosis3DTests
         AssertClean(Motor(1e5f, 3f, false, out _).Diagnose(), DiagnosticCode.LimitPinned);
     }
 
+    [Fact]
+    public void ProbeThatCannotStepIsReportedAndTheStaticFindingsStay()
+    {
+        var w = New(false);
+        w.AddGravityField(static (position, tick) => new Vector3F(0, 0, 0));   // a callback is host code: a copy of the world has none
+        var thin = w.AddBox(new Vector3F(1, 0.005f, 1), at: new Vector3D(0, 3, 0));
+        var r = w.Diagnose();
+        var f = Assert.Single(r.With(DiagnosticCode.ProbeStopped));
+        Assert.Equal(DiagnosticSeverity.Info, f.Severity);
+        Assert.Contains("FieldCallbackException", f.Explanation);
+        Assert.Equal(0, r.StepsObserved);
+        Assert.Contains(thin.RawHandle, r.With(DiagnosticCode.ImplausibleSize).Single().Bodies);
+    }
+
+    [Fact]
+    public void IslandHeldAwakeByAMovingKinematicBodyIsExplained()
+    {
+        var w = New(); Floor(w);
+        var box = w.AddBox(new Vector3F(1, 1, 1), at: new Vector3D(0, 0.5, 0));
+        var lift = w.AddBox(new Vector3F(3, 0.2f, 3), at: new Vector3D(0, -0.1, 0), type: BodyType.Kinematic);
+        lift.LinearVelocity = new Vector3F(0.5f, 0, 0);
+        var f = Assert.Single(w.Diagnose(Long).With(DiagnosticCode.NeverSleeps), x => x.Bodies.Contains(box.RawHandle));
+        Assert.Equal(DiagnosticSeverity.Info, f.Severity);
+        Assert.Contains("kinematic", f.Explanation);
+    }
+
     // ---------------------------------------------------------------- the report itself
 
     [Fact]

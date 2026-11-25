@@ -282,6 +282,29 @@ public class Diagnosis2DTests
     }
 
     [Fact]
+    public void ProbeThatCannotStepIsReportedAndTheStaticFindingsStay()
+    {
+        var w = New(false);
+        w.AddGravityField(static (position, tick) => new Vector3F(0, 0, 0));
+        var thin = w.AddBox(new Vector2F(1, 0.005f), at: new Vector2D(0, 3));
+        var r = w.Diagnose();
+        var f = Assert.Single(r.With(DiagnosticCode.ProbeStopped));
+        Assert.Contains("FieldCallbackException", f.Explanation);
+        Assert.Contains(thin.RawHandle, r.With(DiagnosticCode.ImplausibleSize).Single().Bodies);
+    }
+
+    [Fact]
+    public void IslandHeldAwakeByAMovingKinematicBodyIsExplained()
+    {
+        var w = New(); Floor(w);
+        var box = w.AddBox(new Vector2F(1, 1), at: new Vector2D(0, 0.5));
+        var lift = w.AddBox(new Vector2F(3, 0.2f), at: new Vector2D(0, -0.1), type: BodyType.Kinematic);
+        lift.LinearVelocity = new Vector2F(0.5f, 0);
+        var f = Assert.Single(w.Diagnose(Long).With(DiagnosticCode.NeverSleeps), x => x.Bodies.Contains(box.RawHandle));
+        Assert.Contains("kinematic", f.Explanation);
+    }
+
+    [Fact]
     public void DiagnoseNeverChangesTheWorld()
     {
         var w = Chain(2000);

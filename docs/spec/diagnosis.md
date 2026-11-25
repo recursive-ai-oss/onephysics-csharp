@@ -30,7 +30,7 @@ Everything is arithmetic on float32 state in double with IEEE-exact operations (
 
 **Order.** Findings are ordered by ascending code, then descending severity, then descending metric, then ascending key (the first body slot, else the first joint slot), then creation order. At most `MaxFindingsPerCode` are kept per code; `Suppressed` counts the rest. Entity lists are ascending slots.
 
-**Cost** (indicative, x64 worker, defaults, 1 thread, 90 probe steps, including the fork): see the library changelog.
+**Cost** (indicative; x64 desktop, 1 thread, defaults; not a gated row). The state pass alone (`ProbeSteps = 0`) takes about 2 ms on the standard 2D large pile (4000 bodies), 4-20 ms on large-pile-3d and 3.5 ms on ragdoll-pile-3d. With the default 90 probe steps (a fork plus 90 steps of the world, which dominates) it takes 0.2 s on the 2D large pile, 0.3-0.7 s on large-pile-3d and 0.14-0.27 s on ragdoll-pile-3d, as built and after 120 settling steps; the 4960-body pyramid-3d-30 takes 4 s. Diagnosis allocates (findings, a copy of the world); it is a tool for authors and tests, not for the step loop.
 
 ## Catalogue
 
