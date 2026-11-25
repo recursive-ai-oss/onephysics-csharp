@@ -152,24 +152,29 @@ internal sealed partial class Engine3D
         {
             w.DescribeEntity("ragdoll", r, RagHandles.GenerationOf(r));
             if (!RagHandles.IsLive(r)) { continue; }
-            var s = Ragdolls[r]!;
-            var d = s.Def;
-            w.NamedInt32(d.Parts.Length);
-            w.NamedByte((byte)d.SelfCollision); w.NamedSingle(d.AngularDamping); w.NamedUInt32(d.CategoryBits); w.NamedUInt32(d.MaskBits);
-            for (int i = 0; i < d.Parts.Length; i++)
-            {
-                var p = d.Parts[i];
-                w.NamedInt32(p.Parent); w.NamedByte((byte)p.Shape);
-                WriteVec(w, p.ShapeHalfSize); WriteVec(w, p.Position); WriteQuat(w, p.Rotation);
-                w.NamedSingle(p.Mass); w.NamedSingle(p.Friction);
-                WriteVec(w, p.JointPosition); WriteQuat(w, p.JointRotation);
-                w.NamedSingle(p.LowerTwist); w.NamedSingle(p.UpperTwist); w.NamedSingle(p.SwingYHalfAngle); w.NamedSingle(p.SwingZHalfAngle);
-                w.NamedSingle(p.DriveStiffness); w.NamedSingle(p.DriveDamping); w.NamedSingle(p.MaxTorque);
-                w.NamedInt32(s.Body[i]); w.NamedInt32(s.BodyGen[i]); w.NamedInt32(s.Joint[i]); w.NamedInt32(s.JointGen[i]);
-            }
-
-            w.NamedBool(s.Powered); w.NamedSingle(s.Strength);
+            WriteRagdollRecord(w, Ragdolls[r]!);
         }
+    }
+
+    /// <summary>One ragdoll's record: definition, where its parts are, and the drive state. Shared by snapshots and body-set packets.</summary>
+    internal static void WriteRagdollRecord(StateWriter w, RagdollState s)
+    {
+        var d = s.Def;
+        w.NamedInt32(d.Parts.Length);
+        w.NamedByte((byte)d.SelfCollision); w.NamedSingle(d.AngularDamping); w.NamedUInt32(d.CategoryBits); w.NamedUInt32(d.MaskBits);
+        for (int i = 0; i < d.Parts.Length; i++)
+        {
+            var p = d.Parts[i];
+            w.NamedInt32(p.Parent); w.NamedByte((byte)p.Shape);
+            WriteVec(w, p.ShapeHalfSize); WriteVec(w, p.Position); WriteQuat(w, p.Rotation);
+            w.NamedSingle(p.Mass); w.NamedSingle(p.Friction);
+            WriteVec(w, p.JointPosition); WriteQuat(w, p.JointRotation);
+            w.NamedSingle(p.LowerTwist); w.NamedSingle(p.UpperTwist); w.NamedSingle(p.SwingYHalfAngle); w.NamedSingle(p.SwingZHalfAngle);
+            w.NamedSingle(p.DriveStiffness); w.NamedSingle(p.DriveDamping); w.NamedSingle(p.MaxTorque);
+            w.NamedInt32(s.Body[i]); w.NamedInt32(s.BodyGen[i]); w.NamedInt32(s.Joint[i]); w.NamedInt32(s.JointGen[i]);
+        }
+
+        w.NamedBool(s.Powered); w.NamedSingle(s.Strength);
     }
 
     private static void WriteQuat(StateWriter w, QuaternionF q) { w.NamedSingle(q.X); w.NamedSingle(q.Y); w.NamedSingle(q.Z); w.NamedSingle(q.W); }
@@ -193,45 +198,51 @@ internal sealed partial class Engine3D
         for (int k = 0; k < b.Handles.HighWater; k++)
         {
             if (!b.Handles.IsLive(k)) { continue; }
-            int n = r.ReadCount(RagdollPartBytes, "ragdoll parts");
-            if (n < 1 || n > RagdollDef.MaxParts) { throw r.Error("a ragdoll with " + n.ToString(CultureInfo.InvariantCulture) + " parts"); }
-            var s = new RagdollState();
-            var d = new RagdollDef { Parts = new RagdollPartDef[n] };
-            byte self = r.ReadByte();
-            if (self > (byte)RagdollSelfCollision.All) { throw r.Error("invalid ragdoll self-collision mode"); }
-            d.SelfCollision = (RagdollSelfCollision)self; d.AngularDamping = r.ReadSingle(); d.CategoryBits = r.ReadUInt32(); d.MaskBits = r.ReadUInt32();
-            s.Def = d;
-            s.Body = new int[n]; s.BodyGen = new int[n]; s.Joint = new int[n]; s.JointGen = new int[n];
-            for (int i = 0; i < n; i++)
-            {
-                var p = new RagdollPartDef { Parent = r.ReadInt32() };
-                byte shape = r.ReadByte();
-                if (shape > (byte)RagdollShapeKind.Box) { throw r.Error("invalid ragdoll shape kind"); }
-                p.Shape = (RagdollShapeKind)shape;
-                p.ShapeHalfSize = ReadVec(r); p.Position = ReadVec(r); p.Rotation = ReadQuat(r);
-                p.Mass = r.ReadSingle(); p.Friction = r.ReadSingle();
-                p.JointPosition = ReadVec(r); p.JointRotation = ReadQuat(r);
-                p.LowerTwist = r.ReadSingle(); p.UpperTwist = r.ReadSingle(); p.SwingYHalfAngle = r.ReadSingle(); p.SwingZHalfAngle = r.ReadSingle();
-                p.DriveStiffness = r.ReadSingle(); p.DriveDamping = r.ReadSingle(); p.MaxTorque = r.ReadSingle();
-                d.Parts[i] = p;
-                s.Body[i] = r.ReadInt32(); s.BodyGen[i] = r.ReadInt32(); s.Joint[i] = r.ReadInt32(); s.JointGen[i] = r.ReadInt32();
-                if (s.Body[i] < 0 || s.Body[i] >= bodyCount || s.BodyGen[i] < 1 || used[s.Body[i]]) { throw r.Error("invalid ragdoll part body"); }
-                used[s.Body[i]] = true;
-                if (p.Parent < 0 ? s.Joint[i] != -1 : (s.Joint[i] < 0 || s.JointGen[i] < 1)) { throw r.Error("invalid ragdoll part joint"); }
-            }
-
-            d.Units = Opt.UnitsPerMetre;
-            try { d.Validate(); }
-            catch (Exception e) when (e is ArgumentException or PhysicsException) { throw r.Error("invalid ragdoll definition: " + e.Message); }
-            s.Powered = r.ReadBool(); s.Strength = r.ReadSingle();
-            if (!(s.Strength >= 0f && s.Strength <= 1f) || (s.Powered && !(s.Strength > 0f))) { throw r.Error("invalid ragdoll drive strength"); }
-            // A stored rotation can be finite yet overflow when squared; Derive rejects it.
-            try { s.Derive(); }
-            catch (ArgumentException e) { throw r.Error("invalid ragdoll definition: " + e.Message); }
-            b.States[k] = s;
+            b.States[k] = ReadRagdollRecord(r, bodyCount, used, Opt.UnitsPerMetre);
         }
 
         return b;
+    }
+
+    /// <summary>Reads one ragdoll's record (see <see cref="WriteRagdollRecord"/>), checking every part against <paramref name="bodyCount"/> bodies of which <paramref name="used"/> marks those already taken.</summary>
+    internal static RagdollState ReadRagdollRecord(StateReader r, int bodyCount, bool[] used, float units)
+    {
+        int n = r.ReadCount(RagdollPartBytes, "ragdoll parts");
+        if (n < 1 || n > RagdollDef.MaxParts) { throw r.Error("a ragdoll with " + n.ToString(CultureInfo.InvariantCulture) + " parts"); }
+        var s = new RagdollState();
+        var d = new RagdollDef { Parts = new RagdollPartDef[n] };
+        byte self = r.ReadByte();
+        if (self > (byte)RagdollSelfCollision.All) { throw r.Error("invalid ragdoll self-collision mode"); }
+        d.SelfCollision = (RagdollSelfCollision)self; d.AngularDamping = r.ReadSingle(); d.CategoryBits = r.ReadUInt32(); d.MaskBits = r.ReadUInt32();
+        s.Def = d;
+        s.Body = new int[n]; s.BodyGen = new int[n]; s.Joint = new int[n]; s.JointGen = new int[n];
+        for (int i = 0; i < n; i++)
+        {
+            var p = new RagdollPartDef { Parent = r.ReadInt32() };
+            byte shape = r.ReadByte();
+            if (shape > (byte)RagdollShapeKind.Box) { throw r.Error("invalid ragdoll shape kind"); }
+            p.Shape = (RagdollShapeKind)shape;
+            p.ShapeHalfSize = ReadVec(r); p.Position = ReadVec(r); p.Rotation = ReadQuat(r);
+            p.Mass = r.ReadSingle(); p.Friction = r.ReadSingle();
+            p.JointPosition = ReadVec(r); p.JointRotation = ReadQuat(r);
+            p.LowerTwist = r.ReadSingle(); p.UpperTwist = r.ReadSingle(); p.SwingYHalfAngle = r.ReadSingle(); p.SwingZHalfAngle = r.ReadSingle();
+            p.DriveStiffness = r.ReadSingle(); p.DriveDamping = r.ReadSingle(); p.MaxTorque = r.ReadSingle();
+            d.Parts[i] = p;
+            s.Body[i] = r.ReadInt32(); s.BodyGen[i] = r.ReadInt32(); s.Joint[i] = r.ReadInt32(); s.JointGen[i] = r.ReadInt32();
+            if (s.Body[i] < 0 || s.Body[i] >= bodyCount || s.BodyGen[i] < 1 || used[s.Body[i]]) { throw r.Error("invalid ragdoll part body"); }
+            used[s.Body[i]] = true;
+            if (p.Parent < 0 ? s.Joint[i] != -1 : (s.Joint[i] < 0 || s.JointGen[i] < 1)) { throw r.Error("invalid ragdoll part joint"); }
+        }
+
+        d.Units = units;
+        try { d.Validate(); }
+        catch (Exception e) when (e is ArgumentException or PhysicsException) { throw r.Error("invalid ragdoll definition: " + e.Message); }
+        s.Powered = r.ReadBool(); s.Strength = r.ReadSingle();
+        if (!(s.Strength >= 0f && s.Strength <= 1f) || (s.Powered && !(s.Strength > 0f))) { throw r.Error("invalid ragdoll drive strength"); }
+        // A stored rotation can be finite yet overflow when squared; Derive rejects it.
+        try { s.Derive(); }
+        catch (ArgumentException e) { throw r.Error("invalid ragdoll definition: " + e.Message); }
+        return s;
     }
 
     private void CommitRagdolls(RagdollBlock? b)
