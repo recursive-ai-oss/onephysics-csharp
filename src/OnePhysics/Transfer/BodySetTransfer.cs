@@ -115,7 +115,7 @@ internal static class BodySetTransfer
             }
         }
 
-        var model = new PacketModel { Dimension = e.Dimension, MetresPerUnit = e.MetresPerUnit, SourceWorld = core.Id, SourceStep = core.StepCount };
+        var model = new PacketModel { Dimension = e.Dimension, MetresPerUnit = e.MetresPerUnit, SourceWorld = core.Id };
         int memberCount = members.Length, anchorCount = anchorOf.Count;
         model.MemberCount = memberCount;
         model.Bodies = new PacketBody[memberCount + anchorCount];

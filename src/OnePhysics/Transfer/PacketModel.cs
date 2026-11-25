@@ -8,8 +8,8 @@ internal sealed class PacketModel
 {
     public int Dimension;
     public double MetresPerUnit = 1.0;
+    /// <summary>The id of the world the packet was extracted from; known only in memory (0 for a packet read from bytes), so the bytes depend on the set and nothing else.</summary>
     public int SourceWorld;
-    public long SourceStep;
     public PacketBody[] Bodies = Array.Empty<PacketBody>();
     public int MemberCount;
     public PacketShape[] Shapes = Array.Empty<PacketShape>();

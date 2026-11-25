@@ -52,6 +52,8 @@ internal static class Seeds
         File.WriteAllBytes(Path.Combine(root, "scene", "state"), FuzzScene.State());
         File.WriteAllBytes(Path.Combine(root, "scene", "state-millimetres"), FuzzScene.StateInMillimetres());
         File.WriteAllBytes(Path.Combine(root, "scene", "authoring-millimetres"), FuzzScene.AuthoringInMillimetres());
+        File.WriteAllBytes(Path.Combine(root, "body-set-packet", "planar"), FuzzTransfer.Seed(2));
+        File.WriteAllBytes(Path.Combine(root, "body-set-packet", "spatial"), FuzzTransfer.Seed(3));
         File.WriteAllBytes(Path.Combine(root, "replay", "planar"), FuzzReplay.Seed(2));
         File.WriteAllBytes(Path.Combine(root, "replay", "spatial"), FuzzReplay.Seed(3));
         File.WriteAllBytes(Path.Combine(root, "replay", "recorded-planar"), FuzzReplay.CommandSeed(2));

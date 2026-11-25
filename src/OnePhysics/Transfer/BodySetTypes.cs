@@ -105,7 +105,7 @@ public sealed class BodySetHandleMap
         _oldShapes = oldShapes; _newShapes = newShapes; _oldJoints = oldJoints; _newJoints = newJoints; _oldRagdolls = oldRagdolls; _newRagdolls = newRagdolls;
     }
 
-    /// <summary>Handles the bodies had in the source world; for an anchor the outside body it stands for.</summary>
+    /// <summary>Handles the bodies had in the source world (their world id is the source world's when the packet came straight from <c>ExtractBodies</c>, and 0 when it was read from bytes); for an anchor the outside body it stands for.</summary>
     public ReadOnlySpan<BodyHandle> OldBodies => _oldBodies;
 
     /// <summary>Handles the bodies have in the receiving world, parallel to <see cref="OldBodies"/>.</summary>
@@ -132,10 +132,10 @@ public sealed class BodySetHandleMap
     /// <summary>Ragdoll handles in the receiving world, parallel to <see cref="OldRagdolls"/>.</summary>
     public ReadOnlySpan<RagdollHandle> NewRagdolls => _newRagdolls;
 
-    /// <summary>The new handle of a body of the set. Returns false for a handle that was not in the set.</summary>
+    /// <summary>The new handle of a body of the set (found by slot and generation, so a handle works whichever world id the packet remembers). Returns false for a handle that was not in the set.</summary>
     public bool TryMap(BodyHandle old, out BodyHandle mapped)
     {
-        for (int i = 0; i < _members; i++) { if (_oldBodies[i] == old) { mapped = _newBodies[i]; return true; } }
+        for (int i = 0; i < _members; i++) { if (_oldBodies[i].Index == old.Index && _oldBodies[i].Generation == old.Generation) { mapped = _newBodies[i]; return true; } }
         mapped = default;
         return false;
     }
@@ -143,7 +143,7 @@ public sealed class BodySetHandleMap
     /// <summary>The new handle of a shape of the set. Returns false for a handle that was not in the set.</summary>
     public bool TryMap(ShapeHandle old, out ShapeHandle mapped)
     {
-        for (int i = 0; i < _oldShapes.Length; i++) { if (_oldShapes[i] == old) { mapped = _newShapes[i]; return true; } }
+        for (int i = 0; i < _oldShapes.Length; i++) { if (_oldShapes[i].Index == old.Index && _oldShapes[i].Generation == old.Generation) { mapped = _newShapes[i]; return true; } }
         mapped = default;
         return false;
     }
@@ -151,7 +151,7 @@ public sealed class BodySetHandleMap
     /// <summary>The new handle of a joint of the set. Returns false for a handle that was not in the set.</summary>
     public bool TryMap(JointHandle old, out JointHandle mapped)
     {
-        for (int i = 0; i < _oldJoints.Length; i++) { if (_oldJoints[i] == old) { mapped = _newJoints[i]; return true; } }
+        for (int i = 0; i < _oldJoints.Length; i++) { if (_oldJoints[i].Index == old.Index && _oldJoints[i].Generation == old.Generation) { mapped = _newJoints[i]; return true; } }
         mapped = default;
         return false;
     }

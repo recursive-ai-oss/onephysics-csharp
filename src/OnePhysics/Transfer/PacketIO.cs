@@ -19,7 +19,7 @@ internal static class PacketIO
     {
         var w = StateWriter.ToBuffer();
         w.WriteUInt32(Magic); w.WriteUInt32(Version);
-        w.WriteInt32(m.Dimension); w.WriteDouble(m.MetresPerUnit); w.WriteInt32(m.SourceWorld); w.WriteInt64(m.SourceStep);
+        w.WriteInt32(m.Dimension); w.WriteDouble(m.MetresPerUnit);
         w.WriteInt32(m.PositionLanes); w.WriteInt32(m.RotationLanes); w.WriteInt32(m.LinearLanes); w.WriteInt32(m.AngularLanes); w.WriteInt32(m.MaxManifoldPoints); w.WriteInt32(m.PayloadFloats);
         w.WriteInt32(m.MemberCount); w.WriteInt32(m.Bodies.Length - m.MemberCount); w.WriteInt32(m.Shapes.Length); w.WriteInt32(m.Joints.Length); w.WriteInt32(m.Contacts.Length); w.WriteInt32(m.Supports.Length); w.WriteInt32(m.SupportContacts.Length); w.WriteInt32(m.Ragdolls.Length);
         foreach (var b in m.Bodies)
@@ -146,8 +146,6 @@ internal static class PacketIO
         m.Dimension = dim;
         m.MetresPerUnit = r.Double("metresPerUnit");
         if (!(m.MetresPerUnit >= 1e-6 && m.MetresPerUnit <= 1e6)) { r.Pos -= 8; throw r.Bad("metresPerUnit", "must be within 1e-6..1e6"); }
-        m.SourceWorld = r.Int("sourceWorld");
-        m.SourceStep = r.Long("sourceStep");
         int[] want = { m.PositionLanes, m.RotationLanes, m.LinearLanes, m.AngularLanes, m.MaxManifoldPoints, m.PayloadFloats };
         string[] names = { "positionLanes", "rotationLanes", "linearLanes", "angularLanes", "maxManifoldPoints", "payloadFloats" };
         for (int i = 0; i < want.Length; i++)

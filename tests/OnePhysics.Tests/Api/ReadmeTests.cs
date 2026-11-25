@@ -114,6 +114,10 @@ public class ReadmeTests
         Assert.True(settle.Clean && settle.Seats);
         Assert.InRange(settle.TipDegrees, 26.0, 27.0);
         Assert.InRange(settle.Clearance, 0.04f, 0.0501f);
+        var transfer = GuideExamples.Transfer.Run();
+        Assert.Equal(transfer, GuideExamples.Transfer.Run());
+        Assert.True(transfer.SameHash && transfer.Bodies == 1);
+        Assert.InRange(transfer.SpeedAfter, 2.999, 3.001);
         var wt = GuideExamples.Water.Run();
         Assert.Equal(wt, GuideExamples.Water.Run());
         var sw = GuideExamples.Swimming.Run();

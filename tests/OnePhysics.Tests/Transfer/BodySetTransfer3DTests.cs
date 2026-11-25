@@ -338,14 +338,14 @@ public sealed class BodySetTransfer3DTests
         var a = World(9134, ground: false);
         var box = a.AddBox(new Vector3F(1, 1, 1), at: new Vector3D(0, 5, 0));
         var bytes = a.ExtractBodies(new[] { box }, new BodySetOptions { Move = false }).ToArray();
-        // Header: magic, version, dimension, f64 unit, world, f64 step, six lane words, then the counts (member, anchor, shape, joint, contact, support, support contact, ragdoll).
-        int bodies = 4 + 4 + 4 + 8 + 4 + 8 + 24 + 32;
+        // Header: magic, version, dimension, f64 unit, six lane words, then the counts (member, anchor, shape, joint, contact, support, support contact, ragdoll).
+        int bodies = 4 + 4 + 4 + 8 + 24 + 32;
         var nan = (byte[])bytes.Clone();
         BitConverter.GetBytes(double.NaN).CopyTo(nan, bodies + 16);
         var ex = Assert.Throws<BodySetPacketException>(() => BodySetPacket.Read(nan));
         Assert.Contains("bodies[0].position", ex.Field);
         var big = (byte[])bytes.Clone();
-        BitConverter.GetBytes(int.MaxValue).CopyTo(big, 4 + 4 + 4 + 8 + 4 + 8 + 24);
+        BitConverter.GetBytes(int.MaxValue).CopyTo(big, 4 + 4 + 4 + 8 + 24);
         Assert.Contains("memberCount", Assert.Throws<BodySetPacketException>(() => BodySetPacket.Read(big)).Field);
         Assert.Contains("magic", Assert.Throws<BodySetPacketException>(() => BodySetPacket.Read(new byte[100])).Field);
         Assert.Throws<ArgumentOutOfRangeException>(() => BodySetPacket.Read(bytes, -1));
