@@ -505,6 +505,86 @@ public class PresentationTests
         Assert.True(hits > 20, "rays hit something: " + hits);
     }
 
+    // ---------------------------------------------------------------- length units
+
+    [Fact]
+    public void AFollowerTakesTheAuthoritysMillimetreUnitAndItsDefaultsFollow3D()
+    {
+        var a = new P3.PhysicsWorld3D(new P3.WorldOptions3D { WorldId = 96, LengthUnit = LengthUnit.Millimetres });
+        var floor = a.AddBox(new Vector3F(40000, 1000, 40000), new Vector3D(0, -500, 0), type: BodyType.Static);
+        var block = a.AddBox(new Vector3F(1000, 1000, 1000), new Vector3D(4000, 500, 0), density: 5e-7f);
+        var f = new P3.PresentationWorld3D(new P3.WorldOptions3D { WorldId = 97 });
+        Assert.True(f.World.LengthUnit.IsMetres);
+        f.Follow(floor); f.Follow(block);
+        Assert.Equal(LengthUnit.Millimetres, f.World.LengthUnit);
+        Assert.Equal(30000f, f.MaxSpeed, 1);          // 30 m/s
+        Assert.Equal(30000f, f.TeleportSpeed, 1);
+        using var ms = new MemoryStream();
+        using (f.StartRecording(ms))
+        {
+            for (int i = 0; i < 30; i++) { a.Step(Dt); f.Step(a, Dt); }
+            a.Fracture(block, new P3.FractureDef { CellCount = 5, Seed = 3 });
+            f.Observe(a);   // a manual fracture's events last until the next authoritative step
+            for (int i = 0; i < 90; i++) { a.Step(Dt); f.Step(a, Dt); }
+        }
+
+        Assert.Equal(f.Debris.Count, f.CosmeticBodyCount);
+        var bodies = f.World.Core.Bodies; int shards = 0; float fastest = 0;
+        for (int b = 0; b < bodies.HighWater; b++)
+        {
+            if (!bodies.IsDynamic(b)) continue;
+            shards++;
+            var body = f.World.GetBody(f.World.Core.HandleOfBody(b));
+            Assert.InRange(body.Mass, 0.07f, 0.08f);   // 50 mm cube of 600 kg/m3 = 0.075 kg, as in metres
+            var v = body.LinearVelocity; fastest = Math.Max(fastest, MathF.Sqrt(v.X * v.X + v.Y * v.Y + v.Z * v.Z));
+        }
+
+        Assert.Equal(12, shards);
+        Assert.True(fastest <= f.MaxSpeed);
+        f.MaxSpeed = 5000f; Assert.Equal(5000f, f.MaxSpeed); f.UseDefaultSpeeds(); Assert.Equal(30000f, f.MaxSpeed, 1);
+        // The recording carries the unit (in the live options) and replays to the same hash.
+        ms.Position = 0;
+        var player = new PresentationPlayer(ms);
+        var replayed = player.CreateFollower3D();
+        Assert.Equal(LengthUnit.Millimetres, replayed.World.LengthUnit);
+        while (player.ReadNextStep()) { }
+        Assert.Equal(f.ComputeHash(), replayed.ComputeHash());
+        // A different unit in a populated follower is refused with both units in the message.
+        var other = new P3.PhysicsWorld3D(new P3.WorldOptions3D { WorldId = 98 });
+        var e = Assert.Throws<ArgumentException>(() => f.Follow(other.AddBox(new Vector3F(1, 1, 1))));
+        Assert.Contains("0.001", e.Message);
+    }
+
+    [Fact]
+    public void AFollowerTakesThePixelUnit2D()
+    {
+        var a = new P2.PhysicsWorld2D(new P2.WorldOptions2D { WorldId = 99, LengthUnit = LengthUnit.Pixels(100) });
+        var plat = a.AddBox(new Vector2F(200, 20), new Vector2D(0, 100), type: BodyType.Kinematic);
+        var f = new P2.PresentationWorld2D(new P2.WorldOptions2D { WorldId = 100 });
+        f.Follow(plat);
+        Assert.Equal(100.0, 1.0 / f.World.LengthUnit.MetresPerUnit, 6);
+        Assert.Equal(3000f, f.MaxSpeed, 1);
+        var q = f.Quality; q.MaxBodies = 3; f.Quality = q;
+        var shards = f.SpawnShards(new Vector2D(0, 300), default);
+        Assert.Equal(12, shards.Length);
+        for (int i = 0; i < 5; i++) { plat.MoveKinematic(new Vector2D(i, 100), 0f); a.Step(Dt); f.Step(a, Dt); }
+        Assert.Equal(3, f.CosmeticBodyCount);
+    }
+
+    // ---------------------------------------------------------------- steady state
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void ObserveAndStepAllocateNothingOnceWarm(int dim)
+    {
+        Action advance; 
+        if (dim == 3) { var s = PresentationScenes.Build3(1, true); for (int i = 0; i < 150; i++) s.Advance(); advance = s.Advance; }
+        else { var s = PresentationScenes.Build2(1, true); for (int i = 0; i < 150; i++) s.Advance(); advance = s.Advance; }
+        Core.AllocMeter.Settle();
+        Core.AllocMeter.AssertAllocatesNothing(() => { for (int i = 0; i < 40; i++) advance(); }, "follower Observe + Step with " + (dim == 3 ? "3D" : "2D") + " hair, cloth, rope and debris");
+    }
+
     // ---------------------------------------------------------------- the two worlds match
 
     [Fact]

@@ -41,6 +41,16 @@ public sealed partial class PresentationWorld2D
         }
     }
 
+    // The follower works in the authority's unit: poses are copied as numbers. A follower still in metres with nothing in it takes the authority's unit (its defaults follow); otherwise the units must match.
+    private void AdoptUnit(PhysicsWorld2D authority)
+    {
+        var mine = _world.Options.LengthUnit; var theirs = authority.LengthUnit;
+        if (mine.Equals(theirs)) return;
+        if (!mine.IsMetres || _mirrors.Count != 0 || _world.Core.Bodies.Count != 0)
+            throw new ArgumentException("The follower's length unit (" + mine.MetresPerUnit.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + " m per unit) differs from the authority's (" + theirs.MetresPerUnit.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "). Create the follower with the authority's LengthUnit, or follow before adding anything to it.", nameof(authority));
+        _world.Options.LengthUnit = theirs;
+    }
+
     private int FindMirror(PhysicsWorld2D authority, BodyHandle source)
     {
         for (int i = 0; i < _mirrors.Count; i++) { var m = _mirrors[i]; if (ReferenceEquals(m.Authority, authority) && m.Source == source) return i; }
@@ -58,6 +68,7 @@ public sealed partial class PresentationWorld2D
     {
         var aw = authority.World ?? throw new InvalidHandleException("The default Body is not attached to a world.");
         if (ReferenceEquals(aw, _world)) throw new ArgumentException("A follower cannot follow its own bodies.", nameof(authority));
+        AdoptUnit(aw);
         int ab = aw.ResolveBody(authority.RawHandle);
         int existing = FindMirror(aw, authority.RawHandle);
         if (existing >= 0) return _mirrors[existing].Body;
@@ -250,6 +261,9 @@ public sealed partial class PresentationWorld2D
         CheckPose(at);
         if (!float.IsFinite(baseVelocity.X) || !float.IsFinite(baseVelocity.Y)) throw new ArgumentOutOfRangeException(nameof(baseVelocity), baseVelocity, "The velocity must be finite.");
         var d = _debris;
+        float scale = Scale, size = d.Size ?? 0.05f * scale, radius = d.Radius ?? 0.2f * scale, outward = d.Speed ?? 3f * scale;
+        // 600 kg per cubic metre is 600 / scale^3 kg per cubic world unit (square: scale^2 in 2D).
+        float density = d.Density ?? (600f / (scale * scale));
         var result = new Body[d.Count];
         var rng = new SeedRng(d.Seed ^ ((ulong)_world.StepCount * 0x9E3779B97F4A7C15UL) ^ (key * 0xD1B54A32D192ED03UL));
         for (int k = 0; k < result.Length; k++)
@@ -265,10 +279,10 @@ public sealed partial class PresentationWorld2D
             double len = double.Sqrt(ox * ox + oy * oy);
             double dx = 0, dy = 1;
             if (len > 1e-6) { dx = ox / len; dy = oy / len; }
-            double speed = d.Speed * (0.5 + rng.NextDouble());
-            var pos = new Vector2D(at.X + ox * d.Radius, at.Y + oy * d.Radius);
+            double speed = outward * (0.5 + rng.NextDouble());
+            var pos = new Vector2D(at.X + ox * radius, at.Y + oy * radius);
             CheckPose(pos);
-            var shard = _world.AddBox(new Vector2F(d.Size, d.Size), pos, density: d.Density);
+            var shard = _world.AddBox(new Vector2F(size, size), pos, density: density);
             shard.SetLinearVelocity(new Vector2F(baseVelocity.X + (float)(dx * speed), baseVelocity.Y + (float)(dy * speed)));
             Stamp(shard.RawHandle.Index);
             result[k] = shard;

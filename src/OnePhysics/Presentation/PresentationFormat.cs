@@ -10,8 +10,8 @@ internal interface IPresentationHost
     long StepCount { get; }
     ulong Hash();
     byte[] Snapshot();
-    int OptionsSize { get; }
-    void WriteOptions(Span<byte> bytes);
+    int OptionsMaxSize { get; }
+    int WriteOptions(Span<byte> bytes);
     void AttachRecorder(PresentationRecorder? recorder);
 }
 

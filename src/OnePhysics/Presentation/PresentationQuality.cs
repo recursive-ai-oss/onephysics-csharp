@@ -65,23 +65,24 @@ public sealed class PresentationQuality
 /// The default response to a fracture in the authoritative world: a burst of small cosmetic shards at the impact point. The authoritative fragments themselves are followed as kinematic bodies;
 /// the shards are extra, light and short-lived in effect (they fall under the follower's budget like any other cosmetic body).
 /// Read with <c>PresentationWorld2D/3D.Debris</c> and set by assigning a copy.
+/// <para>Lengths, speeds and densities are in the follower world's units. Each one left at <c>null</c> takes its metre default scaled by the world's <c>LengthUnit</c> when a burst is made (for a millimetre world a shard is 50 units long), like the world's own defaults.</para>
 /// </summary>
 public sealed class PresentationDebris
 {
     /// <summary>Shards per fracture event, 0 to 256 (0 turns the burst off). Default 12.</summary>
     public int Count { get; set; } = 12;
 
-    /// <summary>Full edge length of a shard in metres, above 0. Default 0.05.</summary>
-    public float Size { get; set; } = 0.05f;
+    /// <summary>Full edge length of a shard in world units, above 0. Default (null): 0.05 m.</summary>
+    public float? Size { get; set; }
 
-    /// <summary>Radius around the impact point in which shards start, metres, 0 or more. Default 0.2.</summary>
-    public float Radius { get; set; } = 0.2f;
+    /// <summary>Radius around the impact point in which shards start, world units, 0 or more. Default (null): 0.2 m.</summary>
+    public float? Radius { get; set; }
 
-    /// <summary>Outward speed in m/s, 0 or more: a shard flies out at between half and one and a half times this, on top of the mean velocity of the authoritative fragments. Default 3.</summary>
-    public float Speed { get; set; } = 3f;
+    /// <summary>Outward speed in world units per second, 0 or more: a shard flies out at between half and one and a half times this, on top of the mean velocity of the authoritative fragments. Default (null): 3 m/s.</summary>
+    public float? Speed { get; set; }
 
-    /// <summary>Density of a shard in kg/m³ (kg/m² in 2D), above 0. Default 600.</summary>
-    public float Density { get; set; } = 600f;
+    /// <summary>Density of a shard in kg per cubic world unit (per square unit in 2D), above 0. Default (null): 600 kg/m³ (kg/m² in 2D), whatever the unit.</summary>
+    public float? Density { get; set; }
 
     /// <summary>Seed of the deterministic generator that places and launches shards; the stream is also keyed by the follower's step count and the event's index, so equal events give equal shards on every platform. Default 1.</summary>
     public ulong Seed { get; set; } = 1;
@@ -97,9 +98,9 @@ public sealed class PresentationDebris
     public void Validate()
     {
         if (Count < 0 || Count > 256) throw new ArgumentOutOfRangeException(nameof(Count), Count, "Count must be 0 to 256.");
-        if (!(Size > 0f) || !float.IsFinite(Size) || Size > 1000f) throw new ArgumentOutOfRangeException(nameof(Size), Size, "Size must be above 0 and at most 1000.");
-        if (!(Radius >= 0f) || !float.IsFinite(Radius) || Radius > 1e6f) throw new ArgumentOutOfRangeException(nameof(Radius), Radius, "Radius must be 0 to 1e6.");
-        if (!(Speed >= 0f) || !float.IsFinite(Speed) || Speed > 1000f) throw new ArgumentOutOfRangeException(nameof(Speed), Speed, "Speed must be 0 to 1000.");
-        if (!(Density > 0f) || !float.IsFinite(Density) || Density > 1e6f) throw new ArgumentOutOfRangeException(nameof(Density), Density, "Density must be above 0 and at most 1e6.");
+        if (Size is { } z && (!(z > 0f) || !float.IsFinite(z) || z > 1e9f)) throw new ArgumentOutOfRangeException(nameof(Size), Size, "Size must be above 0 and finite.");
+        if (Radius is { } r && (!(r >= 0f) || !float.IsFinite(r) || r > 1e9f)) throw new ArgumentOutOfRangeException(nameof(Radius), Radius, "Radius must be 0 or more and finite.");
+        if (Speed is { } v && (!(v >= 0f) || !float.IsFinite(v) || v > 1e9f)) throw new ArgumentOutOfRangeException(nameof(Speed), Speed, "Speed must be 0 or more and finite.");
+        if (Density is { } d && (!(d > 0f) || !float.IsFinite(d) || d > 1e30f)) throw new ArgumentOutOfRangeException(nameof(Density), Density, "Density must be above 0 and finite.");
     }
 }

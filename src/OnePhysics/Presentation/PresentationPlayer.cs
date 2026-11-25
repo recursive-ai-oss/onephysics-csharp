@@ -182,9 +182,12 @@ public sealed class PresentationPlayer
 
     private (byte[] Options, byte[] Snapshot) SplitSnapshot()
     {
-        int optionsSize = Dimension == 3 ? ReplayOptions3D.Size : ReplayOptions2D.Size;
-        if (_payloadLength < 4 + optionsSize + 1) throw Error(_recordOffset + 5, "an options length, the live options and a snapshot");
-        if (BinaryPrimitives.ReadInt32LittleEndian(_payload) != optionsSize) throw Error(_recordOffset + 5, "an options block of " + optionsSize.ToString(System.Globalization.CultureInfo.InvariantCulture) + " bytes");
+        if (_payloadLength < 4) throw Error(_recordOffset + 5, "an options length");
+        int optionsSize = BinaryPrimitives.ReadInt32LittleEndian(_payload);
+        // The live options come in a few sizes: the base layout and the ones that add soft-body options or the length unit.
+        bool valid = Dimension == 3 ? ReplayOptions3D.IsValidSize(optionsSize) : ReplayOptions2D.IsValidSize(optionsSize);
+        if (!valid) throw Error(_recordOffset + 5, "a live-options block of a known size");
+        if (_payloadLength < 4 + optionsSize + 1) throw Error(_recordOffset + 5, "the live options and a snapshot");
         var options = _payload.AsSpan(4, optionsSize).ToArray();
         var snapshot = _payload.AsSpan(4 + optionsSize, _payloadLength - 4 - optionsSize).ToArray();
         return (options, snapshot);

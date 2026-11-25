@@ -29,6 +29,10 @@ follower.Step(authority, dt);
 
 `Step(authority, dt)` is `Observe(authority)` followed by `Step(dt)`. The authority is only read: its bytes and its hash are the same with or without a follower, and a follower can be added or dropped at any time.
 
+## Units
+
+The follower works in the authority's length unit: `Follow` makes a still-empty follower take the authority's `LengthUnit` (a different unit in a populated follower is refused). The follower's own defaults, `MaxSpeed`, `TeleportSpeed` (30 m/s) and the shards (5 cm, 3 m/s, 600 kg/m³), are metre values scaled to that unit, so a millimetre world gets 50-unit shards. Values you set are in world units.
+
 ## Events become cosmetics
 
 A fracture in the authority removes the source's mirror, follows the authoritative fragments, and throws a burst of small shards from the impact point (`follower.Debris`: count, size, speed, density, seed; the shards are the same on every platform). Set `follower.FractureMapper` to do something else. Other events go through `EventMapper` and `MappedEvents`, for instance a hard contact that spawns sparks: the handler receives the authority and the event, and spawns with `follower.World` or `follower.SpawnShards`.

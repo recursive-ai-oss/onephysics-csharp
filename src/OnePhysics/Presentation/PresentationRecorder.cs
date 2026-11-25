@@ -18,6 +18,7 @@ public sealed class PresentationRecorder : IDisposable
     private readonly byte[] _word = new byte[8];
     private readonly byte[] _options;
     private readonly byte[] _lastOptions;
+    private int _optionsLength, _lastOptionsLength;
     private ulong _lastHash;
     private bool _disposed;
 
@@ -26,7 +27,7 @@ public sealed class PresentationRecorder : IDisposable
         ArgumentNullException.ThrowIfNull(stream);
         if (!stream.CanWrite) throw new ArgumentException("The stream must be writable.", nameof(stream));
         _host = host; _stream = stream;
-        _options = new byte[host.OptionsSize]; _lastOptions = new byte[host.OptionsSize];
+        _options = new byte[host.OptionsMaxSize]; _lastOptions = new byte[host.OptionsMaxSize];
         PresentationFormat.WriteHeader(_header, host.Dimension, host.StepCount);
         stream.Write(_header);
         WriteSnapshot();
@@ -50,20 +51,20 @@ public sealed class PresentationRecorder : IDisposable
 
     private void WriteSnapshot()
     {
-        _host.WriteOptions(_options);
+        _optionsLength = _host.WriteOptions(_options);
         var snapshot = _host.Snapshot();
-        BinaryPrimitives.WriteInt32LittleEndian(_word, _options.Length);
-        WriteRecord(PresentationFormat.KindSnapshot, _word.AsSpan(0, 4), _options, snapshot);
+        BinaryPrimitives.WriteInt32LittleEndian(_word, _optionsLength);
+        WriteRecord(PresentationFormat.KindSnapshot, _word.AsSpan(0, 4), _options.AsSpan(0, _optionsLength), snapshot);
         _lastHash = _host.Hash();
-        Array.Copy(_options, _lastOptions, _options.Length);
+        Array.Copy(_options, _lastOptions, _optionsLength); _lastOptionsLength = _optionsLength;
     }
 
     /// <summary>Called by the follower before it applies a frame: writes a snapshot if the world's hash or live options differ from what the last step left.</summary>
     internal void Sync()
     {
         ThrowIfDisposed();
-        _host.WriteOptions(_options);
-        if (_host.Hash() != _lastHash || !_options.AsSpan().SequenceEqual(_lastOptions)) WriteSnapshot();
+        _optionsLength = _host.WriteOptions(_options);
+        if (_host.Hash() != _lastHash || !_options.AsSpan(0, _optionsLength).SequenceEqual(_lastOptions.AsSpan(0, _lastOptionsLength))) WriteSnapshot();
     }
 
     /// <summary>Writes one step: the frame bytes (prologue and poses) and the world hash after it.</summary>

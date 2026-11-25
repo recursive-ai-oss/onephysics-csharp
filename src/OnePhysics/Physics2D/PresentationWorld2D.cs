@@ -33,7 +33,9 @@ public sealed partial class PresentationWorld2D : IPresentationPlayback
     private readonly PhysicsWorld2D _world;
     private PresentationQuality _quality = PresentationQuality.High;
     private PresentationDebris _debris = new();
-    private float _maxSpeed = 30f, _teleportSpeed = 30f, _teleportSpin = 30f;
+    // 0 = the metre default (30 m/s) in the world's unit; a value set by the host is in world units per second.
+    private float _maxSpeed, _teleportSpeed, _teleportSpin = 30f;
+    private float Scale => _world.Options.LengthUnit.Scale;
     private PresentationRecorder? _recorder;
     private byte[] _frame = new byte[256];
     private int _frameLength;
@@ -76,21 +78,24 @@ public sealed partial class PresentationWorld2D : IPresentationPlayback
         set { ArgumentNullException.ThrowIfNull(value); value.Validate(); _debris = value.Copy(); }
     }
 
-    /// <summary>The speed bound in m/s: after every step no body of type Dynamic in the follower is faster (a faster one is scaled down). Above 0, at most 10000. Default 30.</summary>
+    /// <summary>The speed bound in m/s: after every step no body of type Dynamic in the follower is faster (a faster one is scaled down). Above 0, at most 10000 m/s. In world units per second; default 30 m/s, that is 30 times the world's units per metre.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is outside the range.</exception>
     public float MaxSpeed
     {
-        get => _maxSpeed;
-        set { if (!(value > 0f) || !(value <= 10000f)) throw new ArgumentOutOfRangeException(nameof(value), value, "MaxSpeed must be above 0 and at most 10000."); _maxSpeed = value; }
+        get => _maxSpeed != 0f ? _maxSpeed : 30f * Scale;
+        set { if (!(value > 0f) || !(value <= 10000f * Scale)) throw new ArgumentOutOfRangeException(nameof(value), value, "MaxSpeed must be above 0 and at most 10000 m/s."); _maxSpeed = value; }
     }
 
-    /// <summary>A mirror that would move faster than this in one step (m/s) is teleported with zero velocity instead of being driven. Above 0 and at most the world's <c>MaxLinearSpeed</c>. Default 30, the same as the default <see cref="MaxSpeed"/>, so a driven mirror never pushes anything faster than the speed bound. The step uses the smaller of this and half the world's <c>MaxLinearSpeed</c>.</summary>
+    /// <summary>A mirror that would move faster than this in one step (m/s) is teleported with zero velocity instead of being driven. Above 0 and at most the world's <c>MaxLinearSpeed</c>. Default 30 m/s in the world's unit, the same as the default <see cref="MaxSpeed"/>, so a driven mirror never pushes anything faster than the speed bound. The step uses the smaller of this and half the world's <c>MaxLinearSpeed</c>.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is outside the range.</exception>
     public float TeleportSpeed
     {
-        get => _teleportSpeed;
+        get => _teleportSpeed != 0f ? _teleportSpeed : 30f * Scale;
         set { if (!(value > 0f) || value > _world.Options.MaxLinearSpeed) throw new ArgumentOutOfRangeException(nameof(value), value, "TeleportSpeed must be above 0 and at most the world's MaxLinearSpeed."); _teleportSpeed = value; }
     }
+
+    /// <summary>Returns <see cref="MaxSpeed"/> and <see cref="TeleportSpeed"/> to their defaults (30 m/s in the world's unit).</summary>
+    public void UseDefaultSpeeds() { _maxSpeed = 0f; _teleportSpeed = 0f; }
 
     /// <summary>A mirror that would turn faster than this in one step (rad/s) is teleported with zero velocity. Above 0, at most 1000. Default 30.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is outside the range.</exception>
@@ -144,10 +149,10 @@ public sealed partial class PresentationWorld2D : IPresentationPlayback
         if (_frame.Length < size) _frame = new byte[Math.Max(size, _frame.Length * 2)];
         var f = _frame.AsSpan();
         BinaryPrimitives.WriteSingleLittleEndian(f, dt);
-        BinaryPrimitives.WriteSingleLittleEndian(f.Slice(4), _maxSpeed);
+        BinaryPrimitives.WriteSingleLittleEndian(f.Slice(4), MaxSpeed);
         BinaryPrimitives.WriteInt32LittleEndian(f.Slice(8), count);
         int at = PresentationFormat.FramePrologue;
-        double limit = (double)Math.Min(_teleportSpeed, 0.5f * _world.Options.MaxLinearSpeed) * dt, spin = (double)_teleportSpin * dt;
+        double limit = (double)Math.Min(TeleportSpeed, 0.5f * _world.Options.MaxLinearSpeed) * dt, spin = (double)_teleportSpin * dt;
         for (int i = 0; i < _mirrors.Count; i++)
         {
             var m = _mirrors[i];
@@ -265,8 +270,8 @@ public sealed partial class PresentationWorld2D : IPresentationPlayback
     long IPresentationHost.StepCount => _world.StepCount;
     ulong IPresentationHost.Hash() => _world.ComputeHash();
     byte[] IPresentationHost.Snapshot() => _world.Snapshot();
-    int IPresentationHost.OptionsSize => ReplayOptions2D.Size;
-    void IPresentationHost.WriteOptions(Span<byte> bytes) => ((IRecordedWorld)_world).WriteReplayOptions(bytes);
+    int IPresentationHost.OptionsMaxSize => ReplayOptions2D.MaxSize;
+    int IPresentationHost.WriteOptions(Span<byte> bytes) => ((IRecordedWorld)_world).WriteReplayOptions(bytes);
     void IPresentationHost.AttachRecorder(PresentationRecorder? recorder) => _recorder = recorder;
 
     void IPresentationPlayback.RestoreRecorded(ReadOnlySpan<byte> options, ReadOnlySpan<byte> snapshot)
