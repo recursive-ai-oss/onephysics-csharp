@@ -24,6 +24,7 @@ Task-oriented pages with examples that are compiled and run by the test suite. F
 | [Baking a simulation](bake.md) | record a run into a compact cache, play it back with no world, and run a world at offline quality |
 | [Big worlds](world-scale.md) | stream terrain tiles, step far islands less often, run a region in slow motion |
 | [Diagnosis](diagnosis.md) | ask a world what is wrong with it: findings with codes, values and suggested changes; the same over a recording |
+| [A follower world for cosmetics](presentation.md) | keep debris, hair, cloth, ropes and particles in a second world that follows the authority, with budgets and a recording |
 | [Input limits](limits.md) | know what is refused |
 | [Coming from Unity](unity-mapping.md) | find the name of the thing you know |
 - [Importing robots, scenes and maps](interchange.md)

@@ -14,6 +14,9 @@ public sealed partial class StateWriter
     private int _descriptionIndex = -1, _descriptionGeneration, _descriptionTree, _descriptionBodyA = -1, _descriptionBodyB = -1;
 
     internal void Describe(WorldCore world) { _description = new(); _descriptionWorld = world; }
+    /// <summary>True while a snapshot description is being collected; callers build section names only then, so a hash or a snapshot allocates nothing for them.</summary>
+    internal bool IsDescribing => _description != null;
+
     internal void DescribeSection(string name)
     {
         if (_description == null) { return; }
