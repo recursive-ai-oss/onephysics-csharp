@@ -177,6 +177,21 @@ public sealed class ReplayPlayer
                     catch (ArgumentException e) { throw new ReplayFormatException(_inputName,_reader.RecordOffset+5,"valid live options: "+e.Message); }
                     continue;
                 }
+                else if (_reader.Kind == ReplayRecordKind.Settle)
+                {
+                    byte[] actual;
+                    try { actual = world.Settle(_reader.SettleOptions); }
+                    catch (ArgumentException e) { throw new ReplayFormatException(_inputName, _reader.RecordOffset + 5, "valid settle options: " + e.Message); }
+                    if (!actual.AsSpan().SequenceEqual(_reader.SettleReport)) { throw new ReplayFormatException(_inputName, _reader.RecordOffset + 5, "a settle report equal to the recorded one"); }
+                    CheckStep(world.StepCount, _reader.CompletedSteps);
+                    ulong? expectedHash = _reader.SettleHash;
+                    if (expectedHash.HasValue)
+                    {
+                        ulong hash = world.Hash();
+                        if (hash != expectedHash.Value) { throw new ReplayHashMismatchException(world.StepCount, expectedHash.Value, hash); }
+                    }
+                    continue;
+                }
                 else
                 {
                     if (_reader.Kind != ReplayRecordKind.EndStep)
@@ -215,6 +230,7 @@ public sealed class ReplayPlayer
         void Step(float dt);
         ulong Hash();
         void Options(ReadOnlySpan<byte> bytes);
+        byte[] Settle(ReadOnlySpan<byte> options);
     }
 
     private readonly struct World2D(PhysicsWorld2D world) : IWorld
@@ -224,6 +240,7 @@ public sealed class ReplayPlayer
         public void Step(float dt) { using var suppression = world.SuppressCallbacks(); world.Step(dt); }
         public ulong Hash() => world.ComputeHash();
         public void Options(ReadOnlySpan<byte> bytes) => ((IRecordedWorld)world).ApplyReplayOptions(bytes);
+        public byte[] Settle(ReadOnlySpan<byte> options) => ((IRecordedWorld)world).ReplaySettle(options);
     }
 
     private readonly struct World3D(PhysicsWorld3D world) : IWorld
@@ -233,5 +250,6 @@ public sealed class ReplayPlayer
         public void Step(float dt) { using var suppression = world.SuppressCallbacks(); world.Step(dt); }
         public ulong Hash() => world.ComputeHash();
         public void Options(ReadOnlySpan<byte> bytes) => ((IRecordedWorld)world).ApplyReplayOptions(bytes);
+        public byte[] Settle(ReadOnlySpan<byte> options) => ((IRecordedWorld)world).ReplaySettle(options);
     }
 }

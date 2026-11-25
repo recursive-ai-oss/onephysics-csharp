@@ -147,6 +147,9 @@ public sealed class ReplayReader
                 case ReplayRecordKind.EndStep:
                     if (_version != 2 || !_frameOpen || length != (HasHashTrack ? 16 : 8)) throw Error(RecordOffset, "matching version 2 EndStep");
                     break;
+                case ReplayRecordKind.Settle:
+                    if (_version != 2 || _frameOpen || length < 24) throw Error(RecordOffset, "version 2 settle record outside a frame");
+                    break;
                 default: throw Error(RecordOffset, "known record kind");
             }
             if (_payload.Length < length) { _payload = new byte[length]; }
@@ -164,6 +167,13 @@ public sealed class ReplayReader
                 int name = BinaryPrimitives.ReadUInt16LittleEndian(_payload.AsSpan(8));
                 if (count < 0 || name < 1 || name > 512 || 10 + name >= length) throw Error(RecordOffset + 5, "valid mutation count, name and nonempty snapshot");
                 for (int i = 10; i < 10 + name; i++) if (_payload[i] < 32 || _payload[i] > 126) throw Error(RecordOffset + 5 + i, "ASCII operation name");
+                CompletedSteps = count;
+            }
+            if (Kind == ReplayRecordKind.Settle)
+            {
+                long count = BinaryPrimitives.ReadInt64LittleEndian(_payload);
+                if (count < CompletedSteps) throw Error(RecordOffset + 5, "settle world count not before the current count");
+                if (!TrySplitSettle(_payload.AsSpan(0, length), HasHashTrack, out _, out _)) throw Error(RecordOffset + 5, "settle options, report and hash with consistent lengths");
                 CompletedSteps = count;
             }
             if (Kind == ReplayRecordKind.EndStep)
@@ -184,6 +194,28 @@ public sealed class ReplayReader
             throw;
         }
     }
+
+    private static bool TrySplitSettle(ReadOnlySpan<byte> p, bool hash, out ReadOnlySpan<byte> options, out ReadOnlySpan<byte> report)
+    {
+        options = default; report = default;
+        int optionsLength = BinaryPrimitives.ReadInt32LittleEndian(p.Slice(8));
+        if (optionsLength < 1 || optionsLength > 4096 || 12L + optionsLength + 4 > p.Length) return false;
+        int reportLength = BinaryPrimitives.ReadInt32LittleEndian(p.Slice(12 + optionsLength));
+        if (reportLength < 1 || reportLength > 4096 || 16L + optionsLength + reportLength + (hash ? 8 : 0) != p.Length) return false;
+        options = p.Slice(12, optionsLength); report = p.Slice(16 + optionsLength, reportLength);
+        return true;
+    }
+
+    /// <summary>The options block of the current Settle record, borrowed until the next read. Throws unless the current record is a Settle.</summary>
+    public ReadOnlySpan<byte> SettleOptions { get { RequireSettle(); TrySplitSettle(Payload, HasHashTrack, out var o, out _); return o; } }
+
+    /// <summary>The recorded report block of the current Settle record, borrowed until the next read. Throws unless the current record is a Settle.</summary>
+    public ReadOnlySpan<byte> SettleReport { get { RequireSettle(); TrySplitSettle(Payload, HasHashTrack, out _, out var r); return r; } }
+
+    /// <summary>The recorded world hash after the current Settle record, or null without a hash track. Throws unless the current record is a Settle.</summary>
+    public ulong? SettleHash { get { RequireSettle(); return HasHashTrack ? BinaryPrimitives.ReadUInt64LittleEndian(Payload.Slice(Payload.Length - 8)) : null; } }
+
+    private void RequireSettle() { if (Kind != ReplayRecordKind.Settle || _payloadLength == 0) throw new InvalidOperationException("Expected a current Settle record."); }
 
     private void ReadExactly(Span<byte> destination)
     {

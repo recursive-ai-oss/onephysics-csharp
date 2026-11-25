@@ -16,6 +16,8 @@ internal interface IRecordedWorld
     ulong ReplayHash();
     void RestoreReplaySnapshot(ReadOnlySpan<byte> bytes);
     void AttachRecorder(ReplayRecorder? recorder);
+    /// <summary>Runs a recorded settle with the given options block and returns its encoded report.</summary>
+    byte[] ReplaySettle(ReadOnlySpan<byte> options);
 }
 
 /// <summary>
@@ -134,6 +136,15 @@ public sealed class ReplayRecorder : IDisposable
         }
         catch { _stopped = true; _world.AttachRecorder(null); throw; }
         finally { _capturing = false; }
+    }
+
+    internal void RecordSettle(ReadOnlySpan<byte> options, SettleReport report)
+    {
+        if (_capturing || _simulating || _stopped || _paused > 0 || _depth > 0) return;
+        var bytes = new byte[SettleReport.EncodedSize];
+        report.Write(bytes);
+        try { _writer.WriteSettle(_world.ReplayStepCount, options, bytes, _world.ReplayHash()); }
+        catch { _stopped = true; _world.AttachRecorder(null); throw; }
     }
 
     internal ReplayPauseScope Pause() { _paused++; return new ReplayPauseScope(this); }

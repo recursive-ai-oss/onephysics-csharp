@@ -30,6 +30,28 @@ public sealed partial class ReplayWriter
         _completedSteps = worldStep;
     }
 
+    /// <summary>
+    /// Writes a settle run as one record: int64 resulting world step count, int32 options length and bytes, int32 report length and bytes, then the resulting hash when the track has hashes.
+    /// Requires commandTrack=true. Playback runs the settle again with the recorded options and requires the same report and hash.
+    /// </summary>
+    public void WriteSettle(long worldStep, ReadOnlySpan<byte> options, ReadOnlySpan<byte> report, ulong hash)
+    {
+        EnsureCommands();
+        if (_frameOpen) throw new InvalidOperationException("A command frame is open.");
+        ArgumentOutOfRangeException.ThrowIfNegative(worldStep);
+        if (options.IsEmpty || options.Length > 4096 || report.IsEmpty || report.Length > 4096) throw new ArgumentException("Expected bounded nonempty settle options and report.");
+        Header(ReplayRecordKind.Settle, 16 + options.Length + report.Length + (_hashTrack ? 8 : 0));
+        BinaryPrimitives.WriteInt64LittleEndian(_scratch, worldStep);
+        BinaryPrimitives.WriteInt32LittleEndian(_scratch.AsSpan(8), options.Length);
+        _stream.Write(_scratch.AsSpan(0, 12));
+        _stream.Write(options);
+        BinaryPrimitives.WriteInt32LittleEndian(_scratch, report.Length);
+        _stream.Write(_scratch.AsSpan(0, 4));
+        _stream.Write(report);
+        if (_hashTrack) { BinaryPrimitives.WriteUInt64LittleEndian(_scratch, hash); _stream.Write(_scratch.AsSpan(0, 8)); }
+        _completedSteps = worldStep;
+    }
+
     /// <summary>Begins a simulated step in a command track. Callback-issued mutations are written after this record and before EndStep.</summary>
     public void BeginStep(float dt)
     {

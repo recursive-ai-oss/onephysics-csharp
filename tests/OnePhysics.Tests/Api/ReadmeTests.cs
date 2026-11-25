@@ -109,6 +109,11 @@ public class ReadmeTests
         Assert.InRange(soft.ClothY, 0.0, 1.8);
         Assert.InRange(soft.CubeVolumeRatio, 0.9, 1.1);
 
+        var settle = GuideExamples.Settle.Run();
+        Assert.Equal(settle, GuideExamples.Settle.Run());
+        Assert.True(settle.Clean && settle.Seats);
+        Assert.InRange(settle.TipDegrees, 26.0, 27.0);
+        Assert.InRange(settle.Clearance, 0.04f, 0.0501f);
         var wt = GuideExamples.Water.Run();
         Assert.Equal(wt, GuideExamples.Water.Run());
         var sw = GuideExamples.Swimming.Run();

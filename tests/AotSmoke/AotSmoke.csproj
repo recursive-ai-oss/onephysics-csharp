@@ -18,6 +18,7 @@
     <Compile Include="../Common/SmokeProgram.cs" LinkBase="Common" />
     <Compile Include="../Common/InspectionSmoke.cs" LinkBase="Common" />
     <Compile Include="../Common/RodSmoke.cs" LinkBase="Common" />
+    <Compile Include="../Common/SettleSmoke.cs" LinkBase="Common" />
     <Compile Include="../Common/ToolsSmoke.cs" LinkBase="Common" />
     <Compile Include="../Common/InterchangeSamples.cs" LinkBase="Common" />
     <EmbeddedResource Include="../../testdata/interchange/*" LogicalName="interchange.%(Filename)%(Extension)" />

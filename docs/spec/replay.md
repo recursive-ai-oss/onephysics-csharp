@@ -131,6 +131,7 @@ framing. In addition to version 1 kinds it defines:
 | 4 Mutation | int64 resulting world StepCount; uint16 name byte count; printable ASCII name bytes (1..512); nonempty complete snapshot bytes |
 | 5 EndStep | int64 final world StepCount, then uint64 final hash when enabled |
 | 6 LiveOptions | the dimension-specific fixed layout below |
+| 7 Settle | int64 resulting world StepCount; int32 options length and the settle options block (88 bytes in 3D, 72 in 2D); int32 report length and the 72-byte settle report; uint64 resulting hash when the track has hashes |
 
 A BeginStep increments the implied world count and must be matched by exactly
 one EndStep before another BeginStep or End. Mutations are allowed before a frame
@@ -171,6 +172,10 @@ playback into an existing world remains available; that world's fixed creation
 options must be compatible, as for ordinary Restore. For version 1, automatic
 creation uses default creation options because that envelope has no live-options
 record. A caller requiring another version 1 configuration supplies the world.
+
+## Settle records (kind 7)
+
+`world.Settle(options)` runs many steps inside one call. A recorder pauses itself for them and writes one Settle record afterwards (layouts in [settle.md](settle.md)). It is allowed only outside a frame, only in version 2, and its world count must not be below the current count. Playback runs `Settle` on the playback world with the recorded options (callbacks suppressed), requires the encoded report to equal the recorded one byte for byte (`ReplayFormatException` otherwise) and the world hash to equal the recorded hash (`ReplayHashMismatchException`), and continues. A version 1 reader, or any reader that predates the kind, rejects the record by its kind. The record is not a frame: a history's logical step count does not advance, and seeking applies every settle recorded before the target step. `ReplayReader.SettleOptions`, `SettleReport` and `SettleHash` expose the three parts of the current record.
 
 ## Bounded history
 
