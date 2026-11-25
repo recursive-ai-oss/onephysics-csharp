@@ -114,6 +114,11 @@ public class ReadmeTests
         Assert.True(settle.Clean && settle.Seats);
         Assert.InRange(settle.TipDegrees, 26.0, 27.0);
         Assert.InRange(settle.Clearance, 0.04f, 0.0501f);
+        var bake = GuideExamples.Bake.Run();
+        Assert.Equal(bake, GuideExamples.Bake.Run());
+        Assert.Equal(61, bake.Frames);
+        Assert.InRange(bake.TopY, 0.4, 4.0);
+        Assert.InRange(bake.MidY, 0.0, 2.1);
         var wt = GuideExamples.Water.Run();
         Assert.Equal(wt, GuideExamples.Water.Run());
         var sw = GuideExamples.Swimming.Run();

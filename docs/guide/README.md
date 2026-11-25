@@ -21,6 +21,7 @@ Task-oriented pages with examples that are compiled and run by the test suite. F
 | [Articulations](articulations.md) | build a robot arm, a walker or a long chain that cannot come apart; drive joints, steer a tool to a point |
 
 | [Bringing a world to rest](settle.md) | settle a built level, read the tip margin of a cabinet, the sag of a rope and whether a peg seats |
+| [Baking a simulation](bake.md) | record a run into a compact cache, play it back with no world, and run a world at offline quality |
 | [Big worlds](world-scale.md) | stream terrain tiles, step far islands less often, run a region in slow motion |
 | [Diagnosis](diagnosis.md) | ask a world what is wrong with it: findings with codes, values and suggested changes; the same over a recording |
 | [Input limits](limits.md) | know what is refused |

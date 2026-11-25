@@ -19,6 +19,7 @@
     <Compile Include="../Common/InspectionSmoke.cs" LinkBase="Common" />
     <Compile Include="../Common/RodSmoke.cs" LinkBase="Common" />
     <Compile Include="../Common/SettleSmoke.cs" LinkBase="Common" />
+    <Compile Include="../Common/BakeSmoke.cs" LinkBase="Common" />
     <Compile Include="../Common/ToolsSmoke.cs" LinkBase="Common" />
     <Compile Include="../Common/InterchangeSamples.cs" LinkBase="Common" />
     <EmbeddedResource Include="../../testdata/interchange/*" LogicalName="interchange.%(Filename)%(Extension)" />
@@ -56,6 +57,7 @@
     <Compile Include="../Common/VehicleKinds3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/Ragdolls3DScene.cs" LinkBase="Common" />
     <Compile Include="../Common/DestructionScenes.cs" LinkBase="Common" />
+    <Compile Include="../Common/BakeScenes.cs" LinkBase="Common" />
     <Compile Include="../OnePhysics.Tests/Collision3D/Collision3DHash.cs" LinkBase="Common" />
     <Compile Include="../OnePhysics.Tests/Collision3D/TestRng.cs" LinkBase="Common" />
     <Compile Include="../OnePhysics.Tests/Broadphase/BroadphaseHash.cs" LinkBase="Common" />
