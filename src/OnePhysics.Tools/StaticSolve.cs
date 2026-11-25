@@ -212,6 +212,9 @@ public readonly struct StaticSolveOptions
     /// <summary>Metres per mesh unit; 0 means 1. Positions are scaled by it, and every output is in SI (metres, Pa, N), except locations, which stay in mesh units.</summary>
     public double MetresPerUnit { get; init; }
 
+    /// <summary>The mesh's length unit, as a world states it (<see cref="RecursiveAI.OnePhysics.LengthUnit"/>): a world in millimetres passes <c>LengthUnit.Millimetres</c>. Used when <see cref="MetresPerUnit"/> is 0; a nonzero <see cref="MetresPerUnit"/> wins. Default one metre.</summary>
+    public RecursiveAI.OnePhysics.LengthUnit LengthUnit { get; init; }
+
     /// <summary>Stop when the residual norm is below this fraction of the load norm; 0 means 1e-8. Between 1e-15 and 1e-2. Very stiff, long models have a rounding floor above 1e-10 (the measured residual cannot get below it), where the solve stops with <see cref="StaticSolution.Converged"/> false.</summary>
     public double Tolerance { get; init; }
 
