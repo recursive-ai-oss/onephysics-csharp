@@ -53,6 +53,23 @@ Snapshot bytes, hashes and step results are unchanged; nothing is added to the s
 - **Not chosen: a raw copy of the engine sections.** The engines carry hundreds of fields, many of them caches; going through their own writer and reader keeps one definition of their state. The engine and broadphase sections are now the largest part of a rollback (see the measurements), and the place to look if a host needs more.
 - A fork and a mark share the array helpers (`ForkArrays.Into`, `Prefix`), so the two paths cannot disagree about what a store's state is.
 
+## Measurements (indicative)
+
+Median milliseconds of 15 trials after 3 warm-up trials, one process per thread count pinned to eight cores of a 16-core Ryzen 9 7950X3D, release build, tiered compilation on, on a host that other jobs were loading (load average 20 to 34 during the run), so read ratios, not absolute values. A world per kind of measurement (a restore swaps a world's storage for its spare, which would otherwise disturb the marks); "after k steps" is the number of steps between the mark and the rollback, or between the snapshot and the restore. Source: `bench/Bar`, `rollback-timing`.
+
+| scene (1 thread) | snapshot + restore, k = 1 / 7 / 60 | mark + rollback, k = 1 / 7 / 60 | fork, k = 1 / 7 / 60 |
+|---|---|---|---|
+| large-pile (2D) | 4.22 / 4.57 / 4.82 | 2.40 / 2.65 / 2.67 | 4.61 / 5.38 / 1.47 |
+| large-pile-3d | 6.43 / 6.50 / 6.85 | 2.97 / 3.02 / 3.15 | 3.15 / 3.77 / 5.64 |
+| ragdoll-pile-3d | 3.68 / 3.78 / 3.75 | 1.88 / 1.97 / 1.97 | 1.81 / 1.86 / 1.56 |
+| sleep-wake-3d | 1.05 / 1.07 / 1.19 | 0.58 / 0.60 / 0.67 | 0.66 / 0.77 / 1.71 |
+
+At eight threads the same rows give 5.20 / 4.93 / 4.57, 2.94 / 2.90 / 2.90, 1.85 / 1.85 / 1.89 and 0.60 / 0.59 / 0.68 for the first three scenes' snapshot + restore against mark + rollback, i.e. the same ratios (the copies are single-threaded). A fork is a wall-clock lottery in a process that allocates a world's worth of arrays each time (it moves with the collector), which is why its medians jump between 1.5 and 5.6 ms on the same scene; its allocation fell from 57 MB to 20 MB (3D large pile) and from 21 MB to 17 MB (2D).
+
+What the first version taught: copying every array at full capacity, with the sections' bytes, cost 8.7 ms for mark + rollback on large-pile-3d against 7.3 for snapshot + restore, because the constraint store holds a 104-float payload per slot and most of its capacity was unused. Copying only the slots below the high-water mark (and the events up to their count) took it to 3.0 ms. Where the time goes now (large-pile-3d, one thread, mark / rollback): the engine section 0.8 / 1.5 ms and the broadphase 0.2 / 0.3 ms through their writers and readers, the constraint payload copy about 0.3 ms either way, everything else under 0.1 ms. The engine's pair table is what a raw copy would remove next.
+
+Step time with no live mark (`recording-indicative --variant off`, alternating this tree and the tree before, same job, load 36 to 40): large-pile 1.84 / 1.86 / 1.84 ms against 2.99 / 2.00 / 1.82 before, large-pile-3d 9.67 / 9.37 / 9.17 against 14.16 / 9.59 / 9.40; the final world hashes are the same. A step pays one read of a static field.
+
 ## Tests
 
 `WorldMarks2DTests` and `WorldMarks3DTests` (bytes, hash and future after 1, 7 and 60 steps with changed options, created bodies and a restore in between; lifetime rules; stale and foreign marks; recording; allocation of a ring). The hash-matrix tool's `--rollback-probe` marks, perturbs, steps and rolls back every world every scenario steps, over 1, 7 and 60 steps and a ring of three, and requires the marked state's bytes and hash and the same future as a fork that never rolled back; its manifest must equal the plain run's. `rollback/ring-2d` and `rollback/ring-3d` are matrix rows. Fuzz targets `rollback2d` and `rollback3d` interleave steps, marks, rollbacks, releases, body creation and destruction, velocity and gravity changes against a snapshot-and-restore oracle. `tests/Common/RollbackSmoke.cs` runs in the NativeAOT and WebAssembly smoke apps.
