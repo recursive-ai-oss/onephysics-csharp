@@ -64,7 +64,16 @@ Median milliseconds of 15 trials after 3 warm-up trials, one process per thread 
 | ragdoll-pile-3d | 3.68 / 3.78 / 3.75 | 1.88 / 1.97 / 1.97 | 1.81 / 1.86 / 1.56 |
 | sleep-wake-3d | 1.05 / 1.07 / 1.19 | 0.58 / 0.60 / 0.67 | 0.66 / 0.77 / 1.71 |
 
-At eight threads the same rows give 5.20 / 4.93 / 4.57, 2.94 / 2.90 / 2.90, 1.85 / 1.85 / 1.89 and 0.60 / 0.59 / 0.68 for the first three scenes' snapshot + restore against mark + rollback, i.e. the same ratios (the copies are single-threaded). A fork is a wall-clock lottery in a process that allocates a world's worth of arrays each time (it moves with the collector), which is why its medians jump between 1.5 and 5.6 ms on the same scene; its allocation fell from 57 MB to 20 MB (3D large pile) and from 21 MB to 17 MB (2D).
+At eight threads (the copies are single-threaded; the world's thread pool is only started):
+
+| scene (8 threads) | snapshot + restore, k = 1 / 7 / 60 | mark + rollback, k = 1 / 7 / 60 | fork, k = 1 / 7 / 60 |
+|---|---|---|---|
+| large-pile (2D) | 5.20 / 4.93 / 4.57 | 3.30 / 2.97 / 2.72 | 5.22 / 4.83 / 4.08 |
+| large-pile-3d | 6.32 / 6.33 / 6.50 | 2.94 / 2.90 / 2.90 | 3.41 / 4.94 / 1.67 |
+| ragdoll-pile-3d | 3.65 / 3.58 / 3.63 | 1.85 / 1.85 / 1.89 | 0.70 / 1.98 / 0.71 |
+| sleep-wake-3d | 1.06 / 1.05 / 1.19 | 0.60 / 0.59 / 0.68 | 0.61 / 0.66 / 1.75 |
+
+A fork is a wall-clock lottery in a process that allocates a world's worth of arrays each time (it moves with the collector), which is why its medians jump between 1.5 and 5.6 ms on the same scene; its allocation fell from 57 MB to 20 MB (3D large pile) and from 21 MB to 17 MB (2D).
 
 What the first version taught: copying every array at full capacity, with the sections' bytes, cost 8.7 ms for mark + rollback on large-pile-3d against 7.3 for snapshot + restore, because the constraint store holds a 104-float payload per slot and most of its capacity was unused. Copying only the slots below the high-water mark (and the events up to their count) took it to 3.0 ms. Where the time goes now (large-pile-3d, one thread, mark / rollback): the engine section 0.8 / 1.5 ms and the broadphase 0.2 / 0.3 ms through their writers and readers, the constraint payload copy about 0.3 ms either way, everything else under 0.1 ms. The engine's pair table is what a raw copy would remove next.
 
