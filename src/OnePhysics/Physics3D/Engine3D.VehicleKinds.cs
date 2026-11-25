@@ -223,7 +223,7 @@ internal sealed partial class Engine3D
     }
 
     /// <summary>Reads the kinds block over the vehicles just read: rebuilds each tracked or motorcycle definition from the wheeled one plus the saved scalars and validates it.</summary>
-    private static void ReadVehicleKinds(StateReader r, VehicleBlock b)
+    private void ReadVehicleKinds(StateReader r, VehicleBlock b)
     {
         int count = r.ReadCount(5, "vehicle kinds");
         if (count == 0) { throw r.Error("a vehicle kinds block holding no vehicles"); }
@@ -247,6 +247,7 @@ internal sealed partial class Engine3D
                         LeftWheels = s.Def.Wheels[..left], RightWheels = s.Def.Wheels[left..], Grip = s.Def.Wheels[0].Tyre,
                         SprocketRadius = sr, MaxTrackSpeed = ms, MaxDriveTorque = dt, MaxBrakeTorque = bt, LateralFriction = lf,
                     };
+                    t.Units = Opt.UnitsPerMetre;
                     t.Validate();
                     s.Kind = VehicleKind.Tracked; s.Track = t; s.TrackLeft = left;
                 }
@@ -260,6 +261,7 @@ internal sealed partial class Engine3D
                         HighSpeedSteerAngle = r.ReadSingle(), SteerFadeStartSpeed = r.ReadSingle(), SteerFadeEndSpeed = r.ReadSingle(), MaxLeanAngle = r.ReadSingle(), FallAngle = r.ReadSingle(),
                         LeanFrequency = r.ReadSingle(), LeanDamping = r.ReadSingle(), MaxLeanTorque = r.ReadSingle(),
                     };
+                    m.Units = Opt.UnitsPerMetre;
                     m.Validate();
                     s.Lean = r.ReadSingle(); s.LeanTarget = r.ReadSingle(); s.LeanIntegral = r.ReadSingle();
                     if (!float.IsFinite(s.Lean + s.LeanTarget + s.LeanIntegral)) { throw r.Error("non-finite lean"); }

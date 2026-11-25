@@ -20,7 +20,7 @@ public enum WheelCastShape : byte
 /// (wheel surface speed against ground speed along the rolling direction), the lateral curve of the tangent of the slip angle. The two forces are limited together by a friction ellipse
 /// (Milliken and Milliken, <i>Race Car Vehicle Dynamics</i>, ch. 2): when the normalised forces' length exceeds 1 both are scaled back to it.
 /// </summary>
-public sealed class TyreDef
+public sealed partial class TyreDef
 {
     /// <summary>Peak friction coefficient of the tyre; combined with the ground shape's friction as <c>sqrt(tyre · ground)</c>, the world's rule. Default 1.5 (about 0.95 on the default ground). At least 0.</summary>
     public float Friction { get; set; } = 1.5f;
@@ -65,7 +65,7 @@ public sealed class TyreDef
 /// One wheel: where its suspension is attached to the chassis, how the suspension behaves, how the wheel steers and brakes and which tyre it carries. Positions and directions are in the chassis body's frame.
 /// The wheel centre sits at <c>Position + SuspensionDirection · length</c> with <c>length</c> between <see cref="SuspensionMinLength"/> and <see cref="SuspensionMaxLength"/>; <see cref="Position"/> is the highest the wheel centre can be.
 /// </summary>
-public sealed class WheelDef
+public sealed partial class WheelDef
 {
     /// <summary>Top of the suspension: the wheel centre at zero length, in the chassis frame. Default the origin.</summary>
     public Vector3F Position { get; set; }
@@ -158,7 +158,7 @@ public sealed class WheelDef
 }
 
 /// <summary>An engine: peak torque, rev range and a torque curve.</summary>
-public sealed class EngineDef
+public sealed partial class EngineDef
 {
     /// <summary>Torque at the curve's value 1, N·m. Default 400. Positive, at most 10000000.</summary>
     public float MaxTorque { get; set; } = 400f;
@@ -286,7 +286,7 @@ public sealed class DifferentialDef
 }
 
 /// <summary>An anti-roll bar: a torsion spring between the two wheels of an axle that adds to the spring force of the more compressed wheel and takes it from the other.</summary>
-public sealed class AntiRollBarDef
+public sealed partial class AntiRollBarDef
 {
     /// <summary>Index of the left wheel.</summary>
     public int Left { get; set; }
@@ -315,7 +315,7 @@ public sealed class AntiRollBarDef
 /// (the differentials, the anti-roll bars, <see cref="Vehicle.GetWheel"/>). Chassis frame: +X right, +Y up, +Z forward in the presets; any other layout is fine as long as the wheels' directions say so.
 /// Definitions are classes so the arrays of wheels and the presets can be edited freely; <see cref="PhysicsWorld3D.AddVehicle(Body, VehicleDef)"/> copies what it needs.
 /// </summary>
-public sealed class VehicleDef
+public sealed partial class VehicleDef
 {
     /// <summary>The wheels, 1 to 32.</summary>
     public WheelDef[] Wheels { get; set; } = Array.Empty<WheelDef>();
@@ -335,7 +335,7 @@ public sealed class VehicleDef
     /// <summary>A deep copy.</summary>
     public VehicleDef Clone()
     {
-        var c = new VehicleDef { Engine = Engine.Clone(), Transmission = Transmission.Clone() };
+        var c = new VehicleDef { Engine = Engine.Clone(), Transmission = Transmission.Clone(), Units = Units };
         c.Wheels = new WheelDef[Wheels.Length];
         for (int i = 0; i < Wheels.Length; i++) { c.Wheels[i] = Wheels[i].Clone(); }
         c.Differentials = new DifferentialDef[Differentials.Length];
@@ -350,6 +350,7 @@ public sealed class VehicleDef
     /// <exception cref="ArgumentNullException">A part is null.</exception>
     public void Validate()
     {
+        if (Units != 1f) { var m = Scaled(new UnitScaler(1f / Units, true)); m.Units = 1f; m.Validate(); return; }
         if (Wheels == null) { throw new ArgumentNullException(nameof(Wheels), "Wheels must not be null."); }
         if (Engine == null) { throw new ArgumentNullException(nameof(Engine), "Engine must not be null."); }
         if (Transmission == null) { throw new ArgumentNullException(nameof(Transmission), "Transmission must not be null."); }

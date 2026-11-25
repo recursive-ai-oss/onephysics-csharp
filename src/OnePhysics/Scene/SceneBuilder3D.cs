@@ -80,9 +80,9 @@ internal static partial class SceneBuilder3D
             {
                 var vehicle = ob.Vehicle.Preset switch
                 {
-                    "car" => world.AddVehicle(bodies[i], P3.VehicleDef.Car),
-                    "tank" => world.AddVehicle(bodies[i], P3.TrackedVehicleDef.Tank),
-                    "bike" => world.AddVehicle(bodies[i], P3.MotorcycleDef.Road),
+                    "car" => world.AddVehicle(bodies[i], P3.VehicleDef.Car.InUnit(world.Options.LengthUnit)),
+                    "tank" => world.AddVehicle(bodies[i], P3.TrackedVehicleDef.Tank.InUnit(world.Options.LengthUnit)),
+                    "bike" => world.AddVehicle(bodies[i], P3.MotorcycleDef.Road.InUnit(world.Options.LengthUnit)),
                     _ => throw new InvalidDataException("unknown vehicle preset " + ob.Vehicle.Preset),
                 };
                 vehicles.Add((vehicle, ob.Vehicle, i));

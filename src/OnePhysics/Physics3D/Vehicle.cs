@@ -226,7 +226,7 @@ public sealed partial class PhysicsWorld3D
         using var replayMutation = RecordMutation("PhysicsWorld3D.AddVehicle");
         ArgumentNullException.ThrowIfNull(def);
         if (chassis.World != this) { throw new ArgumentException("The chassis belongs to another world.", nameof(chassis)); }
-        int v = _engine.CreateVehicle(chassis.Handle, def);
+        int v = _engine.CreateVehicle(chassis.Handle, def.WithDefaultsFor(Options.LengthUnit));
         return new Vehicle(this, v, _engine.VehHandles.GenerationOf(v));
     }
 

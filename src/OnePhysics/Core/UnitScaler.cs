@@ -94,4 +94,12 @@ internal readonly struct UnitScaler
         if (!_all && !(v.X == metreDefault.X && v.Y == metreDefault.Y && v.Z == metreDefault.Z)) { return; }
         v = new Vector3F(Apply(v.X, p), Apply(v.Y, p), Apply(v.Z, p));
     }
+
+    /// <summary>A 2D vector member with a metre default.</summary>
+    internal void D(ref Vector2F v, Vector2F metreDefault, int p)
+    {
+        if (_k == 1f) { return; }
+        if (!_all && !(v.X == metreDefault.X && v.Y == metreDefault.Y)) { return; }
+        v = new Vector2F(Apply(v.X, p), Apply(v.Y, p));
+    }
 }

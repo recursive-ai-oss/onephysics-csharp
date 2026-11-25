@@ -274,7 +274,7 @@ internal sealed partial class Engine3D
             double lim = BoxLimits.MaxCoordinate;
             bool inRange = Math.Abs(top.X) <= lim && Math.Abs(top.Y) <= lim && Math.Abs(top.Z) <= lim;   // NaN fails
             var hh = default(QueryHit3D);
-            bool hit = inRange && world.ShapeCast(in s.CastShapes[i], top, rot, dir, out hh, wd.SuspensionMaxLength + 1e-4f, in filter);
+            bool hit = inRange && world.ShapeCast(in s.CastShapes[i], top, rot, dir, out hh, wd.SuspensionMaxLength + 1e-4f * Opt.UnitsPerMetre, in filter);
             s.Contact[i] = 0;
             s.Compression[i] = 0f; s.Stop[i] = 0f;
             if (hit)
@@ -290,7 +290,7 @@ internal sealed partial class Engine3D
                     s.Compression[i] = (wd.SuspensionMaxLength - s.Length[i]) + wd.PreloadLength;
                     s.Stop[i] = Math.Max(0f, wd.SuspensionMinLength - t);
                     s.Nx[i] = n3.X; s.Ny[i] = n3.Y; s.Nz[i] = n3.Z;
-                    var cp = t > 1e-5f ? hh.Point : new Vector3D(top.X + (double)(dir.X * (t + wd.Radius)), top.Y + (double)(dir.Y * (t + wd.Radius)), top.Z + (double)(dir.Z * (t + wd.Radius)));
+                    var cp = t > 1e-5f * Opt.UnitsPerMetre ? hh.Point : new Vector3D(top.X + (double)(dir.X * (t + wd.Radius)), top.Y + (double)(dir.Y * (t + wd.Radius)), top.Z + (double)(dir.Z * (t + wd.Radius)));
                     s.Cx[i] = cp.X; s.Cy[i] = cp.Y; s.Cz[i] = cp.Z;
                     int gb = hh.Body.Handle.Index;
                     s.GroundBody[i] = gb; s.GroundGen[i] = bodies.Handles.GenerationOf(gb);
@@ -690,7 +690,7 @@ internal sealed partial class Engine3D
         foreach (var ab in d.AntiRollBars) { w.NamedInt32(ab.Left); w.NamedInt32(ab.Right); w.NamedSingle(ab.Stiffness); }
     }
 
-    private static VehicleDef ReadVehicleDef(StateReader r)
+    private VehicleDef ReadVehicleDef(StateReader r)
     {
         var d = new VehicleDef();
         int nw = r.ReadCount(150, "vehicle wheels");
@@ -737,6 +737,7 @@ internal sealed partial class Engine3D
         if (na > 16) { throw r.Error("more than 16 anti-roll bars"); }
         d.AntiRollBars = new AntiRollBarDef[na];
         for (int i = 0; i < na; i++) { d.AntiRollBars[i] = new AntiRollBarDef { Left = r.ReadInt32(), Right = r.ReadInt32(), Stiffness = r.ReadSingle() }; }
+        d.Units = Opt.UnitsPerMetre;
         try { d.Validate(); }
         catch (ArgumentException e) { throw r.Error("invalid vehicle definition: " + e.Message); }
         return d;
@@ -748,7 +749,7 @@ internal sealed partial class Engine3D
         public VehicleState?[] States = Array.Empty<VehicleState?>();
     }
 
-    private static VehicleBlock ReadVehicles(StateReader r, int bodyCount)
+    private VehicleBlock ReadVehicles(StateReader r, int bodyCount)
     {
         var b = new VehicleBlock { Handles = HandleTable.Read(r, "vehicle") };
         b.States = new VehicleState?[Math.Max(b.Handles.HighWater, 1)];

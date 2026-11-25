@@ -260,7 +260,7 @@ internal sealed partial class Engine2D
             double lim = BoxLimits.MaxCoordinate;
             bool inRange = Math.Abs(topX) <= lim && Math.Abs(topY) <= lim && PhysicsWorld2D.UsableCastDirection(new Vector2F(dx, dy));   // NaN fails; a chassis rotation that is not a rotation gives no cast direction
             var hh = default(QueryHit2D);
-            bool hit = inRange && world.ShapeCast(in s.CastShapes[i], new Vector2D(topX, topY), 0f, new Vector2F(dx, dy), out hh, wd.SuspensionMaxLength + 1e-4f, in filter);
+            bool hit = inRange && world.ShapeCast(in s.CastShapes[i], new Vector2D(topX, topY), 0f, new Vector2F(dx, dy), out hh, wd.SuspensionMaxLength + 1e-4f * Opt.UnitsPerMetre, in filter);
             s.Contact[i] = 0;
             s.Compression[i] = 0f; s.Stop[i] = 0f;
             if (hit)
@@ -276,7 +276,7 @@ internal sealed partial class Engine2D
                     s.Compression[i] = (wd.SuspensionMaxLength - s.Length[i]) + wd.PreloadLength;
                     s.Stop[i] = Math.Max(0f, wd.SuspensionMinLength - t);
                     s.Nx[i] = nx; s.Ny[i] = ny;
-                    if (t > 1e-5f) { s.Cx[i] = hh.Point.X; s.Cy[i] = hh.Point.Y; }
+                    if (t > 1e-5f * Opt.UnitsPerMetre) { s.Cx[i] = hh.Point.X; s.Cy[i] = hh.Point.Y; }
                     else { s.Cx[i] = topX + (double)(dx * (t + wd.Radius)); s.Cy[i] = topY + (double)(dy * (t + wd.Radius)); }
                     int gb = hh.Body.Handle.Index;
                     s.GroundBody[i] = gb; s.GroundGen[i] = bodies.Handles.GenerationOf(gb);
@@ -755,7 +755,7 @@ internal sealed partial class Engine2D
         w.NamedSingle(d.AirPitchTorque); w.NamedSingle(d.GroundPitchTorque);
     }
 
-    private static VehicleDef ReadVehicleDef(StateReader r)
+    private VehicleDef ReadVehicleDef(StateReader r)
     {
         var d = new VehicleDef();
         int nw = r.ReadCount(88, "vehicle wheels");
@@ -795,6 +795,7 @@ internal sealed partial class Engine2D
         }
 
         d.AirPitchTorque = r.ReadSingle(); d.GroundPitchTorque = r.ReadSingle();
+        d.Units = Opt.UnitsPerMetre;
         try { d.Validate(); }
         catch (ArgumentException e) { throw r.Error("invalid vehicle definition: " + e.Message); }
         return d;
@@ -806,7 +807,7 @@ internal sealed partial class Engine2D
         public VehicleState?[] States = Array.Empty<VehicleState?>();
     }
 
-    private static VehicleBlock ReadVehicles(StateReader r, int bodyCount)
+    private VehicleBlock ReadVehicles(StateReader r, int bodyCount)
     {
         int version = r.ReadInt32();
         if (version != 1) { throw r.Error("unsupported 2D vehicle section version " + version.ToString(CultureInfo.InvariantCulture)); }
@@ -831,6 +832,7 @@ internal sealed partial class Engine2D
                         Wheels = s.Def.Wheels, Grip = s.Def.Wheels[0].Tyre, SprocketRadius = r.ReadSingle(), MaxTrackSpeed = r.ReadSingle(), MaxDriveTorque = r.ReadSingle(), MaxBrakeTorque = r.ReadSingle(),
                         AirPitchTorque = s.Def.AirPitchTorque,
                     };
+                    t.Units = Opt.UnitsPerMetre;
                     t.Validate();
                     s.Track = t.Clone();
                 }
@@ -841,6 +843,7 @@ internal sealed partial class Engine2D
                     {
                         Front = s.Def.Wheels[0], Rear = s.Def.Wheels[1], Engine = s.Def.Engine, Transmission = s.Def.Transmission, FinalDriveRatio = s.Def.Differentials[0].Ratio, LeanTorque = r.ReadSingle(),
                     };
+                    m.Units = Opt.UnitsPerMetre;
                     m.Validate();
                     s.Bike = m.Clone();
                 }
@@ -934,7 +937,7 @@ internal sealed partial class Engine2D
 
         public void Write(StateWriter w) => e.WriteVehicles(w);
 
-        public void Read(StateReader r) => e.CommitVehicles(ReadVehicles(r, e.RestoredBodyCount));
+        public void Read(StateReader r) => e.CommitVehicles(e.ReadVehicles(r, e.RestoredBodyCount));
 
         public ISnapshotSection Fork(WorldCore destination)
         {
