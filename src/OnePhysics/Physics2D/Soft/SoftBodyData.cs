@@ -87,8 +87,15 @@ internal sealed partial class SoftBodyData
         if (unitsPerMetre != 1f)
         {
             // Outside metres the defaults (mass from the area, radius from the edges) are frozen into the definition, so a restore rebuilds this body without knowing the unit it was made in.
-            if (def.Mass == 0f) { def.Mass = d.TotalMass; }
-            if (def.ParticleRadius == 0f) { def.ParticleRadius = d.Radius; }
+            // The frozen mass is the body's mass rounded to float, so the body is built again from the frozen definition: the live body and the one a restore builds then share every bit.
+            bool frozen = false;
+            if (def.Mass == 0f) { def.Mass = d.TotalMass; frozen = true; }
+            if (def.ParticleRadius == 0f) { def.ParticleRadius = d.Radius; frozen = true; }
+            if (frozen)
+            {
+                d = new SoftBodyData { Def = def, BlockSize = blockSize, UnitsPerMetre = unitsPerMetre };
+                d.Build();
+            }
         }
 
         var p = def.Position;

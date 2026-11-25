@@ -104,6 +104,23 @@ public sealed class LengthUnitAreasTests
     }
 
     [Fact]
+    public void SoftBodiesRestoreBitForBitInAnyUnit()
+    {
+        P3.PhysicsWorld3D N() => new(new P3.WorldOptions3D { WorldId = 795, LengthUnit = Milli });
+        var w = N();
+        w.AddBox(new((float)(20 * K), (float)(1 * K), (float)(20 * K)), at: new(0, -0.5 * K, 0), type: BodyType.Static);
+        w.AddSoftBall((float)(0.25 * K), at: new(0, 0.6 * K, 0), segments: 3);
+        for (int i = 0; i < 40; i++) { w.Step(Dt); }
+        var c = N();
+        c.Restore(w.Snapshot());
+        for (int i = 0; i < 40; i++)
+        {
+            w.Step(Dt); c.Step(Dt);
+            Assert.True(w.ComputeHash() == c.ComputeHash(), "the restored world diverged at step " + i);
+        }
+    }
+
+    [Fact]
     public void RodsAndRopesFollowTheUnit()
     {
         P3.PhysicsWorld3D Build(double s, LengthUnit unit, int id, out P3.Rod[] rods)
