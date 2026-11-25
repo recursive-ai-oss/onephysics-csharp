@@ -157,7 +157,9 @@ a world's hash. A LiveOptions record follows the initial snapshot and every
 mutation effect. Its first 12 bytes are int32 source world id and float64 actual
 creation-time broadphase margin. Remaining fields follow the WorldOptions2D/3D
 property declaration order, excluding WorldId, ThreadCount, MaterialMixer and
-PairFilter. Vector components are float32 in X/Y/Z order, scalar float32/float64
+PairFilter. A world whose length unit is not one metre appends float64 metres per
+unit (2D: after the soft-body options, offset 136, payload 144 bytes; 3D: offset
+144, payload 152 bytes); the unit is applied before the other values (`lengthunit.md`). Vector components are float32 in X/Y/Z order, scalar float32/float64
 use their IEEE bits, integers and EventMask use int32, booleans int32 0 or 1.
 The exact field list is encoded explicitly in ReplayOptions2D/3D; no reflection
 or runtime property enumeration is used. WorldId and thread count remain the

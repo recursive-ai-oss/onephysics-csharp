@@ -477,7 +477,7 @@ internal sealed partial class Engine2D
         ref PairResult res = ref _results[i];
         res = default;
         // Shapes of awake bodies have this step's tight box and a copy of their stored box in one record; any other shape (asleep, static) reads its stored box from the tree.
-        double Gap = (double)Opt.SpeculativeDistance + 0.005;
+        double Gap = (double)Opt.SpeculativeDistance + 0.005 * (double)Opt.UnitsPerMetre;
         double ax0, ay0, ax1, ay1, bx0, by0, bx1, by1;
         double fax0, fay0, fax1, fay1, fbx0, fby0, fbx1, fby1;
         if (_boxStamp[sa] == _stamp)
@@ -516,7 +516,7 @@ internal sealed partial class Engine2D
         double pAx = hA.X, pAy = hA.Y, pBx = hB.X, pBy = hB.Y;
         // A pair without a manifold whose last narrowphase proved the shapes apart by more than the speculative distance stays empty until they have moved that far toward each other.
         ref SkipFrame skip = ref pr.Skip;
-        if (existing < 0 && skip.Clear > 0f && StillApart(in skip, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy))) { return false; }
+        if (existing < 0 && skip.Clear > 0f && StillApart(in skip, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy), Opt.UnitsPerMetre)) { return false; }
         if (!ContactModifications.Refresh && RecycleManifolds && existing >= 0 && !plain && TryRecycle(existing, sa, sb, hB.Extent, qA, qB, (float)(pBx - pAx), (float)(pBy - pAy), ref res))
         {
             // A recycled manifold only rewrites the pair's own payload, and nothing in the serial stage can remove it, so it is written here, in parallel, instead of going through the result list.
@@ -531,7 +531,7 @@ internal sealed partial class Engine2D
         double dy = (pBy - (double)wB.Y) - (pAy - (double)wA.Y);
         var xf = Transform2.InvMul(new Transform2(default, qA), new Transform2(new Vec2((float)dx, (float)dy), qB));
         tested++;
-        var m = Collide2D.Collide(in Geom[sa], in Geom[sb], xf, Opt.SpeculativeDistance, out float clearance);
+        var m = Collide2D.Collide(in Geom[sa], in Geom[sb], xf, Opt.SpeculativeDistance, out float clearance, Collide2D.FlipTolerance * Opt.UnitsPerMetre);
         res.Count = m.PointCount;
         if (m.PointCount == 0)
         {
@@ -594,7 +594,7 @@ internal sealed partial class Engine2D
     // Whether a pair recorded as apart still is. Every point of B's shape moves, relative to A, by at most the move of B's centre of mass plus the chord of the turn times the point's distance from that centre.
     // The chord is the length of (cos - 1, sin) of the turn since the pair was recorded, taken from the sine as well as the cosine: sqrt(2 (1 - cos)) turns a rounding error of 1e-7 in the cosine into a chord error of
     // 4e-4, which times the reach of a long shape (tens of metres) can exceed the clearance and skip a pair that touches. The slack covers float rounding of the relative pose, which grows with its size.
-    internal static bool StillApart(in SkipFrame f, Rot2 qA, Rot2 qB, float dx, float dy)
+    internal static bool StillApart(in SkipFrame f, Rot2 qA, Rot2 qB, float dx, float dy, float unitsPerMetre = 1f)
     {
         float cA = qA.C, sA = qA.S;
         float ex = cA * dx + sA * dy - f.X, ey = cA * dy - sA * dx - f.Y;
@@ -602,7 +602,7 @@ internal sealed partial class Engine2D
         float dc = cr * f.C + sr * f.S, ds = sr * f.C - cr * f.S;       // cosine and sine of the turn since the pair was recorded
         float turn = float.Sqrt((1f - dc) * (1f - dc) + ds * ds);
         float radius = f.Reach;
-        float slack = 0.001f + 1e-6f * (float.Abs(dx) + float.Abs(dy) + radius);
+        float slack = 0.001f * unitsPerMetre + 1e-6f * (float.Abs(dx) + float.Abs(dy) + radius);
         float used = float.Sqrt(ex * ex + ey * ey) + turn * radius + slack;
         return used <= f.Clear; // false for NaN
     }
@@ -676,9 +676,10 @@ internal sealed partial class Engine2D
     /// <summary>How many manifolds the last step reused.</summary>
     public int RecycledCount;
 
-    private const float RecycleTol = 0.01f;
-    private const float RoundContactMinRadius = 0.02f;
-    private const float RecycleDepth = 0.05f;
+    // Metre-tuned reuse tolerances, in world units.
+    private float RecycleTol => 0.01f * Opt.UnitsPerMetre;
+    private float RoundContactMinRadius => 0.02f * Opt.UnitsPerMetre;
+    private float RecycleDepth => 0.05f * Opt.UnitsPerMetre;
 
     // Payload slots the 2D contact does not use (third components, the second tangent, the trailing floats). Offsets in floats.
     private static class Rc

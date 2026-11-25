@@ -30,7 +30,7 @@ public static class SceneBuilder2D
             characters = [];
             return (machineWorld, machineBodies, machineWorld.Options);
         }
-        var opt = new WorldOptions2D { Gravity = new Vector2F((float)s.Gx, (float)s.Gy), ThreadCount = threads };
+        var opt = new WorldOptions2D { LengthUnit = s.LengthUnit, Gravity = new Vector2F((float)s.Gx, (float)s.Gy), ThreadCount = threads };
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
         Tweak?.Invoke(opt);
         var world = new PhysicsWorld2D(opt);

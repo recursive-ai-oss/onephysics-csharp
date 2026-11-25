@@ -422,3 +422,5 @@ never shared by recipe: every voxel shape has its own geometry entry. Readers va
 reject non-finite samples with a typed snapshot error.
 
 One optional section in both worlds, "WSCL" (`0x4C435357`, version 1): simulation level-of-detail settings, time-scale regions, per-body time scales and the registry of streamed tiles. Written only while any of it is in use; registered after every other section. Entity kinds `worldscale` (configuration and tile registry) and `body` (per-body scales). Layout in `worldscale.md`.
+
+One optional section in both worlds, "UNIT" (`0x54494E55`, version 1): the world's length unit, int32 version then float64 metres per unit. Written only while the unit is not one metre; registered after every other section (after "SPEC" in 2D, after "WSCL" in 3D); read before the others so they read in its unit. Entity kind `length unit`. Layout and rules in `lengthunit.md`.

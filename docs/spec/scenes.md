@@ -11,6 +11,7 @@ One record per line, tokens separated by spaces or tabs, `#` starts a comment. N
 | `scene 1` | | format version (first line) |
 | `name` | text | scene name = file name |
 | `dim` | 2 or 3 | dimension; selects the arities below |
+| `unit` | metres per unit | optional: the length unit every length in the file is written in (positions, sizes, anchors, gravity, speeds; densities per unit volume of that unit). Default 1 (metres); written only when it is not 1. Finite, 1e-6 to 1e6. See `lengthunit.md` |
 | `dt` | seconds | fixed step; default 1/60 |
 | `steps` | n | steps to run |
 | `gravity` | gx gy (gz in 3D) | m/s² |

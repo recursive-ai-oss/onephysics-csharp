@@ -2115,8 +2115,12 @@ public sealed partial class WorldCore
         RestoringBodies = bodies;
         try
         {
-        for (int i = 0; i < registered; i++)
+        // The length unit is stored last but read first, so every other section reads (and falls back to its defaults) in the unit the snapshot names.
+        int unitIndex = -1;
+        for (int i = 0; i < registered; i++) { if (_sections[i].SectionId == LengthUnitSection.Id) { unitIndex = i; break; } }
+        for (int k = 0; k < registered; k++)
         {
+            int i = unitIndex < 0 ? k : k == 0 ? unitIndex : k <= unitIndex ? k - 1 : k;
             if (!_sectionPresent[i]) { _sections[i].Reset(); continue; }
             sub.Reset(data, _sectionRange[2 * i], _sectionRange[2 * i + 1]);
             if (ReferenceEquals(_sections[i], _bodySleep)) _bodySleep.Read(sub, bodies);

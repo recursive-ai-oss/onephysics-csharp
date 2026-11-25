@@ -8,6 +8,15 @@ namespace RecursiveAI.OnePhysics.Replay;
 internal static class ReplayOptions3D
 {
     internal const int Size = 144;
+
+    /// <summary>The payload of a world whose length unit is not one metre: the base payload, then the metres per world unit as a double. Worlds in metres write the base payload, so existing recordings keep their bytes.</summary>
+    internal const int SizeWithUnit = 152;
+
+    internal const int MaxSize = SizeWithUnit;
+
+    internal static bool IsValidSize(int length) => length == Size || length == SizeWithUnit;
+
+    internal static int WrittenSize(WorldOptions3D o) => o.LengthUnit.IsMetres ? Size : SizeWithUnit;
     internal static void Write(WorldOptions3D o, double creationMargin, int worldId, Span<byte> bytes)
     {
         BinaryPrimitives.WriteInt32LittleEndian(bytes, worldId);
@@ -44,10 +53,18 @@ internal static class ReplayOptions3D
         BinaryPrimitives.WriteSingleLittleEndian(bytes.Slice(128), o.HitSpeedThreshold);
         BinaryPrimitives.WriteSingleLittleEndian(bytes.Slice(132), o.SpeculativeDistance);
         BinaryPrimitives.WriteDoubleLittleEndian(bytes.Slice(136), o.BroadphaseMargin);
+        if (!o.LengthUnit.IsMetres) { BinaryPrimitives.WriteDoubleLittleEndian(bytes.Slice(144), o.LengthUnit.MetresPerUnit); }
     }
     internal static double Read(ReadOnlySpan<byte> bytes, WorldOptions3D o, out int worldId)
     {
-        if (bytes.Length != Size) throw new ArgumentException("Invalid 3D live option payload length.", nameof(bytes));
+        if (!IsValidSize(bytes.Length)) throw new ArgumentException("Invalid 3D live option payload length.", nameof(bytes));
+        // The unit comes first: the values below are in it, and setting it later would move the ones still at their defaults.
+        if (bytes.Length == SizeWithUnit)
+        {
+            double metresPerUnit = BinaryPrimitives.ReadDoubleLittleEndian(bytes.Slice(144));
+            if (!LengthUnit.IsValid(metresPerUnit)) throw new ArgumentException("Invalid length unit.", nameof(bytes));
+            o.LengthUnit = new LengthUnit(metresPerUnit);
+        }
         worldId = BinaryPrimitives.ReadInt32LittleEndian(bytes);
         if (worldId < 1) throw new ArgumentException("Invalid world identity.", nameof(bytes));
         double margin = BinaryPrimitives.ReadDoubleLittleEndian(bytes.Slice(4));
@@ -99,6 +116,7 @@ internal static class ReplayOptions3D
 
     internal static void Copy(WorldOptions3D from, WorldOptions3D to)
     {
+        to.SetLengthUnitRaw(from.LengthUnit);
         to.SoftSubsteps = from.SoftSubsteps;
         to.SoftIterations = from.SoftIterations;
         to.Gravity = from.Gravity;
