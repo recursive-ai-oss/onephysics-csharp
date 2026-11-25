@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using RecursiveAI.OneMath;
+using RecursiveAI.OnePhysics.Fluids;
 using RecursiveAI.OnePhysics.LowLevel;
 using RecursiveAI.OnePhysics.Replay;
 using RecursiveAI.OnePhysics.Scene;
@@ -306,5 +307,42 @@ public sealed class LengthUnitTests
         Assert.Equal(1200f, child.Height);
         var c3 = w.AddCharacter(new(5000, 1000, 0), child);
         Assert.Equal(250f, c3.Radius);
+    }
+
+    private static P3.PhysicsWorld3D Tank3D(LengthUnit unit, double k, int id)
+    {
+        var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { WorldId = id, LengthUnit = unit, Gravity = new(0f, (float)(-9.81 * k), 0f) });
+        double width = 0.6 * k, h = width / 2, t = 0.2 * k;
+        w.AddBox(new((float)(width + k), (float)t, (float)(width + k)), at: new(0, -t / 2, 0), type: BodyType.Static);
+        w.AddBox(new((float)t, (float)(4 * k), (float)(width + k)), at: new(-h - t / 2, 1.9 * k, 0), type: BodyType.Static);
+        w.AddBox(new((float)t, (float)(4 * k), (float)(width + k)), at: new(h + t / 2, 1.9 * k, 0), type: BodyType.Static);
+        w.AddBox(new((float)(width + k), (float)(4 * k), (float)t), at: new(0, 1.9 * k, -h - t / 2), type: BodyType.Static);
+        w.AddBox(new((float)(width + k), (float)(4 * k), (float)t), at: new(0, 1.9 * k, h + t / 2), type: BodyType.Static);
+        var fluid = w.AddParticleWater();            // the default spacing, 5 cm, in whatever unit the world uses
+        w.FillFluidBox(fluid, new(-h, 0, -h), new(h, 0.3 * k, h));
+        return w;
+    }
+
+    [Fact]
+    public void WaterTakesItsDefaultSpacingDensityAndSpeedLimitFromTheUnit()
+    {
+        var metres = Tank3D(LengthUnit.Metres, 1.0, 91);
+        var mm = Tank3D(LengthUnit.Millimetres, 1000.0, 92);
+        Assert.Equal(metres.FluidParticleCount, mm.FluidParticleCount);
+        for (int i = 0; i < 90; i++) { metres.Step(1f / 60); mm.Step(1f / 60); }
+        var a = new FluidParticleInfo[metres.FluidParticleCount]; metres.GetFluidParticles(a);
+        var b = new FluidParticleInfo[mm.FluidParticleCount]; mm.GetFluidParticles(b);
+        double meanA = 0, meanB = 0;
+        for (int i = 0; i < a.Length; i++) { meanA += a[i].Position.Y; meanB += b[i].Position.Y / 1000.0; Assert.True(double.IsFinite(b[i].Position.Y)); }
+        meanA /= a.Length; meanB /= b.Length;
+        Assert.InRange(meanB, meanA - 0.01, meanA + 0.01);      // the same column of water, within a centimetre
+        Assert.InRange(meanB, 0.02, 0.25);
+
+        // The SI presets convert explicitly: a millimetre sand has a thousandth of the stress and a billionth of the density.
+        var sand = ParticleFluidDef.Sand().InUnit(LengthUnit.Millimetres);
+        Assert.Equal(1600f / 1e9f, sand.RestDensity, 1e-3f * 1600f / 1e9f);
+        Assert.Equal(2e5f / 1000f, sand.ElasticModulus, 1);
+        Assert.Equal(50f, sand.Resolved(1000f, false).Spacing);   // never set: the world fills in 50 mm
+        sand.Resolved(1000f, false).ValidateIn(1000f, false);
     }
 }

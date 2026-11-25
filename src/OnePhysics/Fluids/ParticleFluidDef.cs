@@ -22,10 +22,13 @@ public enum FluidVolumeKind : byte
 public sealed class ParticleFluidDef
 {
     /// <summary>Distance between neighbouring particles at rest, metres. Every fluid of one world has the same spacing (the first fluid sets it). Range 0.001 to 10. Default 0.05.</summary>
-    public float Spacing { get; set; } = 0.05f;
+    public float Spacing { get => ZeroDefault.Get(_spacing, 0.05f); set => _spacing = ZeroDefault.Set(value, 0.05f); }
+
+    // Stored relative to the default (zero reads as the default), so a definition that never set these three follows the world's length unit: see Resolved.
+    private uint _spacing, _restDensity, _maxSpeed;
 
     /// <summary>Rest mass density, kg/m³ (kg/m² in a planar world). One particle has mass density × spacing³ (spacing² in 2D). Range 0.01 to 1e5. Default 1000.</summary>
-    public float RestDensity { get; set; } = 1000f;
+    public float RestDensity { get => ZeroDefault.Get(_restDensity, 1000f); set => _restDensity = ZeroDefault.Set(value, 1000f); }
 
     /// <summary>Smoothing radius as a multiple of the spacing. Larger is smoother and slower. Range 1.2 to 4. Default 2.</summary>
     public float KernelRadiusScale { get; set; } = 2f;
@@ -46,7 +49,7 @@ public sealed class ParticleFluidDef
     public float Friction { get; set; } = 0.1f;
 
     /// <summary>Speed limit of a particle, m/s. Range 0.1 to 1000. Default 50.</summary>
-    public float MaxSpeed { get; set; } = 50f;
+    public float MaxSpeed { get => ZeroDefault.Get(_maxSpeed, 50f); set => _maxSpeed = ZeroDefault.Set(value, 50f); }
 
     /// <summary>Scales gravity for this fluid. Default 1.</summary>
     public float GravityScale { get; set; } = 1f;
@@ -139,23 +142,67 @@ public sealed class ParticleFluidDef
     /// <summary>An independent copy.</summary>
     public ParticleFluidDef Clone() => (ParticleFluidDef)MemberwiseClone();
 
+    private static ArgumentOutOfRangeException Bad(string name, object? value, string message) => new(name, value, message);
+
     private static void Range(float v, string name, float lo, float hi)
     {
         if (!(v >= lo && v <= hi)) { throw new ArgumentOutOfRangeException(name, v, "ParticleFluidDef." + name + " is " + v.ToString("R", CultureInfo.InvariantCulture) + "; expected " + lo.ToString("R", CultureInfo.InvariantCulture) + " to " + hi.ToString("R", CultureInfo.InvariantCulture) + "."); }
     }
 
-    /// <summary>Checks every member. Throws <see cref="ArgumentOutOfRangeException"/> naming the first one out of range.</summary>
-    public void Validate()
+    /// <summary>
+    /// This definition, written in SI as the members above state, expressed for a world whose length unit is <paramref name="unit"/>: the spacing and speed limits are multiplied by world units per metre, densities divided by it
+    /// to the power of the dimension (kg per cubic world unit, or per square unit in a planar world), and in a volume world the stresses, moduli and shear viscosity by one over it (pascals become kg per world unit per second squared).
+    /// Members you never set stay unset and take the unit's defaults when the fluid is added. Use it on the presets (<see cref="Sand"/>, <see cref="Honey"/> and the others), which are written in SI.
+    /// In a planar world the stresses keep their numbers: a planar "volume" is an area of one metre depth, so a stress is force per length and does not change with the length unit.
+    /// </summary>
+    /// <param name="unit">The target length unit.</param>
+    /// <param name="planar">True for a 2D world.</param>
+    public ParticleFluidDef InUnit(LengthUnit unit, bool planar = false)
     {
-        Range(Spacing, nameof(Spacing), 0.001f, 10f);
-        Range(RestDensity, nameof(RestDensity), 0.01f, 1e5f);
+        float s = unit.Scale;
+        var d = Clone();
+        if (_spacing != 0) { d.Spacing = Spacing * s; }
+        if (_restDensity != 0) { d.RestDensity = RestDensity / DensityFactor(s, planar); }
+        if (_maxSpeed != 0) { d.MaxSpeed = MaxSpeed * s; }
+        d.Vorticity = Vorticity * s;
+        if (!planar)
+        {
+            d.DynamicViscosity = DynamicViscosity / s; d.ElasticModulus = ElasticModulus / s; d.Cohesion = Cohesion / s; d.YieldStress = YieldStress / s;
+        }
+
+        return d;
+    }
+
+    // World units per metre to the power of the dimension: the factor between kg per cubic (square) metre and kg per cubic (square) world unit.
+    private static float DensityFactor(float s, bool planar) => planar ? s * s : s * s * s;
+
+    /// <summary>This definition with spacing, rest density and speed limit that were never set at their defaults for the world's unit. The world applies it when a fluid is added.</summary>
+    internal ParticleFluidDef Resolved(float unitsPerMetre, bool planar)
+    {
+        if (unitsPerMetre == 1f) { return this; }
+        var d = Clone();
+        if (_spacing == 0) { d.Spacing = 0.05f * unitsPerMetre; }
+        if (_restDensity == 0) { d.RestDensity = 1000f / DensityFactor(unitsPerMetre, planar); }
+        if (_maxSpeed == 0) { d.MaxSpeed = 50f * unitsPerMetre; }
+        return d;
+    }
+
+    /// <summary>Checks every member. Throws <see cref="ArgumentOutOfRangeException"/> naming the first one out of range.</summary>
+    public void Validate() => ValidateIn(1f, false);
+
+    // The ranges of the length-dependent members are those of SI scaled to the world's unit.
+    internal void ValidateIn(float unitsPerMetre, bool planar)
+    {
+        float density = DensityFactor(unitsPerMetre, planar);
+        Range(Spacing, nameof(Spacing), 0.001f * unitsPerMetre, 10f * unitsPerMetre);
+        Range(RestDensity, nameof(RestDensity), 0.01f / density, 1e5f / density);
         Range(KernelRadiusScale, nameof(KernelRadiusScale), 1.2f, 4f);
         Range(Viscosity, nameof(Viscosity), 0f, 1f);
         Range(Vorticity, nameof(Vorticity), 0f, 100f);
         Range(TensileCorrection, nameof(TensileCorrection), 0f, 10f);
         Range(Relaxation, nameof(Relaxation), 1e-6f, 100f);
         Range(Friction, nameof(Friction), 0f, 100f);
-        Range(MaxSpeed, nameof(MaxSpeed), 0.1f, 1000f);
+        Range(MaxSpeed, nameof(MaxSpeed), 0.1f * unitsPerMetre, 1000f * unitsPerMetre);
         Range(GravityScale, nameof(GravityScale), -100f, 100f);
         Range(DynamicViscosity, nameof(DynamicViscosity), 0f, 1e5f);
         Range(ElasticModulus, nameof(ElasticModulus), 0f, 1e10f);
@@ -168,9 +215,9 @@ public sealed class ParticleFluidDef
         Range(Hardening, nameof(Hardening), 0f, 100f);
         if (ElasticModulus == 0f && (FrictionAngle != 0f || Cohesion != 0f || YieldStress != 0f || CriticalCompression != 0f || CriticalStretch != 0f || Hardening != 0f))
         {
-            throw new ArgumentOutOfRangeException(nameof(ElasticModulus), ElasticModulus, "ParticleFluidDef.ElasticModulus is 0, but FrictionAngle, Cohesion, YieldStress, CriticalCompression, CriticalStretch and Hardening need a solid (ElasticModulus above 0).");
+            throw Bad(nameof(ElasticModulus), ElasticModulus, "ParticleFluidDef.ElasticModulus is 0, but FrictionAngle, Cohesion, YieldStress, CriticalCompression, CriticalStretch and Hardening need a solid (ElasticModulus above 0).");
         }
-        if ((uint)Layer > 31u) { throw new ArgumentOutOfRangeException(nameof(Layer), Layer, "ParticleFluidDef.Layer is " + Layer.ToString(CultureInfo.InvariantCulture) + "; expected 0 to 31."); }
+        if ((uint)Layer > 31u) { throw Bad(nameof(Layer), Layer, "ParticleFluidDef.Layer is " + Layer.ToString(CultureInfo.InvariantCulture) + "; expected 0 to 31."); }
     }
 }
 

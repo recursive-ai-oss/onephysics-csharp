@@ -290,3 +290,7 @@ sample. Final world hashes are identical in base/off/on for both definitions.
 36,677,432 bytes over 90 steps identically; this is pre-existing scene behavior,
 not additional recorder allocation. Separate warmed recorder/history tests verify
 zero per-step recorder allocation, including keyframe cadence and mutation calls.
+
+## Rescaled stability
+
+`BAR_UNITS_PER_METRE=k bar run --mode stability --engines onephysics ...` runs this library's rigid-body scenes in a world whose length unit is 1/k metre (k = 1000 for millimetres, 32 or 100 for pixels). `bench/Bar/UnitScaling.cs` rewrites the loaded scene in place: positions, velocities, sizes, anchors and gravity times k, densities divided by k raised to the dimension (every mass unchanged), joint torques times k squared, and sets the scene's unit; the driver writes its pose dumps converted back to metres, so the metrics and the thresholds in `scenes.md` apply as they are. Covered: circles, spheres, boxes, capsules, polygons, hulls, segments, chains, meshes, height fields, revolute, point and swing-twist joints; scenes with scripted characters, vehicles, soft bodies or queries are refused. `BAR_UNITS_IGNORE=1` rescales the scene but leaves the world in metres: the negative control that fails the thresholds, showing what the unit changes.
