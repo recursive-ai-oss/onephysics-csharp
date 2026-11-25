@@ -4,6 +4,7 @@ using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics.Debug;
 using RecursiveAI.OnePhysics.LowLevel;
 using RecursiveAI.OnePhysics.Physics2D;
+using RecursiveAI.OnePhysics.Presentation;
 
 internal static class Program
 {
@@ -57,6 +58,21 @@ internal static class Program
         bool railGood = loco.Speed > 5f && railCopy.ComputeHash() == rail.ComputeHash() && railCopy.GetRailVehicles().Length == 2 && railCopy.GetBicycles().Length == 1;
         Console.WriteLine(railGood ? "OK trimmed 2D rail and bicycles" : "FAIL trimmed 2D rail and bicycles");
         good &= railGood;
+        // A follower world: a platform followed, a rope on its mirror, recorded and replayed without the authority; no 3D type may be pulled in.
+        var authority = new PhysicsWorld2D(new WorldOptions2D { WorldId = 11 });
+        var deck = authority.AddBox(new Vector2F(2, 0.2f), new Vector2D(0, 1), type: BodyType.Kinematic);
+        var follower = new PresentationWorld2D(new WorldOptions2D { WorldId = 12 });
+        follower.Follow(authority.AddBox(new Vector2F(20, 1), new Vector2D(0, -0.5), type: BodyType.Static));
+        follower.World.AddRope(new Vector2D(0, 0.9), new Vector2D(0, -0.1), 6, pinStart: false).Attach(0, follower.Follow(deck));
+        using var recording = new System.IO.MemoryStream();
+        using (follower.StartRecording(recording)) { for (int i = 0; i < 30; i++) { deck.MoveKinematic(new Vector2D(0.01 * i, 1), 0f); authority.Step(1f / 60); follower.Step(authority, 1f / 60); } }
+        recording.Position = 0;
+        var player = new PresentationPlayer(recording);
+        var replayed = player.CreateFollower2D();
+        while (player.ReadNextStep()) { }
+        bool followerGood = replayed.ComputeHash() == follower.ComputeHash();
+        Console.WriteLine(followerGood ? "OK trimmed 2D follower" : "FAIL trimmed 2D follower");
+        good &= followerGood;
         return good ? 0 : 1;
     }
 }

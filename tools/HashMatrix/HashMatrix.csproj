@@ -34,6 +34,7 @@
     <!-- Existing determinism checks and the shared scene definitions, linked from where they live. -->
     <Compile Include="../../tests/OnePhysics.Tests/Collision3D/Collision3DHash.cs;../../tests/OnePhysics.Tests/Collision3D/TestRng.cs;../../tests/OnePhysics.Tests/Broadphase/BroadphaseHash.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/Services3DScene.cs" LinkBase="Checks" />
+    <Compile Include="../../tests/Common/PresentationScenes.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/SoftBodies3DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/SoftBodies2DScene.cs" LinkBase="Checks" />
     <Compile Include="../../tests/Common/SoftFracture3DScene.cs" LinkBase="Checks" />

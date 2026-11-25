@@ -326,6 +326,8 @@ internal static class SmokeProgram
         Console.WriteLine((pulleys ? "OK pulleys " : "FAIL pulleys ") + pulleyHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool diagnosis = DiagnosisSmoke.Run(out ulong diagnosisDigest);
         Console.WriteLine((diagnosis ? "OK diagnosis " : "FAIL diagnosis ") + diagnosisDigest.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+        bool presentation = PresentationSmoke.Run(out ulong presentationDigest);
+        Console.WriteLine((presentation ? "OK presentation " : "FAIL presentation ") + presentationDigest.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool tools = ToolsSmoke.Run(out ulong toolsHash);
         Console.WriteLine((tools ? "OK tools " : "FAIL tools ") + toolsHash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
         bool interchange = RecursiveAI.OnePhysics.Interchange.Tests.InterchangeSmoke.Run(out ulong interchangeHash);

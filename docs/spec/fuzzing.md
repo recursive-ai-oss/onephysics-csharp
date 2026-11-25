@@ -32,6 +32,8 @@ The authoring tools have their own targets: `tools-mesh-clean`, `tools-mesh-mass
 
 `testdata/fuzz-seeds/<target>/` holds small seed inputs written by our own generator (`dotnet run --project fuzz/Fuzz -- --seeds testdata/fuzz-seeds`): seeded random bytes of growing length, a valid snapshot for the raw snapshot reader, and a cube for the hull builder.
 
+The presentation recording reader has its own target, `presentation`: the bytes are played into a follower world (header, first snapshot, up to 48 steps) and refused with the typed errors or played; seeds are a short 2D and a short 3D recording (`--seeds`).
+
 A finding becomes a minimised file at `testdata/fuzz/<target>/<name>.bin` (that is what `minimize` writes), plus a fix. `FuzzRegressionTests` replays every such file through its target in the normal test run.
 
 `testdata/fuzz-open/<target>/` holds minimised inputs of findings that are not fixed yet; nothing replays them (it is empty at the moment). When a fix lands the file moves to `testdata/fuzz/`.

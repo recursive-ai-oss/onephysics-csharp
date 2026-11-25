@@ -46,6 +46,7 @@ internal static class Program
         ["snapshot-delta"] = FuzzSnapshotEncoding.Delta,
         ["snapshot-compressed"] = FuzzSnapshotEncoding.Compressed,
         ["replay"] = FuzzReplay.Run,
+        ["presentation"] = FuzzPresentation.Run,
         ["scene"] = FuzzScene.Run,
         ["plane3d"] = FuzzMissingShapes.Plane,
         ["massoffset2d"] = FuzzMissingShapes.MassOffset2D,
