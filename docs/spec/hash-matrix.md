@@ -66,6 +66,7 @@ step. Two platforms agree on a scenario exactly when the scenario lines are iden
 | `tc0` | `DOTNET_TieredCompilation=0` and ReadyToRun off: optimised code from the first call |
 | `aot` | NativeAOT |
 | `wasm`, `wasm-aot` | browser-wasm under Node, interpreted and ahead-of-time compiled |
+| `isolated` | JIT, 1 thread, every scenario in a process of its own (four at a time); it must equal `jit`, where all scenarios share one process, so no result depends on what ran before it (a counter, a cache, a static, a world id taken from the process-wide sequence) |
 
 Other machines run the same script with `-p <prefix>` (for example `arm64-`, columns `jit` and `aot`) and the resulting
 `<prefix><column>.txt` and `.steps` files are copied into the same directory; `tools/hash-matrix.sh -o OUTDIR compare`

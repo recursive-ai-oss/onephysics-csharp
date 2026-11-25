@@ -1,0 +1,7 @@
+scene 1
+dim 3
+unit 0.001
+material 0 0.6 0
+gravity 0 -9810 0
+body dynamic 0 1000 0 0 0 0 1 0 0 0 0 0 0 -
+shape box 0 0.000001 0 500 500 500 0 0 0 0 0 0 1

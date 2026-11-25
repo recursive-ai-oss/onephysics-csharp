@@ -52,8 +52,13 @@ public sealed partial class PhysicsWorld2D
         _core.AddSection(_engine.Articulations);
         _core.RegisterWorldScale();
         _core.AddSection(new SpeculativeDistance2D(_engine));
+        _core.AddSection(UnitSection(_engine));
         if (o.PairCapacity > 0 || o.ContactCapacity > 0 || o.IslandCapacity > 0) { ReserveCapacity(); }
     }
+
+    // The length unit section of a world, bound to its engine; a fork builds the copy's own.
+    private static LengthUnitSection UnitSection(Engine2D engine) =>
+        new(() => engine.Opt.LengthUnit, unit => engine.Opt.SetLengthUnitRaw(unit), destination => UnitSection((Engine2D)destination.GetSnapshotSection(Engine2D.Id)));
 
     // Sizes the storage to the capacity options, and to a multiple of the body count where an option is 0 and Warmup asked for a default.
     private void ReserveCapacity(bool defaults = false)
@@ -99,6 +104,9 @@ public sealed partial class PhysicsWorld2D
 
         InvalidateQueryPad();
     }
+
+    /// <summary>The world's length unit, as <see cref="WorldOptions2D.LengthUnit"/> of <see cref="Options"/>: metres per world unit, one metre by default. It is saved in snapshots and covered by the world hash when it is not one metre.</summary>
+    public LengthUnit LengthUnit => _engine.Opt.LengthUnit;
 
     /// <summary>The live options. Change a value between steps and the next step uses it.</summary>
     public WorldOptions2D Options => _engine.Opt;

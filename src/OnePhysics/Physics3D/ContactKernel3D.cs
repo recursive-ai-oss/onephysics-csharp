@@ -233,6 +233,7 @@ internal static partial class ContactKernel3D
     }
 
     /// <summary>Relative normal speed, m/s, that bounds a contact point's accumulated impulse (see NormalImpulse). Fifty times the default speed limit.</summary>
+    // The default cap is 20000 metres per second; a world in another length unit passes the cap in its own unit (KernelParams.ImpulseSpeedCap).
     internal const float ImpulseSpeedCap = 20000f;
 
     private interface IContactMode { static abstract bool Extended { get; } }
@@ -285,7 +286,7 @@ internal static partial class ContactKernel3D
             if (direct)
             {
                 // It also stores the velocities straight back to the packed rows (one row store per written body), so the scatter below is skipped.
-                Rows256(ref Mem.AsRows(ref a), ref Mem.AsRows(ref b2), ref Mem.Base(wide, W3D.GroupFloats), pk, ref idx[16 + l0], lane0 + n - l0, maxPts, phase, idx[W3D.AnyRollingSlot] != 0, kp.InverseSubstepDt, kp.LinearSlop, kp.PushOutVelocity);
+                Rows256(ref Mem.AsRows(ref a), ref Mem.AsRows(ref b2), ref Mem.Base(wide, W3D.GroupFloats), pk, ref idx[16 + l0], lane0 + n - l0, maxPts, phase, idx[W3D.AnyRollingSlot] != 0, kp.InverseSubstepDt, kp.LinearSlop, kp.PushOutVelocity, kp.ImpulseSpeedCap);
                 continue;
             }
             else if (phase == SolvePhase.WarmStart)
@@ -314,8 +315,8 @@ internal static partial class ContactKernel3D
 
                 for (int i = 0; i < maxPts; i++) { FrictionPoint<T, TMass, TMode>(ref a, ref b2, wide, i, l0, t1, t2, friction); }
 
-                T invH = T.Broadcast(kp.InverseSubstepDt), slop = T.Broadcast(kp.LinearSlop), negPush = TMass.Enabled ? T.Negate(Field<T>(wide, W3D.PushLimit, l0)) : T.Broadcast(-kp.PushOutVelocity);
-                for (int i = 0; i < maxPts; i++) { NormalPoint<T, TMass, TMode>(ref a, ref b2, wide, i, l0, nrm, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, zero, two); }
+                T invH = T.Broadcast(kp.InverseSubstepDt), slop = T.Broadcast(kp.LinearSlop), negPush = TMass.Enabled ? T.Negate(Field<T>(wide, W3D.PushLimit, l0)) : T.Broadcast(-kp.PushOutVelocity), speedCap = T.Broadcast(kp.ImpulseSpeedCap);
+                for (int i = 0; i < maxPts; i++) { NormalPoint<T, TMass, TMode>(ref a, ref b2, wide, i, l0, nrm, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, speedCap, zero, two); }
             }
 
             // Velocities back out (the direct rows stored their own and continued above).
@@ -489,15 +490,15 @@ internal static partial class ContactKernel3D
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void NormalPoint<T, TMass, TMode>(ref BodyLanes<T, TMass> a, ref BodyLanes<T, TMass> b, Span<float> wide, int i, int l0, V3<T> n, bool useBias, T biasRate, T massScale, T impulseScale, T invH, T slop, T negPush, T zero, T two) where T : struct, ILane<T> where TMode : struct, IContactMode where TMass : struct, ILinearMass<T, TMass>
+    private static void NormalPoint<T, TMass, TMode>(ref BodyLanes<T, TMass> a, ref BodyLanes<T, TMass> b, Span<float> wide, int i, int l0, V3<T> n, bool useBias, T biasRate, T massScale, T impulseScale, T invH, T slop, T negPush, T speedCap, T zero, T two) where T : struct, ILane<T> where TMode : struct, IContactMode where TMass : struct, ILinearMass<T, TMass>
     {
         int f = W3D.Point0 + i * W3D.PointStride;
-        T lambda = NormalImpulse<T, TMass, TMode>(in a, in b, wide, f, l0, n, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, zero, two);
+        T lambda = NormalImpulse<T, TMass, TMode>(in a, in b, wide, f, l0, n, useBias, biasRate, massScale, impulseScale, invH, slop, negPush, speedCap, zero, two);
         ApplyImpulse(ref a, ref b, Vec<T>(wide, f + W3D.ArmA, l0), Vec<T>(wide, f + W3D.ArmB, l0), n * lambda, Field<T>(wide, f + W3D.Mask, l0));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static T NormalImpulse<T, TMass, TMode>(in BodyLanes<T, TMass> a, in BodyLanes<T, TMass> b, Span<float> wide, int f, int l0, V3<T> n, bool useBias, T biasRate, T massScale, T impulseScale, T invH, T slop, T negPush, T zero, T two) where T : struct, ILane<T> where TMode : struct, IContactMode where TMass : struct, ILinearMass<T, TMass>
+    private static T NormalImpulse<T, TMass, TMode>(in BodyLanes<T, TMass> a, in BodyLanes<T, TMass> b, Span<float> wide, int f, int l0, V3<T> n, bool useBias, T biasRate, T massScale, T impulseScale, T invH, T slop, T negPush, T speedCap, T zero, T two) where T : struct, ILane<T> where TMode : struct, IContactMode where TMass : struct, ILinearMass<T, TMass>
     {
         V3<T> rA = Vec<T>(wide, f + W3D.ArmA, l0), rB = Vec<T>(wide, f + W3D.ArmB, l0);
         T pm = Field<T>(wide, f + W3D.Mask, l0);
@@ -530,7 +531,7 @@ internal static partial class ContactKernel3D
         T nw = Clamp0(old + lambda);
         // A point never carries more impulse than would change the relative normal speed by ImpulseSpeedCap (the effective mass times that speed). Real contacts stay far below it; a runaway pair
         // (friction and the normal row feeding each other through a light body's spin) would otherwise warm-start ever larger impulses into the next substep and step.
-        nw = Lane.Min(nw, Field<T>(wide, f + W3D.NormalMass, l0) * T.Broadcast(ImpulseSpeedCap));
+        nw = Lane.Min(nw, Field<T>(wide, f + W3D.NormalMass, l0) * speedCap);
         if (TMode.Extended) { nw = Lane.Min(nw, Field<T>(wide, W3D.ImpulseLimit, l0)); }
         lambda = nw - old;
         T.Select(pm, nw, old).StoreAt(wide, (f + W3D.NormalImpulse) * 8 + l0);

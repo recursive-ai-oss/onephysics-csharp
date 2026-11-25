@@ -82,6 +82,34 @@ public sealed class WorldOptions3D
 {
     internal Action<string>? ReplayChanged;
 
+    /// <summary>
+    /// How long one world unit is, in metres. Default one metre. Every default tuned in metres (gravity, sleep threshold, speculative distance, push-out and speed limits, the broadphase margin, hit and restitution thresholds,
+    /// and the default sizes of characters, soft bodies, rods, cloth and fluids) follows it; a value you set explicitly stays in world units. Setting it moves the options still at their defaults and changes the engine's own
+    /// metre-tuned tolerances at the next step. Saved in snapshots (only when it is not one metre) and covered by the world hash.
+    /// </summary>
+    public LengthUnit LengthUnit { get => _lengthUnit; set { ApplyLengthUnit(value); ReplayChanged?.Invoke("WorldOptions3D.LengthUnit"); } }
+    private LengthUnit _lengthUnit;
+    private float _unitScale = 1f;
+
+    /// <summary>World units per metre as a float: the factor every metre-tuned constant is multiplied by. Exactly 1 at the default unit.</summary>
+    internal float UnitsPerMetre => _unitScale;
+
+    internal void SetLengthUnitRaw(LengthUnit unit) { _lengthUnit = unit; _unitScale = unit.Scale; }
+
+    private void ApplyLengthUnit(LengthUnit unit)
+    {
+        float o = _unitScale, n = unit.Scale;
+        _replayGravity = new(UnitDefaults.Follow(_replayGravity.X, 0f, o, n), UnitDefaults.Follow(_replayGravity.Y, -9.81f, o, n), UnitDefaults.Follow(_replayGravity.Z, 0f, o, n));
+        _replaySleepThreshold = UnitDefaults.Follow(_replaySleepThreshold, 0.05f, o, n);
+        _replaySpeculativeDistance = UnitDefaults.Follow(_replaySpeculativeDistance, 0.02f, o, n);
+        _replayPushOutVelocity = UnitDefaults.Follow(_replayPushOutVelocity, 3f, o, n);
+        _replayRestitutionThreshold = UnitDefaults.Follow(_replayRestitutionThreshold, 1f, o, n);
+        _replayMaxLinearSpeed = UnitDefaults.Follow(_replayMaxLinearSpeed, 400f, o, n);
+        _replayBroadphaseMargin = UnitDefaults.Follow(_replayBroadphaseMargin, 0.03, o, n);
+        _replayHitSpeedThreshold = UnitDefaults.Follow(_replayHitSpeedThreshold, 1f, o, n);
+        SetLengthUnitRaw(unit);
+    }
+
     /// <summary>Substeps of the soft-body solver per step, 1..64. Many small steps with one pass each beat few large steps with many passes (Macklin et al. 2019). Default 4. Saved with the soft bodies.</summary>
     public int SoftSubsteps { get => _replaySoftSubsteps; set { _replaySoftSubsteps = value; ReplayChanged?.Invoke("WorldOptions3D.SoftSubsteps"); } }
     private int _replaySoftSubsteps = 4;
@@ -380,6 +408,18 @@ public struct ShapeDef
     public float Density { readonly get => ZeroDefault.Get(_density, 1f); set => _density = ZeroDefault.Set(value, 1f); }
 
     private uint _density;
+
+    // The defaults that are physical values follow the world's length unit. Density is 1 kg per cubic metre, so a world in another unit gets 1 kg per that many cubic world units and a box of the same real size has the same mass.
+    // Rolling resistance is a length (a torque limit per unit of normal impulse): 3 mm by default. A value equal to the default of its field is stored as "not set", so it is the default whatever the unit;
+    // any other value is in world units as given.
+    internal readonly ShapeDef WithUnitDefaults(float unitsPerMetre)
+    {
+        if (unitsPerMetre == 1f) { return this; }
+        var d = this;
+        if (_density == 0) { d.Density = 1f / (unitsPerMetre * unitsPerMetre * unitsPerMetre); }
+        if (_rollingResistance == 0) { d.RollingResistance = Material3D.DefaultRollingResistance * unitsPerMetre; }
+        return d;
+    }
 
     /// <summary>Friction coefficient. Default 0.6.</summary>
     public float Friction { readonly get => ZeroDefault.Get(_friction, 0.6f); set => _friction = ZeroDefault.Set(value, 0.6f); }

@@ -73,7 +73,7 @@ internal sealed partial class FluidStore
         w.NamedSingle(d.YieldStress); w.NamedSingle(d.CriticalCompression); w.NamedSingle(d.CriticalStretch); w.NamedSingle(d.Hardening);
     }
 
-    private static ParticleFluidDef ReadDef(StateReader r, int version)
+    private ParticleFluidDef ReadDef(StateReader r, int version)
     {
         var d = new ParticleFluidDef
         {
@@ -88,7 +88,7 @@ internal sealed partial class FluidStore
             d.YieldStress = r.ReadSingle(); d.CriticalCompression = r.ReadSingle(); d.CriticalStretch = r.ReadSingle(); d.Hardening = r.ReadSingle();
         }
 
-        try { d.Validate(); }
+        try { d.ValidateIn(Host.UnitsPerMetre, Dim == 2); }
         catch (ArgumentOutOfRangeException e) { throw r.Error("invalid particle fluid: " + e.Message); }
         return d;
     }

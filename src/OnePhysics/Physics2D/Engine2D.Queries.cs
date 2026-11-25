@@ -89,7 +89,7 @@ internal struct QueryParams
 
 internal sealed partial class Engine2D
 {
-    private const double QueryEpsilon = 1e-4;
+    private double QueryEpsilon => 1e-4 * (double)Opt.UnitsPerMetre;
     internal static readonly Shape2D s_point = MakePoint();
 
     /// <summary>Test hook: visit every shape instead of using the trees (same narrow phase and ordering).</summary>

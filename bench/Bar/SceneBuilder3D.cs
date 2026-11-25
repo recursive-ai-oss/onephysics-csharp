@@ -47,7 +47,7 @@ public static class SceneBuilder3D
             vehicles = []; drives = [];
             return (machineWorld, machineBodies, machineWorld.Options);
         }
-        var opt = new P3.WorldOptions3D { Gravity = new Vector3F((float)s.Gx, (float)s.Gy, (float)s.Gz), ThreadCount = threads };
+        var opt = new P3.WorldOptions3D { LengthUnit = s.LengthUnit, Gravity = new Vector3F((float)s.Gx, (float)s.Gy, (float)s.Gz), ThreadCount = threads };
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
         Tweak?.Invoke(opt);
         var world = new P3.PhysicsWorld3D(opt);

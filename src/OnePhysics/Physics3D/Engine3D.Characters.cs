@@ -289,7 +289,7 @@ internal sealed partial class Engine3D
                 if (!d.NeedsExactSlope) { throw r.Error("redundant exact character slope encoding"); }
                 anyExactSlope = true;
             }
-            try { d.Validate(); }
+            try { d.Validate(Opt.UnitsPerMetre); }
             catch (ArgumentOutOfRangeException e) { throw r.Error("invalid character definition: " + e.Message); }
             b.Def[c] = d;
             byte gs = r.ReadByte();

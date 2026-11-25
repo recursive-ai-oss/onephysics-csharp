@@ -100,7 +100,7 @@ public enum ToiState : byte
     Separated = 3,
 }
 
-/// <summary>Result of <see cref="Distance2D.TimeOfImpact"/>.</summary>
+/// <summary>Result of <see cref="Distance2D.TimeOfImpact(in Shape2D, in Sweep2D, in Shape2D, in Sweep2D, float, float)"/>.</summary>
 [Experimental("OPHYS0001")]
 public readonly struct ToiOutput2D
 {
@@ -410,6 +410,20 @@ public static class Distance2D
     public static ToiOutput2D TimeOfImpact(in Shape2D a, in Sweep2D sweepA, in Shape2D b, in Sweep2D sweepB, float maxFraction = 1f, float targetGap = Constants2D.LinearSlop)
     {
         return Advance(in a, in sweepA, in b, in sweepB, maxFraction, targetGap, 0.25f * Constants2D.LinearSlop);
+    }
+
+    /// <summary>The same for a world in another length unit: the stopping tolerance, a quarter of <see cref="Constants2D.LinearSlop"/> in metres, is multiplied by <paramref name="lengthScale"/> (world units per metre).</summary>
+    /// <param name="a">First shape (in its body's frame).</param>
+    /// <param name="sweepA">Motion of the first body.</param>
+    /// <param name="b">Second shape.</param>
+    /// <param name="sweepB">Motion of the second body.</param>
+    /// <param name="maxFraction">Largest fraction of the sweep to search, in [0, 1].</param>
+    /// <param name="targetGap">Gap between the rounded surfaces at which to stop, at least 0.</param>
+    /// <param name="lengthScale">World units per metre.</param>
+    /// <returns>As the overload without a length scale.</returns>
+    public static ToiOutput2D TimeOfImpact(in Shape2D a, in Sweep2D sweepA, in Shape2D b, in Sweep2D sweepB, float maxFraction, float targetGap, float lengthScale)
+    {
+        return Advance(in a, in sweepA, in b, in sweepB, maxFraction, targetGap, 0.25f * Constants2D.LinearSlop * lengthScale);
     }
 
     private static ToiOutput2D Advance(in Shape2D a, in Sweep2D sa, in Shape2D b, in Sweep2D sb, float tMax, float target, float tolerance)

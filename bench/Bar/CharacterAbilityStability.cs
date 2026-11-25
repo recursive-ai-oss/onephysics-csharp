@@ -24,7 +24,7 @@ internal static class CharacterAbilityStability
         ["characters-ropes-3d"] = [("falls", 0, 0), ("walkerGrounded", 1, 1), ("swingerLanded", 1, 1), ("pusherX", 14.5, 1e9), ("curtainDeflection", 0.1, 3.0), ("maxSpeed", 0, 50)],
         ["climbing-3d"] = [("grabs", 5, 5), ("falseGrabs", 0, 0), ("onTop", 4, 4), ("ladderOnTop", 1, 1), ("falls", 0, 0), ("maxSpeed", 0, 15)],
         ["climbing-2d"] = [("grabs", 2, 2), ("falseGrabs", 0, 0), ("onTop", 2, 2), ("ladderOnTop", 1, 1), ("falls", 0, 0), ("maxSpeed", 0, 15)],
-        ["riders-3d"] = [("seatError", 0, 1e-4), ("deckDrift", 0, 1e-3), ("platformDrift", 0, 1e-3), ("falls", 0, 0), ("maxSpeed", 0, 50)],
+        ["riders-3d"] = [("seatError", 0, 1e-4), ("deckDrift", 0, 1e-3), ("platformDrift", 0, 1e-3), ("falls", 0, 0), ("maxSpeed", 0, 15)],
     };
 
     internal static int Run(Opts opts)

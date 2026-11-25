@@ -19,7 +19,7 @@ internal static partial class ContactKernel3D
     /// vectors are transposed in registers and every written body (scatter row numbers from <paramref name="scatter"/>: A's eight, then B's eight; −1 keeps the body's row) takes one 32-byte store.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void Rows256(ref Vector256<float> a, ref Vector256<float> b, ref float g, Span<float> pk, ref int scatter, int lanes, int maxPts, SolvePhase phase, bool anyRolling, float inverseSubstepDt, float linearSlop, float pushOutVelocity)
+    private static void Rows256(ref Vector256<float> a, ref Vector256<float> b, ref float g, Span<float> pk, ref int scatter, int lanes, int maxPts, SolvePhase phase, bool anyRolling, float inverseSubstepDt, float linearSlop, float pushOutVelocity, float impulseSpeedCap)
     {
         Vector256<float> aVx = a, aVy = Mem.Row(ref a, 1), aVz = Mem.Row(ref a, 2), aWx = Mem.Row(ref a, 3), aWy = Mem.Row(ref a, 4), aWz = Mem.Row(ref a, 5);
         Vector256<float> bVx = b, bVy = Mem.Row(ref b, 1), bVz = Mem.Row(ref b, 2), bWx = Mem.Row(ref b, 3), bWy = Mem.Row(ref b, 4), bWz = Mem.Row(ref b, 5);
@@ -131,7 +131,7 @@ internal static partial class ContactKernel3D
             }
 
             // NormalPoint
-            Vector256<float> invH = Vector256.Create(inverseSubstepDt), slop = Vector256.Create(linearSlop), negPush = Vector256.Create(-pushOutVelocity), speedCap = Vector256.Create(ImpulseSpeedCap);
+            Vector256<float> invH = Vector256.Create(inverseSubstepDt), slop = Vector256.Create(linearSlop), negPush = Vector256.Create(-pushOutVelocity), speedCap = Vector256.Create(impulseSpeedCap);
             for (int i = 0; i < maxPts; i++)
             {
                 ref float p = ref Mem.Row(ref g, W3D.Point0 + i * W3D.PointStride);

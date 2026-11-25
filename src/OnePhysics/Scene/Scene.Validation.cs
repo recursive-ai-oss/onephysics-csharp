@@ -11,7 +11,7 @@ public sealed partial class Scene
     {
         int exact = t[0] switch
         {
-            "name" or "dim" or "dt" or "steps" or "substeps" or "dump_every" or "warmup" or "settle" or "query_reps" => 2,
+            "name" or "dim" or "unit" or "dt" or "steps" or "substeps" or "dump_every" or "warmup" or "settle" or "query_reps" => 2,
             "gravity" => Dim + 1, "material" => 4, "body" => Dim == 2 ? 9 : 16,
             "surface" => 13,
             "controls" or "sleep" => 5, "mass" => 2, "center" => Dim + 1, "inertia" => Dim == 2 ? 2 : 8, "target" => Dim == 2 ? 4 : 8, "world_limits" => 4,
