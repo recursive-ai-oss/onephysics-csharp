@@ -93,15 +93,15 @@ internal sealed partial class WaterStore
         for (int i = 0; i < handles.HighWater; i++)
         {
             if (!handles.IsLive(i)) { continue; }
-            var g = new WaterGrid { Planar = r.ReadBool(), Nx = r.ReadInt32(), Nz = r.ReadInt32(), Dx = r.ReadSingle() };
+            var g = new WaterGrid { UnitsPerMetre = _host.UnitsPerMetre, Planar = r.ReadBool(), Nx = r.ReadInt32(), Nz = r.ReadInt32(), Dx = r.ReadSingle() };
             if (g.Planar != planar) { throw r.Error("shallow water grid " + i.ToString(CultureInfo.InvariantCulture) + " belongs to a " + (g.Planar ? "planar" : "spatial") + " world"); }
             if (g.Nx < 2 || g.Nx > 1 << 20 || (planar ? g.Nz != 1 : g.Nz < 2 || g.Nz > 1 << 20) || (long)g.Nx * g.Nz > WaterGrid.MaxCellsPerGrid) { throw r.Error("invalid shallow water grid size " + g.Nx.ToString(CultureInfo.InvariantCulture) + " x " + g.Nz.ToString(CultureInfo.InvariantCulture)); }
-            if (!(g.Dx >= 0.001f && g.Dx <= 1000f)) { throw r.Error("invalid shallow water cell size " + g.Dx.ToString("R", CultureInfo.InvariantCulture)); }
+            if (!(g.Dx >= 0.001f && g.Dx <= 1000f * Math.Max(1f, _host.UnitsPerMetre))) { throw r.Error("invalid shallow water cell size " + g.Dx.ToString("R", CultureInfo.InvariantCulture)); }
             g.OriginX = r.ReadDouble(); g.OriginZ = r.ReadDouble(); g.BaseY = r.ReadDouble();
             if (!double.IsFinite(g.OriginX) || !double.IsFinite(g.OriginZ) || !double.IsFinite(g.BaseY) || Math.Abs(g.OriginX) > 4194304.0 || Math.Abs(g.OriginZ) > 4194304.0 || Math.Abs(g.BaseY) > 4194304.0) { throw r.Error("invalid shallow water origin"); }
             g.Density = r.ReadSingle(); g.LinearDrag = r.ReadSingle(); g.AngularDrag = r.ReadSingle(); g.ViscousDamping = r.ReadSingle(); g.BottomFriction = r.ReadSingle(); g.Damping = r.ReadSingle(); g.Displacement = r.ReadSingle();
             g.Cfl = r.ReadSingle(); g.MaxSubsteps = r.ReadInt32();
-            if (!(g.Density > 0f && g.Density <= 1e6f) || !Within(g.LinearDrag) || !Within(g.AngularDrag) || !Within(g.ViscousDamping) || !Within(g.BottomFriction) || !Within(g.Damping) || !(g.Displacement >= 0f && g.Displacement <= 1f) || !(g.Cfl > 0f && g.Cfl <= 0.5f) || g.MaxSubsteps < 1 || g.MaxSubsteps > 256) { throw r.Error("invalid shallow water coefficients"); }
+            if (!(g.Density > 0f && g.Density <= 1e6f * (_host.UnitsPerMetre < 1f ? 1f / (_host.UnitsPerMetre * _host.UnitsPerMetre * _host.UnitsPerMetre) : 1f)) || !Within(g.LinearDrag) || !Within(g.AngularDrag) || !Within(g.ViscousDamping) || !Within(g.BottomFriction) || !Within(g.Damping) || !(g.Displacement >= 0f && g.Displacement <= 1f) || !(g.Cfl > 0f && g.Cfl <= 0.5f) || g.MaxSubsteps < 1 || g.MaxSubsteps > 256) { throw r.Error("invalid shallow water coefficients"); }
             for (int e = 0; e < 4; e++)
             {
                 byte kind = r.ReadByte();

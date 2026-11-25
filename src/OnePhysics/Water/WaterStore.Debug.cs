@@ -22,7 +22,7 @@ internal sealed partial class WaterStore
                 {
                     int c = k * g.Nx + x;
                     heights[c] = g.H[c] + g.BedOfCell(x, k);
-                    depths[c] = g.H[c] > WaterGrid.DryDepth ? g.H[c] : 0f;
+                    depths[c] = g.H[c] > g.DryDepth ? g.H[c] : 0f;
                 }
             }
         }

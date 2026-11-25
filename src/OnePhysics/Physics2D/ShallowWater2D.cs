@@ -99,7 +99,28 @@ public sealed class ShallowWaterDef
         return r;
     }
 
-    internal WaterStore.Spec ToSpec(string name)
+    /// <summary>
+    /// This definition with the members that were never set at their defaults for a world of the given unit: <see cref="CellSize"/> (0.5 m), <see cref="Level"/> (1 m), <see cref="BedSearchHeight"/> (50 m) and <see cref="Density"/> (1000 kg per
+    /// square metre, that mass per square world unit). The world applies this itself when the water is added.
+    /// </summary>
+    /// <param name="unit">The world's length unit.</param>
+    public ShallowWaterDef WithDefaultsFor(LengthUnit unit) => Resolved(unit.Scale);
+
+    internal ShallowWaterDef Resolved(float unitsPerMetre)
+    {
+        var c = Clone();
+        if (unitsPerMetre == 1f) { return c; }
+        var s = new UnitScaler(unitsPerMetre, false);
+        float cell = c.CellSize; s.D(ref cell, 0.5f, 1); c.CellSize = cell;
+        if (BitConverter.DoubleToInt64Bits(c.Level) == BitConverter.DoubleToInt64Bits(1.0)) { c.Level = 1.0 * unitsPerMetre; }
+        if (BitConverter.DoubleToInt64Bits(c.BedSearchHeight) == BitConverter.DoubleToInt64Bits(50.0)) { c.BedSearchHeight = 50.0 * unitsPerMetre; }
+        float dens = c.Density; s.D(ref dens, 1000f, -2); c.Density = dens;
+        return c;
+    }
+
+    internal WaterStore.Spec ToSpec(string name, float unitsPerMetre = 1f) => unitsPerMetre == 1f ? ToSpecCore(name, 1f) : Resolved(unitsPerMetre).ToSpecCore(name, unitsPerMetre);
+
+    private WaterStore.Spec ToSpecCore(string name, float unitsPerMetre)
     {
         var s = new WaterStore.Spec
         {
@@ -107,7 +128,7 @@ public sealed class ShallowWaterDef
             SampleBed = SampleBed, Bed = (float[]?)Bed?.Clone(),
             Density = Density, LinearDrag = LinearDrag, AngularDrag = AngularDrag, ViscousDamping = ViscousDamping, BottomFriction = BottomFriction, Damping = Damping, Displacement = Displacement, Cfl = Cfl, MaxSubsteps = MaxSubsteps,
         };
-        if (!double.IsFinite(BedSearchHeight) || BedSearchHeight < 0 || BedSearchHeight > 1.0e6) { throw new ArgumentOutOfRangeException(name, BedSearchHeight, "BedSearchHeight must be within 0..1e6 metres."); }
+        if (!double.IsFinite(BedSearchHeight) || BedSearchHeight < 0 || BedSearchHeight > 1.0e6 * Math.Max(1.0, (double)unitsPerMetre)) { throw new ArgumentOutOfRangeException(name, BedSearchHeight, "BedSearchHeight must be within 0..1e6 metres."); }
         s.SearchTop = Math.Max(Level, FloorHeight) + BedSearchHeight;
         var sides = new[] { West, East };
         for (int i = 0; i < 2; i++) { s.Edges[i] = (WaterEdge)(byte)sides[i].Kind; s.EdgeLevel[i] = (float)sides[i].Level; s.EdgeSpeed[i] = sides[i].Speed; }
@@ -209,7 +230,7 @@ public readonly struct ShallowWater : IEquatable<ShallowWater>
         var g = Grid;
         Check(g, ix);
         float h = g.H[ix];
-        return h > WaterGrid.DryDepth ? h : 0f;
+        return h > g.DryDepth ? h : 0f;
     }
 
     /// <summary>Height of the water surface over a cell's centre, metres (world y); the bed height where dry.</summary>
@@ -231,7 +252,7 @@ public readonly struct ShallowWater : IEquatable<ShallowWater>
     {
         sample = default;
         var g = Grid;
-        if (!double.IsFinite(x) || !WaterStore.SampleAt(g, x, 0.0, out double surface, out float depth, out float u, out _) || !(depth > WaterGrid.DryDepth)) { return false; }
+        if (!double.IsFinite(x) || !WaterStore.SampleAt(g, x, 0.0, out double surface, out float depth, out float u, out _) || !(depth > g.DryDepth)) { return false; }
         WaterStore.SlopeAt(g, x, 0.0, g.Dx, out float sx, out _);
         float inv = 1f / float.Sqrt(1f + sx * sx);
         sample = new WaterSample2D(RawHandle, surface, depth, u, new Vector2F(-sx * inv, inv));

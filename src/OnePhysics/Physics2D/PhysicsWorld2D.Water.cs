@@ -33,7 +33,7 @@ public sealed partial class PhysicsWorld2D
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.CreateShallowWater");
         ArgumentNullException.ThrowIfNull(definition);
-        var spec = definition.ToSpec(nameof(definition));
+        var spec = definition.ToSpec(nameof(definition), Options.UnitsPerMetre);
         var (slot, gen) = _engine.Water.Create(spec, nameof(definition));
         return new ShallowWater(this, slot, gen);
     }
