@@ -12,9 +12,16 @@ internal static class ReplayOptions2D
     /// <summary>The payload when the soft-body options differ from their defaults: the base payload followed by SoftSubsteps and SoftIterations. A world with default soft options writes the base payload, so existing recordings keep their bytes.</summary>
     internal const int SizeWithSoft = 136;
 
+    /// <summary>The payload of a world whose length unit is not one metre: the soft-body options, then the metres per world unit as a double. Worlds in metres write one of the shorter payloads, so existing recordings keep their bytes.</summary>
+    internal const int SizeWithUnit = 144;
+
+    internal const int MaxSize = SizeWithUnit;
+
+    internal static bool IsValidSize(int length) => length == Size || length == SizeWithSoft || length == SizeWithUnit;
+
     internal static bool HasSoftOptions(WorldOptions2D o) => o.SoftSubsteps != 4 || o.SoftIterations != 3;
 
-    internal static int WrittenSize(WorldOptions2D o) => HasSoftOptions(o) ? SizeWithSoft : Size;
+    internal static int WrittenSize(WorldOptions2D o) => !o.LengthUnit.IsMetres ? SizeWithUnit : HasSoftOptions(o) ? SizeWithSoft : Size;
     internal static void Write(WorldOptions2D o, double creationMargin, int worldId, Span<byte> bytes)
     {
         BinaryPrimitives.WriteInt32LittleEndian(bytes, worldId);
@@ -47,15 +54,24 @@ internal static class ReplayOptions2D
         BinaryPrimitives.WriteInt32LittleEndian(bytes.Slice(112), o.ContinuousEnabled ? 1 : 0);
         BinaryPrimitives.WriteDoubleLittleEndian(bytes.Slice(116), o.BroadphaseMargin);
         BinaryPrimitives.WriteSingleLittleEndian(bytes.Slice(124), o.HitSpeedThreshold);
-        if (HasSoftOptions(o))
+        if (HasSoftOptions(o) || !o.LengthUnit.IsMetres)
         {
             BinaryPrimitives.WriteInt32LittleEndian(bytes.Slice(128), o.SoftSubsteps);
             BinaryPrimitives.WriteInt32LittleEndian(bytes.Slice(132), o.SoftIterations);
         }
+
+        if (!o.LengthUnit.IsMetres) { BinaryPrimitives.WriteDoubleLittleEndian(bytes.Slice(136), o.LengthUnit.MetresPerUnit); }
     }
     internal static double Read(ReadOnlySpan<byte> bytes, WorldOptions2D o, out int worldId)
     {
-        if (bytes.Length != Size && bytes.Length != SizeWithSoft) throw new ArgumentException("Invalid 2D live option payload length.", nameof(bytes));
+        if (!IsValidSize(bytes.Length)) throw new ArgumentException("Invalid 2D live option payload length.", nameof(bytes));
+        // The unit comes first: the values below are in it, and setting it later would move the ones still at their defaults.
+        if (bytes.Length == SizeWithUnit)
+        {
+            double metresPerUnit = BinaryPrimitives.ReadDoubleLittleEndian(bytes.Slice(136));
+            if (!LengthUnit.IsValid(metresPerUnit)) throw new ArgumentException("Invalid length unit.", nameof(bytes));
+            o.LengthUnit = new LengthUnit(metresPerUnit);
+        }
         worldId = BinaryPrimitives.ReadInt32LittleEndian(bytes);
         if (worldId < 1) throw new ArgumentException("Invalid world identity.", nameof(bytes));
         double margin = BinaryPrimitives.ReadDoubleLittleEndian(bytes.Slice(4));
@@ -89,7 +105,7 @@ internal static class ReplayOptions2D
         o.ContinuousEnabled = BinaryPrimitives.ReadInt32LittleEndian(bytes.Slice(112)) != 0;
         o.BroadphaseMargin = BinaryPrimitives.ReadDoubleLittleEndian(bytes.Slice(116));
         o.HitSpeedThreshold = BinaryPrimitives.ReadSingleLittleEndian(bytes.Slice(124));
-        if (bytes.Length == SizeWithSoft)
+        if (bytes.Length >= SizeWithSoft)
         {
             o.SoftSubsteps = BinaryPrimitives.ReadInt32LittleEndian(bytes.Slice(128));
             o.SoftIterations = BinaryPrimitives.ReadInt32LittleEndian(bytes.Slice(132));
@@ -109,6 +125,7 @@ internal static class ReplayOptions2D
 
     internal static void Copy(WorldOptions2D from, WorldOptions2D to)
     {
+        to.SetLengthUnitRaw(from.LengthUnit);
         to.Gravity = from.Gravity;
         to.Substeps = from.Substeps;
         to.ContactSubsteps = from.ContactSubsteps;

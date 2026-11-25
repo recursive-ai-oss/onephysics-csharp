@@ -36,7 +36,7 @@ internal static partial class SceneBuilder3D
     /// <summary>As above, and swing-twist joints with a <c>drive</c> are returned with their definitions in joint order, for the caller to retarget every step.</summary>
     public static (P3.PhysicsWorld3D World, P3.Body[] Bodies, P3.WorldOptions3D Options) Build(Scene s, int threads, out List<(P3.Character Character, CharacterScript Script, int Body)> characters, out List<(P3.Vehicle Vehicle, VehicleScript Script, int Body)> vehicles, out List<(P3.Joint Joint, JointDef Def)> drives)
     {
-        var opt = new P3.WorldOptions3D { Gravity = new Vector3F((float)s.Gx, (float)s.Gy, (float)s.Gz), ThreadCount = threads };
+        var opt = new P3.WorldOptions3D { LengthUnit = s.LengthUnit, Gravity = new Vector3F((float)s.Gx, (float)s.Gy, (float)s.Gz), ThreadCount = threads };
         if (s.Params.TryGetValue("world-id", out var ids)) opt.WorldId = int.Parse(ids[0], CultureInfo.InvariantCulture);
         if (s.Substeps > 0) opt.Substeps = s.Substeps;
         if (s.WorldLimits is BodyControlSettings worldLimits) { opt.MaxLinearSpeed = worldLimits.MaxLinearSpeed; opt.MaxAngularSpeed = worldLimits.MaxAngularSpeed; opt.PushOutVelocity = worldLimits.MaxDepenetrationSpeed; }

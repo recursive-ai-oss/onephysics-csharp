@@ -228,7 +228,13 @@ internal sealed partial class Engine2D : ISnapshotSection
 
     // ------------------------------------------------------------------ shapes
 
-    public ShapeHandle AddShape(BodyHandle body, in Shape2D geometry, in ShapeDef def)
+        public ShapeHandle AddShape(BodyHandle body, in Shape2D geometry, in ShapeDef given)
+    {
+        var resolved = given.WithUnitDefaults(Opt.UnitsPerMetre);
+        return AddShapeResolved(body, in geometry, in resolved);
+    }
+
+    private ShapeHandle AddShapeResolved(BodyHandle body, in Shape2D geometry, in ShapeDef def)
     {
         def.Surface.Validate(Core.Layout.PositionLanes);
         var aero = def.Aero?.ToSpec();
@@ -796,7 +802,7 @@ internal sealed partial class Engine2D : ISnapshotSection
             if (hasServices)
             {
                 svc = ReadServices(r, ns, live);
-                if (svc.IsDefault()) { throw r.Error("2D service block holds only default state; the snapshot would not re-serialize to the same bytes"); }
+                if (svc.IsDefault(1f * Opt.UnitsPerMetre)) { throw r.Error("2D service block holds only default state; the snapshot would not re-serialize to the same bytes"); }
             }
 
             if (hasChars)

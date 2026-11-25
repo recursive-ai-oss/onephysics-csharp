@@ -51,7 +51,7 @@ internal sealed partial class Engine2D
             if (reach > pad) { pad = reach; }
         }
 
-        _bulletPad = pad * (1.0 + 1e-6) + 1e-4;
+        _bulletPad = pad * (1.0 + 1e-6) + 1e-4 * (double)Opt.UnitsPerMetre;
         Core.Executor.For((n + 63) / 64, new BulletTask(this));
     }
 
@@ -128,7 +128,7 @@ internal sealed partial class Engine2D
             if (core.Surfaces.IsPresent && !SurfaceContacts.SweepApproaches(core, Shape, other, new Vector3F(End.X - (c2.X - c1.X), End.Y - (c2.Y - c1.Y), 0))) return true;
             var lc = isStatic ? default : new Vec2(e.LocalCenter[2 * ob], e.LocalCenter[2 * ob + 1]);
             var sweepOther = new Sweep2D(lc, c1, c2, q1, q2);
-            var toi = Distance2D.TimeOfImpact(in g, sweepOther, in e.Geom[Shape], Sweep, Best, Constants2D.LinearSlop);
+            var toi = Distance2D.TimeOfImpact(in g, sweepOther, in e.Geom[Shape], Sweep, Best, Constants2D.LinearSlop * e.Opt.UnitsPerMetre, e.Opt.UnitsPerMetre);
             if ((toi.State == ToiState.Hit || toi.State == ToiState.Failed) && toi.Fraction > 0f && (toi.Fraction < Best || (Hit && toi.Fraction == Best && other < BestSlot)))
             {
                 if (core.Surfaces.IsPresent)

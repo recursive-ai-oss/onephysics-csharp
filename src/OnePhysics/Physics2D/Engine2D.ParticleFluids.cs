@@ -18,6 +18,7 @@ internal sealed partial class Engine2D : IFluidHost
     bool IFluidHost.Planar => true;
     int IFluidHost.EngineSectionId => Id;
     FluidStore IFluidHost.ParticleFluids => ParticleFluids;
+    float IFluidHost.UnitsPerMetre => Opt.UnitsPerMetre;
     Vector3F IFluidHost.Gravity => new(Opt.Gravity.X, Opt.Gravity.Y, 0f);
     ReplayMutationScope IFluidHost.FluidMutation(string operation) => World!.RecordMutation(operation);
     int IFluidHost.BodyHighWater => Core.Bodies.HighWater;

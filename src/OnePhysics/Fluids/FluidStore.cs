@@ -158,7 +158,8 @@ internal sealed partial class FluidStore : ISnapshotSection
     internal int AddFluid(ParticleFluidDef def)
     {
         ArgumentNullException.ThrowIfNull(def);
-        def.Validate();
+        def = def.Resolved(Host.UnitsPerMetre, Dim == 2);
+        def.ValidateIn(Host.UnitsPerMetre, Dim == 2);
         if (FluidHandles.Count >= MaxFluids) { throw new InvalidOperationException("A world holds at most " + MaxFluids.ToString(CultureInfo.InvariantCulture) + " particle fluids."); }
         if (FluidHandles.Count > 0)
         {
@@ -188,7 +189,8 @@ internal sealed partial class FluidStore : ISnapshotSection
 
     internal void SetFluidDef(int i, ParticleFluidDef def)
     {
-        def.Validate();
+        def = def.Resolved(Host.UnitsPerMetre, Dim == 2);
+        def.ValidateIn(Host.UnitsPerMetre, Dim == 2);
         var f = Fluids[i]!;
         if (def.Spacing != Spacing || def.KernelRadiusScale != KernelScale) { throw new ArgumentOutOfRangeException(nameof(def), "ParticleFluidDef.Spacing and KernelRadiusScale cannot change after the fluid is created."); }
         using var mutation = Host.FluidMutation("ParticleFluid.Definition");

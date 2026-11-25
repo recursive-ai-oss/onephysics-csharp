@@ -1,6 +1,6 @@
 # Units and sizes
 
-- **Meters, kilograms, seconds.** Positions cross the API as `double`; everything else is `float`. Gravity defaults to (0, -9.81); density is kg/m^2 in 2D and kg/m^3 in 3D.
+- **Meters, kilograms, seconds.** Positions cross the API as `double`; everything else is `float`. Gravity defaults to (0, -9.81); density is kg/m^2 in 2D and kg/m^3 in 3D. A world can use another length unit (below).
 - **Full sizes.** `AddBox(size)`, `CreateBox(body, size, ...)` and the box queries (`OverlapBox`, `BoxCast`) take the full width and height (and depth). A parameter that is a half extent says so in its name: `halfLength` (capsules), `halfHeight` (cylinders), `ShapeHalfSize` (ragdoll parts), `halfAngle` (cones). A radius is a radius.
 - **Radians.** Every angle, limit, motor speed and angular velocity is in radians (per second); Unity's degrees need converting. Parameters that are angles in a method with other numbers say so: `angleRadians` on creators, queries and `SetTransform`. `CharacterDef`'s slope limit is in radians too (`SlopeLimitRadians`).
 - **Counter-clockwise.** In 2D a positive angle rotates counter-clockwise, with +y up (gravity is negative y).
@@ -8,6 +8,22 @@
 - **Mass.** Mass comes from shapes: `density x area` (2D) or `x volume` (3D). A shape that would take a body's mass or inertia outside 1e-18..1e30 is refused with a typed error naming the value; see [input limits](limits.md).
 
 The full list of conventions, including handles and joint names, is in [names and conventions](api-names.md).
+
+## Other length units
+
+A model authored in millimetres, or a 2D game in pixels, sets the length unit and keeps its own numbers:
+
+<!-- example: Guide/Units.cs -->
+```csharp
+var world = new PhysicsWorld3D(new WorldOptions3D { LengthUnit = LengthUnit.Millimetres });
+var pixels = new PhysicsWorld2D(new WorldOptions2D { LengthUnit = LengthUnit.Pixels(32) });   // 32 pixels to the metre
+```
+
+`LengthUnit` says how many metres one world unit is (`Metres`, `Centimetres`, `Millimetres`, `Pixels(n)`, or `new LengthUnit(metresPerUnit)`; 1e-6 to 1e6). Every default that is tuned in metres follows it: gravity, the sleep threshold, the speculative distance, the push-out and speed limits, the broadphase margin, the contact and continuous-collision tolerances, a character's default size, the default density (1 kg per cubic metre, so a box of the same real size weighs the same), the default 3D rolling resistance, and a particle fluid's default spacing, density and speed limit. A world in millimetres is 1000 times larger in numbers and behaves the same: the speculative distance is 20 units, a character is 300 units in radius, gravity is 9810.
+
+Only defaults follow the unit. A value you set is in world units and stays so: `SpeculativeDistance = 5` is 5 world units in any unit. Masses stay in kilograms, times in seconds, angles in radians; densities and forces you give are per world unit, so a density of 1000 kg/m^3 is `1000 / 1e9` in a millimetre world (leave it unset and the default does that). Positions keep the 2^-32 grid and the ±2^21 range in world units, so a millimetre world reaches 2 kilometres, a pixel world at 32 to the metre 65 kilometres.
+
+The presets written in metres and SI (`CharacterDef.Child`, `Giant`, the fluid presets other than `Water`) convert with `InUnit(unit)`: `CharacterDef.Child.InUnit(LengthUnit.Millimetres)`. Soft bodies, cloth, rods, vehicles and the rest are authored in the world's unit by you. The unit is saved in snapshots, scenes and replays (only when it is not one metre, so existing files and hashes do not change). Details and the full list: [length units](../spec/lengthunit.md).
 
 ## Fixed-point coordinates and origin offsets
 

@@ -82,9 +82,6 @@ public sealed class DestructionDeterminismTests
         world.AddBox(new(1, 1, 1), new Vector3D(5, 0.5, 0)).SetFracturable(new P3.FractureDef { CellCount = 6, ImpulseThreshold = 1e6f });
         world.Warmup();
         for (int i = 0; i < 60; i++) world.Step(1f / 60);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 100; i++) world.Step(1f / 60);
-        long used = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.True(used == 0, "allocated " + used + " bytes over 100 steps");
+        Core.AllocMeter.AssertAllocatesNothing(() => { for (int i = 0; i < 100; i++) world.Step(1f / 60); }, "steps with fracture and stress");
     }
 }

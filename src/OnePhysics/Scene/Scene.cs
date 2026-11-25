@@ -267,6 +267,11 @@ public sealed partial class Scene
     public double Gy { get; set; } = -10;
     /// <summary>Scene Gz field; defaults and SI units follow the scene record specification. Invalid values are rejected when loading a world.</summary>
     public double Gz { get; set; }
+    /// <summary>
+    /// The length unit every length in an authoring scene is written in: positions, sizes, anchors, gravity and speeds (metres per world unit, default 1 = metres). Written as a <c>unit</c> record only when it is not one metre,
+    /// so scenes without it read and write exactly as before. Densities are per unit of volume (area in 2D) of this unit; masses are in kilograms.
+    /// </summary>
+    public LengthUnit LengthUnit { get; set; }
     /// <summary>Scene Substeps field; defaults and SI units follow the scene record specification. Invalid values are rejected when loading a world.</summary>
     public int Substeps { get; set; }            // 0 = engine default
     /// <summary>Scene DumpEvery field; defaults and SI units follow the scene record specification. Invalid values are rejected when loading a world.</summary>
@@ -344,6 +349,7 @@ public sealed partial class Scene
                 case "name": s.Name = t[1]; break;
                 case "dim": s.Dim = I(t[1]); if (s.Dim != 2 && s.Dim != 3) throw new InvalidDataException("dim must be 2 or 3"); break;
                 case "dt": s.Dt = D(t[1]); break;
+                case "unit": s.LengthUnit = new LengthUnit(D(t[1])); break;
                 case "steps": s.Steps = I(t[1]); break;
                 case "gravity": s.Gx = D(t[1]); s.Gy = D(t[2]); if (s.Dim == 3) s.Gz = D(t[3]); break;
                 case "substeps": s.Substeps = I(t[1]); break;
@@ -458,6 +464,7 @@ public sealed partial class Scene
         sb.Append("scene 1\n");
         if (Name.Length > 0) sb.Append("name ").Append(Name).Append('\n');
         sb.Append("dim ").Append(Dim).Append('\n');
+        if (!LengthUnit.IsMetres) sb.Append("unit ").Append(F(LengthUnit.MetresPerUnit)).Append('\n');
         sb.Append("dt ").Append(F(Dt)).Append("\nsteps ").Append(Steps).Append('\n');
         sb.Append("gravity ").Append(F(Gx)).Append(' ').Append(F(Gy)); if (Dim == 3) sb.Append(' ').Append(F(Gz)); sb.Append('\n');
         if (Substeps > 0) sb.Append("substeps ").Append(Substeps).Append('\n');

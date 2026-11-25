@@ -119,12 +119,12 @@ public sealed partial class EventCollector
     {
         int d = r.ReadCount(PhysicsEvent.SnapshotBytes, "delivered events");
         if (_delivered.Length < Math.Max(d, 16)) { _delivered = new PhysicsEvent[Math.Max(d, 16)]; }
-        for (int i = 0; i < d; i++) { _delivered[i] = PhysicsEvent.Read(r); }
+        for (int i = 0; i < d; i++) { _delivered[i] = PhysicsEvent.Read(r, _options.WorldId); }
         _deliveredCount = 0;
         int p = r.ReadCount(PhysicsEvent.SnapshotBytes, "pending events");
         if (_slots[0].Length < Math.Max(p, 16)) { _slots[0] = new PhysicsEvent[Math.Max(p, 16)]; }
         Array.Clear(_counts);
-        for (int i = 0; i < p; i++) { _slots[0][i] = PhysicsEvent.Read(r); }
+        for (int i = 0; i < p; i++) { _slots[0][i] = PhysicsEvent.Read(r, _options.WorldId); }
         _counts[0] = p;
         _deliveredCount = d;
     }

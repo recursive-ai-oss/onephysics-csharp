@@ -48,6 +48,9 @@ internal interface IFluidHost
 {
     WorldCore Core { get; }
     bool Planar { get; }
+
+    /// <summary>World units per metre (1 for a world in metres).</summary>
+    float UnitsPerMetre { get; }
     int EngineSectionId { get; }
     FluidStore ParticleFluids { get; }
     Vector3F Gravity { get; }

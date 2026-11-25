@@ -308,7 +308,13 @@ internal sealed partial class Engine3D : ISnapshotSection
 
     // ------------------------------------------------------------------ shapes
 
-    public ShapeHandle AddShape(BodyHandle body, byte[] recipe, in ShapeDef def)
+        public ShapeHandle AddShape(BodyHandle body, byte[] recipe, in ShapeDef given)
+    {
+        var resolved = given.WithUnitDefaults(Opt.UnitsPerMetre);
+        return AddShapeResolved(body, recipe, in resolved);
+    }
+
+    private ShapeHandle AddShapeResolved(BodyHandle body, byte[] recipe, in ShapeDef def)
     {
         def.Surface.Validate(Core.Layout.PositionLanes);
         var aero = def.Aero?.ToSpec();
@@ -1140,7 +1146,7 @@ internal sealed partial class Engine3D : ISnapshotSection
             if ((flags & BlockServices) != 0)
             {
                 services = ReadServices(r, ns, live);
-                if (services.IsDefault()) { throw r.Error("a services block holding only default state"); }
+                if (services.IsDefault(1f * Opt.UnitsPerMetre)) { throw r.Error("a services block holding only default state"); }
             }
 
             if (v == WithRadianSlopes && (flags & BlockCharacters) == 0) { throw r.Error("radian character section has no characters block"); }
@@ -1297,13 +1303,13 @@ internal sealed partial class Engine3D : ISnapshotSection
             if (bodies.TypeOf(b) == BodyType.Dynamic)
             {
                 ComputeExtents(b, LocalCenterOf(b), out float maxE, out float minE);
-                if (!(MaxExtent[b] >= maxE * 0.999f - 1e-5f && MaxExtent[b] <= maxE * 1.001f + 1e-5f))
+                if (!(MaxExtent[b] >= maxE * 0.999f - 1e-5f * Opt.UnitsPerMetre && MaxExtent[b] <= maxE * 1.001f + 1e-5f * Opt.UnitsPerMetre))
                 {
                     ConsistencyProblem = "the stored maximum extent of body slot " + b.ToString(CultureInfo.InvariantCulture) + " (" + MaxExtent[b].ToString("R", CultureInfo.InvariantCulture) + ") does not match its shapes (" + maxE.ToString("R", CultureInfo.InvariantCulture) + ")";
                     return false;
                 }
 
-                if (!(MinExtent[b] >= minE * 0.999f - 1e-5f && MinExtent[b] <= minE * 1.001f + 1e-5f))
+                if (!(MinExtent[b] >= minE * 0.999f - 1e-5f * Opt.UnitsPerMetre && MinExtent[b] <= minE * 1.001f + 1e-5f * Opt.UnitsPerMetre))
                 {
                     ConsistencyProblem = "the stored minimum extent of body slot " + b.ToString(CultureInfo.InvariantCulture) + " (" + MinExtent[b].ToString("R", CultureInfo.InvariantCulture) + ") does not match its shapes (" + minE.ToString("R", CultureInfo.InvariantCulture) + ")";
                     return false;

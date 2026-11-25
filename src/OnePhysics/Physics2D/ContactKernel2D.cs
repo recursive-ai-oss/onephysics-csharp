@@ -13,8 +13,12 @@ internal readonly struct KernelParams
     public readonly float LinearSlop;
     public readonly float RestitutionThreshold;
 
-    public KernelParams(float inverseSubstepDt, float pushOutVelocity, float linearSlop, float restitutionThreshold)
+    /// <summary>The 3D contact kernel's cap on the speed change one point's impulse may cause, in world units per second (20000 metres per second by default).</summary>
+    public readonly float ImpulseSpeedCap;
+
+    public KernelParams(float inverseSubstepDt, float pushOutVelocity, float linearSlop, float restitutionThreshold, float impulseSpeedCap = 20000f)
     {
+        ImpulseSpeedCap = impulseSpeedCap;
         InverseSubstepDt = inverseSubstepDt;
         PushOutVelocity = pushOutVelocity;
         LinearSlop = linearSlop;

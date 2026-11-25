@@ -187,7 +187,7 @@ internal sealed partial class Engine2D
             }
             d.Mass = r.ReadSingle();
             d.MaxPushForce = r.ReadSingle();
-            try { d.Validate(); }
+            try { d.Validate(Opt.UnitsPerMetre); }
             catch (ArgumentOutOfRangeException e) { throw r.Error("invalid character definition: " + e.Message); }
             b.Def[c] = d;
             byte gs = r.ReadByte();

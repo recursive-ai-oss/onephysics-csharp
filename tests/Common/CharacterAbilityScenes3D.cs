@@ -302,7 +302,8 @@ internal static class CharacterAbilityScenes3D
         w.AddBox(new Vector3F(1f, 8f, 600f), new Vector3D(41.5, -4, 0), type: BodyType.Static);
         var s = new Scene { Name = "riders-3d", World = w };
         // A car with a driver on the quay (a strip of floor 60 m long on the other side of the basin).
-        var chassis = w.AddBox(new Vector3F(2f, 0.5f, 4f), at: new Vector3D(-30, 1.2, -20));
+        // A 1500 kg chassis: the car preset (springs, bars rated in N/m) is tuned for a car, and a 4 kg chassis was thrown 18 m/s into the air by its own anti-roll bars in the first second.
+        var chassis = w.AddBox(new Vector3F(2f, 0.5f, 4f), at: new Vector3D(-30, 1.2, -20), density: 1500f / (2f * 0.5f * 4f));
         w.AddVehicle(chassis, VehicleDef.Car);
         var driverDef = CharacterDef.Humanoid; driverDef.CanClimb = true; driverDef.ExactPlatformCarry = true;
         var driver = w.AddCharacter(new Vector3D(-30, 3, -20), driverDef);
