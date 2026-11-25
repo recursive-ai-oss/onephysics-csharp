@@ -27,7 +27,7 @@ Options (set to the metre default times the scale while still at their default; 
 | `HitSpeedThreshold` | 1 m/s |
 | `BroadphaseMargin` | 0.1 m (2D), 0.03 m (3D); fixed at creation |
 
-The ranges that validate them are in metres too (the 2D speculative distance is 0 to 1 metre, the broadphase margin 0 to 100 metres).
+The ranges that validate them are in metres too, never narrower than at one metre per unit (the 2D speculative distance is 0 to 1 metre and the broadphase margin 0 to 100 metres, or 1 and 100 world units in a unit larger than a metre).
 
 Engine constants, in both engines unless said otherwise (the constant, in metres, is multiplied by the scale):
 

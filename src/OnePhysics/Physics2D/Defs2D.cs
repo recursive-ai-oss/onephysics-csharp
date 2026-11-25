@@ -87,6 +87,9 @@ public sealed class WorldOptions2D
     /// <summary>World units per metre as a float: the factor every metre-tuned constant is multiplied by. Exactly 1 at the default unit.</summary>
     internal float UnitsPerMetre => _unitScale;
 
+    // One metre in world units, but never below 1: a unit larger than a metre keeps the bound it always had, so a snapshot that names such a unit cannot leave the options out of range.
+    internal float SpeculativeLimit => Math.Max(1f, _unitScale);
+
     internal void SetLengthUnitRaw(LengthUnit unit) { _lengthUnit = unit; _unitScale = unit.Scale; }
 
     private void ApplyLengthUnit(LengthUnit unit)
@@ -289,8 +292,8 @@ public sealed class WorldOptions2D
         Positive(JointDampingRatio, nameof(JointDampingRatio), true);
         Positive(MaxLinearSpeed, nameof(MaxLinearSpeed), false);
         Positive(MaxRotationPerSubstep, nameof(MaxRotationPerSubstep), false);
-        if (!(SpeculativeDistance >= 0f && SpeculativeDistance <= 1f * _unitScale)) { throw new ArgumentOutOfRangeException(nameof(SpeculativeDistance), SpeculativeDistance, "SpeculativeDistance must be within 0..1 metre (1 * LengthUnit.UnitsPerMetre world units)."); }
-        if (!(BroadphaseMargin >= 0.0 && BroadphaseMargin <= 100.0 * _unitScale)) { throw new ArgumentOutOfRangeException(nameof(BroadphaseMargin), BroadphaseMargin, "BroadphaseMargin must be within 0..100 metres (100 * LengthUnit.UnitsPerMetre world units)."); }
+        if (!(SpeculativeDistance >= 0f && SpeculativeDistance <= SpeculativeLimit)) { throw new ArgumentOutOfRangeException(nameof(SpeculativeDistance), SpeculativeDistance, "SpeculativeDistance must be within 0..1 metre (1 world unit when the unit is a metre or larger)."); }
+        if (!(BroadphaseMargin >= 0.0 && BroadphaseMargin <= 100.0 * Math.Max(1f, _unitScale))) { throw new ArgumentOutOfRangeException(nameof(BroadphaseMargin), BroadphaseMargin, "BroadphaseMargin must be within 0..100 metres (100 world units when the unit is a metre or larger)."); }
     }
 
     private static void Positive(float v, string name, bool allowZero)

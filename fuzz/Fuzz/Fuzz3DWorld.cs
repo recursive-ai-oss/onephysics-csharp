@@ -11,17 +11,17 @@ using RecursiveAI.OnePhysics.Physics3D;
 internal static class Fuzz3DWorld
 {
     private static int s_accepted, s_rejected, s_created, s_refused, s_stepped, s_oob;
-    private static byte[]? s_base;
+    private static byte[]? s_base, s_baseCm;
 
     static Fuzz3DWorld()
     {
         AppDomain.CurrentDomain.ProcessExit += (_, _) => Console.WriteLine("world3d targets: snapshots accepted " + s_accepted + ", rejected " + s_rejected + "; bodies created " + s_created + ", creations refused " + s_refused + ", steps run " + s_stepped + ", out-of-bounds bodies handled " + s_oob);
     }
 
-    private static PhysicsWorld3D BaseWorld(out PhysicsWorld3D? unused)
+    private static PhysicsWorld3D BaseWorld(out PhysicsWorld3D? unused, LengthUnit unit = default)
     {
         unused = null;
-        var w = new PhysicsWorld3D(new WorldOptions3D { WorldId = 7 });
+        var w = new PhysicsWorld3D(new WorldOptions3D { WorldId = 7, LengthUnit = unit });
         w.AddBox(new Vector3F(40f, 1f, 40f), at: new Vector3D(0, -0.5, 0), type: BodyType.Static);
         for (int i = 0; i < 6; i++)
         {
@@ -42,9 +42,13 @@ internal static class Fuzz3DWorld
 
     private static byte[] Base() => s_base ??= BaseWorld(out _).Snapshot();
 
+    // The same world in centimetres: its snapshot carries the length unit section, so the reader targets damage that section too.
+    private static byte[] BaseCentimetres() => s_baseCm ??= BaseWorld(out _, LengthUnit.Centimetres).Snapshot();
+
     public static void SnapshotTarget(byte[] data)
     {
-        var bytes = (byte[])Base().Clone();
+        bool centimetres = data.Length > 0 && (data[0] & 0x80) != 0;
+        var bytes = (byte[])(centimetres ? BaseCentimetres() : Base()).Clone();
         int mutations = data.Length > 0 ? 1 + data[0] % 4 : 0;
         for (int i = 1, m = 0; i + 2 < data.Length && m < mutations; i += 3, m++)
         {
@@ -54,7 +58,7 @@ internal static class Fuzz3DWorld
 
         if (data.Length > 0 && (data[0] & 0x0F) == 0x0F) { Array.Resize(ref bytes, (data[^1] * bytes.Length) / 256); }
 
-        var w = new PhysicsWorld3D(new WorldOptions3D { WorldId = 7 });
+        var w = new PhysicsWorld3D(new WorldOptions3D { WorldId = 7, LengthUnit = centimetres ? LengthUnit.Centimetres : default });
         byte[] empty = w.Snapshot();
         try { w.Restore(bytes); }
         catch (SnapshotFormatException)

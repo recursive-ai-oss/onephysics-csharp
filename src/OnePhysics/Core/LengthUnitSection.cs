@@ -39,6 +39,7 @@ internal sealed class LengthUnitSection : ISnapshotSection
         if (r.ReadInt32() != 1) { throw r.Error("unsupported length unit section version"); }
         double m = r.ReadDouble();
         if (!LengthUnit.IsValid(m)) { throw r.Error("invalid length unit " + m.ToString("R", CultureInfo.InvariantCulture) + " metres per unit"); }
+        if (m == 1.0) { throw r.Error("length unit section holds one metre; the snapshot would not re-serialize to the same bytes"); }
         _set(new LengthUnit(m));
     }
 

@@ -264,6 +264,7 @@ public sealed class LengthUnitTests
     [InlineData(double.PositiveInfinity)]
     [InlineData(5e-324)]
     [InlineData(1e300)]
+    [InlineData(1.0)]
     public void HostileUnitInASnapshotIsRefusedAndTheWorldIsUnchanged(double metresPerUnit)
     {
         var w = PileOfBoxes3D(LengthUnit.Millimetres, 71, 1000.0);

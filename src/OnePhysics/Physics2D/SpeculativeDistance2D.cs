@@ -27,7 +27,8 @@ internal sealed class SpeculativeDistance2D(Engine2D engine) : ISnapshotSection
     {
         if (r.ReadInt32() != 1) { throw r.Error("unsupported speculative distance section version"); }
         float v = r.ReadSingle();
-        if (!(v >= 0f && v <= 1e6f)) { throw r.Error("invalid speculative distance"); }
+        // The unit section is read first, so the bound is the one of the snapshot's own unit.
+        if (!(v >= 0f && v <= engine.Opt.SpeculativeLimit)) { throw r.Error("invalid speculative distance"); }
         engine.Opt.SpeculativeDistance = v;
     }
 

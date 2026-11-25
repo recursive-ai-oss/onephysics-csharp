@@ -1,3 +1,4 @@
+using RecursiveAI.OnePhysics;
 using System.IO;
 using System.Text;
 using RecursiveAI.OnePhysics.Scene;
@@ -16,6 +17,17 @@ internal static class FuzzScene
         catch (SceneFormatException) { }
     }
     public static byte[] Authoring() => Encoding.UTF8.GetBytes("scene 1\ndim 2\nmaterial 0 0.6 0\nbody dynamic 0 1 0 0 0 0 -\ncontrols 32 4 3 0.2\nsleep 1 0.1 0.2 0.3\nmass 2\ncenter 0.1 0\ninertia 3\nshape box 0 1 0 0.5 0.5 0 0 0\n");
+    /// <summary>An exact-state scene of a world in millimetres, so its live options are the payload variant that carries the length unit.</summary>
+    public static byte[] StateInMillimetres()
+    {
+        var world = new PhysicsWorld2D(new WorldOptions2D { WorldId = 24, LengthUnit = LengthUnit.Millimetres });
+        world.AddBox(new(1000, 1000), at: new(0, 2000));
+        return Encoding.UTF8.GetBytes(world.SaveScene());
+    }
+
+    /// <summary>An authoring scene with a unit record.</summary>
+    public static byte[] AuthoringInMillimetres() => Encoding.UTF8.GetBytes("scene 1\ndim 3\nunit 0.001\nmaterial 0 0.6 0\ngravity 0 -9810 0\nbody dynamic 0 1000 0 0 0 0 1 0 0 0 0 0 0 -\nshape box 0 0.000001 0 500 500 500 0 0 0 0 0 0 1\n");
+
     public static byte[] State()
     {
         var world = new PhysicsWorld2D(new WorldOptions2D { WorldId = 24 });
