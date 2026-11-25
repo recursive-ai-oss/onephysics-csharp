@@ -214,11 +214,14 @@ public sealed class InterestClient
         if (snapshot) { Clear(); } else { Revert(); }
         var leavers = new List<Entry>();
         foreach (var (slot, _) in m.Leaves) { var e = _entries[slot]; leavers.Add(e); _entries.Remove(slot); }
+        void PutLeaversBack() { for (int i = 0; i < leavers.Count; i++) { _entries[m.Leaves[i].Slot] = leavers[i]; } }
 
         var entered = new List<int>();
         if (m.Packet != null)
         {
-            var map = BodySetTransfer.Insert(_e, m.Packet, _identity ??= MakeIdentity(), _what);
+            BodySetHandleMap map;
+            try { map = BodySetTransfer.Insert(_e, m.Packet, _identity ??= MakeIdentity(), _what); }
+            catch { PutLeaversBack(); throw; }   // the insertion is atomic: the client still holds what it held
             var oldBodies = map.OldBodies; var newBodies = map.NewBodies;
             var slotOf = new int[oldBodies.Length];
             for (int i = 0; i < oldBodies.Length; i++)
@@ -233,11 +236,8 @@ public sealed class InterestClient
 
             var oldJoints = map.OldJoints; var newJoints = map.NewJoints;
             for (int i = 0; i < oldJoints.Length; i++) { _joints[Key(oldJoints[i].Index, oldJoints[i].Generation)] = (newJoints[i], slotOf[m.Packet.Model.Joints[i].BodyA], slotOf[m.Packet.Model.Joints[i].BodyB]); }
-            foreach (int slot in entered)
-            {
-                var entry = _entries[slot];
-                entry.State = InterestRoles.EncodeState(core, _layout, entry.Local.Index);
-            }
+            // What the authority holds for the entrants is what the packet says, not what the client's world makes of it.
+            for (int i = 0; i < entered.Count; i++) { _entries[entered[i]].State = InterestRoles.EncodeFromPacket(_layout, m.Packet.Model.Bodies[i]); }
         }
 
         foreach (var e in leavers)

@@ -62,20 +62,21 @@ public sealed class InterestStream2DTests
         var c = new P2.PhysicsWorld2D(new() { WorldId = 8602 });
         var writer = a.CreateInterestWriter();
         var client = c.CreateInterestClient();
-        int entered = 0, left = 0, maxProxies = 0, maxShared = 0;
+        int entered = 0, left = 0, maxProxies = 0, maxShared = 0, joints = 0;
         for (int step = 0; step < 300; step++)
         {
             a.Step(Dt);
             var region = Region(Centre(step));
             var result = client.Apply(writer.Write(region));
             Assert.Equal(step, result.Sequence);
-            entered += result.Entered; left += result.Left;
+            entered += result.Entered; left += result.Left; joints += result.JointsAdded + result.JointsRemoved;
             maxProxies = Math.Max(maxProxies, client.ProxyCount); maxShared = Math.Max(maxShared, client.SharedBodyCount);
             Assert.Equal(a.ComputeInterestHash(region), client.ComputeSharedHash());
         }
 
         Assert.True(entered > 40 && left > 10, "entered " + entered + " left " + left);
         Assert.True(maxProxies > 0 && maxShared > 10);
+        Assert.True(joints > 0, "the chain never crossed the region's edge");
     }
 
     [Fact]

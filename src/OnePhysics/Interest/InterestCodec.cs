@@ -143,6 +143,19 @@ internal sealed class InterestRoles : IExtractFilter
         return buf;
     }
 
+    /// <summary>The state record of a body as a packet holds it.</summary>
+    public static byte[] EncodeFromPacket(in InterestLayout l, PacketBody pb)
+    {
+        var buf = new byte[l.StateBytes];
+        int o = 0;
+        for (int k = 0; k < l.PositionLanes; k++) { BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(o), BitConverter.DoubleToInt64Bits(pb.Position[k])); o += 8; }
+        o = PutFloats(buf, o, pb.Rotation);
+        o = PutFloats(buf, o, pb.Linear);
+        o = PutFloats(buf, o, pb.Angular);
+        buf[o] = (byte)(pb.Asleep ? 1 : 0);
+        return buf;
+    }
+
     private static int PutFloats(byte[] buf, int o, ReadOnlySpan<float> v)
     {
         for (int k = 0; k < v.Length; k++) { BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(o), BitConverter.SingleToUInt32Bits(v[k])); o += 4; }
