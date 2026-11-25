@@ -25,7 +25,10 @@ public sealed partial class PhysicsWorld2D
         _core.FlushPostStep();
         var encoded = new byte[SettleOptions2D.EncodedSize];
         o.Write(encoded);
-        var report = RunSettle(o);
+        SettleReport report;
+        // A step that throws leaves the steps before it applied; a recording keeps the world it has by saving that state as an ordinary mutation.
+        try { report = RunSettle(o); }
+        catch { _recorder?.CaptureRawChanges("PhysicsWorld2D.Settle"); throw; }
         _recorder?.RecordSettle(encoded, report);
         return report;
     }

@@ -98,6 +98,27 @@ public sealed class SettleReplayTests
     }
 
     [Fact]
+    public void ASettleThatThrowsHalfWayLeavesTheRecorderWorkingAndSavesTheState()
+    {
+        var w = new P3.PhysicsWorld3D(new P3.WorldOptions3D { WorldId = 305, Gravity = default });
+        w.AddSphere(0.5f, new Vector3D(2000000, 0, 0)).LinearVelocity = new Vector3F(5000, 0, 0);
+        using var stream = new MemoryStream();
+        Exception? thrown = null;
+        using (var recorder = w.StartRecording(stream))
+        {
+            try { w.Settle(new P3.SettleOptions3D { MaxSteps = 1000000 }); } catch (P3.BodyOutOfBoundsException e) { thrown = e; }
+            Assert.NotNull(thrown);
+            Assert.False(recorder.IsStopped);
+        }
+        Assert.True(w.StepCount > 0);
+        stream.Position = 0;
+        var reader = new ReplayReader(stream);
+        string? last = null;
+        while (reader.ReadNext()) { if (reader.Kind == ReplayRecordKind.Mutation) last = System.Text.Encoding.ASCII.GetString(reader.OperationName); }
+        Assert.Equal("PhysicsWorld3D.Settle", last);
+    }
+
+    [Fact]
     public void AVersionOneReplayRejectsASettleRecord()
     {
         var header = new byte[16];
