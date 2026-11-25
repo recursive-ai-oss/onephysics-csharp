@@ -259,7 +259,7 @@ public sealed class SoftBodyDef
 
         Range(EdgeCompliance, nameof(EdgeCompliance), 0f, MaxCompliance);
         Range(BendCompliance, nameof(BendCompliance), 0f, MaxCompliance);
-        Range(AreaCompliance, nameof(AreaCompliance), 0f, MaxCompliance);
+        Range(AreaCompliance, nameof(AreaCompliance), 0f, MaxCompliance * wide * wide);    // per square length
         Range(MatchCompliance, nameof(MatchCompliance), 0f, MaxCompliance);
         Range(MatchBlend, nameof(MatchBlend), 0f, 1f);
         Range(EdgeDamping, nameof(EdgeDamping), 0f, 1f);

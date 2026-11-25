@@ -220,7 +220,7 @@ public sealed class SoftBodyDef
         if (ParticleRadius != 0f) { Range(ParticleRadius, nameof(ParticleRadius), float.Epsilon, MaxParticleRadius * wide); }
         Range(EdgeCompliance, nameof(EdgeCompliance), 0f, MaxCompliance);
         Range(BendCompliance, nameof(BendCompliance), 0f, MaxCompliance);
-        Range(VolumeCompliance, nameof(VolumeCompliance), 0f, MaxCompliance);
+        Range(VolumeCompliance, nameof(VolumeCompliance), 0f, MaxCompliance * wide * wide * wide * wide);    // per fourth power of length
         Range(EdgeDamping, nameof(EdgeDamping), 0f, 1f);
         Range(BendDamping, nameof(BendDamping), 0f, 1f);
         Range(VolumeDamping, nameof(VolumeDamping), 0f, 1f);

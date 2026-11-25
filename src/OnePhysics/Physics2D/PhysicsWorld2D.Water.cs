@@ -21,10 +21,11 @@ public sealed partial class PhysicsWorld2D
     public ShallowWater AddShallowWater(double minX, double maxX, double level, float cellSize = 0.5f, double floor = double.NaN)
     {
         if (!double.IsFinite(minX) || !double.IsFinite(maxX) || !(maxX > minX)) { throw new ArgumentOutOfRangeException(nameof(maxX), "The interval must be finite and not empty."); }
+        if (Options.UnitsPerMetre != 1f && cellSize == 0.5f) { cellSize = 0.5f * Options.UnitsPerMetre; }    // the default cell is half a metre, in whatever unit the world uses
         if (!(cellSize >= 0.001f) || !float.IsFinite(cellSize)) { throw new ArgumentOutOfRangeException(nameof(cellSize), cellSize, "cellSize must be at least 0.001 metres."); }
         double cx = Math.Ceiling((maxX - minX) / cellSize);
         if (cx > 1 << 20) { throw new ArgumentOutOfRangeException(nameof(cellSize), cellSize, "The grid would have more than 1048576 cells."); }
-        return CreateShallowWater(new ShallowWaterDef { MinX = minX, Cells = (int)Math.Max(cx, 2), CellSize = cellSize, Level = level, FloorHeight = double.IsNaN(floor) ? level - 10.0 : floor });
+        return CreateShallowWater(new ShallowWaterDef { MinX = minX, Cells = (int)Math.Max(cx, 2), CellSize = cellSize, Level = level, FloorHeight = double.IsNaN(floor) ? level - 10.0 * Options.UnitsPerMetre : floor });
     }
 
     /// <summary>Adds a body of shallow water from a definition (middle tier). The definition is copied; sleeping bodies stay as they are until the water moves them.</summary>

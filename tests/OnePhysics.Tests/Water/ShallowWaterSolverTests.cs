@@ -76,7 +76,7 @@ public class ShallowWaterSolverTests
             g.Advance(1f / 60f, G, ex);
             for (int c = 0; c < g.H.Length; c++)
             {
-                if (g.H[c] > WaterGrid.DryDepth && Math.Abs(g.Hu[c]) / g.H[c] > worst) { worst = Math.Abs(g.Hu[c]) / g.H[c]; wc = c; ws = i; }
+                if (g.H[c] > WaterGrid.DryDepthMetres && Math.Abs(g.Hu[c]) / g.H[c] > worst) { worst = Math.Abs(g.Hu[c]) / g.H[c]; wc = c; ws = i; }
             }
         }
 
@@ -94,7 +94,7 @@ public class ShallowWaterSolverTests
         for (int i = 0; i < 6000; i++)
         {
             g.Advance(1f / 60f, G, ex);
-            for (int c = 0; c < g.H.Length; c++) { if (g.H[c] > WaterGrid.DryDepth) { worst = Math.Max(worst, Math.Abs(g.Hu[c]) / g.H[c]); } }
+            for (int c = 0; c < g.H.Length; c++) { if (g.H[c] > WaterGrid.DryDepthMetres) { worst = Math.Max(worst, Math.Abs(g.Hu[c]) / g.H[c]); } }
         }
 
         Assert.True(worst < 1e-6f, "largest speed " + worst);
@@ -113,7 +113,7 @@ public class ShallowWaterSolverTests
         for (int s = 0; s < 3000; s++)
         {
             g.Advance(1f / 60f, G, ex);
-            for (int c = 0; c < g.H.Length; c++) { if (g.H[c] > WaterGrid.DryDepth) { worst = Math.Max(worst, Math.Max(Math.Abs(g.Hu[c]), Math.Abs(g.Hv[c])) / g.H[c]); } }
+            for (int c = 0; c < g.H.Length; c++) { if (g.H[c] > WaterGrid.DryDepthMetres) { worst = Math.Max(worst, Math.Max(Math.Abs(g.Hu[c]), Math.Abs(g.Hv[c])) / g.H[c]); } }
         }
 
         Assert.True(worst < 1e-6f, "largest speed " + worst);
@@ -163,7 +163,7 @@ public class ShallowWaterSolverTests
         Run(g, 12);
         foreach (float h in g.H) { Assert.True(h >= 0f); }
         Assert.InRange(g.Volume() / v0, 1 - 1e-5, 1 + 1e-5);
-        Assert.True(g.H[250] > WaterGrid.DryDepth, "the front must have reached x = 25 m");
+        Assert.True(g.H[250] > WaterGrid.DryDepthMetres, "the front must have reached x = 25 m");
     }
 
     [Fact]

@@ -241,7 +241,7 @@ internal sealed partial class RodStore
     {
         Host.Bounds(shape,out min,out max);int body=Host.RodCore.Shapes.Owner[shape];
         NearFrame(body,out var shift,out float motion);
-        double pad=motion+radius+.001+margin;
+        double pad=motion+radius+.001*Host.UnitsPerMetre+margin;
         min+=shift-new Vector3D(pad,pad,pad);max+=shift+new Vector3D(pad,pad,pad);
     }
 

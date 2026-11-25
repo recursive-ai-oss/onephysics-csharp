@@ -43,7 +43,7 @@ internal sealed partial class RodStore
     {
         Host.Bounds(shape,out var min,out var max);int body=Host.RodCore.Shapes.Owner[shape];
         BodyPose(body,_time1,out var position,out _);var shift=position-_bodyEnd[body];
-        double pad=BodyMotionBound(body,_time1-_time0)+radius+.001;
+        double pad=BodyMotionBound(body,_time1-_time0)+radius+.001*Host.UnitsPerMetre;
         min+=shift-new Vector3D(pad,pad,pad);max+=shift+new Vector3D(pad,pad,pad);
         return Math.Min(Math.Min(a0.X,b0.X),Math.Min(a1.X,b1.X))<=max.X&&Math.Max(Math.Max(a0.X,b0.X),Math.Max(a1.X,b1.X))>=min.X
             &&Math.Min(Math.Min(a0.Y,b0.Y),Math.Min(a1.Y,b1.Y))<=max.Y&&Math.Max(Math.Max(a0.Y,b0.Y),Math.Max(a1.Y,b1.Y))>=min.Y
@@ -127,7 +127,7 @@ internal sealed partial class RodStore
         if(oneWay!=default)
         {
             oneWay/= (float)Math.Sqrt(oneWay.LengthSquared());
-            c.Enabled=Vector3F.Dot(oneWay,n)>=.5f&&Vector3F.Dot(relative,oneWay)<=.01f;
+            c.Enabled=Vector3F.Dot(oneWay,n)>=.5f&&Vector3F.Dot(relative,oneWay)<=.01f*Host.UnitsPerMetre;
         }
         var axis=RodParticles.Rotate(rotation,surface.FrictionAxis);
         SurfaceContacts.Tangents(n,Host.Planar?2:3,axis,out c.Tangent1,out c.Tangent2);
