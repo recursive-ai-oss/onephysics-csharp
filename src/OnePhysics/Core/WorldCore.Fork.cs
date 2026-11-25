@@ -69,13 +69,11 @@ public sealed partial class WorldCore
         _stageCount = s._stageCount;
         _stageMostTasks = s._stageMostTasks;
         _sleepRested = (int[])s._sleepRested.Clone();
-        _inputBuffer = (byte[])s._inputBuffer.Clone();
-        _inputLength = s._inputLength;
         _sectionRange = (int[])s._sectionRange.Clone();
         _bodies.CopyFrom(s._bodies);
         _bodySleep.CopyFrom(s._bodySleep); Controls.CopyFrom(s.Controls);
         _shapes.CopyFrom(s._shapes);
-        _constraints.CopyFrom(s._constraints);
+        _constraints.CopyFrom(s._constraints, trim: true);
         _islands.CopyFrom(s._islands);
         _events.CopyFrom(s._events);
         _coloring.CopyForFork(s._coloring);

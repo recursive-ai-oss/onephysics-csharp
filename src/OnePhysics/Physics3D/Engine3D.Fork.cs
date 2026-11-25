@@ -176,11 +176,6 @@ internal sealed partial class Engine3D
         Dq = (float[])s.Dq.Clone();
         Pk = (float[])s.Pk.Clone();
         WInvI = (float[])s.WInvI.Clone();
-        Wide = (float[])s.Wide.Clone();
-        WideIdx = (int[])s.WideIdx.Clone();
-        WideJ = (float[])s.WideJ.Clone();
-        WideJIdx = (int[])s.WideJIdx.Clone();
-        BatchInfo = (int[])s.BatchInfo.Clone();
         SlotOf = (int[])s.SlotOf.Clone();
         KernelWidth = s.KernelWidth;
         GeomOf = (int[])s.GeomOf.Clone();
@@ -205,47 +200,14 @@ internal sealed partial class Engine3D
         SensorFreeCount = s.SensorFreeCount;
         ConsNext = (int[])s.ConsNext.Clone();
         s._dp3.CopyTo(_dp3, 0);
-        _sLc = (float[])s._sLc.Clone();
-        _sMass = (float[])s._sMass.Clone();
-        _sInertia = (float[])s._sInertia.Clone();
-        _sMaxE = (float[])s._sMaxE.Clone();
-        _sMinE = (float[])s._sMinE.Clone();
-        _sLd = (float[])s._sLd.Clone();
-        _sAd = (float[])s._sAd.Clone();
-        _sGs = (float[])s._sGs.Clone();
-        _sForce = (float[])s._sForce.Clone();
-        _sTorque = (float[])s._sTorque.Clone();
-        _sDp = (float[])s._sDp.Clone();
-        _sFr = (float[])s._sFr.Clone();
-        _sRe = (float[])s._sRe.Clone();
-        _sRo = (float[])s._sRo.Clone();
-        _sDe = (float[])s._sDe.Clone();
-        _sBf = (byte[])s._sBf.Clone();
-        _sRecipe = (byte[])s._sRecipe.Clone();
-        _sHead = (int[])s._sHead.Clone();
-        _sTail = (int[])s._sTail.Clone();
-        _sRefs = (int[])s._sRefs.Clone();
-        _sGeomOf = (int[])s._sGeomOf.Clone();
-        _sProxy = (int[])s._sProxy.Clone();
-        _sGrp = (int[])s._sGrp.Clone();
-        _sNext = (int[])s._sNext.Clone();
-        _sPa = (int[])s._sPa.Clone();
-        _sPb = (int[])s._sPb.Clone();
-        _sPc = (int[])s._sPc.Clone();
-        _sFree = (int[])s._sFree.Clone();
-        _sChainLen = (int[])s._sChainLen.Clone();
-        _sConsNext = (int[])s._sConsNext.Clone();
-        _sCat = (uint[])s._sCat.Clone();
-        _sMask = (uint[])s._sMask.Clone();
-        _sLive = (bool[])s._sLive.Clone();
-        _sPl = (bool[])s._sPl.Clone();
-        _sInChain = (bool[])s._sInChain.Clone();
-        _sLocal = (RigidTransformF[])s._sLocal.Clone();
-        _sJoints = (JointData3D[])s._sJoints.Clone();
+        // The staging arrays a restore reads into and the solver's batch scratch (Wide, WideIdx, WideJ, WideJIdx, BatchInfo, JScratch) are sized on first use, so a fork leaves them empty.
         ConsistencyProblem = s.ConsistencyProblem;
-        Joints = (JointData3D[])s.Joints.Clone();
-        for (int i = 0; i < Joints.Length; i++) { Joints[i].Path = (Vector3F[]?)s.Joints[i].Path?.Clone(); }
-        JScratch = (float[])s.JScratch.Clone();
+        // The record array is sized by constraint slots and holds a record only where a joint is or was (type or generation set); the rest is left zero instead of copying megabytes of empty records.
+        int usedJoints = s.Joints.Length;
+        while (usedJoints > 0 && s.Joints[usedJoints - 1].Type == 0 && s.Joints[usedJoints - 1].Gen == 0) { usedJoints--; }
+        Joints = new JointData3D[s.Joints.Length];
+        Array.Copy(s.Joints, Joints, usedJoints);
+        for (int i = 0; i < usedJoints; i++) { Joints[i].Path = (Vector3F[]?)s.Joints[i].Path?.Clone(); }
         JointForce = (float[])s.JointForce.Clone();
         JointTorque = (float[])s.JointTorque.Clone();
         _noCollideJoints = s._noCollideJoints;

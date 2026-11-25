@@ -45,6 +45,8 @@ internal static class Program
         ["snapshot-region"] = FuzzSnapshotEncoding.Region,
         ["snapshot-delta"] = FuzzSnapshotEncoding.Delta,
         ["snapshot-compressed"] = FuzzSnapshotEncoding.Compressed,
+        ["rollback2d"] = FuzzRollback.Run2D,
+        ["rollback3d"] = FuzzRollback.Run3D,
         ["replay"] = FuzzReplay.Run,
         ["scene"] = FuzzScene.Run,
         ["plane3d"] = FuzzMissingShapes.Plane,

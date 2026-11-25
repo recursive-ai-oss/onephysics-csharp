@@ -61,6 +61,7 @@ public static class Program
             case "narrow-bench": return NarrowBench.Run(opts);
             case "queries-indicative": return MixedQueryTiming.Run(opts);
             case "recording-indicative": return RecordingTiming.Run(opts);
+            case "rollback-timing": return RollbackTiming.Run(opts);
             case "selftest": return Metrics.SelfTest() + Metrics3.SelfTest() + Robust.SelfTest() + ProfileReport.SelfTest() + Verdict.SelfTest();
             case "run": return Runner.Run(opts);
             case "summarize": Runner.Summarize(opts.Pos(0)); return 0;

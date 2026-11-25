@@ -23,6 +23,7 @@ public sealed partial class PhysicsWorld3D : IRecordedWorld
         return new HistoryRecorder(this, options ?? new HistoryOptions());
     }
     // Every public mutator of the world enters here first, which makes it the place where what the last step left for its first reader (events, population counters) is built before the world changes.
+    internal bool IsRecording => _recorder != null;
     internal ReplayMutationScope RecordMutation(string operation) { _core.FlushPostStep(); return _recorder?.Enter(operation) ?? default; }
     private void RecordPreparedStep(float dt) { using var step = _recorder?.BeginStep(dt) ?? default; StepPrepared(dt); }
     void IRecordedWorld.PrepareHistory() => _remembersDestroyed = true;

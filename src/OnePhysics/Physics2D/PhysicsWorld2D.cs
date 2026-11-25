@@ -154,10 +154,11 @@ public sealed partial class PhysicsWorld2D
         _stepping = true;
         try
         {
-            if (_recorder != null) { RecordPreparedStep(dt); return; }
-            StepPrepared(dt);
+            if (_recorder != null) { RecordPreparedStep(dt); }
+            else { StepPrepared(dt); }
         }
         finally { _stepping = false; }
+        StepObserver.Notify(this, dt, _settling);
     }
 
     // The unrecorded path has no recording scope or exception region in its simulation body.
