@@ -10,7 +10,7 @@ public sealed partial class PhysicsWorld3D
     /// A rollback host marks once per frame and rolls back when a late input arrives. Several marks may be live; each keeps its own copy of the state, so a mark costs about as much memory as the world's used storage.
     /// Cost: a copy of the used part of the big stores plus the written form of whatever the optional features hold, with no validation and no parsing; storage is pooled, so once a mark has been released and the world has stopped growing,
     /// marking again allocates nothing. Release marks you no longer need with <see cref="ReleaseMark"/> or <see cref="ReleaseMarksBefore"/>.
-    /// Handlers and callbacks are not part of the state (as with a snapshot). Not allowed to change the world; takes no part in a recording.
+    /// Handlers and callbacks are not part of the state (as with a snapshot). It does not change the simulation state (like a snapshot it applies pending tile requests first) and is not recorded.
     /// </summary>
     /// <returns>The mark, valid until it is released or a rollback to an earlier mark passes it.</returns>
     /// <exception cref="NonFiniteStateException">A position or the origin is not finite (the world cannot be saved).</exception>
