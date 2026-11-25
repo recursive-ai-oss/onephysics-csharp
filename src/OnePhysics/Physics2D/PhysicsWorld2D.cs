@@ -105,6 +105,9 @@ public sealed partial class PhysicsWorld2D
         InvalidateQueryPad();
     }
 
+    /// <summary>The world's length unit, as <see cref="WorldOptions2D.LengthUnit"/> of <see cref="Options"/>: metres per world unit, one metre by default. It is saved in snapshots and covered by the world hash when it is not one metre.</summary>
+    public LengthUnit LengthUnit => _engine.Opt.LengthUnit;
+
     /// <summary>The live options. Change a value between steps and the next step uses it.</summary>
     public WorldOptions2D Options => _engine.Opt;
 
