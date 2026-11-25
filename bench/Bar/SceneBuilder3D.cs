@@ -206,7 +206,7 @@ public static class SceneBuilder3D
             def.Rotation = new QuaternionF((float)d.Qx, (float)d.Qy, (float)d.Qz, (float)d.Qw);
             def.Mass = (float)d.Mass;
             if (m.Pins.Length > 0) def.PinnedParticles = m.Pins;
-            if (skin != null) { def.Skin = skin; def.ParticleRadius = 0.01f * world.Options.LengthUnit.Scale; def.AllowSleep = false; }
+            if (skin != null) { def.Skin = skin; def.ParticleRadius = 0.01f * (float)(1.0 / world.Options.LengthUnit.MetresPerUnit); def.AllowSleep = false; }
             if (SurfaceOverride is bool sb) { def.SurfaceCollision = sb; }
             result[i] = world.AddSoftBody(def);
         }

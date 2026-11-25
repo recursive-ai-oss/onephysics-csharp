@@ -31,6 +31,9 @@ public sealed class FluidDef
     public Vector2D RegionMax { get; set; }
     /// <summary>Returns a copy.</summary>
     public FluidDef Clone()=>(FluidDef)MemberwiseClone();
+    /// <summary>This definition with a density that was never set (1000 kg per square metre) at its default for a world of the given unit: that mass per square world unit. The world applies this itself when the fluid is added.</summary>
+    /// <param name="unit">The world's length unit.</param>
+    public FluidDef WithDefaultsFor(LengthUnit unit){var c=Clone();if(unit.Scale==1f)return c;var s=new UnitScaler(unit.Scale,false);float d=c.Density;s.D(ref d,1000f,-2);c.Density=d;return c;}
     /// <summary>Validates values, throwing ArgumentOutOfRangeException for a named invalid property.</summary>
     public void Validate() => ToField().Validate();
     internal FieldDefinition ToField()
