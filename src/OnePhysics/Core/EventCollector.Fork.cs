@@ -21,12 +21,12 @@ public sealed partial class EventCollector
         for (int i = 0; i < _slots.Length; i++)
         {
             int n = s._counts[i];
-            if (_slots[i].Length < n) { _slots[i] = new PhysicsEvent[Math.Max(n, s._slots[i].Length)]; }
+            if (_slots[i].Length < n) { _slots[i] = new PhysicsEvent[Math.Max(n, 16)]; }
             Array.Copy(s._slots[i], _slots[i], n);
             _counts[i] = n;
         }
 
-        if (_delivered.Length < s._deliveredCount) { _delivered = new PhysicsEvent[Math.Max(s._deliveredCount, s._delivered.Length)]; }
+        if (_delivered.Length < s._deliveredCount) { _delivered = new PhysicsEvent[Math.Max(s._deliveredCount, 16)]; }
         Array.Copy(s._delivered, _delivered, s._deliveredCount);
         _deliveredCount = s._deliveredCount;
     }
