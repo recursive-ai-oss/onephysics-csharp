@@ -100,7 +100,7 @@ public enum ToiState : byte
     Separated = 3,
 }
 
-/// <summary>Result of <see cref="Distance2D.TimeOfImpact"/>.</summary>
+/// <summary>Result of <see cref="Distance2D.TimeOfImpact(in Shape2D, in Sweep2D, in Shape2D, in Sweep2D, float, float)"/>.</summary>
 [Experimental("OPHYS0001")]
 public readonly struct ToiOutput2D
 {
