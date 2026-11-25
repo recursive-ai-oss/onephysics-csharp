@@ -55,6 +55,9 @@ public sealed class ReplayPlayer
     /// <summary>The replay's dimension, 2 or 3.</summary>
     public int Dimension => _reader.Dimension;
 
+    /// <summary>The time step of the step record read last, as it was passed to <c>Step</c>.</summary>
+    internal float LastStepSeconds { get; private set; }
+
     /// <summary>The absolute completed step count after the last successfully read record, initially the starting count.</summary>
     public long CompletedSteps => _reader.CompletedSteps;
 
@@ -179,7 +182,8 @@ public sealed class ReplayPlayer
                     if (_reader.Kind != ReplayRecordKind.EndStep)
                     {
                         CheckStep(world.StepCount, _reader.CompletedSteps - 1);
-                        world.Step(_reader.StepTime);
+                        LastStepSeconds = _reader.StepTime;
+                        world.Step(LastStepSeconds);
                         CheckStep(world.StepCount, _reader.CompletedSteps);
                         if (_reader.Kind == ReplayRecordKind.BeginStep) continue;
                     }

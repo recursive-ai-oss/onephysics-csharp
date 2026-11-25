@@ -25,6 +25,7 @@ public static class Program
             case "grid-study": return GridStudy.Run(opts);
             case "rod-run": return RodRuns.Run(opts);
             case "pulley-run": return PulleyRuns.Run(opts);
+            case "diagnose": return DiagnoseRuns.Run(opts);
             case "gate-plan": return Gate.Plan(opts);
             case "gate-table": return Gate.Table(opts);
             case "cloth-stability": return ClothStability.Run(opts);

@@ -95,6 +95,10 @@ public class ReadmeTests
         var q3 = GuideExamples.QuickStart3D.Run();
         Assert.Equal(q3, GuideExamples.QuickStart3D.Run());
 
+        var dg = GuideExamples.Diagnosis.Run();
+        Assert.Equal(dg, GuideExamples.Diagnosis.Run());
+        Assert.True(dg.Findings > 0 && dg.SameInReplay && dg.WorldUnchanged, dg.ToString());
+
         var t2 = GuideExamples.Terrain2D.Run(); Assert.Equal(t2, GuideExamples.Terrain2D.Run());
         var tv = GuideExamples.Terrain3D.Voxels(); Assert.Equal(tv, GuideExamples.Terrain3D.Voxels());
         var ts = GuideExamples.Terrain3D.Sdf(); Assert.Equal(ts, GuideExamples.Terrain3D.Sdf()); Assert.InRange(ts.BallY, 0.9, 3.5);

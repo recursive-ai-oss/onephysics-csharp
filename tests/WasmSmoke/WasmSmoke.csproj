@@ -25,6 +25,7 @@
     <Compile Include="../Common/TetBlob.cs" LinkBase="Common" />
     <Compile Include="../Common/TestSkeleton.cs" LinkBase="Common" />
     <Compile Include="../Common/PulleySmoke.cs" LinkBase="Common" />
+    <Compile Include="../Common/DiagnosisSmoke.cs" LinkBase="Common" />
     <Compile Include="../Common/PulleyScenes.cs" LinkBase="Common" />
     <Compile Include="../Common/JointMachineSmoke.cs" LinkBase="Common" />
     <Compile Include="../Common/Services3DScene.cs" LinkBase="Common" />
