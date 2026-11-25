@@ -93,6 +93,8 @@ internal sealed partial class Engine3D
 
     private int[] _vehOfBody = Array.Empty<int>();
     private int _castChassis = -1;
+    /// <summary>A body whose inverse mass exceeds this many times the vehicle's own (a mass under 1% of it) is not ground for a wheel.</summary>
+    private const float LooseBodyInverseMassRatio = 100f;
     private Func<Shape, bool>? _vehiclePredicate;
 
     private bool HasVehicles => VehHandles.Count > 0;
@@ -201,7 +203,17 @@ internal sealed partial class Engine3D
     public void StepVehicles(PhysicsWorld3D world, float dt)
     {
         if (VehHandles.Count == 0) { return; }
-        if (_vehiclePredicate == null) { _vehiclePredicate = sh => Core.Shapes.Owner[sh.Handle.Index] != _castChassis && !((Category[sh.Handle.Index] & BikeCategory) != 0 && IsBikeBody(_castChassis)); }
+        // Wheels do not stand on loose bodies under 1% of the vehicle's own mass (a ball, a can): the suspension would press the wheel's whole load into them and fling them away, and a wheel on such a body
+        // finds the ground behind it instead. The chassis shape still collides with them.
+        if (_vehiclePredicate == null)
+        {
+            _vehiclePredicate = sh =>
+            {
+                int owner = Core.Shapes.Owner[sh.Handle.Index];
+                return owner != _castChassis && !((Category[sh.Handle.Index] & BikeCategory) != 0 && IsBikeBody(_castChassis))
+                    && !(Core.Bodies.InverseMass[owner] > LooseBodyInverseMassRatio * Core.Bodies.InverseMass[_castChassis]);
+            };
+        }
         for (int v = 0; v < VehHandles.HighWater; v++)
         {
             if (!VehHandles.IsLive(v)) { continue; }

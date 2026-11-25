@@ -16,6 +16,8 @@
 #     aot          NativeAOT publish, 1 thread
 #     wasm         browser-wasm, interpreted, run under Node
 #     wasm-aot     browser-wasm, ahead-of-time compiled, run under Node
+#     isolated     JIT, 1 thread, every scenario in a process of its own (four at a time); must equal "jit", where they all run in
+#                  one process, so a result can't depend on what ran before it (a counter, a cache, a static)
 # Each column writes OUTDIR/PREFIX<column>.txt (the runner's manifest) and .steps (per-step digests). Manifests from other
 # machines (for example an arm64 Mac, run with -p arm64-) are dropped into OUTDIR and compared by `compare`.
 # The first manifest in alphabetical order of the column list given (or "PREFIXjit" for `compare`) is the reference; the
@@ -43,7 +45,7 @@ FILTER="${HASHMATRIX_FILTER:-}"
 SLOW_FILTER="${HASHMATRIX_SLOW_FILTER:-$FILTER}"
 CORES="${HASHMATRIX_THREADS_ALL:-$( (nproc 2>/dev/null || sysctl -n hw.ncpu) )}"
 
-ALL=(jit threads8 threads-all scalar noavx512 noavx2 tc0 aot wasm wasm-aot)
+ALL=(jit threads8 threads-all scalar noavx512 noavx2 tc0 aot wasm wasm-aot isolated)
 if [[ $# -eq 0 ]]; then set -- "${ALL[@]}"; fi
 
 # Runs a dotnet build or publish quietly. When it fails, prints everything it said (errors included) to stderr and stops the script with a non-zero status.
@@ -96,6 +98,21 @@ run_jit() { # $1 = column, $2 = threads, $3 = filter, rest = env assignments
   env "$@" dotnet "$(jit_dll)" --threads "$threads" --steps --filter "$filter" | split_output "$col"
 }
 
+# Every scenario in its own process, then the pieces in ordinal name order, as the runner prints them.
+run_isolated() {
+  build_jit
+  local dir; dir="$(mktemp -d "${TMPDIR:-/tmp}/hash-matrix-iso.XXXXXX")"
+  dotnet "$(jit_dll)" --list --filter "$FILTER" > "$dir/names"
+  export HM_DLL="$(jit_dll)" HM_DIR="$dir"
+  xargs -a "$dir/names" -P 4 -I{} bash -c 'dotnet "$HM_DLL" --threads 1 --steps --only "$1" > "$HM_DIR/$(echo "$1" | tr / _).out"' _ {}
+  {
+    while read -r n; do grep -E "^$n [0-9a-f]{64}$" "$dir/$(echo "$n" | tr / _).out"; done < "$dir/names"
+    echo "manifest $(while read -r n; do grep -E "^$n [0-9a-f]{64}$" "$dir/$(echo "$n" | tr / _).out"; done < "$dir/names" | sha256sum | cut -d' ' -f1)"
+    while read -r n; do grep -E '^step ' "$dir/$(echo "$n" | tr / _).out"; done < "$dir/names"
+  } | split_output isolated
+  rm -rf "$dir"
+}
+
 run_column() {
   local col="$1"
   case "$col" in
@@ -108,6 +125,7 @@ run_column() {
     tc0)         run_jit "$col" 1 "$FILTER" DOTNET_TieredCompilation=0 DOTNET_ReadyToRun=0 ;;
     aot)         publish_aot; "$ART/hm-aot/HashMatrix" --threads 1 --steps --filter "$FILTER" | split_output "$col" ;;
     wasm)        publish_wasm wasm;                              (cd "$ART/wasm" && node main.mjs --threads 1 --steps --filter "$SLOW_FILTER") | split_output "$col" ;;
+    isolated)    run_isolated ;;
     wasm-aot)    publish_wasm wasm-aot -p:RunAOTCompilation=true; (cd "$ART/wasm-aot" && node main.mjs --threads 1 --steps --filter "$SLOW_FILTER") | split_output "$col" ;;
     *) echo "unknown column: $col" >&2; return 2 ;;
   esac

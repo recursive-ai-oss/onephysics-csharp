@@ -80,33 +80,41 @@ public readonly struct PhysicsEvent
         return c != 0 ? c : BitConverter.SingleToUInt32Bits(x.RollingSpeed).CompareTo(BitConverter.SingleToUInt32Bits(y.RollingSpeed));
     }
 
+    // The world id is not part of a saved world: the handles in a snapshot carry 0 there and are given the id of the world that
+    // restores them, so the same state gives the same bytes whichever id the world was created with.
     internal void Write(StateWriter w)
     {
         w.NamedByte((byte)Kind);
-        w.NamedInt32(BodyA.World); w.NamedInt32(BodyA.Index); w.NamedInt32(BodyA.Generation);
-        w.NamedInt32(BodyB.World); w.NamedInt32(BodyB.Index); w.NamedInt32(BodyB.Generation);
-        w.NamedInt32(ShapeA.World); w.NamedInt32(ShapeA.Index); w.NamedInt32(ShapeA.Generation);
-        w.NamedInt32(ShapeB.World); w.NamedInt32(ShapeB.Index); w.NamedInt32(ShapeB.Generation);
+        w.NamedInt32(0); w.NamedInt32(BodyA.Index); w.NamedInt32(BodyA.Generation);
+        w.NamedInt32(0); w.NamedInt32(BodyB.Index); w.NamedInt32(BodyB.Generation);
+        w.NamedInt32(0); w.NamedInt32(ShapeA.Index); w.NamedInt32(ShapeA.Generation);
+        w.NamedInt32(0); w.NamedInt32(ShapeB.Index); w.NamedInt32(ShapeB.Generation);
         w.NamedInt32(SubShapeA); w.NamedInt32(SubShapeB);
-        w.NamedInt32(Joint.World); w.NamedInt32(Joint.Index); w.NamedInt32(Joint.Generation);
+        w.NamedInt32(0); w.NamedInt32(Joint.Index); w.NamedInt32(Joint.Generation);
         w.NamedSingle(Value);
     }
 
     internal const int SnapshotBytes = 1 + 4 * 17 + 4;
 
-    internal static PhysicsEvent Read(StateReader r)
+    internal static PhysicsEvent Read(StateReader r, int worldId)
     {
         byte k = r.ReadByte();
         if (k > (byte)EventKind.ContactHit) { throw r.Error("invalid event kind"); }
-        var a = new BodyHandle(r.ReadInt32(), r.ReadInt32(), r.ReadInt32());
-        var b = new BodyHandle(r.ReadInt32(), r.ReadInt32(), r.ReadInt32());
-        var sa = new ShapeHandle(r.ReadInt32(), r.ReadInt32(), r.ReadInt32());
-        var sb = new ShapeHandle(r.ReadInt32(), r.ReadInt32(), r.ReadInt32());
+        var a = ReadBodyHandle(r, worldId);
+        var b = ReadBodyHandle(r, worldId);
+        var sa = ReadShapeHandle(r, worldId);
+        var sb = ReadShapeHandle(r, worldId);
         int subA = r.ReadInt32(), subB = r.ReadInt32();
-        var j = new JointHandle(r.ReadInt32(), r.ReadInt32(), r.ReadInt32());
+        var j = ReadJointHandle(r, worldId);
         float v = r.ReadSingle();
         return new PhysicsEvent((EventKind)k, a, b, sa, sb, subA, subB, j, v);
     }
+
+    // A saved handle holds 0 as its world; a non-null one belongs to the world that reads it.
+    private static int WorldOf(int saved, int generation, int worldId) => generation == 0 ? saved : worldId;
+    private static BodyHandle ReadBodyHandle(StateReader r, int worldId) { int w = r.ReadInt32(), i = r.ReadInt32(), g = r.ReadInt32(); return new BodyHandle(WorldOf(w, g, worldId), i, g); }
+    private static ShapeHandle ReadShapeHandle(StateReader r, int worldId) { int w = r.ReadInt32(), i = r.ReadInt32(), g = r.ReadInt32(); return new ShapeHandle(WorldOf(w, g, worldId), i, g); }
+    private static JointHandle ReadJointHandle(StateReader r, int worldId) { int w = r.ReadInt32(), i = r.ReadInt32(), g = r.ReadInt32(); return new JointHandle(WorldOf(w, g, worldId), i, g); }
 
     /// <inheritdoc/>
     public override string ToString() =>
