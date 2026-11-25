@@ -56,7 +56,7 @@ public readonly partial struct Character
     /// <exception cref="ArgumentOutOfRangeException">The value is not within [0, 100000].</exception>
     public float SwimDensity
     {
-        get { var e = Resolve(out int c); return Engine2D.SwimDensityOf(c, e.Extensions.At(c)); }
+        get { var e = Resolve(out int c); return e.SwimDensityOf(c, e.Extensions.At(c)); }
         set
         {
             if (!(value >= 0f && value <= 1e5f)) { throw new ArgumentOutOfRangeException(nameof(value), value, "SwimDensity must be within [0, 100000]."); }

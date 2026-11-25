@@ -8,6 +8,9 @@ namespace RecursiveAI.OnePhysics.Rods;
 internal interface IRodHost
 {
     WorldCore RodCore { get; }
+
+    /// <summary>World units per metre of the world's length unit; 1 for a world in metres.</summary>
+    float UnitsPerMetre { get; }
     int EngineSectionId { get; }
     RodStore Rods { get; }
     bool Planar { get; }

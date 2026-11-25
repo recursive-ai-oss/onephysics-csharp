@@ -335,7 +335,7 @@ public sealed partial class PhysicsWorld2D
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddRagdoll");
         ArgumentNullException.ThrowIfNull(def);
-        var d = def.Clone();
+        var d = def.WithDefaultsFor(Options.LengthUnit);
         d.Validate();
         const double Bound = 2097152.0;
         if (!double.IsFinite(at.X) || !double.IsFinite(at.Y) || Math.Abs(at.X) > Bound || Math.Abs(at.Y) > Bound)

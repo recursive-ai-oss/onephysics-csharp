@@ -48,6 +48,8 @@ public sealed class RodDef
     public float Damping { get; set; } = 0.1f;
     /// <summary>Gravity multiplier; finite within ±1000. Default 1.</summary>
     public float GravityScale { get; set; } = 1;
+    internal RodDef ShallowCopy() => (RodDef)MemberwiseClone();
+
     /// <summary>Validates without modifying the definition; throws ArgumentNullException or ArgumentOutOfRangeException naming the invalid field.</summary>
     public void Validate()
     {
@@ -64,7 +66,7 @@ public sealed class RodDef
             if (i > 0)
             {
                 var d = Points[i] - Points[i-1]; double l = Math.Sqrt(d.X*d.X+d.Y*d.Y);
-                if (!(l >= 0.0001 && l <= 100)) throw new ArgumentOutOfRangeException(nameof(Points), l, $"Segment {i-1} length must be 0.0001 to 100 metres.");
+                if (!(l >= 0.0001 * Material.Units && l <= 100 * Math.Max(1.0, (double)Material.Units))) throw new ArgumentOutOfRangeException(nameof(Points), l, $"Segment {i-1} length must be 0.0001 to 100 metres.");
             }
         }
         for (int a=0;a<Attachments.Length;a++)

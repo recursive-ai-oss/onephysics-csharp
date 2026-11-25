@@ -61,6 +61,20 @@ public sealed class ClothMaterial
 
     /// <summary>A copy of this material.</summary>
     public ClothMaterial Clone() => (ClothMaterial)MemberwiseClone();
+
+    /// <summary>
+    /// This material, written in metres and SI as the members above state, expressed for a world whose length unit is <paramref name="unit"/>: the mass per area becomes kilograms per square world unit
+    /// and the bend compliance (which is per square length, see <see cref="SoftBodyDef.BendCompliance"/>) is divided by the squared units per metre. The stretch compliances (s²/kg) and everything else do not depend on the length unit.
+    /// Use it on the presets (<see cref="Denim"/>, <see cref="Silk"/> and the others) in a world that is not in metres; <see cref="Cotton"/>, which is never set, follows the unit by itself.
+    /// </summary>
+    /// <param name="unit">The target length unit.</param>
+    public ClothMaterial InUnit(LengthUnit unit) { var c = Clone(); c.Convert(new UnitScaler(unit.Scale, true)); return c; }
+
+    internal void Convert(UnitScaler s)
+    {
+        float a = ArealDensity; s.D(ref a, 0.15f, -2); ArealDensity = a;
+        float b = BendCompliance; s.D(ref b, 2e-3f, -2); BendCompliance = b;
+    }
 }
 
 /// <summary>
@@ -171,6 +185,22 @@ public sealed class ClothDef
         }
 
         return r.ToArray();
+    }
+
+    /// <summary>
+    /// This definition with every length that was never set (<see cref="Width"/> and <see cref="Depth"/>, both 1 m by default) and a material left at the <see cref="ClothMaterial.Cotton"/> values at their defaults for a world of the given unit.
+    /// The world applies this itself when the cloth is added; <see cref="ClothMaterial.InUnit"/> converts a preset material.
+    /// </summary>
+    /// <param name="unit">The world's length unit.</param>
+    public ClothDef WithDefaultsFor(LengthUnit unit)
+    {
+        var s = new UnitScaler(unit.Scale, false);
+        if (s.IsIdentity) { return this; }
+        var c = (ClothDef)MemberwiseClone();
+        float w = Width; s.D(ref w, 1f, 1); c.Width = w;
+        float d = Depth; s.D(ref d, 1f, 1); c.Depth = d;
+        if (Material != null) { var m = Material.Clone(); m.Convert(s); c.Material = m; }
+        return c;
     }
 
     /// <summary>The soft-body definition this cloth makes.</summary>

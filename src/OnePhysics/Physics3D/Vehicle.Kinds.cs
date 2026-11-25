@@ -88,6 +88,7 @@ public sealed partial class PhysicsWorld3D
         using var replayMutation = RecordMutation("PhysicsWorld3D.AddVehicle");
         ArgumentNullException.ThrowIfNull(def);
         if (chassis.World != this) { throw new ArgumentException("The chassis belongs to another world.", nameof(chassis)); }
+        def = def.WithDefaultsFor(Options.LengthUnit);
         var wheeled = def.ToWheeled();
         int v = _engine.CreateVehicle(chassis.Handle, wheeled, track: def);
         return new Vehicle(this, v, _engine.VehHandles.GenerationOf(v));
@@ -106,6 +107,7 @@ public sealed partial class PhysicsWorld3D
         using var replayMutation = RecordMutation("PhysicsWorld3D.AddVehicle");
         ArgumentNullException.ThrowIfNull(def);
         if (chassis.World != this) { throw new ArgumentException("The chassis belongs to another world.", nameof(chassis)); }
+        def = def.WithDefaultsFor(Options.LengthUnit);
         var wheeled = def.ToWheeled();
         int v = _engine.CreateVehicle(chassis.Handle, wheeled, bike: def);
         return new Vehicle(this, v, _engine.VehHandles.GenerationOf(v));
@@ -122,7 +124,7 @@ public sealed partial class PhysicsWorld3D
     public Vehicle AddTank(Vector3D at, TrackedVehicleDef? def = null, QuaternionF rotation = default)
     {
         using var replayMutation = RecordMutation("PhysicsWorld3D.AddTank");
-        def ??= TrackedVehicleDef.Tank;
+        def = def == null ? TrackedVehicleDef.Tank.InUnit(Options.LengthUnit) : def.WithDefaultsFor(Options.LengthUnit);
         def.Validate();
         var wheel = def.LeftWheels[0];
         var size = def.ChassisSize;
@@ -141,7 +143,7 @@ public sealed partial class PhysicsWorld3D
     public Vehicle AddMotorcycle(Vector3D at, MotorcycleDef? def = null, QuaternionF rotation = default)
     {
         using var replayMutation = RecordMutation("PhysicsWorld3D.AddMotorcycle");
-        def ??= MotorcycleDef.Road;
+        def = def == null ? MotorcycleDef.Road.InUnit(Options.LengthUnit) : def.WithDefaultsFor(Options.LengthUnit);
         def.Validate();
         var size = def.ChassisSize;
         var body = AddBox(size, RestingPoint(at, def.Front), rotation, density: def.ChassisMass / (size.X * size.Y * size.Z));
@@ -149,9 +151,9 @@ public sealed partial class PhysicsWorld3D
     }
 
     /// <summary>The chassis position that puts a wheel's tyre just above the ground point (the suspension a little short of fully extended), for an upright chassis.</summary>
-    private static Vector3D RestingPoint(Vector3D ground, WheelDef wheel)
+    private Vector3D RestingPoint(Vector3D ground, WheelDef wheel)
     {
-        float drop = wheel.Radius + wheel.SuspensionMaxLength - 0.05f - wheel.Position.Y;
+        float drop = wheel.Radius + wheel.SuspensionMaxLength - 0.05f * Options.UnitsPerMetre - wheel.Position.Y;
         return new Vector3D(ground.X, ground.Y + drop, ground.Z);
     }
 }

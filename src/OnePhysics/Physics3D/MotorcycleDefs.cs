@@ -12,7 +12,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 /// (and to upright at rest), limited to <see cref="MaxLeanTorque"/>. Past <see cref="FallAngle"/> the assist lets go and the bike falls.
 /// </para>
 /// </summary>
-public sealed class MotorcycleDef
+public sealed partial class MotorcycleDef
 {
     /// <summary>The front wheel (steered). Its <see cref="WheelDef.MaxSteerAngle"/> is replaced by <see cref="MaxSteerAngle"/> and the speed limit; its tyre and brake torque apply.</summary>
     public WheelDef Front { get; set; } = new();
@@ -72,6 +72,7 @@ public sealed class MotorcycleDef
 
     internal void Validate()
     {
+        if (Units != 1f) { var m = Scaled(new UnitScaler(1f / Units, true)); m.Units = 1f; m.Validate(); return; }
         if (Front == null || Rear == null || Engine == null || Transmission == null) { throw new ArgumentNullException(nameof(Front), "Front, Rear, Engine and Transmission must not be null."); }
         VehicleCheck.Positive(FinalDriveRatio, nameof(FinalDriveRatio));
         if (!(MaxSteerAngle >= 0f && MaxSteerAngle <= 1.5707964f)) { throw new ArgumentOutOfRangeException(nameof(MaxSteerAngle), MaxSteerAngle, "MaxSteerAngle must be within 0..pi/2."); }
@@ -87,7 +88,9 @@ public sealed class MotorcycleDef
     }
 
     /// <summary>The wheeled definition the engine runs the two wheels with: front wheel 0, rear wheel 1, one differential driving the rear wheel.</summary>
-    internal VehicleDef ToWheeled()
+    internal VehicleDef ToWheeled() { var d = ToWheeledCore(); d.Units = Units; return d; }
+
+    private VehicleDef ToWheeledCore()
     {
         Validate();
         var f = Front.Clone(); var r = Rear.Clone();

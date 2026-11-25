@@ -11,6 +11,7 @@ internal sealed partial class Engine3D : IRodHost
     internal RodStore Rods => _rods ??= new RodStore(this);
     RodStore IRodHost.Rods => Rods;
     WorldCore IRodHost.RodCore => Core;
+    float IRodHost.UnitsPerMetre => Opt.UnitsPerMetre;
     int IRodHost.EngineSectionId => Id;
     bool IRodHost.Planar => false;
     Vector3F IRodHost.Gravity => new(Opt.Gravity.X,Opt.Gravity.Y,Opt.Gravity.Z);

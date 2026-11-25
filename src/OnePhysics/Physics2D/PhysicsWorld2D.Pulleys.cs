@@ -16,7 +16,8 @@ public sealed partial class PhysicsWorld2D
     public PulleySystem AddPulleySystem(PulleySystemDef definition)
     {
         ArgumentNullException.ThrowIfNull(definition);
-        var h = _engine.Cables.Create(definition.ToSpecs(), definition.Closed, definition.Chain, definition.Length, definition.Slack, definition.Iterations, definition.BreakForce, definition.Preload, definition.Pitch);
+        var specs = definition.ToSpecs(); CableNodeSpec.ApplyUnitDefaults(specs, Options.UnitsPerMetre);
+        var h = _engine.Cables.Create(specs, definition.Closed, definition.Chain, definition.Length, definition.Slack, definition.Iterations, definition.BreakForce, definition.Preload, definition.Pitch);
         return new PulleySystem(_engine.Cables, h.Slot, h.Generation);
     }
 

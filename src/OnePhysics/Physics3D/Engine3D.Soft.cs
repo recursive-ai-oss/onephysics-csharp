@@ -41,17 +41,19 @@ internal sealed partial class Engine3D
 
     public bool HasSoftBodies => SoftHandles.HighWater > 0;
 
-    public SoftBody AddSoftBody(SoftBodyDef def)
+    public SoftBody AddSoftBody(SoftBodyDef def, bool followUnit = true)
     {
-        def.Validate();
+        float ku = Opt.UnitsPerMetre;
         var copy = def.Clone();
+        if (followUnit) { copy.Convert(new UnitScaler(ku, false)); }
+        copy.Validate(ku);
         long total = (long)_softParticles + copy.Mesh!.VertexCount;
         if (total > MaxSoftParticles)
         {
             throw new SoftBodyException(SoftBodyError.BadCount, "the world would hold " + total.ToString(CultureInfo.InvariantCulture) + " soft-body particles; the limit is " + MaxSoftParticles.ToString(CultureInfo.InvariantCulture) + ".", "def");
         }
 
-        var data = SoftBodyData.Create(copy, SoftBlockSizeForTests);
+        var data = SoftBodyData.Create(copy, SoftBlockSizeForTests, ku);
         int i = SoftHandles.Allocate();
         if (i >= SoftData.Length) { Array.Resize(ref SoftData, Math.Max(i + 1, SoftData.Length * 2)); }
         SoftData[i] = data;
@@ -294,7 +296,7 @@ internal sealed partial class Engine3D
                     def.Fabric = fab;
                 }
 
-                def.Validate();
+                def.Validate(Opt.UnitsPerMetre);
             }
             catch (SoftBodyException ex) { throw r.Error("invalid soft body: " + ex.Message); }
 

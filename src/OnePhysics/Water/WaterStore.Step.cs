@@ -36,6 +36,7 @@ internal sealed partial class WaterStore
         Events.Clear();
         _pendingCount = 0;
         if (Handles.Count == 0) { return; }
+        for (int gi = 0; gi < Handles.HighWater; gi++) { if (Handles.IsLive(gi)) { Grids[gi]!.UnitsPerMetre = _host.UnitsPerMetre; } }
         var core = _host.Core;
         var bodies = core.Bodies;
         for (int gi = 0; gi < Handles.HighWater; gi++)
@@ -136,7 +137,7 @@ internal sealed partial class WaterStore
     private static bool Ring(WaterGrid g, double x, double z, ref double sum, ref float us, ref float vs, ref int n, out double surface)
     {
         SampleAt(g, x, z, out surface, out float depth, out float u, out float v);
-        if (!(depth > WaterGrid.DryDepth)) { return false; }
+        if (!(depth > g.DryDepth)) { return false; }
         sum += surface; us += u; vs += v; n++;
         return true;
     }
@@ -144,7 +145,7 @@ internal sealed partial class WaterStore
     private void WakeCheck(WaterGrid g, int b, double minX, double minY, double minZ, double maxX, double maxY, double maxZ)
     {
         if (!Reference(g, minX, minZ, maxX, maxZ, out double surface, out float sx, out float sz, out float u, out float v) || !(minY < surface)) { return; }
-        if (Math.Abs(u) > WakeSpeed || Math.Abs(v) > WakeSpeed || Math.Abs(sx) > WakeSlope || Math.Abs(sz) > WakeSlope) { _host.WakeBody(b); }
+        if (Math.Abs(u) > WakeSpeed * g.UnitsPerMetre || Math.Abs(v) > WakeSpeed * g.UnitsPerMetre || Math.Abs(sx) > WakeSlope || Math.Abs(sz) > WakeSlope) { _host.WakeBody(b); }
     }
 
     private float Displace(WaterGrid g, int b, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, float dt, bool kinematic)
@@ -152,7 +153,7 @@ internal sealed partial class WaterStore
         if (!Reference(g, minX, minZ, maxX, maxZ, out double surface, out float sx, out float sz, out float u, out float v)) { return 0f; }
         float reach = _host.ReachOf(b);
         // A body wholly above the tilted surface is clear of the water.
-        if (minY > surface + (Math.Abs(sx) + Math.Abs(sz)) * reach + 1e-3) { return 0f; }
+        if (minY > surface + (Math.Abs(sx) + Math.Abs(sz)) * reach + 1e-3 * (double)g.UnitsPerMetre) { return 0f; }
         double cx = 0.5 * (minX + maxX), cz = g.Planar ? 0.0 : 0.5 * (minZ + maxZ);
         float inv = 1f / float.Sqrt(1f + sx * sx + sz * sz);
         var n = new Vector3F(-sx * inv, inv, -sz * inv);

@@ -15,6 +15,7 @@ internal sealed partial class Engine3D : IWaterHost
     internal WaterStore Water => _water ??= new WaterStore(this);
 
     WorldCore IWaterHost.Core => Core;
+    float IWaterHost.UnitsPerMetre => Opt.UnitsPerMetre;
     bool IWaterHost.Planar => false;
     int IWaterHost.EngineSectionId => Id;
     WaterStore IWaterHost.Water => Water;
@@ -96,7 +97,7 @@ internal sealed partial class Engine3D : IWaterHost
             if (d.Asleep)
             {
                 // Water that moves, or a surface that has tilted under it, wakes a sleeping body; a still one leaves it asleep.
-                if (Math.Abs(u) > 0.05f || Math.Abs(v) > 0.05f || Math.Abs(sx) > 0.01f || Math.Abs(sz) > 0.01f) { d.Asleep = false; d.SleepTime = 0f; } else { continue; }
+                if (Math.Abs(u) > 0.05f * Opt.UnitsPerMetre || Math.Abs(v) > 0.05f * Opt.UnitsPerMetre || Math.Abs(sx) > 0.01f || Math.Abs(sz) > 0.01f) { d.Asleep = false; d.SleepTime = 0f; } else { continue; }
             }
 
             float bodyVolume = SoftBodyVolume(d);

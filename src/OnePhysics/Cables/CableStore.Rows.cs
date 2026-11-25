@@ -78,7 +78,7 @@ internal sealed partial class CableStore
             double c = m.Geometric[k] - m.Material[k];
             m.Stretch[k] = c;
             // Within a deadband (ten micrometres; a millimetre for a chain, whose sprockets' integrated angles drift faster) the stretch is rounding noise (body angles are float32); acting on it would turn into a velocity error of c/dt, so the span just holds its velocity.
-            double band = m.Chain ? 1e-3 : Deadband, e = c > band ? c - band : c < -band ? c + band : 0;
+            double band = m.Chain ? 1e-3 * Host.UnitsPerMetre : Deadband, e = c > band ? c - band : c < -band ? c + band : 0;
             row.Bias = e > 0 ? Beta * e / dt : e / dt;
         }
         for (int i = 0; i < n; i++)
@@ -329,7 +329,7 @@ internal sealed partial class CableStore
             {
                 if (!sc.Valid[k] || !(sc.Lambda[k] > 0)) continue;
                 double c = m.Geometric[k] - m.Material[k];
-                if (Math.Abs(c) > 1e-3) continue;
+                if (Math.Abs(c) > 1e-3 * Host.UnitsPerMetre) continue;
                 m.Material[k] += c; m.Material[(k + 1) % spans] -= c;
             }
         }

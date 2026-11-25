@@ -47,8 +47,16 @@ internal struct WaterBodyRecord
 internal sealed partial class WaterGrid
 {
     /// <summary>Depth below which a cell counts as dry: its momentum is zero and it holds no waves.</summary>
-    public const float DryDepth = 1e-3f;
-    private const float Eps4 = DryDepth * DryDepth * DryDepth * DryDepth;
+    public const float DryDepthMetres = 1e-3f;
+    private const float Eps4Metres = DryDepthMetres * DryDepthMetres * DryDepthMetres * DryDepthMetres;
+
+    /// <summary>World units per metre of the world's length unit: the dry depth, the desingularisation and the smallest wave-speed difference are metre constants.</summary>
+    public float UnitsPerMetre = 1f;
+
+    /// <summary>Depth below which a cell counts as dry, in world units.</summary>
+    public float DryDepth => UnitsPerMetre == 1f ? DryDepthMetres : DryDepthMetres * UnitsPerMetre;
+
+    private float Eps4 { get { if (UnitsPerMetre == 1f) { return Eps4Metres; } float d = DryDepth; return d * d * d * d; } }
     private const float Theta = 1.3f;   // generalised minmod limiter parameter, 1 (most diffusive) to 2 (most compressive)
     public const int MaxCellsPerGrid = 1 << 22;
     public const int MaxSources = 64;
@@ -120,7 +128,7 @@ internal sealed partial class WaterGrid
     {
         var c = new WaterGrid
         {
-            Planar = Planar, Nx = Nx, Nz = Nz, Dx = Dx, OriginX = OriginX, OriginZ = OriginZ, BaseY = BaseY,
+            UnitsPerMetre = UnitsPerMetre, Planar = Planar, Nx = Nx, Nz = Nz, Dx = Dx, OriginX = OriginX, OriginZ = OriginZ, BaseY = BaseY,
             Density = Density, LinearDrag = LinearDrag, AngularDrag = AngularDrag, ViscousDamping = ViscousDamping, BottomFriction = BottomFriction, Damping = Damping, Displacement = Displacement,
             Cfl = Cfl, MaxSubsteps = MaxSubsteps, LostVolume = LostVolume, RecordCount = RecordCount,
             Sources = (WaterSourceSpec[])Sources.Clone(), Bed = (float[])Bed.Clone(), H = (float[])H.Clone(), Hu = (float[])Hu.Clone(), Hv = (float[])Hv.Clone(),
@@ -284,7 +292,7 @@ internal sealed partial class WaterGrid
     // ---------------------------------------------------------------- scheme pieces
 
     /// <summary>Velocity from depth and momentum with the desingularisation that keeps it finite in nearly dry cells (Kurganov and Petrova 2007, eq. 2.17).</summary>
-    public static float Vel(float h, float q)
+    public float Vel(float h, float q)
     {
         float h4 = h * h * h * h;
         float m = h4 > Eps4 ? h4 : Eps4;
@@ -311,7 +319,7 @@ internal sealed partial class WaterGrid
     /// The central-upwind numerical flux across a face between a left and a right state (depth, velocity normal to the face, velocity along it)
     /// and the largest signal speed it saw. Kurganov and Petrova 2007, eq. 2.9, with the hydrostatic pressure in the normal momentum.
     /// </summary>
-    private static void CentralUpwind(float hl, float ul, float vl, float hr, float ur, float vr, float g, out float fh, out float fq, out float fr, out float amax)
+    private void CentralUpwind(float hl, float ul, float vl, float hr, float ur, float vr, float g, out float fh, out float fq, out float fr, out float amax)
     {
         float cl = float.Sqrt(g * hl), cr = float.Sqrt(g * hr);
         if (hl == hr && ul == ur && vl == vr)
@@ -326,7 +334,7 @@ internal sealed partial class WaterGrid
         float am = Math.Min(Math.Min(ul - cl, ur - cr), 0f);
         amax = Math.Max(ap, -am);
         float d = ap - am;
-        if (!(d > 1e-7f)) { fh = 0f; fq = 0f; fr = 0f; return; }
+        if (!(d > 1e-7f * UnitsPerMetre)) { fh = 0f; fq = 0f; fr = 0f; return; }
         float k = ap * am / d;
         float ql = hl * ul, qr = hr * ur, rl = ql * vl, rr = qr * vr;
         fh = (ap * ql - am * qr) / d + k * (hr - hl);

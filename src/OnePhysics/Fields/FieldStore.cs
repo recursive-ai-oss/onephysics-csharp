@@ -11,6 +11,7 @@ internal interface IFieldHost
     WorldCore FieldCore { get; }
     int EngineSectionId { get; }
     Vector3F AngularTorque(int body,Vector3F acceleration);
+    float UnitsPerMetre { get; }
     FieldStore Fields { get; }
     bool Matches(int body, FieldDefinition definition);
     void AddForce(int body, Vector3F force, Vector3F torque);
@@ -38,7 +39,7 @@ public readonly struct Field
     public FieldDefinition Definition
     {
         get => Resolve().Definitions[Index]!.Clone();
-        set { var s = Resolve(); ArgumentNullException.ThrowIfNull(value); value.ValidateStored(); FieldStore.ValidateReplacementCoordinates(value,s.Definitions[Index]!); s.ValidateDimension(value); var copy=value.Clone(); s.CaptureSensor(copy); using var mutation = s.Host.FieldMutation("Field.Definition"); s.Definitions[Index] = copy; }
+        set { var s = Resolve(); ArgumentNullException.ThrowIfNull(value); var copy=s.ResolveUnit(value); copy.ValidateStored(); FieldStore.ValidateReplacementCoordinates(copy,s.Definitions[Index]!); s.ValidateDimension(copy); s.CaptureSensor(copy); using var mutation = s.Host.FieldMutation("Field.Definition"); s.Definitions[Index] = copy; }
     }
     /// <summary>Destroys this field; later access throws InvalidOperationException.</summary>
     public void Destroy() { var s = Resolve(); if(s.Generations[Index]==int.MaxValue)throw new InvalidOperationException("Field generation is exhausted."); using var mutation = s.Host.FieldMutation("Field.Destroy"); s.Definitions[Index] = null; s.Generations[Index] = checked(s.Generations[Index]+1); s.Count--; }
@@ -59,14 +60,17 @@ internal sealed partial class FieldStore(IFieldHost host) : ISnapshotSection
     internal bool Alive(int i, int generation) => (uint)i < (uint)Definitions.Length && Definitions[i] != null && Generations[i] == generation;
     internal Field Add(FieldDefinition definition)
     {
-        ArgumentNullException.ThrowIfNull(definition); definition.Validate(); ValidateDimension(definition);
-        var copy=definition.Clone();CaptureSensor(copy);
+        ArgumentNullException.ThrowIfNull(definition); var copy=ResolveUnit(definition); copy.Validate(); ValidateDimension(copy);
+        CaptureSensor(copy);
         using var mutation = Host.FieldMutation("World.AddField");
         int i = 0; while (i < Definitions.Length && Definitions[i] != null) i++;
         if (i == Definitions.Length) { Array.Resize(ref Definitions, i+1); Array.Resize(ref Generations, i+1); Generations[i] = 1; }
         Definitions[i] = copy; Count++;
         return new Field(this, i, Generations[i]);
     }
+    /// <summary>A copy of the definition with the lengths and densities that were never set at their defaults for the world's unit.</summary>
+    internal FieldDefinition ResolveUnit(FieldDefinition definition) => definition.Resolved(Host.UnitsPerMetre, Host.FieldCore.Bodies.Layout.PositionLanes == 2);
+
     internal void CaptureSensor(FieldDefinition definition)
     {
         if(definition.Sensor>=0 && definition.SensorGeneration==0)

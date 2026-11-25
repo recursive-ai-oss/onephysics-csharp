@@ -16,17 +16,18 @@ internal sealed class Host3D : DiagnosisHost
         _e.BindJoints();
     }
 
+    public override float UnitsPerMetre => _e.Opt.UnitsPerMetre;
     public override int Dimension => 3;
     public override float Mass(int body) => _e.Mass[body];
-    public override float MaxExtent(int body) => _e.MaxExtent[body];
-    public override float MinExtent(int body) { float m = _e.MinExtent[body]; return m < float.MaxValue / 2 ? m : _e.ComputeMinExtent(body); }
-    public override float MaxLinearSpeed => _e.Opt.MaxLinearSpeed;
-    public override float SpeculativeDistance => _e.Opt.SpeculativeDistance;
+    public override float MaxExtent(int body) => _e.MaxExtent[body] / _e.Opt.UnitsPerMetre;
+    public override float MinExtent(int body) { float m = _e.MinExtent[body]; if (!(m < float.MaxValue / 2)) { m = _e.ComputeMinExtent(body); } return m < float.MaxValue / 2 ? m / _e.Opt.UnitsPerMetre : m; }
+    public override float MaxLinearSpeed => _e.Opt.MaxLinearSpeed / _e.Opt.UnitsPerMetre;
+    public override float SpeculativeDistance => _e.Opt.SpeculativeDistance / _e.Opt.UnitsPerMetre;
     public override bool ContinuousEnabled => _e.Opt.ContinuousEnabled;
-    public override double GravityMagnitude { get { var g = _e.Opt.Gravity; return System.Math.Sqrt((double)g.X * g.X + (double)g.Y * g.Y + (double)g.Z * g.Z); } }
+    public override double GravityMagnitude { get { var g = _e.Opt.Gravity; return System.Math.Sqrt((double)g.X * g.X + (double)g.Y * g.Y + (double)g.Z * g.Z) / _e.Opt.UnitsPerMetre; } }
     public override bool SleepEnabled => _e.Opt.SleepEnabled;
     public override float TimeToSleep => _e.Opt.TimeToSleep;
-    public override float SleepThreshold => _e.Opt.SleepThreshold;
+    public override float SleepThreshold => _e.Opt.SleepThreshold / _e.Opt.UnitsPerMetre;
 
     public override bool DetailedInspection { get => _e.Opt.DetailedInspection; set => _e.Opt.DetailedInspection = value; }
 
@@ -54,10 +55,10 @@ internal sealed class Host3D : DiagnosisHost
         var lb = new Vector3F(j.LBx, j.LBy, j.LBz);
         var ca = new Vector3F(_e.LocalCenter[3 * a], _e.LocalCenter[3 * a + 1], _e.LocalCenter[3 * a + 2]);
         var cb = new Vector3F(_e.LocalCenter[3 * b], _e.LocalCenter[3 * b + 1], _e.LocalCenter[3 * b + 2]);
-        f.ArmA = Length(la - ca); f.ArmB = Length(lb - cb);
+        f.ArmA = Length(la - ca) / _e.Opt.UnitsPerMetre; f.ArmB = Length(lb - cb) / _e.Opt.UnitsPerMetre;
         var wa = World(bodies, a, la); var wb = World(bodies, b, lb);
         double dx = wa.X - wb.X, dy = wa.Y - wb.Y, dz = wa.Z - wb.Z;
-        f.Gap = System.Math.Sqrt(dx * dx + dy * dy + dz * dz);
+        f.Gap = System.Math.Sqrt(dx * dx + dy * dy + dz * dz) / _e.Opt.UnitsPerMetre;
         return f;
     }
 

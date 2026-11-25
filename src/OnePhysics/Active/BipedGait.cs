@@ -160,13 +160,13 @@ internal static class BipedGait
 
     // Two-link leg: the thigh angle and knee flexion that put the ankle at (df, dl, du) from the hip. Roll comes from the line to the ankle; the knee bends in the
     // pitch plane, forward. The reach is kept a hair short of straight so the knee never locks (a locked knee has no gradient for the drive).
-    internal static void Ik(float l1, float l2, float df, float dl, float du, out float thighRho, out float thighPhi, out float knee)
+    internal static void Ik(float l1, float l2, float df, float dl, float du, out float thighRho, out float thighPhi, out float knee, float ku = 1f)
     {
         float d2 = df * df + dl * dl + du * du;
         float d = float.Sqrt(d2);
         float maxReach = (l1 + l2) * 0.9995f;
         if (d > maxReach) { float k = maxReach / d; df *= k; dl *= k; du *= k; d = maxReach; }
-        if (d < 0.05f) { d = 0.05f; }
+        if (d < 0.05f * ku) { d = 0.05f * ku; }
         float lineRho = (float)Math64.Atan2(df, -du);
         float lineSin = Clamp(dl / d, -1f, 1f);
         thighPhi = (float)Math64.Asin(lineSin);
@@ -178,11 +178,12 @@ internal static class BipedGait
     }
 
     /// <summary>The capture point's frequency, 1/s: sqrt(g / h) for a pendulum of height h.</summary>
-    internal static float Omega(float g, float h) => float.Sqrt(g / (h < 0.25f ? 0.25f : h));
+    internal static float Omega(float g, float h, float ku = 1f) => float.Sqrt(g / (h < 0.25f * ku ? 0.25f * ku : h));
 
     internal static void Step(ref GaitState s, in ActiveParams p, in BipedIn inp, ref BipedOut o)
     {
         var inn = inp;
+        float ku = p.K;   // the tuned lengths and speeds below are metre values: each is multiplied by the world units per metre
         float dt = inn.Dt;
         // The centre of mass velocity of a figure whose limbs are all being driven is noisy at the frame rate; the gait's decisions (where the foot lands) amplify velocity error by the pendulum's growth over a step, so they work on a smoothed value (time constant about 0.08 s).
         if (s.Primed == 0) { s.FVelF = inn.VelF; s.FVelL = inn.VelL; s.Primed = 1; }
@@ -215,7 +216,7 @@ internal static class BipedGait
         float groundU = inn.Left.GroundU < inn.Right.GroundU ? inn.Left.GroundU : inn.Right.GroundU;
         if (grounded == 1) { groundU = inn.Left.Grounded ? inn.Left.GroundU : inn.Right.GroundU; }
         else if (grounded == 2) { groundU = 0.5f * (inn.Left.GroundU + inn.Right.GroundU); }
-        float w0 = Omega(inn.Gravity, inn.ComU - groundU);
+        float w0 = Omega(inn.Gravity, inn.ComU - groundU, ku);
         float capF = inn.ComF + inn.VelF / w0, capL = planar ? 0f : inn.ComL + inn.VelL / w0;
         o.CaptureF = capF; o.CaptureL = capL;
         if (grounded == 0) { minF = maxF = inn.ComF; minL = maxL = inn.ComL; }
@@ -223,7 +224,7 @@ internal static class BipedGait
 
         float cmdSpeed = float.Sqrt(inn.CmdF * inn.CmdF + inn.CmdL * inn.CmdL);
         // A figure told to stop while it moves keeps stepping, planning for zero speed, until it has slowed down and is between steps; only then does the standing balance take over.
-        bool walking = inn.Walk && (cmdSpeed > 0.02f || (!planar && (s.Phase >= (byte)GaitPhase.SwingLeft || float.Sqrt(s.FVelF * s.FVelF + s.FVelL * s.FVelL) > Tun.StopSpeed)));
+        bool walking = inn.Walk && (cmdSpeed > 0.02f * ku || (!planar && (s.Phase >= (byte)GaitPhase.SwingLeft || float.Sqrt(s.FVelF * s.FVelF + s.FVelL * s.FVelL) > Tun.StopSpeed * ku)));
         float trig = bal.StepTrigger;
         bool needStep = !walking && grounded == 2 && (capF > maxF + trig || capF < minF - trig || (!planar && (capL > maxL + trig || capL < minL - trig)));
 
@@ -235,8 +236,8 @@ internal static class BipedGait
             if (walking)
             {
                 // The leg that will carry the first step is the one that stays (LastSwing); the weight must be over it, sideways too in 3D.
-                bool fwdOk = capF >= 0.5f * (inn.Left.AnkleF + inn.Right.AnkleF) + Tun.Launch;
-                bool latOk = planar || (Abs(inn.ComL - Leg(ref inn, s.LastSwing).AnkleL) < Tun.LatTol && Abs(inn.VelL) < 0.15f);
+                bool fwdOk = capF >= 0.5f * (inn.Left.AnkleF + inn.Right.AnkleF) + Tun.Launch * ku;
+                bool latOk = planar || (Abs(inn.ComL - Leg(ref inn, s.LastSwing).AnkleL) < Tun.LatTol * ku && Abs(inn.VelL) < 0.15f * ku);
                 launched = (fwdOk && latOk) || s.Time > 3f;
             }
             if (grounded == 2 && (needStep || (walking && launched)))
@@ -287,9 +288,9 @@ internal static class BipedGait
             float bL = walking ? planL * tCycle / (eT - 1f) + side * wk.StepWidth / (eT + 1f) : 0f;
             float xiNomEnd = bF * eT;   // the capture point of a steady gait at the end of the swing
             float pf = walking ? (xiNomEnd + wk.PlacementGain * (xiF - xiNomEnd)) - bF : xiF;
-            float minF0 = walking ? (planar ? Tun.MinStep : Tun.MinStep3) : -float.MaxValue;
+            float minF0 = walking ? (planar ? Tun.MinStep : Tun.MinStep3) * ku : -float.MaxValue;
             if (pf < minF0) { pf = minF0; }
-            if (!planar && walking && cmdSpeed <= 0.02f && s.FVelF < Tun.FinalSpeed) { pf = Clamp(pf, minF0, Tun.FinalPf); }   // stopping: the swing foot is put down beside the stance foot, not ahead of it, so the figure ends with its feet together
+            if (!planar && walking && cmdSpeed <= 0.02f * ku && s.FVelF < Tun.FinalSpeed * ku) { pf = Clamp(pf, minF0, Tun.FinalPf * ku); }   // stopping: the swing foot is put down beside the stance foot, not ahead of it, so the figure ends with its feet together
             float pl;
             if (planar) { pl = 0f; }
             else
@@ -307,7 +308,7 @@ internal static class BipedGait
                     if (inward > 0f)
                     {
                         float crossed = side > 0f ? -pl : pl;   // positive: wanted past the stance foot
-                        if (crossed > Tun.CrossLat) { pl = side > 0f ? Max(pl, -Tun.CrossMax) : Min(pl, Tun.CrossMax); }
+                        if (crossed > Tun.CrossLat * ku) { pl = side > 0f ? Max(pl, -Tun.CrossMax * ku) : Min(pl, Tun.CrossMax * ku); }
                         else { pl = side > 0f ? minGap : -minGap; }
                     }
                 }
@@ -339,7 +340,7 @@ internal static class BipedGait
 
             float ax = stance.AnkleF + tf, al = stance.AnkleL + tl, au = stance.AnkleU + tu;
             ref var so = ref LegO(ref o, swingLeg);
-            Ik(inn.Geom.L1, inn.Geom.L2, ax - swingL.HipF, planar ? 0f : al - swingL.HipL, au - swingL.HipU, out so.ThighRho, out so.ThighPhi, out so.KneeFlex);
+            Ik(inn.Geom.L1, inn.Geom.L2, ax - swingL.HipF, planar ? 0f : al - swingL.HipL, au - swingL.HipU, out so.ThighRho, out so.ThighPhi, out so.KneeFlex, ku);
             so.FootRho = swingL.PlaceSlopeRho * ss; so.FootPhi = 0f; so.Weight = 0f;
             if (planar) { so.ThighPhi = 0f; }
 
@@ -349,8 +350,8 @@ internal static class BipedGait
                 s.Steps++; s.LastSwing = (byte)swingLeg; s.Time = 0f;
                 if (walking && s.SumT > 0.2f)
                 {
-                    s.BiasF = Clamp(s.BiasF + Tun.Ki * (inn.CmdF - s.SumF / s.SumT), -0.5f * Max(1f, Abs(inn.CmdF)), 1f);
-                    s.BiasL = planar ? 0f : Clamp(s.BiasL + Tun.Ki * (inn.CmdL - s.SumL / s.SumT), -0.5f, 0.5f);
+                    s.BiasF = Clamp(s.BiasF + Tun.Ki * (inn.CmdF - s.SumF / s.SumT), -0.5f * Max(1f * ku, Abs(inn.CmdF)), 1f * ku);
+                    s.BiasL = planar ? 0f : Clamp(s.BiasL + Tun.Ki * (inn.CmdL - s.SumL / s.SumT), -0.5f * ku, 0.5f * ku);
                 }
 
                 s.SumF = 0f; s.SumL = 0f; s.SumT = 0f;
@@ -370,7 +371,7 @@ internal static class BipedGait
         if (grounded == 2)
         {
             float span = inn.Right.AnkleF - inn.Left.AnkleF;
-            if (Abs(span) > 0.02f) { float sr = Clamp((inn.ComF - inn.Left.AnkleF) / span, 0.1f, 0.9f); shareR = sr; shareL = 1f - sr; }
+            if (Abs(span) > 0.02f * ku) { float sr = Clamp((inn.ComF - inn.Left.AnkleF) / span, 0.1f, 0.9f); shareR = sr; shareL = 1f - sr; }
         }
 
         // Stance legs (both, in double support and shift).
@@ -405,7 +406,7 @@ internal static class BipedGait
                     // Starting from rest: the hip is brought forward (and, in 3D, over the foot that will stay) a little more as time passes, until the capture point has left the feet and the first step can be taken.
                     float midF = 0.5f * (inn.Left.AnkleF + inn.Right.AnkleF), midL = 0.5f * (inn.Left.AnkleL + inn.Right.AnkleL);
                     // The hip moves by (where it should be relative to the ankles' middle) minus (where it is); this leg's hip target is its own hip moved by that.
-                    xh = lg.HipF - lg.AnkleF + midF + Min(Tun.Lean, Tun.LeanRate * s.Time);
+                    xh = lg.HipF - lg.AnkleF + midF + Min(Tun.Lean * ku, Tun.LeanRate * ku * s.Time);
                     float over = Tun.Over * Clamp(s.Time / 0.5f, 0f, 1f);
                     yh = planar ? 0f : lg.HipL - lg.AnkleL + midL + over * (Leg(ref inn, s.LastSwing).AnkleL - midL);
                 }
@@ -421,7 +422,7 @@ internal static class BipedGait
                     float sinceTouch = swingNow >= 0 ? s.Time + Tun.Ds : s.Time;
                     float growth = (float)Math64.Exp((double)(w0 * Min(sinceTouch, tStep)));
                     float xiNom = (inn.CmdF + s.BiasF) * tStep / (eNom - 1f) * growth;
-                    float trim = Clamp(wk.SpeedFeedback * ((comRel + inn.VelF / w0) - xiNom), Tun.TrimMin, Tun.TrimMax);
+                    float trim = Clamp(wk.SpeedFeedback * ((comRel + inn.VelF / w0) - xiNom), Tun.TrimMin * ku, Tun.TrimMax * ku);
                     float acc = w0 * w0 * (comRel - trim);
                     float xhN = nl.HipF - nl.AnkleF + inn.VelF * tau + 0.5f * acc * tau * tau;
                     xh = xhN + nl.AnkleF - lg.AnkleF + lg.HipF - nl.HipF;
@@ -431,7 +432,7 @@ internal static class BipedGait
                         float nextSide = swingNow >= 0 ? (swingNow == 0 ? 1f : -1f) : (s.LastSwing == 0 ? -1f : 1f);   // the side the next swing leg lies on
                         float comRelL = inn.ComL - nl.AnkleL;
                         float xiNomL = ((inn.CmdL + s.BiasL) * tStep / (eNom - 1f) + nextSide * wk.StepWidth / (eNom + 1f)) * growth;
-                        float trimL = Clamp(wk.LateralFeedback * ((comRelL + inn.VelL / w0) - xiNomL), -Tun.TrimLat, Tun.TrimLat);
+                        float trimL = Clamp(wk.LateralFeedback * ((comRelL + inn.VelL / w0) - xiNomL), -Tun.TrimLat * ku, Tun.TrimLat * ku);
                         float accL = w0 * w0 * (comRelL - trimL);
                         float yhN = nl.HipL - nl.AnkleL + inn.VelL * tau + 0.5f * accL * tau * tau;
                         yh = yhN + nl.AnkleL - lg.AnkleL + lg.HipL - nl.HipL;
@@ -461,7 +462,7 @@ internal static class BipedGait
             if (walking)
             {
                 // Walking: speed is the foot placement's job; the ankle only trims it, with a pressure point kept close to the ankle so the foot stays flat (a pressure point out at the toe lifts the heel and the foot rolls over).
-                float trim = Clamp((inn.CmdF - inn.VelF) * 0.08f, -0.05f, 0.05f);
+                float trim = Clamp((inn.CmdF - inn.VelF) * 0.08f, -0.05f * ku, 0.05f * ku);
                 pcF = centreF - trim;
                 if (phase == GaitPhase.DoubleSupport) { pcF = centreF - 0.85f * inn.Geom.FootBack; }   // leaning into the start: pressure behind the centre of mass pushes it forward
                 pcL = centreL;
@@ -508,5 +509,7 @@ internal readonly struct ActiveParams
 {
     public readonly BalanceDef Balance;
     public readonly WalkerDef Walker;
-    public ActiveParams(BalanceDef b, WalkerDef w) { Balance = b; Walker = w; }
+    /// <summary>World units per metre: the controller's tuned lengths and speeds are metre values.</summary>
+    public readonly float K;
+    public ActiveParams(BalanceDef b, WalkerDef w, float unitsPerMetre = 1f) { Balance = b; Walker = w; K = unitsPerMetre; }
 }

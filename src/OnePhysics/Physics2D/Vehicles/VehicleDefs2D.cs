@@ -10,7 +10,7 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// <c>f(s) = sin(C · atan(B·s − E·(B·s − atan(B·s))))</c>, scaled by friction and the load on the wheel. The slip ratio is the wheel's surface speed against the ground speed along the rolling direction.
 /// A 2D vehicle has no sideways direction, so there is no lateral curve: only the longitudinal part of the 3D tyre model applies.
 /// </summary>
-public sealed class TyreDef
+public sealed partial class TyreDef
 {
     /// <summary>Peak friction coefficient of the tyre; combined with the ground shape's friction as <c>sqrt(tyre · ground)</c>, the world's rule. Default 1.5 (about 0.95 on the default ground). Within 0 to 1000.</summary>
     public float Friction { get; set; } = 1.5f;
@@ -44,7 +44,7 @@ public sealed class TyreDef
 /// (+X forward and +Y up in the presets). The wheel centre sits at <c>Position + SuspensionDirection · length</c> with <c>length</c> between <see cref="SuspensionMinLength"/> and <see cref="SuspensionMaxLength"/>;
 /// <see cref="Position"/> is the highest the wheel centre can be. The wheel is not a body: a circle of the wheel's radius sweeps along the suspension for the ground.
 /// </summary>
-public sealed class WheelDef
+public sealed partial class WheelDef
 {
     /// <summary>Top of the suspension: the wheel centre at zero length, in the chassis frame. Default the origin.</summary>
     public Vector2F Position { get; set; }
@@ -116,7 +116,7 @@ public sealed class WheelDef
 }
 
 /// <summary>An engine: peak torque, rev range and a torque curve.</summary>
-public sealed class EngineDef
+public sealed partial class EngineDef
 {
     /// <summary>Torque at the curve's value 1, N·m. Default 400. Positive, at most 10000000.</summary>
     public float MaxTorque { get; set; } = 400f;
@@ -252,7 +252,7 @@ public sealed class DifferentialDef
 /// indices name them everywhere (the differentials, <see cref="Vehicle.GetWheel"/>). Chassis frame: +X forward and +Y up in the presets. Definitions are classes so the arrays and the presets can be edited freely;
 /// <see cref="PhysicsWorld2D.AddVehicle(Body, VehicleDef)"/> copies what it needs.
 /// </summary>
-public sealed class VehicleDef
+public sealed partial class VehicleDef
 {
     /// <summary>The wheels, 1 to 32.</summary>
     public WheelDef[] Wheels { get; set; } = Array.Empty<WheelDef>();
@@ -275,7 +275,7 @@ public sealed class VehicleDef
     /// <summary>A deep copy.</summary>
     public VehicleDef Clone()
     {
-        var c = new VehicleDef { Engine = Engine.Clone(), Transmission = Transmission.Clone(), AirPitchTorque = AirPitchTorque, GroundPitchTorque = GroundPitchTorque };
+        var c = new VehicleDef { Engine = Engine.Clone(), Transmission = Transmission.Clone(), AirPitchTorque = AirPitchTorque, GroundPitchTorque = GroundPitchTorque, Units = Units };
         c.Wheels = new WheelDef[Wheels.Length];
         for (int i = 0; i < Wheels.Length; i++) { c.Wheels[i] = Wheels[i].Clone(); }
         c.Differentials = new DifferentialDef[Differentials.Length];
@@ -288,6 +288,7 @@ public sealed class VehicleDef
     /// <exception cref="ArgumentNullException">A part is null.</exception>
     public void Validate()
     {
+        if (Units != 1f) { var m = Scaled(new UnitScaler(1f / Units, true)); m.Units = 1f; m.Validate(); return; }
         if (Wheels == null) { throw new ArgumentNullException(nameof(Wheels), "Wheels must not be null."); }
         if (Engine == null) { throw new ArgumentNullException(nameof(Engine), "Engine must not be null."); }
         if (Transmission == null) { throw new ArgumentNullException(nameof(Transmission), "Transmission must not be null."); }
@@ -398,7 +399,7 @@ public enum VehicleKind : byte
 /// towards the commanded speed within its torque limit (Wong, <i>Theory of Ground Vehicles</i>, ch. 5). Inputs (<see cref="Vehicle.SetInput"/>): throttle −1..1 drives the belt; the second input pitches the hull in the air.
 /// There is no skid steering in a side view.
 /// </summary>
-public sealed class TrackedVehicleDef
+public sealed partial class TrackedVehicleDef
 {
     /// <summary>Road wheels of the track, 1 to 32. Their tyre and handbrake values are ignored.</summary>
     public WheelDef[] Wheels { get; set; } = Array.Empty<WheelDef>();
@@ -439,6 +440,7 @@ public sealed class TrackedVehicleDef
 
     internal void Validate()
     {
+        if (Units != 1f) { var m = Scaled(new UnitScaler(1f / Units, true)); m.Units = 1f; m.Validate(); return; }
         if (Wheels == null) { throw new ArgumentNullException(nameof(Wheels), "Wheels must not be null."); }
         if (Wheels.Length < 1 || Wheels.Length > 32) { throw new ArgumentOutOfRangeException(nameof(Wheels), Wheels.Length, "A track needs 1 to 32 road wheels."); }
         if (Grip == null) { throw new ArgumentNullException(nameof(Grip), "Grip must not be null."); }
@@ -458,7 +460,9 @@ public sealed class TrackedVehicleDef
     }
 
     /// <summary>The wheeled definition the engine runs the road wheels with: the track grip as their tyre, the brake torque spread over the wheels in proportion to their radius.</summary>
-    internal VehicleDef ToWheeled()
+    internal VehicleDef ToWheeled() { var d = ToWheeledCore(); d.Units = Units; return d; }
+
+    private VehicleDef ToWheeledCore()
     {
         Validate();
         var d = new VehicleDef { Wheels = new WheelDef[Wheels.Length], AirPitchTorque = AirPitchTorque };
@@ -498,7 +502,7 @@ public sealed class TrackedVehicleDef
 /// on the ground and in the air, so a wheelie (driving torque lifts the front wheel through the tyre force below the centre of mass) and a stoppie (front braking pushes the rear up) can be caught or provoked.
 /// The wheels sweep for the ground like those of a <see cref="VehicleDef"/>. Chassis frame: +X forward, +Y up.
 /// </summary>
-public sealed class MotorcycleDef
+public sealed partial class MotorcycleDef
 {
     /// <summary>The front wheel (wheel 0). Its tyre and brake torque apply.</summary>
     public WheelDef Front { get; set; } = new();
@@ -534,6 +538,7 @@ public sealed class MotorcycleDef
 
     internal void Validate()
     {
+        if (Units != 1f) { var m = Scaled(new UnitScaler(1f / Units, true)); m.Units = 1f; m.Validate(); return; }
         if (Front == null || Rear == null || Engine == null || Transmission == null) { throw new ArgumentNullException(nameof(Front), "Front, Rear, Engine and Transmission must not be null."); }
         VehicleCheck2D.Positive(FinalDriveRatio, nameof(FinalDriveRatio)); VehicleCheck2D.Within(FinalDriveRatio, 0f, 1000f, nameof(FinalDriveRatio));
         VehicleCheck2D.Within(LeanTorque, 0f, 1e9f, nameof(LeanTorque));
@@ -543,7 +548,9 @@ public sealed class MotorcycleDef
     }
 
     /// <summary>The wheeled definition the engine runs the two wheels with: front wheel 0, rear wheel 1, one differential driving the rear wheel.</summary>
-    internal VehicleDef ToWheeled()
+    internal VehicleDef ToWheeled() { var d = ToWheeledCore(); d.Units = Units; return d; }
+
+    private VehicleDef ToWheeledCore()
     {
         Validate();
         return new VehicleDef

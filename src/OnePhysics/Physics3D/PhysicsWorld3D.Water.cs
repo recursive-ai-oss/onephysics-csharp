@@ -23,10 +23,11 @@ public sealed partial class PhysicsWorld3D
     public ShallowWater AddShallowWater(double minX, double minZ, double maxX, double maxZ, double level, float cellSize = 0.5f, double floor = double.NaN)
     {
         if (!double.IsFinite(minX) || !double.IsFinite(minZ) || !double.IsFinite(maxX) || !double.IsFinite(maxZ) || !(maxX > minX) || !(maxZ > minZ)) { throw new ArgumentOutOfRangeException(nameof(maxX), "The rectangle must be finite and not empty."); }
+        if (Options.UnitsPerMetre != 1f && cellSize == 0.5f) { cellSize = 0.5f * Options.UnitsPerMetre; }    // the default cell is half a metre, in whatever unit the world uses
         if (!(cellSize >= 0.001f) || !float.IsFinite(cellSize)) { throw new ArgumentOutOfRangeException(nameof(cellSize), cellSize, "cellSize must be at least 0.001 metres."); }
         double cx = Math.Ceiling((maxX - minX) / cellSize), cz = Math.Ceiling((maxZ - minZ) / cellSize);
         if (cx > 1 << 20 || cz > 1 << 20) { throw new ArgumentOutOfRangeException(nameof(cellSize), cellSize, "The grid would have more than 1048576 cells along an axis."); }
-        return CreateShallowWater(new ShallowWaterDef { MinX = minX, MinZ = minZ, CellsX = (int)Math.Max(cx, 2), CellsZ = (int)Math.Max(cz, 2), CellSize = cellSize, Level = level, FloorHeight = double.IsNaN(floor) ? level - 10.0 : floor });
+        return CreateShallowWater(new ShallowWaterDef { MinX = minX, MinZ = minZ, CellsX = (int)Math.Max(cx, 2), CellsZ = (int)Math.Max(cz, 2), CellSize = cellSize, Level = level, FloorHeight = double.IsNaN(floor) ? level - 10.0 * Options.UnitsPerMetre : floor });
     }
 
     /// <summary>Adds a body of shallow water from a definition (middle tier). The definition is copied; sleeping bodies stay as they are until the water moves them.</summary>
@@ -35,7 +36,7 @@ public sealed partial class PhysicsWorld3D
     {
         using var replayMutation = RecordMutation("PhysicsWorld3D.CreateShallowWater");
         ArgumentNullException.ThrowIfNull(definition);
-        var spec = definition.ToSpec(nameof(definition));
+        var spec = definition.ToSpec(nameof(definition), Options.UnitsPerMetre);
         var (slot, gen) = _engine.Water.Create(spec, nameof(definition));
         return new ShallowWater(this, slot, gen);
     }

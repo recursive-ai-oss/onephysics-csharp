@@ -12,6 +12,7 @@ internal sealed partial class Diagnoser
     public void StaticPass(DiagnosisHost h)
     {
         _handles = h.Core;
+        _unitsPerMetre = h.UnitsPerMetre;
         _firstStep = _lastStep = h.StepCount;
         var core = h.Core;
         var bodies = core.Bodies;
@@ -44,14 +45,14 @@ internal sealed partial class Diagnoser
         {
             Add(DiagnosticCode.ImplausibleGravity, DiagnosticSeverity.Warning, mag, default, default,
                 [V("gravity", mag, "m/s^2", GravityHigh)],
-                "Gravity is " + N(mag) + " m/s^2, which is " + N(mag / 9.81) + " times Earth's. The engine's tolerances (contact distance, rest thresholds, speed limit) are in metres, so a world authored in centimetres, millimetres or pixels behaves as if it were enormous.",
+                "Gravity is " + N(mag) + " m/s^2, which is " + N(mag / 9.81) + " times Earth's. The engine's tolerances (contact distance, rest thresholds, speed limit) are in metres, so a world authored in centimetres, millimetres or pixels behaves as if it were enormous." + UnitNote(),
                 "If one world unit is not a metre, scale the scene to metres, or set the gravity to about 9.81 in metres per second squared.");
         }
         else if (mag > 0 && mag < GravityLow)
         {
             Add(DiagnosticCode.ImplausibleGravity, DiagnosticSeverity.Info, GravityLow / mag, default, default,
                 [V("gravity", mag, "m/s^2", GravityLow)],
-                "Gravity is " + N(mag) + " m/s^2, far weaker than any planet's. It is legitimate for a low-gravity world; it is also what a world authored in a larger unit than metres looks like.",
+                "Gravity is " + N(mag) + " m/s^2, far weaker than any planet's. It is legitimate for a low-gravity world; it is also what a world authored in a larger unit than metres looks like." + UnitNote(),
                 "If the world is meant to be Earth-like, set the gravity to about 9.81 in metres per second squared and size the scene in metres.");
         }
     }
@@ -92,7 +93,7 @@ internal sealed partial class Diagnoser
         {
             Add(DiagnosticCode.ImplausibleSize, DiagnosticSeverity.Warning, spec / System.Math.Max(thick, 1e-9), [s], default,
                 [V("thickness", thick, "m", spec)],
-                "Dynamic body is " + N(thick) + " m thick, thinner than the " + N(spec) + " m distance within which contacts are made ahead of touching. Both faces are then in contact range at once and the contact solve cannot tell which side the other shape is on.",
+                "Dynamic body is " + N(thick) + " m thick, thinner than the " + N(spec) + " m distance within which contacts are made ahead of touching. Both faces are then in contact range at once and the contact solve cannot tell which side the other shape is on." + UnitNote(),
                 "Make the shape at least a few times thicker than " + N(spec) + " m, or, if the scene is not in metres, rescale it to metres.");
         }
 
@@ -101,7 +102,7 @@ internal sealed partial class Diagnoser
         {
             Add(DiagnosticCode.ImplausibleSize, DiagnosticSeverity.Info, reach / HugeBody, [s], default,
                 [V("reach", reach, "m", HugeBody)],
-                "Dynamic body reaches " + N(reach) + " m from its centre of mass. Float32 positions of shape points that far out resolve only to " + N(reach * 1.2e-7) + " m, and its contacts are tuned for much smaller things.",
+                "Dynamic body reaches " + N(reach) + " m from its centre of mass. Float32 positions of shape points that far out resolve only to " + N(reach * 1.2e-7) + " m, and its contacts are tuned for much smaller things." + UnitNote(),
                 "Make large things static, split them into smaller shapes, or rescale the scene to metres.");
         }
     }
@@ -210,7 +211,7 @@ internal sealed partial class Diagnoser
             int a = cs.BodyA[c], b = cs.BodyB[c];
             bool da = bodies.TypeOf(a) == BodyType.Dynamic, db = bodies.TypeOf(b) == BodyType.Dynamic;
             if (!da && !db) { continue; }
-            double depth = Depth(core, c);
+            double depth = Depth(core, c) / h.UnitsPerMetre;
             double thin = HalfThin(h, a, b);
             double ratio = 0;
             if (da && db)

@@ -249,7 +249,7 @@ public sealed partial class PhysicsWorld2D
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddVehicle");
         ArgumentNullException.ThrowIfNull(def);
         if (chassis.World != this) { throw new ArgumentException("The chassis belongs to another world.", nameof(chassis)); }
-        int v = _engine.CreateVehicle(chassis.Handle, def);
+        int v = _engine.CreateVehicle(chassis.Handle, def.WithDefaultsFor(Options.LengthUnit));
         return new Vehicle(this, v, _engine.VehHandles.GenerationOf(v));
     }
 
@@ -264,6 +264,7 @@ public sealed partial class PhysicsWorld2D
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddVehicle");
         ArgumentNullException.ThrowIfNull(def);
         if (chassis.World != this) { throw new ArgumentException("The chassis belongs to another world.", nameof(chassis)); }
+        def = def.WithDefaultsFor(Options.LengthUnit);
         int v = _engine.CreateVehicle(chassis.Handle, def.ToWheeled(), track: def);
         return new Vehicle(this, v, _engine.VehHandles.GenerationOf(v));
     }
@@ -279,6 +280,7 @@ public sealed partial class PhysicsWorld2D
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddVehicle");
         ArgumentNullException.ThrowIfNull(def);
         if (chassis.World != this) { throw new ArgumentException("The chassis belongs to another world.", nameof(chassis)); }
+        def = def.WithDefaultsFor(Options.LengthUnit);
         int v = _engine.CreateVehicle(chassis.Handle, def.ToWheeled(), bike: def);
         return new Vehicle(this, v, _engine.VehHandles.GenerationOf(v));
     }
@@ -297,6 +299,7 @@ public sealed partial class PhysicsWorld2D
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddVehicle");
         ArgumentNullException.ThrowIfNull(def);
+        def = def.WithDefaultsFor(Options.LengthUnit);
         def.Validate();
         var body = AddChassis(ground, def.Wheels, chassisSize, chassisMass, angleRadians);
         try { return AddVehicle(body, def); }
@@ -306,17 +309,17 @@ public sealed partial class PhysicsWorld2D
     /// <summary>Happy path: <see cref="VehicleDef.Car"/> on a 3.2 × 0.8 m, 1500 kg chassis resting on the ground at <paramref name="ground"/>.</summary>
     /// <param name="ground">Ground point under the chassis centre.</param>
     /// <param name="angleRadians">Orientation of the chassis.</param>
-    public Vehicle AddCar(Vector2D ground, float angleRadians = 0f) => AddVehicle(ground, VehicleDef.Car, new Vector2F(3.2f, 0.8f), 1500f, angleRadians);
+    public Vehicle AddCar(Vector2D ground, float angleRadians = 0f) => AddVehicle(ground, VehicleDef.Car.InUnit(Options.LengthUnit), new Vector2F(3.2f, 0.8f) * Options.UnitsPerMetre, 1500f, angleRadians);
 
     /// <summary>Happy path: <see cref="VehicleDef.Truck"/> on a 6 × 1.4 m, 8000 kg chassis resting on the ground at <paramref name="ground"/>.</summary>
     /// <param name="ground">Ground point under the chassis centre.</param>
     /// <param name="angleRadians">Orientation of the chassis.</param>
-    public Vehicle AddTruck(Vector2D ground, float angleRadians = 0f) => AddVehicle(ground, VehicleDef.Truck, new Vector2F(6f, 1.4f), 8000f, angleRadians);
+    public Vehicle AddTruck(Vector2D ground, float angleRadians = 0f) => AddVehicle(ground, VehicleDef.Truck.InUnit(Options.LengthUnit), new Vector2F(6f, 1.4f) * Options.UnitsPerMetre, 8000f, angleRadians);
 
     /// <summary>Happy path: <see cref="VehicleDef.Kart"/> on a 1.4 × 0.2 m, 150 kg chassis resting on the ground at <paramref name="ground"/>.</summary>
     /// <param name="ground">Ground point under the chassis centre.</param>
     /// <param name="angleRadians">Orientation of the chassis.</param>
-    public Vehicle AddKart(Vector2D ground, float angleRadians = 0f) => AddVehicle(ground, VehicleDef.Kart, new Vector2F(1.4f, 0.2f), 150f, angleRadians);
+    public Vehicle AddKart(Vector2D ground, float angleRadians = 0f) => AddVehicle(ground, VehicleDef.Kart.InUnit(Options.LengthUnit), new Vector2F(1.4f, 0.2f) * Options.UnitsPerMetre, 150f, angleRadians);
 
     /// <summary>
     /// Happy path: a tank resting on the ground at <paramref name="ground"/> (the ground point under the hull's centre), facing +X, built from a hull box of the preset's size and mass.
@@ -329,7 +332,7 @@ public sealed partial class PhysicsWorld2D
     public Vehicle AddTank(Vector2D ground, TrackedVehicleDef? def = null, float angleRadians = 0f)
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddTank");
-        def ??= TrackedVehicleDef.Tank;
+        def = def == null ? TrackedVehicleDef.Tank.InUnit(Options.LengthUnit) : def.WithDefaultsFor(Options.LengthUnit);
         def.Validate();
         var body = AddChassis(ground, def.Wheels, def.ChassisSize, def.ChassisMass, angleRadians);
         try { return AddVehicle(body, def); }
@@ -347,7 +350,7 @@ public sealed partial class PhysicsWorld2D
     public Vehicle AddMotorcycle(Vector2D ground, MotorcycleDef? def = null, float angleRadians = 0f)
     {
         using var replayMutation = RecordMutation("PhysicsWorld2D.AddMotorcycle");
-        def ??= MotorcycleDef.Road;
+        def = def == null ? MotorcycleDef.Road.InUnit(Options.LengthUnit) : def.WithDefaultsFor(Options.LengthUnit);
         def.Validate();
         var body = AddChassis(ground, new[] { def.Front, def.Rear }, def.ChassisSize, def.ChassisMass, angleRadians);
         try { return AddVehicle(body, def); }
@@ -361,7 +364,7 @@ public sealed partial class PhysicsWorld2D
         if (!(size.X > 0f && size.Y > 0f)) { throw new ArgumentOutOfRangeException(nameof(size), size, "The chassis size must be positive."); }
         VehicleCheck2D.Positive(mass, nameof(mass));
         float drop = 0f;
-        foreach (var w in wheels) { drop = Math.Max(drop, w.Radius + w.SuspensionMaxLength - 0.05f - w.Position.Y); }
+        foreach (var w in wheels) { drop = Math.Max(drop, w.Radius + w.SuspensionMaxLength - 0.05f * Options.UnitsPerMetre - w.Position.Y); }
         return AddBox(size, new Vector2D(ground.X, ground.Y + drop), angle, density: mass / (size.X * size.Y));
     }
 

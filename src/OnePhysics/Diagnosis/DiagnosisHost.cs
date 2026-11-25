@@ -37,6 +37,9 @@ internal abstract class DiagnosisHost
     /// <summary>2 or 3.</summary>
     public abstract int Dimension { get; }
 
+    /// <summary>World units per metre of the diagnosed world's length unit. Every length, speed and acceleration this host reports is already converted to metres, so the thresholds of the diagnosis are metre values whatever the unit.</summary>
+    public abstract float UnitsPerMetre { get; }
+
     /// <summary>The shared core of the diagnosed world.</summary>
     public WorldCore Core { get; protected init; } = null!;
 
@@ -91,7 +94,7 @@ internal abstract class DiagnosisHost
         var v = Core.Bodies.LinearVelocityOf(body);
         double s = 0;
         for (int i = 0; i < v.Length; i++) { s += (double)v[i] * v[i]; }
-        return System.Math.Sqrt(s);
+        return System.Math.Sqrt(s) / UnitsPerMetre;
     }
 
     /// <summary>Angular speed of a body, rad/s.</summary>

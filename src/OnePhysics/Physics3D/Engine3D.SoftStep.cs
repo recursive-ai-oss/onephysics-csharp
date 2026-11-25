@@ -36,7 +36,7 @@ internal sealed partial class Engine3D
 
     private bool SoftTouch(SoftBodyData d, SoftBodyData o)
     {
-        double pad = d.Radius + o.Radius + Opt.SpeculativeDistance + 0.02;
+        double pad = d.Radius + o.Radius + Opt.SpeculativeDistance + 0.02 * (double)Opt.UnitsPerMetre;
         if (d.MinX - pad > o.MaxX || d.MaxX + pad < o.MinX || d.MinY - pad > o.MaxY || d.MaxY + pad < o.MinY || d.MinZ - pad > o.MaxZ || d.MaxZ + pad < o.MinZ) { return false; }
         return SoftPairAllowed(d.Def, o.Def);
     }
@@ -317,7 +317,7 @@ internal sealed partial class Engine3D
     private bool RigidNear(SoftBodyData d)
     {
         var bodies = Core.Bodies;
-        double pad = d.Radius + Opt.SpeculativeDistance + 0.02;
+        double pad = d.Radius + Opt.SpeculativeDistance + 0.02 * (double)Opt.UnitsPerMetre;
         foreach (int b in Core.AwakeBodies)
         {
             var p = bodies.PositionOf(b);
@@ -400,14 +400,14 @@ internal sealed partial class Engine3D
         {
             var d = _awakeSoft[a];
             d.CandStart = _candCount;
-            double pad = d.Radius + margin + 0.05;
+            double pad = d.Radius + margin + 0.05 * (double)Opt.UnitsPerMetre;
             var box = new Aabb3D(d.MinX - pad, d.MinY - pad, d.MinZ - pad, d.MaxX + pad, d.MaxY + pad, d.MaxZ + pad);
             var q = new StaticQuery { E = this, D = d };
             Bp.QueryAabb(box, ref q, BodyTypeMask.Static | BodyTypeMask.Dynamic);
             foreach (int b in Core.AwakeBodies)
             {
                 var p = bodies.PositionOf(b);
-                double reach = SoftReachOf(b) + 0.05;
+                double reach = SoftReachOf(b) + 0.05 * (double)Opt.UnitsPerMetre;
                 double x0 = _spPos0[3 * b], y0 = _spPos0[3 * b + 1], z0 = _spPos0[3 * b + 2];
                 if (Math.Min(p[0], x0) - reach > box.MaxX || Math.Max(p[0], x0) + reach < box.MinX
                     || Math.Min(p[1], y0) - reach > box.MaxY || Math.Max(p[1], y0) + reach < box.MinY

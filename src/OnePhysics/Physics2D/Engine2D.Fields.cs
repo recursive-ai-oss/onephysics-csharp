@@ -11,6 +11,7 @@ internal sealed partial class Engine2D : IFieldHost
     private FieldStore? _fields;
     internal FieldStore Fields => _fields ??= new FieldStore(this);
     FieldStore IFieldHost.Fields => Fields;
+    float IFieldHost.UnitsPerMetre => Opt.UnitsPerMetre;
     WorldCore IFieldHost.FieldCore => Core;
     int IFieldHost.EngineSectionId => Id;
     Vector3F IFieldHost.AngularTorque(int b,Vector3F alpha) => default;

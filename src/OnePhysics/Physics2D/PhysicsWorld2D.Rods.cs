@@ -18,10 +18,16 @@ public sealed partial class PhysicsWorld2D
         if ((uint)index >= (uint)store.Data.Length || store.Data[index] == null) throw new ArgumentOutOfRangeException(nameof(index),index,"No live rod in this slot.");
         return new Rod(store,index,store.Generations[index]);
     }
+    // A rod that kept the default material (the SI rope) takes the rope in the world's unit; a material you give is in world units, as the presets are after InUnit.
+    private RodDef WithUnitDefaults(RodDef definition)
+    {
+        if (Options.UnitsPerMetre == 1f || !definition.Material.IsDefaultRope) { return definition; }
+        var c = definition.ShallowCopy(); c.Material = RodMaterial.Rope.InUnit(Options.LengthUnit); return c;
+    }
     /// <summary>Adds a copied rod definition. Throws ArgumentNullException or ArgumentOutOfRangeException before modifying the world.</summary>
     public Rod AddRod(RodDef definition)
     {
-        ArgumentNullException.ThrowIfNull(definition); definition.Validate();
+        ArgumentNullException.ThrowIfNull(definition); definition = WithUnitDefaults(definition); definition.Validate();
         var points = new Vector3D[definition.Points.Length];
         for (int i = 0; i < points.Length; i++) { var p = definition.Points[i]; points[i] = new Vector3D(p.X,p.Y,0); }
         foreach (var a in definition.Attachments) _engine.Rods.ValidateAttachment(a.Body,new Vector3F(a.LocalAnchor.X,a.LocalAnchor.Y,0),a.BreakForce);
@@ -34,13 +40,13 @@ public sealed partial class PhysicsWorld2D
     }
     /// <summary>Adds a straight flexible rope, default 32 segments, first end pinned, last end free. Throws ArgumentOutOfRangeException for invalid coordinates or segment count 1..4096.</summary>
     public Rod AddRope(Vector2D from, Vector2D to, int segments = 32, bool pinStart = true, bool pinEnd = false)
-        => AddRod(LineRod(from,to,segments,pinStart,pinEnd,RodMaterial.Rope,false));
+        => AddRod(LineRod(from,to,segments,pinStart,pinEnd,RodMaterial.Rope.InUnit(Options.LengthUnit),false));
     /// <summary>Adds a straight stiff cable, default 32 segments and a clamped first end. Last end free. Same limits as AddRope.</summary>
     public Rod AddCable(Vector2D from, Vector2D to, int segments = 32, bool pinStart = true, bool pinEnd = false)
-        => AddRod(LineRod(from,to,segments,pinStart,pinEnd,RodMaterial.Cable,true));
+        => AddRod(LineRod(from,to,segments,pinStart,pinEnd,RodMaterial.Cable.InUnit(Options.LengthUnit),true));
     /// <summary>Adds a thin hair strand, default 16 segments and a clamped first end. Same limits as AddRope.</summary>
     public Rod AddHair(Vector2D from, Vector2D to, int segments = 16)
-        => AddRod(LineRod(from,to,segments,true,false,RodMaterial.Hair,true));
+        => AddRod(LineRod(from,to,segments,true,false,RodMaterial.Hair.InUnit(Options.LengthUnit),true));
     private static RodDef LineRod(Vector2D from, Vector2D to, int segments, bool pinStart, bool pinEnd, RodMaterial material, bool clamp)
     {
         if (segments < 1 || segments > 4096) throw new ArgumentOutOfRangeException(nameof(segments));

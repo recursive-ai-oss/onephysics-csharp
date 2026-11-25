@@ -9,6 +9,9 @@ namespace RecursiveAI.OnePhysics.Water;
 /// <summary>What the water store needs from an engine. Planar engines present positions as 3D vectors with z = 0 and take only the components in their plane.</summary>
 internal interface IWaterHost
 {
+    /// <summary>World units per metre of the world's length unit; 1 for a world in metres.</summary>
+    float UnitsPerMetre { get; }
+
     WorldCore Core { get; }
     bool Planar { get; }
     int EngineSectionId { get; }
@@ -113,13 +116,14 @@ internal sealed partial class WaterStore : ISnapshotSection
     private static double Snap(double v) => Math.Round(v / Grid32) * Grid32;
 
     /// <summary>Validates a specification; throws ArgumentOutOfRangeException naming the field.</summary>
-    internal static void Validate(Spec s, bool planar, string name)
+    internal static void Validate(Spec s, bool planar, string name, float unitsPerMetre = 1f)
     {
+        float wide = unitsPerMetre > 1f ? unitsPerMetre : 1f;
         if (s.Nx < 2 || s.Nx > 1 << 20) { throw new ArgumentOutOfRangeException(name, s.Nx, "The number of cells along x must be within 2..1048576."); }
         if (planar) { if (s.Nz != 1) { throw new ArgumentOutOfRangeException(name, s.Nz, "A planar grid has one row."); } }
         else if (s.Nz < 2 || s.Nz > 1 << 20) { throw new ArgumentOutOfRangeException(name, s.Nz, "The number of cells along z must be within 2..1048576."); }
         if ((long)s.Nx * s.Nz > WaterGrid.MaxCellsPerGrid) { throw new ArgumentOutOfRangeException(name, (long)s.Nx * s.Nz, "A grid holds at most " + WaterGrid.MaxCellsPerGrid.ToString(CultureInfo.InvariantCulture) + " cells."); }
-        if (!(s.CellSize >= 0.001f && s.CellSize <= 1000f)) { throw new ArgumentOutOfRangeException(name, s.CellSize, "CellSize must be within 0.001..1000 metres."); }
+        if (!(s.CellSize >= 0.001f && s.CellSize <= 1000f * wide)) { throw new ArgumentOutOfRangeException(name, s.CellSize, "CellSize must be within 0.001 world units and 1000 metres."); }
         Bound(s.OriginX, "the grid's x origin", name); Bound(s.OriginZ, "the grid's z origin", name); Bound(s.FloorHeight, "FloorHeight", name); Bound(s.Level, "Level", name); Bound(s.SearchTop, "BedSearchTop", name);
         if (Math.Abs(s.OriginX + s.Nx * (double)s.CellSize) > MaxCoordinate || Math.Abs(s.OriginZ + s.Nz * (double)s.CellSize) > MaxCoordinate) { throw new ArgumentOutOfRangeException(name, "The grid's far corner lies beyond ±2^21 metres."); }
         if (s.Bed != null)
@@ -133,12 +137,12 @@ internal sealed partial class WaterStore : ISnapshotSection
         {
             if (!Enum.IsDefined(s.Edges[e])) { throw new ArgumentOutOfRangeException(name, s.Edges[e], "Unknown boundary kind."); }
             if (!float.IsFinite(s.EdgeLevel[e]) || Math.Abs(s.EdgeLevel[e]) > MaxCoordinate) { throw new ArgumentOutOfRangeException(name, s.EdgeLevel[e], "An inflow level must be finite and within ±2^21."); }
-            if (!(Math.Abs(s.EdgeSpeed[e]) <= 1000f)) { throw new ArgumentOutOfRangeException(name, s.EdgeSpeed[e], "An inflow speed must be finite and within ±1000 m/s."); }
+            if (!(Math.Abs(s.EdgeSpeed[e]) <= 1000f * wide)) { throw new ArgumentOutOfRangeException(name, s.EdgeSpeed[e], "An inflow speed must be finite and within ±1000 m/s."); }
         }
 
         if (s.Sources.Length > WaterGrid.MaxSources) { throw new ArgumentOutOfRangeException(name, s.Sources.Length, "At most " + WaterGrid.MaxSources.ToString(CultureInfo.InvariantCulture) + " sources."); }
         foreach (var src in s.Sources) { ValidateSource(src, name); }
-        if (!(s.Density > 0f && s.Density <= 1e6f)) { throw new ArgumentOutOfRangeException(name, s.Density, "Density must be within (0, 1e6] kg/m³."); }
+        if (!(s.Density > 0f && s.Density <= 1e6f * (unitsPerMetre < 1f ? 1f / (unitsPerMetre * unitsPerMetre * unitsPerMetre) : 1f))) { throw new ArgumentOutOfRangeException(name, s.Density, "Density must be within (0, 1e6] kg/m³."); }
         Coefficient(s.LinearDrag, "LinearDrag", name); Coefficient(s.AngularDrag, "AngularDrag", name); Coefficient(s.ViscousDamping, "ViscousDamping", name); Coefficient(s.BottomFriction, "BottomFriction", name); Coefficient(s.Damping, "Damping", name);
         if (!(s.Displacement >= 0f && s.Displacement <= 1f)) { throw new ArgumentOutOfRangeException(name, s.Displacement, "Displacement must be within 0..1."); }
         if (!(s.Cfl > 0f && s.Cfl <= 0.5f)) { throw new ArgumentOutOfRangeException(name, s.Cfl, "Cfl must be within (0, 0.5]."); }
@@ -163,9 +167,10 @@ internal sealed partial class WaterStore : ISnapshotSection
     /// <summary>Creates a grid: validates, snaps the origin to the 2^-32 grid, builds the bed (given, or ray-cast against static shapes, or flat), and fills it with water up to the level.</summary>
     public (int Slot, int Generation) Create(Spec s, string name)
     {
-        Validate(s, _host.Planar, name);
+        Validate(s, _host.Planar, name, _host.UnitsPerMetre);
         var g = new WaterGrid
         {
+            UnitsPerMetre = _host.UnitsPerMetre,
             Planar = _host.Planar, Nx = s.Nx, Nz = s.Nz, Dx = s.CellSize,
             OriginX = Snap(s.OriginX), OriginZ = _host.Planar ? 0.0 : Snap(s.OriginZ), BaseY = Snap(s.FloorHeight),
             Density = s.Density, LinearDrag = s.LinearDrag, AngularDrag = s.AngularDrag, ViscousDamping = s.ViscousDamping, BottomFriction = s.BottomFriction, Damping = s.Damping, Displacement = s.Displacement,
@@ -205,7 +210,7 @@ internal sealed partial class WaterStore : ISnapshotSection
         Bound(searchTop, "BedSearchTop", nameof(searchTop));
         FillBed(g, null, true, searchTop);
         g.Derive();
-        for (int c = 0; c < g.H.Length; c++) { if (!(g.H[c] > WaterGrid.DryDepth)) { g.Hu[c] = 0f; g.Hv[c] = 0f; } }
+        for (int c = 0; c < g.H.Length; c++) { if (!(g.H[c] > g.DryDepth)) { g.Hu[c] = 0f; g.Hv[c] = 0f; } }
     }
 
     public void Destroy(int slot, int generation)
@@ -227,7 +232,7 @@ internal sealed partial class WaterStore : ISnapshotSection
             var g = Grids[i]!;
             if (!g.Locate(x, z, out fx, out fz)) { continue; }
             g.Sample(fx, fz, out _, out float depth, out _, out _);
-            if (!(depth > WaterGrid.DryDepth)) { continue; }
+            if (!(depth > g.DryDepth)) { continue; }
             slot = i; grid = g;
             return true;
         }
@@ -245,7 +250,7 @@ internal sealed partial class WaterStore : ISnapshotSection
             var g = Grids[i]!;
             if (!g.Locate(x, z, out float fx, out float fz)) { continue; }
             g.Sample(fx, fz, out float s, out float depth, out float u, out float v);
-            if (!(depth > WaterGrid.DryDepth)) { continue; }
+            if (!(depth > g.DryDepth)) { continue; }
             probe.Offer(CharacterWaterSource.ShallowWater, g.BaseY + s - bottom, g.Density, new Vector3F(u, 0f, g.Planar ? 0f : v), height);
         }
     }
@@ -349,7 +354,7 @@ internal sealed partial class WaterStore : ISnapshotSection
             {
                 g.Sample(fx, fz, out float s, out float depth, out _, out _);
                 float f = (float)(y - (g.BaseY + s));
-                if (depth > WaterGrid.DryDepth)
+                if (depth > g.DryDepth)
                 {
                     if (t == 0f && f == 0f) { distance = 0f; normal = Normal(g, x, z); return true; }
                     if (havePrev && ((prevF > 0f && f <= 0f) || (prevF < 0f && f >= 0f)))

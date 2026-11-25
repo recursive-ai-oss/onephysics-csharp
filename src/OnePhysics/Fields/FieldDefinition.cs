@@ -103,6 +103,25 @@ public sealed class FieldDefinition
     public float SideBounce { get; set; }
     /// <summary>Returns an independent definition.</summary>
     public FieldDefinition Clone() => (FieldDefinition)MemberwiseClone();
+
+    /// <summary>
+    /// This definition with the members that were never set at their defaults for a world of the given unit: <see cref="Radius"/> (100 m), <see cref="Softening"/> (0.1 m) and <see cref="Density"/> (1000 kg per cubic metre, or per square
+    /// metre in a planar world, becomes that mass per cubic or square world unit). Everything else you set is in world units already. The world applies this itself when a field is added or its definition replaced.
+    /// </summary>
+    /// <param name="unit">The world's length unit.</param>
+    /// <param name="planar">True for a 2D world.</param>
+    public FieldDefinition WithDefaultsFor(LengthUnit unit, bool planar = false) => Resolved(unit.Scale, planar);
+
+    internal FieldDefinition Resolved(float unitsPerMetre, bool planar)
+    {
+        var c = Clone();
+        if (unitsPerMetre == 1f) { return c; }
+        var s = new UnitScaler(unitsPerMetre, false);
+        float r = c.Radius; s.D(ref r, 100f, 1); c.Radius = r;
+        float g = c.Softening; s.D(ref g, 0.1f, 1); c.Softening = g;
+        float d = c.Density; s.D(ref d, 1000f, planar ? -2 : -3); c.Density = d;
+        return c;
+    }
     /// <summary>Validates all values. Throws ArgumentOutOfRangeException naming the invalid property.</summary>
     public void Validate() => ValidateCore(2097152);
     internal void ValidateStored() => ValidateCore(4194304);

@@ -25,7 +25,7 @@ public enum VehicleKind : byte
 /// Inputs (<see cref="Vehicle.SetInput"/>): throttle −1..1 drives both tracks, steering −1..1 speeds the left track up and slows the right one (positive turns right, towards +X); with no throttle the tracks turn in opposite directions
 /// and the vehicle pivots in place. Chassis frame as for <see cref="VehicleDef"/>: +X right, +Y up, +Z forward in the presets.
 /// </summary>
-public sealed class TrackedVehicleDef
+public sealed partial class TrackedVehicleDef
 {
     /// <summary>Road wheels of the left track (−X side), 1 to 16, front to back or any fixed order. Their <see cref="WheelDef.MaxSteerAngle"/>, tyre and handbrake values are ignored.</summary>
     public WheelDef[] LeftWheels { get; set; } = Array.Empty<WheelDef>();
@@ -77,6 +77,7 @@ public sealed class TrackedVehicleDef
 
     internal void Validate()
     {
+        if (Units != 1f) { var m = Scaled(new UnitScaler(1f / Units, true)); m.Units = 1f; m.Validate(); return; }
         if (LeftWheels == null || RightWheels == null) { throw new ArgumentNullException(nameof(LeftWheels), "The wheel arrays must not be null."); }
         if (LeftWheels.Length < 1 || LeftWheels.Length > 16) { throw new ArgumentOutOfRangeException(nameof(LeftWheels), LeftWheels.Length, "A track needs 1 to 16 road wheels."); }
         if (RightWheels.Length < 1 || RightWheels.Length > 16) { throw new ArgumentOutOfRangeException(nameof(RightWheels), RightWheels.Length, "A track needs 1 to 16 road wheels."); }
@@ -90,7 +91,9 @@ public sealed class TrackedVehicleDef
     }
 
     /// <summary>The wheeled definition the engine runs the road wheels with: left wheels then right wheels, the track grip as their tyre, the brake torque spread over the wheels in proportion to their radius.</summary>
-    internal VehicleDef ToWheeled()
+    internal VehicleDef ToWheeled() { var d = ToWheeledCore(); if (Units != 1f) { d.Engine = d.Engine.Scaled(new UnitScaler(Units, true)); } d.Units = Units; return d; }
+
+    private VehicleDef ToWheeledCore()
     {
         Validate();
         var d = new VehicleDef { Wheels = new WheelDef[LeftWheels.Length + RightWheels.Length] };

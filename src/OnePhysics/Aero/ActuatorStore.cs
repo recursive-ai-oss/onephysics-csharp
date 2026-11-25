@@ -32,6 +32,9 @@ internal interface IActuatorHost
 {
     WorldCore Core { get; }
     bool Planar { get; }
+
+    /// <summary>World units per metre of the world's length unit; 1 for a world in metres.</summary>
+    float UnitsPerMetre { get; }
     int EngineSectionId { get; }
     ActuatorStore Actuators { get; }
     FieldStore FieldsOf { get; }
@@ -120,7 +123,25 @@ internal sealed partial class ActuatorStore : ISnapshotSection
     public const float DefaultAirDensity = 1.225f;
 
     private readonly IActuatorHost _host;
-    public float AirDensity = DefaultAirDensity;
+    // NaN while the host never set the air density: it then is the metre default for the world's unit (1.225 kg per cubic metre, per cubic world unit; a planar world's "volume" is an area), whatever the unit is later.
+    private float _airDensity = float.NaN;
+
+    /// <summary>The air's density in kilograms per cubic world unit (square, in a planar world).</summary>
+    public float AirDensity
+    {
+        get => float.IsNaN(_airDensity) ? DefaultAirDensityHere : _airDensity;
+        set => _airDensity = value == DefaultAirDensityHere ? float.NaN : value;
+    }
+
+    /// <summary>The default air density in this world's unit.</summary>
+    public float DefaultAirDensityHere
+    {
+        get
+        {
+            float k = _host.UnitsPerMetre;
+            return k == 1f ? DefaultAirDensity : DefaultAirDensity / (_host.Planar ? k * k : k * k * k);
+        }
+    }
 
     public HandleTable ThrusterHandles = new(), BoatHandles = new(), HoverHandles = new();
     public ThrusterState?[] Thrusters = new ThrusterState?[4];

@@ -19,7 +19,7 @@ public sealed partial class PhysicsWorld2D
     /// <exception cref="BodyOutOfBoundsException">A step rejected a body outside the supported range; the steps already taken stay.</exception>
     public SettleReport Settle(SettleOptions2D? options = null)
     {
-        var o = options ?? new SettleOptions2D();
+        var o = (options ?? new SettleOptions2D()).WithDefaultsFor(Options.LengthUnit);
         o.Validate();
         if (_settling || _stepping) throw new InvalidOperationException("Settle cannot run inside a step, a callback or another settle.");
         _core.FlushPostStep();

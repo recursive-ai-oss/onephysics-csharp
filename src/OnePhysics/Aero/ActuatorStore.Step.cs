@@ -172,11 +172,11 @@ internal sealed partial class ActuatorStore
     private Vector3F StepBluff(in BodyCtx c, int shape, SurfaceSpec spec, Vector3F arm, float dt)
     {
         var at = At(c, arm);
-        float size = spec.Area > 0f ? float.Sqrt(spec.Area) : 1f;
+        float size = spec.Area > 0f ? float.Sqrt(spec.Area) : 1f * _host.UnitsPerMetre;
         if (!Medium(spec.Medium, at, size, out float rho, out var flow)) { return default; }
         var u = V3.Sub(flow, PointVelocity(c, arm));
         float speed = V3.Len(u);
-        if (!(speed > 1e-6f)) { return default; }
+        if (!(speed > 1e-6f * _host.UnitsPerMetre)) { return default; }
         float area = spec.Area;
         if (!(area > 0f))
         {

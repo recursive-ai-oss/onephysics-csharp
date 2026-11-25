@@ -234,7 +234,7 @@ internal sealed partial class Engine2D
     /// <summary>Bytes of one part's record in a snapshot (the minimum a count may claim).</summary>
     private const int RagdollPartBytes = 4 + 1 + 5 * 4 + 2 * 4 + 2 * 4 + 2 * 4 + 5 * 4 + 5 * 4;
 
-    private static RagdollBlock ReadRagdolls(StateReader r, int bodyCount)
+    private RagdollBlock ReadRagdolls(StateReader r, int bodyCount)
     {
         int version = r.ReadInt32();
         if (version != 1) { throw r.Error("unsupported 2D ragdoll section version " + version.ToString(CultureInfo.InvariantCulture)); }
@@ -273,6 +273,7 @@ internal sealed partial class Engine2D
                 if (!float.IsFinite(s.Target[i]) || Math.Abs(s.Target[i]) > 1e6f) { throw r.Error("invalid ragdoll target angle"); }
             }
 
+            d.Units = Opt.UnitsPerMetre;
             try { d.Validate(); }
             catch (Exception e) when (e is ArgumentException or PhysicsException) { throw r.Error("invalid ragdoll definition: " + e.Message); }
             s.Powered = r.ReadBool(); s.Strength = r.ReadSingle();
@@ -345,7 +346,7 @@ internal sealed partial class Engine2D
 
         public void Write(StateWriter w) => e.WriteRagdolls(w);
 
-        public void Read(StateReader r) => e.CommitRagdolls(ReadRagdolls(r, e.RestoredBodyCount));
+        public void Read(StateReader r) => e.CommitRagdolls(e.ReadRagdolls(r, e.RestoredBodyCount));
 
         public ISnapshotSection Fork(WorldCore destination)
         {

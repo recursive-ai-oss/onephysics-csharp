@@ -14,6 +14,7 @@ internal sealed partial class Engine2D : IActuatorHost
     internal ActuatorStore Actuators => _actuators ??= new ActuatorStore(this);
 
     WorldCore IActuatorHost.Core => Core;
+    float IActuatorHost.UnitsPerMetre => Opt.UnitsPerMetre;
     bool IActuatorHost.Planar => true;
     int IActuatorHost.EngineSectionId => Id;
     ActuatorStore IActuatorHost.Actuators => Actuators;

@@ -12,6 +12,7 @@ namespace RecursiveAI.OnePhysics.Physics3D;
 internal sealed partial class SoftBodyData
 {
     public SoftBodyDef Def = null!;
+    public float UnitsPerMetre = 1f;                  // the world's length unit while the body is built: the default mass and particle radius are metre values
     public int N;
     public double[] Pos = Array.Empty<double>();      // 3 per particle, world coordinates relative to the world origin
     public double[] Prev = Array.Empty<double>();     // positions at the start of the current substep
@@ -76,10 +77,24 @@ internal sealed partial class SoftBodyData
     public int ConstraintCount => EdgeA.Length + BendS.Length + Tets.Length / 4 + (PressureRest > 0f ? 1 : 0);
 
     /// <summary>Builds a body from a validated definition: particles at the mesh vertices placed by the definition's pose, masses, and the constraint lists.</summary>
-    public static SoftBodyData Create(SoftBodyDef def, int blockSize = DefaultBlockSize)
+    public static SoftBodyData Create(SoftBodyDef def, int blockSize = DefaultBlockSize, float unitsPerMetre = 1f)
     {
-        var d = new SoftBodyData { Def = def, BlockSize = blockSize };
+        var d = new SoftBodyData { Def = def, BlockSize = blockSize, UnitsPerMetre = unitsPerMetre };
         d.Build();
+        if (unitsPerMetre != 1f)
+        {
+            // Outside metres the defaults (mass from the area or volume, radius from the edges) are frozen into the definition, so a restore rebuilds this body without knowing the unit it was made in.
+            // The frozen mass is the body's mass rounded to float, so the body is built again from the frozen definition: the live body and the one a restore builds then share every bit.
+            bool frozen = false;
+            if (def.Mass == 0f) { def.Mass = d.TotalMass; frozen = true; }
+            if (def.ParticleRadius == 0f) { def.ParticleRadius = d.Radius; frozen = true; }
+            if (frozen)
+            {
+                d = new SoftBodyData { Def = def, BlockSize = blockSize, UnitsPerMetre = unitsPerMetre };
+                d.Build();
+            }
+        }
+
         var mesh = def.Mesh!;
         var p = def.Position;
         var q = def.Rotation;
@@ -150,7 +165,12 @@ internal sealed partial class SoftBodyData
         }
 
         double mass = Def.Mass;
-        if (mass == 0.0) { mass = tets.Length > 0 ? 1000.0 * volume : 0.3 * sumArea; }
+        if (mass == 0.0)
+        {
+            // 1000 kg per cubic metre for a volume, 0.3 kg per square metre for a sheet: per cubic (square) world unit these are smaller by the unit's scale to the third (second) power.
+            double k = UnitsPerMetre;
+            mass = tets.Length > 0 ? (k == 1.0 ? 1000.0 : 1000.0 / (k * k * k)) * volume : (k == 1.0 ? 0.3 : 0.3 / (k * k)) * sumArea;
+        }
         if (!(mass > 0.0) || !double.IsFinite(mass)) { mass = 1.0; }
         TotalMass = (float)mass;
         for (int i = 0; i < N; i++)
@@ -242,7 +262,8 @@ internal sealed partial class SoftBodyData
         double edgeSum = 0.0;
         for (int i = 0; i < ne; i++) { edgeSum += EdgeRest[i]; }
         // An automatic radius is a quarter of the mean edge, but never beyond the largest radius a definition may state: a torn or rebuilt body freezes the radius into its definition, and a snapshot must read it back.
-        Radius = Def.ParticleRadius != 0f ? Def.ParticleRadius : (float)Math.Min(SoftBodyDef.MaxParticleRadius, Math.Max(1e-4, 0.25 * edgeSum / Math.Max(1, ne)));
+        double ku = UnitsPerMetre;
+        Radius = Def.ParticleRadius != 0f ? Def.ParticleRadius : (float)Math.Min(SoftBodyDef.MaxParticleRadius * Math.Max(1.0, ku), Math.Max(1e-4 * ku, 0.25 * edgeSum / Math.Max(1, ne)));
         Lambda = new float[ConstraintCount];
         if (Def.Skin != null)
         {

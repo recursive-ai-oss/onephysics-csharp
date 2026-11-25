@@ -34,7 +34,8 @@ public readonly partial struct Ragdoll
         using var replayMutation = _world?.RecordMutation("Ragdoll.EnableActive");
         var s = Resolve();
         if (s.Powered) { StopDriving(); }
-        _world!.Engine.EnableActive(_index, def ?? ActiveRagdollDef.Humanoid);
+        var unit = _world!.Options.LengthUnit;
+        _world!.Engine.EnableActive(_index, def == null ? ActiveRagdollDef.Humanoid.InUnit(unit) : def.WithDefaultsFor(unit));
     }
 
     /// <summary>Removes the active layer: drives stop, pinned bones become ordinary simulated bodies. Does nothing when the ragdoll is not active.</summary>

@@ -9,6 +9,19 @@ namespace RecursiveAI.OnePhysics.Physics2D;
 /// </summary>
 public sealed class SettleOptions2D
 {
+    /// <summary>This set of options with the tolerances that were never set (metre values: SpeedTolerance, AccelerationTolerance, SupportTolerance) at their defaults for a world of the given unit. The world applies this itself.</summary>
+    /// <param name="unit">The world's length unit.</param>
+    public SettleOptions2D WithDefaultsFor(LengthUnit unit)
+    {
+        var s = new UnitScaler(unit.Scale, false);
+        var c = (SettleOptions2D)MemberwiseClone();
+        if (s.IsIdentity) { return c; }
+        float speedtolerance = SpeedTolerance; s.D(ref speedtolerance, 0.01f, 1); c.SpeedTolerance = speedtolerance;
+        float accelerationtolerance = AccelerationTolerance; s.D(ref accelerationtolerance, 0.25f, 1); c.AccelerationTolerance = accelerationtolerance;
+        float supporttolerance = SupportTolerance; s.D(ref supporttolerance, 0.005f, 1); c.SupportTolerance = supporttolerance;
+        return c;
+    }
+
     internal const int EncodedSize = 72;
 
     /// <summary>Fixed step in seconds, finite and positive. Default 1/60.</summary>

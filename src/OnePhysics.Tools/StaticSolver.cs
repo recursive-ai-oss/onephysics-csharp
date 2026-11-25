@@ -143,6 +143,7 @@ public static class StaticSolver
                 if (!double.IsFinite(o.MetresPerUnit) || o.MetresPerUnit <= 0 || o.MetresPerUnit < 1e-9 || o.MetresPerUnit > 1e9) { throw Err(StaticSolveError.InvalidOptions, "options.MetresPerUnit = " + Inv(o.MetresPerUnit) + " must be from 1e-9 to 1e9 (or 0 for 1)", "options"); }
                 _scale = o.MetresPerUnit;
             }
+            else if (!o.LengthUnit.IsMetres) { _scale = o.LengthUnit.MetresPerUnit; }
 
             if (o.Tolerance != 0)
             {

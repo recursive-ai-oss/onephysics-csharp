@@ -185,7 +185,7 @@ internal sealed partial class Engine3D
     /// <summary>Bytes of one part's record in a snapshot (the minimum a count may claim).</summary>
     private const int RagdollPartBytes = 4 + 1 + 12 + 12 + 16 + 4 + 4 + 12 + 16 + 4 * 4 + 3 * 4 + 4 * 4;
 
-    private static RagdollBlock ReadRagdolls(StateReader r, int bodyCount)
+    private RagdollBlock ReadRagdolls(StateReader r, int bodyCount)
     {
         var b = new RagdollBlock { Handles = HandleTable.Read(r, "ragdoll") };
         b.States = new RagdollState?[Math.Max(b.Handles.HighWater, 1)];
@@ -220,6 +220,7 @@ internal sealed partial class Engine3D
                 if (p.Parent < 0 ? s.Joint[i] != -1 : (s.Joint[i] < 0 || s.JointGen[i] < 1)) { throw r.Error("invalid ragdoll part joint"); }
             }
 
+            d.Units = Opt.UnitsPerMetre;
             try { d.Validate(); }
             catch (Exception e) when (e is ArgumentException or PhysicsException) { throw r.Error("invalid ragdoll definition: " + e.Message); }
             s.Powered = r.ReadBool(); s.Strength = r.ReadSingle();

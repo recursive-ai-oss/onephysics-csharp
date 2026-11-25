@@ -43,7 +43,7 @@ internal sealed partial class Diagnoser
             var sev = m >= SpeedError * cap ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning;
             Add(DiagnosticCode.ImplausibleSpeed, sev, m / cap, [s], default,
                 [V("speed", m, "m/s", (sev == DiagnosticSeverity.Error ? SpeedError : SpeedWarn) * cap), V("speedLimit", cap, "m/s")],
-                "Body reaches " + N(m) + " m/s (linear speed plus the speed of its farthest point from spinning), " + N(m / cap * 100) + "% of the engine's " + N(cap) + " m/s limit. At the limit the engine clamps the speed, which breaks momentum and the stability of anything it hits.",
+                "Body reaches " + N(m) + " m/s (linear speed plus the speed of its farthest point from spinning), " + N(m / cap * 100) + "% of the engine's " + N(cap) + " m/s limit. At the limit the engine clamps the speed, which breaks momentum and the stability of anything it hits." + UnitNote(),
                 "Check the units: a speed beyond a few hundred metres per second in a metre-scaled world is usually a unit mistake or an impulse far too large. Lower the force or impulse that gives it that speed.");
         }
     }
