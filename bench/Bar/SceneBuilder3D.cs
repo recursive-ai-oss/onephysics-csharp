@@ -84,9 +84,9 @@ public static class SceneBuilder3D
             {
                 var vehicle = ob.Vehicle.Preset switch
                 {
-                    "car" => world.AddVehicle(bodies[i], P3.VehicleDef.Car),
-                    "tank" => world.AddVehicle(bodies[i], P3.TrackedVehicleDef.Tank),
-                    "bike" => world.AddVehicle(bodies[i], P3.MotorcycleDef.Road),
+                    "car" => world.AddVehicle(bodies[i], P3.VehicleDef.Car.InUnit(world.Options.LengthUnit)),
+                    "tank" => world.AddVehicle(bodies[i], P3.TrackedVehicleDef.Tank.InUnit(world.Options.LengthUnit)),
+                    "bike" => world.AddVehicle(bodies[i], P3.MotorcycleDef.Road.InUnit(world.Options.LengthUnit)),
                     _ => throw new InvalidDataException("unknown vehicle preset " + ob.Vehicle.Preset),
                 };
                 vehicles.Add((vehicle, ob.Vehicle, i));
@@ -202,10 +202,11 @@ public static class SceneBuilder3D
             var at = new Vector3D(d.X, d.Y, d.Z);
             P3.SoftSkin? skin = d.Kind == "sleeve" ? SleeveRig.MakeSkin(d, mesh) : null;
             var def = d.Preset switch { "cloth" => P3.SoftBodyDef.Cloth(mesh, at), "rubber" => P3.SoftBodyDef.Rubber(mesh, at), _ => P3.SoftBodyDef.Jelly(mesh, at) };
+            def = def.InUnit(world.Options.LengthUnit);   // the mesh and position are already in world units; the preset's compliances are in metres
             def.Rotation = new QuaternionF((float)d.Qx, (float)d.Qy, (float)d.Qz, (float)d.Qw);
             def.Mass = (float)d.Mass;
             if (m.Pins.Length > 0) def.PinnedParticles = m.Pins;
-            if (skin != null) { def.Skin = skin; def.ParticleRadius = 0.01f; def.AllowSleep = false; }
+            if (skin != null) { def.Skin = skin; def.ParticleRadius = 0.01f * world.Options.LengthUnit.Scale; def.AllowSleep = false; }
             if (SurfaceOverride is bool sb) { def.SurfaceCollision = sb; }
             result[i] = world.AddSoftBody(def);
         }

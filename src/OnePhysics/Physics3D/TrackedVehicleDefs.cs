@@ -91,7 +91,7 @@ public sealed partial class TrackedVehicleDef
     }
 
     /// <summary>The wheeled definition the engine runs the road wheels with: left wheels then right wheels, the track grip as their tyre, the brake torque spread over the wheels in proportion to their radius.</summary>
-    internal VehicleDef ToWheeled() { var d = ToWheeledCore(); d.Units = Units; return d; }
+    internal VehicleDef ToWheeled() { var d = ToWheeledCore(); if (Units != 1f) { d.Engine = d.Engine.Scaled(new UnitScaler(Units, true)); } d.Units = Units; return d; }
 
     private VehicleDef ToWheeledCore()
     {

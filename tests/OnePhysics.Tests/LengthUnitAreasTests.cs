@@ -167,6 +167,28 @@ public sealed class LengthUnitAreasTests
     }
 
     [Fact]
+    public void TanksAndMotorcyclesFollowTheUnit()
+    {
+        (P3.Vehicle, P3.Vehicle) Build(double s, LengthUnit unit, int id, out P3.PhysicsWorld3D w)
+        {
+            w = World3(unit, id);
+            w.AddBox(new((float)(300 * s), (float)(1 * s), (float)(300 * s)), at: new(0, -0.5 * s, 0), type: BodyType.Static);
+            var tank = w.AddTank(new(0, 0, 0));
+            var bike = w.AddMotorcycle(new(20 * s, 0, 0));
+            tank.SetInput(throttle: 0.6f);
+            bike.SetInput(throttle: 0.5f);
+            return (tank, bike);
+        }
+
+        var (ta, ba) = Build(1.0, LengthUnit.Metres, 771, out var a);
+        var (tb, bb) = Build(K, Milli, 772, out var b);
+        for (int i = 0; i < 120; i++) { a.Step(Dt); b.Step(Dt); }
+        Near(ta.Chassis.Position.Z, tb.Chassis.Position.Z, 5e-3, "tank z"); Near(ta.Chassis.Position.Y, tb.Chassis.Position.Y, 2e-3, "tank y");
+        Near(ba.Chassis.Position.Z, bb.Chassis.Position.Z, 2e-2, "bike z"); Near(ba.Chassis.Position.Y, bb.Chassis.Position.Y, 5e-3, "bike y");
+        Assert.True(ta.Chassis.Position.Z > 0.5, "the tank drove");
+    }
+
+    [Fact]
     public void VehiclesFollowTheUnit2D()
     {
         P2.Vehicle Build(double s, LengthUnit unit, int id, out P2.PhysicsWorld2D w)

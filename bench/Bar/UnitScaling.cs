@@ -28,10 +28,17 @@ static class UnitScaling
         // BAR_UNITS_IGNORE=1 rescales the scene but leaves the world at one metre per unit: the negative control that shows what the unit changes.
         if (Environment.GetEnvironmentVariable("BAR_UNITS_IGNORE") != "1") s.LengthUnit = new LengthUnit(1.0 / k);
         s.Gx *= k; s.Gy *= k; s.Gz *= k;
-        if (s.Softs.Count != 0 || s.Queries.Count != 0 || s.Params.ContainsKey("engines")) throw new NotSupportedException("unit scaling covers rigid-body stability scenes only");
+        if (s.Queries.Count != 0 || s.Params.ContainsKey("fluid")) throw new NotSupportedException("unit scaling covers rigid-body, soft-body and vehicle stability scenes only");
+        foreach (var f in s.Softs)
+        {
+            // soft records: the mass stays; cloth P = width depth n pin, box P = sx sy sz nx ny nz, ball P = radius n
+            f.X *= k; f.Y *= k; f.Z *= k;
+            int lengths = f.Kind == "cloth" ? 2 : f.Kind == "box" ? 3 : f.Kind == "ball" ? 1 : throw new NotSupportedException("unit scaling: soft kind " + f.Kind);
+            Mul(f.P, 0, lengths, k);
+        }
         foreach (var b in s.Bodies)
         {
-            if (b.Script != null || b.Vehicle != null) throw new NotSupportedException("unit scaling does not cover scripted characters or vehicles");
+            if (b.Script != null) throw new NotSupportedException("unit scaling does not cover scripted characters");
             b.X *= k; b.Y *= k; b.Z *= k; b.Vx *= k; b.Vy *= k; b.Vz *= k;
             foreach (var sh in b.Shapes)
             {
@@ -79,4 +86,10 @@ static class UnitScaling
             else { d[o] /= k; d[o + 1] /= k; d[o + 3] /= k; d[o + 4] /= k; }
         }
     }
+
+    /// <summary>Converts the wheel centres (three doubles per wheel) back to metres.</summary>
+    public static void WheelsToMetres(double[] d, double k) { if (k == 1.0) return; for (int i = 0; i < d.Length; i++) d[i] /= k; }
+
+    /// <summary>Converts the soft particles (position then velocity, six doubles each) back to metres.</summary>
+    public static void SoftToMetres(double[] d, double k) { if (k == 1.0) return; for (int i = 0; i < d.Length; i++) d[i] /= k; }
 }
