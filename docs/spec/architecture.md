@@ -136,7 +136,7 @@ Kinds in sort order: ContactBegin 0, ContactPersist 1, ContactEnd 2, SensorEnter
 4. shapes: handle table, owner (i32 per slot).
 5. constraints: handle table, then kind, body A, body B, shape A, shape A generation, shape B, shape B generation, sub-shape A, sub-shape B, flags, color, point count, feature ids, break value, payload, then the slot count.
 6. islands: handle table, then per slot: asleep (u8), removal count (i32).
-7. (snapshot only) events: delivered count and events, pending count and events; an event is its kind (u8), body A, body B, shape A, shape B (world, index, generation: 3 × i32 each), sub-shape A and B, joint (3 × i32), value (f32).
+7. (snapshot only) events: delivered count and events, pending count and events; an event is its kind (u8), body A, body B, shape A, shape B (world, index, generation: 3 × i32 each; the world field is written as 0 whatever the world's id, and a reader gives every non-null handle the id of the world that restores the snapshot, so the same state gives the same bytes under any id), sub-shape A and B, joint (3 × i32), value (f32).
 8. sections: count (i32), then per registered section its id (i32); in a snapshot also its byte length (i32) and bytes.
 
 A **handle table** is: high-water mark (i32); generation per slot (i32); live per slot (u8); free-list length (i32); the free min-heap array (i32 each).

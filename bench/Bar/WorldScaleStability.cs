@@ -39,7 +39,10 @@ internal static class WorldScaleStability
             ["maxSpeed"] = tiled.MaxSpeed, ["nan"] = tiled.NonFinite, ["tunnelled"] = tiled.Tunnelled, ["escapes"] = tiled.Escapes, ["seamStep"] = tiled.SeamStep, ["unsplitSeamStep"] = whole.SeamStep,
             ["loads"] = tiled.Loads, ["unloads"] = tiled.Unloads, ["maxLoaded"] = tiled.MaxLoaded, ["failedLoads"] = tiled.World.FailedTileLoads,
         };
-        bool ok = tiled.NonFinite == 0 && tiled.Tunnelled == 0 && tiled.Escapes == 0 && tiled.World.FailedTileLoads == 0 && tiled.MaxSpeed <= Th.StreamSpeed3 && tiled.SeamStep <= whole.SeamStep * 1.25 + 0.1 && tiled.MaxLoaded <= 30;
+        // The unsplit field is the reference the seams are judged against, so it must be sound itself: no speed above the limit either.
+        r["unsplitMaxSpeed"] = whole.MaxSpeed; r["unsplitNan"] = whole.NonFinite; r["unsplitTunnelled"] = whole.Tunnelled;
+        bool ok = tiled.NonFinite == 0 && tiled.Tunnelled == 0 && tiled.Escapes == 0 && tiled.World.FailedTileLoads == 0 && tiled.MaxSpeed <= Th.StreamSpeed3 && tiled.SeamStep <= whole.SeamStep * 1.25 + 0.1 && tiled.MaxLoaded <= 30
+            && whole.NonFinite == 0 && whole.Tunnelled == 0 && whole.Escapes == 0 && whole.MaxSpeed <= Th.StreamSpeed3;
         Report("streaming-3d", tiled.Steps, threads, r, ok);
         return ok ? 0 : 1;
     }
@@ -54,7 +57,9 @@ internal static class WorldScaleStability
             ["maxSpeed"] = tiled.MaxSpeed, ["nan"] = tiled.NonFinite, ["tunnelled"] = tiled.Tunnelled, ["seamStep"] = tiled.SeamStep, ["unsplitSeamStep"] = whole.SeamStep,
             ["loads"] = tiled.Loads, ["unloads"] = tiled.Unloads, ["maxLoaded"] = tiled.MaxLoaded, ["failedLoads"] = tiled.World.FailedTileLoads,
         };
-        bool ok = tiled.NonFinite == 0 && tiled.Tunnelled == 0 && tiled.World.FailedTileLoads == 0 && tiled.MaxSpeed <= Th.StreamSpeed2 && tiled.SeamStep <= whole.SeamStep * 1.25 + 0.1;
+        r["unsplitMaxSpeed"] = whole.MaxSpeed; r["unsplitNan"] = whole.NonFinite; r["unsplitTunnelled"] = whole.Tunnelled;
+        bool ok = tiled.NonFinite == 0 && tiled.Tunnelled == 0 && tiled.World.FailedTileLoads == 0 && tiled.MaxSpeed <= Th.StreamSpeed2 && tiled.SeamStep <= whole.SeamStep * 1.25 + 0.1
+            && whole.NonFinite == 0 && whole.Tunnelled == 0 && whole.MaxSpeed <= Th.StreamSpeed2;
         Report("streaming-2d", tiled.Steps, threads, r, ok);
         return ok ? 0 : 1;
     }

@@ -9,7 +9,7 @@ namespace RecursiveAI.OnePhysics.HashMatrix;
 /// Runs every registered scenario and prints a manifest: one <c>name sha256</c> line per scenario in ordinal name
 /// order, then a <c>manifest sha256</c> line hashing those lines. Two platforms agree when their manifest lines are
 /// identical. With <c>--steps</c> the per-step digests follow the manifest as <c>step name index digest16</c> lines.
-/// Options: <c>--threads N</c> (default 1; always explicit, never read from the machine), <c>--filter PREFIX</c>,
+/// Options: <c>--threads N</c> (default 1; always explicit, never read from the machine), <c>--filter PREFIX</c>, <c>--only NAME</c> (exactly one scenario),
 /// <c>--out FILE</c> (manifest only), <c>--steps</c>, <c>--list</c>.
 /// </summary>
 public static class Program
@@ -20,6 +20,7 @@ public static class Program
         int threads = 1;
         string filter = string.Empty;
         string? outFile = null;
+        string? only = null;
         bool list = false;
         bool steps = false;
         for (int i = 0; i < args.Length; i++)
@@ -31,6 +32,9 @@ public static class Program
                     break;
                 case "--filter" when i + 1 < args.Length:
                     filter = args[++i];
+                    break;
+                case "--only" when i + 1 < args.Length:
+                    only = args[++i];
                     break;
                 case "--out" when i + 1 < args.Length:
                     outFile = args[++i];
@@ -56,7 +60,7 @@ public static class Program
         var stepLines = new StringBuilder();
         foreach (var (name, run) in Scenarios.All())
         {
-            if (!name.StartsWith(filter, StringComparison.Ordinal))
+            if (only is not null ? name != only : !name.StartsWith(filter, StringComparison.Ordinal))
             {
                 continue;
             }
