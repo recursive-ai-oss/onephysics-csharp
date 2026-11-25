@@ -117,7 +117,7 @@ internal sealed partial class Engine3D
         var lc = LocalCenterOf(body);
         double dx = x - (double)lc.X, dy = y - (double)lc.Y, dz = z - (double)lc.Z;
         double arm = Math.Sqrt(dx * dx + dy * dy + dz * dz);
-        double limit = JointData3D.MaxAnchorArmRatio * (double)extent + JointData3D.MaxAnchorArmSlack;
+        double limit = JointData3D.MaxAnchorArmRatio * (double)extent + JointData3D.MaxAnchorArmSlack * (double)Opt.UnitsPerMetre;
         if (arm > limit)
         {
             throw new InvalidJointException(name + " joint: the anchor on body " + side + " (" + handle + ") is " + arm.ToString("R", CultureInfo.InvariantCulture) + " m from its centre of mass, but the body reaches only "

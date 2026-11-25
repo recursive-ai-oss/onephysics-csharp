@@ -43,7 +43,7 @@ public enum RagdollSelfCollision : byte
 /// One part of a ragdoll: a body with one shape, and the swing-twist joint that attaches it to its parent. Positions and rotations are in the ragdoll's own space in the bind pose (the pose the ragdoll is built in);
 /// <see cref="PhysicsWorld3D.AddRagdoll(RagdollDef, Vector3D, QuaternionF, ReadOnlySpan{QuaternionF})"/> places that space in the world.
 /// </summary>
-public sealed class RagdollPartDef
+public sealed partial class RagdollPartDef
 {
     /// <summary>A label for the host (bone name); not used by the engine. Default null.</summary>
     public string? Name { get; set; }
@@ -114,7 +114,7 @@ public sealed class RagdollPartDef
 /// <summary>
 /// A skeleton as a list of parts with parents before children, plus how the ragdoll behaves as a whole. <see cref="Humanoid"/> is a thirteen-part person. Definitions are copied when a ragdoll is made, so one can be reused.
 /// </summary>
-public sealed class RagdollDef
+public sealed partial class RagdollDef
 {
     /// <summary>The most parts one ragdoll may have.</summary>
     public const int MaxParts = 64;
@@ -137,7 +137,7 @@ public sealed class RagdollDef
     internal RagdollDef Clone()
     {
         if (Parts == null) { return new RagdollDef { SelfCollision = SelfCollision, AngularDamping = AngularDamping, CategoryBits = CategoryBits, MaskBits = MaskBits, Parts = null! }; }
-        var d = new RagdollDef { SelfCollision = SelfCollision, AngularDamping = AngularDamping, CategoryBits = CategoryBits, MaskBits = MaskBits, Parts = new RagdollPartDef[Parts.Length] };
+        var d = new RagdollDef { SelfCollision = SelfCollision, AngularDamping = AngularDamping, CategoryBits = CategoryBits, MaskBits = MaskBits, Units = Units, Parts = new RagdollPartDef[Parts.Length] };
         for (int i = 0; i < Parts.Length; i++) { d.Parts[i] = Parts[i]?.Clone()!; }
         return d;
     }
@@ -176,12 +176,12 @@ public sealed class RagdollDef
     };
 
     // A joint far from the body it holds has an ill-conditioned point block (see Engine3D.CheckAnchorArm); the same limit is checked here so the definition is refused before any body is made.
-    private static void AnchorReach(Vector3F joint, Vector3F centre, RagdollPartDef owner, int i, RagdollPartDef p, string field, string whose)
+    private void AnchorReach(Vector3F joint, Vector3F centre, RagdollPartDef owner, int i, RagdollPartDef p, string field, string whose)
     {
         double dx = (double)joint.X - centre.X, dy = (double)joint.Y - centre.Y, dz = (double)joint.Z - centre.Z;
         double arm = Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
         double reach = Reach(owner);
-        double limit = (JointData3D.MaxAnchorArmRatio * reach) + JointData3D.MaxAnchorArmSlack;
+        double limit = (JointData3D.MaxAnchorArmRatio * reach) + JointData3D.MaxAnchorArmSlack * (double)Units;
         if (arm > limit)
         {
             throw new ArgumentOutOfRangeException(field, joint, Where(i, p) + ": " + field + " is " + arm.ToString("R", CultureInfo.InvariantCulture) + " m from the centre of " + whose + ", whose shape reaches "

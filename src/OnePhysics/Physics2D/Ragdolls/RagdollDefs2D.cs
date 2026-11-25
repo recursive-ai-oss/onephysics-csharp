@@ -41,7 +41,7 @@ public enum RagdollSelfCollision : byte
 /// One part of a ragdoll: a body with one shape, and the revolute joint that attaches it to its parent. Positions and angles are in the ragdoll's own space in the bind pose (the pose the ragdoll is built in);
 /// <see cref="PhysicsWorld2D.AddRagdoll(RagdollDef, Vector2D, float, ReadOnlySpan{float})"/> places that space in the world.
 /// </summary>
-public sealed class RagdollPartDef
+public sealed partial class RagdollPartDef
 {
     /// <summary>A label for the host (bone name); not used by the engine. Default null.</summary>
     public string? Name { get; set; }
@@ -109,7 +109,7 @@ public sealed class RagdollPartDef
 /// <summary>
 /// A skeleton as a list of parts with parents before children, plus how the ragdoll behaves as a whole. <see cref="Humanoid"/> is a thirteen-part person in side view. Definitions are copied when a ragdoll is made, so one can be reused.
 /// </summary>
-public sealed class RagdollDef
+public sealed partial class RagdollDef
 {
     /// <summary>The most parts one ragdoll may have.</summary>
     public const int MaxParts = 64;
@@ -132,7 +132,7 @@ public sealed class RagdollDef
     internal RagdollDef Clone()
     {
         if (Parts == null) { return new RagdollDef { SelfCollision = SelfCollision, AngularDamping = AngularDamping, CategoryBits = CategoryBits, MaskBits = MaskBits, Parts = null! }; }
-        var d = new RagdollDef { SelfCollision = SelfCollision, AngularDamping = AngularDamping, CategoryBits = CategoryBits, MaskBits = MaskBits, Parts = new RagdollPartDef[Parts.Length] };
+        var d = new RagdollDef { SelfCollision = SelfCollision, AngularDamping = AngularDamping, CategoryBits = CategoryBits, MaskBits = MaskBits, Units = Units, Parts = new RagdollPartDef[Parts.Length] };
         for (int i = 0; i < Parts.Length; i++) { d.Parts[i] = Parts[i]?.Clone()!; }
         return d;
     }
