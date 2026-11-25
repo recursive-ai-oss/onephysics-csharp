@@ -6,11 +6,11 @@ public sealed partial class ConstraintColoring
 {
     internal void CopyForFork(ConstraintColoring s)
     {
-        _mask = (ulong[])s._mask.Clone();
-        _list = (int[])s._list.Clone();
+        ForkArrays.Into(ref _mask, s._mask);
+        ForkArrays.Into(ref _list, s._list);
         s._start.CopyTo(_start, 0);
         s._cursor.CopyTo(_cursor, 0);
-        _hist = (int[])s._hist.Clone();
-        _bucketOf = (byte[])s._bucketOf.Clone();
+        ForkArrays.Into(ref _hist, s._hist);
+        ForkArrays.Into(ref _bucketOf, s._bucketOf);
     }
 }

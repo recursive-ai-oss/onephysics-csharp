@@ -49,6 +49,50 @@ using (world.SuppressCallbacks())                       // no sound twice; polle
 
 Apply the late input to your game state (and set body velocities or call `Move` before the step) between `Restore` and the resimulation steps, as your game requires; the world itself only needs the same dt and the same inputs to produce the same bits.
 
+## Marks: rollback without snapshot buffers
+
+`world.Mark()` saves the whole simulation state inside the world and returns a small `WorldMark`; `world.RollbackTo(mark)` puts the world back, bit for bit (snapshot bytes, hash and every later step equal those of a world that never rolled back). You hold no buffers and need no size bound, and a mark plus a rollback costs roughly half of a snapshot plus a restore on the piles and ragdolls the library is measured on (less on big piles), because marks copy the used part of the world's arrays and never validate or parse them (numbers in [../spec/rollback.md](../spec/rollback.md)).
+
+<!-- example: Guide/RollbackMarks.cs -->
+```csharp
+const int Ring = 8;
+var ring = new WorldMark[Ring];
+var hashes = new ulong[Ring];
+int frame = 0;
+void Advance(bool mark = true)
+{
+    int slot = frame % Ring;
+    if (mark)
+    {
+        ring[slot] = world.Mark();                      // the state before this frame's step
+        world.ReleaseOldMarks(Ring);                    // keep the last 8
+    }
+
+    world.Step(dt);
+    hashes[slot] = world.ComputeHash();                 // exchange these with peers to catch a desync
+    frame++;
+}
+```
+
+<!-- example: Guide/RollbackMarks.cs -->
+```csharp
+int back = 5;                                           // a late input for frame 95 arrived
+int target = frame - back;
+world.RollbackTo(ring[target % Ring]);                  // marks taken after it are released; the target stays valid
+frame = target;
+using (world.SuppressCallbacks())                       // no sound twice; polled events still work
+{
+    for (int i = 0; i < back; i++) Advance(mark: i > 0);   // the target frame still has its mark
+}
+```
+
+The rules in short:
+
+- **Several marks may be live** (a ring of the last N frames is the common case). A mark costs about as much memory as the world's used storage; release the ones you no longer need (`ReleaseOldMarks(keep)`, `ReleaseMarksBefore(mark)`, `ReleaseMark(mark)`). Storage is pooled, so a warm ring of marks allocates nothing.
+- **A rollback to `m` keeps `m`** (you may roll back to it again) **and every older mark, and releases every newer one**: they describe a future that no longer exists. Using a released mark throws `StaleHandleException`; `IsMarkValid(mark)` asks.
+- Marks, `Restore` and snapshots work side by side; use whichever suits the frame. Only snapshots leave the process: a mark lives in the world that took it and is not saved, hashed or sent.
+- Handlers and callbacks are not part of the state, and `RollbackTo` returns the saved options it changed, as `Restore` does. `world.Fork()` is the way to try a future without disturbing the world (it is also cheaper than a snapshot plus a restore).
+
 ## The pieces
 
 - **`TrySnapshot(span, out written)`** writes into your buffer and returns false if it is too small; `GetSnapshotSize()` is the current size. `Snapshot()` allocates a new array. The same world writes the same bytes on every platform. Snapshots hold contact caches, warm-start impulses, sleep state and the events of the last step, which is why a restored world continues bit for bit.

@@ -158,6 +158,7 @@ public sealed partial class PhysicsWorld2D
         }
         finally { _stepping = false; }
         _bake?.AfterStep(dt);
+        StepObserver.Notify(this, dt, _settling);
     }
 
     // The unrecorded path has no recording scope or exception region in its simulation body.

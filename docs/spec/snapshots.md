@@ -110,8 +110,11 @@ addition to the unchanged compression-v1 answer.
 ## Structural world forks
 
 `PhysicsWorld2D.Fork`, `PhysicsWorld3D.Fork` and raw `WorldCore.Fork` copy state
-**directly**, without serialization. Every live store's array contents,
-capacities, handle allocator generations/free heaps, coloring, islands, sleep,
+**directly**, without serialization. Every live store's array contents (the
+slots below each store's high-water mark; a copied constraint store has only the
+capacity it needs and grows by doubling, and the scratch that is sized on first
+use, such as the solver's batch arrays and the restore buffers, starts empty),
+handle allocator generations/free heaps, coloring, islands, sleep,
 contacts and warm starts, broadphase nodes/pending moves, pair table and all
 built-in engine sections are independently owned. Soft-body particles, poses,
 constraints, skin targets and definitions, character/controller records, vehicle

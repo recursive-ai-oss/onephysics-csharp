@@ -159,6 +159,11 @@ public class ReadmeTests
         Assert.True(r.Equal, "resimulating from a restored snapshot reproduces the original hashes");
         Assert.Equal(100, r.Frames);
 
+        var rm = GuideExamples.RollbackMarks.Run();
+        Assert.True(rm.Equal, "resimulating from a mark reproduces the original hashes");
+        Assert.Equal(100, rm.Frames);
+        Assert.Equal(8, rm.Live);   // the last eight frames
+
         var d = GuideExamples.Determinism.Run();
         Assert.Equal(2_000_000.0, d.Origin);
         Assert.Equal(2_000_000.0, d.HostX, 3);

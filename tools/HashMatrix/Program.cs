@@ -45,6 +45,9 @@ public static class Program
                 case "--steps":
                     steps = true;
                     break;
+                case "--rollback-probe":
+                    RollbackProbe.Install();
+                    break;
                 default:
                     Console.Error.WriteLine($"unknown argument: {args[i]}");
                     return 2;
@@ -92,6 +95,7 @@ public static class Program
         }
         Console.Out.Write(manifest.ToString());
         Console.Out.Write(stepLines.ToString());
+        if (RollbackProbe.Probes > 0) { Console.Error.WriteLine("rollback probes passed: " + RollbackProbe.Probes.ToString(CultureInfo.InvariantCulture)); }
         return 0;
     }
 }

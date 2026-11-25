@@ -6,6 +6,8 @@ What changed for hosts in each release, newest first. "Moved results" lists the 
 
 ## [Unreleased]
 
+- **New: `world.Mark()` and `world.RollbackTo(mark)` on both worlds (additive; no snapshot, hash or step result changes), and a cheaper `Fork()`.** `Mark()` saves the whole simulation state inside the world and returns a `WorldMark`; `RollbackTo(mark)` returns the world to it, bit for bit (snapshot bytes, hash and every later step), including contact caches and warm starts, coloring, islands, events and every optional section. Several marks may be live; rolling back to a mark keeps it and the older ones and releases the newer ones. `ReleaseMark`, `ReleaseMarksBefore`, `ReleaseOldMarks(keep)` (the ring helper), `ReleaseAllMarks`, `LiveMarkCount` and `IsMarkValid` manage them; a stale mark throws `StaleHandleException`. A mark copies the used part of the world's stores and writes the optional sections that hold state, with no validation, so mark plus rollback costs about half of snapshot plus restore on the measured piles and a warm ring allocates nothing. `Fork()` now copies stores up to their high-water marks and leaves out scratch that is sized on first use, so a 3D fork of a large pile is no slower than snapshot plus restore (it allocated 57 MB and now 23 MB). The hash-matrix tool gains `rollback/ring-2d` and `rollback/ring-3d` and a `--rollback-probe` mode. See `docs/spec/rollback.md` and the rollback guide.
+
 ## [1.2.0] - 2026-11-25
 
 Adds baking (a compact cache of a run, played back with no world) with an offline quality preset, and a presentation world that follows an authoritative one for cosmetics; all three packages at 1.2.0. No existing result moves: every world hash and snapshot of 1.1.0 is unchanged.
