@@ -33,7 +33,7 @@ public sealed partial class PhysicsWorld2D
     /// <param name="at">Translation of the transform, in world units; default none.</param>
     /// <param name="angle">Rotation of the transform about the world origin, in radians; default none.</param>
     /// <returns>The old and new handles of every body, shape and joint.</returns>
-    /// <exception cref="BodySetTransferException">The packet is 2D, its length unit differs from this world's, or a body would land beyond +-2^21 m. The world is unchanged.</exception>
+    /// <exception cref="BodySetTransferException">The packet is 3D, its length unit differs from this world's, or a body would land beyond +-2^21 m. The world is unchanged.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The translation or angle is not finite.</exception>
     public BodySetHandleMap InsertBodies(BodySetPacket packet, Vector2D at = default, float angle = 0f)
     {

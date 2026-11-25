@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Globalization;
 using RecursiveAI.OneMath;
 using RecursiveAI.OnePhysics.LowLevel;
@@ -205,6 +206,8 @@ internal static class PacketIO
         }
 
         m.Shapes = new PacketShape[nShapes];
+        // Blobs that are the same bytes on the same kind of body are validated once (a thousand identical boxes build one geometry).
+        var checkedShapes = new HashSet<BlobKey>();
         for (int i = 0; i < nShapes; i++)
         {
             var s = new PacketShape();
@@ -218,7 +221,7 @@ internal static class PacketIO
             if (len < 0 || len > r.Remaining) { throw r.Bad(At("shapes", i, "blobLength"), "length " + len.ToString(CultureInfo.InvariantCulture) + " exceeds the remaining bytes"); }
             int at = r.Pos;
             s.Blob = r.Bytes(len, At("shapes", i, "blob"));
-            try { PacketBlobs.ValidateShape(dim, s.Blob, m.Bodies[s.Body].Type); }
+            try { if (checkedShapes.Add(new BlobKey(s.Blob, m.Bodies[s.Body].Type))) { PacketBlobs.ValidateShape(dim, s.Blob, m.Bodies[s.Body].Type); } }
             catch (BodySetPacketException e) { throw new BodySetPacketException(At("shapes", i, "blob"), at, e.Message); }
         }
 
@@ -346,6 +349,27 @@ internal static class PacketIO
 
         if (r.Remaining != 0) { throw r.Bad("end", r.Remaining.ToString(CultureInfo.InvariantCulture) + " unexpected trailing bytes"); }
         return m;
+    }
+
+    /// <summary>A blob with the type of the body that owns it, compared by content; only used to skip validating the same bytes twice.</summary>
+    private readonly struct BlobKey : IEquatable<BlobKey>
+    {
+        private readonly byte[] _bytes;
+        private readonly byte _owner;
+        private readonly int _hash;
+
+        public BlobKey(byte[] bytes, byte owner)
+        {
+            _bytes = bytes; _owner = owner;
+            uint h = 2166136261u ^ owner;
+            foreach (byte x in bytes) { h = (h ^ x) * 16777619u; }
+            _hash = (int)h;
+        }
+
+        public bool Equals(BlobKey other) => _hash == other._hash && _owner == other._owner && _bytes.AsSpan().SequenceEqual(other._bytes);
+        public override bool Equals(object? obj) => obj is BlobKey k && Equals(k);
+        // Only a lookup key; nothing that decides a result reads it.
+        public override int GetHashCode() => _hash;
     }
 
     private static byte ReadColor(Reader r, string field)
