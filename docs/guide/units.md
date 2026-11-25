@@ -13,6 +13,7 @@ The full list of conventions, including handles and joint names, is in [names an
 
 A model authored in millimetres, or a 2D game in pixels, sets the length unit and keeps its own numbers:
 
+<!-- example: Guide/Units.cs -->
 ```csharp
 var world = new PhysicsWorld3D(new WorldOptions3D { LengthUnit = LengthUnit.Millimetres });
 var pixels = new PhysicsWorld2D(new WorldOptions2D { LengthUnit = LengthUnit.Pixels(32) });   // 32 pixels to the metre
