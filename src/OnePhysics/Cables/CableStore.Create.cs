@@ -7,6 +7,18 @@ namespace RecursiveAI.OnePhysics.Cables;
 /// <summary>One node as authored, in the 3D vocabulary both dimensions share (a planar world passes Z zero and the Z axis).</summary>
 internal struct CableNodeSpec
 {
+    /// <summary>The wheel's radius and rotor inertia, if they were never set (0.1 m, 0.05 kg m²), at their defaults for a world with the given world units per metre.</summary>
+    internal static void ApplyUnitDefaults(CableNodeSpec[] specs, float unitsPerMetre)
+    {
+        if (unitsPerMetre == 1f) { return; }
+        for (int i = 0; i < specs.Length; i++)
+        {
+            if (specs[i].Kind == CableNodeKind.Anchor) { continue; }
+            if (specs[i].Radius == 0.1f) { specs[i].Radius = 0.1f * unitsPerMetre; }
+            if (specs[i].Inertia == 0.05f) { specs[i].Inertia = 0.05f * (unitsPerMetre * unitsPerMetre); }
+        }
+    }
+
     internal CableNodeKind Kind;
     internal BodyHandle Body;
     internal Vector3D Point;
@@ -70,7 +82,7 @@ internal sealed partial class CableStore
             if (s.Kind != CableNodeKind.Anchor)
             {
                 wheels++;
-                if (!(s.Radius >= 0.001f && s.Radius <= 1000f)) throw new ArgumentOutOfRangeException(nameof(specs), s.Radius, $"{at}: radius must be 0.001 to 1000 metres.");
+                if (!(s.Radius >= 0.001f && s.Radius <= 1000f * Math.Max(1f, Host.UnitsPerMetre))) throw new ArgumentOutOfRangeException(nameof(specs), s.Radius, $"{at}: radius must be 0.001 to 1000 metres.");
                 if (!(s.Friction >= 0 && s.Friction <= 100)) throw new ArgumentOutOfRangeException(nameof(specs), s.Friction, $"{at}: friction must be 0 to 100.");
                 if (!(s.Inertia > 0) || float.IsNaN(s.Inertia)) throw new ArgumentOutOfRangeException(nameof(specs), s.Inertia, $"{at}: inertia must be positive (infinity locks the wheel).");
                 if (!(s.Bearing >= 0 && s.Bearing <= 1000)) throw new ArgumentOutOfRangeException(nameof(specs), s.Bearing, $"{at}: bearing damping must be 0 to 1000 per second.");

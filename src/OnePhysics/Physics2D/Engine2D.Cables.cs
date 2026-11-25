@@ -11,6 +11,7 @@ internal sealed partial class Engine2D : ICableHost
     internal CableStore Cables => _cables ??= new CableStore(this);
     CableStore ICableHost.Cables => Cables;
     WorldCore ICableHost.CableCore => Core;
+    float ICableHost.UnitsPerMetre => Opt.UnitsPerMetre;
     int ICableHost.EngineSectionId => Id;
     bool ICableHost.Planar => true;
     Vector3F ICableHost.Gravity => new(Opt.Gravity.X, Opt.Gravity.Y, 0);

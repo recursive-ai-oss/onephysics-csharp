@@ -9,7 +9,8 @@ namespace RecursiveAI.OnePhysics.Cables;
 // rigid step as constant loads. Because the loads are applied in every substep, a load hanging in equilibrium stays exactly at rest.
 internal sealed partial class CableStore
 {
-    private const double Beta = 0.25, Deadband = 1e-5;
+    private const double Beta = 0.25;
+    private double Deadband => 1e-5 * Host.UnitsPerMetre;   // metres, in world units
 
     private struct Frame
     {
