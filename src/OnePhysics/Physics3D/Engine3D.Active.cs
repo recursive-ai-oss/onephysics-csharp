@@ -311,7 +311,9 @@ internal sealed partial class Engine3D
     private float[]? _ankleTq;
 
     // A planted ankle is a torque source: a soft, lightly damped spring whose target sits at the actual angle plus torque / stiffness, so that the torque delivered is the one asked for and a lean does not meet a heavy damper.
-    internal const float TorqueSourceStiffness = 600f, TorqueSourceDamping = 6f;
+    // newton-metres per radian and newton-metre-seconds, in world units (kg L^2 / s^2): 600 and 6 at one metre
+    internal float TorqueSourceStiffness => 600f * (Opt.UnitsPerMetre * Opt.UnitsPerMetre);
+    internal float TorqueSourceDamping => 6f * (Opt.UnitsPerMetre * Opt.UnitsPerMetre);
 
     // The rotation a part has relative to its parent now, as a pose entry (in the bind pose's axes): parent delta^-1 * child delta.
     private static QuaternionF ActualRelative(ActiveState3D a, RagdollState rg, int i) => rg.Def.Parts[i].Parent < 0 ? QuaternionF.Identity : Normalized(a.Delta[rg.Def.Parts[i].Parent].Conjugated() * a.Delta[i]);
@@ -497,8 +499,9 @@ internal sealed partial class Engine3D
                 if (inSub) { sub += ek; }
             }
 
-            a.ISub[i] = (float)Math.Max(sub, 1e-4);
-            a.ILoad[i] = (float)Math.Max(all - sub, 1e-4);
+            a.ISub[i] = (float)Math.Max(sub, 1e-4 * (double)Opt.UnitsPerMetre * Opt.UnitsPerMetre);   // kg m^2 floor, in world units
+
+            a.ILoad[i] = (float)Math.Max(all - sub, 1e-4 * (double)Opt.UnitsPerMetre * Opt.UnitsPerMetre);
         }
     }
 

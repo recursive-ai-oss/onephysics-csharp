@@ -214,7 +214,7 @@ internal sealed partial class RodStore
                 var relative=a.AngularVelocity[c.Segment]-new Vector3F(w[0],w[1],w[2])-_bodyAngularDelta[c.Body];
                 AngularContact(a,c.Segment,c.Body,rotation,c.Normal,Vector3F.Dot(relative,c.Normal),c.Spin*support);
                 var roll=relative-c.Normal*Vector3F.Dot(relative,c.Normal);float rolling=(float)Math.Sqrt(roll.LengthSquared());
-                if(rolling>1e-12f)AngularContact(a,c.Segment,c.Body,rotation,roll/rolling,rolling,c.Rolling*support*a.Material.Radius);
+                if(rolling>1e-12f)AngularContact(a,c.Segment,c.Body,rotation,roll/rolling,rolling,c.Rolling*support*a.Material.Radius/Host.UnitsPerMetre);
             }
         }
     }
